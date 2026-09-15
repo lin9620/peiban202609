@@ -137,6 +137,7 @@ export const messages = {
       visitorHere: "{v} is visiting!",
       visitorHint: "Offer a dish from your cookbook — it will repay you later.",
       feedVisitor: "Offer food",
+      fedVisitor: "It loved your dish! A thank-you gift will come home from its trip.",
       noDish: "Draw a dish first, then you can offer food.",
       prepare: "Pack a bag for {n}",
       carryFood: "Carry this dish (optional)",
@@ -145,6 +146,8 @@ export const messages = {
       awayTitle: "{n} is traveling…",
       awayNote: "Out there somewhere. Come back later for postcards.",
       backIn: "Back in {t}",
+      timeM: "{m} min",
+      timeS: "{s}s",
       album: "Travel Album",
       albumEmpty: "No postcards yet. Send your pet on its first trip!",
       collection: "Souvenir Collection",
@@ -368,6 +371,7 @@ export const messages = {
       visitorHere: "{v} 来做客啦！",
       visitorHint: "用食谱里的料理招待它，之后它会回礼。",
       feedVisitor: "招待它",
+      fedVisitor: "它很喜欢你的料理！回礼会跟着旅行带回来。",
       noDish: "先去画一道料理，才能招待客人。",
       prepare: "给 {n} 收拾行囊",
       carryFood: "带上这份料理（可选）",
@@ -376,6 +380,8 @@ export const messages = {
       awayTitle: "{n} 正在旅行……",
       awayNote: "它在外面看世界，回来收明信片吧。",
       backIn: "{t} 后回来",
+      timeM: "{m} 分钟",
+      timeS: "{s} 秒",
       album: "旅行相册",
       albumEmpty: "还没有明信片——送它去第一次旅行吧！",
       collection: "特产图鉴",
@@ -477,19 +483,35 @@ export const i18n = reactive({
   locale: getItem("wp-lang") || "en",
 });
 
+export function normLocale(l) {
+  if (!l) return "en";
+  const s = String(l).toLowerCase().replace("_", "-");
+  if (s.startsWith("zh")) return "zh";
+  if (s.startsWith("en")) return "en";
+  return s.split("-")[0] || "en";
+}
+
+i18n.locale = normLocale(i18n.locale);
+
+function lookup(key, locale) {
+  return key.split(".").reduce((o, k) => (o != null ? o[k] : undefined), messages[locale]);
+}
+
 export function t(key, params) {
-  const val = key.split(".").reduce((o, k) => (o || {})[k], messages[i18n.locale]);
+  const loc = normLocale(i18n.locale);
+  let val = lookup(key, loc);
+  if (val === undefined) val = lookup(key, "en");
   let out = val !== undefined ? val : key;
   if (params) {
     for (const [k, v] of Object.entries(params)) {
-      out = out.replace(new RegExp(`\\{${k}\\}`, "g"), v);
+      out = String(out).split(`{${k}}`).join(String(v));
     }
   }
   return out;
 }
 
 export function setLocale(l) {
-  i18n.locale = l;
-  setItem("wp-lang", l);
-  document.documentElement.lang = l === "zh" ? "zh-CN" : "en";
+  i18n.locale = normLocale(l);
+  setItem("wp-lang", i18n.locale);
+  document.documentElement.lang = i18n.locale === "zh" ? "zh-CN" : "en";
 }
