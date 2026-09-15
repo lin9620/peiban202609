@@ -1,6 +1,6 @@
 import { reactive, computed } from "vue";
 import { i18n, t } from "../i18n.js";
-import { todayKey } from "../utils/daily.js";
+import { todayKey, dateKey } from "../utils/daily.js";
 import { LINES } from "../data/pets.js";
 import { DESTS, SOUVENIRS, VISITORS, destByKey } from "../data/adventure.js";
 import { ACCESSORIES, MAIL_REPLIES } from "../data/extras.js";
@@ -372,12 +372,15 @@ export function checkInMood(index) {
   return true;
 }
 
+/* 连续打卡统计上限：异常存档（例如未来日期）也不会让遍历失控 */
+export const MAX_STREAK_DAYS = 3660;
+
 export function moodStreak() {
   let n = 0;
   const d = new Date();
-  for (;;) {
-    const key = todayKey();
-    if (moodLog[key] === undefined) break;
+  // 逐日往前翻：key 必须由 d 生成（曾误用 todayKey()，今日一打卡就会永远取到有值的 key → 死循环 → 点击后整页卡死）
+  for (let guard = 0; guard < MAX_STREAK_DAYS; guard++) {
+    if (moodLog[dateKey(d)] === undefined) break;
     n++;
     d.setDate(d.getDate() - 1);
   }
