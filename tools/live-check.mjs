@@ -36,6 +36,11 @@ await check("favicon.png 200", "/favicon.png", (r) => r.status === 200);
 await check("未知路径 SPA 回退 200", "/this-path-does-not-exist?cb=" + Date.now(), (r) => r.status === 200);
 await check("安全头 nosniff", "/", (r) => r.headers.get("x-content-type-options") === "nosniff");
 await check("安全头 X-Frame-Options", "/", (r) => r.headers.get("x-frame-options") === "SAMEORIGIN");
+await check("安全头 CSP（含 object-src none）", "/", (r) => {
+  const csp = r.headers.get("content-security-policy") || "";
+  return csp.includes("object-src 'none'") && csp.includes("frame-ancestors 'self'");
+});
+await check("安全头 HSTS", "/", (r) => /max-age=\d{6,}/.test(r.headers.get("strict-transport-security") || ""));
 
 out.push("");
 out.push(bad === 0 ? "LIVE ALL PASS (" + (out.length - 2) + ")" : "LIVE FAILED=" + bad);

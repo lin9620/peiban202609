@@ -3,7 +3,7 @@ import { ref, computed } from "vue";
 import { NButton, NInput, NTag } from "naive-ui";
 import { t, i18n } from "../i18n.js";
 import { stories, prompts } from "../data/stories.js";
-import { dayIndex, todayKey, dayOfYear } from "../utils/daily.js";
+import { dayIndex, todayKey } from "../utils/daily.js";
 import { getItem, setItem, removeItem } from "../utils/storage.js";
 import { checkInMood, moodStreak, activePet, activePetAway, mailbox, sendLetter } from "../stores/petStore.js";
 import { seasonNow } from "../data/extras.js";
@@ -32,13 +32,6 @@ const quote = computed(() =>
 /* —— 陪你大厅 —— */
 const STATUS_KEYS = ["working", "studying", "sleepless", "chilling"];
 const STATUS_EMOJI = { working: "💻", studying: "📚", sleepless: "🌙", chilling: "☕" };
-
-const online = computed(() => {
-  const base = 120 + ((dayOfYear() * 37) % 200);
-  const h = new Date().getHours();
-  const peak = (h >= 20 && h <= 23) || (h >= 12 && h <= 14) ? 1.4 : 1;
-  return Math.round(base * peak);
-});
 
 const myStatus = ref(getItem("wp-status") || "");
 function setStatus(k) {
@@ -149,10 +142,10 @@ function sendLetterNow() {
       <div class="row-between">
         <span class="sec-label">{{ t("home.companions.title") }}</span>
         <n-tag round size="small" :bordered="false" class="soft-tag">
-          <span class="live-dot"></span> {{ online }}
+          {{ t("home.companions.tag") }}
         </n-tag>
       </div>
-      <p class="hall-line">{{ t("home.companions.online", { n: online }) }}</p>
+      <p class="hall-line">{{ t("home.companions.hall") }}</p>
       <div class="chip-row">
         <n-button
           v-for="k in STATUS_KEYS" :key="k"

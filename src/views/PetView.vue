@@ -27,6 +27,10 @@ import {
   wardrobe, accByKey, buyAccessory, wearAccessory, toggleFramed,
 } from "../stores/petStore.js";
 
+import {
+  validateImageFile, isSaneShape, isUsableDataUrl, shrinkToDataUrl, MAX_PET_EDGE,
+} from "../utils/imaging.js";
+
 const tab = ref("care");
 
 /* —— 零食雨小游戏 —— */
@@ -67,24 +71,39 @@ function confirmAdoptSpecies() {
   resetForm();
 }
 
+const customErr = ref("");
+function showCustomErr(tk) {
+  customErr.value = tk;
+  setTimeout(() => { customErr.value = ""; }, 3200);
+}
+
+/* 立绘上传：预检(类型/体积) → 解码 → 体检(比例/像素) → 压到 480px PNG（保透明）→ 可用性校验
+   与社区帖图片共用 src/utils/imaging.js，避免超大图撑爆 Canvas 与 localStorage */
 function pickCustomImg(e) {
   const file = e.target.files && e.target.files[0];
+  e.target.value = "";
   if (!file) return;
+  const pre = validateImageFile(file);
+  if (!pre.ok) return showCustomErr(pre.reason === "too-large" ? "pet.imgTooLarge" : "pet.imgFail");
   const reader = new FileReader();
+  reader.onerror = () => showCustomErr("pet.imgFail");
   reader.onload = () => {
+    if (!isUsableDataUrl(reader.result)) return showCustomErr("pet.imgFail");
     const img = new Image();
+    img.onerror = () => showCustomErr("pet.imgFail");
     img.onload = () => {
-      const scale = Math.min(1, 480 / Math.max(img.width, img.height));
-      const c = document.createElement("canvas");
-      c.width = Math.round(img.width * scale);
-      c.height = Math.round(img.height * scale);
-      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-      customImg.value = c.toDataURL("image/png");
+      if (!isSaneShape(img.naturalWidth, img.naturalHeight)) return showCustomErr("pet.imgBadShape");
+      try {
+        const out = shrinkToDataUrl(img, 0.85, "image/png", MAX_PET_EDGE);
+        if (!isUsableDataUrl(out)) return showCustomErr("pet.imgFail");
+        customImg.value = out;
+      } catch (err) {
+        showCustomErr("pet.imgFail");
+      }
     };
     img.src = reader.result;
   };
   reader.readAsDataURL(file);
-  e.target.value = "";
 }
 
 function createCustom() {
@@ -599,6 +618,7 @@ function onToggleFramed(d) {
             <input type="file" accept="image/png,image/jpeg,image/webp" style="display: none" @change="pickCustomImg" />
           </label>
         </div>
+        <p v-if="customErr" class="notice" style="color: var(--low); font-weight: 700">{{ t(customErr) }}</p>
         <p class="streak-note">{{ t("pet.linesLabel") }}</p>
         <div class="line-inputs">
           <input

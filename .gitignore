@@ -10,6 +10,7 @@ supabase.json
 
 # 工具生成的报告与运行日志
 undef-report.txt
+comment-test.txt
 *.log
 
 # 本地工具缓存与临时脚本（云部署不需要）

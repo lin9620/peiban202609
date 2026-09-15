@@ -5,7 +5,7 @@ import { t, i18n } from "../i18n.js";
 import { getItem, setItem } from "../utils/storage.js";
 import {
   CMT_KEY, seedComments, addComment, removeComment, listComments,
-  canDelete, normalizeText, countComments, postKey,
+  canDelete, normalizeText, countComments, postKey, MAX_LEN,
 } from "../utils/comments.js";
 import { cloud } from "../utils/supabase.js";
 import {
@@ -193,6 +193,10 @@ function persistCmt() {
 function cmtKey(p) { return postKey(p); }
 function listFor(p) { return listComments(comments.value, p); }
 function countFor(p) { return countComments(comments.value, p); }
+/* 评论字数：输入框已用 :maxlength 硬限制在 MAX_LEN，这里只做展示（0 = 已达上限） */
+function cmtLeft(p) {
+  return MAX_LEN - String(cmtDraft.value[cmtKey(p)] || "").length;
+}
 function canDel(cm) {
   return canDelete(cm, nickname.value, cloud.user ? cloud.user.id : "");
 }
@@ -347,10 +351,14 @@ const when = (ts) =>
             v-model:value="cmtDraft[cmtKey(p)]"
             round size="small"
             :placeholder="t('comment.placeholder')"
+            :maxlength="MAX_LEN"
             @keyup.enter="sendCmt(p)" />
           <n-button type="primary" size="small" round @click="sendCmt(p)">
             {{ t("common.send") }}
           </n-button>
+          <p class="cmt-left" :class="{ full: cmtLeft(p) <= 0 }">
+            {{ cmtLeft(p) <= 0 ? t("comment.full", { n: MAX_LEN }) : t("comment.left", { n: cmtLeft(p) }) }}
+          </p>
         </div>
       </div>
     </article>

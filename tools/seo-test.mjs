@@ -100,7 +100,10 @@ if (exists("dist/pet/index.html")) {
   console.log("SKIP  T27~T31 尚未构建 dist（先跑 npm run build）");
 }
 ok("T32 SPA 回退配置（wrangler not_found_handling）", exists("wrangler.jsonc") && read("wrangler.jsonc").includes("single-page-application"));
-ok("T33 Cloudflare _headers 含安全头+资产缓存", exists("public/_headers") && read("public/_headers").includes("X-Content-Type-Options") && read("public/_headers").includes("/assets/*"));
+const hdr = exists("public/_headers") ? read("public/_headers") : "";
+ok("T33 _headers 含 nosniff + 资产长缓存", hdr.includes("X-Content-Type-Options") && hdr.includes("/assets/*") && hdr.includes("immutable"));
+ok("T34 _headers 含 CSP（object-src none + frame-ancestors）", hdr.includes("Content-Security-Policy:") && hdr.includes("object-src 'none'") && hdr.includes("frame-ancestors 'self'"));
+ok("T35 _headers 含 HSTS", /Strict-Transport-Security:\s*max-age=\d{6,}/.test(hdr));
 
 console.log(`\nTOTAL ${pass + fail}  PASS ${pass}  FAIL ${fail}`);
 if (fail > 0) process.exitCode = 1;

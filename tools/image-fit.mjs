@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import {
   fitSize, isSaneShape, validateImageFile, isUsableDataUrl,
-  MAX_EDGE, MAX_FILE_BYTES,
+  MAX_EDGE, MAX_FILE_BYTES, MAX_PET_EDGE,
 } from "../src/utils/imaging.js";
 
 const out = [];
@@ -75,6 +75,13 @@ t("T17 过短 dataURL 视为不可用", () => {
   assert.equal(isUsableDataUrl("data:image/jpeg;base64,AAAA"), false);
 });
 t("T18 常量约定：MAX_EDGE=900", () => {
+t("T19 立绘上限：MAX_PET_EDGE=480 且比社区图更小", () => {
+  assert.equal(MAX_PET_EDGE, 480);
+  assert.ok(MAX_PET_EDGE < MAX_EDGE);
+});
+t("T20 fitSize 支持自定义最长边（立绘 1600x1200 → 480x360）", () => {
+  assert.deepEqual(fitSize(1600, 1200, MAX_PET_EDGE), { width: 480, height: 360 });
+});
   assert.equal(MAX_EDGE, 900);
 });
 

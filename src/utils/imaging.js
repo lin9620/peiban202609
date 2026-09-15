@@ -13,6 +13,7 @@
 
 export const MAX_FILE_BYTES = 5 * 1024 * 1024; // 5 MB
 export const MAX_EDGE = 900;    // 压缩后最长边
+export const MAX_PET_EDGE = 480; // 自定义立绘最长边（要存进 localStorage，必须更小）
 export const MAX_RATIO = 12;    // 宽高比上限
 export const MAX_PIXELS = 30e6; // 解码总像素上限（约 30 MP）
 
@@ -50,13 +51,19 @@ export function isUsableDataUrl(s) {
 
 /* —— 以下为浏览器专用管线 —— */
 
-/** 把已解码的 img 按上限压缩成 jpeg dataURL */
-export function shrinkToDataUrl(img, quality = 0.78) {
-  const size = fitSize(img.naturalWidth, img.naturalHeight);
+/**
+ * 把已解码的 img 按上限压缩成 dataURL
+ * @param {HTMLImageElement} img 已解码图片
+ * @param {number} quality jpeg/webp 质量（png 忽略该参数）
+ * @param {string} mime 输出格式：社区帖用 jpeg，自定义立绘用 png（保透明底）
+ * @param {number} maxEdge 最长边上限（社区 900 / 立绘 480）
+ */
+export function shrinkToDataUrl(img, quality = 0.78, mime = "image/jpeg", maxEdge = MAX_EDGE) {
+  const size = fitSize(img.naturalWidth, img.naturalHeight, maxEdge);
   if (!size) throw new Error("bad-size");
   const c = document.createElement("canvas");
   c.width = size.width;
   c.height = size.height;
   c.getContext("2d").drawImage(img, 0, 0, size.width, size.height);
-  return c.toDataURL("image/jpeg", quality);
+  return c.toDataURL(mime, quality);
 }

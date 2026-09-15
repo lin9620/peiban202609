@@ -39,7 +39,8 @@ export const messages = {
       share: "Share as card", download: "Download card", downloading: "Saved! Check your downloads.",
       companions: {
         title: "You're not alone here",
-        online: "{n} kind souls are keeping you company right now",
+        tag: "always on",
+        hall: "This room keeps its light on, day and night — sit down whenever you like.",
         choose: "What are you up to?",
         working: "Working 💻", studying: "Studying 📚",
         sleepless: "Can't sleep 🌙", chilling: "Just chilling ☕",
@@ -101,6 +102,9 @@ export const messages = {
       chooseImg: "🖼️ Choose image",
       linesLabel: "Custom lines (optional, up to 3)",
       linePh: "A line it would often say…",
+      imgTooLarge: "That image is over 5 MB — try a smaller one 🙏",
+      imgBadShape: "That image has an unusual shape — try another one 🙏",
+      imgFail: "Could not read that image — try another one 🙏",
       create: "Create pet",
       created: "New family member! 💛",
       active: "Active",
@@ -196,6 +200,8 @@ export const messages = {
       count: "{n} comments",
       placeholder: "Say something gentle…",
       empty: "No comments yet — be the first to warm this thread.",
+      left: "{n} characters left",
+      full: "Reached the {n}-character limit",
     },
 
     rail: {
@@ -264,7 +270,8 @@ export const messages = {
       share: "生成分享卡片", download: "下载卡片", downloading: "已保存！去下载列表看看吧。",
       companions: {
         title: "这里不止你一个人",
-        online: "此刻有 {n} 位温柔的人陪着你",
+        tag: "一直亮着",
+        hall: "这里的灯一直亮着，白天夜里都在——想坐下来就坐下来吧。",
         choose: "你现在在做什么？",
         working: "工作中 💻", studying: "学习里 📚",
         sleepless: "睡不着 🌙", chilling: "随便待着 ☕",
@@ -326,6 +333,9 @@ export const messages = {
       chooseImg: "🖼️ 选择图片",
       linesLabel: "专属台词（选填，最多 3 句）",
       linePh: "它经常说的一句话…",
+      imgTooLarge: "这张图片超过 5 MB 了——换一张小一点的吧 🙏",
+      imgBadShape: "这张图片的比例有点奇怪——换一张试试吧 🙏",
+      imgFail: "这张图片读取失败——换一张试试吧 🙏",
       create: "创建宠物",
       created: "新家人来了！💛",
       active: "当前",
@@ -421,6 +431,8 @@ export const messages = {
       count: "{n} 条评论",
       placeholder: "说点温柔的话…",
       empty: "还没有评论——来温暖 TA 吧。",
+      left: "还可写 {n} 字",
+      full: "已达 {n} 字上限，不能再输入了",
     },
 
     rail: {

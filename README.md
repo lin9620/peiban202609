@@ -25,7 +25,7 @@
 
 ### 🏠 首页
 - 每日暖心故事 + 治愈语录（内置 14 天双语内容，按日期自动轮换）
-- **此刻陪你大厅**：显示此刻在线陪伴人数，可挂"工作中 / 学习里 / 睡不着 / 随便待着"状态
+- **此刻陪你大厅**：挂"工作中 / 学习里 / 睡不着 / 随便待着"状态（**不展示虚构在线人数** —— 数字不是实时数据时容易误导用户）
 - **每日心情打卡**：心情记录 + 温柔连续天数，打卡还会让宠物心情变好
 - **每日一问**：每天一个温柔的小问题
 - **分享卡片**：一键生成"今日语录 + 宠物"精美卡片下载分享
@@ -59,16 +59,17 @@
 ## 🧪 测试与静态检查
 
 ```bash
-node tools/comment-test.mjs   # 评论系统纯函数单测（15 项，无需浏览器/服务器）
-node tools/wall-test.mjs      # 暖心墙云端数据层纯函数单测（18 项）
+node tools/comment-test.mjs   # 评论系统纯函数单测（17 项，无需浏览器/服务器）
+node tools/wall-test.mjs      # 暖心墙云端数据层纯函数单测（20 项）
 node tools/snack-test.mjs     # 零食雨游戏纯逻辑单测（20 项：难度曲线/生成/碰撞/结算上限）
-node tools/seo-test.mjs       # SEO 资产检查（26 项：robots/sitemap/OG 标签/PNG 尺寸/产物）
+node tools/seo-test.mjs       # SEO 资产检查（35 项：robots/sitemap/OG 标签/PNG 尺寸/安全头/产物）
 node tools/undef-check.mjs    # 静态检查「用了项目内导出符号但没导入」（白屏元凶），报告写 undef-report.txt
 node tools/cloud-verify.mjs   # Supabase 连通性：Auth/四张表/Storage桶/RLS（需先配好 .env）
 node tools/cloud-e2e.mjs      # 云端全链路实测：注册→建档→发帖→评论→回应→权限→清理（会造测试数据并清理）
 node tools/smoke.mjs          # 模块冒烟：需 dev 服务器在跑，探测 26 个关键模块 + 5 个 SEO 静态文件
 node tools/online-check.mjs   # 线上站点验证：HTTPS/页面/资源/云端配置/SEO 资产（部署后跑）
 node tools/make-og.mjs        # 重新生成分享图与图标到 public/（改了品牌色或文案后可跑）
+node tools/uifix-test.mjs     # 修复项回归（20 项：评论字数上限/立绘上传校验/大厅文案/安全头/图片纯函数）
 node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite 只在启动时读环境变量）
 ```
 
@@ -184,7 +185,7 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 5. Supabase 后台 → **Authentication → URL Configuration**：Site URL 填 `https://dale.de5.net`，Redirect URLs 加 `https://dale.de5.net/**` 与 `http://localhost:5173/**`
 6. 每次更新：重新 build → Pages 项目 → **Create new deployment** → 再拖一次 `dist/`
 
-> 路由是 hash 模式（`/#/pet`），静态托管零配置即可用。部署后可用 `node tools/online-check.mjs` 验证线上站点（HTTPS / 页面 / 资源 / 云端配置是否打进产物）。
+> 路由已是 **history 模式**（`/pet`、`/community`、`/profile` 可直接访问与分享），构建时会为每条路由产出独立静态 HTML（含各自的 title / canonical / OG）；SPA 回退由 `wrangler.jsonc` 的 `not_found_handling` 兜底。部署后可用 `node tools/live-check.mjs` 验证线上站点（页面 / 缓存 / 安全头 / SEO 资产）。
 > 备选方案：推 GitHub → Vercel 导入（根目录 vercel.json 已配好 rewrites），环境变量在 Vercel 项目 Settings 里配 `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`。
 
 ## 📁 结构
@@ -208,19 +209,36 @@ src/
     SnackRain.vue      零食雨小游戏（鼠标/键盘操作 + 结算面板）
     ShareCard.vue      分享卡片生成
   views/               Home / Pet（宠物乐园）/ Community / Profile
-public/                robots.txt · sitemap.xml · og-image.png · favicon.png · apple-touch-icon.png
+public/                robots.txt · sitemap.xml · og-image.png · favicon.png · apple-touch-icon.png · _headers（安全头 + 资产长缓存）
 ```
 
 > 宠物动画：**预设 5 种宠物用 Lottie**（`utils/lottiePet.js` 在运行时生成矢量 JSON 交给 lottie-web 播放，因此不依赖任何外部素材文件、可离线、可缩放不糊）。
 > 想换成设计师给的 Lottie 素材：把 `.json` 放到 `src/assets/lottie/<物种>.json` 并在 `data/lottieAssets.js` 里登记，组件会优先使用真实素材。
 > **自定义二次元立绘**走另一条路：上传图片后用 CSS 活化（呼吸浮动 / 摸头摆动 / 睡眠变暗），与 Lottie 体系并存。
 
+## 🩹 修复记录（体验审计 · 两轮）
+
+| 级别 | 问题 | 处理 | 落地位置 |
+|---|---|---|---|
+| P1 | 社区反应拉全站前 2000 条，用户增长后漏算 | 只查当前页 30 帖的回应 | `utils/wall.js` |
+| P1 | 上传图片无体积/像素上限，极窄长图撑爆 Canvas | 5 MB 上限 + 宽高比 ≤ 12 + ≤ 30 MP + 最长边 900px | `utils/imaging.js` |
+| P1 | 未登录访客看不到云端帖子 | 匿名只读（写入仍要登录，RLS 兜底） | `utils/wall.js` |
+| P1 | 自定义立绘上传同样无校验（还会撑爆 localStorage） | 复用 imaging 管线，压到 480px PNG 保透明 | `views/PetView.vue` |
+| P2 | 评论 200 字上限但输入框无计数/硬限制 | `:maxlength` 硬限制 + 剩余字数 + 达上限提示（双语） | `views/CommunityView.vue` |
+| P2 | 评论展开后永久缓存，新评论不出现 | 30s TTL，超时重拉 | `views/CommunityView.vue` |
+| P2 | 所有资源 `max-age=0, must-revalidate` | `/assets/*` 一年 immutable，HTML 保持短缓存 | `public/_headers` |
+| P2 | 缺常见安全响应头 | 补 CSP + HSTS（原有 nosniff / Referrer-Policy / X-Frame-Options / Permissions-Policy 保留） | `public/_headers` |
+| 体验 | `#/` 路由直接访问 `/pet` 会 404 | 迁移到 history 模式 + 每条路由独立静态 HTML + SPA 回退 | `router.js` / `vite.config.js` / `wrangler.jsonc` |
+| 体验 | 「在线陪伴数」是本地随机数，易误导 | 去掉虚构人数，改如实文案 | `views/HomeView.vue` / `i18n.js` |
+
+回归验证（全部本地可跑）：`uifix-test` 20 项 · `image-fit` 20 项 · `comment-test` 17 项 · `wall-test` 20 项 ·`snack-test` 20 项 · `mood-test` 12 项 · `seo-test` 35 项 · `undef-check`。
+
 ## 🗺️ 路线图
 
 - ✅ **已完成**：Supabase 云端暖心墙（邮箱注册登录 + 多人发帖 / 评论 / 回应 + 图片上传 Storage）+ 上线 Cloudflare Pages
 - ✅ **已完成**： 零食雨小游戏（手绘料理掉落 + 分数结算成养成资源 + 本地最高分）
 - ✅ **已完成**： SEO 收录优化（robots / 站点地图 + 搜索框收录 + 分享卡与图标 + 结构化数据）
-- 每日一问 / 陪你大厅接入真实在线数据
+- 每日一问接入真实数据、陪你大厅接入真实在线人数（**当前刻意不显示人数**，等有真实统计再接）
 - 宠物冒险（带回手绘明信片图鉴）、装扮系统、季节彩蛋
 - 🏅 成就徽章：连续打卡 / 养成等级 / 评论互动解锁勋章墙
 - 手绘画作上墙、温暖信箱（树洞回信）
