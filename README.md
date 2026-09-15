@@ -63,11 +63,14 @@ node tools/comment-test.mjs   # 评论系统纯函数单测（17 项，无需浏
 node tools/wall-test.mjs      # 暖心墙云端数据层纯函数单测（20 项）
 node tools/snack-test.mjs     # 零食雨游戏纯逻辑单测（20 项：难度曲线/生成/碰撞/结算上限）
 node tools/seo-test.mjs       # SEO 资产检查（35 项：robots/sitemap/OG 标签/PNG 尺寸/安全头/产物）
+node tools/image-fit.mjs       # 图片纯函数单测（20 项：尺寸缩放/形状体检/文件预检/dataURL 校验）
 node tools/undef-check.mjs    # 静态检查「用了项目内导出符号但没导入」（白屏元凶），报告写 undef-report.txt
 node tools/cloud-verify.mjs   # Supabase 连通性：Auth/四张表/Storage桶/RLS（需先配好 .env）
 node tools/cloud-e2e.mjs      # 云端全链路实测：注册→建档→发帖→评论→回应→权限→清理（会造测试数据并清理）
 node tools/smoke.mjs          # 模块冒烟：需 dev 服务器在跑，探测 26 个关键模块 + 5 个 SEO 静态文件
-node tools/online-check.mjs   # 线上站点验证：HTTPS/页面/资源/云端配置/SEO 资产（部署后跑）
+node tools/live-check.mjs     # 线上部署验证：页面/缓存/安全头/SEO 资产（部署后跑，应输出 LIVE ALL PASS）
+node tools/online-check.mjs   # 旧版线上检查（已被 live-check 替代，如无特别需要可忽略）
+node tools/mood-test.mjs      # 心情打卡纯逻辑单测（12 项：连续天数/死循环回归）
 node tools/make-og.mjs        # 重新生成分享图与图标到 public/（改了品牌色或文案后可跑）
 node tools/uifix-test.mjs     # 修复项回归（20 项：评论字数上限/立绘上传校验/大厅文案/安全头/图片纯函数）
 node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite 只在启动时读环境变量）
@@ -176,14 +179,16 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 > 若「网址检查」详情里出现「无法显示在 Google 搜索结果中」，那是**未收录时的常规文案**，重点看它下面的 **「发现方式 / 抓取情况 / 收录情况」** 三行：<br>
 > `已发现 - 尚未编入索引` → 正常，等（新站常态）· `已抓取 - 尚未编入索引` → 正常，等（Google 认为内容暂不值得收录，等外链积累）· 若出现 `robots.txt 屏蔽` / `noindex` / `备用网页（有规范标签）` → 才是真问题（本站已用 `node tools/online-check.mjs` 排除这三项）。
 
-## 🌐 部署（Cloudflare Pages · 已上线 https://dale.de5.net）
+## 🌐 部署（Cloudflare Workers · 已上线 https://dale.de5.net）
 
-1. 双击 `build.cmd` 构建出 `dist/`
-2. Cloudflare 后台 → **Build → Compute (Workers)** → **Create** → **Pages** → **Upload your static files**
-3. 项目名 `warm-paws`，把 `dist/` 整个文件夹拖进去 → 部署，得到 `warm-paws.pages.dev` 预览地址
-4. 项目内 **Custom domains → 设置自定义域** → 填根域 `dale.de5.net`（子域名留空）→ 确认自动加 DNS → 等状态「活跃」
-5. Supabase 后台 → **Authentication → URL Configuration**：Site URL 填 `https://dale.de5.net`，Redirect URLs 加 `https://dale.de5.net/**` 与 `http://localhost:5173/**`
-6. 每次更新：重新 build → Pages 项目 → **Create new deployment** → 再拖一次 `dist/`
+```bash
+npm run build    # 构建出 dist/
+npm run deploy   # wrangler deploy 发布到 Worker warm-paws（dale.de5.net）
+```
+
+1. 发布就是上面两条命令（`package.json` 的 `build` / `deploy` 脚本，配置见 `wrangler.jsonc`：Worker 名 `warm-paws`，静态资源目录 `./dist`，SPA 回退已配好）。
+2. Supabase 后台 → **Authentication → URL Configuration**：Site URL 填 `https://dale.de5.net`，Redirect URLs 加 `https://dale.de5.net/**` 与 `http://localhost:5173/**`
+3. 部署后验证：`node tools/live-check.mjs`（页面 / 缓存 / 安全头 / SEO 资产，应输出 `LIVE ALL PASS`）。
 
 > 路由已是 **history 模式**（`/pet`、`/community`、`/profile` 可直接访问与分享），构建时会为每条路由产出独立静态 HTML（含各自的 title / canonical / OG）；SPA 回退由 `wrangler.jsonc` 的 `not_found_handling` 兜底。部署后可用 `node tools/live-check.mjs` 验证线上站点（页面 / 缓存 / 安全头 / SEO 资产）。
 > 备选方案：推 GitHub → Vercel 导入（根目录 vercel.json 已配好 rewrites），环境变量在 Vercel 项目 Settings 里配 `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`。
@@ -229,7 +234,7 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 | P2 | 所有资源 `max-age=0, must-revalidate` | `/assets/*` 一年 immutable，HTML 保持短缓存 | `public/_headers` |
 | P2 | 缺常见安全响应头 | 补 CSP + HSTS（原有 nosniff / Referrer-Policy / X-Frame-Options / Permissions-Policy 保留） | `public/_headers` |
 | 体验 | `#/` 路由直接访问 `/pet` 会 404 | 迁移到 history 模式 + 每条路由独立静态 HTML + SPA 回退 | `router.js` / `vite.config.js` / `wrangler.jsonc` |
-| 体验 | 「在线陪伴数」是本地随机数，易误导 | 去掉虚构人数，改如实文案 | `views/HomeView.vue` / `i18n.js` |
+| 体验 | 「在线陪伴数」是本地随机数，易误导 | 去掉虚构人数，改如实文案（路线图保留"等有真实统计再接"） | `views/HomeView.vue` / `i18n.js` |
 
 回归验证（全部本地可跑）：`uifix-test` 20 项 · `image-fit` 20 项 · `comment-test` 17 项 · `wall-test` 20 项 ·`snack-test` 20 项 · `mood-test` 12 项 · `seo-test` 35 项 · `undef-check`。
 
