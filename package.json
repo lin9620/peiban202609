@@ -1,0 +1,25 @@
+{
+  "name": "warm-paws",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@iconify/vue": "^5.0.1",
+    "@supabase/supabase-js": "^2.45.0",
+    "lottie-web": "^5.13.0",
+    "naive-ui": "^2.45.3",
+    "vue": "^3.5.0",
+    "vue-router": "^4.4.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.1.0",
+    "vite": "^5.4.0",
+    "wrangler": "^4.132.0"
+  }
+}

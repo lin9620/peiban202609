@@ -1,0 +1,483 @@
+import { reactive } from "vue";
+import { getItem, setItem } from "./utils/storage.js";
+
+/* ---------- 简易 i18n：默认英文，可切换中文 ---------- */
+
+/* 语言注册表：新增语言两步走 —— ①下方 messages 加对应语言块 ②在此数组加一行 */
+export const languages = [
+  { code: "en", label: "English" },
+  { code: "zh", label: "中文" },
+];
+
+export const messages = {
+  en: {
+    brand: "Warm Paws",
+    tagline: "A gentle place to be",
+    nav: { home: "Home", pet: "My Pet", community: "Warm Wall", profile: "Me" },
+    langBtn: "中文",
+    footerNote: "Made with warmth · You are doing better than you think.",
+
+    common: {
+      send: "Send", save: "Save", cancel: "Cancel", delete: "Delete",
+      close: "Close", guest: "Guest", signIn: "Sign in", signUp: "Sign up",
+      signOut: "Sign out", nickname: "Nickname", localMode:
+        "Local mode: your data stays in this browser. Sign in to sync to the cloud later.",
+      oops: "Something went a little sideways",
+      reload: "Reload the page",
+    },
+
+    home: {
+      morning: "Good morning ☀️", afternoon: "Good afternoon 🌤️", evening: "Good evening 🌙",
+      nightOwl: "Still awake? I'm here with you 🌙",
+      quoteTitle: "Today's little warmth",
+      heroTitle: "A soft place to land",
+      heroSub: "Take a breath. {n} is right here with you.",
+      goPet: "Visit your companion",
+      quoteLabel: "Today's little warmth",
+      storyLabel: "Today's heartwarming story",
+      storyTitle: "Today's heartwarming story",
+      share: "Share as card", download: "Download card", downloading: "Saved! Check your downloads.",
+      companions: {
+        title: "You're not alone here",
+        online: "{n} kind souls are keeping you company right now",
+        choose: "What are you up to?",
+        working: "Working 💻", studying: "Studying 📚",
+        sleepless: "Can't sleep 🌙", chilling: "Just chilling ☕",
+        youSet: "You're here — {s}",
+      },
+      mood: {
+        title: "How was your day?",
+        subtitle: "One tiny check-in. Your pet can feel it too.",
+        options: ["Amazing 🤩", "Good 🙂", "Okay 😌", "A bit low 🌧️", "Rough 😔"],
+        done: "Logged with love. See you tomorrow 💛",
+        again: "You already checked in today. Your pet is proud of you.",
+        streak: "Gentle streak: {n} day(s) 🌱",
+      },
+      dailyQ: {
+        title: "Question of the day",
+        placeholder: "Write something small and true…",
+        submit: "Answer", mine: "Your answer", thanks: "Thank you for sharing 💛",
+        signInHint: "Sign in to read answers from kind strangers.",
+      },
+    },
+
+    pet: {
+      title: "Mandarin",
+      subtitle: "Your little companion. Feed, play, rest — and draw its food with your own hand.",
+      coins: "coins", level: "Lv", stats: { hunger: "Food", mood: "Mood", clean: "Clean", energy: "Energy" },
+      actions: { feed: "Feed", play: "Play", pet: "Pet", clean: "Bathe", sleep: "Sleep", wake: "Wake up", desktop: "Desktop mode" },
+      snack: {
+        btn: "Snack rain",
+        title: "Snack Rain 🍬",
+        howto: "Move with your mouse, or run with ← → keys. Let your pet catch the falling food in its mouth! Dishes you drew yourself are worth 2 points.",
+        hasDish: "Your {n} handmade dish(es) will fall too — double points each.",
+        noDish: "Tip: draw some food first and it will fall here, worth double points.",
+        start: "Start catching",
+        best: "Best",
+        over: "Round over!",
+        newBest: "New personal best!",
+        again: "Play again",
+      },
+      painter: {
+        title: "Draw its food 🎨",
+        intro: "Trace a sample or freestyle. The more love you put in, the happier it eats.",
+        brush: "Brush", eraser: "Eraser", undo: "Undo", clear: "Clear",
+        save: "Save to cookbook", saved: "Saved to your cookbook 📖",
+        book: "Cookbook", empty: "Nothing cooked yet. Draw the first meal!",
+        feed: "Feed this", feedDone: "Yum! Handmade food hits different.",
+        effort: "Made with love: {n}%",
+        name: "Name this dish…", nameDefault: "Unnamed dish",
+      },
+      parkTitle: "Pet Park",
+      switchPet: "Your companions",
+      adoptNew: "Adopt a new companion",
+      unlockAt: "Lv.{lv} · 💰{c}",
+      notEnough: "Not enough coins yet — finish gentle tasks to earn more!",
+      adopted: "Welcome home, {n}! 🎉",
+      namePh: "Give it a name…",
+      personality: "Personality",
+      customTitle: "Upload your character",
+      customIntro: "Use your own anime character as a pet. Transparent PNG looks best. For personal use only.",
+      chooseImg: "🖼️ Choose image",
+      linesLabel: "Custom lines (optional, up to 3)",
+      linePh: "A line it would often say…",
+      create: "Create pet",
+      created: "New family member! 💛",
+      active: "Active",
+      switchTo: "Switch",
+      tabs: { care: "🫧 Care", adv: "🎒 Adventure", paint: "🎨 Draw food", book: "📖 Cookbook" },
+      gallerySoon: "Collection book is coming in the next update 📚",
+      onlyOne: "Keep at least one companion!",
+      tabAdopt: "Preset friends",
+      tabCustom: "My character",
+      tip: "Tap the stage to pet it. Feed it with the food you drew.",
+    },
+
+    tasks: {
+      title: "Today's gentle tasks",
+      feed: "Feed a handmade dish",
+      mood: "Check in your mood",
+      draw: "Draw a dish",
+      play: "Play together",
+      adv: "Go on a trip",
+      claim: "Claim 💰{c}",
+      claimed: "Claimed! See you tomorrow 🌙",
+      progress: "{done}/{total} done",
+    },
+
+    adventure: {
+      yard: "Little Yard",
+      cloverTip: "Clovers grow over time. Tap to harvest.",
+      harvest: "Harvest clovers",
+      harvested: "+{n} coins from clovers",
+      visitorHere: "{v} is visiting!",
+      visitorHint: "Offer a dish from your cookbook — it will repay you later.",
+      feedVisitor: "Offer food",
+      noDish: "Draw a dish first, then you can offer food.",
+      prepare: "Pack a bag for {n}",
+      carryFood: "Carry this dish (optional)",
+      depart: "See it off",
+      departed: "See you soon! {n} set off with your blessing.",
+      awayTitle: "{n} is traveling…",
+      awayNote: "Out there somewhere. Come back later for postcards.",
+      backIn: "Back in {t}",
+      album: "Travel Album",
+      albumEmpty: "No postcards yet. Send your pet on its first trip!",
+      collection: "Souvenir Collection",
+      collectionCount: "{n}/{total} kinds",
+      unknown: "？？？",
+      welcomeBack: "{n} is home! It brought souvenirs and {c} coins.",
+      brought: "Brought back",
+      trips: "{n} trip(s)",
+    },
+
+    wardrobe: {
+      title: "Little Wardrobe",
+      hint: "Buy with coins, wear on your pet. Each companion has their own style.",
+      worn: "Wearing",
+      bought: "New look unlocked!",
+    },
+    gallery: {
+      hang: "Hang on wall", unhang: "Take down", hung: "On the wall",
+    },
+    mail: {
+      title: "Warm Mailbox",
+      sub: "Drop a worry into the box. {n} will read it and write back.",
+      placeholder: "What's weighing on you today…",
+      send: "Seal & send",
+      sent: "Your letter is in the box. {n} is reading it…",
+      pending: "Reading your letter…",
+      replyArrived: "{n} has replied to your letter!",
+      replyFrom: "Reply from {n}",
+    },
+    season: {
+      now: "Now: {s}",
+    },
+
+    community: {
+      title: "The Warm Wall",
+      subtitle: "Small words, big warmth. Be kind — everyone here is trying their best.",
+      placeholder: "Say something warm today…",
+      addImage: "🖼️ Add image", removeImage: "Remove", post: "Post",
+      needText: "Write a few words first 💛",
+      reactHug: "Hug 🫂", reactWarm: "Warm ☀️", reactRelate: "Same 🤝",
+      sampleNotice: "These first notes are little examples — yours will join them.",
+      empty: "Be the first to warm this wall.",
+      signInToPost: "Sign in to post (local mode: posts stay in this browser).",
+      loading: "Gently loading the wall…",
+      cloudOn: "Cloud wall: posts and comments are shared with everyone.",
+      cloudNeedLogin: "Cloud wall is connected — sign in on the Me page to post and comment.",
+      imgTooLarge: "That image is over 5 MB — try a smaller one 🙏",
+      imgBadShape: "That image has an unusual shape — try another one 🙏",
+      imgFail: "Could not read that image — try another one 🙏",
+    },
+
+    comment: {
+      count: "{n} comments",
+      placeholder: "Say something gentle…",
+      empty: "No comments yet — be the first to warm this thread.",
+    },
+
+    rail: {
+      companion: "Companion corner",
+      quickPet: "Pet", quickFeed: "Feed",
+      noDish: "Draw a dish first",
+      healing: "Healing corner",
+      breathe: "Breathe with me",
+      start: "Start", stop: "Stop",
+      bIn: "Breathe in…", bHold: "Hold…", bOut: "Breathe out…",
+      breaths: "{n} breaths",
+      ticker: "Warm words",
+      moodQuick: "Mood note",
+    },
+
+    theme: {
+      pick: "Theme",
+    },
+
+    profile: {
+      title: "Me",
+      hello: "Hi, {n} 👋", notSigned: "Not signed in",
+      authEmail: "Email", authPass: "Password",
+      authTitle: "Sign in / Sign up",
+      authLocal: "Cloud sign-in activates once Supabase is connected. Meanwhile, pick a nickname to continue in local mode.",
+      cloudReady: "Cloud ready — sign in with your email, or continue as a guest.",
+      toSignUp: "New here? Create an account",
+      toSignIn: "Already have an account? Sign in",
+      verifySent: "Verification email sent — confirm it, then come back and sign in.",
+      authFail: "That didn't work: {r}",
+      cloudSignedIn: "Signed in — your posts and comments go to the cloud.",
+      setNick: "Continue as guest",
+      myBook: "My cookbook", bookEmpty: "No dishes yet — visit My Pet and draw some food!",
+      moodCal: "Mood calendar", moodEmpty: "Check in daily on the Home page 🌱",
+      days: "last 30 days",
+      daysLogged: "days logged", brightDays: "bright days",
+    },
+  },
+
+  zh: {
+    brand: "暖爪",
+    tagline: "一个温柔的地方",
+    nav: { home: "今天", pet: "我的宠物", community: "暖心墙", profile: "我的" },
+    langBtn: "English",
+    footerNote: "用心制作 · 你做得比你以为的更好。",
+
+    common: {
+      send: "发送", save: "保存", cancel: "取消", delete: "删除",
+      close: "关闭", guest: "访客", signIn: "登录", signUp: "注册",
+      signOut: "退出登录", nickname: "昵称",
+      localMode: "本地模式：数据保存在当前浏览器。连接云端后登录即可同步。",
+      oops: "这里好像有点小状况",
+      reload: "刷新页面",
+    },
+
+    home: {
+      morning: "早上好 ☀️", afternoon: "下午好 🌤️", evening: "晚上好 🌙",
+      nightOwl: "还没睡吗？我陪着你 🌙",
+      quoteTitle: "今日份的小温暖",
+      heroTitle: "一个可以安心落脚的地方",
+      heroSub: "深呼吸。{n} 就在这里陪着你。",
+      goPet: "去看看你的伙伴",
+      quoteLabel: "今日份的小温暖",
+      storyLabel: "今日暖心故事",
+      storyTitle: "今日暖心故事",
+      share: "生成分享卡片", download: "下载卡片", downloading: "已保存！去下载列表看看吧。",
+      companions: {
+        title: "这里不止你一个人",
+        online: "此刻有 {n} 位温柔的人陪着你",
+        choose: "你现在在做什么？",
+        working: "工作中 💻", studying: "学习里 📚",
+        sleepless: "睡不着 🌙", chilling: "随便待着 ☕",
+        youSet: "你在这里 —— {s}",
+      },
+      mood: {
+        title: "今天过得怎么样？",
+        subtitle: "一次小小的打卡，你的宠物也感觉得到。",
+        options: ["棒极了 🤩", "不错 🙂", "一般 😌", "有点低落 🌧️", "很难熬 😔"],
+        done: "已记下，带着爱意。明天见 💛",
+        again: "今天已经打过卡啦，你的宠物为你骄傲。",
+        streak: "温柔连续打卡：{n} 天 🌱",
+      },
+      dailyQ: {
+        title: "今日一问",
+        placeholder: "写下一点真实的小事…",
+        submit: "回答", mine: "你的回答", thanks: "谢谢你分享 💛",
+        signInHint: "登录后可以看到其他温柔的人的回答。",
+      },
+    },
+
+    pet: {
+      title: "小橘",
+      subtitle: "你的小伙伴。喂食、玩耍、休息——还能亲手画它的食物。",
+      coins: "金币", level: "等级", stats: { hunger: "饱食", mood: "心情", clean: "清洁", energy: "精力" },
+      actions: { feed: "喂食", play: "玩耍", pet: "抚摸", clean: "清洁", sleep: "睡觉", wake: "唤醒", desktop: "桌面模式" },
+      snack: {
+        btn: "零食雨",
+        title: "零食雨 🍬",
+        howto: "鼠标左右移动，或按 ← → 键让宠物跑动，张嘴接住掉下来的食物！你亲手画的料理每份算 2 分。",
+        hasDish: "你画的 {n} 道料理也会掉下来，每份分数翻倍。",
+        noDish: "小提示：先去画一份食物，它就会掉进游戏里，分数翻倍。",
+        start: "开始接住",
+        best: "最高分",
+        over: "这局结束啦！",
+        newBest: "刷新了个人纪录！",
+        again: "再来一局",
+      },
+      painter: {
+        title: "画它的食物 🎨",
+        intro: "可以照着样品描，也可以自由发挥。越用心，它吃得越开心。",
+        brush: "画笔", eraser: "橡皮", undo: "撤销", clear: "清空",
+        save: "存入食谱", saved: "已存进你的食谱 📖",
+        book: "我的食谱", empty: "还没做过菜，去画第一份食物吧！",
+        feed: "喂这个", feedDone: "好吃！亲手做的食物就是不一样。",
+        effort: "用心程度：{n}%",
+        name: "给这道菜起个名字…", nameDefault: "未命名料理",
+      },
+      parkTitle: "宠物乐园",
+      switchPet: "你的伙伴们",
+      adoptNew: "领养新伙伴",
+      unlockAt: "Lv.{lv} · 💰{c}",
+      notEnough: "金币还不够——完成每日温柔任务来赚金币吧！",
+      adopted: "欢迎回家，{n}！🎉",
+      namePh: "给它起个名字…",
+      personality: "性格",
+      customTitle: "上传你的角色",
+      customIntro: "用你自己的二次元角色当宠物。透明底 PNG 效果最佳。仅供个人使用。",
+      chooseImg: "🖼️ 选择图片",
+      linesLabel: "专属台词（选填，最多 3 句）",
+      linePh: "它经常说的一句话…",
+      create: "创建宠物",
+      created: "新家人来了！💛",
+      active: "当前",
+      switchTo: "切换",
+      tabs: { care: "🫧 照顾", adv: "🎒 冒险", paint: "🎨 画食物", book: "📖 食谱" },
+      gallerySoon: "收集图鉴将在下次更新上线 📚",
+      onlyOne: "至少要留一位伙伴！",
+      tabAdopt: "预设伙伴",
+      tabCustom: "我的角色",
+      tip: "点一下舞台就能摸摸它；喂食请用你亲手画的料理。",
+    },
+
+    tasks: {
+      title: "今日温柔任务",
+      feed: "喂一份亲手画的食物",
+      mood: "记录今天的心情",
+      draw: "画一道新料理",
+      play: "陪它玩一次",
+      adv: "出门旅行一次",
+      claim: "领取 💰{c}",
+      claimed: "已领取！明天见 🌙",
+      progress: "{done}/{total}",
+    },
+
+    adventure: {
+      yard: "小庭院",
+      cloverTip: "三叶草会随时间生长，点一下收割。",
+      harvest: "收割三叶草",
+      harvested: "三叶草换到 {n} 金币",
+      visitorHere: "{v} 来做客啦！",
+      visitorHint: "用食谱里的料理招待它，之后它会回礼。",
+      feedVisitor: "招待它",
+      noDish: "先去画一道料理，才能招待客人。",
+      prepare: "给 {n} 收拾行囊",
+      carryFood: "带上这份料理（可选）",
+      depart: "送它出门",
+      departed: "路上小心！{n} 带着你的祝福出发了。",
+      awayTitle: "{n} 正在旅行……",
+      awayNote: "它在外面看世界，回来收明信片吧。",
+      backIn: "{t} 后回来",
+      album: "旅行相册",
+      albumEmpty: "还没有明信片——送它去第一次旅行吧！",
+      collection: "特产图鉴",
+      collectionCount: "{n}/{total} 种",
+      unknown: "？？？",
+      welcomeBack: "{n} 回来啦！带回了特产和 {c} 金币。",
+      brought: "带回了",
+      trips: "旅行 {n} 次",
+    },
+
+    wardrobe: {
+      title: "小小衣橱",
+      hint: "用金币购买装扮，给宠物戴上。每位伙伴都有自己专属的造型。",
+      worn: "佩戴中",
+      bought: "新造型解锁！",
+    },
+    gallery: {
+      hang: "挂上墙", unhang: "取下来", hung: "在墙上",
+    },
+    mail: {
+      title: "温暖信箱",
+      sub: "把烦恼投进信箱，{n} 会认真读完并给你回信。",
+      placeholder: "今天有什么压在心头的事……",
+      send: "封好寄出",
+      sent: "信已投进邮筒，{n} 正在读……",
+      pending: "正在读你的信……",
+      replyArrived: "{n} 给你的信回信啦！",
+      replyFrom: "来自 {n} 的回信",
+    },
+    season: {
+      now: "现在：{s}",
+    },
+
+    community: {
+      title: "暖心墙",
+      subtitle: "小小的话，大大的温暖。请温柔些——这里的每个人都在努力生活。",
+      placeholder: "今天说点温柔的话…",
+      addImage: "🖼️ 添加图片", removeImage: "移除图片", post: "发布",
+      needText: "先写几个字吧 💛",
+      reactHug: "抱抱 🫂", reactWarm: "暖暖 ☀️", reactRelate: "同感 🤝",
+      sampleNotice: "这几条是小小的示例——你的留言会排在它们旁边。",
+      empty: "来当第一个温暖这面墙的人吧。",
+      signInToPost: "登录后即可发帖（本地模式：帖子保存在当前浏览器）。",
+      loading: "正在轻轻加载这面墙……",
+      cloudOn: "云端暖心墙已连接：发帖和评论会与所有人共享。",
+      cloudNeedLogin: "云端暖心墙已连接——去「我的」页登录后即可发帖和评论。",
+      imgTooLarge: "这张图片超过 5 MB 了——换一张小一点的吧 🙏",
+      imgBadShape: "这张图片的比例有点奇怪——换一张试试吧 🙏",
+      imgFail: "这张图片读取失败——换一张试试吧 🙏",
+    },
+
+    comment: {
+      count: "{n} 条评论",
+      placeholder: "说点温柔的话…",
+      empty: "还没有评论——来温暖 TA 吧。",
+    },
+
+    rail: {
+      companion: "伙伴角",
+      quickPet: "抚摸", quickFeed: "喂食",
+      noDish: "先画一道料理",
+      healing: "治愈角",
+      breathe: "跟我呼吸",
+      start: "开始", stop: "停下",
+      bIn: "吸气……", bHold: "屏住……", bOut: "呼气……",
+      breaths: "已呼吸 {n} 次",
+      ticker: "暖心飘带",
+      moodQuick: "心情速记",
+    },
+
+    theme: {
+      pick: "主题",
+    },
+
+    profile: {
+      title: "我的",
+      hello: "你好，{n} 👋", notSigned: "未登录",
+      authEmail: "邮箱", authPass: "密码",
+      authTitle: "登录 / 注册",
+      authLocal: "连接 Supabase 后即可云端登录。现在先起个昵称，用本地模式继续。",
+      cloudReady: "云端已就绪——用邮箱登录，或以访客身份继续。",
+      toSignUp: "第一次来？注册一个账号",
+      toSignIn: "已有账号？去登录",
+      verifySent: "验证邮件已发出——先去邮箱确认，再回来登录。",
+      authFail: "没成功：{r}",
+      cloudSignedIn: "已登录——发帖和评论都会同步到云端。",
+      setNick: "以访客身份继续",
+      myBook: "我的食谱", bookEmpty: "还没有菜品——去「我的宠物」画些食物吧！",
+      moodCal: "心情日历", moodEmpty: "去首页每日打卡 🌱",
+      days: "近 30 天",
+      daysLogged: "天有记录", brightDays: "明亮心情占比",
+    },
+  },
+};
+
+export const i18n = reactive({
+  locale: getItem("wp-lang") || "en",
+});
+
+export function t(key, params) {
+  const val = key.split(".").reduce((o, k) => (o || {})[k], messages[i18n.locale]);
+  let out = val !== undefined ? val : key;
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      out = out.replace(new RegExp(`\\{${k}\\}`, "g"), v);
+    }
+  }
+  return out;
+}
+
+export function setLocale(l) {
+  i18n.locale = l;
+  setItem("wp-lang", l);
+  document.documentElement.lang = l === "zh" ? "zh-CN" : "en";
+}

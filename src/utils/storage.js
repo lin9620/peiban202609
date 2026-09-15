@@ -1,0 +1,51 @@
+/* 安全的本地存储封装
+ * 浏览器隐私模式 / Tracking Prevention 拦截存储时，localStorage 访问会抛异常，
+ * 导致模块初始化或组件渲染失败（表现为整页白屏）。这里统一降级为内存存储。 */
+
+const memory = new Map();
+
+function probe() {
+  try {
+    const k = "__wp_probe__";
+    window.localStorage.setItem(k, "1");
+    window.localStorage.removeItem(k);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+const usable = typeof window !== "undefined" && probe();
+
+export const storageAvailable = usable;
+
+export function getItem(key) {
+  if (usable) {
+    try { return window.localStorage.getItem(key); } catch (e) { /* 降级 */ }
+  }
+  return memory.has(key) ? memory.get(key) : null;
+}
+
+export function setItem(key, value) {
+  memory.set(key, String(value));
+  if (usable) {
+    try { window.localStorage.setItem(key, String(value)); } catch (e) { /* 降级 */ }
+  }
+}
+
+export function removeItem(key) {
+  memory.delete(key);
+  if (usable) {
+    try { window.localStorage.removeItem(key); } catch (e) { /* 降级 */ }
+  }
+}
+
+export function getJSON(key, fallback) {
+  const raw = getItem(key);
+  if (!raw) return fallback;
+  try { return JSON.parse(raw); } catch (e) { return fallback; }
+}
+
+export function setJSON(key, value) {
+  try { setItem(key, JSON.stringify(value)); } catch (e) { /* 忽略 */ }
+}

@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+# history 路由：/ /pet /community /profile 均为可独立收录的页面
+Sitemap: https://dale.de5.net/sitemap.xml

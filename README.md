@@ -1,0 +1,227 @@
+# 🐾 Warm Paws · 暖爪
+
+一个面向海外用户的**温馨治愈系网站**：每日暖心故事、手绘食物喂养的宠物伙伴、温柔的社区墙。
+
+技术栈：**Vite + Vue 3 + Naive UI**（前端）· **Lottie**（宠物动画）· **Supabase**（登录/数据/图片，第二批接入）· Vercel（托管）。
+
+## ✨ 功能
+
+### 🐾 宠物乐园（v2 重点）
+- **5 种预设伙伴**：小橘猫 / 柴柴 / 麻薯兔 / 小恐龙 / 水獭，全部是 **Lottie 矢量动画**（呼吸 / 眨眼 / 摇尾 / 抖耳朵；睡觉自动切到闭眼慢呼吸变体）
+  - 动画不依赖外部素材：`src/utils/lottiePet.js` 在运行时按声明式图层规格生成合法 Lottie JSON，体积小、风格统一、无版权风险
+  - 想换成美术给的 `.json` 素材：登记进 `src/data/lottieAssets.js` 即可自动优先使用，无需改组件
+  - 初始赠送小橘猫，其余用金币 + 等级解锁（Lv.2 💰200 → Lv.7 💰800），养成有目标
+  - 每只**独立养成**：独立名字、四维状态、等级经验；多只同养时非当前宠物衰减减半
+- ⭐ **上传自己的二次元角色当宠物**：上传立绘（前端自动压缩）→ 通用"活化"动效（呼吸浮动 / 点击摸头冒爱心 / 状态气泡 / 说话气泡）
+- **4 种性格**：温柔 🌷 / 元气 ⚡ / 高冷 🖤 / 粘人 🫂
+  - 每种性格有**全套双语台词库**（问候/饿了/困了/脏了/低落/玩耍/抚摸/洗澡/睡前/升级…），说话语气完全不同
+  - 自定义角色还可填 3 句专属台词，混进日常台词池
+- **四维养成**：饱食 / 心情 / 清洁 / 精力，实时衰减 + 离线结算（回来算清这段时间的变化）
+- ⭐ **手绘食物画板**：画笔 / 橡皮 / 撤销 / 8 色配色盘，5 种样品线稿可描摹（猫粮碗 / 小鱼干 / 罐头 / 布丁 / 爱心饼干）
+- **用心度系统**：笔画数、颜色丰富度、线条长度 → 决定喂养效果，越用心吃得越开心
+- **每日温柔任务**：喂一份亲手画的食物 / 记心情 / 画一道新料理 / 陪它玩一次 → 一键领取金币
+-  **零食雨小游戏**：宠物张嘴接从天而降的食物，鼠标左右移动或按 ← → 键跑动；**你亲手画的料理也会掉下来，分数翻倍**。一局 45 秒，漏 8 个或时间到即结算成金币 / 饱食 / 心情 / 经验，最高分本地保存
+- 可给宠物起名、切换当前伙伴、查看每只的等级
+
+### 🏠 首页
+- 每日暖心故事 + 治愈语录（内置 14 天双语内容，按日期自动轮换）
+- **此刻陪你大厅**：显示此刻在线陪伴人数，可挂"工作中 / 学习里 / 睡不着 / 随便待着"状态
+- **每日心情打卡**：心情记录 + 温柔连续天数，打卡还会让宠物心情变好
+- **每日一问**：每天一个温柔的小问题
+- **分享卡片**：一键生成"今日语录 + 宠物"精美卡片下载分享
+
+### 💛 暖心墙
+留言 + 发图（自动压缩），用 **抱抱🫂 / 暖暖☀️ / 同感🤝** 代替点赞（每种回应每人限一次）
+- **每条帖子都有评论区**：可回复 / 删除自己的评论，示范评论只在首次访问注入一次（删了就不会复活）
+- 评论逻辑抽成纯函数模块 `src/utils/comments.js`（注入幂等 / 200 字截断 / 权限校验 / 脏数据兜底），配 15 项 Node 单元测试
+- **可选云端模式**：连接 Supabase 后帖子 / 评论 / 回应真·多人共享，图片上传 Storage，邮箱注册登录；未配置时自动降级本地模式（见下方配置章节）
+
+### 👤 我的
+访客昵称 / 我的食谱管理 / 近 30 天心情日历
+
+### 🌐 双语与视觉
+- 英文为主，右上角一键切换中文；新增语言只需加一个语言块
+- **5 套 UI 主题**（右上角 🎨 下拉切换，选择持久化）：奶油橘 / 樱花粉 / 薄荷森林 / 薰衣草紫 / 星夜蓝（深色，Naive UI darkTheme 联动）→ `src/data/themes.js`
+- **两侧玩法栏**（宽屏显示）：左侧宠物速养面板（摸头 / 投喂 / 呼吸放松练习），右侧小道具体验 → `src/components/SideRails.vue`
+- 设计系统：暖色奶油渐变背景 + 光斑装饰 + 毛玻璃卡片 + 多层阴影 + 页面切换过渡
+- UI 组件库 **Naive UI**，主题在 `src/theme.js` 定制（品牌橙 #FF9F5A、圆角胶囊按钮、毛玻璃输入框）
+- 四个页面全部重做为现代治愈风版式：首页（宠物主视觉 hero + 双栏语录/故事）、宠物乐园（舞台 + 侧栏）、暖心墙（杂志式动态流）、我的（头像卡 + 数据统计 + 心情热力格）
+- 字体：Quicksand（英文圆润）+ 霞鹜文楷（中文手写温度感）
+- **可被搜索到**：robots + 站点地图（构建时自动刷新 lastmod）+ canonical/OG 分享卡 + 真实 PNG 图标 + JSON-LD 结构化数据（见「收录与站点地图」章节）
+
+## 🚀 本地运行
+
+```
+双击 dev.cmd   → 开发模式（自动打开浏览器，http://localhost:5173）
+双击 build.cmd → 生产构建（输出到 dist/）
+```
+
+## 🧪 测试与静态检查
+
+```bash
+node tools/comment-test.mjs   # 评论系统纯函数单测（15 项，无需浏览器/服务器）
+node tools/wall-test.mjs      # 暖心墙云端数据层纯函数单测（18 项）
+node tools/snack-test.mjs     # 零食雨游戏纯逻辑单测（20 项：难度曲线/生成/碰撞/结算上限）
+node tools/seo-test.mjs       # SEO 资产检查（26 项：robots/sitemap/OG 标签/PNG 尺寸/产物）
+node tools/undef-check.mjs    # 静态检查「用了项目内导出符号但没导入」（白屏元凶），报告写 undef-report.txt
+node tools/cloud-verify.mjs   # Supabase 连通性：Auth/四张表/Storage桶/RLS（需先配好 .env）
+node tools/cloud-e2e.mjs      # 云端全链路实测：注册→建档→发帖→评论→回应→权限→清理（会造测试数据并清理）
+node tools/smoke.mjs          # 模块冒烟：需 dev 服务器在跑，探测 26 个关键模块 + 5 个 SEO 静态文件
+node tools/online-check.mjs   # 线上站点验证：HTTPS/页面/资源/云端配置/SEO 资产（部署后跑）
+node tools/make-og.mjs        # 重新生成分享图与图标到 public/（改了品牌色或文案后可跑）
+node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite 只在启动时读环境变量）
+```
+
+## 🧩 新增语言（零成本扩展）
+
+两步即可新增日语/西语/韩语等：
+1. `src/i18n.js` 的 `messages` 里加一个语言块（key 与英文块一致）
+2. 同文件顶部 `languages` 数组加一行 `{ code: "ja", label: "日本語" }`
+
+每日故事/语录在 `src/data/stories.js`，同样是 `en/zh` 并列字段，加语言并列加字段即可。
+
+## ☁️ Supabase 配置（云端暖心墙 + 登录）
+
+云端功能是**可选的**：不配置时网站完全以本地模式运行（行为与单机版一致）。
+
+**① 建库**：注册 [supabase.com](https://supabase.com) → New Project（免费）→ 左侧 **SQL Editor** → 粘贴 `SUPABASE_SETUP.sql` 全部内容 → Run。这会创建：
+- `profiles`（注册自动建档）· `wall_posts` · `wall_comments` · `wall_reactions`（含全套 RLS 策略）
+- Storage 桶 `wall-images`（公开读、登录上传、只能改删自己路径）
+
+**② 配置密钥**（二选一，anon key 是公开密钥，安全由 RLS 保证）：
+- 左侧 **Settings → API** 复制 `Project URL` 和 `anon public key`，然后：
+- 方式 A：项目根目录新建 `.env`：
+  ```
+  VITE_SUPABASE_URL=https://xxxx.supabase.co
+  VITE_SUPABASE_ANON_KEY=eyJhbGci...
+  ```
+- 方式 B：新建 `public/supabase.json`（开发时放根目录的 supabase.json 也能被识别）：
+  ```json
+  { "url": "https://xxxx.supabase.co", "anonKey": "eyJhbGci..." }
+  ```
+
+**③ 生效**：重启 `dev.cmd`。右上角会出现 👤 登录入口（「我的」页有邮箱注册/登录表单）；暖心墙自动切换为云端模式——发帖、评论、回应真·多人共享，图片上传到 Storage。想退回本地模式，删掉配置文件即可。
+
+> 说明：新注册用户需到邮箱确认验证邮件（Supabase 默认开启）。若要关闭验证：Dashboard → Authentication → Providers → Email → Confirm email 关闭。
+
+## 🔍 收录与站点地图（Google Search Console）
+
+**站点侧已备好的东西**（`node tools/seo-test.mjs` 全部 26 项校验通过）：
+
+| 文件 / 标签 | 作用 |
+|---|---|
+| `public/robots.txt` | 允许全站抓取，并声明站点地图地址 |
+| `public/sitemap.xml` | 站点地图；**构建时由 `vite.config.js` 的 `seo-sitemap` 插件自动把 `lastmod` 刷成当天**，不会给搜索引擎提交陈旧日期 |
+| `public/og-image.png` | 1200×630 分享卡（微信/QQ/Discord/X 分享出去有图） |
+| `public/favicon.png` · `apple-touch-icon.png` | 浏览器标签页图标 / iOS 主屏图标（真实 PNG，搜索结果里也能显示） |
+| `index.html` | canonical、description、robots、theme-color、Open Graph、Twitter 大卡、JSON-LD 结构化数据、`noscript` 兜底文案 |
+
+> 上面三张图由 `node tools/make-og.mjs` 生成（纯 Node、零依赖，手写 PNG 编码器画出品牌爪印）。改了品牌色或文案后重跑即可，产物直接覆盖 `public/`。
+
+**Search Console 验证（域名属性走 DNS TXT）**
+
+1. [search.google.com/search-console](https://search.google.com/search-console) → 添加资源 → 选 **域名** → 填 `dale.de5.net`
+2. 复制它给的 `google-site-verification=...` 整串
+3. 加 TXT 记录：**Cloudflare → DNS → 记录 → 添加记录**，类型 `TXT`、名称 `@`、内容粘贴整串、TTL `Auto`、保存
+   - `dale.de5.net` 的解析已委派给 Cloudflare（NS 是 `tori/cesar.ns.cloudflare.com`），所以记录必须加在 **Cloudflare**；dnshe 那边只需保留 `de5.net` 里指向 Cloudflare 的 NS 委派
+4. 回 Search Console 点 **验证**（一般 1~10 分钟通过）
+5. 验证通过后 → **站点地图** → 提交 `sitemap.xml`（完整地址 `https://dale.de5.net/sitemap.xml`）
+
+**几个要点**
+
+- 路由是 hash 模式：`/#/pet` 与 `/` 对爬虫属于同一 URL，所以站点地图**只登记根地址**（列 hash 地址会被判重复内容）
+- 校验通过的 TXT 记录**不要删**，Google 会定期复查，删了属性会掉
+- 想加速收录：验证后在「网址检查」里输入首页 → 请求编入索引；再把站点分享到几个地方被链接到，外链是最有效的加速器
+- 部署后可用 `node tools/online-check.mjs` 一次性验证线上：HTTPS、页面、资源、云端配置、**SEO 资产是否都能取到**
+
+**提交站点地图没反应？按这个顺序排查**
+
+1. **先确认资源已验证**：Search Console 顶部若还有「验证所有权」提示，站点地图是**提交不了**的（往往表现为点了没反应）。域名属性走 DNS TXT，点「验证」即可
+2. **TXT 记录的 zone 要对**：必须加在 `dale.de5.net`（Cloudflare），不是 `de5.net`（dnshe）。自检命令：`nslookup -type=TXT dale.de5.net 8.8.8.8`，应看到 `google-site-verification=...`
+3. **填完整地址更保险**：`https://dale.de5.net/sitemap.xml`（只填 `sitemap.xml` 也可以，前提是资源为域名属性）
+4. **提交后显示「待处理」是正常的**：首次抓取可能几小时；若显示「无法获取」，等几分钟再点一次提交（部署刚生效/CDN 缓存滞后时常见）
+5. **别期待立刻收录**：站点地图只是「告知有这些页面」，不等于收录。新域名通常要几天到几周，最有效的加速是 **「网址检查」→ 请求编入索引** + 让别处链接到你的站
+6. **一键体检**：`node tools/online-check.mjs` 会**模拟 Googlebot 抓取**，确认没被 Cloudflare 拦截、没有 `noindex` 头、robots 与 sitemap 都能取到、伪路径返回真 404（共 21 项）
+
+> 注意 Cloudflare 会在 `robots.txt` 顶部自动注入一段「AI 内容信号」声明（`Content-Signal: search=yes,ai-train=no`，并屏蔽 GPTBot / ClaudeBot / Google-Extended 等）。**这不影响 Google 搜索收录**（Google-Extended 只管 AI 训练），你自己的 `Allow: /` 与 `Sitemap:` 行会被完整保留。
+
+**提交成功长什么样（正常状态，不用再折腾）**
+
+| 字段 | 正常显示 | 说明 |
+|---|---|---|
+| 状态 | **成功** | Google 已成功抓取并解析该文件 |
+| 已提交的网址数 | **1** | hash 路由（`/#/pet`）与根地址同属一个 URL，所以只登记 1 条是正确的 |
+| 已发现的网页 | **1** | 同上；不是"只收录了 1 页"，收录进度看左侧 **「网页 / 页面」** 报告 |
+| 上次读取时间 | 今天 | 说明 Google 刚来过 |
+
+> 看到「成功 / 1 / 1」就代表站点地图这条链路完全通了。**接下来做两件事**：① **「网址检查」→ 输入 `https://dale.de5.net/` → 请求编入索引**（主动催抓，比等站点地图快）；② 在 **「网页」报告**里等状态从「已发现 - 尚未编入索引」变成「已编入索引」（新站通常几天到几周，有外链会明显更快）。
+
+**「请求编入索引」弹「出了点问题，请稍后重试」怎么办？**
+
+这是 Search Console 自己的提示，**几乎总是 Google 侧的限流或临时抖动，与网站无关**。对照排查：
+
+| 可能原因 | 说明 | 处理 |
+|---|---|---|
+| 提交配额用完 | Google 未公布确切数值，社区实测同一资源**每天约十余条**；超了就报这个错 | 隔天再试，只对最重要的 URL 请求 |
+| 同一 URL 冷却中 | 同一个网址短时间内重复请求会被拒 | 等十几分钟到数小时再点 |
+| Google 服务临时抖动 | 该报错在社区长期存在，属于非确定性故障 | 换时间、换浏览器或换 Google 账号重试 |
+
+**不一定非要靠这个按钮**，三条替代路径同样有效（而且更"自然"）：
+
+1. **「测试实际网址」**（同一页面里）→ 能正常抓取并显示「网址可用于 Google 搜索」，说明站点一切就绪，剩下只是时间问题
+2. **放一条外部链接**（GitHub 仓库主页 / 社交平台简介 / 论坛签名）指向 `https://dale.de5.net/` → Google 依靠外链自然发现新站，这是**新站最有效的加速方式**
+3. **等站点地图的下次抓取** —— 它已提交成功，Google 会按 `changefreq` 定期重抓；也可以再回站点地图页点一次「提交」（这不是索引请求，不受配额影响）
+
+> 若「网址检查」详情里出现「无法显示在 Google 搜索结果中」，那是**未收录时的常规文案**，重点看它下面的 **「发现方式 / 抓取情况 / 收录情况」** 三行：<br>
+> `已发现 - 尚未编入索引` → 正常，等（新站常态）· `已抓取 - 尚未编入索引` → 正常，等（Google 认为内容暂不值得收录，等外链积累）· 若出现 `robots.txt 屏蔽` / `noindex` / `备用网页（有规范标签）` → 才是真问题（本站已用 `node tools/online-check.mjs` 排除这三项）。
+
+## 🌐 部署（Cloudflare Pages · 已上线 https://dale.de5.net）
+
+1. 双击 `build.cmd` 构建出 `dist/`
+2. Cloudflare 后台 → **Build → Compute (Workers)** → **Create** → **Pages** → **Upload your static files**
+3. 项目名 `warm-paws`，把 `dist/` 整个文件夹拖进去 → 部署，得到 `warm-paws.pages.dev` 预览地址
+4. 项目内 **Custom domains → 设置自定义域** → 填根域 `dale.de5.net`（子域名留空）→ 确认自动加 DNS → 等状态「活跃」
+5. Supabase 后台 → **Authentication → URL Configuration**：Site URL 填 `https://dale.de5.net`，Redirect URLs 加 `https://dale.de5.net/**` 与 `http://localhost:5173/**`
+6. 每次更新：重新 build → Pages 项目 → **Create new deployment** → 再拖一次 `dist/`
+
+> 路由是 hash 模式（`/#/pet`），静态托管零配置即可用。部署后可用 `node tools/online-check.mjs` 验证线上站点（HTTPS / 页面 / 资源 / 云端配置是否打进产物）。
+> 备选方案：推 GitHub → Vercel 导入（根目录 vercel.json 已配好 rewrites），环境变量在 Vercel 项目 Settings 里配 `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`。
+
+## 📁 结构
+
+```
+src/
+  main.js / App.vue / router.js / i18n.js / style.css / theme.js
+  data/
+    stories.js         每日内容库（故事 / 语录 / 每日一问）
+    pets.js            SPECIES 物种 / PERSONALITIES 性格 / LINES 台词库
+    lottieAssets.js    真实 Lottie 素材登记表（放入 .json 即优先使用）
+  utils/
+    daily.js           按日期轮换工具
+    lottiePet.js       Lottie 动画工厂（运行时生成 5 种宠物的矢量动画）
+    snackGame.js       零食雨游戏纯逻辑（坐标系 0~1、随机源可注入 → Node 可单测）
+  stores/petStore.js   宠物状态机（多宠物 / 养成 / 食谱 / 任务 / 心情打卡）
+  components/
+    LottiePet.vue      Lottie 渲染器（预设宠物动画）
+    PetMotion.vue      动效层（跳跃 / 睡眠 + 自定义立绘活化）
+    FoodPainter.vue    手绘食物画板
+    SnackRain.vue      零食雨小游戏（鼠标/键盘操作 + 结算面板）
+    ShareCard.vue      分享卡片生成
+  views/               Home / Pet（宠物乐园）/ Community / Profile
+public/                robots.txt · sitemap.xml · og-image.png · favicon.png · apple-touch-icon.png
+```
+
+> 宠物动画：**预设 5 种宠物用 Lottie**（`utils/lottiePet.js` 在运行时生成矢量 JSON 交给 lottie-web 播放，因此不依赖任何外部素材文件、可离线、可缩放不糊）。
+> 想换成设计师给的 Lottie 素材：把 `.json` 放到 `src/assets/lottie/<物种>.json` 并在 `data/lottieAssets.js` 里登记，组件会优先使用真实素材。
+> **自定义二次元立绘**走另一条路：上传图片后用 CSS 活化（呼吸浮动 / 摸头摆动 / 睡眠变暗），与 Lottie 体系并存。
+
+## 🗺️ 路线图
+
+- ✅ **已完成**：Supabase 云端暖心墙（邮箱注册登录 + 多人发帖 / 评论 / 回应 + 图片上传 Storage）+ 上线 Cloudflare Pages
+- ✅ **已完成**： 零食雨小游戏（手绘料理掉落 + 分数结算成养成资源 + 本地最高分）
+- ✅ **已完成**： SEO 收录优化（robots / 站点地图 + 搜索框收录 + 分享卡与图标 + 结构化数据）
+- 每日一问 / 陪你大厅接入真实在线数据
+- 宠物冒险（带回手绘明信片图鉴）、装扮系统、季节彩蛋
+- 🏅 成就徽章：连续打卡 / 养成等级 / 评论互动解锁勋章墙
+- 手绘画作上墙、温暖信箱（树洞回信）
+- Google 一键登录、云端宠物存档多设备同步
