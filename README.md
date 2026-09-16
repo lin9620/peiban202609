@@ -186,9 +186,11 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 ## 🌐 部署（Cloudflare Workers · 已上线 https://dale.de5.net）
 
 ```bash
-npm run build    # 构建出 dist/
+npm run build    # 构建出 dist/（改完代码随手跑，验证能编译）
 npm run deploy   # wrangler deploy 发布到 Worker warm-paws（dale.de5.net）
 ```
+
+> ⚠️ **发布策略：攒着发，不随手发。** 改 bug / 加功能时**只做本地验证**（`npm run build` + 相关 `tools/*-test.mjs`），**不要每改一处就 `npm run deploy`**；等确认「可以部署了」再一次性发布，省掉无谓的构建与 CDN 版本堆积。同理，也不要擅自 `git push`。
 
 1. 发布就是上面两条命令（`package.json` 的 `build` / `deploy` 脚本，配置见 `wrangler.jsonc`：Worker 名 `warm-paws`，静态资源目录 `./dist`，SPA 回退已配好）。
 2. Supabase 后台 → **Authentication → URL Configuration**：Site URL 填 `https://dale.de5.net`，Redirect URLs 加 `https://dale.de5.net/**` 与 `http://localhost:5173/**`
