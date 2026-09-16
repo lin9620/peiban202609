@@ -5,9 +5,11 @@
  * 数据表结构见根目录 SUPABASE_SETUP.sql。
  */
 
-import { getClient, cloud } from "./supabase.js";
+import { cloud } from "./supabase.js";
 import { normalizeText } from "./comments.js";
 import { isUsableDataUrl } from "./imaging.js";
+/* 所有云端数据访问都走适配层：换库 / 换托管时只改 utils/api/db.js（见那里的文件头说明） */
+import { db } from "./api/db.js";
 
 /* ══════════ 纯函数：DB 行 → 视图模型（与本地帖子结构对齐） ══════════ */
 
@@ -106,23 +108,18 @@ export function canDeleteCloud(item, userId = "") {
 
 /* ══════════ 云操作（下半部分） ══════════ */
 
+/** Storage 路径 → 公开 URL（转发适配层；不可用时给空串，绝不打断渲染） */
 function publicUrl(path) {
-  const sb = getClient();
-  try {
-    const { data } = sb.storage.from("wall-images").getPublicUrl(path);
-    return (data && data.publicUrl) || "";
-  } catch (e) { return ""; }
+  return db.imageUrl(path);
 }
 
 /** 匿名可读：云端配置就绪即可读（RLS 对 anon 放行 SELECT，见 SUPABASE_SETUP.sql） */
 export function canReadWall() {
-  const sb = getClient();
-  return !!(sb && cloud.ready);
+  return !!(db.ready() && cloud.ready);
 }
 
 export function canUseWall() {
-  const sb = getClient();
-  return !!(sb && cloud.user);
+  return !!(db.ready() && cloud.user);
 }
 
 /** 排序窗口：热度排序在这批帖内进行（比一屏 30 条宽，够体现「最多的排前面」） */
@@ -136,32 +133,14 @@ export const SORT_WINDOW = 200;
  */
 export async function cloudFetchPosts(limit = SORT_WINDOW) {
   if (!canReadWall()) return null;
-  const sb = getClient();
   try {
     const n = Number(limit) > 0 ? Number(limit) : SORT_WINDOW;
-    /* 先带 removed 过滤（迁移后才有这一列）；42703 列不存在时退回不带过滤的查询 */
-    let res = await sb
-      .from("wall_posts")
-      .select("*")
-      .eq("removed", false)
-      .order("created_at", { ascending: false })
-      .limit(n);
-    if (res.error) {
-      res = await sb
-        .from("wall_posts")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(n);
-    }
-    const { data: posts, error } = res;
-    if (error) throw error;
+    const posts = await db.listPosts(n);
     let reactions = {};
     try {
       /* 只查当前窗口内这些帖的回应；全表 limit(2000) 会随用户增长漏算（P1 修复） */
       const ids = (posts || []).map((x) => x.id);
-      const { data: rk } = ids.length
-        ? await sb.from("wall_reactions").select("post_id,user_id,kind").in("post_id", ids)
-        : { data: [] };
+      const rk = ids.length ? await db.listReactionsByPosts(ids) : [];
       reactions = aggregateReactions(rk || [], cloud.user ? cloud.user.id : "");
     } catch (e) { /* 回应拉取失败不阻塞帖子 */ }
     return rowsToPosts(posts || [], reactions, publicUrl);
@@ -177,16 +156,15 @@ export async function cloudInsertPost({ text, imageDataUrl, name }) {
   if (!canUseWall()) return null;
   const clean = String(text || "").trim().slice(0, 1000);
   if (!clean && !imageDataUrl) return null;
-  const sb = getClient();
   try {
     let imagePath = null;
     if (imageDataUrl) imagePath = await cloudUploadImage(imageDataUrl);
-    const { data, error } = await sb
-      .from("wall_posts")
-      .insert({ user_id: cloud.user.id, author_name: name || "Guest", body: clean || "\u{1F5BC}\uFE0F", image_path: imagePath })
-      .select("*")
-      .single();
-    if (error) throw error;
+    const data = await db.insertPost({
+      user_id: cloud.user.id,
+      author_name: name || "Guest",
+      body: clean || "\u{1F5BC}\uFE0F",
+      image_path: imagePath,
+    });
     const view = rowsToPosts([data], {}, publicUrl)[0];
     view.img = imageDataUrl && !view.img ? imageDataUrl : view.img; // 上传失败时仍可本地预览
     return view;
@@ -200,15 +178,8 @@ export async function cloudInsertPost({ text, imageDataUrl, name }) {
 /** 拉取某帖评论（旧→新），失败返回 null */
 export async function cloudFetchComments(dbPostId) {
   if (!canReadWall()) return null;
-  const sb = getClient();
   try {
-    const { data, error } = await sb
-      .from("wall_comments")
-      .select("*")
-      .eq("post_id", dbPostId)
-      .order("created_at", { ascending: true })
-      .limit(200);
-    if (error) throw error;
+    const data = await db.listComments(dbPostId, 200);
     return rowsToComments(data || []);
   } catch (e) {
     console.warn("[cloud] fetchComments:", e);
@@ -225,17 +196,11 @@ export async function cloudInsertComment(dbPostId, text, name, { parentId = null
   if (!canUseWall()) return null;
   const clean = normalizeText(text);
   if (!clean) return null;
-  const sb = getClient();
   try {
     const row = { post_id: dbPostId, user_id: cloud.user.id, author_name: name || "Guest", body: clean };
     if (parentId != null && parentId !== "") row.parent_id = parentId;
     if (replyToName) row.reply_to_name = String(replyToName).slice(0, 40);
-    const { data, error } = await sb
-      .from("wall_comments")
-      .insert(row)
-      .select("*")
-      .single();
-    if (error) throw error;
+    const data = await db.insertComment(row);
     return rowsToComments([data])[0];
   } catch (e) {
     console.warn("[cloud] insertComment:", e);
@@ -254,14 +219,8 @@ export async function cloudFetchCommentCounts(dbPostIds) {
   if (!canReadWall()) return null;
   const ids = Array.isArray(dbPostIds) ? dbPostIds.filter((x) => x != null) : [];
   if (!ids.length) return {};
-  const sb = getClient();
   try {
-    const { data, error } = await sb
-      .from("wall_comments")
-      .select("post_id")
-      .in("post_id", ids)
-      .limit(2000);
-    if (error) throw error;
+    const data = await db.listCommentPostIds(ids, 2000);
     return countsFromRows(data || []);
   } catch (e) {
     console.warn("[cloud] fetchCommentCounts:", e);
@@ -272,10 +231,9 @@ export async function cloudFetchCommentCounts(dbPostIds) {
 /** 删除自己的评论（RLS 兜底），返回是否成功 */
 export async function cloudDeleteComment(dbCommentId) {
   if (!canUseWall()) return false;
-  const sb = getClient();
   try {
-    const { error } = await sb.from("wall_comments").delete().eq("id", dbCommentId);
-    return !error;
+    await db.deleteComment(dbCommentId);
+    return true;
   } catch (e) {
     console.warn("[cloud] deleteComment:", e);
     return false;
@@ -285,27 +243,20 @@ export async function cloudDeleteComment(dbCommentId) {
 /** 切换回应：已点 → 取消；未点 → 加上。返回最新计数或 null */
 export async function cloudToggleReaction(dbPostId, kind) {
   if (!canUseWall()) return null;
-  const sb = getClient();
   try {
     const uid = cloud.user.id;
-    const { data: existing } = await sb
-      .from("wall_reactions")
-      .select("post_id")
-      .eq("post_id", dbPostId).eq("user_id", uid).eq("kind", kind)
-      .maybeSingle();
+    /* 先看我点过没：查询失败就当「没点过」（与原有行为一致，不因一次抖动中断这次操作） */
+    let existing = null;
+    try { existing = await db.findReaction({ postId: dbPostId, userId: uid, kind }); } catch (e) { /* 视为未点过 */ }
     if (existing) {
-      const { error } = await sb.from("wall_reactions")
-        .delete().eq("post_id", dbPostId).eq("user_id", uid).eq("kind", kind);
-      if (error) throw error;
+      await db.deleteReaction({ postId: dbPostId, userId: uid, kind });
     } else {
-      const { error } = await sb.from("wall_reactions")
-        .insert({ post_id: dbPostId, user_id: uid, kind });
-      if (error) throw error;
+      await db.insertReaction({ post_id: dbPostId, user_id: uid, kind });
     }
-    /* 重拉该帖回应，返回权威计数 */
-    const { data: rk } = await sb.from("wall_reactions")
-      .select("post_id,user_id,kind").eq("post_id", dbPostId);
-    const ag = aggregateReactions(rk || [], uid);
+    /* 重拉该帖回应，返回权威计数；重拉失败不影响「本次切换已生效」 */
+    let rk = [];
+    try { rk = (await db.listReactionsByPost(dbPostId)) || []; } catch (e) { /* 退化成默认计数 */ }
+    const ag = aggregateReactions(rk, uid);
     return ag[dbPostId] || { hug: 0, warm: 0, relate: 0, mine: { hug: false, warm: false, relate: false } };
   } catch (e) {
     console.warn("[cloud] toggleReaction:", e);
@@ -317,7 +268,6 @@ export async function cloudToggleReaction(dbPostId, kind) {
 /** 上传图片（前端已压缩成 dataURL）→ Storage，返回路径或 null */
 export async function cloudUploadImage(dataUrl) {
   if (!canUseWall() || !dataUrl) return null;
-  const sb = getClient();
   try {
     const m = /^data:image\/(\w+);base64,(.+)$/.exec(dataUrl);
     if (!m) return null;
@@ -326,9 +276,7 @@ export async function cloudUploadImage(dataUrl) {
     const buf = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
     const path = `${cloud.user.id}/${Date.now()}.${ext}`;
-    const { error } = await sb.storage.from("wall-images")
-      .upload(path, buf, { contentType: `image/${m[1]}`, upsert: false });
-    if (error) throw error;
+    await db.uploadImage(path, buf, { mime: `image/${m[1]}`, upsert: false });
     return path;
   } catch (e) {
     console.warn("[cloud] uploadImage:", e);
@@ -348,13 +296,8 @@ export async function cloudUploadImage(dataUrl) {
  */
 export async function cloudAddView(dbPostId, viewer = "") {
   if (!canReadWall() || dbPostId == null) return null;
-  const sb = getClient();
   try {
-    const { data, error } = await sb.rpc("wall_add_view", {
-      p_post: dbPostId,
-      p_viewer: String(viewer || "").slice(0, 64),
-    });
-    if (error) throw error;
+    const data = await db.addView(dbPostId, String(viewer || "").slice(0, 64));
     if (!data || data.ok === false) return null;
     return {
       views: Math.max(0, Number(data.views) || 0),
@@ -377,10 +320,8 @@ export async function cloudAddView(dbPostId, viewer = "") {
  */
 export async function cloudToggleDislike(dbPostId) {
   if (!canUseWall() || dbPostId == null) return null;
-  const sb = getClient();
   try {
-    const { data, error } = await sb.rpc("wall_toggle_dislike", { p_post: dbPostId });
-    if (error) throw error;
+    const data = await db.toggleDislike(dbPostId);
     if (!data || data.ok === false) {
       cloud.error = data && data.reason ? data.reason : "dislike failed";
       return null;
@@ -408,14 +349,8 @@ export async function cloudToggleDislike(dbPostId) {
  */
 export async function cloudFetchProfile(userId) {
   if (!canReadWall() || !userId) return null;
-  const sb = getClient();
   try {
-    const { data, error } = await sb
-      .from("profiles")
-      .select("nickname,created_at")
-      .eq("id", userId)
-      .maybeSingle();
-    if (error) throw error;
+    const data = await db.getProfile(userId);
     /* 档案行不存在（极早期注册用户）不算失败，给空档案让页面用帖子署名兜底 */
     return data || { nickname: "", created_at: null };
   } catch (e) {
@@ -432,33 +367,13 @@ export async function cloudFetchProfile(userId) {
  */
 export async function cloudFetchUserPosts(userId, limit = 50) {
   if (!canReadWall() || !userId) return null;
-  const sb = getClient();
   try {
     const n = Number(limit) > 0 ? Number(limit) : 50;
-    let res = await sb
-      .from("wall_posts")
-      .select("*")
-      .eq("user_id", userId)
-      .eq("removed", false)
-      .order("created_at", { ascending: false })
-      .limit(n);
-    if (res.error) {
-      /* 42703 列不存在（未迁移）：退回不过滤的查询 */
-      res = await sb
-        .from("wall_posts")
-        .select("*")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false })
-        .limit(n);
-    }
-    const { data: posts, error } = res;
-    if (error) throw error;
+    const posts = await db.listPostsByUser(userId, n);
     let reactions = {};
     try {
       const ids = (posts || []).map((x) => x.id);
-      const { data: rk } = ids.length
-        ? await sb.from("wall_reactions").select("post_id,user_id,kind").in("post_id", ids)
-        : { data: [] };
+      const rk = ids.length ? await db.listReactionsByPosts(ids) : [];
       reactions = aggregateReactions(rk || [], cloud.user ? cloud.user.id : "");
     } catch (e) { /* 回应拉取失败不阻塞帖子 */ }
     return rowsToPosts(posts || [], reactions, publicUrl);
@@ -662,29 +577,12 @@ function petHomeFromData(row) {
  */
 export async function cloudGetPetHome(userId) {
   if (!canReadWall() || !userId) return null;
-  const sb = getClient();
   try {
-    const { data, error } = await sb
-      .from("pet_profiles")
-      .select("data,pats,feeds")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (error) throw error;
-    return petHomeFromData(data);
+    /* 适配层内部已处理「老库没补 pats/feeds 列」的退回查询（计数归 0，区块照常出现） */
+    return petHomeFromData(await db.getPetProfile(userId));
   } catch (e) {
-    /* 老库还没补 pats/feeds 列 → 退回只读 data（计数显示 0，但区块照常出现） */
-    try {
-      const { data, error } = await sb
-        .from("pet_profiles")
-        .select("data")
-        .eq("user_id", userId)
-        .maybeSingle();
-      if (error) throw error;
-      return petHomeFromData(data);
-    } catch (e2) {
-      console.warn("[cloud] getPetHome:", e2);
-      return null;
-    }
+    console.warn("[cloud] getPetHome:", e);
+    return null;
   }
 }
 
@@ -704,13 +602,9 @@ export async function cloudUploadPetImage(dataUrl) {
   if (!parsed) return null;
   const hit = petImgUploaded.get(parsed.hash);
   if (hit) return hit;
-  const sb = getClient();
   try {
     const path = `${cloud.user.id}/pet-${parsed.hash}.${parsed.ext}`;
-    const { error } = await sb.storage
-      .from("wall-images")
-      .upload(path, parsed.bytes, { contentType: parsed.mime, upsert: true });
-    if (error) throw error;
+    await db.uploadImage(path, parsed.bytes, { mime: parsed.mime, upsert: true });
     petImgUploaded.set(parsed.hash, path);
     return path;
   } catch (e) {
@@ -771,15 +665,11 @@ async function toCloudPetData(snapshot) {
  */
 export async function cloudSavePetHome(snapshot) {
   if (!canUseWall() || !snapshot || typeof snapshot !== "object") return false;
-  const sb = getClient();
   try {
     const payload = await toCloudPetData(snapshot);
     const { payload: fitted, dropped } = shrinkPetPayload(payload);
     if (dropped) console.warn("[cloud] savePetHome: 图片外置失败导致行超预算，已丢弃图片数 =", dropped);
-    const { error } = await sb
-      .from("pet_profiles")
-      .upsert({ user_id: cloud.user.id, data: fitted, updated_at: new Date().toISOString() });
-    if (error) throw error;
+    await db.upsertPetProfile(cloud.user.id, fitted, new Date().toISOString());
     return true;
   } catch (e) {
     console.warn("[cloud] savePetHome:", e);
@@ -797,14 +687,8 @@ export async function cloudSavePetHome(snapshot) {
 export async function cloudPetInteract(ownerId, kind, viewer = "") {
   if (!canReadWall() || !ownerId) return null;
   if (kind !== "pat" && kind !== "feed") return null;
-  const sb = getClient();
   try {
-    const { data, error } = await sb.rpc("pet_interact", {
-      p_owner: ownerId,
-      p_kind: kind,
-      p_viewer: String(viewer || "").slice(0, 64),
-    });
-    if (error) throw error;
+    const data = await db.petInteract(ownerId, kind, String(viewer || "").slice(0, 64));
     if (!data || data.ok === false) return null;
     /* 兼容两种返回：{counts:{pats,feeds}}（当前）与顶层 {pats,feeds}（老版本） */
     const c = data.counts && typeof data.counts === "object" ? data.counts : data;

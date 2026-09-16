@@ -114,6 +114,12 @@ for (const f of files) {
   for (const m of scan.matchAll(/\(([^()]*(?:\([^()]*\)[^()]*)*)\)\s*=>/g)) collectParams(m[1], bound);
   for (const m of scan.matchAll(/\bfunction\s*[A-Za-z_$][\w$]*\s*\(([^)]*)\)/g)) collectParams(m[1], bound);
 
+  /* 对象 / class 方法简写也是本地定义（如适配层 db = { async listComments(postId, limit) {...} }）。
+     此前只认 function/class 声明，方法名与别的模块导出撞名时（如 comments.js 的 listComments）
+     会被误报成「未导入的调用」。正常 JS 里「标识符(…){」只会出现在方法定义处（或 if/for 等
+     关键字，绑进集合无害），真正的裸调用后面跟的是 ; 或 ) ，不会被这条吞掉。 */
+  for (const m of scan.matchAll(/(?<![\w$.])(?:async\s+)?([A-Za-z_$][\w$]*)\s*\([^()]*\)\s*\{/g)) bound.add(m[1]);
+
   for (const name of exported.keys()) {
     if (bound.has(name)) continue;
     /* 排除：属性访问 obj.name、标签名 <name-xxx>（如 router-link）、标识符内部子串、
