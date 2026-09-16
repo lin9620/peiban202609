@@ -59,15 +59,16 @@
 ## 🧪 测试与静态检查
 
 ```bash
-node tools/comment-test.mjs   # 评论系统纯函数单测（17 项，无需浏览器/服务器）
-node tools/wall-test.mjs      # 暖心墙云端数据层纯函数单测（20 项）
+node tools/comment-test.mjs   # 评论系统纯函数单测（26 项：二级回复/parentId 封顶/级联删除/评论数兜底）
+node tools/wall-test.mjs      # 暖心墙云端数据层纯函数单测（27 项：行映射/二级字段/评论数聚合）
+node tools/i18n-test.mjs      # 文案完整性与插值回归（19 项：en/zh 键集合对称、修复过的 key、$ 特殊字符）
 node tools/snack-test.mjs     # 零食雨游戏纯逻辑单测（20 项：难度曲线/生成/碰撞/结算上限）
 node tools/seo-test.mjs       # SEO 资产检查（35 项：robots/sitemap/OG 标签/PNG 尺寸/安全头/产物）
 node tools/image-fit.mjs       # 图片纯函数单测（20 项：尺寸缩放/形状体检/文件预检/dataURL 校验）
 node tools/undef-check.mjs    # 静态检查「用了项目内导出符号但没导入」（白屏元凶），报告写 undef-report.txt
 node tools/cloud-verify.mjs   # Supabase 连通性：Auth/四张表/Storage桶/RLS（需先配好 .env）
 node tools/cloud-e2e.mjs      # 云端全链路实测：注册→建档→发帖→评论→回应→权限→清理（会造测试数据并清理）
-node tools/smoke.mjs          # 模块冒烟：需 dev 服务器在跑，探测 26 个关键模块 + 5 个 SEO 静态文件
+node tools/smoke.mjs          # 模块冒烟：需 dev 服务器在跑，探测 29 个关键模块 + 5 个 SEO 静态文件
 node tools/live-check.mjs     # 线上部署验证：页面/缓存/安全头/SEO 资产（部署后跑，应输出 LIVE ALL PASS）
 node tools/online-check.mjs   # 旧版线上检查（已被 live-check 替代，如无特别需要可忽略）
 node tools/mood-test.mjs      # 心情打卡纯逻辑单测（12 项：连续天数/死循环回归）
@@ -89,8 +90,10 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 云端功能是**可选的**：不配置时网站完全以本地模式运行（行为与单机版一致）。
 
 **① 建库**：注册 [supabase.com](https://supabase.com) → New Project（免费）→ 左侧 **SQL Editor** → 粘贴 `SUPABASE_SETUP.sql` 全部内容 → Run。这会创建：
-- `profiles`（注册自动建档）· `wall_posts` · `wall_comments` · `wall_reactions`（含全套 RLS 策略）
+- `profiles`（注册自动建档）· `wall_posts` · `wall_comments`（二级评论：`parent_id` 自关联 + `reply_to_name`）· `wall_reactions`（含全套 RLS 策略）
 - Storage 桶 `wall-images`（公开读、登录上传、只能改删自己路径）
+
+> **已经建过库的老用户**：评论改成二级结构后要跑一次增量迁移 —— SQL Editor 里粘贴 `MIGRATION_two_level_comments.sql` 全部内容 → Run（幂等，重复跑无副作用；旧评论不需要回填，会当一级评论正常显示）。
 
 **② 配置密钥**（二选一，anon key 是公开密钥，安全由 RLS 保证）：
 - 左侧 **Settings → API** 复制 `Project URL` 和 `anon public key`，然后：

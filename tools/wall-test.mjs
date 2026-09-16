@@ -3,9 +3,9 @@
  */
 import {
   rowsToPosts, aggregateReactions, rowsToComments, canDeleteCloud,
-  canReadWall, canUseWall,
+  canReadWall, canUseWall, countsFromRows,
 } from "../src/utils/wall.js";
-import { canDelete } from "../src/utils/comments.js";
+import { canDelete, displayCount } from "../src/utils/comments.js";
 
 let pass = 0, fail = 0;
 function ok(name, cond) {
@@ -46,6 +46,27 @@ ok("T11 回应聚合：空/脏输入安全", Object.keys(aggregateReactions([]))
 const rc = rowsToComments([{ id: 3, post_id: 7, user_id: "u1", author_name: "Bean", body: "hey", created_at: "2026-01-02T00:00:00Z" }]);
 ok("T12 评论映射：id/dbId/name/text/cloud", rc[0].id === "c3" && rc[0].dbId === 3 && rc[0].name === "Bean" && rc[0].text === "hey" && rc[0].cloud === true);
 ok("T13 评论映射：非数组安全", rowsToComments("x").length === 0);
+
+/* —— rowsToComments：二级评论（parent_id / reply_to_name） —— */
+const rcs = rowsToComments([
+  { id: 3, post_id: 7, user_id: "u1", author_name: "Bean", body: "root", created_at: "2026-01-02T00:00:00Z", parent_id: null, reply_to_name: null },
+  { id: 4, post_id: 7, user_id: "u2", author_name: "Juno", body: "r1", created_at: "2026-01-02T00:01:00Z", parent_id: 3, reply_to_name: "Bean" },
+  { id: 5, post_id: 7, user_id: "u2", author_name: "Juno", body: "r2", created_at: "2026-01-02T00:02:00Z", parent_id: 3, reply_to_name: null },
+  { id: 6, post_id: 7, user_id: "u2", author_name: "Juno", body: "r3", created_at: "2026-01-02T00:03:00Z", parent_id: "3", reply_to_name: "Bean" },
+]);
+ok("T21 评论映射：parent_id → parentId（加 c 前缀，与 id 命名对齐）", rcs[1].parentId === "c3" && rcs[1].id === "c4");
+ok("T22 评论映射：parent_id 为空 → parentId=null（一级评论）", rcs[0].parentId === null && rcs[0].replyTo === "");
+ok("T23 评论映射：reply_to_name → replyTo，缺省为空串", rcs[1].replyTo === "Bean" && rcs[2].replyTo === "" && rcs[2].parentId === "c3");
+ok("T24 评论映射：PostgREST 返回字符串型 parent_id 也能解析", rcs[3].parentId === "c3" && rcs[3].replyTo === "Bean");
+
+/* —— countsFromRows：进页面时的「每帖评论数」（含回复） —— */
+const cnt = countsFromRows([
+  { post_id: 7 }, { post_id: 7 }, { post_id: 7 }, { post_id: 9 },
+  { post_id: null }, null, "x",
+]);
+ok("T25 countsFromRows：按帖计数（一级 + 回复都算）", cnt[7] === 3 && cnt[9] === 1);
+ok("T26 countsFromRows：空/脏输入安全", Object.keys(countsFromRows([])).length === 0 && Object.keys(countsFromRows(null)).length === 0 && Object.keys(countsFromRows("x")).length === 0);
+ok("T27 countsFromRows + displayCount：进页面即显示真实评论数（0 → 3，bug 修复回归）", displayCount(undefined, cnt[7]) === 3);
 
 /* —— 删除权限 —— */
 const cloudCmt = { id: "c3", cloud: true, userId: "u1", name: "Bean" };

@@ -66,7 +66,24 @@ export function rowsToComments(rows) {
     ts: Date.parse(r.created_at) || Date.now(),
     cloud: true,
     userId: r.user_id,
+    /* 二级评论：parent_id 是 DB 主键，这里统一加上 c 前缀，和 id 命名保持一致 */
+    parentId: r.parent_id ? "c" + r.parent_id : null,
+    replyTo: r.reply_to_name || "",
   }));
+}
+
+/**
+ * 评论行 → 「每帖评论条数」表： { [postId]: n }
+ * 进页面时用它一次性把评论数显示出来（不必等用户点开评论区再拉）
+ * @param {Array} rows wall_comments 行（至少含 post_id）
+ */
+export function countsFromRows(rows) {
+  const out = {};
+  if (!Array.isArray(rows)) return out;
+  for (const r of rows) {
+    if (r && r.post_id != null) out[r.post_id] = (out[r.post_id] || 0) + 1;
+  }
+  return out;
 }
 
 /** 本地帖能否在云端删除：自己的帖子/评论（与 RLS 双保险） */
@@ -167,16 +184,23 @@ export async function cloudFetchComments(dbPostId) {
   }
 }
 
-/** 发表评论，返回视图评论或 null */
-export async function cloudInsertComment(dbPostId, text, name) {
+/**
+ * 发表评论（parentId 为空 = 一级评论；有值 = 二级回复，传被回复评论的 DB id）
+ * @param {object} [opts] { parentId, replyToName } —— replyToName 只在回复「别人的回复」时给，用于显示 @谁
+ * @returns {Promise<object|null>} 视图评论
+ */
+export async function cloudInsertComment(dbPostId, text, name, { parentId = null, replyToName = "" } = {}) {
   if (!canUseWall()) return null;
   const clean = normalizeText(text);
   if (!clean) return null;
   const sb = getClient();
   try {
+    const row = { post_id: dbPostId, user_id: cloud.user.id, author_name: name || "Guest", body: clean };
+    if (parentId != null && parentId !== "") row.parent_id = parentId;
+    if (replyToName) row.reply_to_name = String(replyToName).slice(0, 40);
     const { data, error } = await sb
       .from("wall_comments")
-      .insert({ post_id: dbPostId, user_id: cloud.user.id, author_name: name || "Guest", body: clean })
+      .insert(row)
       .select("*")
       .single();
     if (error) throw error;
@@ -184,6 +208,31 @@ export async function cloudInsertComment(dbPostId, text, name) {
   } catch (e) {
     console.warn("[cloud] insertComment:", e);
     cloud.error = e && e.message ? e.message : String(e);
+    return null;
+  }
+}
+
+/**
+ * 拉取「当前页这些帖」各自的评论条数（含回复），失败返回 null
+ * 修复：以前评论数要等用户点开评论区、拉到评论明细才知道，进页面时一直显示 0
+ * @param {number[]} dbPostIds
+ * @returns {Promise<Object|null>} { [postId]: n }
+ */
+export async function cloudFetchCommentCounts(dbPostIds) {
+  if (!canReadWall()) return null;
+  const ids = Array.isArray(dbPostIds) ? dbPostIds.filter((x) => x != null) : [];
+  if (!ids.length) return {};
+  const sb = getClient();
+  try {
+    const { data, error } = await sb
+      .from("wall_comments")
+      .select("post_id")
+      .in("post_id", ids)
+      .limit(2000);
+    if (error) throw error;
+    return countsFromRows(data || []);
+  } catch (e) {
+    console.warn("[cloud] fetchCommentCounts:", e);
     return null;
   }
 }

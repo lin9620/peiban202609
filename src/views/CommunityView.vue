@@ -4,13 +4,14 @@ import { NButton, NInput, NAvatar, NTag } from "naive-ui";
 import { t, i18n } from "../i18n.js";
 import { getItem, setItem } from "../utils/storage.js";
 import {
-  CMT_KEY, seedComments, addComment, removeComment, listComments,
-  canDelete, normalizeText, countComments, postKey, MAX_LEN,
+  CMT_KEY, seedComments, addComment, removeComment, displayCount,
+  canDelete, normalizeText, postKey, MAX_LEN,
+  topComments, repliesOf, replyCount,
 } from "../utils/comments.js";
 import { cloud } from "../utils/supabase.js";
 import {
   cloudFetchPosts, cloudInsertPost, cloudFetchComments, cloudInsertComment,
-  cloudDeleteComment, cloudToggleReaction, canUseWall, canReadWall,
+  cloudDeleteComment, cloudToggleReaction, cloudFetchCommentCounts, canUseWall, canReadWall,
 } from "../utils/wall.js";
 import {
   validateImageFile, isSaneShape, isUsableDataUrl, shrinkToDataUrl,
@@ -57,6 +58,8 @@ const needText = ref(false);
 /* —— 云端模式状态 —— */
 const cloudPosts = ref([]);
 const loadingCloud = ref(false);
+/* 云端帖评论数：进页面就一次性拉回来，不必等点赞开评论区（修复「有 2 条评论却显示 0」） */
+const cloudCmtTotal = ref({});
 
 const nickname = computed(() => getItem("wp-nickname") || t("common.guest"));
 /* 云模式下的发帖者署名：登录昵称 > 本地昵称 */
@@ -76,7 +79,18 @@ watch(() => cloud.ready, (v) => {
 async function loadCloud() {
   loadingCloud.value = true;
   const rows = await cloudFetchPosts();
-  if (rows) cloudPosts.value = rows;
+  if (rows) {
+    cloudPosts.value = rows;
+    /* 帖子到手就顺带拉一次「每帖评论数」：评论区标题马上有真实数字（含回复） */
+    cloudFetchCommentCounts(rows.map((r) => r.dbId)).then((counts) => {
+      if (!counts) return;
+      const next = { ...cloudCmtTotal.value };
+      for (const p of cloudPosts.value) {
+        if (p.dbId != null) next[cmtKey(p)] = counts[p.dbId] || 0;
+      }
+      cloudCmtTotal.value = next;
+    });
+  }
   loadingCloud.value = false;
 }
 
@@ -191,8 +205,24 @@ function persistCmt() {
   setItem(CMT_KEY, JSON.stringify(comments.value));
 }
 function cmtKey(p) { return postKey(p); }
-function listFor(p) { return listComments(comments.value, p); }
-function countFor(p) { return countComments(comments.value, p); }
+/* 该帖评论是否已拉到本地：是数组 → 本地列表为准；undefined → 用云端聚合数（见 displayCount） */
+function listed(p) { return comments.value[cmtKey(p)]; }
+/* 一级评论（主列表） */
+function listFor(p) { return topComments(comments.value, p); }
+/* 某条一级评论下的回复（二级） */
+function repliesFor(p, cm) { return repliesOf(comments.value, p, cm.id); }
+function repliesN(p, cm) { return replyCount(comments.value, p, cm.id); }
+/* 评论数：本地有列表就数本地，没有就先用进页面时拉到云端总数（不再显示成 0） */
+function countFor(p) {
+  return displayCount(listed(p), cloudCmtTotal.value[cmtKey(p)] || 0);
+}
+/* 云端帖评论总数随本地增删走：写/删一条后同步一下缓存，避免回退显示旧数字 */
+function syncTotal(p) {
+  const k = cmtKey(p);
+  if (p.cloud && Array.isArray(listed(p))) {
+    cloudCmtTotal.value = { ...cloudCmtTotal.value, [k]: listed(p).length };
+  }
+}
 /* 评论字数：输入框已用 :maxlength 硬限制在 MAX_LEN，这里只做展示（0 = 已达上限） */
 function cmtLeft(p) {
   return MAX_LEN - String(cmtDraft.value[cmtKey(p)] || "").length;
@@ -200,42 +230,137 @@ function cmtLeft(p) {
 function canDel(cm) {
   return canDelete(cm, nickname.value, cloud.user ? cloud.user.id : "");
 }
+/* 展开/收起二级回复：与话题区同为「N 条回复」点击展开（默认收起，评论多时不刷屏） */
+const openRep = ref({});
+function repOpenKey(p, cm) { return cmtKey(p) + ":" + cm.id; }
+function isRepOpen(p, cm) { return !!openRep.value[repOpenKey(p, cm)]; }
+function toggleReplies(p, cm) {
+  const k = repOpenKey(p, cm);
+  openRep.value = { ...openRep.value, [k]: !openRep.value[k] };
+}
+/* —— 回复目标（二级评论输入框）：replyTo[k] = 挂在哪条一级评论下；atName[k] = 要 @ 谁（回复别人的回复时） —— */
+const replyTo = ref({});
+const atName = ref({});
+function isReplyOpen(p, cm) { return replyTo.value[cmtKey(p)] === cm.id; }
+/* 回复一级评论：挂到它下面，不 @（视觉上已经挨着作者） */
+function openReply(p, cm) {
+  const k = cmtKey(p);
+  replyTo.value = { ...replyTo.value, [k]: cm.id };
+  atName.value = { ...atName.value, [k]: "" };
+  if (p.cloud && canReadWall()) loadThread(p); /* 顺手刷新，边看边回 */
+}
+/* 回复某条回复：仍挂在同一个一级评论下（两级封顶），并 @ 这位回复者 */
+function openReplyTo(p, cm, rp) {
+  const k = cmtKey(p);
+  replyTo.value = { ...replyTo.value, [k]: cm.id };
+  atName.value = { ...atName.value, [k]: rp.name || "" };
+  openRep.value = { ...openRep.value, [repOpenKey(p, cm)]: true };
+}
+function cancelReply(p) {
+  const k = cmtKey(p);
+  const nextTo = { ...replyTo.value };
+  const nextAt = { ...atName.value };
+  delete nextTo[k];
+  delete nextAt[k];
+  replyTo.value = nextTo;
+  atName.value = nextAt;
+}
+/* 回复框占位文案：「回复 xxx…」（xxx 优先取 @ 的对象） */
+function repPlaceholder(p, cm) {
+  const n = atName.value[cmtKey(p)] || cm.name;
+  return t("comment.replyPh", { n });
+}
+/* 二级评论草稿（与一级评论分开，互不干扰） */
+const repDraft = ref({});
+function repKey(p, cm) { return cmtKey(p) + ":" + cm.id; }
+function repLeft(p, cm) { return MAX_LEN - String(repDraft.value[repKey(p, cm)] || "").length; }
 function isOpen(p) { return !!openCmt.value[cmtKey(p)]; }
 /* 云端帖评论拉取 TTL：展开时缓存超过 30s 就重拉，新评论不再需要刷新页面（P2 修复） */
 const CMT_TTL = 30000;
 const cmtFetchedAt = ref({});
+/* 拉取（或按 TTL 重拉）某帖评论明细；pending 防重入，失败时按 TTL 重试 */
+const cmtLoading = ref({});
+function loadThread(p, force = false) {
+  if (!p.cloud || !canReadWall()) return;
+  const k = cmtKey(p);
+  if (cmtLoading.value[k]) return;
+  if (!force && Date.now() - (cmtFetchedAt.value[k] || 0) < CMT_TTL) return;
+  cmtFetchedAt.value = { ...cmtFetchedAt.value, [k]: Date.now() };
+  cmtLoading.value = { ...cmtLoading.value, [k]: true };
+  cloudFetchComments(p.dbId).then((rows) => {
+    const next = { ...cmtLoading.value };
+    delete next[k];
+    cmtLoading.value = next;
+    if (!rows) {
+      /* 拉失败：把时间戳归零，下次展开/重试立刻再来一次，而不是干等 30s */
+      cmtFetchedAt.value = { ...cmtFetchedAt.value, [k]: 0 };
+      return;
+    }
+    comments.value = { ...comments.value, [k]: rows };
+    cloudCmtTotal.value = { ...cloudCmtTotal.value, [k]: rows.length };
+  });
+}
 function toggleCmt(p) {
   const k = cmtKey(p);
-  openCmt.value[k] = !openCmt.value[k];
-  if (openCmt.value[k] && p.cloud && canReadWall()
-      && Date.now() - (cmtFetchedAt.value[k] || 0) > CMT_TTL) {
-    cmtFetchedAt.value = { ...cmtFetchedAt.value, [k]: Date.now() };
-    cloudFetchComments(p.dbId).then((rows) => {
-      if (rows) comments.value = { ...comments.value, [k]: rows };
-    });
-  }
+  openCmt.value = { ...openCmt.value, [k]: !openCmt.value[k] };
+  if (openCmt.value[k]) loadThread(p);
 }
-async function sendCmt(p) {
+/**
+ * 发表评论。
+ *  - 传 cm → 作为二级回复挂到该一级评论下（云端写 parent_id，本地写 parentId）
+ *  - 不传 → 一级评论
+ * 草稿取 `cmtDraft`（一级）或 `repDraft`（二级），两者互不干扰。
+ */
+async function sendCmt(p, cm = null) {
   const k = cmtKey(p);
+  const rk = cm ? repKey(p, cm) : k;
+  const draftRef = cm ? repDraft : cmtDraft;
+  const text = draftRef.value[rk];
+  if (!normalizeText(text)) return;
+  /* 回复某条回复时记下的 @ 对象（回复一级评论时为空） */
+  const at = cm ? atName.value[k] || "" : "";
+
   /* 云端帖：写库成功后把返回的视图评论追加到本地 store */
   if (p.cloud && canUseWall()) {
-    const created = await cloudInsertComment(p.dbId, cmtDraft.value[k], wallName.value);
+    const parentDbId = cm ? cm.dbId : null;
+    const created = await cloudInsertComment(p.dbId, text, wallName.value, {
+      parentId: parentDbId,
+      replyToName: at,
+    });
     if (!created) return;
     const arr = Array.isArray(comments.value[k]) ? comments.value[k].slice() : [];
     arr.push(created);
     comments.value = { ...comments.value, [k]: arr };
-    cmtDraft.value[k] = "";
+    draftRef.value = { ...draftRef.value, [rk]: "" };
+    if (cm) {
+      openRep.value = { ...openRep.value, [repOpenKey(p, cm)]: true }; /* 回复完顺手展开 */
+      onReplyDone(p);
+    }
+    syncTotal(p);
     return;
   }
-  /* 本地/示例帖：纯函数逻辑（15 项单测覆盖的那套） */
+
+  /* 本地/示例帖：纯函数逻辑（Node 单测覆盖的那套） */
   const r = addComment(comments.value, p, {
     name: nickname.value,
-    text: cmtDraft.value[k],
+    text,
+    parentId: cm ? cm.id : null,
+    replyTo: at,
   });
   if (!r.ok) return;
   comments.value = r.store;
-  cmtDraft.value[k] = "";
+  draftRef.value = { ...draftRef.value, [rk]: "" };
+  if (cm) {
+    openRep.value = { ...openRep.value, [repOpenKey(p, cm)]: true };
+    onReplyDone(p);
+  }
   persistCmt();
+}
+/* 回复成功后：清掉 @ 对象，但保留回复框位置，方便连着回第二条 */
+function onReplyDone(p) {
+  const k = cmtKey(p);
+  if (!atName.value[k]) return;
+  atName.value = { ...atName.value, [k]: "" };
 }
 async function delCmt(p, cm) {
   if (!canDel(cm)) return;
@@ -245,7 +370,9 @@ async function delCmt(p, cm) {
     if (!done) return;
   }
   comments.value = removeComment(comments.value, p, cm.id);
+  cancelReply(p); /* 正在回复这条时，删完就收起回复框 */
   persistCmt();
+  syncTotal(p);
 }
 
 /* 动态流：云端就绪且拉到帖子 → 真实帖子；否则回退本机帖子（不再凭空消失）；示例帖永远在 */
@@ -333,8 +460,14 @@ const when = (ts) =>
 
       <div class="cmt-toggle" @click="toggleCmt(p)">
         <span class="cmt-ico">&#128172;</span> {{ t("comment.count", { n: countFor(p) }) }}
+        <span class="cmt-caret" :class="{ open: isOpen(p) }">&#9662;</span>
       </div>
       <div v-if="isOpen(p)" class="cmt-box">
+        <p v-if="cmtLoading[cmtKey(p)] && !listed(p)" class="cmt-empty">
+          {{ t("community.loading") }}
+        </p>
+
+        <!-- 一级评论 -->
         <div v-for="cm in listFor(p)" :key="cm.id" class="cmt-item">
           <div class="cmt-head">
             <b>{{ cm.name }}</b><span>{{ when(cm.ts) }}</span>
@@ -344,8 +477,63 @@ const when = (ts) =>
               @click="delCmt(p, cm)">×</button>
           </div>
           <p class="cmt-text">{{ cm.text }}</p>
+
+          <div class="cmt-acts">
+            <button class="cmt-act" @click="openReply(p, cm)">{{ t("comment.reply") }}</button>
+            <button
+              v-if="repliesN(p, cm)"
+              class="cmt-act cmt-act-rep"
+              @click="toggleReplies(p, cm)">
+              {{ t("comment.replies", { n: repliesN(p, cm) }) }}
+              <i :class="{ open: isRepOpen(p, cm) }">&#9662;</i>
+            </button>
+          </div>
+
+          <!-- 二级：回复列表（默认收起，点「N 条回复」展开） -->
+          <div v-if="isRepOpen(p, cm) && repliesN(p, cm)" class="cmt-reps">
+            <div v-for="rp in repliesFor(p, cm)" :key="rp.id" class="cmt-rep">
+              <div class="cmt-head">
+                <b>{{ rp.name }}<span class="cmt-at" v-if="rp.replyTo">@{{ rp.replyTo }}</span></b>
+                <span>{{ when(rp.ts) }}</span>
+                <button
+                  v-if="canDel(rp)"
+                  class="cmt-del" :title="t('common.delete')"
+                  @click="delCmt(p, rp)">×</button>
+              </div>
+              <p class="cmt-text">{{ rp.text }}</p>
+              <div class="cmt-acts">
+                <button class="cmt-act" @click="openReplyTo(p, cm, rp)">
+                  {{ t("comment.reply") }}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 二级：就地回复框 -->
+          <div v-if="isReplyOpen(p, cm)" class="cmt-input cmt-input-rep">
+            <n-input
+              v-model:value="repDraft[repKey(p, cm)]"
+              round size="small"
+              :placeholder="repPlaceholder(cm)"
+              :maxlength="MAX_LEN"
+              @keyup.enter="sendCmt(p, cm)" />
+            <n-button type="primary" size="small" round @click="sendCmt(p, cm)">
+              {{ t("common.send") }}
+            </n-button>
+            <n-button quaternary size="small" round @click="cancelReply(p)">
+              {{ t("comment.cancel") }}
+            </n-button>
+            <p class="cmt-left" :class="{ full: repLeft(p, cm) <= 0 }">
+              {{ repLeft(p, cm) <= 0 ? t("comment.full", { n: MAX_LEN }) : t("comment.left", { n: repLeft(p, cm) }) }}
+            </p>
+          </div>
         </div>
-        <p v-if="!listFor(p).length" class="cmt-empty">{{ t("comment.empty") }}</p>
+
+        <p v-if="!listFor(p).length && !(cmtLoading[cmtKey(p)] && !listed(p))" class="cmt-empty">
+          {{ t("comment.empty") }}
+        </p>
+
+        <!-- 新评论（一级） -->
         <div class="cmt-input">
           <n-input
             v-model:value="cmtDraft[cmtKey(p)]"

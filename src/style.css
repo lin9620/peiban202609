@@ -757,6 +757,31 @@ button, input, textarea { font-family: inherit; }
 /* 评论字数：剩余多少 / 已达 200 字上限 */
 .cmt-input .cmt-left { flex: 1 1 100%; font-size: 11.5px; font-weight: 700; color: var(--ink-faint); text-align: right; margin-top: -2px; }
 .cmt-input .cmt-left.full { color: var(--low); }
+/* 折叠箭头（评论文数右侧 / 「N 条回复」右侧） */
+.cmt-toggle .cmt-caret { font-size: 10px; line-height: 1; opacity: .7; transition: transform .18s ease; }
+.cmt-toggle .cmt-caret.open { transform: rotate(180deg); }
+/* 一级评论底部操作行：回复 / N 条回复 */
+.cmt-acts { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.cmt-act {
+  border: none; background: transparent; font-family: inherit;
+  padding: 2px 7px; border-radius: 8px; font-size: 11.5px; font-weight: 800;
+  color: var(--ink-soft); cursor: pointer; transition: all .18s ease;
+}
+.cmt-act:hover { color: var(--accent-deep); background: var(--accent-soft); }
+.cmt-act i { font-style: normal; font-size: 10px; display: inline-block; margin-left: 2px; transition: transform .18s ease; }
+.cmt-act i.open { transform: rotate(180deg); }
+/* 二级回复：左侧竖线 + 更浅底色，一眼看出层级（两级封顶） */
+.cmt-reps {
+  margin-top: 8px; padding-left: 10px;
+  border-left: 2px solid rgba(160, 110, 60, .14);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.cmt-rep { background: rgba(255, 255, 255, .5); border-radius: 12px; padding: 8px 11px; }
+.cmt-rep .cmt-text { margin-top: 3px; }
+/* @被回复人：跟在昵称后（回复别人的回复时显示） */
+.cmt-head .cmt-at { color: var(--accent-deep); font-weight: 800; font-size: 11.5px; margin-left: 4px; }
+/* 就地回复框：跟二级内容一起缩进 */
+.cmt-input-rep { margin-top: 8px; padding-left: 10px; }
 
 /* ═══════════ 主题套件（data-theme 切换） ═══════════ */
 html[data-theme="sakura"] {
@@ -826,6 +851,8 @@ html[data-theme="night"] .postcard {
 html[data-theme="night"] .rail-speech { background: rgba(255, 255, 255, .1); }
 html[data-theme="night"] .cmt-item,
 html[data-theme="night"] .mail-item { background: rgba(255, 255, 255, .07); border-color: rgba(139, 156, 232, .18); }
+html[data-theme="night"] .cmt-rep { background: rgba(255, 255, 255, .06); }
+html[data-theme="night"] .cmt-reps { border-left-color: rgba(139, 156, 232, .24); }
 html[data-theme="night"] .m-a { background: rgba(139, 156, 232, .16); }
 html[data-theme="night"] .g-frame { background: linear-gradient(160deg, #3a4478, #2c3670); }
 html[data-theme="night"] .soft-tag { background: rgba(38, 44, 78, .9) !important; color: var(--ink-soft) !important; }

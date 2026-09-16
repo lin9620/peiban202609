@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   seedComments, listComments, countComments, addComment, removeComment,
   canDelete, normalizeText, postKey, MAX_LEN, MAX_PER_POST, SEEDS,
+  topComments, repliesOf, replyCount, displayCount,
 } from "../src/utils/comments.js";
 
 const out = [];
@@ -139,6 +140,115 @@ t("T17 201 字：截断到 200（上限硬约束回归）", () => {
   const r = addComment(EN, p2, { name: "A", text: "z".repeat(MAX_LEN + 1) });
   assert.equal(r.ok, true);
   assert.equal(listComments(r.store, p2).at(-1).text.length, MAX_LEN);
+});
+
+t("T18 一级评论：parentId 为空，进主列表", () => {
+  const p = { id: 91001 };
+  const r = addComment({}, p, { name: "A", text: "root" });
+  assert.equal(r.ok, true);
+  assert.equal(r.comment.parentId, null);
+  assert.equal(r.comment.replyTo, "");
+  assert.equal(topComments(r.store, p).length, 1);
+});
+
+t("T19 回复一级评论：挂在该评论下，不进主列表但算总评论数", () => {
+  const p = { id: 91002 };
+  let s = addComment({}, p, { name: "A", text: "root" }).store;
+  const rid = topComments(s, p)[0].id;
+  const r = addComment(s, p, { name: "B", text: "reply", parentId: rid });
+  s = r.store;
+  assert.equal(r.comment.parentId, rid);
+  assert.equal(repliesOf(s, p, rid).length, 1);
+  assert.equal(replyCount(s, p, rid), 1);
+  assert.equal(topComments(s, p).length, 1);
+  assert.equal(countComments(s, p), 2);
+});
+
+t("T20 回复「回复」：两级封顶，仍挂在同一个一级评论下并自动 @被回复者", () => {
+  const p = { id: 91003 };
+  let s = addComment({}, p, { name: "A", text: "root" }).store;
+  const rid = topComments(s, p)[0].id;
+  s = addComment(s, p, { name: "B", text: "r1", parentId: rid }).store;
+  const r1 = repliesOf(s, p, rid)[0];
+  const r2 = addComment(s, p, { name: "C", text: "r2", parentId: r1.id });
+  assert.equal(r2.ok, true);
+  assert.equal(r2.comment.parentId, rid, "不应产生第三层");
+  assert.equal(r2.comment.replyTo, "B", "应 @ 被回复的那位");
+  assert.equal(repliesOf(r2.store, p, rid).length, 2);
+  assert.equal(repliesOf(r2.store, p, r1.id).length, 0, "回复下不应再挂回复");
+});
+
+t("T21 直接回复一级作者：不冗余 @；显式给 replyTo 时以显式为准", () => {
+  const p = { id: 91004 };
+  let s = addComment({}, p, { name: "A", text: "root" }).store;
+  const rid = topComments(s, p)[0].id;
+  assert.equal(addComment(s, p, { name: "B", text: "hi", parentId: rid }).comment.replyTo, "");
+  const r = addComment(s, p, { name: "B", text: "hi", parentId: rid, replyTo: "A" });
+  assert.equal(r.comment.replyTo, "A");
+});
+
+t("T22 parentId 指向不存在 / 非本帖的评论 → 退化为一级评论", () => {
+  const p = { id: 91005 };
+  const other = { id: 91006 };
+  const s = addComment({}, p, { name: "A", text: "root" }).store;
+  const ghost = addComment(s, p, { name: "B", text: "x", parentId: "no-such-id" });
+  assert.equal(ghost.ok, true);
+  assert.equal(ghost.comment.parentId, null);
+  assert.equal(topComments(ghost.store, p).length, 2);
+  const cross = addComment(s, other, { name: "B", text: "y", parentId: topComments(s, p)[0].id });
+  assert.equal(cross.comment.parentId, null, "别的帖里的 id 在本帖无效");
+  assert.equal(topComments(cross.store, other).length, 1);
+});
+
+t("T23 删一级评论：其回复一并删除（与云端 FK 级联一致）", () => {
+  const p = { id: 91007 };
+  let s = addComment({}, p, { name: "A", text: "root" }).store;
+  const rid = topComments(s, p)[0].id;
+  s = addComment(s, p, { name: "B", text: "r1", parentId: rid }).store;
+  s = addComment(s, p, { name: "C", text: "r2", parentId: rid }).store;
+  assert.equal(countComments(s, p), 3);
+  const after = removeComment(s, p, rid);
+  assert.equal(countComments(after, p), 0);
+  assert.deepEqual(topComments(after, p), []);
+  assert.equal(after[postKey(p)], undefined, "空了要删键，存储不留空数组");
+});
+
+t("T24 删一条回复不动一级评论和其它回复", () => {
+  const p = { id: 91008 };
+  let s = addComment({}, p, { name: "A", text: "root" }).store;
+  const rid = topComments(s, p)[0].id;
+  s = addComment(s, p, { name: "B", text: "r1", parentId: rid }).store;
+  const delId = repliesOf(s, p, rid)[0].id;
+  s = addComment(s, p, { name: "C", text: "r2", parentId: rid }).store;
+  const after = removeComment(s, p, delId);
+  assert.equal(topComments(after, p).length, 1);
+  assert.equal(repliesOf(after, p, rid).length, 1);
+  assert.equal(repliesOf(after, p, rid)[0].text, "r2");
+});
+
+t("T25 displayCount：没拉评论明细时先用云端聚合数（评论数不再显示 0 —— bug 修复回归）", () => {
+  assert.equal(displayCount(undefined, 2), 2);
+  assert.equal(displayCount(undefined, 0), 0);
+  assert.equal(displayCount(undefined, null), 0);
+  assert.equal(displayCount(undefined, -3), 0, "负数按 0 处理");
+  assert.equal(displayCount(undefined, "7"), 7);
+  assert.equal(displayCount([], 5), 0, "已拉到本地且为空 → 以本地为准");
+  assert.equal(displayCount([1, 2, 3], 0), 3, "本地增删即时反映");
+  assert.equal(displayCount([1, 2], 99), 2);
+});
+
+t("T26 每帖上限把回复也算进去（回复绕不过 MAX_PER_POST）", () => {
+  const p = { id: 91009 };
+  let s = addComment({}, p, { name: "A", text: "root" }).store;
+  const rid = topComments(s, p)[0].id;
+  for (let i = 1; i < MAX_PER_POST; i++) {
+    s = addComment(s, p, { name: "B", text: "r" + i, parentId: rid }).store;
+  }
+  assert.equal(countComments(s, p), MAX_PER_POST);
+  const over = addComment(s, p, { name: "B", text: "more", parentId: rid });
+  assert.equal(over.ok, false);
+  assert.equal(over.reason, "full");
+  assert.equal(replyCount(over.store, p, rid), MAX_PER_POST - 1);
 });
 
 out.push("");

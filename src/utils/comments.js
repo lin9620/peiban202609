@@ -1,4 +1,10 @@
-/* 暖心墙评论：纯逻辑层（不依赖 Vue / 浏览器，便于 Node 单元测试） */
+/* 暖心墙评论：纯逻辑层（不依赖 Vue / 浏览器，便于 Node 单元测试）
+ * ------------------------------------------------------------
+ * 二级评论（和大多数评论区一样）：
+ *   一级评论 parentId = null；回复挂在被回复的一级评论下（parentId = 一级 id）。
+ *   回复「回复」时不产生第三层 —— 仍挂在同一个一级评论下，用 replyTo 记下 @谁。
+ *   好处：渲染永远只有两层（不会层层缩进缩到看不见），云端也只有一层自关联 FK。
+ */
 
 export const CMT_KEY = "warm-paws-comments-v1";
 export const MAX_LEN = 200;
@@ -53,16 +59,51 @@ export function seedComments(raw, locale = "en", now = Date.now()) {
   return store;
 }
 
-/** 某帖的评论列表（永远返回数组） */
-export function listComments(store, post) {
+/**
+ * 某帖的评论列表（永远返回数组）
+ * @param {string|null|undefined} parentId
+ *   - 省略 → 该帖全部评论（含回复；向后兼容旧调用）
+ *   - null → 只取一级评论
+ *   - 评论 id → 只取挂在该评论下的回复（二级）
+ */
+export function listComments(store, post, parentId) {
   const k = postKey(post);
   const arr = store && store[k];
-  return Array.isArray(arr) ? arr : [];
+  const all = Array.isArray(arr) ? arr : [];
+  if (parentId === undefined) return all;
+  return all.filter((c) => (c.parentId || null) === (parentId || null));
 }
 
-/** 评论数（不把内部标记算进去） */
+/** 一级评论（不含回复），评论区主列表用它渲染 */
+export function topComments(store, post) {
+  return listComments(store, post, null);
+}
+
+/** 某条评论下的回复（二级） */
+export function repliesOf(store, post, commentId) {
+  return listComments(store, post, commentId);
+}
+
+/** 某条一级评论下的回复数（列表里显示「N 条回复」） */
+export function replyCount(store, post, commentId) {
+  return repliesOf(store, post, commentId).length;
+}
+
+/** 评论数（不把内部标记算进去；含回复，与「N 条评论」的语义一致） */
 export function countComments(store, post) {
   return listComments(store, post).length;
+}
+
+/**
+ * 评论区标题上的计数：
+ *   - 该帖评论已拉到本地（listed 是数组）→ 以本地列表为准（增删即时反映）
+ *   - 还没拉过（云端帖进页面时）→ 先用云端聚合出来的总数，不再显示成 0
+ * 修复的 bug：登录用户进页面时云端帖评论数一直是 0，必须点开评论才冒出来。
+ */
+export function displayCount(listed, cloudCount = 0) {
+  if (Array.isArray(listed)) return listed.length;
+  const n = Number(cloudCount);
+  return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
 /**
@@ -84,11 +125,22 @@ export function normalizeText(text) {
   return s.slice(0, MAX_LEN);
 }
 
+/** 在帖内按 id 找评论（找不到返回 null） */
+function findComment(list, id) {
+  if (!id) return null;
+  return list.find((c) => c.id === id) || null;
+}
+
 /**
  * 新增评论（返回新 store，不修改入参）
- * @returns {{ ok: boolean, reason?: string, store: object }}
+ * 二级评论规则：
+ *   - parentId 省略 → 一级评论（parentId = null）
+ *   - 回复一级评论 → parentId = 该一级评论 id
+ *   - 回复二级回复 → 仍挂在同一个一级评论下（两级封顶），并记 replyTo = 被回复者昵称
+ *   - parentId 指向不存在 / 非本帖的评论 → 退化为一级评论（不产生悬挂节点）
+ * @returns {{ ok: boolean, reason?: string, store: object, comment?: object }}
  */
-export function addComment(store, post, { name, text, now = Date.now() } = {}) {
+export function addComment(store, post, { name, text, parentId = null, replyTo = "", now = Date.now() } = {}) {
   const clean = normalizeText(text);
   if (!clean) return { ok: false, reason: "empty", store };
   if (!post) return { ok: false, reason: "no-post", store };
@@ -98,21 +150,30 @@ export function addComment(store, post, { name, text, now = Date.now() } = {}) {
   const arr = Array.isArray(next[k]) ? next[k].slice() : [];
   if (arr.length >= MAX_PER_POST) return { ok: false, reason: "full", store };
 
-  arr.push({
+  const target = findComment(arr, parentId);
+  const rootId = target ? (target.parentId || target.id) : null; /* 两级封顶 */
+  /* @谁：显式给了就用；回复的是一条二级回复则自动 @这位回复者；直接回复一级作者不冗余 @ */
+  const at = rootId
+    ? String(replyTo || (target && target.parentId ? target.name : "") || "")
+    : "";
+  const comment = {
     id: now + "-" + Math.random().toString(36).slice(2, 7),
     name: String(name || "Guest"),
     ts: now,
     text: clean,
-  });
+    parentId: rootId,
+    replyTo: at,
+  };
+  arr.push(comment);
   next[k] = arr;
-  return { ok: true, store: next };
+  return { ok: true, store: next, comment };
 }
 
-/** 删除评论（返回新 store，不修改入参） */
+/** 删除评论（返回新 store，不修改入参）；删一级评论时它的回复一并删除（与云端 FK 级联一致） */
 export function removeComment(store, post, commentId) {
   const k = postKey(post);
   const next = { ...store };
-  next[k] = listComments(store, post).filter((c) => c.id !== commentId);
+  next[k] = listComments(store, post).filter((c) => c.id !== commentId && c.parentId !== commentId);
   if (!next[k].length) delete next[k];
   return next;
 }

@@ -205,6 +205,10 @@ export const messages = {
       empty: "No comments yet — be the first to warm this thread.",
       left: "{n} characters left",
       full: "Reached the {n}-character limit",
+      reply: "Reply",
+      replyPh: "Reply to {n}…",
+      cancel: "Cancel",
+      replies: "{n} replies",
     },
 
     rail: {
@@ -439,6 +443,10 @@ export const messages = {
       empty: "还没有评论——来温暖 TA 吧。",
       left: "还可写 {n} 字",
       full: "已达 {n} 字上限，不能再输入了",
+      reply: "回复",
+      replyPh: "回复 {n}…",
+      cancel: "取消",
+      replies: "{n} 条回复",
     },
 
     rail: {

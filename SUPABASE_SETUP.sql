@@ -63,24 +63,47 @@ create policy "posts insert by auth" on public.wall_posts
 create policy "posts delete own" on public.wall_posts
   for delete using (auth.uid() = user_id);
 
--- 3) 暖心墙评论
+-- 3) 暖心墙评论（支持二级回复：parent_id 指向同帖的一级评论，最多两层）
 create table if not exists public.wall_comments (
-  id          bigserial primary key,
-  post_id     bigint not null references public.wall_posts (id) on delete cascade,
-  user_id     uuid not null references auth.users (id) on delete cascade,
-  author_name text not null default 'Guest',
-  body        text not null check (char_length(body) between 1 and 200),
-  created_at  timestamptz not null default now()
+  id            bigserial primary key,
+  post_id       bigint not null references public.wall_posts (id) on delete cascade,
+  parent_id     bigint references public.wall_comments (id) on delete cascade,  -- 可空：空 = 一级评论
+  reply_to_name text,                                                          -- 二级里「@谁」的昵称，可空
+  user_id       uuid not null references auth.users (id) on delete cascade,
+  author_name   text not null default 'Guest',
+  body          text not null check (char_length(body) between 1 and 200),
+  created_at    timestamptz not null default now()
 );
+
+-- 已建过库的用户：补 parent_id / reply_to_name 列（幂等，重复执行无副作用）
+alter table public.wall_comments add column if not exists parent_id bigint;
+alter table public.wall_comments add column if not exists reply_to_name text;
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'wall_comments_parent_id_fkey' and conrelid = 'public.wall_comments'::regclass
+  ) then
+    alter table public.wall_comments
+      add constraint wall_comments_parent_id_fkey
+      foreign key (parent_id) references public.wall_comments (id) on delete cascade;
+  end if;
+end $$;
+
+create index if not exists wall_comments_post_idx   on public.wall_comments (post_id);
+create index if not exists wall_comments_parent_idx on public.wall_comments (parent_id);
 
 alter table public.wall_comments enable row level security;
 
 drop policy if exists "comments readable by all" on public.wall_comments;
 drop policy if exists "comments insert by auth"  on public.wall_comments;
+drop policy if exists "comments insert own or reply" on public.wall_comments;
 drop policy if exists "comments delete own"      on public.wall_comments;
 
 create policy "comments readable by all" on public.wall_comments
   for select using (true);
+/* 写入：user_id 必须是自己（parent_id 是否同帖由前端保证 + FK 兜底；
+   策略里不复查本表，避免 Postgres "infinite recursion detected in policy" ） */
 create policy "comments insert by auth" on public.wall_comments
   for insert with check (auth.uid() = user_id);
 create policy "comments delete own" on public.wall_comments
