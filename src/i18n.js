@@ -209,6 +209,7 @@ export const messages = {
       replyPh: "Reply to {n}…",
       cancel: "Cancel",
       replies: "{n} replies",
+      fail: "Couldn't post that — please try again ",
     },
 
     rail: {
@@ -447,6 +448,7 @@ export const messages = {
       replyPh: "回复 {n}…",
       cancel: "取消",
       replies: "{n} 条回复",
+      fail: "没发出去——再试一次吧 🙏",
     },
 
     rail: {

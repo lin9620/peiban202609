@@ -274,6 +274,12 @@ function repPlaceholder(p, cm) {
 const repDraft = ref({});
 function repKey(p, cm) { return cmtKey(p) + ":" + cm.id; }
 function repLeft(p, cm) { return MAX_LEN - String(repDraft.value[repKey(p, cm)] || "").length; }
+/* 发送失败提示（云端未迁移 parent_id / 断网 / RLS 拒绝都别静默失败，草稿保留） */
+const cmtErr = ref("");
+function showCmtErr() {
+  cmtErr.value = t("comment.fail");
+  setTimeout(() => { cmtErr.value = ""; }, 3200);
+}
 function isOpen(p) { return !!openCmt.value[cmtKey(p)]; }
 /* 云端帖评论拉取 TTL：展开时缓存超过 30s 就重拉，新评论不再需要刷新页面（P2 修复） */
 const CMT_TTL = 30000;
@@ -327,7 +333,7 @@ async function sendCmt(p, cm = null) {
       parentId: parentDbId,
       replyToName: at,
     });
-    if (!created) return;
+    if (!created) return showCmtErr(); /* 草稿留着，用户可以直接重试 */
     const arr = Array.isArray(comments.value[k]) ? comments.value[k].slice() : [];
     arr.push(created);
     comments.value = { ...comments.value, [k]: arr };
@@ -347,7 +353,7 @@ async function sendCmt(p, cm = null) {
     parentId: cm ? cm.id : null,
     replyTo: at,
   });
-  if (!r.ok) return;
+  if (!r.ok) return showCmtErr(); /* 本地失败（如达每帖上限）也给出提示 */
   comments.value = r.store;
   draftRef.value = { ...draftRef.value, [rk]: "" };
   if (cm) {
@@ -463,6 +469,7 @@ const when = (ts) =>
         <span class="cmt-caret" :class="{ open: isOpen(p) }">&#9662;</span>
       </div>
       <div v-if="isOpen(p)" class="cmt-box">
+        <p v-if="cmtErr" class="cmt-empty" style="color: var(--low); font-weight: 700">{{ cmtErr }}</p>
         <p v-if="cmtLoading[cmtKey(p)] && !listed(p)" class="cmt-empty">
           {{ t("community.loading") }}
         </p>
