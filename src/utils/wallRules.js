@@ -174,7 +174,11 @@ export function canPostToday({ list = [], userId = "", day = utcDay(), localDay 
   return !postedOnDay(list, userId, day);
 }
 
-/* ══════════ 时间范围（默认近两天；另有 近 7 天 / 这个月） ══════════ */
+/* ══════════ 时间范围（只属于「最新」之外的排序） ══════════
+ * 规则：「最新」= 按时间看全部最新内容，本来就没有时间窗口可言 ——
+ * 所以那一排范围按钮不显示，也不拿范围去筛（见 usesRange / rangeFor）。
+ * 另外三种（同感 / 抱抱 / 暖暖最多）是「在某个时间窗口里挑最多的」，才需要范围。
+ */
 
 /** 时间范围档位（顺序 = UI 上的按钮顺序），tk 为 i18n key */
 export const RANGES = [
@@ -184,6 +188,34 @@ export const RANGES = [
 ];
 export const RANGE_KEYS = RANGES.map((r) => r.key);
 export const DEFAULT_RANGE = "2d";
+
+/** 「不筛时间」：内部档位，不出现在按钮里（按钮由 RANGES 生成，天然不含它） */
+export const RANGE_ALL = "all";
+
+/** 需要时间范围的排序：「最新」之外的三种 */
+export const RANGE_SORTS = SORT_MODES.filter((k) => k !== DEFAULT_SORT);
+
+/**
+ * 该排序方式下是否显示 / 使用时间范围。
+ * @param {string} sort 排序 key（脏值 → false，不会莫名冒出一排按钮）
+ * @returns {boolean}
+ */
+export function usesRange(sort) {
+  return RANGE_SORTS.includes(sort);
+}
+
+/**
+ * 该排序方式实际生效的时间范围。
+ * 单一入口：显示那排按钮的地方与筛帖子的地方都从这里取值，
+ * 避免「按钮藏了但筛选还在偷偷生效」这种最难排查的错。
+ * @param {string} sort 排序 key
+ * @param {string} range 用户选的档位（可能是脏值 / 老存档）
+ * @returns {string} RANGE_ALL 或 有效的范围 key
+ */
+export function rangeFor(sort, range) {
+  if (!usesRange(sort)) return RANGE_ALL;
+  return RANGE_KEYS.includes(range) ? range : DEFAULT_RANGE;
+}
 
 const DAY_MS = 86400000;
 
@@ -206,11 +238,13 @@ export function rangeStartTs(range, now = Date.now()) {
  * 帖子是否落在时间范围内。
  *   - 示例帖不参与筛选（示范内容永远在，否则新用户一进页面可能空无一物）
  *   - 没有时间戳的帖子不显示（宁可少一条也不瞎猜它多老）
+ *   - RANGE_ALL（「最新」排序，见 rangeFor）不按时间筛，但仍要求有时间戳
  */
 export function inRange(post, range = DEFAULT_RANGE, now = Date.now()) {
   if (!post) return false;
   if (post.sample) return true;   // 示例帖不参与筛选（要在「无时间戳」判断之前）
   if (!post.ts) return false;
+  if (range === RANGE_ALL) return true;
   const r = RANGE_KEYS.includes(range) ? range : DEFAULT_RANGE;
   if (r === "month") return utcDay(post.ts).slice(0, 7) === utcDay(now).slice(0, 7);
   return post.ts >= rangeStartTs(r, now);

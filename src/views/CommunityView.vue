@@ -19,7 +19,7 @@ import {
 import {
   SORTS, sortPosts, collectViews, visibleOnly, utcDay, ratioPct,
   canPostToday, errorKind, VIEW_KEY, ANON_KEY, POST_DAY_KEY,
-  RANGES, inRange,
+  RANGES, inRange, usesRange, rangeFor,
 } from "../utils/wallRules.js";
 import {
   validateImageFile, isSaneShape, isUsableDataUrl, shrinkToDataUrl,
@@ -113,8 +113,10 @@ function pickSort(key) {
   setItem(SORT_KEY, key);
 }
 
-/* ═════════ 时间范围（默认近两天；另有 近 7 天 / 这个月） ═════════ */
-const RANGE_KEY = "warm-paws-range-v1";   /* 记住用户选的时间范围 */
+/* ═════════ 时间范围（只属于「最新」之外的排序） ═════════
+ * 「最新」= 按时间看全部，本来就没有时间窗口 → 那一排按钮不显示，也不筛时间；
+ * 同感/抱抱/暖暖最多 = 在选定的时间窗口里挑最多的 → 才显示按钮并筛。 */
+const RANGE_KEY = "warm-paws-range-v1";   /* 记住用户选的时间范围（切回「最新」也不丢） */
 const rangeMode = ref(RANGES.some((r) => r.key === getItem(RANGE_KEY)) ? getItem(RANGE_KEY) : RANGES[0].key);
 function pickRange(key) {
   rangeMode.value = key;
@@ -486,10 +488,11 @@ const all = computed(() => [
   ...(cloud.ready && cloudPosts.value.length ? cloudPosts.value : posts.value),
   ...SAMPLES,
 ]);
-/* 展示用：先剔掉已下架（假删除）的帖子，再按时间范围筛（默认近两天），最后按当前排序方式排 */
+/* 展示用：先剔掉已下架（假删除）的帖子，再按当前排序实际生效的时间范围筛
+ * （「最新」= 全部，其余按用户选的档位），最后按当前排序方式排 */
 const shown = computed(() =>
   sortPosts(
-    visibleOnly(all.value).filter((p) => inRange(p, rangeMode.value)),
+    visibleOnly(all.value).filter((p) => inRange(p, rangeFor(sortMode.value, rangeMode.value))),
     sortMode.value
   ));
 /* 下架线提示用：厌恶 ÷ 浏览（达 1% 即下架，看得到比例就知道离下架多远） */
@@ -563,8 +566,8 @@ const when = (ts) =>
       </button>
     </div>
 
-    <!-- 时间范围：默认近两天；还有 近 7 天 / 这个月 -->
-    <div class="sort-row range-row">
+    <!-- 时间范围：只在「最新」之外的排序下出现（「最新」= 看全部最新内容，没有时间窗口） -->
+    <div v-if="usesRange(sortMode)" class="sort-row range-row">
       <span class="sort-label">{{ t("community.rangeLabel") }}</span>
       <button
         v-for="r in RANGES" :key="r.key"

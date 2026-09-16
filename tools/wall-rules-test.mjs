@@ -3,13 +3,20 @@
  * 覆盖：排序（最新 / 同感 / 抱抱 / 暖暖）· 浏览去重 · 厌恶 1% 下架 · 每人每天一条
  */
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   SORTS, SORT_MODES, DEFAULT_SORT, sortPosts, reactCount,
-  RANGES, RANGE_KEYS, DEFAULT_RANGE, rangeStartTs, inRange,
+  RANGES, RANGE_KEYS, DEFAULT_RANGE, RANGE_ALL, RANGE_SORTS, usesRange, rangeFor,
+  rangeStartTs, inRange,
   VIEW_KEY, ANON_KEY, POST_DAY_KEY, postRef, utcDay, pruneStamps, collectViews,
   DISLIKE_RATIO, REMOVAL_MIN_VIEWS, dislikeRatio, ratioPct, shouldRemove,
   isVisible, visibleOnly, postedOnDay, canPostToday, errorKind,
 } from "../src/utils/wallRules.js";
+
+const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const read = (rel) => fs.readFileSync(path.join(root, rel), "utf8");
 
 const out = [];
 let pass = 0, fail = 0;
@@ -283,6 +290,59 @@ t("T24 关键存档键名稳定（改名会让老用户的记录读不到）", (
   assert.equal(VIEW_KEY, "warm-paws-views-v1");
   assert.equal(ANON_KEY, "warm-paws-anon-v1");
   assert.equal(POST_DAY_KEY, "warm-paws-posted-day-v1");
+});
+
+t("T29 时间范围只属于「最新」之外的排序：usesRange / rangeFor（含脏值兜底）", () => {
+  assert.deepEqual(RANGE_SORTS, ["relate", "hug", "warm"]);
+  assert.equal(RANGE_ALL, "all");
+  assert.ok(!RANGE_KEYS.includes(RANGE_ALL), "「不筛时间」不能变成一颗按钮");
+
+  assert.equal(usesRange("new"), false, "最新 → 不显示范围按钮");
+  for (const s of ["relate", "hug", "warm"]) assert.equal(usesRange(s), true, s);
+  assert.equal(usesRange("bogus"), false, "脏排序值不会莫名冒出一排按钮");
+  assert.equal(usesRange(undefined), false);
+
+  assert.equal(rangeFor("new", "7d"), RANGE_ALL, "最新 → 不筛时间（不偷偷沿用旧档位）");
+  assert.equal(rangeFor("new", undefined), RANGE_ALL);
+  assert.equal(rangeFor("relate", "7d"), "7d", "热度排序 → 用用户选的档位");
+  assert.equal(rangeFor("hug", "bogus"), DEFAULT_RANGE, "脏档位回退近两天");
+  assert.equal(rangeFor("warm", undefined), DEFAULT_RANGE);
+});
+
+t("T30 inRange 支持 RANGE_ALL：最新看全部，但仍不显示无时间戳的帖", () => {
+  const now = Date.parse("2026-03-06T12:00:00Z");
+  const old = { id: 1, ts: now - 40 * 86400000 };
+  assert.equal(inRange(old, RANGE_ALL, now), true, "40 天前的帖在「最新」下也看得到");
+  assert.equal(inRange({ id: 2 }, RANGE_ALL, now), false, "没有时间戳不显示（不瞎猜）");
+  assert.equal(inRange({ id: "s1", sample: true, ts: 0 }, RANGE_ALL, now), true, "示例帖永在");
+  assert.equal(inRange(null, RANGE_ALL, now), false);
+});
+
+t("T31 端到端：切「最新」看全部并按时间倒序；切「同感最多」按窗口筛后再排序", () => {
+  const now = Date.parse("2026-03-06T12:00:00Z");
+  const list = [
+    { id: 1, ts: now - 86400000, reacts: { relate: 1 } },            // 1 天前，同感 1
+    { id: 2, ts: now - 3600000, reacts: { relate: 0 } },             // 1 小时前
+    { id: 3, ts: now - 40 * 86400000, reacts: { relate: 99 } },      // 40 天前，同感最多
+    { id: 4, ts: now - 7200000, removed: true, reacts: { relate: 5 } }, // 已下架
+  ];
+  const render = (sort, range) => sortPosts(
+    visibleOnly(list).filter((x) => inRange(x, rangeFor(sort, range), now)), sort
+  ).map((x) => x.id);
+
+  assert.deepEqual(render("new", "2d"), [2, 1, 3], "最新：不筛时间，全按时间倒序（旧帖也在）");
+  assert.deepEqual(render("relate", "2d"), [1, 2], "同感最多 + 近两天：40 天前的 99 个同感被窗口筛掉");
+  assert.deepEqual(render("relate", "month"), [1, 2], "本月的也筛掉 40 天前那条");
+});
+
+t("T32 页面接线：范围行由 usesRange 显隐，筛选走 rangeFor 单一入口", () => {
+  const src = read("src/views/CommunityView.vue");
+  assert.ok(src.includes("usesRange, rangeFor"), "未从 wallRules.js 导入这两个规则");
+  assert.ok(src.includes('v-if="usesRange(sortMode)"'), "范围行未按排序方式显隐");
+  assert.ok(/v-if="!usesRange\(sortMode\)"|v-if="usesRange\(sortMode\)"/.test(src), "缺少范围行的条件");
+  assert.ok(src.includes("inRange(p, rangeFor(sortMode.value, rangeMode.value))"),
+    "筛选未走 rangeFor（会出现「按钮藏了但筛选还在偷偷生效」）");
+  assert.ok(!src.includes("inRange(p, rangeMode.value)"), "仍在直接用未加工的档位筛选");
 });
 
 console.log(out.join("\n"));
