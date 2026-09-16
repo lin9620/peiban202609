@@ -68,7 +68,7 @@ node tools/image-fit.mjs       # 图片纯函数单测（20 项：尺寸缩放/�
 node tools/undef-check.mjs    # 静态检查「用了项目内导出符号但没导入」（白屏元凶），报告写 undef-report.txt
 node tools/arity-test.mjs     # 静态检查「模板/同文件自调用 参数个数 < 函数签名必填参数」（undefined 崩溃元凶）
 node tools/cloud-verify.mjs   # Supabase 连通性：Auth/四张表/Storage桶/RLS（需先配好 .env）
-node tools/cloud-e2e.mjs      # 云端全链路实测：注册→建档→发帖→评论→回应→权限→清理（会造测试数据并清理）
+node tools/cloud-e2e.mjs      # 云端全链路实测：注册→建档→发帖→评论→二级回复(层级/级联/计数)→回应→权限→清理（会造测试数据并清理）
 node tools/smoke.mjs          # 模块冒烟：需 dev 服务器在跑，探测 29 个关键模块 + 5 个 SEO 静态文件
 node tools/live-check.mjs     # 线上部署验证：页面/缓存/安全头/SEO 资产（部署后跑，应输出 LIVE ALL PASS）
 node tools/online-check.mjs   # 旧版线上检查（已被 live-check 替代，如无特别需要可忽略）
