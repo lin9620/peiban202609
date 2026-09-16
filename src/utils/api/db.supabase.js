@@ -166,6 +166,53 @@ export const db = {
     return unwrap(sb().from(T.petProfiles).upsert({ user_id: userId, data, updated_at: updatedAt }));
   },
 
+  /* ══════════ 管理员（RLS is_admin 兜底；页面只是壳） ══════════ */
+
+  /** 我是不是管理员（rpc is_admin，标量布尔） */
+  amAdmin() {
+    return unwrap(sb().rpc("is_admin"));
+  },
+
+  /** 看板总览（rpc admin_overview 的 jsonb；非管理员得到 {admin:false}） */
+  adminOverview() {
+    return unwrap(sb().rpc("admin_overview"));
+  },
+
+  /** 治理列表：最新帖子（含已下架；可见性由 RLS 管理员策略放行） */
+  adminListPosts(limit) {
+    return unwrap(
+      sb().from(T.posts)
+        .select("id,user_id,author_name,body,image_path,views,dislikes,removed,created_at")
+        .order("created_at", { ascending: false })
+        .limit(limit),
+    );
+  },
+
+  /** 下架 / 恢复帖子（更新 removed；RLS 管理员 update 策略兜底） */
+  adminSetPostRemoved(id, removed) {
+    return unwrap(sb().from(T.posts).update({ removed }).eq("id", id));
+  },
+
+  /** 删除帖子（FK 级联清评论/回应；RLS 管理员 delete 策略兜底） */
+  adminDeletePost(id) {
+    return unwrap(sb().from(T.posts).delete().eq("id", id));
+  },
+
+  /** 治理列表：最新评论（含二级回复） */
+  adminListComments(limit) {
+    return unwrap(
+      sb().from(T.comments)
+        .select("id,post_id,parent_id,user_id,author_name,body,created_at")
+        .order("created_at", { ascending: false })
+        .limit(limit),
+    );
+  },
+
+  /** 删除评论（二级回复靠 parent_id FK 级联；RLS 管理员 delete 策略兜底） */
+  adminDeleteComment(id) {
+    return unwrap(sb().from(T.comments).delete().eq("id", id));
+  },
+
   /* ══════════ 图片（Storage） ══════════ */
 
   /** 上传字节：路径约定 <uid>/... 由 storage 策略按第一段授权 */

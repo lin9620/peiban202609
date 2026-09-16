@@ -25,6 +25,7 @@ function makeFake(script = []) {
       order: (k, o = {}) => { ops.push(`order:${k}:${o && o.ascending === false ? "desc" : "asc"}`); return b; },
       limit: (n) => { ops.push(`limit:${n}`); return b; },
       insert: (row) => { ops.push(`insert:${JSON.stringify(row)}`); return b; },
+      update: (row) => { ops.push(`update:${JSON.stringify(row)}`); return b; },
       upsert: (row) => { ops.push(`upsert:${JSON.stringify(row)}`); return b; },
       delete: () => { ops.push("delete"); return b; },
       single: () => { ops.push("single"); return b; },
@@ -213,6 +214,54 @@ const rows = [{ id: 1 }, { id: 2 }];
   const { fake, out } = await run([], () => db.imageUrl("u1/x.jpg"));
   ok("imageUrl 公开 URL", out === "https://cdn.test/wall-images/u1/x.jpg", String(out));
   ok("imageUrl 记录调用", fake.calls[0] === "publicUrl:wall-images:u1/x.jpg", fake.calls[0]);
+}
+
+/* ─────────── 管理员（RLS is_admin 兜底；页面只是壳） ─────────── */
+{
+  const { fake, out } = await run([{ data: true }], () => db.amAdmin());
+  ok("amAdmin 形状", fake.calls[0] === "rpc:is_admin:undefined", fake.calls[0]);
+  ok("amAdmin 返回 true", out === true);
+}
+{
+  const { fake, out } = await run([{ data: { admin: true, users_total: 1 } }], () => db.adminOverview());
+  ok("adminOverview 形状", fake.calls[0] === "rpc:admin_overview:undefined", fake.calls[0]);
+  ok("adminOverview 返回 jsonb", out && out.admin === true);
+}
+{
+  const { fake, out } = await run([{ data: rows }], () => db.adminListPosts(50));
+  ok("adminListPosts 形状（含已下架全列）",
+    fake.calls[0] === "from:wall_posts|select:id,user_id,author_name,body,image_path,views,dislikes,removed,created_at|order:created_at:desc|limit:50",
+    fake.calls[0]);
+  ok("adminListPosts 返回行", out && out.length === 2);
+}
+{
+  const { fake } = await run([{ data: null }], () => db.adminSetPostRemoved("p1", true));
+  ok("adminSetPostRemoved 形状",
+    fake.calls[0] === 'from:wall_posts|update:{"removed":true}|eq:id:"p1"', fake.calls[0]);
+}
+{
+  const { fake } = await run([{ data: null }], () => db.adminSetPostRemoved("p1", false));
+  ok("adminSetPostRemoved 恢复（removed=false）",
+    fake.calls[0] === 'from:wall_posts|update:{"removed":false}|eq:id:"p1"', fake.calls[0]);
+}
+{
+  const { fake } = await run([{ data: null }], () => db.adminDeletePost("p1"));
+  ok("adminDeletePost 形状", fake.calls[0] === "from:wall_posts|delete|eq:id:\"p1\"", fake.calls[0]);
+}
+{
+  const { fake, out } = await run([{ data: rows }], () => db.adminListComments(100));
+  ok("adminListComments 形状",
+    fake.calls[0] === "from:wall_comments|select:id,post_id,parent_id,user_id,author_name,body,created_at|order:created_at:desc|limit:100",
+    fake.calls[0]);
+  ok("adminListComments 返回行", out && out.length === 2);
+}
+{
+  const { fake } = await run([{ data: null }], () => db.adminDeleteComment("c1"));
+  ok("adminDeleteComment 形状", fake.calls[0] === "from:wall_comments|delete|eq:id:\"c1\"", fake.calls[0]);
+}
+{
+  const { out } = await run([{ data: false }], () => db.amAdmin());
+  ok("非管理员 amAdmin=false（页面据此拦截）", out === false);
 }
 
 /* ─────────── 就绪探测 ─────────── */

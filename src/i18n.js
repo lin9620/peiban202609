@@ -258,6 +258,31 @@ export const messages = {
       moodQuick: "Mood note",
     },
 
+    admin: {
+      title: "Admin center",
+      denied: "Not authorized — admins only.",
+      loading: "Loading…",
+      refresh: "Refresh",
+      tabs: { overview: "Overview", posts: "Posts", comments: "Comments" },
+      cards: {
+        users: "Users", usersToday: "New today",
+        posts: "Posts", postsToday: "Posts today", removed: "Removed posts",
+        comments: "Comments", commentsToday: "Comments today", views: "Total views",
+        pets: "Pet homes", pats: "Pats", feeds: "Feeds", storage: "Storage",
+      },
+      react: { title: "Reactions", hug: "Hug", warm: "Warm", relate: "Relate", dislike: "Dislike" },
+      trend: { title: "Last 14 days", posts: "Posts", users: "Signups", comments: "Comments" },
+      top: { title: "Most viewed posts", views: "views", react: "reactions" },
+      recent: { title: "Newest members", posts: "{n} posts" },
+      postsCol: { author: "Author", body: "Content", views: "Views", status: "Status", actions: "Actions", at: "Posted" },
+      status: { live: "Live", removed: "Removed" },
+      commentsCol: { author: "Author", body: "Comment", post: "Post", at: "At" },
+      actions: { takedown: "Takedown", restore: "Restore", del: "Delete", confirmDel: "Delete this post and all its comments/reactions?" },
+      entry: "Admin center",
+      empty: "Nothing here yet.",
+      fail: "Failed to load: {r}",
+    },
+
     theme: {
       pick: "Theme",
     },
@@ -528,6 +553,31 @@ export const messages = {
       breaths: "已呼吸 {n} 次",
       ticker: "暖心飘带",
       moodQuick: "心情速记",
+    },
+
+    admin: {
+      title: "管理中心",
+      denied: "没有权限——仅管理员可访问。",
+      loading: "加载中……",
+      refresh: "刷新",
+      tabs: { overview: "总览", posts: "帖子", comments: "评论" },
+      cards: {
+        users: "用户", usersToday: "今日新增",
+        posts: "帖子", postsToday: "今日发帖", removed: "已下架",
+        comments: "评论", commentsToday: "今日评论", views: "总浏览",
+        pets: "宠物主页", pats: "摸摸头", feeds: "投喂", storage: "存储",
+      },
+      react: { title: "回应分布", hug: "抱抱", warm: "暖暖", relate: "同感", dislike: "厌恶" },
+      trend: { title: "近 14 天", posts: "发帖", users: "注册", comments: "评论" },
+      top: { title: "浏览最多的帖子", views: "浏览", react: "回应" },
+      recent: { title: "最新的伙伴", posts: "{n} 条帖子" },
+      postsCol: { author: "作者", body: "内容", views: "浏览", status: "状态", actions: "操作", at: "发布于" },
+      status: { live: "展示中", removed: "已下架" },
+      commentsCol: { author: "作者", body: "评论", post: "所属帖", at: "时间" },
+      actions: { takedown: "下架", restore: "恢复", del: "删除", confirmDel: "删除这条帖子和它的全部评论/回应？" },
+      entry: "管理中心",
+      empty: "这里还什么都没有。",
+      fail: "加载失败：{r}",
     },
 
     theme: {

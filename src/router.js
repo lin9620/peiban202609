@@ -10,6 +10,7 @@ export const router = createRouter({
     { path: "/community", name: "community", component: () => import("./views/CommunityView.vue") },
     { path: "/profile", name: "profile", component: () => import("./views/ProfileView.vue") },
     { path: "/u/:id", name: "waller", component: () => import("./views/WallerView.vue") },
+    { path: "/admin", name: "admin", component: () => import("./views/AdminView.vue") },
     { path: "/:pathMatch(.*)*", redirect: "/" },
   ],
 });

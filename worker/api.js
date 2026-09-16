@@ -234,6 +234,24 @@ async function deleteRows(env, request, table, qs) {
   return res || fail(502, "upstream-unreachable");
 }
 
+/** 管理员治理列表：固定列白名单（不透传 select 参数），新→旧 */
+async function listAdminTable(env, request, table, columns, limit) {
+  const res = await upstream(
+    env, request,
+    restUrl(env, table, `select=${encodeURIComponent(columns)}&order=created_at.desc&limit=${limit}`),
+  );
+  return res || fail(502, "upstream-unreachable");
+}
+
+/** 管理员局部更新（body 由路由白名单过滤后才到这里） */
+async function patchRow(env, request, table, qs, patch) {
+  const res = await upstream(env, request, restUrl(env, table, qs), {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+  return res || fail(502, "upstream-unreachable");
+}
+
 /** RPC：服务端权威逻辑（去重 / 计数 / 自动下架） */
 async function rpc(env, request, name, params) {
   const res = await upstream(env, request, restUrl(env, `rpc/${name}`, ""), {
@@ -433,6 +451,90 @@ export default {
         const b = await readJson(request);
         if (b.err) return b.err;
         return rpc(env, request, "pet_interact", { p_owner: uid, p_kind: b.body.kind, p_viewer: b.body.viewer });
+      }
+
+      /* —— 管理员（鉴权靠 JWT 透传 + RLS is_admin；无 token 时上游按 anon 判 false） —— */
+      if (seg[0] === "admin") {
+        if (seg[1] === "me" && seg.length === 2 && m === "GET") {
+          return rpc(env, request, "is_admin", {});
+        }
+        if (seg[1] === "overview" && seg.length === 2 && m === "GET") {
+          return rpc(env, request, "admin_overview", {});
+        }
+        if (seg[1] === "posts" && seg.length === 2 && m === "GET") {
+          const res = await upstream(
+            env, request,
+            restUrl(env, TABLE.posts, `select=${encodeURIComponent("id,user_id,author_name,body,image_path,views,dislikes,removed,created_at")}&order=created_at.desc&limit=${parseLimit(q.get("limit"), 50)}`),
+          );
+          return res || fail(502, "upstream-unreachable");
+        }
+        if (seg[1] === "posts" && seg.length === 3) {
+          const id = decodeSeg(seg[2]);
+          if (!id) return fail(400, "bad-id");
+          if (m === "PATCH") {
+            const b = await readJson(request);
+            if (b.err) return b.err;
+            if (typeof b.body.removed !== "boolean") return fail(400, "bad-body");
+            const res = await upstream(env, request, restUrl(env, TABLE.posts, `id=eq.${encodeURIComponent(id)}`), {
+              method: "PATCH",
+              body: JSON.stringify({ removed: b.body.removed }),
+            });
+            return res || fail(502, "upstream-unreachable");
+          }
+          if (m === "DELETE") {
+            return deleteRows(env, request, TABLE.posts, `id=eq.${encodeURIComponent(id)}`);
+          }
+        }
+        if (seg[1] === "comments" && seg.length === 2 && m === "GET") {
+          const res = await upstream(
+            env, request,
+            restUrl(env, TABLE.comments, `select=${encodeURIComponent("id,post_id,parent_id,user_id,author_name,body,created_at")}&order=created_at.desc&limit=${parseLimit(q.get("limit"), 100)}`),
+          );
+          return res || fail(502, "upstream-unreachable");
+        }
+        if (seg[1] === "comments" && seg.length === 3 && m === "DELETE") {
+          const id = decodeSeg(seg[2]);
+          if (!id) return fail(400, "bad-id");
+          return deleteRows(env, request, TABLE.comments, `id=eq.${encodeURIComponent(id)}`);
+        }
+      }
+
+      /* —— 管理员（RLS is_admin 兜底；Worker 只翻译） —— */
+      if (seg[0] === "admin") {
+        if (seg.length === 1 && m === "GET") return rpc(env, request, "is_admin", {});
+        if (seg[1] === "overview" && m === "GET") return rpc(env, request, "admin_overview", {});
+        if (seg[1] === "posts") {
+          if (seg.length === 2 && m === "GET") {
+            return listAdminTable(env, request, TABLE.posts,
+              "id,user_id,author_name,body,image_path,views,dislikes,removed,created_at",
+              parseLimit(q.get("limit"), 50));
+          }
+          if (seg.length === 3) {
+            const id = decodeSeg(seg[2]);
+            if (!id) return fail(400, "bad-id");
+            if (m === "PATCH") {
+              const b = await readJson(request);
+              if (b.err) return b.err;
+              const patch = {};
+              if (typeof b.body.removed === "boolean") patch.removed = b.body.removed;
+              if (!Object.keys(patch).length) return fail(400, "empty-patch");
+              return patchRow(env, request, TABLE.posts, `id=eq.${encodeURIComponent(id)}`, patch);
+            }
+            if (m === "DELETE") return deleteRows(env, request, TABLE.posts, `id=eq.${encodeURIComponent(id)}`);
+          }
+        }
+        if (seg[1] === "comments") {
+          if (seg.length === 2 && m === "GET") {
+            return listAdminTable(env, request, TABLE.comments,
+              "id,post_id,parent_id,user_id,author_name,body,created_at",
+              parseLimit(q.get("limit"), 100));
+          }
+          if (seg.length === 3 && m === "DELETE") {
+            const id = decodeSeg(seg[2]);
+            if (!id) return fail(400, "bad-id");
+            return deleteRows(env, request, TABLE.comments, `id=eq.${encodeURIComponent(id)}`);
+          }
+        }
       }
 
       return fail(404, "not-found");

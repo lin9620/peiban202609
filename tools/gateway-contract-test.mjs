@@ -108,6 +108,33 @@ setGatewayAuthProbe(() => true); /* 单测注入：auth 就绪（与 db.supabase
   }
 }
 
+/* ── 管理员（RLS is_admin 兜底；Worker 只翻译） ── */
+{
+  const c = capture();
+  try {
+    await db.amAdmin();
+    await db.adminOverview();
+    await db.adminListPosts(50);
+    await db.adminSetPostRemoved("p1", true);
+    await db.adminDeletePost("p1");
+    await db.adminListComments(100);
+    await db.adminDeleteComment("c1");
+    const u = (i) => c.calls[i].url;
+    const m = (i) => c.calls[i].init.method || "GET";
+    const b = (i) => c.calls[i].init.body;
+    ok("amAdmin 端点", u(0) === "/api/admin/me" && m(0) === "GET", u(0));
+    ok("adminOverview 端点", u(1) === "/api/admin/overview", u(1));
+    ok("adminListPosts 端点", u(2) === "/api/admin/posts?limit=50", u(2));
+    ok("adminSetPostRemoved 端点+body（PATCH）",
+      u(3) === "/api/admin/posts/p1" && m(3) === "PATCH" && b(3) === JSON.stringify({ removed: true }), u(3));
+    ok("adminDeletePost 端点（DELETE）", u(4) === "/api/admin/posts/p1" && m(4) === "DELETE", u(4));
+    ok("adminListComments 端点", u(5) === "/api/admin/comments?limit=100", u(5));
+    ok("adminDeleteComment 端点（DELETE）", u(6) === "/api/admin/comments/c1" && m(6) === "DELETE", u(6));
+  } finally {
+    c.restore();
+  }
+}
+
 /* ── imageUrl（纯字符串，不发请求） ── */
 {
   ok("imageUrl → 同源 /api/img/*", db.imageUrl("u1/x.jpg") === "/api/img/u1/x.jpg", String(db.imageUrl("u1/x.jpg")));

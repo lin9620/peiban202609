@@ -302,6 +302,55 @@ async function hit(script, path, init) {
   ok("非法 JSON body → 400", res.status === 400);
 }
 
+/* ─────────── 管理员（Worker 只翻译；权限由 RLS 兜底） ─────────── */
+{
+  const { res, c } = await hit([{ body: true }], "/api/admin/me");
+  ok("admin/me → rpc is_admin",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/is_admin` && c.outbound[0].init.body === "{}",
+    c.outbound[0].url);
+  ok("admin/me 返回布尔", (await res.json()) === true);
+}
+{
+  const { c } = await hit([{ body: { admin: true } }], "/api/admin/overview");
+  ok("admin/overview → rpc admin_overview",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/admin_overview` && c.outbound[0].init.body === "{}");
+}
+{
+  const { c } = await hit([{ body: row }], "/api/admin/posts?limit=50");
+  ok("admin/posts 出站 URL",
+    c.outbound[0].url ===
+      `${ORIGIN}/rest/v1/wall_posts?select=${enc("id,user_id,author_name,body,image_path,views,dislikes,removed,created_at")}&order=created_at.desc&limit=50`,
+    c.outbound[0].url);
+}
+{
+  const { res, c } = await hit([{ status: 204 }], "/api/admin/posts/p1", { method: "PATCH", body: JSON.stringify({ removed: true }) });
+  ok("admin PATCH removed 出站 URL/方法/body",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/wall_posts?id=eq.p1` && c.outbound[0].init.method === "PATCH" &&
+    c.outbound[0].init.body === JSON.stringify({ removed: true }));
+  ok("PATCH 返回 204", res.status === 204);
+}
+{
+  const { c } = await hit([{ status: 204 }], "/api/admin/posts/p1", { method: "DELETE" });
+  ok("admin DELETE post 出站 URL",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/wall_posts?id=eq.p1` && c.outbound[0].init.method === "DELETE");
+}
+{
+  const { c } = await hit([{ body: [] }], "/api/admin/comments?limit=100");
+  ok("admin/comments 出站 URL",
+    c.outbound[0].url ===
+      `${ORIGIN}/rest/v1/wall_comments?select=${enc("id,post_id,parent_id,user_id,author_name,body,created_at")}&order=created_at.desc&limit=100`,
+    c.outbound[0].url);
+}
+{
+  const { c } = await hit([{ status: 204 }], "/api/admin/comments/c1", { method: "DELETE" });
+  ok("admin DELETE comment 出站 URL",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/wall_comments?id=eq.c1` && c.outbound[0].init.method === "DELETE");
+}
+{
+  const { res } = await hit([{ status: 403, body: { code: "42501", message: "row-level security" } }], "/api/admin/overview");
+  ok("非管理员 RPC 403 原样透传", res.status === 403);
+}
+
 console.log(`worker-test: ${pass} pass, ${fails.length} fail`);
 for (const f of fails) console.log("FAIL  " + f);
 if (fails.length) process.exit(1);

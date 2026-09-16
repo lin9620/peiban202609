@@ -179,6 +179,43 @@ export const db = {
     });
   },
 
+  /* ══════════ 管理员（RLS is_admin 兜底；Worker 只翻译） ══════════ */
+
+  /** 我是不是管理员（标量布尔；非管理员得到 false） */
+  amAdmin() {
+    return call("/admin/me");
+  },
+
+  /** 看板总览（非管理员得到 {admin:false}，不泄露任何数字） */
+  adminOverview() {
+    return call("/admin/overview");
+  },
+
+  /** 治理列表：最新帖子（含已下架；可见性由 RLS 管理员策略放行） */
+  async adminListPosts(limit) {
+    return call(`/admin/posts?limit=${enc(limit)}`);
+  },
+
+  /** 下架 / 恢复帖子 */
+  adminSetPostRemoved(id, removed) {
+    return call(`/admin/posts/${enc(id)}`, { method: "PATCH", body: { removed } });
+  },
+
+  /** 删除帖子（子行由 FK 级联清掉） */
+  async adminDeletePost(id) {
+    await call(`/admin/posts/${enc(id)}`, { method: "DELETE" });
+  },
+
+  /** 治理列表：最新评论（含二级回复） */
+  async adminListComments(limit) {
+    return call(`/admin/comments?limit=${enc(limit)}`);
+  },
+
+  /** 删除评论（二级回复由 parent_id FK 级联） */
+  async adminDeleteComment(id) {
+    await call(`/admin/comments/${enc(id)}`, { method: "DELETE" });
+  },
+
   /* ══════════ 图片（Storage） ═════════ */
 
   /** 上传字节：路径约定 <uid>/... 由 storage 策略按第一段授权 */

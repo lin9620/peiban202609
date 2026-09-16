@@ -73,6 +73,7 @@ node tools/api-contract-test.mjs # 云端数据访问适配层契约测试（36 
 node tools/gateway-contract-test.mjs # 网关模式前端侧契约测试（30 项：/api/* 端点形状 / 鉴权头 / 计数红线 / 错误上抛）
 node tools/worker-test.mjs    # API 网关 Worker 契约测试（53 项：/api/* → Supabase REST 翻译形状 / JWT 透传 / PGRST116→null / 路径穿越防护）
 node tools/i18n-test.mjs      # 文案完整性与插值回归（19 项：en/zh 键集合对称、修复过的 key、$ 特殊字符）
+node tools/admin-test.mjs     # 管理中心纯函数单测（36 项：admin:false 兜底 / 字段缺省 / 趋势图 14 天补零 / 行规整）
 node tools/snack-test.mjs     # 零食雨游戏纯逻辑单测（20 项：难度曲线/生成/碰撞/结算上限）
 node tools/seo-test.mjs       # SEO 资产检查（35 项：robots/sitemap/OG 标签/PNG 尺寸/安全头/产物）
 node tools/image-fit.mjs       # 图片纯函数单测（20 项：尺寸缩放/形状体检/文件预检/dataURL 校验）
@@ -111,6 +112,8 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 > 2. `MIGRATION_wall_daily_view_dislike.sql` —— 每日一条 + 浏览数 + 厌恶与 1% 自动下架
 >
 > 没跑第 2 个时：查看看板、发帖、评论一切照旧（浏览数不显示、点厌恶会出现「这个功能还没开启」提示），不会报错白屏。
+>
+> 3. `MIGRATION_admin.sql` —— **管理中心**：`admin_users` 管理员白名单表 + `is_admin()` / `admin_overview()` 函数 + 管理员治理策略（读已下架帖 / 下架恢复 / 删帖删评；顺带把 `wall_posts` 的匿名读策略收紧为「未下架」）。跑完后执行文件末尾注释里的 `insert into admin_users ...`（换成你的注册邮箱）把自己设为管理员，然后访问 `/admin`（「我的」页会出现管理中心入口，仅管理员可见）。
 
 **② 配置密钥**（二选一，anon key 是公开密钥，安全由 RLS 保证）：
 - 左侧 **Settings → API** 复制 `Project URL` 和 `anon public key`，然后：
@@ -274,6 +277,7 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 - ✅ **已完成**：宠物图外置 + 互动计数独立列——立绘 / 手绘菜图进 Storage（`wall-images/<uid>/pet-<hash>.<ext>`，按内容哈希命名、重复上传即覆盖），`pet_profiles` 的互动计数改用独立列 `pats`/`feeds`：修掉「主人同步把访客计数清零」，并把单行数据从 MB 级降到几百字节（解掉将来迁库时单行 2MB 的硬限制）
 - ✅ **已完成**：数据访问适配层——`wall.js` 里所有云端调用（查询 / RPC / Storage）收口到 `src/utils/api/db.js` 一个文件（行为不变），附 `api-contract-test.mjs` 契约测试锁定调用形状；将来换库 / 换托管（Cloudflare Hyperdrive、D1 或自建 API）只改适配层，页面与业务逻辑零改动
 - ✅ **已完成**：API 网关骨架（阶段 2）——Cloudflare Worker 同时托管静态资源与同源 `/api/*` 具名端点（**纯翻译层**：Supabase REST/Storage，用户 JWT 原样透传、RLS 仍由数据库执行、不解析 token、非开放代理、图片路径白名单防穿越）；前端数据层变成可切换实现（默认直连，`VITE_API_GATEWAY=1` 走网关），Auth 仍直连。三套契约测试锁形（api 36 / gateway 30 / worker 53 项）——阶段 3（Hyperdrive / D1 / R2）只换 Worker 内部与适配实现，端点契约不动
+- ✅ **已完成**：管理中心 `/admin`（仅管理员）——总览看板（用户/帖子/评论/浏览/回应分布/宠物互动/存储用量 + 近 14 天趋势 + 浏览最多帖子 + 最新注册）与内容治理（帖子下架/恢复/删除、评论删除）；权限由数据库 `admin_users` 白名单 + RLS 兜底，前端只做展示壳；非管理员调用只拿 `{admin:false}` 不泄露数字
 - ✅ **已完成**：墙上的主页（/u/:id）——点帖子头像/昵称进入，看 TA 的帖子、加入时间与收到的抱抱/暖暖/同感
 - 每日一问接入真实数据、陪你大厅接入真实在线人数（**当前刻意不显示人数**，等有真实统计再接）
 - 宠物冒险（带回手绘明信片图鉴）、装扮系统、季节彩蛋

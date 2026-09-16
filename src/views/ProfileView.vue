@@ -1,11 +1,12 @@
 <script setup>
-import { ref, computed } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { NButton, NInput, NAvatar, NTag, NProgress } from "naive-ui";
 import { t } from "../i18n.js";
 import { getItem, setItem, removeItem } from "../utils/storage.js";
 import { cookbook, removeDish, moodLog, moodStreak } from "../stores/petStore.js";
 import { todayKey } from "../utils/daily.js";
 import { cloud, cloudSignUp, cloudSignIn, cloudSignOut } from "../utils/supabase.js";
+import { db } from "../utils/api/db.js";
 
 /* 心情图标：一律用 Unicode 转义，避免源码中的 emoji 编码损坏 */
 const MOOD = ["\u{1F929}", "\u{1F642}", "\u{1F60C}", "\u{1F327}\uFE0F", "\u{1F614}"];
@@ -21,6 +22,16 @@ const cloudSigned = computed(() => !!(cloud.ready && cloud.user));
 const signedIn = computed(() => cloudSigned.value || !!nickname.value.trim());
 const displayName = computed(() => (cloudSigned.value ? (cloud.nickname || nickname.value) : nickname.value));
 const streak = computed(() => moodStreak());
+
+/* 管理中心入口：仅数据库认定的管理员可见（is_admin()；失败一律当不是） */
+const isAdmin = ref(false);
+onMounted(async () => {
+  try {
+    isAdmin.value = !!(cloud.ready && cloud.user) && (await db.amAdmin()) === true;
+  } catch (e) {
+    isAdmin.value = false;
+  }
+});
 
 /* —— 邮箱登录 / 注册（云端就绪时显示） —— */
 const authMode = ref("signin");           // signin | signup
@@ -132,6 +143,9 @@ const brightRatio = computed(() => {
           </n-tag>
           <n-button quaternary round @click="signOut">{{ t("common.signOut") }}</n-button>
         </template>
+        <router-link v-if="isAdmin" to="/admin" class="admin-entry">
+          {{ t("admin.entry") }}
+        </router-link>
       </div>
     </section>
 
