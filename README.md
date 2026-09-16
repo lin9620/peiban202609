@@ -66,6 +66,7 @@ node tools/snack-test.mjs     # 零食雨游戏纯逻辑单测（20 项：难度
 node tools/seo-test.mjs       # SEO 资产检查（35 项：robots/sitemap/OG 标签/PNG 尺寸/安全头/产物）
 node tools/image-fit.mjs       # 图片纯函数单测（20 项：尺寸缩放/形状体检/文件预检/dataURL 校验）
 node tools/undef-check.mjs    # 静态检查「用了项目内导出符号但没导入」（白屏元凶），报告写 undef-report.txt
+node tools/arity-test.mjs     # 静态检查「模板/同文件自调用 参数个数 < 函数签名必填参数」（undefined 崩溃元凶）
 node tools/cloud-verify.mjs   # Supabase 连通性：Auth/四张表/Storage桶/RLS（需先配好 .env）
 node tools/cloud-e2e.mjs      # 云端全链路实测：注册→建档→发帖→评论→回应→权限→清理（会造测试数据并清理）
 node tools/smoke.mjs          # 模块冒烟：需 dev 服务器在跑，探测 29 个关键模块 + 5 个 SEO 静态文件
