@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:api": "wrangler dev",
     "build": "vite build",
     "preview": "vite preview",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "deploy:dry": "wrangler deploy --dry-run --outdir .edge-final"
   },
   "dependencies": {
     "@iconify/vue": "^5.0.1",

@@ -12,6 +12,7 @@
 
 import { reactive } from "vue";
 import { createClient } from "@supabase/supabase-js";
+import { setAuthTokenProvider } from "./api/authToken.js";
 
 export const cloud = reactive({
   ready: false,     // 配置存在且 client 创建成功
@@ -22,6 +23,7 @@ export const cloud = reactive({
 });
 
 let sb = null; // supabase client 单例；未配置时保持 null
+let accessToken = ""; // 当前会话 JWT；网关模式下给 /api/* 请求附带 Authorization 用
 
 /* —— 配置探测：环境变量优先，其次站点根的 supabase.json —— */
 async function detectConfig() {
@@ -58,6 +60,7 @@ async function loadProfile(user) {
 }
 
 async function refreshSession(session) {
+  accessToken = session && session.access_token ? session.access_token : "";
   cloud.user = session ? session.user : null;
   cloud.nickname = cloud.user ? await loadProfile(cloud.user) : "";
 }
@@ -72,6 +75,8 @@ export async function initCloud() {
       auth: { persistSession: true, autoRefreshToken: true },
     });
     cloud.ready = true;
+    /* 网关模式：/api/* 请求带上当前用户 JWT（Worker 只透传，RLS 仍由数据库执行） */
+    setAuthTokenProvider(() => accessToken);
     const { data, error } = await sb.auth.getSession();
     if (error) throw error;
     await refreshSession(data ? data.session : null);

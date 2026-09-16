@@ -77,6 +77,11 @@ export default defineConfig({
   server: {
     port: 5173,
     open: true,
+    /* 本地联调 API 网关：配合 `npm run dev:api`（wrangler dev，端口 8787）。
+     * 只有 VITE_API_GATEWAY=1 时前端才会发 /api 请求；默认直连模式不受影响 */
+    proxy: {
+      "/api": "http://127.0.0.1:8787",
+    },
   },
   build: {
     chunkSizeWarningLimit: 900,

@@ -70,6 +70,8 @@ node tools/wall-test.mjs      # 暖心墙云端数据层纯函数单测（34 项
 node tools/wall-rules-test.mjs # 暖心墙进阶规则纯函数单测（29 项：排序/时间范围/浏览去重/1% 下架/每日一条/错误归类）
 node tools/pet-home-test.mjs   # 宠物主页云层纯函数单测（19 项：宠物快照 / 手绘厨房清洗 / 互动计数独立列 / 图片引用外置与行体积安全阀 / 镜像队列安全性）
 node tools/api-contract-test.mjs # 云端数据访问适配层契约测试（36 项：表名 / 过滤 / 排序 / RPC 参数 / Storage 桶与路径 / 降级查询形状 / upsert 只写 user_id+data+updated_at 的计数红线）
+node tools/gateway-contract-test.mjs # 网关模式前端侧契约测试（30 项：/api/* 端点形状 / 鉴权头 / 计数红线 / 错误上抛）
+node tools/worker-test.mjs    # API 网关 Worker 契约测试（53 项：/api/* → Supabase REST 翻译形状 / JWT 透传 / PGRST116→null / 路径穿越防护）
 node tools/i18n-test.mjs      # 文案完整性与插值回归（19 项：en/zh 键集合对称、修复过的 key、$ 特殊字符）
 node tools/snack-test.mjs     # 零食雨游戏纯逻辑单测（20 项：难度曲线/生成/碰撞/结算上限）
 node tools/seo-test.mjs       # SEO 资产检查（35 项：robots/sitemap/OG 标签/PNG 尺寸/安全头/产物）
@@ -125,6 +127,8 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 **③ 生效**：重启 `dev.cmd`。右上角会出现 👤 登录入口（「我的」页有邮箱注册/登录表单）；暖心墙自动切换为云端模式——发帖、评论、回应真·多人共享，图片上传到 Storage。想退回本地模式，删掉配置文件即可。
 
 > 说明：新注册用户需到邮箱确认验证邮件（Supabase 默认开启）。若要关闭验证：Dashboard → Authentication → Providers → Email → Confirm email 关闭。
+
+**④ 可选：API 网关模式（默认关，不影响任何现有功能）**：前端数据请求默认**直连** Supabase。想改为走自托管网关：先把 Worker 侧密钥配好（`npx wrangler secret put SUPABASE_URL`、`npx wrangler secret put SUPABASE_ANON_KEY`；本地联调写进根目录 `.dev.vars` 再 `npm run dev:api`），然后以 `VITE_API_GATEWAY=1` 构建/启动前端。此时数据请求全部走同源 `/api/*`，由 `worker/api.js`（Cloudflare Worker，与静态资源同一 Worker 部署）把具名端点**纯翻译**到 Supabase REST/Storage：用户 JWT 原样透传、RLS 照旧由数据库执行、Worker 不解析 token、也不是开放代理（每个端点只指向固定表/RPC/桶，图片路径按 `<uid>/<file>` 白名单校验）；Auth 仍直连 Supabase。数据层实现可切换：`src/utils/api/db.js` 是选择器（默认 `db.supabase.js` 直连，置 1 时 `db.gateway.js` 走网关），契约由三套测试锁形（直连 36 / 网关前端侧 30 / Worker 侧 53 项）——阶段 3 换 Hyperdrive/D1/R2 时只重写 Worker 内部与适配实现，端点契约与页面零改动。
 
 ## 🔍 收录与站点地图（Google Search Console）
 
@@ -269,6 +273,7 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 - ✅ **已完成**：用户主页 `/u/:id`——点帖子头像/昵称进入；展示宠物（云端镜像，访客可摸摸头/投喂，互动计入 TA 的亲密度/饱食度）、TA 的手绘厨房（点菜投喂）、TA 的帖子与收到的回应
 - ✅ **已完成**：宠物图外置 + 互动计数独立列——立绘 / 手绘菜图进 Storage（`wall-images/<uid>/pet-<hash>.<ext>`，按内容哈希命名、重复上传即覆盖），`pet_profiles` 的互动计数改用独立列 `pats`/`feeds`：修掉「主人同步把访客计数清零」，并把单行数据从 MB 级降到几百字节（解掉将来迁库时单行 2MB 的硬限制）
 - ✅ **已完成**：数据访问适配层——`wall.js` 里所有云端调用（查询 / RPC / Storage）收口到 `src/utils/api/db.js` 一个文件（行为不变），附 `api-contract-test.mjs` 契约测试锁定调用形状；将来换库 / 换托管（Cloudflare Hyperdrive、D1 或自建 API）只改适配层，页面与业务逻辑零改动
+- ✅ **已完成**：API 网关骨架（阶段 2）——Cloudflare Worker 同时托管静态资源与同源 `/api/*` 具名端点（**纯翻译层**：Supabase REST/Storage，用户 JWT 原样透传、RLS 仍由数据库执行、不解析 token、非开放代理、图片路径白名单防穿越）；前端数据层变成可切换实现（默认直连，`VITE_API_GATEWAY=1` 走网关），Auth 仍直连。三套契约测试锁形（api 36 / gateway 30 / worker 53 项）——阶段 3（Hyperdrive / D1 / R2）只换 Worker 内部与适配实现，端点契约不动
 - ✅ **已完成**：墙上的主页（/u/:id）——点帖子头像/昵称进入，看 TA 的帖子、加入时间与收到的抱抱/暖暖/同感
 - 每日一问接入真实数据、陪你大厅接入真实在线人数（**当前刻意不显示人数**，等有真实统计再接）
 - 宠物冒险（带回手绘明信片图鉴）、装扮系统、季节彩蛋

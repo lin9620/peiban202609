@@ -1,6 +1,7 @@
-/* 云端数据访问适配层契约测试（阶段 1）
+/* 云端数据访问适配层契约测试（直连实现；阶段 1 起）
  * ------------------------------------------------------------
- * 用「会记录调用链的假 supabase 客户端」跑一遍 src/utils/api/db.js 的每个方法，断言三件事：
+ * 用「会记录调用链的假 supabase 客户端」跑一遍 src/utils/api/db.js 选择器
+ * （默认直连实现 db.supabase.js）的每个方法，断言三件事：
  *   1. 形状：表名 / 过滤列 / 排序方向 / RPC 名与参数 / Storage 桶与路径，与现有 Supabase 后端一致；
  *   2. 降级：removed 列、pats/feeds 列缺失时的退回查询形状正确；
  *   3. 红线：upsertPetProfile 的 payload 只含 user_id / data / updated_at，绝不覆盖 pats/feeds 计数列。
