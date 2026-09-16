@@ -265,6 +265,10 @@ function cancelReply(p) {
   replyTo.value = nextTo;
   atName.value = nextAt;
 }
+/* 只在该评论正是当前回复目标时才收起回复框（删别的评论不影响正在写的回复） */
+function cancelReplyIfTarget(p, cm) {
+  if (replyTo.value[cmtKey(p)] === cm.id) cancelReply(p);
+}
 /* 回复框占位文案：「回复 xxx…」（xxx 优先取 @ 的对象） */
 function repPlaceholder(p, cm) {
   const n = atName.value[cmtKey(p)] || cm.name;
@@ -376,7 +380,7 @@ async function delCmt(p, cm) {
     if (!done) return;
   }
   comments.value = removeComment(comments.value, p, cm.id);
-  cancelReply(p); /* 正在回复这条时，删完就收起回复框 */
+  cancelReplyIfTarget(p, cm); /* 正在回复这条时，删完就收起回复框 */
   persistCmt();
   syncTotal(p);
 }
