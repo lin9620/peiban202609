@@ -360,9 +360,10 @@ begin
   v_counted := found;
 
   if v_counted then
+    /* 快照里的计数键是复数：pat → pats，feed → feeds（前端 wall.js 读 counts.pats / counts.feeds） */
     update public.pet_profiles
-      set data = jsonb_set(data, array['counts', p_kind],
-                           to_jsonb(coalesce((data->'counts'->>p_kind)::int, 0) + 1))
+      set data = jsonb_set(data, array['counts', case p_kind when 'pat' then 'pats' else 'feeds' end],
+                           to_jsonb(coalesce((data->'counts'->>(case p_kind when 'pat' then 'pats' else 'feeds' end))::int, 0) + 1))
       where user_id = p_owner;
   end if;
 
