@@ -104,7 +104,7 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 
 **① 建库**：注册 [supabase.com](https://supabase.com) → New Project（免费）→ 左侧 **SQL Editor** → 粘贴 `SUPABASE_SETUP.sql` 全部内容 → Run。这会创建：
 - `profiles`（注册自动建档）· `wall_posts`（含 `views` 浏览数 / `dislikes` 厌恶数 / `removed` 假删除 / `created_day` 每日限额）· `wall_comments`（二级评论：`parent_id` 自关联 + `reply_to_name`）· `wall_reactions`（回应，`kind` 含 `dislike`）· `wall_post_views`（浏览去重，全套 RLS 策略）· `pet_profiles`（宠物主页镜像：`data` 只放展示快照 + `pats`/`feeds` 互动计数**独立列**）· `pet_interactions`（互动去重，每人每天每种一次）· `admin_users`（管理员白名单，无公开读策略）
-- 函数与触发器：`wall_daily_limit()`（每人每天一条）· `wall_add_view()` · `wall_toggle_dislike()`（含 1% 自动下架）· `pet_interact()`（摸头/投喂）· `is_admin()` / `admin_overview()`（管理中心；非管理员调用只拿 `{admin:false}`）
+- 函数与触发器：`wall_daily_limit()`（每人每天一条）· `wall_add_view()` · `wall_toggle_dislike()`（含 1% 自动下架）· `pet_interact()`（摸头/投喂）· `is_admin()` / `admin_overview()` / `admin_users_page()`（管理中心；非管理员调用只拿 `{admin:false}`；用户名单的邮箱只由 `admin_users_page` 在库内 join `auth.users` 提供，REST 永远读不到）
 - Storage 桶 `wall-images`（公开读、登录上传、只能改删自己路径；**帖子配图与宠物立绘 / 手绘菜图共用此桶**——宠物图放 `<uid>/pet-<hash>.<ext>`，云端快照里只留路径、不留 dataURL，一行只有几百字节）
 
 > **已经建过库的老用户**：按顺序跑三个增量迁移（都在 SQL Editor 里粘贴全部内容 → Run，幂等、可重复跑）：
@@ -277,7 +277,7 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 - ✅ **已完成**：宠物图外置 + 互动计数独立列——立绘 / 手绘菜图进 Storage（`wall-images/<uid>/pet-<hash>.<ext>`，按内容哈希命名、重复上传即覆盖），`pet_profiles` 的互动计数改用独立列 `pats`/`feeds`：修掉「主人同步把访客计数清零」，并把单行数据从 MB 级降到几百字节（解掉将来迁库时单行 2MB 的硬限制）
 - ✅ **已完成**：数据访问适配层——`wall.js` 里所有云端调用（查询 / RPC / Storage）收口到 `src/utils/api/db.js` 一个文件（行为不变），附 `api-contract-test.mjs` 契约测试锁定调用形状；将来换库 / 换托管（Cloudflare Hyperdrive、D1 或自建 API）只改适配层，页面与业务逻辑零改动
 - ✅ **已完成**：API 网关骨架（阶段 2）——Cloudflare Worker 同时托管静态资源与同源 `/api/*` 具名端点（**纯翻译层**：Supabase REST/Storage，用户 JWT 原样透传、RLS 仍由数据库执行、不解析 token、非开放代理、图片路径白名单防穿越）；前端数据层变成可切换实现（默认直连，`VITE_API_GATEWAY=1` 走网关），Auth 仍直连。三套契约测试锁形（api 36 / gateway 30 / worker 53 项）——阶段 3（Hyperdrive / D1 / R2）只换 Worker 内部与适配实现，端点契约不动
-- ✅ **已完成**：管理中心 `/admin`（仅管理员）——总览看板（用户/帖子/评论/浏览/回应分布/宠物互动/存储用量 + 近 14 天趋势 + 浏览最多帖子 + 最新注册）与内容治理（帖子下架/恢复/删除、评论删除）；权限由数据库 `admin_users` 白名单 + RLS 兜底，前端只做展示壳；非管理员调用只拿 `{admin:false}` 不泄露数字
+- ✅ **已完成**：管理中心 `/admin`（仅管理员）——总览看板（用户/帖子/评论/浏览/回应分布/宠物互动/存储用量 + 近 14 天趋势 + 浏览最多帖子 + 最新注册）与内容治理（帖子下架/恢复/删除、评论删除）；总览的「用户」卡可点进用户名单页签（昵称/邮箱/用户ID/注册时间，100 条/页，最新在前）；权限由数据库 `admin_users` 白名单 + RLS 兜底，前端只做展示壳；非管理员调用只拿 `{admin:false}` 不泄露数字
 - ✅ **已完成**：墙上的主页（/u/:id）——点帖子头像/昵称进入，看 TA 的帖子、加入时间与收到的抱抱/暖暖/同感
 - 每日一问接入真实数据、陪你大厅接入真实在线人数（**当前刻意不显示人数**，等有真实统计再接）
 - 宠物冒险（带回手绘明信片图鉴）、装扮系统、季节彩蛋

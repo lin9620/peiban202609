@@ -178,6 +178,11 @@ export const db = {
     return unwrap(sb().rpc("admin_overview"));
   },
 
+  /** 治理列表：用户分页（昵称/邮箱/ID/注册时间；邮箱只在 DB 侧 join auth.users 提供） */
+  adminUsersPage(offset, limit) {
+    return unwrap(sb().rpc("admin_users_page", { p_offset: offset, p_limit: limit }));
+  },
+
   /** 治理列表：最新帖子（含已下架；可见性由 RLS 管理员策略放行） */
   adminListPosts(limit) {
     return unwrap(

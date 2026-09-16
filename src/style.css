@@ -1091,6 +1091,28 @@ html[data-theme="night"] .admin-row { border-top-color: rgba(139, 156, 232, .18)
 html[data-theme="night"] .admin-thumb { border-color: rgba(38, 44, 78, .9); }
 html[data-theme="night"] .admin-bar-track { background: rgba(139, 156, 232, .16); }
 
+/* —— 用户名单页签（点总览的「用户」卡进入） —— */
+.admin-card.click { cursor: pointer; }
+.admin-card.click:hover { transform: translateY(-2px); }
+.admin-users-head { font-size: 11.5px; font-weight: 800; color: var(--ink-faint); }
+.admin-u-mail { flex: none; width: 200px; }
+.admin-u-id {
+  flex: none; width: 170px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px;
+}
+.admin-u-at { flex: none; width: 84px; text-align: right; font-size: 11.5px; font-weight: 600; color: var(--ink-faint); }
+.admin-page-bar {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding-top: 12px; margin-top: 4px;
+  border-top: 1px dashed rgba(31, 42, 68, .12);
+}
+.admin-page-info { font-size: 12px; font-weight: 700; color: var(--ink-soft); }
+html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232, .18); }
+@media (max-width: 640px) {
+  .admin-u-mail { width: 128px; }
+  .admin-u-id { width: 96px; }
+}
+
 @media (max-width: 760px) {
   .admin-grid2 { grid-template-columns: 1fr; }
 }

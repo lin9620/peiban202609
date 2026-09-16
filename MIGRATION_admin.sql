@@ -132,6 +132,48 @@ end $$;
 
 grant execute on function public.admin_overview() to anon, authenticated;
 
+-- ── 6b) 用户名单分页 RPC：邮箱只在 DB 侧 join auth.users 提供 ──
+--    昵称在 profiles（公开），但邮箱只在 auth.users —— REST/前端永远读不到，
+--    只能由 security definer 函数在库内拼好再交出去。内部 is_admin() 把关：
+--    非管理员拿到 {admin:false, users:[]}，一个字段都不泄露。
+create or replace function public.admin_users_page(p_offset integer default 0, p_limit integer default 100)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_total bigint;
+begin
+  if not exists (select 1 from public.admin_users where user_id = auth.uid()) then
+    return jsonb_build_object('admin', false, 'total', 0, 'users', '[]'::jsonb);
+  end if;
+
+  select count(*) into v_total from public.profiles;
+
+  return jsonb_build_object(
+    'admin', true,
+    'total', v_total,
+    'users', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'id', p.id,
+               'nickname', p.nickname,
+               'email', coalesce(u.email, ''),
+               'created_at', p.created_at
+             ) order by p.created_at desc, p.id desc)
+        from (select *
+                from public.profiles
+               order by created_at desc, id desc
+               limit least(greatest(coalesce(p_limit, 100), 1), 500)
+              offset greatest(coalesce(p_offset, 0), 0)) p
+        join auth.users u on u.id = p.id
+    ), '[]'::jsonb)
+  );
+end $$;
+
+grant execute on function public.admin_users_page(integer, integer) to anon, authenticated;
+
 -- ── 7) 把自己设为管理员（改邮箱后执行；可重复跑）──────────────
 -- insert into public.admin_users (user_id)
 -- select id from auth.users where email = '你的邮箱@example.com'

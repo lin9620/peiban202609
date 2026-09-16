@@ -191,6 +191,11 @@ export const db = {
     return call("/admin/overview");
   },
 
+  /** 治理列表：用户分页（昵称/邮箱/ID/注册时间；邮箱由 DB 侧 RPC 提供） */
+  adminUsersPage(offset, limit) {
+    return call(`/admin/users?offset=${enc(offset)}&limit=${enc(limit)}`);
+  },
+
   /** 治理列表：最新帖子（含已下架；可见性由 RLS 管理员策略放行） */
   async adminListPosts(limit) {
     return call(`/admin/posts?limit=${enc(limit)}`);

@@ -64,6 +64,13 @@ function parseLimit(raw, dflt) {
   return Math.min(n, LIMIT_MAX);
 }
 
+/** 偏移量：非负整数（用户名单分页用） */
+function parseOffset(raw) {
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return n;
+}
+
 /** 解码并校验 URL 段（帖 / 评论 / 用户 id）：拒绝空值与路径非法字符 */
 function decodeSeg(s) {
   try {
@@ -503,6 +510,12 @@ export default {
       if (seg[0] === "admin") {
         if (seg.length === 1 && m === "GET") return rpc(env, request, "is_admin", {});
         if (seg[1] === "overview" && m === "GET") return rpc(env, request, "admin_overview", {});
+        if (seg[1] === "users" && seg.length === 2 && m === "GET") {
+          return rpc(env, request, "admin_users_page", {
+            p_offset: parseOffset(q.get("offset")),
+            p_limit: parseLimit(q.get("limit"), 100),
+          });
+        }
         if (seg[1] === "posts") {
           if (seg.length === 2 && m === "GET") {
             return listAdminTable(env, request, TABLE.posts,

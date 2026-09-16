@@ -260,6 +260,13 @@ const rows = [{ id: 1 }, { id: 2 }];
   ok("adminDeleteComment 形状", fake.calls[0] === "from:wall_comments|delete|eq:id:\"c1\"", fake.calls[0]);
 }
 {
+  const { fake, out } = await run([{ data: { admin: true, total: 2, users: rows } }], () => db.adminUsersPage(0, 100));
+  ok("adminUsersPage 形状（RPC + 命名分页参数）",
+    fake.calls[0] === 'rpc:admin_users_page:{"p_offset":0,"p_limit":100}', fake.calls[0]);
+  ok("adminUsersPage 返回 {admin,total,users}",
+    out && out.admin === true && out.total === 2 && Array.isArray(out.users) && out.users.length === 2);
+}
+{
   const { out } = await run([{ data: false }], () => db.amAdmin());
   ok("非管理员 amAdmin=false（页面据此拦截）", out === false);
 }

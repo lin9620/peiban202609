@@ -119,6 +119,7 @@ setGatewayAuthProbe(() => true); /* 单测注入：auth 就绪（与 db.supabase
     await db.adminDeletePost("p1");
     await db.adminListComments(100);
     await db.adminDeleteComment("c1");
+    await db.adminUsersPage(0, 100);
     const u = (i) => c.calls[i].url;
     const m = (i) => c.calls[i].init.method || "GET";
     const b = (i) => c.calls[i].init.body;
@@ -130,6 +131,7 @@ setGatewayAuthProbe(() => true); /* 单测注入：auth 就绪（与 db.supabase
     ok("adminDeletePost 端点（DELETE）", u(4) === "/api/admin/posts/p1" && m(4) === "DELETE", u(4));
     ok("adminListComments 端点", u(5) === "/api/admin/comments?limit=100", u(5));
     ok("adminDeleteComment 端点（DELETE）", u(6) === "/api/admin/comments/c1" && m(6) === "DELETE", u(6));
+    ok("adminUsersPage 端点", u(7) === "/api/admin/users?offset=0&limit=100", u(7));
   } finally {
     c.restore();
   }

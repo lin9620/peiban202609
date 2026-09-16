@@ -347,6 +347,18 @@ async function hit(script, path, init) {
     c.outbound[0].url === `${ORIGIN}/rest/v1/wall_comments?id=eq.c1` && c.outbound[0].init.method === "DELETE");
 }
 {
+  const { c } = await hit([{ body: { admin: true, total: 2, users: [] } }], "/api/admin/users?offset=100&limit=100");
+  ok("admin/users → rpc admin_users_page（分页参数）",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/admin_users_page` &&
+    c.outbound[0].init.body === JSON.stringify({ p_offset: 100, p_limit: 100 }),
+    c.outbound[0].url);
+}
+{
+  const { c } = await hit([], "/api/admin/users");
+  ok("admin/users 缺省 → offset=0 / limit=100",
+    c.outbound[0].init.body === JSON.stringify({ p_offset: 0, p_limit: 100 }));
+}
+{
   const { res } = await hit([{ status: 403, body: { code: "42501", message: "row-level security" } }], "/api/admin/overview");
   ok("非管理员 RPC 403 原样透传", res.status === 403);
 }

@@ -18,6 +18,12 @@ const posts = ref([]);
 const comments = ref([]);
 const postsLoaded = ref(false);
 const commentsLoaded = ref(false);
+/* 用户页签：全量名单分页（100/页，最新在前）；邮箱只在 DB 侧 RPC 里 join auth.users 提供 */
+const USERS_PAGE = 100;
+const users = ref([]);
+const usersLoaded = ref(false);
+const usersOffset = ref(0);
+const usersTotal = ref(0);
 const busy = ref(""); /* 正在操作的行 id（防连点） */
 const actionMsg = ref("");
 
@@ -31,6 +37,10 @@ async function load() {
   comments.value = [];
   postsLoaded.value = false;
   commentsLoaded.value = false;
+  users.value = [];
+  usersLoaded.value = false;
+  usersOffset.value = 0;
+  usersTotal.value = 0;
   tab.value = "overview";
   if (!signedIn.value) {
     state.value = "denied";
@@ -85,6 +95,7 @@ function switchTab(name) {
   tab.value = name;
   if (name === "posts" && !postsLoaded.value) loadPosts();
   if (name === "comments" && !commentsLoaded.value) loadComments();
+  if (name === "users" && !usersLoaded.value) loadUsers(0);
 }
 
 /* ── 治理动作 ── */
@@ -129,11 +140,34 @@ async function delComment(c) {
   }
 }
 
+/* ── 用户名单（分页 100/页，最新在前） ── */
+async function loadUsers(offset = usersOffset.value) {
+  try {
+    const r = await db.adminUsersPage(offset, USERS_PAGE);
+    if (!r || r.admin !== true) throw new Error("denied");
+    users.value = Array.isArray(r.users) ? r.users : [];
+    usersTotal.value = Number(r.total) || 0;
+    usersOffset.value = offset;
+    usersLoaded.value = true;
+  } catch (e) {
+    fail(e);
+  }
+}
+function pageUsers(delta) {
+  const next = usersOffset.value + delta * USERS_PAGE;
+  if (next < 0 || (delta > 0 && next >= usersTotal.value)) return;
+  loadUsers(next);
+}
+const usersRange = computed(() => ({
+  a: usersTotal.value > 0 ? usersOffset.value + 1 : 0,
+  b: Math.min(usersOffset.value + USERS_PAGE, usersTotal.value),
+}));
+
 /* ── 派生（脏数据兜底在 admin.js） ── */
 const cards = computed(() => {
   const o = ov.value || {};
   return [
-    { label: t("admin.cards.users"), value: fmtNum(o.users_total), sub: `${t("admin.cards.usersToday")} ${fmtNum(o.users_today)}` },
+    { label: t("admin.cards.users"), value: fmtNum(o.users_total), sub: `${t("admin.cards.usersToday")} ${fmtNum(o.users_today)}`, clickable: true },
     { label: t("admin.cards.posts"), value: fmtNum(o.posts_total), sub: `${t("admin.cards.postsToday")} ${fmtNum(o.posts_today)} · ${t("admin.cards.removed")} ${fmtNum(o.posts_removed)}` },
     { label: t("admin.cards.comments"), value: fmtNum(o.comments_total), sub: `${t("admin.cards.commentsToday")} ${fmtNum(o.comments_today)}` },
     { label: t("admin.cards.views"), value: fmtNum(o.views_total), sub: "" },
@@ -189,7 +223,11 @@ const recentUsers = computed(() => (Array.isArray(ov.value && ov.value.recent_us
       <!-- ── 页签：总览 ── -->
       <template v-if="tab === 'overview'">
         <div class="admin-cards">
-          <div v-for="c in cards" :key="c.label" class="card admin-card">
+          <div
+            v-for="c in cards" :key="c.label"
+            class="card admin-card" :class="{ click: c.clickable }"
+            :title="c.clickable ? t('admin.tabs.users') : undefined"
+            @click="c.clickable && switchTab('users')">
             <b>{{ c.value }}</b>
             <span class="admin-card-label">{{ c.label }}</span>
             <span v-if="c.sub" class="admin-card-sub">{{ c.sub }}</span>
@@ -314,6 +352,42 @@ const recentUsers = computed(() => (Array.isArray(ov.value && ov.value.recent_us
           </div>
           <n-button size="tiny" quaternary type="error" :disabled="busy !== ''" @click="delComment(c)">
             {{ t("admin.actions.del") }}
+          </n-button>
+        </div>
+      </section>
+
+      <!-- ── 页签：用户名单（点总览的「用户」卡进入；100/页，最新在前） ── -->
+      <section v-else-if="tab === 'users'" class="card">
+        <div class="row-between">
+          <h2 style="margin-bottom: 0">{{ t("admin.tabs.users") }}</h2>
+          <n-button quaternary size="small" @click="loadUsers()">
+            {{ t("admin.refresh") }}
+          </n-button>
+        </div>
+        <p v-if="!users.length" class="sub" style="margin-top: 12px">
+          {{ usersLoaded ? t("admin.empty") : t("admin.loading") }}
+        </p>
+        <div v-else class="admin-row admin-users-head">
+          <span class="admin-grow">{{ t("admin.usersCol.nick") }}</span>
+          <span class="admin-u-mail">{{ t("admin.usersCol.email") }}</span>
+          <span class="admin-u-id">{{ t("admin.usersCol.uid") }}</span>
+          <span class="admin-u-at">{{ t("admin.usersCol.at") }}</span>
+        </div>
+        <div v-for="u in users" :key="u.id" class="admin-row">
+          <span class="admin-grow admin-clip">{{ u.nickname || "?" }}</span>
+          <span class="admin-u-mail admin-clip" :title="u.email || ''">{{ u.email || "—" }}</span>
+          <span class="admin-u-id admin-clip" :title="u.id">{{ u.id }}</span>
+          <span class="admin-u-at">{{ dayOf(u.created_at) }}</span>
+        </div>
+        <div v-if="usersTotal > 0" class="admin-page-bar">
+          <n-button size="tiny" quaternary :disabled="usersOffset <= 0" @click="pageUsers(-1)">
+            {{ t("admin.page.prev") }}
+          </n-button>
+          <span class="admin-page-info">
+            {{ t("admin.page.info", { a: usersRange.a, b: usersRange.b, n: fmtNum(usersTotal) }) }}
+          </span>
+          <n-button size="tiny" quaternary :disabled="usersOffset + USERS_PAGE >= usersTotal" @click="pageUsers(1)">
+            {{ t("admin.page.next") }}
           </n-button>
         </div>
       </section>
