@@ -8,39 +8,51 @@
 import { getClient, cloud } from "./supabase.js";
 import { normalizeText } from "./comments.js";
 
-export const PAGE_SIZE = 30;
-
 /* ══════════ 纯函数：DB 行 → 视图模型（与本地帖子结构对齐） ══════════ */
 
 /**
  * @param {Array} rows  wall_posts 行（snake_case）
- * @param {Object} reactions  aggregateReactions() 的输出：Map[postId] → {hug,warm,relate,mine}
+ * @param {Object} reactions  aggregateReactions() 的输出：Map[postId] → {hug,warm,relate,dislike,mine}
  * @param {(path: string) => string} imageUrlFor  把 Storage 路径换成公开 URL
- * @returns {Array} 视图帖子：{ id, name, text, img, ts, reacts, cloud, userId, imagePath }
+ * @returns {Array} 视图帖子：{ id, name, text, img, ts, reacts, mine, views, dislikes, removed, cloud, userId, imagePath }
  */
 export function rowsToPosts(rows, reactions = {}, imageUrlFor = () => "") {
   if (!Array.isArray(rows)) return [];
-  return rows.map((r) => ({
-    id: "c" + r.id,                       // 云端帖 id 加前缀，避免与本地数字 id 撞 key
-    dbId: r.id,
-    name: r.author_name || "Guest",
-    text: r.body || "",
-    img: r.image_path ? imageUrlFor(r.image_path) : "",
-    ts: Date.parse(r.created_at) || Date.now(),
-    reacts: {
-      hug: (reactions[r.id] && reactions[r.id].hug) || 0,
-      warm: (reactions[r.id] && reactions[r.id].warm) || 0,
-      relate: (reactions[r.id] && reactions[r.id].relate) || 0,
-    },
-    mine: reactions[r.id] ? reactions[r.id].mine : { hug: false, warm: false, relate: false },
-    cloud: true,
-    userId: r.user_id,
-    imagePath: r.image_path || "",
-  }));
+  return rows.map((r) => {
+    const ag = reactions[r.id] || {};
+    /* 厌恶数优先用表里的 dislikes 列（服务端维护、权威）；没迁移时退回回应行聚合值 */
+    const dislikes = r.dislikes != null ? Math.max(0, Number(r.dislikes) || 0) : (ag.dislike || 0);
+    return {
+      id: "c" + r.id,                       // 云端帖 id 加前缀，避免与本地数字 id 撞 key
+      dbId: r.id,
+      name: r.author_name || "Guest",
+      text: r.body || "",
+      img: r.image_path ? imageUrlFor(r.image_path) : "",
+      ts: Date.parse(r.created_at) || Date.now(),
+      reacts: {
+        hug: (ag.hug) || 0,
+        warm: (ag.warm) || 0,
+        relate: (ag.relate) || 0,
+        dislike: dislikes,
+      },
+      mine: { ...EMPTY_MINE, ...(ag.mine || {}) },
+      views: Math.max(0, Number(r.views) || 0),      // 浏览数（未迁移时为 0）
+      dislikes,
+      removed: r.removed === true,                   // 假删除：达到下架线的帖子
+      /* 这一行数据是否来自「已跑迁移」的库：否则界面上别显示假的 0 次浏览/0 厌恶 */
+      stats: r.views != null || r.dislikes != null || r.removed != null,
+      cloud: true,
+      userId: r.user_id,
+      imagePath: r.image_path || "",
+    };
+  });
 }
 
+/** 回应的空状态：每种回应「我点过没有」 */
+const EMPTY_MINE = { hug: false, warm: false, relate: false, dislike: false };
+
 /**
- * 聚合回应行 → { [postId]: { hug, warm, relate, mine: {hug,warm,relate} } }
+ * 聚合回应行 → { [postId]: { hug, warm, relate, dislike, mine: {...} } }
  * @param {Array} rows wall_reactions 行
  * @param {string} userId 当前用户（判定 mine）
  */
@@ -48,7 +60,7 @@ export function aggregateReactions(rows, userId = "") {
   const out = {};
   if (!Array.isArray(rows)) return out;
   for (const r of rows) {
-    const o = out[r.post_id] || (out[r.post_id] = { hug: 0, warm: 0, relate: 0, mine: { hug: false, warm: false, relate: false } });
+    const o = out[r.post_id] || (out[r.post_id] = { hug: 0, warm: 0, relate: 0, dislike: 0, mine: { ...EMPTY_MINE } });
     if (o[r.kind] !== undefined) o[r.kind]++;
     if (userId && r.user_id === userId && o.mine[r.kind] !== undefined) o.mine[r.kind] = true;
   }
@@ -112,20 +124,39 @@ export function canUseWall() {
   return !!(sb && cloud.user);
 }
 
-/** 拉取最新帖子（含回应聚合），失败返回 null */
-export async function cloudFetchPosts() {
+/** 排序窗口：热度排序在这批帖内进行（比一屏 30 条宽，够体现「最多的排前面」） */
+export const SORT_WINDOW = 200;
+
+/**
+ * 拉取帖子（含回应聚合），失败返回 null。
+ *   - 按发布时间倒序取最近 limit 条
+ *   - 已跑迁移：由数据库排除「假删除」（下架）的帖子；未跑迁移：退回客户端过滤
+ * @param {number} [limit] 默认 SORT_WINDOW（排序用的大窗口）
+ */
+export async function cloudFetchPosts(limit = SORT_WINDOW) {
   if (!canReadWall()) return null;
   const sb = getClient();
   try {
-    const { data: posts, error } = await sb
+    const n = Number(limit) > 0 ? Number(limit) : SORT_WINDOW;
+    /* 先带 removed 过滤（迁移后才有这一列）；42703 列不存在时退回不带过滤的查询 */
+    let res = await sb
       .from("wall_posts")
       .select("*")
+      .eq("removed", false)
       .order("created_at", { ascending: false })
-      .limit(PAGE_SIZE);
+      .limit(n);
+    if (res.error) {
+      res = await sb
+        .from("wall_posts")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(n);
+    }
+    const { data: posts, error } = res;
     if (error) throw error;
     let reactions = {};
     try {
-      /* 只查当前页 30 帖的回应；全表 limit(2000) 会随用户增长漏算（P1 修复） */
+      /* 只查当前窗口内这些帖的回应；全表 limit(2000) 会随用户增长漏算（P1 修复） */
       const ids = (posts || []).map((x) => x.id);
       const { data: rk } = ids.length
         ? await sb.from("wall_reactions").select("post_id,user_id,kind").in("post_id", ids)
@@ -300,6 +331,67 @@ export async function cloudUploadImage(dataUrl) {
     return path;
   } catch (e) {
     console.warn("[cloud] uploadImage:", e);
+    cloud.error = e && e.message ? e.message : String(e);
+    return null;
+  }
+}
+
+/* ═════════ 浏览数 / 厌恶（走 RPC，服务端权威） ══════════ */
+
+/**
+ * 记一次浏览：同一访客对同一条帖，一天只 +1（服务端 wall_post_views 去重）。
+ * 游客也能调（viewer 传本机匿名 id）。
+ * @param {number} dbPostId
+ * @param {string} viewer 登录用户 = uid；游客 = 匿名 id
+ * @returns {Promise<{views:number,dislikes:number,removed:boolean,counted:boolean}|null>}
+ */
+export async function cloudAddView(dbPostId, viewer = "") {
+  if (!canReadWall() || dbPostId == null) return null;
+  const sb = getClient();
+  try {
+    const { data, error } = await sb.rpc("wall_add_view", {
+      p_post: dbPostId,
+      p_viewer: String(viewer || "").slice(0, 64),
+    });
+    if (error) throw error;
+    if (!data || data.ok === false) return null;
+    return {
+      views: Math.max(0, Number(data.views) || 0),
+      dislikes: Math.max(0, Number(data.dislikes) || 0),
+      removed: data.removed === true,
+      counted: data.counted === true,
+    };
+  } catch (e) {
+    /* 未跑迁移时这里会 404/PGRST202：静默降级（浏览数就不显示了），不打断阅读 */
+    console.warn("[cloud] addView:", e);
+    cloud.error = e && e.message ? e.message : String(e);
+    return null;
+  }
+}
+
+/**
+ * 切换厌恶（登录用户；RPC 内部计数并在达到 1% 时把帖子下架）。
+ * @param {number} dbPostId
+ * @returns {Promise<{on:boolean,views:number,dislikes:number,removed:boolean}|null>}
+ */
+export async function cloudToggleDislike(dbPostId) {
+  if (!canUseWall() || dbPostId == null) return null;
+  const sb = getClient();
+  try {
+    const { data, error } = await sb.rpc("wall_toggle_dislike", { p_post: dbPostId });
+    if (error) throw error;
+    if (!data || data.ok === false) {
+      cloud.error = data && data.reason ? data.reason : "dislike failed";
+      return null;
+    }
+    return {
+      on: data.on === true,
+      views: Math.max(0, Number(data.views) || 0),
+      dislikes: Math.max(0, Number(data.dislikes) || 0),
+      removed: data.removed === true,
+    };
+  } catch (e) {
+    console.warn("[cloud] toggleDislike:", e);
     cloud.error = e && e.message ? e.message : String(e);
     return null;
   }

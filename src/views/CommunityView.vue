@@ -12,13 +12,20 @@ import { cloud } from "../utils/supabase.js";
 import {
   cloudFetchPosts, cloudInsertPost, cloudFetchComments, cloudInsertComment,
   cloudDeleteComment, cloudToggleReaction, cloudFetchCommentCounts, canUseWall, canReadWall,
+  cloudAddView, cloudToggleDislike,
 } from "../utils/wall.js";
+/* 进阶规则（纯函数，Node 单测覆盖）：排序 / 浏览去重 / 厌恶比例下架 / 每日一条 */
+import {
+  SORTS, sortPosts, collectViews, visibleOnly, utcDay, ratioPct,
+  canPostToday, errorKind, VIEW_KEY, ANON_KEY, POST_DAY_KEY,
+} from "../utils/wallRules.js";
 import {
   validateImageFile, isSaneShape, isUsableDataUrl, shrinkToDataUrl,
 } from "../utils/imaging.js";
 
 const POSTS_KEY = "warm-paws-posts-v1";
 const REACTS_KEY = "warm-paws-reacts-v1";
+const SORT_KEY = "warm-paws-sort-v1";   /* 记住用户选的排序方式 */
 
 const REACTIONS = [
   { key: "hug", tk: "community.reactHug" },
@@ -81,6 +88,9 @@ async function loadCloud() {
   const rows = await cloudFetchPosts();
   if (rows) {
     cloudPosts.value = rows;
+    /* 传响应式数组（cloudPosts.value）而不是 rows：浏览数要靠「写代理」才会即时刷新到界面，
+       直接改原始对象（raw）不会触发 Vue 的更新 */
+    countViews(cloudPosts.value);
     /* 帖子到手就顺带拉一次「每帖评论数」：评论区标题马上有真实数字（含回复） */
     cloudFetchCommentCounts(rows.map((r) => r.dbId)).then((counts) => {
       if (!counts) return;
@@ -93,6 +103,74 @@ async function loadCloud() {
   }
   loadingCloud.value = false;
 }
+
+/* ═════════ 排序（默认最新；另有 同感/抱抱/暖暖 最多） ═════════ */
+const sortMode = ref(SORTS.some((s) => s.key === getItem(SORT_KEY)) ? getItem(SORT_KEY) : SORTS[0].key);
+function pickSort(key) {
+  sortMode.value = key;
+  setItem(SORT_KEY, key);
+}
+
+/* ═════════ 浏览数：同一访客对同一条帖，一天只 +1 ═════════ */
+/* 未登录访客用本机匿名 id 当身份（服务器按这个去重，刷新页面不会刷高浏览量） */
+function anonKey() {
+  let v = getItem(ANON_KEY);
+  if (!v) {
+    v = "a-" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+    setItem(ANON_KEY, v);
+  }
+  return v;
+}
+const viewerKey = computed(() => (cloud.user && cloud.user.id) || anonKey());
+let viewStamps = {};
+try { viewStamps = JSON.parse(getItem(VIEW_KEY)) || {}; } catch (e) { viewStamps = {}; }
+/* 把「今天还没看过的帖」告诉服务端 +1（服务端 wall_post_views 再兜一层去重） */
+async function countViews(list) {
+  const { stamps, pending } = collectViews(viewStamps, list, viewerKey.value);
+  viewStamps = stamps;
+  setItem(VIEW_KEY, JSON.stringify(stamps));
+  for (const p of pending) {
+    const r = await cloudAddView(p.dbId, viewerKey.value);
+    if (!r) continue;
+    p.views = r.views;
+    p.reacts = { ...p.reacts, dislike: r.dislikes };
+    if (r.removed) p.removed = true;   /* 已被下架：前台不再展示 */
+  }
+}
+
+/* ════════ 厌恶：达到「厌恶 ÷ 浏览 ≥ 1%」由服务端下架（假删除） ═════════ */
+async function dislike(p) {
+  if (!(p.cloud && signedIn.value)) return;
+  const r = await cloudToggleDislike(p.dbId);
+  if (!r) {
+    /* 失败给出可见提示，不静默：未迁移 → 告诉用户功能还没开；其它 → 让他重试 */
+    showWallMsg(errorKind(cloud.error) === "not-migrated" ? "community.needSetup" : "community.dislikeFail");
+    return;
+  }
+  p.views = r.views;
+  p.reacts = { ...p.reacts, dislike: r.dislikes };
+  p.mine = { ...p.mine, dislike: r.on };
+  if (r.removed) {
+    p.removed = true;
+    showWallMsg("community.removed");
+  }
+}
+/* 帖子里的轻提示（下架 / 今天发过了），几秒后自动消失 */
+const wallMsg = ref("");
+function showWallMsg(tk) {
+  wallMsg.value = tk;
+  setTimeout(() => { wallMsg.value = ""; }, 3600);
+}
+
+/* ════════ 每日限额：每个用户每天最多一条 ═════════ */
+const postedDay = ref(getItem(POST_DAY_KEY) || "");
+/* 本地模式也守同样的规矩（云端帖看「今天有没有我发的」；本机模式看本机记录） */
+const postedToday = computed(() => !canPostToday({
+  list: cloudPosts.value,
+  userId: (cloud.user && cloud.user.id) || "",
+  day: utcDay(),
+  localDay: postedDay.value,
+}));
 
 function persist() {
   setItem(POSTS_KEY, JSON.stringify(posts.value.slice(0, 30)));
@@ -137,14 +215,19 @@ async function submit() {
     setTimeout(() => { needText.value = false; }, 2500);
     return;
   }
+  /* 每个用户每天最多一条（库里还有触发器兜底，这里是给用户的即时反馈） */
+  if (postedToday.value) return showWallMsg("community.dailyLimit");
+
   /* 云模式：写入 Supabase，成功后把返回的视图帖子插到最前 */
   if (canUseWall()) {
     const created = await cloudInsertPost({ text, imageDataUrl: imgData.value, name: wallName.value });
     if (created) {
       cloudPosts.value.unshift(created);
     } else {
-      needText.value = true; /* cloud.error 已记录，用同一提示位（本地也存的住） */
-      setTimeout(() => { needText.value = false; }, 2500);
+      /* 云端拒绝时区分原因：每日限额 / 未跑迁移 / 其它（cloud.error 已记录） */
+      const kind = errorKind(cloud.error);
+      showWallMsg(kind === "daily-limit" ? "community.dailyLimit"
+        : kind === "not-migrated" ? "community.needSetup" : "community.postFail");
       return;
     }
   } else {
@@ -159,6 +242,8 @@ async function submit() {
     });
     persist();
   }
+  postedDay.value = utcDay();      /* 记下「今天已发」 */
+  setItem(POST_DAY_KEY, postedDay.value);
   draft.value = "";
   imgData.value = "";
   posted.value = true;
@@ -278,10 +363,11 @@ function repPlaceholder(p, cm) {
 const repDraft = ref({});
 function repKey(p, cm) { return cmtKey(p) + ":" + cm.id; }
 function repLeft(p, cm) { return MAX_LEN - String(repDraft.value[repKey(p, cm)] || "").length; }
-/* 发送失败提示（云端未迁移 parent_id / 断网 / RLS 拒绝都别静默失败，草稿保留） */
+/* 发送失败提示（云端未迁移 parent_id / 断网 / RLS 拒绝都别静默失败，草稿保留）
+   默认是评论发送失败文案；传 tk 可换成别的（如本地已达每帖上限） */
 const cmtErr = ref("");
-function showCmtErr() {
-  cmtErr.value = t("comment.fail");
+function showCmtErr(tk = "comment.fail") {
+  cmtErr.value = t(tk);
   setTimeout(() => { cmtErr.value = ""; }, 3200);
 }
 function isOpen(p) { return !!openCmt.value[cmtKey(p)]; }
@@ -390,6 +476,10 @@ const all = computed(() => [
   ...(cloud.ready && cloudPosts.value.length ? cloudPosts.value : posts.value),
   ...SAMPLES,
 ]);
+/* 展示用：先剔掉已下架（假删除）的帖子，再按当前排序方式排 */
+const shown = computed(() => sortPosts(visibleOnly(all.value), sortMode.value));
+/* 下架线提示用：厌恶 ÷ 浏览（达 1% 即下架，看得到比例就知道离下架多远） */
+function disPct(p) { return ratioPct(p.views, (p.reacts && p.reacts.dislike) || 0); }
 const when = (ts) =>
   new Date(ts).toLocaleDateString(i18n.locale === "zh" ? "zh-CN" : "en-US",
     { month: "short", day: "numeric" });
@@ -428,6 +518,9 @@ const when = (ts) =>
         <p v-if="posted" class="streak-note" style="color: var(--good); font-weight: 700">
           {{ t("home.dailyQ.thanks") }}
         </p>
+        <p v-if="wallMsg" class="streak-note" style="color: var(--low); font-weight: 700">
+          {{ t(wallMsg) }}
+        </p>
         <p v-else-if="needText" class="streak-note" style="color: var(--low); font-weight: 700">
           {{ t("community.needText") }}
         </p>
@@ -439,8 +532,19 @@ const when = (ts) =>
       </div>
     </section>
 
+    <!-- 排序：默认最新；还有 同感最多 / 抱抱最多 / 暖暖最多 -->
+    <div class="sort-row">
+      <span class="sort-label">{{ t("community.sortLabel") }}</span>
+      <button
+        v-for="s in SORTS" :key="s.key"
+        class="sort-btn" :class="{ on: sortMode === s.key }"
+        @click="pickSort(s.key)">
+        {{ t(s.tk) }}
+      </button>
+    </div>
+
     <!-- 动态流 -->
-    <article v-for="p in all" :key="p.id" class="post-card card">
+    <article v-for="p in shown" :key="p.id" class="post-card card">
       <div class="post-head">
         <n-avatar round :size="42" class="post-avatar">
           {{ p.sample ? "🌼" : "🙂" }}
@@ -466,6 +570,21 @@ const when = (ts) =>
           @click="react(p, r.key)">
           {{ t(r.tk) }} · {{ p.reacts[r.key] }}
         </n-button>
+      </div>
+
+      <!-- 浏览数 + 厌恶：厌恶 ÷ 浏览 达 1% 会被自动下架（假删除，数据仍在库里） -->
+      <!-- p.stats：只有库跑过迁移、真拿到统计字段才显示，避免未迁移时出现假的「0 次浏览」 -->
+      <div v-if="p.cloud && p.stats" class="post-foot">
+        <span class="post-views">&#128065; {{ t("community.views", { n: p.views || 0 }) }}</span>
+        <button
+          class="post-dis" :class="{ on: p.mine && p.mine.dislike }"
+          :disabled="!signedIn"
+          :title="signedIn ? t('community.dislikeHint') : t('community.dislikeSignIn')"
+          @click="dislike(p)">
+          &#128078; {{ p.reacts.dislike || 0 }}
+        </button>
+        <span v-if="p.reacts.dislike" class="post-ratio">{{ disPct(p) }}</span>
+        <span class="post-ratio-hint">{{ t("community.dislikeRule") }}</span>
       </div>
 
       <div class="cmt-toggle" @click="toggleCmt(p)">

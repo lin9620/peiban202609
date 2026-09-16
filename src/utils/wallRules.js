@@ -1,0 +1,190 @@
+/* 暖心墙进阶规则：纯逻辑层（不依赖 Vue / 浏览器 / 网络，Node 可直接单测）
+ * ------------------------------------------------------------
+ * 这里放四件事，全部是「输入 → 输出」的纯函数：
+ *   1. 排序：默认最新，另有 同感最多 / 抱抱最多 / 暖暖最多
+ *   2. 浏览去重：同一个访客对同一条帖，一天只记一次浏览
+ *   3. 厌恶比例与自动下架：厌恶数 ÷ 浏览数 ≥ 1% → 下架（数据库假删除）
+ *   4. 每日限额：每个用户每天最多发一条暖心墙内容
+ * 云端同名规则在 MIGRATION_wall_daily_view_dislike.sql 里用 SQL 再实现一遍
+ * （前端只是提示，服务端才是权威）；两边的判定口径必须一致，改动时同步。
+ */
+
+/* ══════════ 排序 ══════════ */
+
+/** 排序方式（顺序 = UI 上的按钮顺序），tk 为 i18n key */
+export const SORTS = [
+  { key: "new", tk: "community.sortNew" },
+  { key: "relate", tk: "community.sortRelate" },
+  { key: "hug", tk: "community.sortHug" },
+  { key: "warm", tk: "community.sortWarm" },
+];
+export const SORT_MODES = SORTS.map((s) => s.key);
+export const DEFAULT_SORT = "new";
+
+/** 帖子某个回应的计数（缺字段/脏数据一律当 0） */
+export function reactCount(post, kind) {
+  const r = post && post.reacts;
+  const n = r ? Number(r[kind]) : 0;
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/**
+ * 排序（不改动入参数组）。
+ *   - new    ：时间倒序（最新在前）
+ *   - 其它   ：该种回应多的在前；票数相同按时间倒序（新帖在前，避免「并列」时顺序看着随机）
+ * 未知模式一律回退 new —— 存档里存了老值 / 手改 localStorage 也不会让列表乱掉。
+ * @param {Array} list
+ * @param {string} mode
+ * @returns {Array} 新数组
+ */
+export function sortPosts(list, mode = DEFAULT_SORT) {
+  const arr = Array.isArray(list) ? list.slice() : [];
+  const m = SORT_MODES.includes(mode) ? mode : DEFAULT_SORT;
+  const byTime = (a, b) => (Number(b.ts) || 0) - (Number(a.ts) || 0);
+  if (m === "new") return arr.sort(byTime);
+  return arr.sort((a, b) => {
+    const d = reactCount(b, m) - reactCount(a, m);
+    return d !== 0 ? d : byTime(a, b);
+  });
+}
+
+/* ══════════ 浏览 ══════════ */
+
+export const VIEW_KEY = "warm-paws-views-v1";   // 浏览去重记录（按 UTC 日）
+export const ANON_KEY = "warm-paws-anon-v1";    // 未登录访客的匿名标识（云端浏览去重用）
+
+/** 帖子的唯一身份：云端帖用 dbId，本地帖用 id */
+export function postRef(post) {
+  if (!post) return "";
+  if (post.dbId != null) return String(post.dbId);
+  return post.id != null ? String(post.id) : "";
+}
+
+/**
+ * UTC 日期串（YYYY-MM-DD）。
+ * 与数据库 created_day / 浏览去重日统一用 UTC —— 前端与服务端判「今天」才不会错开。
+ */
+export function utcDay(ts = Date.now()) {
+  const d = new Date(Number(ts) || 0);
+  if (Number.isNaN(d.getTime())) return utcDay(0);
+  return d.toISOString().slice(0, 10);
+}
+
+/** 清理过期的浏览记录，只留今天的（localStorage 不会无限长大） */
+export function pruneStamps(stamps, day = utcDay()) {
+  const out = {};
+  const src = stamps && typeof stamps === "object" ? stamps : {};
+  for (const [k, v] of Object.entries(src)) {
+    if (v === day) out[k] = v;
+  }
+  return out;
+}
+
+/**
+ * 算出「这次需要 +1 浏览」的帖子。
+ * 同一个访客（登录用户 = uid；游客 = 本机匿名 id）对同一条帖，一天只算一次 ——
+ * 否则用户反复刷新就能把厌恶比例冲淡（下架规则就废了）。
+ *
+ * 本地记录刻意「只按帖」记（不带 viewer）：同一台设备先游客看、再登录看，
+ * 仍然只算一次，不会因为换个身份就把同一个人的浏览量算两遍。
+ * 真正的「多访客各算一次」由服务端 wall_post_views(post_id, viewer_key, day) 保证。
+ * @param {Object} stamps 现有记录 { [postRef]: "YYYY-MM-DD" }
+ * @param {Array} list 帖子
+ * @param {string} viewer 访客标识（未登录为空 → 不计数）
+ * @param {string} day UTC 日
+ * @returns {{stamps: Object, pending: Array}} pending 为需要 +1 的帖子（原对象）
+ */
+export function collectViews(stamps, list, viewer, day = utcDay()) {
+  const next = pruneStamps(stamps, day);
+  const pending = [];
+  if (!viewer) return { stamps: next, pending };
+  for (const p of Array.isArray(list) ? list : []) {
+    /* 示例帖是固定内容，不参与浏览统计（也不虚构任何数字） */
+    if (!p || p.sample || !postRef(p)) continue;
+    const k = postRef(p);
+    if (next[k] === day) continue;
+    next[k] = day;
+    pending.push(p);
+  }
+  return { stamps: next, pending };
+}
+
+/* ══════════ 厌恶比例 → 自动下架 ══════════ */
+
+export const DISLIKE_RATIO = 0.01;   // 1%：厌恶数 ÷ 浏览数 达到它即下架
+export const REMOVAL_MIN_VIEWS = 1;  // 严格按「比例」判：只要有浏览数就按比例算
+
+/**
+ * 厌恶比例。没有浏览数时返回 0 ——「0 次浏览 1 个厌恶」不构成比例，
+ * 不下架（保守：宁可不误伤）。
+ */
+export function dislikeRatio(views, dislikes) {
+  const v = Math.max(0, Number(views) || 0);
+  const d = Math.max(0, Number(dislikes) || 0);
+  if (v <= 0) return 0;
+  return Math.min(1, d / v);
+}
+
+/** 比例展示用百分比字符串，如 1.2% / 0.4% */
+export function ratioPct(views, dislikes) {
+  const r = dislikeRatio(views, dislikes);
+  return (Math.round(r * 1000) / 10).toFixed(1) + "%";
+}
+
+/** 是否达到下架线（1%）。示例帖不参与下架。 */
+export function shouldRemove(views, dislikes, post = null) {
+  if (post && post.sample) return false;
+  const v = Math.max(0, Number(views) || 0);
+  if (v < REMOVAL_MIN_VIEWS) return false;
+  return dislikeRatio(v, dislikes) >= DISLIKE_RATIO;
+}
+
+/** 假删除的帖子不进动态流 */
+export function isVisible(post) {
+  return !(post && post.removed);
+}
+
+/** 过滤掉已下架的帖子 */
+export function visibleOnly(list) {
+  return (Array.isArray(list) ? list : []).filter(isVisible);
+}
+
+/* ══════════ 每日限额（每用户每天最多一条） ══════════ */
+
+export const POST_DAY_KEY = "warm-paws-posted-day-v1";  // 本地模式：今天发过没有
+
+/**
+ * 该用户在这一天（UTC）是否已经发过云端帖。
+ * 用「列表里找」而不是额外查库：自己刚发的帖必然在最新一批里，
+ * 且帖子列表已在手上 —— 少一次网络往返，没跑迁移也能用。
+ */
+export function postedOnDay(list, userId, day = utcDay()) {
+  if (!userId) return false;
+  for (const p of Array.isArray(list) ? list : []) {
+    if (!p || !p.cloud || p.sample) continue;
+    if (p.userId !== userId) continue;
+    if (utcDay(p.ts) === day) return true;
+  }
+  return false;
+}
+
+/** 今天还能不能发（云端：看列表；本地：看本机记录） */
+export function canPostToday({ list = [], userId = "", day = utcDay(), localDay = "" } = {}) {
+  if (localDay === day) return false;
+  return !postedOnDay(list, userId, day);
+}
+
+/* ══════════ 云操作失败原因 ══════════ */
+
+/**
+ * 把云端错误信息归类，好给用户一句人话（而不是笼统的「失败」）。
+ * 每日限额由数据库触发器抛出 'wall_daily_limit'。
+ * @returns {"daily-limit"|"not-migrated"|""}
+ */
+export function errorKind(message) {
+  const m = String(message || "").toLowerCase();
+  if (m.includes("wall_daily_limit")) return "daily-limit";
+  /* 42703 = 列不存在；PGRST202 = 找不到 RPC（都是「还没跑迁移」的典型信号） */
+  if (m.includes("pgrst202") || m.includes("42703") || m.includes("does not exist")) return "not-migrated";
+  return "";
+}

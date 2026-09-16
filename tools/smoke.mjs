@@ -12,7 +12,7 @@ const targets = [
   "/src/components/FoodPainter.vue", "/src/components/SeasonFx.vue",
   "/src/utils/comments.js", "/src/utils/storage.js", "/src/utils/lottiePet.js",
   "/src/utils/snackGame.js",
-  "/src/utils/supabase.js", "/src/utils/wall.js",
+  "/src/utils/supabase.js", "/src/utils/wall.js", "/src/utils/wallRules.js",
   "/src/data/themes.js", "/src/data/pets.js", "/src/data/extras.js",
   "/src/stores/petStore.js",
   "/src/i18n.js",

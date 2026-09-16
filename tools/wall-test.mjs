@@ -81,5 +81,25 @@ ok("T18 canDelete 本地分支：仍按昵称判定（旧逻辑回归）", canDe
 ok("T19 canReadWall：未配置云端时为 false", canReadWall() === false);
 ok("T20 不变量：canReadWall=false ⇒ canUseWall=false", !canReadWall() ? canUseWall() === false : true);
 
+/* —— rowsToPosts：浏览数 / 厌恶 / 假删除（迁移后的新列） —— */
+const rv = rowsToPosts([{ id: 5, user_id: "u1", author_name: "A", body: "b", created_at: "2026-01-01T00:00:00Z", views: 42, dislikes: 3, removed: true }]);
+ok("T28 帖子映射：views/dislikes/removed 透传", rv[0].views === 42 && rv[0].dislikes === 3 && rv[0].removed === true);
+ok("T29 帖子映射：未迁移（无 views 列）时安全为 0", rowsToPosts([{ id: 5, body: "b" }], { 5: { hug: 1, dislike: 7 } })[0].views === 0);
+ok("T30 帖子映射：无 dislikes 列时退回回应行聚合值", rowsToPosts([{ id: 5, body: "b" }], { 5: { dislike: 7 } })[0].reacts.dislike === 7);
+
+/* —— aggregateReactions：dislike 也要聚合（mine 判定同理） —— */
+const ag2 = aggregateReactions([
+  { post_id: 7, user_id: "u1", kind: "dislike" },
+  { post_id: 7, user_id: "u2", kind: "dislike" },
+  { post_id: 7, user_id: "u1", kind: "hug" },
+], "u1");
+ok("T31 回应聚合：dislike 计数 + mine", ag2[7].dislike === 2 && ag2[7].mine.dislike === true && ag2[7].mine.hug === true);
+
+/* —— rowsToPosts：统计字段就绪标记（未迁移的库别显示假的「0 次浏览」） —— */
+const migrated = rowsToPosts([{ id: 5, body: "b", views: 5, dislikes: 1, removed: false }])[0];
+const legacy = rowsToPosts([{ id: 6, body: "b" }])[0];
+ok("T32 已迁移：stats=true（界面才显示浏览数/厌恶这一行）", migrated.stats === true && migrated.views === 5);
+ok("T33 未迁移：stats=false（不虚构 0 次浏览）", legacy.stats === false && legacy.views === 0);
+
 console.log(`\nTOTAL ${pass + fail}  PASS ${pass}  FAIL ${fail}`);
 process.exit(fail ? 1 : 0);

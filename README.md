@@ -33,7 +33,11 @@
 ### 💛 暖心墙
 留言 + 发图（自动压缩），用 **抱抱🫂 / 暖暖☀️ / 同感🤝** 代替点赞（每种回应每人限一次）
 - **每条帖子都有评论区**：可回复 / 删除自己的评论，示范评论只在首次访问注入一次（删了就不会复活）
-- 评论逻辑抽成纯函数模块 `src/utils/comments.js`（注入幂等 / 200 字截断 / 权限校验 / 脏数据兜底），配 15 项 Node 单元测试
+- 评论逻辑抽成纯函数模块 `src/utils/comments.js`（注入幂等 / 200 字截断 / 权限校验 / 脏数据兜底）
+- **排序**：默认「最新」，另有「同感最多 / 抱抱最多 / 暖暖最多」（票数相同按时间倒序，选择持久化）→ `src/utils/wallRules.js`
+- **每人每天最多一条**：前端即时提示 + 数据库触发器兜底（`wall_daily_limit`，UTC 日）；删掉今天那条可以重发
+- **浏览次数**：同一访客对同一条帖一天只算一次（登录用户按 uid、游客按本机匿名 id），服务端 `wall_post_views` 再去重一次，刷新页面刷不高
+- **厌恶 🙁 与自动下架**：登录后可点「不喜欢」；当 **厌恶数 ÷ 浏览数 ≥ 1%** 时帖子自动**下架**（数据库**假删除**：`removed = true`，数据仍在库里，前台不再展示，不再自动恢复以免忽隐忽现）
 - **可选云端模式**：连接 Supabase 后帖子 / 评论 / 回应真·多人共享，图片上传 Storage，邮箱注册登录；未配置时自动降级本地模式（见下方配置章节）
 
 ### 👤 我的
@@ -60,7 +64,8 @@
 
 ```bash
 node tools/comment-test.mjs   # 评论系统纯函数单测（26 项：二级回复/parentId 封顶/级联删除/评论数兜底）
-node tools/wall-test.mjs      # 暖心墙云端数据层纯函数单测（27 项：行映射/二级字段/评论数聚合）
+node tools/wall-test.mjs      # 暖心墙云端数据层纯函数单测（31 项：行映射/二级字段/评论数聚合/浏览与厌恶字段）
+node tools/wall-rules-test.mjs # 暖心墙进阶规则纯函数单测（25 项：排序/浏览去重/1% 下架/每日一条/错误归类）
 node tools/i18n-test.mjs      # 文案完整性与插值回归（19 项：en/zh 键集合对称、修复过的 key、$ 特殊字符）
 node tools/snack-test.mjs     # 零食雨游戏纯逻辑单测（20 项：难度曲线/生成/碰撞/结算上限）
 node tools/seo-test.mjs       # SEO 资产检查（35 项：robots/sitemap/OG 标签/PNG 尺寸/安全头/产物）
@@ -68,8 +73,8 @@ node tools/image-fit.mjs       # 图片纯函数单测（20 项：尺寸缩放/�
 node tools/undef-check.mjs    # 静态检查「用了项目内导出符号但没导入」（白屏元凶），报告写 undef-report.txt
 node tools/arity-test.mjs     # 静态检查「模板/同文件自调用 参数个数 < 函数签名必填参数」（undefined 崩溃元凶）
 node tools/cloud-verify.mjs   # Supabase 连通性：Auth/四张表/Storage桶/RLS（需先配好 .env）
-node tools/cloud-e2e.mjs      # 云端全链路实测：注册→建档→发帖→评论→二级回复(层级/级联/计数)→回应→权限→清理（会造测试数据并清理）
-node tools/smoke.mjs          # 模块冒烟：需 dev 服务器在跑，探测 29 个关键模块 + 5 个 SEO 静态文件
+node tools/cloud-e2e.mjs      # 云端全链路实测：注册→建档→发帖→评论→二级回复(层级/级联/计数)→回应→权限→浏览去重→厌恶下架→每日一条→清理（会造测试数据并清理）
+node tools/smoke.mjs          # 模块冒烟：需 dev 服务器在跑，探测 30 个关键模块 + 5 个 SEO 静态文件
 node tools/live-check.mjs     # 线上部署验证：页面/缓存/安全头/SEO 资产（部署后跑，应输出 LIVE ALL PASS）
 node tools/online-check.mjs   # 旧版线上检查（已被 live-check 替代，如无特别需要可忽略）
 node tools/mood-test.mjs      # 心情打卡纯逻辑单测（12 项：连续天数/死循环回归）
@@ -91,10 +96,15 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 云端功能是**可选的**：不配置时网站完全以本地模式运行（行为与单机版一致）。
 
 **① 建库**：注册 [supabase.com](https://supabase.com) → New Project（免费）→ 左侧 **SQL Editor** → 粘贴 `SUPABASE_SETUP.sql` 全部内容 → Run。这会创建：
-- `profiles`（注册自动建档）· `wall_posts` · `wall_comments`（二级评论：`parent_id` 自关联 + `reply_to_name`）· `wall_reactions`（含全套 RLS 策略）
+- `profiles`（注册自动建档）· `wall_posts`（含 `views` 浏览数 / `dislikes` 厌恶数 / `removed` 假删除 / `created_day` 每日限额）· `wall_comments`（二级评论：`parent_id` 自关联 + `reply_to_name`）· `wall_reactions`（回应，`kind` 含 `dislike`）· `wall_post_views`（浏览去重，全套 RLS 策略）
+- 函数与触发器：`wall_daily_limit()`（每人每天一条）· `wall_add_view()` · `wall_toggle_dislike()`（含 1% 自动下架）
 - Storage 桶 `wall-images`（公开读、登录上传、只能改删自己路径）
 
-> **已经建过库的老用户**：评论改成二级结构后要跑一次增量迁移 —— SQL Editor 里粘贴 `MIGRATION_two_level_comments.sql` 全部内容 → Run（幂等，重复跑无副作用；旧评论不需要回填，会当一级评论正常显示）。
+> **已经建过库的老用户**：按顺序跑两个增量迁移（都在 SQL Editor 里粘贴全部内容 → Run，幂等、可重复跑）：
+> 1. `MIGRATION_two_level_comments.sql` —— 评论改成二级结构（旧评论不用回填，会当一级评论正常显示）
+> 2. `MIGRATION_wall_daily_view_dislike.sql` —— 每日一条 + 浏览数 + 厌恶与 1% 自动下架
+>
+> 没跑第 2 个时：查看看板、发帖、评论一切照旧（浏览数不显示、点厌恶会出现「这个功能还没开启」提示），不会报错白屏。
 
 **② 配置密钥**（二选一，anon key 是公开密钥，安全由 RLS 保证）：
 - 左侧 **Settings → API** 复制 `Project URL` 和 `anon public key`，然后：
@@ -212,6 +222,8 @@ src/
     daily.js           按日期轮换工具
     lottiePet.js       Lottie 动画工厂（运行时生成 5 种宠物的矢量动画）
     snackGame.js       零食雨游戏纯逻辑（坐标系 0~1、随机源可注入 → Node 可单测）
+    wall.js            暖心墙云端数据层（行映射 / 上传 / 浏览 / 厌恶 / 评论计数）
+    wallRules.js       暖心墙进阶规则纯逻辑（排序 / 浏览去重 / 1% 下架 / 每日一条）
   stores/petStore.js   宠物状态机（多宠物 / 养成 / 食谱 / 任务 / 心情打卡）
   components/
     LottiePet.vue      Lottie 渲染器（预设宠物动画）
@@ -242,7 +254,7 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 | 体验 | `#/` 路由直接访问 `/pet` 会 404 | 迁移到 history 模式 + 每条路由独立静态 HTML + SPA 回退 | `router.js` / `vite.config.js` / `wrangler.jsonc` |
 | 体验 | 「在线陪伴数」是本地随机数，易误导 | 去掉虚构人数，改如实文案（路线图保留"等有真实统计再接"） | `views/HomeView.vue` / `i18n.js` |
 
-回归验证（全部本地可跑）：`uifix-test` 20 项 · `image-fit` 20 项 · `comment-test` 17 项 · `wall-test` 20 项 ·`snack-test` 20 项 · `mood-test` 12 项 · `seo-test` 35 项 · `undef-check`。
+回归验证（全部本地可跑）：`wall-rules-test` 25 项 · `comment-test` 26 项 · `wall-test` 31 项 · `uifix-test` 20 项 · `image-fit` 20 项 · `snack-test` 20 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `arity-test` 8 项 · `seo-test` 35 项 · `undef-check`。
 
 ## 🗺️ 路线图
 

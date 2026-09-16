@@ -147,7 +147,86 @@ if (hasParent) {
   }
 }
 
-/* 清理：删帖（cascade 带走回应），删除档案 */
+/* T16~T25 进阶规则实测：浏览去重 / 厌恶→1% 下架 / 每人每天一条（未迁移则 SKIP） */
+let hasAdvanced = false;
+{
+  const { error } = await sb.from("wall_posts").select("views,dislikes,removed,created_day").limit(1);
+  hasAdvanced = !error;
+  if (hasAdvanced) { pass++; console.log("PASS  T16 迁移已就绪（wall_posts.views/dislikes/removed/created_day 存在）"); }
+  else console.log("SKIP  T16 未跑 MIGRATION_wall_daily_view_dislike.sql：跳过进阶规则测试（" + error.message + "）");
+}
+
+if (hasAdvanced) {
+  /* T17 浏览去重：同一访客同一天调两次，只 +1 */
+  {
+    const { data: before } = await sb.from("wall_posts").select("views").eq("id", postId).maybeSingle();
+    const v0 = before ? before.views : 0;
+    const v1 = await sb.rpc("wall_add_view", { p_post: postId, p_viewer: "e2e-viewer-1" });
+    const v2 = await sb.rpc("wall_add_view", { p_post: postId, p_viewer: "e2e-viewer-1" });
+    const counted = [v1.data && v1.data.counted, v2.data && v2.data.counted];
+    const views = v1.data ? v1.data.views : -1;
+    ok("T17 同一访客同一天只记一次浏览（第二次 counted=false，浏览数不涨）",
+      !v1.error && !v2.error && counted[0] === true && counted[1] === false && views === v0 + 1,
+      "views " + v0 + " → " + views + " counted=" + JSON.stringify(counted));
+  }
+
+  /* T18 换个访客再调：该 +1（多人浏览都算数） */
+  {
+    const r = await sb.rpc("wall_add_view", { p_post: postId, p_viewer: "e2e-viewer-2" });
+    ok("T18 不同访客各算一次浏览", !r.error && r.data && r.data.counted === true && r.data.views === 2,
+      r.error ? r.error.message : "views=" + (r.data ? r.data.views : "?"));
+  }
+
+  /* T19 厌恶切换 + 1% 自动下架（此刻 2 浏览 1 厌恶 = 50% ≥ 1% → 假删除） */
+  {
+    const on = await sb.rpc("wall_toggle_dislike", { p_post: postId });
+    const removed = !!(on.data && on.data.removed);
+    ok("T19 厌恶生效：计数写入 + 达到 1% 即下架（removed=true）",
+      !on.error && on.data && on.data.on === true && on.data.dislikes === 1 && removed,
+      on.error ? on.error.message : JSON.stringify(on.data));
+
+    /* 帖子行仍在库里（假删除：前台看不见，数据没丢） */
+    const { data: row } = await sb.from("wall_posts").select("removed,views,dislikes").eq("id", postId).maybeSingle();
+    ok("T20 假删除：行还在，只是 removed=true（不是物理删除）",
+      !!row && row.removed === true && row.dislikes === 1, row ? JSON.stringify(row) : "行不见了?!");
+
+    /* 取消厌恶：计数回 0；已下架状态保持（避免比例摆动让帖子忽隐忽现） */
+    const off = await sb.rpc("wall_toggle_dislike", { p_post: postId });
+    ok("T21 取消厌恶：dislikes 归零，下架状态保持（不自动恢复）",
+      !off.error && off.data && off.data.on === false && off.data.dislikes === 0 && off.data.removed === true,
+      off.error ? off.error.message : JSON.stringify(off.data));
+
+    /* 看板的读写路径都不该再看到它（已跑迁移时查询带 removed=false 过滤） */
+    const { data: visible } = await sb.from("wall_posts").select("id").eq("removed", false).eq("id", postId);
+    ok("T22 下架帖不出现在「未下架」查询里（前台动态流的取数口径）",
+      !visible || visible.length === 0, "visible rows=" + (visible ? visible.length : -1));
+  }
+
+  /* T23~T25 每个用户每天最多一条 */
+  {
+    const { error: e1 } = await sb.from("wall_posts")
+      .insert({ user_id: uid, author_name: NICK, body: "同一天的第二条应该被拒" });
+    ok("T23 同日第二条被触发器拒绝（wall_daily_limit）",
+      !!e1 && String(e1.message).includes("wall_daily_limit"), e1 ? e1.message : "竟然插进去了?!");
+
+    /* 限额是「每天一条」而不是「终身一条」：删掉今天的帖后可以再发 */
+    await sb.from("wall_posts").delete().eq("id", postId);
+    const { data: again, error: e2 } = await sb.from("wall_posts")
+      .insert({ user_id: uid, author_name: NICK, body: "删掉旧帖后重新发" })
+      .select("*").single();
+    ok("T24 删掉今天的帖后可以重新发（限额按天算，历史帖数清了就放开）",
+      !e2 && !!again, e2 ? e2.message : "");
+    if (again) postId = again.id;
+
+    /* created_day 由数据库自动填（UTC 日） */
+    const { data: day } = await sb.from("wall_posts").select("created_day").eq("id", postId).maybeSingle();
+    ok("T25 created_day 自动填 UTC 日（前端与库判「今天」口径一致）",
+      !!day && typeof day.created_day === "string" && day.created_day.length === 10,
+      day ? "created_day=" + day.created_day : "");
+  }
+}
+
+/* 清理：删帖（cascade 带走回应/浏览记录），删除档案 */
 {
   await sb.from("wall_posts").delete().eq("id", postId);
   await sb.from("profiles").delete().eq("id", uid);
