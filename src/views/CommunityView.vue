@@ -525,7 +525,7 @@ const when = (ts) =>
             <n-input
               v-model:value="repDraft[repKey(p, cm)]"
               round size="small"
-              :placeholder="repPlaceholder(cm)"
+              :placeholder="repPlaceholder(p, cm)"
               :maxlength="MAX_LEN"
               @keyup.enter="sendCmt(p, cm)" />
             <n-button type="primary" size="small" round @click="sendCmt(p, cm)">
