@@ -3,7 +3,7 @@
  * 只是「壳」：能不能进、能看什么、能改什么，全部由数据库的 is_admin()/RLS 把关。
  * 非管理员：is_admin() → false → 只看到「没有权限」，拿不到任何数字。
  */
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, watch } from "vue";
 import { NButton, NTag } from "naive-ui";
 import { t } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
@@ -53,7 +53,12 @@ async function load() {
     err.value = (e && e.message) || "error";
   }
 }
-onMounted(load);
+/* 跟随登录态：直接打开 /admin（书签 / 刷新）时 Auth 可能还没就绪 —— 就绪后自动加载；
+ * 确认未登录时显示「没有权限」（保持与旧 onMounted 版本一致的语义） */
+watch(signedIn, (ok) => {
+  if (ok) load();
+  else state.value = "denied";
+}, { immediate: true });
 
 function fail(e) {
   actionMsg.value = t("admin.fail", { r: (e && e.message) || "" });

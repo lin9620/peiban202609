@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, watch } from "vue";
 import { NButton, NInput, NAvatar, NTag, NProgress } from "naive-ui";
 import { t } from "../i18n.js";
 import { getItem, setItem, removeItem } from "../utils/storage.js";
@@ -23,15 +23,24 @@ const signedIn = computed(() => cloudSigned.value || !!nickname.value.trim());
 const displayName = computed(() => (cloudSigned.value ? (cloud.nickname || nickname.value) : nickname.value));
 const streak = computed(() => moodStreak());
 
-/* 管理中心入口：仅数据库认定的管理员可见（is_admin()；失败一律当不是） */
+/* 管理中心入口：仅数据库认定的管理员可见（is_admin()；失败一律当不是）。
+ * 跟随登录态重新判定 —— 登录表单就在本页，组件挂载时常常还没登录 / Auth 还没就绪 */
 const isAdmin = ref(false);
-onMounted(async () => {
-  try {
-    isAdmin.value = !!(cloud.ready && cloud.user) && (await db.amAdmin()) === true;
-  } catch (e) {
-    isAdmin.value = false;
-  }
-});
+watch(
+  () => [cloud.ready, cloud.user && cloud.user.id],
+  async ([ready, uid]) => {
+    if (!ready || !uid) {
+      isAdmin.value = false;
+      return;
+    }
+    try {
+      isAdmin.value = (await db.amAdmin()) === true;
+    } catch (e) {
+      isAdmin.value = false;
+    }
+  },
+  { immediate: true },
+);
 
 /* —— 邮箱登录 / 注册（云端就绪时显示） —— */
 const authMode = ref("signin");           // signin | signup

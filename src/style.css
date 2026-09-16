@@ -449,6 +449,15 @@ button, input, textarea { font-family: inherit; }
 .row-between { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .soft-tag { background: rgba(255, 255, 255, .78) !important; color: var(--ink-soft) !important; font-weight: 700; }
+/* 管理中心入口（仅管理员可见，「我的」页头像卡操作行） */
+.admin-entry {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: 999px;
+  background: rgba(255, 255, 255, .78); border: 1px solid rgba(240, 132, 47, .35);
+  color: var(--accent-deep); font-weight: 700; font-size: 13px; text-decoration: none;
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.admin-entry:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(240, 132, 47, .18); }
 .topbar-right { display: flex; align-items: center; gap: 8px; }
 .brand-text { display: block; }
 
