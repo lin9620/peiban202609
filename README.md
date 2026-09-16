@@ -103,17 +103,17 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 云端功能是**可选的**：不配置时网站完全以本地模式运行（行为与单机版一致）。
 
 **① 建库**：注册 [supabase.com](https://supabase.com) → New Project（免费）→ 左侧 **SQL Editor** → 粘贴 `SUPABASE_SETUP.sql` 全部内容 → Run。这会创建：
-- `profiles`（注册自动建档）· `wall_posts`（含 `views` 浏览数 / `dislikes` 厌恶数 / `removed` 假删除 / `created_day` 每日限额）· `wall_comments`（二级评论：`parent_id` 自关联 + `reply_to_name`）· `wall_reactions`（回应，`kind` 含 `dislike`）· `wall_post_views`（浏览去重，全套 RLS 策略）· `pet_profiles`（宠物主页镜像：`data` 只放展示快照 + `pats`/`feeds` 互动计数**独立列**）· `pet_interactions`（互动去重，每人每天每种一次）
-- 函数与触发器：`wall_daily_limit()`（每人每天一条）· `wall_add_view()` · `wall_toggle_dislike()`（含 1% 自动下架）
+- `profiles`（注册自动建档）· `wall_posts`（含 `views` 浏览数 / `dislikes` 厌恶数 / `removed` 假删除 / `created_day` 每日限额）· `wall_comments`（二级评论：`parent_id` 自关联 + `reply_to_name`）· `wall_reactions`（回应，`kind` 含 `dislike`）· `wall_post_views`（浏览去重，全套 RLS 策略）· `pet_profiles`（宠物主页镜像：`data` 只放展示快照 + `pats`/`feeds` 互动计数**独立列**）· `pet_interactions`（互动去重，每人每天每种一次）· `admin_users`（管理员白名单，无公开读策略）
+- 函数与触发器：`wall_daily_limit()`（每人每天一条）· `wall_add_view()` · `wall_toggle_dislike()`（含 1% 自动下架）· `pet_interact()`（摸头/投喂）· `is_admin()` / `admin_overview()`（管理中心；非管理员调用只拿 `{admin:false}`）
 - Storage 桶 `wall-images`（公开读、登录上传、只能改删自己路径；**帖子配图与宠物立绘 / 手绘菜图共用此桶**——宠物图放 `<uid>/pet-<hash>.<ext>`，云端快照里只留路径、不留 dataURL，一行只有几百字节）
 
-> **已经建过库的老用户**：按顺序跑两个增量迁移（都在 SQL Editor 里粘贴全部内容 → Run，幂等、可重复跑）：
+> **已经建过库的老用户**：按顺序跑三个增量迁移（都在 SQL Editor 里粘贴全部内容 → Run，幂等、可重复跑）：
 > 1. `MIGRATION_two_level_comments.sql` —— 评论改成二级结构（旧评论不用回填，会当一级评论正常显示）
 > 2. `MIGRATION_wall_daily_view_dislike.sql` —— 每日一条 + 浏览数 + 厌恶与 1% 自动下架
 >
 > 没跑第 2 个时：查看看板、发帖、评论一切照旧（浏览数不显示、点厌恶会出现「这个功能还没开启」提示），不会报错白屏。
 >
-> 3. `MIGRATION_admin.sql` —— **管理中心**：`admin_users` 管理员白名单表 + `is_admin()` / `admin_overview()` 函数 + 管理员治理策略（读已下架帖 / 下架恢复 / 删帖删评；顺带把 `wall_posts` 的匿名读策略收紧为「未下架」）。跑完后执行文件末尾注释里的 `insert into admin_users ...`（换成你的注册邮箱）把自己设为管理员，然后访问 `/admin`（「我的」页会出现管理中心入口，仅管理员可见）。
+> 3. `MIGRATION_admin.sql` —— **管理中心**：`admin_users` 管理员白名单表 + `is_admin()` / `admin_overview()` 函数 + 管理员治理策略（读已下架帖 / 下架恢复 / 删帖删评；顺带把 `wall_posts` 的匿名读策略收紧为「未下架」）。跑完后执行文件末尾注释里的 `insert into admin_users ...`（换成你的注册邮箱）把自己设为管理员，然后访问 `/admin`（「我的」页会出现管理中心入口，仅管理员可见）；仓库里的 `MIGRATION_add_admin.sql` 就是这一步的现成示例（按昵称 / 按邮箱两种写法，复制即跑）。
 
 **② 配置密钥**（二选一，anon key 是公开密钥，安全由 RLS 保证）：
 - 左侧 **Settings → API** 复制 `Project URL` 和 `anon public key`，然后：
