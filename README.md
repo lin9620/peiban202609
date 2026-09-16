@@ -73,7 +73,8 @@ node tools/api-contract-test.mjs # 云端数据访问适配层契约测试（36 
 node tools/gateway-contract-test.mjs # 网关模式前端侧契约测试（30 项：/api/* 端点形状 / 鉴权头 / 计数红线 / 错误上抛）
 node tools/worker-test.mjs    # API 网关 Worker 契约测试（53 项：/api/* → Supabase REST 翻译形状 / JWT 透传 / PGRST116→null / 路径穿越防护）
 node tools/i18n-test.mjs      # 文案完整性与插值回归（19 项：en/zh 键集合对称、修复过的 key、$ 特殊字符）
-node tools/admin-test.mjs     # 管理中心纯函数单测（36 项：admin:false 兜底 / 字段缺省 / 趋势图 14 天补零 / 行规整）
+node tools/admin-test.mjs     # 管理中心纯函数单测（39 项：admin:false 兜底 / 字段缺省 / 趋势图 14 天补零 / 行规整 / 北京时间口径）
+node tools/auth-test.mjs      # 登录规则单测（48 项：邮箱密码校验 / Google 昵称兜底 / 重置邮件链接解析与失效识别 / 回跳地址 / 页面接线）
 node tools/snack-test.mjs     # 零食雨游戏纯逻辑单测（20 项：难度曲线/生成/碰撞/结算上限）
 node tools/seo-test.mjs       # SEO 资产检查（35 项：robots/sitemap/OG 标签/PNG 尺寸/安全头/产物）
 node tools/image-fit.mjs       # 图片纯函数单测（20 项：尺寸缩放/形状体检/文件预检/dataURL 校验）
@@ -128,6 +129,12 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
   ```
 
 **③ 生效**：重启 `dev.cmd`。右上角会出现 👤 登录入口（「我的」页有邮箱注册/登录表单）；暖心墙自动切换为云端模式——发帖、评论、回应真·多人共享，图片上传到 Storage。想退回本地模式，删掉配置文件即可。
+
+**③b 忘记密码与 Google 一键登录（可选，各需后台开一次）**
+
+- **忘记密码**：登录表单上有「忘记密码」→ 填邮箱 → Supabase 发重置链接 → 点开链接回到 `/profile`，页面显示「设置新密码」，保存后即已登录。链接带 `redirect_to`，因此必须把站点地址加进白名单（否则会停在 Supabase 域名上）。
+- **Google 一键登录**：需在 Supabase Dashboard → Authentication → Providers → **Google** 开启并填 Client ID / Secret；Google Cloud Console 的 **Authorized redirect URI** 填 `https://<项目>.supabase.co/auth/v1/callback`（不是本站地址）。开启后登录卡片上会出现「使用 Google 登录」按钮，一键跳转，回来即已登录；昵称按 `full_name / name → 邮箱前缀` 兜底（Google 不返回 nickname）。
+- 两者都要求 **Authentication → URL Configuration**：Site URL 填线上地址，Redirect URLs 加 `https://dale.de5.net/**` 与 `http://localhost:5173/**`（与下方「上线检查清单」同一条要求）。
 
 > 说明：新注册用户需到邮箱确认验证邮件（Supabase 默认开启）。若要关闭验证：Dashboard → Authentication → Providers → Email → Confirm email 关闭。
 

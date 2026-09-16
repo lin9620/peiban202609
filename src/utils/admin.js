@@ -79,13 +79,15 @@ export function sumReactions(raw) {
 }
 
 /* 时区口径：全站按北京时间（Asia/Shanghai）——与 admin_overview() 的
- * 「今日 / 近 14 天」切日一致；不再直接截 UTC 字符串（每天 0-8 点会显示成前一天）。 */
+ * 「今日 / 近 14 天」切日一致；不再直接截 UTC 字符串（每天 0-8 点会显示成前一天）。
+ * 只认 ISO 字符串与 Date 实例：数字（42）当时间戳会得到 1970 年，属于「瞎猜」，
+ * 一律返回空串，让页面显示成空缺而不是一个假日期。 */
 const TZ = "Asia/Shanghai";
 const FMT_DATE = new Intl.DateTimeFormat("sv", { timeZone: TZ });
 const FMT_TIME = new Intl.DateTimeFormat("sv", { timeZone: TZ, hour: "2-digit", minute: "2-digit" });
 const toDate = (ts) => {
-  if (typeof ts !== "string" || !ts) return null;
-  const d = new Date(ts);
+  const d = ts instanceof Date ? ts : (typeof ts === "string" && ts ? new Date(ts) : null);
+  if (!d) return null;
   return Number.isNaN(d.getTime()) ? null : d;
 };
 
