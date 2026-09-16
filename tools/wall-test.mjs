@@ -45,6 +45,7 @@ ok("T11 回应聚合：空/脏输入安全", Object.keys(aggregateReactions([]))
 /* —— rowsToComments —— */
 const rc = rowsToComments([{ id: 3, post_id: 7, user_id: "u1", author_name: "Bean", body: "hey", created_at: "2026-01-02T00:00:00Z" }]);
 ok("T12 评论映射：id/dbId/name/text/cloud", rc[0].id === "c3" && rc[0].dbId === 3 && rc[0].name === "Bean" && rc[0].text === "hey" && rc[0].cloud === true);
+ok("T32 评论映射：userId 透传（评论区作者名可点进 TA 的主页）", rc[0].userId === "u1" && rowsToComments(null).length === 0);
 ok("T13 评论映射：非数组安全", rowsToComments("x").length === 0);
 
 /* —— rowsToComments：二级评论（parent_id / reply_to_name） —— */

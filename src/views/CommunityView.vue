@@ -637,7 +637,9 @@ const when = (ts) =>
         <!-- 一级评论 -->
         <div v-for="cm in listFor(p)" :key="cm.id" class="cmt-item">
           <div class="cmt-head">
-            <b>{{ cm.name }}</b><span>{{ when(cm.ts) }}</span>
+            <b :class="{ clickable: canOpen(cm) }"
+               :title="canOpen(cm) ? t('community.viewHome') : ''"
+               @click="goProfile(cm)">{{ cm.name }}</b><span>{{ when(cm.ts) }}</span>
             <button
               v-if="canDel(cm)"
               class="cmt-del" :title="t('common.delete')"
@@ -660,7 +662,9 @@ const when = (ts) =>
           <div v-if="isRepOpen(p, cm) && repliesN(p, cm)" class="cmt-reps">
             <div v-for="rp in repliesFor(p, cm)" :key="rp.id" class="cmt-rep">
               <div class="cmt-head">
-                <b>{{ rp.name }}<span class="cmt-at" v-if="rp.replyTo">@{{ rp.replyTo }}</span></b>
+                <b><span :class="{ clickable: canOpen(rp) }"
+                        :title="canOpen(rp) ? t('community.viewHome') : ''"
+                        @click="goProfile(rp)">{{ rp.name }}</span><span class="cmt-at" v-if="rp.replyTo">@{{ rp.replyTo }}</span></b>
                 <span>{{ when(rp.ts) }}</span>
                 <button
                   v-if="canDel(rp)"

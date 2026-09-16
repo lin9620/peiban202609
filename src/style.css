@@ -914,6 +914,11 @@ html[data-theme="night"] .crash-msg { background: rgba(139, 156, 232, .12); }
 .post-avatar.clickable:hover { transform: scale(1.08); box-shadow: 0 4px 14px rgba(31, 42, 68, .14); }
 .post-name.clickable { cursor: pointer; }
 .post-name.clickable:hover { color: var(--accent-deep); text-decoration: underline; text-underline-offset: 3px; }
+/* 评论（含回复）作者名 → TA 的主页；本地/未登录的评论没有 userId，不给手型 */
+.cmt-head b.clickable, .cmt-head b .clickable { cursor: pointer; }
+.cmt-head b.clickable:hover, .cmt-head b .clickable:hover {
+  color: var(--accent-deep); text-decoration: underline; text-underline-offset: 3px;
+}
 
 /* 帖子上的回应小徽章（主页只读展示用） */
 .r-chip {
