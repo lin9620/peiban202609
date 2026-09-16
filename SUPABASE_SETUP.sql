@@ -310,4 +310,69 @@ end $$;
 grant execute on function public.wall_add_view(bigint, text) to anon, authenticated;
 grant execute on function public.wall_toggle_dislike(bigint) to authenticated;
 
+-- 7) 主页的伙伴（/u/:id）：宠物 + 手绘厨房镜像 + 访客互动
+create table if not exists public.pet_profiles (
+  user_id    uuid primary key references public.profiles (id) on delete cascade,
+  data       jsonb not null default '{"pet":null,"dishes":[],"counts":{"pats":0,"feeds":0}}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.pet_profiles enable row level security;
+
+drop policy if exists "pet profiles readable by all" on public.pet_profiles;
+create policy "pet profiles readable by all" on public.pet_profiles
+  for select using (true);
+
+drop policy if exists "pet profiles owner writes" on public.pet_profiles;
+create policy "pet profiles owner writes" on public.pet_profiles
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create table if not exists public.pet_interactions (
+  owner_id   uuid not null references public.profiles (id) on delete cascade,
+  viewer_key text  not null,
+  day        date  not null default (timezone('utc', now()))::date,
+  kind       text  not null check (kind in ('pat', 'feed')),
+  created_at timestamptz not null default now(),
+  primary key (owner_id, viewer_key, day, kind)
+);
+
+alter table public.pet_interactions enable row level security;
+
+drop policy if exists "pet interactions readable by all" on public.pet_interactions;
+create policy "pet interactions readable by all" on public.pet_interactions
+  for select using (true);
+
+create or replace function public.pet_interact(p_owner uuid, p_kind text, p_viewer text default '')
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_viewer  text := coalesce(nullif(trim(coalesce(p_viewer, '')), ''),
+                             coalesce(auth.uid()::text, 'anon'));
+  v_counted boolean;
+  v_counts  jsonb;
+begin
+  if p_kind not in ('pat', 'feed') then
+    return jsonb_build_object('ok', false, 'reason', 'bad-kind');
+  end if;
+
+  insert into public.pet_interactions (owner_id, viewer_key, kind)
+  values (p_owner, v_viewer, p_kind)
+  on conflict do nothing;
+  v_counted := found;
+
+  if v_counted then
+    update public.pet_profiles
+      set data = jsonb_set(data, array['counts', p_kind],
+                           coalesce((data->'counts'->>p_kind)::int, 0) + 1)
+      where user_id = p_owner;
+  end if;
+
+  select coalesce(data->'counts', '{"pats":0,"feeds":0}'::jsonb) into v_counts
+    from public.pet_profiles where user_id = p_owner;
+
+  return jsonb_build_object('ok', true, 'counted', v_counted,
+                            'counts', coalesce(v_counts, '{"pats":0,"feeds":0}'::jsonb));
+end $$;
+
+grant execute on function public.pet_interact(uuid, text, text) to anon, authenticated;
+
 -- 完成 ✅ 接下来在项目根目录配置 URL 和 anon key（见 README「Supabase 配置」）

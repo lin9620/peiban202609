@@ -466,3 +466,164 @@ export async function cloudFetchUserPosts(userId, limit = 50) {
     return null;
   }
 }
+
+/* ═════════ 主页的伙伴：宠物 + 手绘厨房（镜像同步 + 访客互动） ══════════ */
+
+/** 主页展示的手绘料理上限（菜图是 320×240 JPEG dataURL，12 道已够一屏，也控住快照体积） */
+export const PET_HOME_DISH_LIMIT = 12;
+/** 单张菜图 dataURL 的长度上限（异常大的直接跳过，不拖垮整个快照） */
+const DISH_IMG_MAX = 200000;
+
+/**
+ * 清洗手绘料理列表：只留有效的 {id,name,img,effort}，截到上限。
+ * 纯函数（单测覆盖：非图片 dataURL / 超长图 / 脏字段都被过滤）。
+ */
+export function cleanDishes(list, limit = PET_HOME_DISH_LIMIT) {
+  const out = [];
+  if (!Array.isArray(list)) return out;
+  for (const d of list) {
+    if (!d || typeof d !== "object") continue;
+    const img = typeof d.img === "string" ? d.img : "";
+    if (!img.startsWith("data:image/") || img.length > DISH_IMG_MAX) continue;
+    out.push({
+      id: String(d.id == null ? "" : d.id).slice(0, 40),
+      name: String(d.name == null ? "" : d.name).slice(0, 30),
+      img,
+      effort: Math.max(0, Number(d.effort) || 0),
+    });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+/**
+ * 宠物主页快照（发到云端的「最小公开面」）：
+ * 只带展示需要的字段，不带亲密度/金币/心情日记等私人数据。
+ * @returns {object|null}
+ */
+export function petHomeSnapshot(pet, dishes, now = Date.now()) {
+  if (!pet || typeof pet !== "object") return null;
+  const custom =
+    pet.custom && typeof pet.custom === "object" && typeof pet.custom.img === "string" && pet.custom.img
+      ? { img: pet.custom.img }
+      : null;
+  return {
+    pet: {
+      species: String(pet.species || "cat").slice(0, 20),
+      name: String(pet.name || "Guest").slice(0, 30),
+      personality: String(pet.personality || "").slice(0, 30),
+      level: Math.max(1, Number(pet.level) || 1),
+      sleeping: pet.sleeping === true,
+      custom, // 用户上传的立绘（dataURL）
+    },
+    dishes: cleanDishes(dishes),
+    updated: now,
+  };
+}
+
+/** 统一云端快照的形状（行不存在/字段缺失都给默认值） */
+function petHomeFromData(data) {
+  const d = data && typeof data === "object" ? data : {};
+  const c = d.counts && typeof d.counts === "object" ? d.counts : {};
+  return {
+    pet: d.pet && typeof d.pet === "object" ? d.pet : null,
+    dishes: Array.isArray(d.dishes) ? d.dishes : [],
+    counts: {
+      pats: Math.max(0, Number(c.pats) || 0),
+      feeds: Math.max(0, Number(c.feeds) || 0),
+    },
+    updated: Number(d.updated) || 0,
+  };
+}
+
+/**
+ * 拉某用户的宠物主页（匿名可读；未跑迁移 → null，调用方隐藏区块即可）。
+ */
+export async function cloudGetPetHome(userId) {
+  if (!canReadWall() || !userId) return null;
+  const sb = getClient();
+  try {
+    const { data, error } = await sb
+      .from("pet_profiles")
+      .select("data")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error) throw error;
+    return petHomeFromData(data ? data.data : null);
+  } catch (e) {
+    console.warn("[cloud] getPetHome:", e);
+    return null;
+  }
+}
+
+/** 推送我的宠物主页快照（登录才可用；RLS 只许写自己的行） */
+export async function cloudSavePetHome(snapshot) {
+  if (!canUseWall() || !snapshot || typeof snapshot !== "object") return false;
+  const sb = getClient();
+  try {
+    const { error } = await sb
+      .from("pet_profiles")
+      .upsert({ user_id: cloud.user.id, data: snapshot, updated_at: new Date().toISOString() });
+    if (error) throw error;
+    return true;
+  } catch (e) {
+    console.warn("[cloud] savePetHome:", e);
+    return false;
+  }
+}
+
+/**
+ * 访客互动（摸摸头 / 投喂）：服务端按 访客+UTC日+类型 去重，计数存主人档案里。
+ * @param {string} ownerId 主人 uid
+ * @param {"pat"|"feed"} kind
+ * @param {string} viewer 访客标识（登录 = uid，游客 = 本机匿名 id）
+ * @returns {Promise<{counted:boolean,pats:number,feeds:number}|null>}
+ */
+export async function cloudPetInteract(ownerId, kind, viewer = "") {
+  if (!canReadWall() || !ownerId) return null;
+  if (kind !== "pat" && kind !== "feed") return null;
+  const sb = getClient();
+  try {
+    const { data, error } = await sb.rpc("pet_interact", {
+      p_owner: ownerId,
+      p_kind: kind,
+      p_viewer: String(viewer || "").slice(0, 64),
+    });
+    if (error) throw error;
+    if (!data || data.ok === false) return null;
+    const c = data.counts && typeof data.counts === "object" ? data.counts : {};
+    return {
+      counted: data.counted === true,
+      pats: Math.max(0, Number(c.pats) || 0),
+      feeds: Math.max(0, Number(c.feeds) || 0),
+    };
+  } catch (e) {
+    /* 未跑迁移 → null，UI 提示功能未启用 */
+    console.warn("[cloud] petInteract:", e);
+    return null;
+  }
+}
+
+/* —— 本地 → 云端 的防抖镜像队列（petStore 的 savePet/saveCookbook 会调用） —— */
+let petSyncTimer = null;
+let petSyncGet = null;
+let petSyncBusy = false;
+
+/**
+ * 登记一个快照工厂并在 delay 毫秒后推送到云端（连续保存只推最后一次）。
+ * 不依赖 petStore（由调用方传入取快照的函数），避免循环依赖；
+ * 未登录时到点自动跳过 —— 下次保存再试。
+ */
+export function queuePetHomeSync(getSnapshot, delay = 4000) {
+  if (typeof getSnapshot !== "function") return;
+  petSyncGet = getSnapshot;
+  if (petSyncTimer) clearTimeout(petSyncTimer);
+  petSyncTimer = setTimeout(async () => {
+    petSyncTimer = null;
+    if (!petSyncGet || petSyncBusy || !canUseWall()) return;
+    const snap = petSyncGet();
+    if (!snap) return;
+    petSyncBusy = true;
+    try { await cloudSavePetHome(snap); } finally { petSyncBusy = false; }
+  }, Math.max(500, delay));
+}

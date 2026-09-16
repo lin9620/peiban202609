@@ -174,3 +174,82 @@ grant execute on function public.wall_add_view(bigint, text) to anon, authentica
 grant execute on function public.wall_toggle_dislike(bigint) to authenticated;
 
 -- 完成 ✅ 前端会自动识别：浏览数 / 厌恶按钮 / 每日一条 全部生效
+
+-- ═══════════════════════════════════════════════════════════════
+--  增量迁移 2：主页的伙伴（/u/:id 展示宠物 + 手绘厨房 + 访客互动）
+--  同样幂等：老库再跑一次这份即可；新库跑 SUPABASE_SETUP.sql 已含
+-- ═══════════════════════════════════════════════════════════════
+
+-- ── 1) 宠物档案镜像：主人登录后由前端自动同步（jsonb 存展示快照）──
+--    data = { pet:{species,name,personality,level,sleeping,custom}, dishes:[{id,name,img,effort}], counts:{pats,feeds}, updated }
+--    只放「公开面」字段，亲密度/金币/心情日记等私人数据不进云端。
+create table if not exists public.pet_profiles (
+  user_id    uuid primary key references public.profiles (id) on delete cascade,
+  data       jsonb not null default '{"pet":null,"dishes":[],"counts":{"pats":0,"feeds":0}}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.pet_profiles enable row level security;
+
+drop policy if exists "pet profiles readable by all" on public.pet_profiles;
+create policy "pet profiles readable by all" on public.pet_profiles
+  for select using (true);
+
+drop policy if exists "pet profiles owner writes" on public.pet_profiles;
+create policy "pet profiles owner writes" on public.pet_profiles
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- ── 2) 互动去重：同一访客对同一主人，每种互动每天只计一次 ──────
+--    viewer_key：登录用户 = uid；游客 = 前端本机匿名 id（与浏览去重同款）
+create table if not exists public.pet_interactions (
+  owner_id   uuid not null references public.profiles (id) on delete cascade,
+  viewer_key text  not null,
+  day        date  not null default (timezone('utc', now()))::date,
+  kind       text  not null check (kind in ('pat', 'feed')),
+  created_at timestamptz not null default now(),
+  primary key (owner_id, viewer_key, day, kind)
+);
+
+alter table public.pet_interactions enable row level security;
+
+drop policy if exists "pet interactions readable by all" on public.pet_interactions;
+create policy "pet interactions readable by all" on public.pet_interactions
+  for select using (true);
+-- 不开放直接写：计数只能走下面的 pet_interact()（防刷）
+
+-- ── 3) RPC：访客互动（摸摸头 / 投喂），去重后把计数累进主人档案 ──
+create or replace function public.pet_interact(p_owner uuid, p_kind text, p_viewer text default '')
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_viewer  text := coalesce(nullif(trim(coalesce(p_viewer, '')), ''),
+                             coalesce(auth.uid()::text, 'anon'));
+  v_counted boolean;
+  v_counts  jsonb;
+begin
+  if p_kind not in ('pat', 'feed') then
+    return jsonb_build_object('ok', false, 'reason', 'bad-kind');
+  end if;
+
+  insert into public.pet_interactions (owner_id, viewer_key, kind)
+  values (p_owner, v_viewer, p_kind)
+  on conflict do nothing;
+  v_counted := found;                      -- 真的插进去了才算一次（同人同日同类型只一次）
+
+  if v_counted then
+    update public.pet_profiles
+      set data = jsonb_set(data, array['counts', p_kind],
+                           coalesce((data->'counts'->>p_kind)::int, 0) + 1)
+      where user_id = p_owner;
+  end if;
+
+  select coalesce(data->'counts', '{"pats":0,"feeds":0}'::jsonb) into v_counts
+    from public.pet_profiles where user_id = p_owner;
+
+  return jsonb_build_object('ok', true, 'counted', v_counted,
+                            'counts', coalesce(v_counts, '{"pats":0,"feeds":0}'::jsonb));
+end $$;
+
+-- 游客也要能互动（去重与防刷都在服务端）
+grant execute on function public.pet_interact(uuid, text, text) to anon, authenticated;
+
+-- 完成 ✅ 主页区块会自动出现：宠物 + 手绘厨房 + 摸摸头/投喂

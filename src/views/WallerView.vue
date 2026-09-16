@@ -1,11 +1,17 @@
-<!-- 墙上的主页：/u/:id —— 点暖心墙的头像/昵称进来，看 TA 的帖子与收到的温暖 -->
+<!-- 墙上的主页：/u/:id —— 点暖心墙的头像/昵称进来，看 TA 的帖子、宠物与手绘厨房（访客可互动） -->
 <script setup>
 import { ref, computed, onMounted } from "vue";
 import { useRoute } from "vue-router";
 import { NAvatar } from "naive-ui";
 import { t, i18n } from "../i18n.js";
-import { cloudFetchProfile, cloudFetchUserPosts } from "../utils/wall.js";
-import { visibleOnly } from "../utils/wallRules.js";
+import {
+  cloudFetchProfile, cloudFetchUserPosts, cloudGetPetHome, cloudPetInteract,
+} from "../utils/wall.js";
+import { visibleOnly, ANON_KEY } from "../utils/wallRules.js";
+import { getItem } from "../utils/storage.js";
+import { cloud } from "../utils/supabase.js";
+import { jump } from "../stores/petStore.js";
+import PetMotion from "../components/PetMotion.vue";
 
 const route = useRoute();
 const uid = String(route.params.id || "");
@@ -14,6 +20,10 @@ const prof = ref(null);        // profiles 行：{ nickname, created_at }
 const posts = ref([]);         // TA 的帖子（已排除下架的）
 const loading = ref(true);
 const failed = ref(false);     // 档案与帖子都拿不到才算真失败
+
+const petHome = ref(null);     // 云端宠物主页：{ pet, dishes, counts }；null = 云端不可用（未迁移等）
+const interactBusy = ref(false);
+const interactMsg = ref("");
 
 /* 昵称：档案优先，档案缺失时用最新一帖的署名兜底 */
 const name = computed(() =>
@@ -36,12 +46,43 @@ const when = (ts) =>
 const sumOf = (kind) =>
   posts.value.reduce((n, p) => n + ((p.reacts && p.reacts[kind]) || 0), 0);
 
+/* 访客标识：登录用户交给服务端认 uid；游客用本机匿名 id（互动每天每类一次的键） */
+function viewerKey() {
+  if (cloud.user && cloud.user.id) return cloud.user.id;
+  let k = "";
+  try { k = getItem(ANON_KEY) || ""; } catch (e) { /* localStorage 不可用就交给服务端兜底 */ }
+  return k;
+}
+
+/* 摸摸头 / 投喂：动画每次都放；计数由服务端按「访客+日+类型」去重后累加 */
+async function interact(kind, dishName = "") {
+  if (interactBusy.value || !petHome.value) return;
+  interactBusy.value = true;
+  jump(); /* 复用全站的开心跳跃动画 */
+  const r = await cloudPetInteract(uid, kind, viewerKey());
+  if (r) {
+    petHome.value.counts = { pats: r.pats, feeds: r.feeds };
+    interactMsg.value = !r.counted
+      ? t("waller.alreadyToday")
+      : kind === "feed" && dishName
+        ? t("waller.feedDone", { n: dishName })
+        : t("waller.patDone");
+  } else {
+    interactMsg.value = t("waller.petFail");
+  }
+  interactBusy.value = false;
+  setTimeout(() => { interactMsg.value = ""; }, 3200);
+}
+
 onMounted(async () => {
   if (!uid) { failed.value = true; loading.value = false; return; }
-  const [pf, ps] = await Promise.all([cloudFetchProfile(uid), cloudFetchUserPosts(uid)]);
+  const [pf, ps, ph] = await Promise.all([
+    cloudFetchProfile(uid), cloudFetchUserPosts(uid), cloudGetPetHome(uid),
+  ]);
   if (pf === null && ps === null) failed.value = true;
   prof.value = pf || { nickname: "", created_at: null };
   posts.value = visibleOnly(ps || []);
+  petHome.value = ph; /* null = 未迁移/查询失败 → 区块显示「准备中」；pet 为空 → 「还没带宠物来」 */
   loading.value = false;
 });
 </script>
@@ -70,6 +111,44 @@ onMounted(async () => {
       <div class="card stat"><b>{{ sumOf("warm") }}</b><span>{{ t("waller.warms") }}</span></div>
       <div class="card stat"><b>{{ sumOf("relate") }}</b><span>{{ t("waller.relates") }}</span></div>
     </div>
+
+    <!-- TA 的伙伴（访客可以摸摸头 / 投喂；数据是主人登录后自动镜像的公开快照） -->
+    <section v-if="!failed && !loading && petHome" class="card waller-pet">
+      <span class="sec-label">{{ t("waller.petTitle") }}</span>
+      <template v-if="petHome.pet">
+        <div class="waller-pet-stage">
+          <PetMotion :pet="{ species: petHome.pet.species, name: petHome.pet.name, sleeping: false, custom: petHome.pet.custom }" />
+        </div>
+        <div class="waller-pet-meta">
+          <b>{{ petHome.pet.name }}</b>
+          <span class="waller-lv">{{ t("waller.petLevel", { n: petHome.pet.level }) }}</span>
+        </div>
+        <div class="waller-pet-acts">
+          <button class="waller-act" :disabled="interactBusy" @click="interact('pat')">{{ t("waller.pat") }}</button>
+          <button class="waller-act" :disabled="interactBusy" @click="interact('feed')">{{ t("waller.feed") }}</button>
+        </div>
+        <p class="sub waller-pet-counts">
+          {{ t("waller.pats", { n: petHome.counts.pats }) }} &#183; {{ t("waller.feeds", { n: petHome.counts.feeds }) }}
+        </p>
+        <p v-if="interactMsg" class="sub waller-interact-msg">{{ interactMsg }}</p>
+      </template>
+      <p v-else class="sub waller-empty">{{ t("waller.petNone") }}</p>
+    </section>
+    <p v-else-if="!failed && !loading" class="sub waller-empty">{{ t("waller.petUnavailable") }}</p>
+
+    <!-- TA 的手绘厨房：点一道菜就等于投喂（互动与摸摸头同一天只各计一次） -->
+    <section v-if="!failed && !loading && petHome && petHome.dishes.length" class="card waller-kitchen">
+      <span class="sec-label">{{ t("waller.kitchen") }}</span>
+      <div class="dish-grid">
+        <figure v-for="d in petHome.dishes" :key="d.id" class="dish-card">
+          <img :src="d.img" :alt="d.name" loading="lazy" draggable="false" />
+          <figcaption>{{ d.name }}</figcaption>
+          <button class="dish-feed" :disabled="interactBusy" @click="interact('feed', d.name)">
+            {{ t("waller.feed") }}
+          </button>
+        </figure>
+      </div>
+    </section>
 
     <!-- TA 的帖子（只读展示；下架的不显示） -->
     <template v-if="!failed">

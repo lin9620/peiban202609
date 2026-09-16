@@ -40,6 +40,7 @@
 - **浏览次数**：同一访客对同一条帖一天只算一次（登录用户按 uid、游客按本机匿名 id），服务端 `wall_post_views` 再去重一次，刷新页面刷不高
 - **厌恶 🙁 与自动下架**：登录后可点「不喜欢」；当 **厌恶数 ÷ 浏览数 ≥ 1%** 时帖子自动**下架**（数据库**假删除**：`removed = true`，数据仍在库里，前台不再展示，不再自动恢复以免忽隐忽现）
 - **可选云端模式**：连接 Supabase 后帖子 / 评论 / 回应真·多人共享，图片上传 Storage，邮箱注册登录；未配置时自动降级本地模式（见下方配置章节）
+- **用户主页 `/u/:id`**：点帖子头像 / 昵称进入（匿名也能看）。展示昵称、加入时间、TA 的帖子与收到的回应；**TA 的伙伴**——云端镜像的宠物（登录后自动同步，含形象 / 性格 / 等级），**访客可以摸摸头、投喂**，互动真实计入 TA 的亲密度 / 饱食度（RPC 计费，非本地演出）；**TA 的手绘厨房**——TA 画的食物墙，点菜即投喂
 
 ### 👤 我的
 访客昵称 / 我的食谱管理 / 近 30 天心情日历
@@ -67,6 +68,7 @@
 node tools/comment-test.mjs   # 评论系统纯函数单测（26 项：二级回复/parentId 封顶/级联删除/评论数兜底）
 node tools/wall-test.mjs      # 暖心墙云端数据层纯函数单测（33 项：行映射/二级字段/评论数聚合/浏览与厌恶字段）
 node tools/wall-rules-test.mjs # 暖心墙进阶规则纯函数单测（29 项：排序/时间范围/浏览去重/1% 下架/每日一条/错误归类）
+node tools/pet-home-test.mjs   # 宠物主页云层纯函数单测（10 项：宠物快照/菜谱差集同步/互动计费/镜像行映射）
 node tools/i18n-test.mjs      # 文案完整性与插值回归（19 项：en/zh 键集合对称、修复过的 key、$ 特殊字符）
 node tools/snack-test.mjs     # 零食雨游戏纯逻辑单测（20 项：难度曲线/生成/碰撞/结算上限）
 node tools/seo-test.mjs       # SEO 资产检查（35 项：robots/sitemap/OG 标签/PNG 尺寸/安全头/产物）
@@ -223,16 +225,16 @@ src/
     daily.js           按日期轮换工具
     lottiePet.js       Lottie 动画工厂（运行时生成 5 种宠物的矢量动画）
     snackGame.js       零食雨游戏纯逻辑（坐标系 0~1、随机源可注入 → Node 可单测）
-    wall.js            暖心墙云端数据层（行映射 / 上传 / 浏览 / 厌恶 / 评论计数）
+    wall.js            暖心墙云端数据层（行映射 / 上传 / 浏览 / 厌恶 / 评论计数 / 宠物主页镜像与互动）
     wallRules.js       暖心墙进阶规则纯逻辑（排序 / 时间范围 / 浏览去重 / 1% 下架 / 每日一条）
-  stores/petStore.js   宠物状态机（多宠物 / 养成 / 食谱 / 任务 / 心情打卡）
+  stores/petStore.js   宠物状态机（多宠物 / 养成 / 食谱 / 任务 / 心情打卡；登录后自动把宠物+菜谱镜像到云端，主页可见）
   components/
     LottiePet.vue      Lottie 渲染器（预设宠物动画）
     PetMotion.vue      动效层（跳跃 / 睡眠 + 自定义立绘活化）
     FoodPainter.vue    手绘食物画板
     SnackRain.vue      零食雨小游戏（鼠标/键盘操作 + 结算面板）
     ShareCard.vue      分享卡片生成
-  views/               Home / Pet（宠物乐园）/ Community / Profile
+  views/               Home / Pet（宠物乐园）/ Community / Waller（用户主页 /u/:id）/ Profile
 public/                robots.txt · sitemap.xml · og-image.png · favicon.png · apple-touch-icon.png · _headers（安全头 + 资产长缓存）
 ```
 
@@ -255,7 +257,7 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 | 体验 | `#/` 路由直接访问 `/pet` 会 404 | 迁移到 history 模式 + 每条路由独立静态 HTML + SPA 回退 | `router.js` / `vite.config.js` / `wrangler.jsonc` |
 | 体验 | 「在线陪伴数」是本地随机数，易误导 | 去掉虚构人数，改如实文案（路线图保留"等有真实统计再接"） | `views/HomeView.vue` / `i18n.js` |
 
-回归验证（全部本地可跑）：`wall-rules-test` 29 项 · `comment-test` 26 项 · `wall-test` 33 项 · `uifix-test` 20 项 · `image-fit` 20 项 · `snack-test` 20 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `arity-test` 8 项 · `seo-test` 35 项 · `undef-check`。
+回归验证（全部本地可跑）：`wall-rules-test` 29 项 · `comment-test` 26 项 · `wall-test` 33 项 · `pet-home-test` 10 项 · `uifix-test` 20 项 · `image-fit` 20 项 · `snack-test` 20 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `arity-test` 8 项 · `seo-test` 35 项 · `undef-check`。
 
 ## 🗺️ 路线图
 
@@ -263,6 +265,7 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 - ✅ **已完成**： 零食雨小游戏（手绘料理掉落 + 分数结算成养成资源 + 本地最高分）
 - ✅ **已完成**： SEO 收录优化（robots / 站点地图 + 搜索框收录 + 分享卡与图标 + 结构化数据）
 - ✅ **已完成**：暖心墙进阶——每人每天一条、排序（最新/同感/抱抱/暖暖）、时间范围（近两天/近7天/这个月）、浏览计数、厌恶达 1% 自动下架（假删除）
+- ✅ **已完成**：用户主页 `/u/:id`——点帖子头像/昵称进入；展示宠物（云端镜像，访客可摸摸头/投喂，互动计入 TA 的亲密度/饱食度）、TA 的手绘厨房（点菜投喂）、TA 的帖子与收到的回应
 - ✅ **已完成**：墙上的主页（/u/:id）——点帖子头像/昵称进入，看 TA 的帖子、加入时间与收到的抱抱/暖暖/同感
 - 每日一问接入真实数据、陪你大厅接入真实在线人数（**当前刻意不显示人数**，等有真实统计再接）
 - 宠物冒险（带回手绘明信片图鉴）、装扮系统、季节彩蛋

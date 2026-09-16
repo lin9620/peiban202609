@@ -951,5 +951,59 @@ html[data-theme="night"] .waller .pic { border-color: rgba(38, 44, 78, .9); }
 .waller-back:hover { background: var(--accent-soft); }
 @media (max-width: 560px) { .waller-stats { grid-template-columns: repeat(2, 1fr); } }
 
+/* —— 主页的伙伴（访客互动区） —— */
+.waller-pet-stage {
+  display: flex; justify-content: center; padding: 10px 0 2px;
+  min-height: 150px; align-items: center;
+}
+.waller-pet-meta {
+  display: flex; align-items: baseline; justify-content: center; gap: 8px; margin-top: 4px;
+}
+.waller-pet-meta b { font-size: 15px; }
+.waller-lv {
+  font-size: 11px; font-weight: 800; color: var(--accent-deep);
+  background: var(--accent-soft); border-radius: 999px; padding: 2px 8px;
+}
+.waller-pet-acts { display: flex; justify-content: center; gap: 10px; margin-top: 10px; }
+.waller-act {
+  font: inherit; font-size: 13px; font-weight: 800; cursor: pointer;
+  color: var(--accent-deep); background: var(--accent-soft);
+  border: none; border-radius: 12px; padding: 8px 16px;
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.waller-act:hover:not(:disabled) { transform: translateY(-2px); box-shadow: var(--shadow); }
+.waller-act:disabled { opacity: .55; cursor: wait; }
+.waller-pet-counts { text-align: center; margin: 8px 0 0; }
+.waller-interact-msg { text-align: center; color: var(--accent-deep); font-weight: 700; margin: 4px 0 0; }
+html[data-theme="night"] .waller-act { color: #dce4ff; background: rgba(120, 136, 200, .22); }
+
+/* —— 手绘厨房（点菜 = 投喂） —— */
+.dish-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 12px; margin-top: 10px;
+}
+.dish-card {
+  margin: 0; background: rgba(255, 255, 255, .6); border-radius: 14px; padding: 8px;
+  display: flex; flex-direction: column; gap: 6px; align-items: stretch;
+}
+html[data-theme="night"] .dish-card { background: rgba(38, 44, 78, .55); }
+.dish-card img {
+  width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 10px;
+  user-select: none; -webkit-user-drag: none;
+}
+.dish-card figcaption {
+  font-size: 12px; font-weight: 800; text-align: center;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dish-feed {
+  font: inherit; font-size: 12px; font-weight: 800; cursor: pointer;
+  color: var(--accent-deep); background: var(--accent-soft);
+  border: none; border-radius: 10px; padding: 6px 0;
+  transition: transform .15s ease;
+}
+.dish-feed:hover:not(:disabled) { transform: translateY(-1px); }
+.dish-feed:disabled { opacity: .55; cursor: wait; }
+html[data-theme="night"] .dish-feed { color: #dce4ff; background: rgba(120, 136, 200, .22); }
+@media (max-width: 560px) { .dish-grid { grid-template-columns: repeat(2, 1fr); } }
+
 
 

@@ -6,6 +6,7 @@ import { DESTS, SOUVENIRS, VISITORS, destByKey } from "../data/adventure.js";
 import { ACCESSORIES, MAIL_REPLIES } from "../data/extras.js";
 import { getItem, setItem } from "../utils/storage.js";
 import { finalReward as snackReward } from "../utils/snackGame.js";
+import { petHomeSnapshot, queuePetHomeSync } from "../utils/wall.js";
 
 const SAVE_KEY = "warm-paws-multi-pet-v2";
 const LEGACY_KEY = "warm-paws-pet-v1";
@@ -187,9 +188,17 @@ function clamp(v, min = 0, max = 100) { return Math.max(min, Math.min(max, v)); 
 function rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 
 /* ---------- 存档与离线结算 ---------- */
+/* 登录后把「宠物 + 手绘厨房」镜像到云端主页（/u/:id 给访客看）：
+   防抖 4s，连续保存只推最后一次；未登录时队列到点自动跳过 */
+function syncPetHome() {
+  try { queuePetHomeSync(() => petHomeSnapshot(activePet.value, cookbook)); }
+  catch (e) { console.warn("[petHome] sync:", e); }
+}
+
 export function savePet() {
   petStore.pets.forEach((p) => { p.lastTick = Date.now(); });
   petStore.save();
+  syncPetHome();
 }
 
 function applyOffline(pet) {
@@ -213,6 +222,8 @@ export function initPet() {
   if (first && petStore.pets.length === 1 && !getItem(LEGACY_KEY)) {
     setTimeout(() => sayLine(first, "hello", 4000), 600);
   }
+  /* 启动后延迟镜像一次：等 Supabase 客户端就绪；未登录时队列自己会跳过 */
+  setTimeout(syncPetHome, 8000);
 }
 
 export function tickPet() {
@@ -299,6 +310,7 @@ export const cookbook = reactive(loadCookbook());
 
 export function saveCookbook() {
   try { setItem(BOOK_KEY, JSON.stringify(cookbook)); } catch (e) { console.warn(e); }
+  syncPetHome();
 }
 
 export function addDish(dish) {

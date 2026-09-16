@@ -242,11 +242,49 @@ if (hasAdvanced) {
   }
 }
 
-/* 清理：删帖（cascade 带走回应/浏览记录），删除档案 */
+/* T26~T28 宠物主页实测：镜像同步 / 匿名可读 / 访客互动去重（未跑迁移则 SKIP） */
+{
+  const { error } = await sb.from("pet_profiles").select("data").limit(1);
+  const hasPet = !error;
+  if (hasPet) { pass++; console.log("PASS  T26 迁移已就绪（pet_profiles 存在）"); }
+  else console.log("SKIP  T26 未跑迁移（pet_profiles 不存在）：跳过宠物主页测试（" + error.message + "）");
+
+  if (hasPet) {
+    const SNAP = {
+      pet: { species: "cat", name: "云麻薯", personality: "粘人", level: 3, sleeping: false, custom: null },
+      dishes: [{ id: "d1", name: "小鱼干", img: "data:image/jpeg;base64,e2e", effort: 2 }],
+      counts: { pats: 0, feeds: 0 },
+      updated: Date.now(),
+    };
+    await sb.from("pet_profiles").upsert({ user_id: uid, data: SNAP, updated_at: new Date().toISOString() });
+
+    /* 匿名可读（主页是公开面），且私人字段没有跟着上来 */
+    const { data: pub } = await sbAnon.from("pet_profiles").select("data").eq("user_id", uid).maybeSingle();
+    ok("T27 宠物快照匿名可读（访客看得到 TA 的伙伴与厨房）",
+      !!pub && pub.data && pub.data.pet && pub.data.pet.name === "云麻薯" && pub.data.dishes.length === 1,
+      pub && pub.data && pub.data.pet ? "pet=" + pub.data.pet.name : "读不到");
+
+    /* 访客互动：同人同日同类型只计一次 */
+    const p1 = await sb.rpc("pet_interact", { p_owner: uid, p_kind: "pat", p_viewer: "e2e-viewer-1" });
+    const p2 = await sb.rpc("pet_interact", { p_owner: uid, p_kind: "pat", p_viewer: "e2e-viewer-1" });
+    ok("T28 摸摸头：首次 counted=true，同访客当天第二次不计",
+      !p1.error && !p2.error && p1.data.counted === true && p2.data.counted === false
+        && p1.data.counts.pats === 1,
+      p1.error ? p1.error.message : JSON.stringify(p2.data && p2.data.counts));
+
+    const f1 = await sb.rpc("pet_interact", { p_owner: uid, p_kind: "feed", p_viewer: "e2e-viewer-1" });
+    ok("T29 投喂与摸头分开计数（同访客同日各自一次）",
+      !f1.error && f1.data && f1.data.counted === true && f1.data.counts.feeds === 1 && f1.data.counts.pats === 1,
+      f1.error ? f1.error.message : JSON.stringify(f1.data && f1.data.counts));
+  }
+}
+
+/* 清理：删帖（cascade 带走回应/浏览记录），删除宠物主页与档案 */
 {
   await sb.from("wall_posts").delete().eq("id", postId);
+  await sb.from("pet_profiles").delete().eq("user_id", uid);
   await sb.from("profiles").delete().eq("id", uid);
-  console.log("清理完成（测试帖/档案已删）");
+  console.log("清理完成（测试帖/宠物主页/档案已删）");
 }
 
 console.log("\nTOTAL " + (pass + fail) + "  PASS " + pass + "  FAIL " + fail);
