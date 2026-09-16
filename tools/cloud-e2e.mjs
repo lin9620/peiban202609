@@ -95,6 +95,22 @@ let cmtId = 0;
   ok("T9 删除自己的评论", !error, error ? error.message : "");
 }
 
+/* T9b 主页数据匿名可读：/u/:id 页面的取数口径（profiles + 该用户未下架帖子） */
+{
+  const { data: pf, error: pe } = await sbAnon.from("profiles")
+    .select("nickname,created_at").eq("id", uid).maybeSingle();
+  let up = null, ue = null;
+  ({ data: up, error: ue } = await sbAnon.from("wall_posts")
+    .select("id").eq("user_id", uid).eq("removed", false));
+  if (ue) {
+    /* 未跑迁移（无 removed 列）时退回不过滤的查询，与 cloudFetchUserPosts 的降级一致 */
+    ({ data: up, error: ue } = await sbAnon.from("wall_posts").select("id").eq("user_id", uid));
+  }
+  ok("T9b 主页数据匿名可读（profiles + 该用户帖子）",
+    !pe && !!pf && pf.nickname === NICK && !ue && Array.isArray(up) && up.length >= 1,
+    pe ? pe.message : (ue ? ue.message : "posts=" + (up ? up.length : -1)));
+}
+
 /* T10 迁移探测：parent_id 存在才能测二级评论（没跑迁移就 SKIP，不当 FAIL） */
 let hasParent = false;
 {

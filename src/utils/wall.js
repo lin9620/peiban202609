@@ -396,3 +396,73 @@ export async function cloudToggleDislike(dbPostId) {
     return null;
   }
 }
+
+/* ═════════ 墙上的主页（/u/:id）：点帖子头像/昵称进入 ══════════ */
+
+/**
+ * 拉取某用户的公开档案（昵称 / 加入时间）。
+ * profiles 对匿名可读（RLS：readable by all），游客也能看主页。
+ * @param {string} userId
+ * @returns {Promise<{nickname:string, created_at:string|null}|null>} null = 查询失败
+ */
+export async function cloudFetchProfile(userId) {
+  if (!canReadWall() || !userId) return null;
+  const sb = getClient();
+  try {
+    const { data, error } = await sb
+      .from("profiles")
+      .select("nickname,created_at")
+      .eq("id", userId)
+      .maybeSingle();
+    if (error) throw error;
+    /* 档案行不存在（极早期注册用户）不算失败，给空档案让页面用帖子署名兜底 */
+    return data || { nickname: "", created_at: null };
+  } catch (e) {
+    console.warn("[cloud] fetchProfile:", e);
+    return null;
+  }
+}
+
+/**
+ * 拉取某用户在暖心墙的帖子（新→旧；未下架优先口径与动态流一致：
+ * 已跑迁移时数据库直接过滤 removed，未跑迁移时由调用方 visibleOnly 兜底）。
+ * @param {string} userId
+ * @param {number} [limit] 默认 50
+ */
+export async function cloudFetchUserPosts(userId, limit = 50) {
+  if (!canReadWall() || !userId) return null;
+  const sb = getClient();
+  try {
+    const n = Number(limit) > 0 ? Number(limit) : 50;
+    let res = await sb
+      .from("wall_posts")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("removed", false)
+      .order("created_at", { ascending: false })
+      .limit(n);
+    if (res.error) {
+      /* 42703 列不存在（未迁移）：退回不过滤的查询 */
+      res = await sb
+        .from("wall_posts")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(n);
+    }
+    const { data: posts, error } = res;
+    if (error) throw error;
+    let reactions = {};
+    try {
+      const ids = (posts || []).map((x) => x.id);
+      const { data: rk } = ids.length
+        ? await sb.from("wall_reactions").select("post_id,user_id,kind").in("post_id", ids)
+        : { data: [] };
+      reactions = aggregateReactions(rk || [], cloud.user ? cloud.user.id : "");
+    } catch (e) { /* 回应拉取失败不阻塞帖子 */ }
+    return rowsToPosts(posts || [], reactions, publicUrl);
+  } catch (e) {
+    console.warn("[cloud] fetchUserPosts:", e);
+    return null;
+  }
+}

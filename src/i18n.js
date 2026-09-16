@@ -210,6 +210,15 @@ export const messages = {
       dailyLimit: "One note a day is plenty — you already posted today 💛",
       postFail: "That didn't go through — please try again 🙏",
       needSetup: "This part isn't switched on yet — the wall owner needs to run the latest database update 🔧",
+      viewHome: "View profile",
+    },
+
+    waller: {
+      title: "Wall profile",
+      posts: "Posts", hugs: "Hugs", warms: "Warmths", relates: "Relates",
+      joined: "On the wall since {d}",
+      loadFail: "Couldn't load this profile — please try again later 🙏",
+      empty: "No notes yet — the wall is waiting for TA's first warm word.",
     },
 
     comment: {
@@ -462,6 +471,15 @@ export const messages = {
       dailyLimit: "每天一条就够温柔啦——今天已经发过了 💛",
       postFail: "没能发出去——再试一次吧 🙏",
       needSetup: "这个功能还没开启——墙的主人需要先执行一次数据库更新 🔧",
+      viewHome: "看 TA 的主页",
+    },
+
+    waller: {
+      title: "墙上的主页",
+      posts: "帖子", hugs: "收到的抱抱", warms: "收到的暖暖", relates: "收到的同感",
+      joined: "{d} 来到这面墙",
+      loadFail: "主页加载失败——稍后再来看看吧 🙏",
+      empty: "TA 还没在墙上留过言——去暖心墙逛逛吧。",
     },
 
     comment: {

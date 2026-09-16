@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, watch } from "vue";
+import { useRouter } from "vue-router";
 import { NButton, NInput, NAvatar, NTag } from "naive-ui";
 import { t, i18n } from "../i18n.js";
 import { getItem, setItem } from "../utils/storage.js";
@@ -493,6 +494,12 @@ const shown = computed(() =>
   ));
 /* 下架线提示用：厌恶 ÷ 浏览（达 1% 即下架，看得到比例就知道离下架多远） */
 function disPct(p) { return ratioPct(p.views, (p.reacts && p.reacts.dislike) || 0); }
+
+/* 头像/昵称 → TA 的墙上的主页（/u/:id）；示例帖与本地帖没有云身份，不响应点击 */
+const router = useRouter();
+function canOpen(p) { return !!(p && p.cloud && p.userId); }
+function goProfile(p) { if (canOpen(p)) router.push({ name: "waller", params: { id: p.userId } }); }
+
 const when = (ts) =>
   new Date(ts).toLocaleDateString(i18n.locale === "zh" ? "zh-CN" : "en-US",
     { month: "short", day: "numeric" });
@@ -570,11 +577,17 @@ const when = (ts) =>
     <!-- 动态流 -->
     <article v-for="p in shown" :key="p.id" class="post-card card">
       <div class="post-head">
-        <n-avatar round :size="42" class="post-avatar">
+        <n-avatar round :size="42" class="post-avatar"
+          :class="{ clickable: canOpen(p) }"
+          :title="canOpen(p) ? t('community.viewHome') : ''"
+          @click="goProfile(p)">
           {{ p.sample ? "🌼" : "🙂" }}
         </n-avatar>
         <div class="post-meta">
-          <div class="post-name">{{ p.name }}</div>
+          <div class="post-name"
+            :class="{ clickable: canOpen(p) }"
+            :title="canOpen(p) ? t('community.viewHome') : ''"
+            @click="goProfile(p)">{{ p.name }}</div>
           <div class="post-time">{{ when(p.ts) }}</div>
         </div>
         <n-tag v-if="p.sample" round size="tiny" :bordered="false" class="soft-tag">

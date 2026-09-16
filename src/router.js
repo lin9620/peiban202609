@@ -9,6 +9,7 @@ export const router = createRouter({
     { path: "/pet", name: "pet", component: () => import("./views/PetView.vue") },
     { path: "/community", name: "community", component: () => import("./views/CommunityView.vue") },
     { path: "/profile", name: "profile", component: () => import("./views/ProfileView.vue") },
+    { path: "/u/:id", name: "waller", component: () => import("./views/WallerView.vue") },
     { path: "/:pathMatch(.*)*", redirect: "/" },
   ],
 });
