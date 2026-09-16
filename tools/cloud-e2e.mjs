@@ -173,49 +173,63 @@ let hasAdvanced = false;
 }
 
 if (hasAdvanced) {
-  /* T17 浏览去重：同一访客同一天调两次，只 +1 */
+  /* T17/T18 浏览计数：不锁死绝对总数 —— 测试帖会短暂出现在真实暖心墙上，
+     真实访客的页面本来就会记浏览（且 RLS 没给测试改 views 的口子）。
+     每个断言只锁「本次调用该发生什么」：counted 标志与「只涨不跌」 */
   {
     const { data: before } = await sb.from("wall_posts").select("views").eq("id", postId).maybeSingle();
     const v0 = before ? before.views : 0;
-    const v1 = await sb.rpc("wall_add_view", { p_post: postId, p_viewer: "e2e-viewer-1" });
-    const v2 = await sb.rpc("wall_add_view", { p_post: postId, p_viewer: "e2e-viewer-1" });
+    const vk = "e2e-viewer-" + Date.now();          // 每次运行用新访客键：同日重跑不被去重挡住
+    const v1 = await sb.rpc("wall_add_view", { p_post: postId, p_viewer: vk });
+    const v2 = await sb.rpc("wall_add_view", { p_post: postId, p_viewer: vk });
     const counted = [v1.data && v1.data.counted, v2.data && v2.data.counted];
     const views = v1.data ? v1.data.views : -1;
-    ok("T17 同一访客同一天只记一次浏览（第二次 counted=false，浏览数不涨）",
-      !v1.error && !v2.error && counted[0] === true && counted[1] === false && views === v0 + 1,
+    ok("T17 同一访客同一天只记一次浏览（第二次 counted=false，浏览数不再因 TA 上涨）",
+      !v1.error && !v2.error && counted[0] === true && counted[1] === false && views >= v0 + 1,
       "views " + v0 + " → " + views + " counted=" + JSON.stringify(counted));
   }
-
-  /* T18 换个访客再调：该 +1（多人浏览都算数） */
   {
-    const r = await sb.rpc("wall_add_view", { p_post: postId, p_viewer: "e2e-viewer-2" });
-    ok("T18 不同访客各算一次浏览", !r.error && r.data && r.data.counted === true && r.data.views === 2,
-      r.error ? r.error.message : "views=" + (r.data ? r.data.views : "?"));
+    const r = await sb.rpc("wall_add_view", { p_post: postId, p_viewer: "e2e-viewer-b-" + Date.now() });
+    ok("T18 不同访客各算一次浏览（counted=true；总量因真实访客浮动，不锁死）",
+      !r.error && r.data && r.data.counted === true,
+      r.error ? r.error.message : "counted=true, views=" + (r.data ? r.data.views : "?"));
   }
 
-  /* T19 厌恶切换 + 1% 自动下架（此刻 2 浏览 1 厌恶 = 50% ≥ 1% → 假删除） */
+  /* T19~T22 厌恶切换 + 1% 自动下架（假删除）。
+     下架取决于「厌恶数 ÷ 浏览数 ≥ 1%」：1 个厌恶在 views≤100 时必下架；views>100 时
+     比例不足 1%（真实访客把分母推大了），此时跳过 removed 断言 —— 阈值逻辑已由
+     wall-rules-test.mjs 的纯函数单测覆盖，这里验证服务端把计数与状态写对 */
   {
     const on = await sb.rpc("wall_toggle_dislike", { p_post: postId });
     const removed = !!(on.data && on.data.removed);
-    ok("T19 厌恶生效：计数写入 + 达到 1% 即下架（removed=true）",
-      !on.error && on.data && on.data.on === true && on.data.dislikes === 1 && removed,
+    const views = on.data ? on.data.views : 0;
+    const canJudge = views > 0 && views <= 100;
+    ok("T19 厌恶生效：服务端重数并把 dislikes 写回帖子",
+      !on.error && on.data && on.data.on === true && on.data.dislikes === 1,
       on.error ? on.error.message : JSON.stringify(on.data));
+    if (!canJudge) {
+      console.log("SKIP  T19b 下架判定：此刻 views=" + views + "（1 个厌恶不足 1%），跳过 removed 断言");
+    } else {
+      ok("T19b 达到 1% 即下架（removed=true）", removed === true, "views=" + views);
+    }
 
     /* 帖子行仍在库里（假删除：前台看不见，数据没丢） */
     const { data: row } = await sb.from("wall_posts").select("removed,views,dislikes").eq("id", postId).maybeSingle();
-    ok("T20 假删除：行还在，只是 removed=true（不是物理删除）",
-      !!row && row.removed === true && row.dislikes === 1, row ? JSON.stringify(row) : "行不见了?!");
+    ok("T20 假删除：行还在，dislikes 已写回（不是物理删除）",
+      !!row && row.dislikes === 1 && row.removed === removed, row ? JSON.stringify(row) : "行不见了?!");
 
-    /* 取消厌恶：计数回 0；已下架状态保持（避免比例摆动让帖子忽隐忽现） */
+    /* 取消厌恶：计数回 0；下架不因取消而自动恢复（避免帖子忽隐忽现） */
     const off = await sb.rpc("wall_toggle_dislike", { p_post: postId });
-    ok("T21 取消厌恶：dislikes 归零，下架状态保持（不自动恢复）",
-      !off.error && off.data && off.data.on === false && off.data.dislikes === 0 && off.data.removed === true,
+    ok("T21 取消厌恶：dislikes 归零" + (removed ? "，下架状态保持（不自动恢复）" : "，未下架状态不变"),
+      !off.error && off.data && off.data.on === false && off.data.dislikes === 0 && off.data.removed === removed,
       off.error ? off.error.message : JSON.stringify(off.data));
 
-    /* 看板的读写路径都不该再看到它（已跑迁移时查询带 removed=false 过滤） */
-    const { data: visible } = await sb.from("wall_posts").select("id").eq("removed", false).eq("id", postId);
-    ok("T22 下架帖不出现在「未下架」查询里（前台动态流的取数口径）",
-      !visible || visible.length === 0, "visible rows=" + (visible ? visible.length : -1));
+    if (removed) {
+      /* 看板的读写路径都不该再看到它（已跑迁移时查询带 removed=false 过滤） */
+      const { data: visible } = await sb.from("wall_posts").select("id").eq("removed", false).eq("id", postId);
+      ok("T22 下架帖不出现在「未下架」查询里（前台动态流的取数口径）",
+        !visible || visible.length === 0, "visible rows=" + (visible ? visible.length : -1));
+    }
   }
 
   /* T23~T25 每个用户每天最多一条 */

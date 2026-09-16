@@ -362,7 +362,7 @@ begin
   if v_counted then
     update public.pet_profiles
       set data = jsonb_set(data, array['counts', p_kind],
-                           coalesce((data->'counts'->>p_kind)::int, 0) + 1)
+                           to_jsonb(coalesce((data->'counts'->>p_kind)::int, 0) + 1))
       where user_id = p_owner;
   end if;
 
