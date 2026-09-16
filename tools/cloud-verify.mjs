@@ -51,13 +51,19 @@ try {
   ok("Auth 服务健康 (/auth/v1/health)", r.ok, "HTTP " + r.status);
 } catch (e) { ok("Auth 服务健康", false, e.message); }
 
-/* 2) 四张表是否存在且可读 */
-for (const t of ["profiles", "wall_posts", "wall_comments", "wall_reactions"]) {
+/* 2) 各表是否存在且可读（含宠物主页：互动计数是独立列 pats/feeds） */
+for (const t of ["profiles", "wall_posts", "wall_comments", "wall_reactions", "wall_post_views", "pet_profiles", "pet_interactions"]) {
   try {
     const { error } = await sb.from(t).select("*").limit(1);
     ok("表 " + t + " 存在且匿名可读", !error, error ? error.message : "");
   } catch (e) { ok("表 " + t, false, e.message); }
 }
+
+/* 2b) 宠物互动计数列：老库要重跑 MIGRATION_wall_daily_view_dislike.sql 才会补上 */
+try {
+  const { error } = await sb.from("pet_profiles").select("pats,feeds").limit(1);
+  ok("pet_profiles 计数列 pats/feeds 已就位", !error, error ? error.message : "");
+} catch (e) { ok("pet_profiles 计数列", false, e.message); }
 
 /* 3) Storage 桶（RLS 允许公开读，anon list 应成功；空桶返回 []） */
 try {

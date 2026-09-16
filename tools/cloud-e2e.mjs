@@ -7,6 +7,8 @@ import { createClient } from "@supabase/supabase-js";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+/* 复用前端的纯函数：路径/哈希规则必须和线上一致，避免测试与实现漂移 */
+import { parseImageDataUrl } from "../src/utils/wall.js";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const env = fs.readFileSync(path.join(root, ".env"), "utf8");
@@ -308,6 +310,51 @@ if (hasAdvanced) {
     ok("T31 计数列匿名可读（访客页面能看到累计次数）",
       !!pubCounts && pubCounts.pats === 1 && pubCounts.feeds === 1,
       pubCounts ? "pats=" + pubCounts.pats + " feeds=" + pubCounts.feeds : "读不到");
+
+    /* T32 宠物图外置：dataURL → Storage 路径，行里只留短引用（为将来 D1 的 2MB 单行上限铺路） */
+    const PNG_1x1 =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==";
+    const parsed = parseImageDataUrl(PNG_1x1);
+    ok("T32 前端解析器认这张图（mime/ext/字节数）",
+      !!parsed && parsed.mime === "image/png" && parsed.ext === "png" && parsed.size > 0,
+      parsed ? parsed.mime + " " + parsed.size + "B" : "解析失败");
+
+    if (parsed) {
+      /* 路径规则与前端一致：<uid>/pet-<hash>.<ext>；storage 策略只看第一段 = auth.uid() */
+      const imgPath = uid + "/pet-" + parsed.hash + ".png";
+      const { error: upErr } = await sb.storage
+        .from("wall-images")
+        .upload(imgPath, parsed.bytes, { contentType: parsed.mime, upsert: true });
+      ok("T32b 宠物图能写进 wall-images 的 <uid>/pet-* 路径（复用现有策略，零新增 SQL）",
+        !upErr, upErr ? upErr.message : imgPath);
+
+      /* 访客侧：公开 URL 能直接取到字节（页面 <img src> 就是这么用的） */
+      const { data: pubUrl } = sbAnon.storage.from("wall-images").getPublicUrl(imgPath);
+      let gotBytes = 0;
+      try {
+        const r = await fetch(pubUrl.publicUrl);
+        if (r.ok) gotBytes = (await r.arrayBuffer()).byteLength;
+      } catch (e) { /* 出网受限时记 0，下面的断言会报出来 */ }
+      ok("T32c 公开 URL 能直接取到这张图（访客可见）", gotBytes === parsed.size,
+        pubUrl.publicUrl + " → " + gotBytes + "B");
+
+      /* 行瘦身：data 里只留路径（不含 data:image），整行几百字节 */
+      const slim = {
+        pet: {
+          species: "cat", name: "云麻薯", personality: "粘人", level: 3, sleeping: false,
+          custom: { img: imgPath },
+        },
+        dishes: [{ id: "d1", name: "小鱼干", img: imgPath, effort: 2 }],
+        updated: Date.now(),
+      };
+      await sb.from("pet_profiles").upsert({ user_id: uid, data: slim, updated_at: new Date().toISOString() });
+      const { data: row2 } = await sbAnon.from("pet_profiles").select("data").eq("user_id", uid).maybeSingle();
+      const raw = JSON.stringify(row2 && row2.data);
+      ok("T32d 云端 data 只存路径（无 dataURL），整行体积 < 1000 字节",
+        !!row2 && !!row2.data.pet && row2.data.pet.custom.img === imgPath
+          && raw.indexOf("data:image") < 0 && raw.length < 1000,
+        "行长度=" + raw.length + "B");
+    }
   }
 }
 

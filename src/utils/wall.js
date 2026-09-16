@@ -7,6 +7,7 @@
 
 import { getClient, cloud } from "./supabase.js";
 import { normalizeText } from "./comments.js";
+import { isUsableDataUrl } from "./imaging.js";
 
 /* ══════════ 纯函数：DB 行 → 视图模型（与本地帖子结构对齐） ══════════ */
 
@@ -473,10 +474,108 @@ export async function cloudFetchUserPosts(userId, limit = 50) {
 export const PET_HOME_DISH_LIMIT = 12;
 /** 单张菜图 dataURL 的长度上限（异常大的直接跳过，不拖垮整个快照） */
 const DISH_IMG_MAX = 200000;
+/** 单张图「引用」的长度上限：dataURL 走 DISH_IMG_MAX；Storage 路径（<uid>/pet-<hash>.jpg ≈ 50 字符）*/
+export const PET_IMG_PATH_MAX = 200;
+/**
+ * 一行 data 的体积安全阀（约 1.8MB，给 D1 的 2MB 单行硬限制留余量）。
+ * 图片正常都已外置（行里只有短路径）；只有「上传失败降级保留 dataURL」时才可能触顶。
+ */
+export const PET_DATA_MAX = 1800000;
+
+/**
+ * 图片引用是否合法（纯函数）。两种合法形态：
+ *   1) dataURL：data:image/png|jpeg|webp;base64,… 且 ≤ DISH_IMG_MAX（本地新建 / 上传失败的降级残留）
+ *   2) Storage 相对路径：`<uid>/pet-<hash>.<ext>`（已外置的正常形态，与 storage 策略前缀一致）
+ * 外部 URL（含 `://`）、空串、含空白、多段或含 `..` 的伪路径一律拒绝 —— 不让垃圾进云端。
+ */
+export function isImageRef(ref) {
+  if (typeof ref !== "string" || !ref) return false;
+  if (ref.startsWith("data:")) return isUsableDataUrl(ref) && ref.length <= DISH_IMG_MAX;
+  if (ref.length > PET_IMG_PATH_MAX || ref.includes("://") || /\s/.test(ref)) return false;
+  const segs = ref.split("/");
+  return segs.length === 2 && segs.every((s) => !!s && s !== "." && s !== "..");
+}
+
+/** dataURL 内容哈希（FNV-1a 32 位十六进制）：同一张图稳定得到同一个文件名，重传即幂等覆盖 */
+export function imgRefHash(s) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, "0");
+}
+
+/**
+ * 解析 dataURL → { mime, ext, bytes, hash, size }；非图片 / 超限 / 解码失败 → null。
+ * 只对 base64 段做哈希，同图不同前缀也算同一张图。
+ */
+export function parseImageDataUrl(dataUrl, max = DISH_IMG_MAX) {
+  if (!isUsableDataUrl(dataUrl) || dataUrl.length > max) return null;
+  const m = /^data:(image\/[\w+.-]+);base64,(.*)$/.exec(dataUrl);
+  if (!m) return null;
+  let bytes;
+  try {
+    if (typeof atob === "function") {
+      const bin = atob(m[2]);
+      bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    } else {
+      bytes = new Uint8Array(globalThis.Buffer.from(m[2], "base64"));
+    }
+  } catch (e) {
+    return null;
+  }
+  if (!bytes.length) return null;
+  const ext = m[1] === "image/jpeg" ? "jpg" : m[1].split("/").pop();
+  return { mime: m[1], ext, bytes, hash: imgRefHash(m[2]), size: bytes.length };
+}
+
+/**
+ * 图片字段 → 可直接喂 <img src> 的值（纯函数）：
+ *   老数据 / 降级残留的 dataURL → 原样；完整 URL → 原样；Storage 路径 → toUrl() 换成公开 URL。
+ */
+export function resolvePetImg(ref, toUrl) {
+  if (typeof ref !== "string" || !ref) return "";
+  if (ref.startsWith("data:") || ref.includes("://")) return ref;
+  return typeof toUrl === "function" ? toUrl(ref) || "" : "";
+}
+
+/**
+ * 行体积安全阀（纯函数）：图片外置后 data 里只有短路径，正常永不触发。
+ * 万一降级保留了超大 dataURL，按「先丢尾部菜图、再丢立绘」裁到预算内 —— 宁丢图，不丢整行
+ * （行写不进去等于这个用户的宠物主页全丢）。
+ * @returns {{payload: object, dropped: number}} dropped = 被丢掉的图片数（0 表示原样未动）
+ */
+export function shrinkPetPayload(payload, maxBytes = PET_DATA_MAX) {
+  const size = (p) => JSON.stringify(p).length;
+  if (!payload || typeof payload !== "object") return { payload, dropped: 0 };
+  if (size(payload) <= maxBytes) return { payload, dropped: 0 };
+  const out = {
+    pet: payload.pet && typeof payload.pet === "object" ? { ...payload.pet } : null,
+    dishes: (Array.isArray(payload.dishes) ? payload.dishes : []).map((d) => ({ ...d })),
+    updated: payload.updated,
+  };
+  let dropped = 0;
+  for (let i = out.dishes.length - 1; i >= 0 && size(out) > maxBytes; i--) {
+    if (String(out.dishes[i].img || "").startsWith("data:")) { out.dishes[i].img = ""; dropped++; }
+  }
+  if (size(out) > maxBytes && out.pet && out.pet.custom && String(out.pet.custom.img || "").startsWith("data:")) {
+    out.pet.custom = null;
+    dropped++;
+  }
+  /* 兜底：连图都没有还超限（几乎不可能）→ 只留宠物本体 */
+  if (size(out) > maxBytes) {
+    out.dishes = [];
+    if (out.pet) out.pet.custom = null;
+  }
+  return { payload: out, dropped };
+}
 
 /**
  * 清洗手绘料理列表：只留有效的 {id,name,img,effort}，截到上限。
- * 纯函数（单测覆盖：非图片 dataURL / 超长图 / 脏字段都被过滤）。
+ * img 允许两种形态：dataURL（本地刚画完 / 上传失败降级）或 Storage 路径（已外置）。
+ * 纯函数（单测覆盖：非图片 dataURL / 超长图 / 外部 URL / 脏字段都被过滤）。
  */
 export function cleanDishes(list, limit = PET_HOME_DISH_LIMIT) {
   const out = [];
@@ -484,7 +583,7 @@ export function cleanDishes(list, limit = PET_HOME_DISH_LIMIT) {
   for (const d of list) {
     if (!d || typeof d !== "object") continue;
     const img = typeof d.img === "string" ? d.img : "";
-    if (!img.startsWith("data:image/") || img.length > DISH_IMG_MAX) continue;
+    if (!isImageRef(img)) continue;
     out.push({
       id: String(d.id == null ? "" : d.id).slice(0, 40),
       name: String(d.name == null ? "" : d.name).slice(0, 30),
@@ -505,10 +604,10 @@ export function cleanDishes(list, limit = PET_HOME_DISH_LIMIT) {
  */
 export function petHomeSnapshot(pet, dishes, now = Date.now()) {
   if (!pet || typeof pet !== "object") return null;
-  const custom =
-    pet.custom && typeof pet.custom === "object" && typeof pet.custom.img === "string" && pet.custom.img
-      ? { img: pet.custom.img }
-      : null;
+  /* 立绘只收合法图片引用（dataURL 或已外置的 Storage 路径）；超长 dataURL 直接丢弃，不给行留隐患 */
+  const customImg =
+    pet.custom && typeof pet.custom === "object" && typeof pet.custom.img === "string" ? pet.custom.img : "";
+  const custom = isImageRef(customImg) ? { img: customImg } : null;
   return {
     pet: {
       species: String(pet.species || "cat").slice(0, 20),
@@ -536,12 +635,23 @@ export function petCounts(row) {
   };
 }
 
-/** 统一云端快照的形状（行不存在/字段缺失都给默认值；计数取独立列） */
+/**
+ * 统一云端快照的形状（行不存在/字段缺失都给默认值；计数取独立列）。
+ * 图片字段统一转成可直接显示的 URL：老数据是 dataURL（原样），新数据是 Storage 路径（拼公开 URL）。
+ */
 function petHomeFromData(row) {
   const d = row && row.data && typeof row.data === "object" ? row.data : {};
+  const pet = d.pet && typeof d.pet === "object" ? { ...d.pet } : null;
+  if (pet) {
+    const img = pet.custom && typeof pet.custom === "object" ? resolvePetImg(pet.custom.img, publicUrl) : "";
+    pet.custom = img ? { img } : null;
+  }
   return {
-    pet: d.pet && typeof d.pet === "object" ? d.pet : null,
-    dishes: Array.isArray(d.dishes) ? d.dishes : [],
+    pet,
+    dishes: (Array.isArray(d.dishes) ? d.dishes : []).map((x) => ({
+      ...x,
+      img: resolvePetImg(x && x.img, publicUrl),
+    })),
     counts: petCounts(row),
     updated: Number(d.updated) || 0,
   };
@@ -578,23 +688,97 @@ export async function cloudGetPetHome(userId) {
   }
 }
 
+/** 会话内：同一张图（内容哈希）只上传一次，省流量也避免重复覆盖同名对象 */
+const petImgUploaded = new Map();
+
+/**
+ * 宠物图上传：dataURL → Storage 路径 `<uid>/pet-<hash>.<ext>`。
+ * 与墙图同桶同前缀约定（storage 策略按 (storage.foldername(name))[1] = auth.uid() 授权），
+ * 因此不需要新增任何 SQL / 策略；同一张图重传是幂等覆盖（upsert）。
+ * 失败返回 null —— 调用方降级保留 dataURL（图不丢，只是行变大，见 shrinkPetPayload）。
+ * @returns {Promise<string|null>} Storage 路径
+ */
+export async function cloudUploadPetImage(dataUrl) {
+  if (!canUseWall()) return null;
+  const parsed = parseImageDataUrl(dataUrl);
+  if (!parsed) return null;
+  const hit = petImgUploaded.get(parsed.hash);
+  if (hit) return hit;
+  const sb = getClient();
+  try {
+    const path = `${cloud.user.id}/pet-${parsed.hash}.${parsed.ext}`;
+    const { error } = await sb.storage
+      .from("wall-images")
+      .upload(path, parsed.bytes, { contentType: parsed.mime, upsert: true });
+    if (error) throw error;
+    petImgUploaded.set(parsed.hash, path);
+    return path;
+  } catch (e) {
+    console.warn("[cloud] uploadPetImage:", e);
+    cloud.error = e && e.message ? e.message : String(e);
+    return null;
+  }
+}
+
+/** 单个引用外置：dataURL → Storage 路径；已经是路径 / 上传失败 → 原样返回（失败不阻断整次同步） */
+async function externalizePetImg(ref) {
+  if (typeof ref !== "string" || !ref.startsWith("data:")) return ref;
+  const path = await cloudUploadPetImage(ref);
+  return path || ref;
+}
+
+/**
+ * 组装要写进 data 的展示面：图片外置（dataURL → Storage 路径）→ 白名单字段 → 行体积安全阀。
+ * pet 字段逐项白名单化（与 petHomeSnapshot 同一套规则，双层保险），
+ * 永不带 counts —— 那是 pet_profiles 的独立列，主人同步绝不能覆盖。
+ */
+async function toCloudPetData(snapshot) {
+  const petIn = snapshot.pet && typeof snapshot.pet === "object" ? snapshot.pet : null;
+  let pet = null;
+  if (petIn) {
+    const customIn =
+      petIn.custom && typeof petIn.custom === "object" && typeof petIn.custom.img === "string"
+        ? petIn.custom.img
+        : "";
+    const img = await externalizePetImg(customIn);
+    pet = {
+      species: String(petIn.species || "cat").slice(0, 20),
+      name: String(petIn.name || "Guest").slice(0, 30),
+      personality: String(petIn.personality || "").slice(0, 30),
+      level: Math.max(1, Number(petIn.level) || 1),
+      sleeping: petIn.sleeping === true,
+      custom: isImageRef(img) ? { img } : null,
+    };
+  }
+  const dishes = cleanDishes(snapshot.dishes);
+  await Promise.all(
+    dishes.map(async (d) => {
+      const img = await externalizePetImg(d.img);
+      d.img = isImageRef(img) ? img : "";
+    }),
+  );
+  return {
+    pet,
+    dishes: dishes.filter((d) => d.img),
+    updated: Number(snapshot.updated) || Date.now(),
+  };
+}
+
 /**
  * 推送我的宠物主页快照（登录才可用；RLS 只许写自己的行）。
- * 只写 data（pet/dishes/updated）：pats、feeds 是访客互动计数，
- * 主人同步绝不能覆盖它们 —— 所以这里手工构造 payload，永不带 counts。
+ * 只写 data（pet/dishes/updated）：图片实体在 Storage（这里只存路径），
+ * pats/feeds 是访客互动计数（独立列），两者都不会被这次覆盖动到。
  */
 export async function cloudSavePetHome(snapshot) {
   if (!canUseWall() || !snapshot || typeof snapshot !== "object") return false;
   const sb = getClient();
   try {
-    const payload = {
-      pet: snapshot.pet && typeof snapshot.pet === "object" ? snapshot.pet : null,
-      dishes: Array.isArray(snapshot.dishes) ? snapshot.dishes : [],
-      updated: Number(snapshot.updated) || Date.now(),
-    };
+    const payload = await toCloudPetData(snapshot);
+    const { payload: fitted, dropped } = shrinkPetPayload(payload);
+    if (dropped) console.warn("[cloud] savePetHome: 图片外置失败导致行超预算，已丢弃图片数 =", dropped);
     const { error } = await sb
       .from("pet_profiles")
-      .upsert({ user_id: cloud.user.id, data: payload, updated_at: new Date().toISOString() });
+      .upsert({ user_id: cloud.user.id, data: fitted, updated_at: new Date().toISOString() });
     if (error) throw error;
     return true;
   } catch (e) {

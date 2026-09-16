@@ -40,7 +40,7 @@
 - **浏览次数**：同一访客对同一条帖一天只算一次（登录用户按 uid、游客按本机匿名 id），服务端 `wall_post_views` 再去重一次，刷新页面刷不高
 - **厌恶 🙁 与自动下架**：登录后可点「不喜欢」；当 **厌恶数 ÷ 浏览数 ≥ 1%** 时帖子自动**下架**（数据库**假删除**：`removed = true`，数据仍在库里，前台不再展示，不再自动恢复以免忽隐忽现）
 - **可选云端模式**：连接 Supabase 后帖子 / 评论 / 回应真·多人共享，图片上传 Storage，邮箱注册登录；未配置时自动降级本地模式（见下方配置章节）
-- **用户主页 `/u/:id`**：点帖子头像 / 昵称进入（匿名也能看）。展示昵称、加入时间、TA 的帖子与收到的回应；**TA 的伙伴**——云端镜像的宠物（登录后自动同步，含形象 / 性格 / 等级），**访客可以摸摸头、投喂**，互动真实计入 TA 的亲密度 / 饱食度（RPC 计费，非本地演出）；**TA 的手绘厨房**——TA 画的食物墙，点菜即投喂
+- **用户主页 `/u/:id`**：点帖子头像 / 昵称进入（匿名也能看）。展示昵称、加入时间、TA 的帖子与收到的回应；**TA 的伙伴**——云端镜像的宠物（登录后自动同步，含形象 / 性格 / 等级），**访客可以摸摸头、投喂**，互动真实计入 TA 的亲密度 / 饱食度（RPC 计费，非本地演出）；**TA 的手绘厨房**——TA 画的食物墙，点菜即投喂。立绘与菜图都存在 Storage，云端快照里只留路径（主人每次同步只写几百字节，不再写 MB 级 JSON）
 
 ### 👤 我的
 访客昵称 / 我的食谱管理 / 近 30 天心情日历
@@ -68,7 +68,7 @@
 node tools/comment-test.mjs   # 评论系统纯函数单测（26 项：二级回复/parentId 封顶/级联删除/评论数兜底）
 node tools/wall-test.mjs      # 暖心墙云端数据层纯函数单测（33 项：行映射/二级字段/评论数聚合/浏览与厌恶字段）
 node tools/wall-rules-test.mjs # 暖心墙进阶规则纯函数单测（29 项：排序/时间范围/浏览去重/1% 下架/每日一条/错误归类）
-node tools/pet-home-test.mjs   # 宠物主页云层纯函数单测（13 项：宠物快照 / 手绘厨房清洗 / 互动计数独立列 / 镜像队列安全性）
+node tools/pet-home-test.mjs   # 宠物主页云层纯函数单测（19 项：宠物快照 / 手绘厨房清洗 / 互动计数独立列 / 图片引用外置与行体积安全阀 / 镜像队列安全性）
 node tools/i18n-test.mjs      # 文案完整性与插值回归（19 项：en/zh 键集合对称、修复过的 key、$ 特殊字符）
 node tools/snack-test.mjs     # 零食雨游戏纯逻辑单测（20 项：难度曲线/生成/碰撞/结算上限）
 node tools/seo-test.mjs       # SEO 资产检查（35 项：robots/sitemap/OG 标签/PNG 尺寸/安全头/产物）
@@ -99,9 +99,9 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 云端功能是**可选的**：不配置时网站完全以本地模式运行（行为与单机版一致）。
 
 **① 建库**：注册 [supabase.com](https://supabase.com) → New Project（免费）→ 左侧 **SQL Editor** → 粘贴 `SUPABASE_SETUP.sql` 全部内容 → Run。这会创建：
-- `profiles`（注册自动建档）· `wall_posts`（含 `views` 浏览数 / `dislikes` 厌恶数 / `removed` 假删除 / `created_day` 每日限额）· `wall_comments`（二级评论：`parent_id` 自关联 + `reply_to_name`）· `wall_reactions`（回应，`kind` 含 `dislike`）· `wall_post_views`（浏览去重，全套 RLS 策略）
+- `profiles`（注册自动建档）· `wall_posts`（含 `views` 浏览数 / `dislikes` 厌恶数 / `removed` 假删除 / `created_day` 每日限额）· `wall_comments`（二级评论：`parent_id` 自关联 + `reply_to_name`）· `wall_reactions`（回应，`kind` 含 `dislike`）· `wall_post_views`（浏览去重，全套 RLS 策略）· `pet_profiles`（宠物主页镜像：`data` 只放展示快照 + `pats`/`feeds` 互动计数**独立列**）· `pet_interactions`（互动去重，每人每天每种一次）
 - 函数与触发器：`wall_daily_limit()`（每人每天一条）· `wall_add_view()` · `wall_toggle_dislike()`（含 1% 自动下架）
-- Storage 桶 `wall-images`（公开读、登录上传、只能改删自己路径）
+- Storage 桶 `wall-images`（公开读、登录上传、只能改删自己路径；**帖子配图与宠物立绘 / 手绘菜图共用此桶**——宠物图放 `<uid>/pet-<hash>.<ext>`，云端快照里只留路径、不留 dataURL，一行只有几百字节）
 
 > **已经建过库的老用户**：按顺序跑两个增量迁移（都在 SQL Editor 里粘贴全部内容 → Run，幂等、可重复跑）：
 > 1. `MIGRATION_two_level_comments.sql` —— 评论改成二级结构（旧评论不用回填，会当一级评论正常显示）
@@ -266,6 +266,7 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 - ✅ **已完成**： SEO 收录优化（robots / 站点地图 + 搜索框收录 + 分享卡与图标 + 结构化数据）
 - ✅ **已完成**：暖心墙进阶——每人每天一条、排序（最新/同感/抱抱/暖暖）、时间范围（近两天/近7天/这个月）、浏览计数、厌恶达 1% 自动下架（假删除）
 - ✅ **已完成**：用户主页 `/u/:id`——点帖子头像/昵称进入；展示宠物（云端镜像，访客可摸摸头/投喂，互动计入 TA 的亲密度/饱食度）、TA 的手绘厨房（点菜投喂）、TA 的帖子与收到的回应
+- ✅ **已完成**：宠物图外置 + 互动计数独立列——立绘 / 手绘菜图进 Storage（`wall-images/<uid>/pet-<hash>.<ext>`，按内容哈希命名、重复上传即覆盖），`pet_profiles` 的互动计数改用独立列 `pats`/`feeds`：修掉「主人同步把访客计数清零」，并把单行数据从 MB 级降到几百字节（解掉将来迁库时单行 2MB 的硬限制）
 - ✅ **已完成**：墙上的主页（/u/:id）——点帖子头像/昵称进入，看 TA 的帖子、加入时间与收到的抱抱/暖暖/同感
 - 每日一问接入真实数据、陪你大厅接入真实在线人数（**当前刻意不显示人数**，等有真实统计再接）
 - 宠物冒险（带回手绘明信片图鉴）、装扮系统、季节彩蛋
