@@ -256,26 +256,27 @@ if (hasAdvanced) {
   }
 }
 
-/* T26~T28 宠物主页实测：镜像同步 / 匿名可读 / 访客互动去重（未跑迁移则 SKIP） */
+/* T26~T31 宠物主页实测：镜像同步 / 匿名可读 / 访客互动去重 / 计数不被同步清零 */
 {
-  const { error } = await sb.from("pet_profiles").select("data").limit(1);
+  const { error } = await sb.from("pet_profiles").select("data,pats,feeds").limit(1);
   const hasPet = !error;
-  if (hasPet) { pass++; console.log("PASS  T26 迁移已就绪（pet_profiles 存在）"); }
-  else console.log("SKIP  T26 未跑迁移（pet_profiles 不存在）：跳过宠物主页测试（" + error.message + "）");
+  if (hasPet) { pass++; console.log("PASS  T26 迁移已就绪（pet_profiles 存在，且已有 pats/feeds 计数列）"); }
+  else console.log("SKIP  T26 未跑迁移（pet_profiles 或 pats/feeds 列不存在）：跳过宠物主页测试（" + error.message + "）");
 
   if (hasPet) {
+    /* 主人的快照只有展示面（前端 cloudSavePetHome 也只写这些键）——计数不在 data 里 */
     const SNAP = {
       pet: { species: "cat", name: "云麻薯", personality: "粘人", level: 3, sleeping: false, custom: null },
       dishes: [{ id: "d1", name: "小鱼干", img: "data:image/jpeg;base64,e2e", effort: 2 }],
-      counts: { pats: 0, feeds: 0 },
       updated: Date.now(),
     };
     await sb.from("pet_profiles").upsert({ user_id: uid, data: SNAP, updated_at: new Date().toISOString() });
 
     /* 匿名可读（主页是公开面），且私人字段没有跟着上来 */
     const { data: pub } = await sbAnon.from("pet_profiles").select("data").eq("user_id", uid).maybeSingle();
-    ok("T27 宠物快照匿名可读（访客看得到 TA 的伙伴与厨房）",
-      !!pub && pub.data && pub.data.pet && pub.data.pet.name === "云麻薯" && pub.data.dishes.length === 1,
+    ok("T27 宠物快照匿名可读（访客看得到 TA 的伙伴与厨房），且 data 里不带 counts",
+      !!pub && pub.data && pub.data.pet && pub.data.pet.name === "云麻薯" && pub.data.dishes.length === 1
+        && !pub.data.counts,
       pub && pub.data && pub.data.pet ? "pet=" + pub.data.pet.name : "读不到");
 
     /* 访客互动：同人同日同类型只计一次 */
@@ -290,6 +291,23 @@ if (hasAdvanced) {
     ok("T29 投喂与摸头分开计数（同访客同日各自一次）",
       !f1.error && f1.data && f1.data.counted === true && f1.data.counts.feeds === 1 && f1.data.counts.pats === 1,
       f1.error ? f1.error.message : JSON.stringify(f1.data && f1.data.counts));
+
+    /* T30 计数在独立列：主人重新同步快照（整体覆盖 data）后计数仍在（本次修的 bug） */
+    await sb.from("pet_profiles").upsert({
+      user_id: uid,
+      data: { pet: SNAP.pet, dishes: SNAP.dishes, updated: Date.now() },
+      updated_at: new Date().toISOString(),
+    });
+    const { data: afterSync } = await sb.from("pet_profiles").select("pats,feeds").eq("user_id", uid).maybeSingle();
+    ok("T30 主人同步快照不会清空访客计数（pats/feeds 是独立列，不被 data 覆盖）",
+      !!afterSync && afterSync.pats === 1 && afterSync.feeds === 1,
+      afterSync ? "pats=" + afterSync.pats + " feeds=" + afterSync.feeds : "读不到");
+
+    /* T31 访客（匿名）能读到计数列 —— 主页「摸摸头 N 次」就是这两列 */
+    const { data: pubCounts } = await sbAnon.from("pet_profiles").select("pats,feeds").eq("user_id", uid).maybeSingle();
+    ok("T31 计数列匿名可读（访客页面能看到累计次数）",
+      !!pubCounts && pubCounts.pats === 1 && pubCounts.feeds === 1,
+      pubCounts ? "pats=" + pubCounts.pats + " feeds=" + pubCounts.feeds : "读不到");
   }
 }
 

@@ -1,9 +1,9 @@
 /* 宠物主页（/u/:id）纯逻辑单测（Node 直跑，无需浏览器/网络）
  *   node tools/pet-home-test.mjs
- * 覆盖：手绘厨房清洗、公开快照白名单（私人数据不上云）、防抖队列的安全性
+ * 覆盖：手绘厨房清洗、公开快照白名单（私人数据不上云）、互动计数读取、防抖队列的安全性
  */
 import assert from "node:assert/strict";
-import { cleanDishes, petHomeSnapshot, PET_HOME_DISH_LIMIT, queuePetHomeSync } from "../src/utils/wall.js";
+import { cleanDishes, petHomeSnapshot, petCounts, PET_HOME_DISH_LIMIT, queuePetHomeSync } from "../src/utils/wall.js";
 
 const out = [];
 let pass = 0, fail = 0;
@@ -93,9 +93,30 @@ t("T9 dishes 走 cleanDishes（同一套清洗），坏菜不进快照", () => {
   assert.equal(s.dishes[0].name, "小鱼干");
 });
 
-/* ═════════ queuePetHomeSync：防抖队列安全性 ══════════ */
 
-t("T10 非函数参数被忽略（不抛错）", () => {
+/* ═════════ 互动计数：必须是独立列 pats/feeds（data 会被主人同步整体覆盖） ═════════ */
+
+t("T10 快照顶层只有 pet/dishes/updated —— 计数绝不进 data（否则同步时会清零）", () => {
+  const s = petHomeSnapshot({ species: "cat", name: "麻薯" }, [], 1700000000000);
+  assert.deepEqual(Object.keys(s).sort(), ["dishes", "pet", "updated"], "顶层只许这 3 个键");
+  assert.equal(s.counts, undefined, "快照里不许出现 counts");
+});
+
+t("T11 计数从独立列读：{pats,feeds} 直接映射（数字/字符串都吃）", () => {
+  assert.deepEqual(petCounts({ pats: 3, feeds: 5 }), { pats: 3, feeds: 5 });
+  assert.deepEqual(petCounts({ pats: "7" }), { pats: 7, feeds: 0 }, "字符串数字化，缺的补 0");
+});
+
+t("T12 行缺失 / 脏值 → 全 0（负数、NaN、对象都不许漏成 NaN）", () => {
+  assert.deepEqual(petCounts(null), { pats: 0, feeds: 0 });
+  assert.deepEqual(petCounts(undefined), { pats: 0, feeds: 0 });
+  assert.deepEqual(petCounts("x"), { pats: 0, feeds: 0 });
+  assert.deepEqual(petCounts({ pats: -9, feeds: Number.NaN }), { pats: 0, feeds: 0 });
+  assert.deepEqual(petCounts({ pats: {} }), { pats: 0, feeds: 0 });
+});
+
+/* ═════════ queuePetHomeSync：防抖队列安全性 ══════════ */
+t("T13 非函数参数被忽略（不抛错）", () => {
   assert.doesNotThrow(() => queuePetHomeSync(123));
   assert.doesNotThrow(() => queuePetHomeSync(null));
   assert.doesNotThrow(() => queuePetHomeSync(() => ({ pet: null }), 100), "登记合法工厂也不抛");

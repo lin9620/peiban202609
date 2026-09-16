@@ -498,7 +498,9 @@ export function cleanDishes(list, limit = PET_HOME_DISH_LIMIT) {
 
 /**
  * 宠物主页快照（发到云端的「最小公开面」）：
- * 只带展示需要的字段，不带亲密度/金币/心情日记等私人数据。
+ * 只带展示需要的字段，不带亲密度/金币/心情日记等私人数据，
+ * 也不带互动计数 —— counts 存在 pet_profiles 的 pats/feeds 独立列里，
+ * 主人每次同步都会整体覆盖 data，带上就会把访客攒的计数清零。
  * @returns {object|null}
  */
 export function petHomeSnapshot(pet, dishes, now = Date.now()) {
@@ -521,17 +523,26 @@ export function petHomeSnapshot(pet, dishes, now = Date.now()) {
   };
 }
 
-/** 统一云端快照的形状（行不存在/字段缺失都给默认值） */
-function petHomeFromData(data) {
-  const d = data && typeof data === "object" ? data : {};
-  const c = d.counts && typeof d.counts === "object" ? d.counts : {};
+/**
+ * 互动计数：读 pet_profiles 的独立列 pats / feeds（不是 data 里的字段）。
+ * 纯函数：行缺失 / 脏值一律归 0（单测覆盖）。
+ * 独立成列的原因：主人同步是整体覆盖 data，计数若写进 data 会被覆盖成 0。
+ */
+export function petCounts(row) {
+  const r = row && typeof row === "object" ? row : {};
+  return {
+    pats: Math.max(0, Number(r.pats) || 0),
+    feeds: Math.max(0, Number(r.feeds) || 0),
+  };
+}
+
+/** 统一云端快照的形状（行不存在/字段缺失都给默认值；计数取独立列） */
+function petHomeFromData(row) {
+  const d = row && row.data && typeof row.data === "object" ? row.data : {};
   return {
     pet: d.pet && typeof d.pet === "object" ? d.pet : null,
     dishes: Array.isArray(d.dishes) ? d.dishes : [],
-    counts: {
-      pats: Math.max(0, Number(c.pats) || 0),
-      feeds: Math.max(0, Number(c.feeds) || 0),
-    },
+    counts: petCounts(row),
     updated: Number(d.updated) || 0,
   };
 }
@@ -545,25 +556,45 @@ export async function cloudGetPetHome(userId) {
   try {
     const { data, error } = await sb
       .from("pet_profiles")
-      .select("data")
+      .select("data,pats,feeds")
       .eq("user_id", userId)
       .maybeSingle();
     if (error) throw error;
-    return petHomeFromData(data ? data.data : null);
+    return petHomeFromData(data);
   } catch (e) {
-    console.warn("[cloud] getPetHome:", e);
-    return null;
+    /* 老库还没补 pats/feeds 列 → 退回只读 data（计数显示 0，但区块照常出现） */
+    try {
+      const { data, error } = await sb
+        .from("pet_profiles")
+        .select("data")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (error) throw error;
+      return petHomeFromData(data);
+    } catch (e2) {
+      console.warn("[cloud] getPetHome:", e2);
+      return null;
+    }
   }
 }
 
-/** 推送我的宠物主页快照（登录才可用；RLS 只许写自己的行） */
+/**
+ * 推送我的宠物主页快照（登录才可用；RLS 只许写自己的行）。
+ * 只写 data（pet/dishes/updated）：pats、feeds 是访客互动计数，
+ * 主人同步绝不能覆盖它们 —— 所以这里手工构造 payload，永不带 counts。
+ */
 export async function cloudSavePetHome(snapshot) {
   if (!canUseWall() || !snapshot || typeof snapshot !== "object") return false;
   const sb = getClient();
   try {
+    const payload = {
+      pet: snapshot.pet && typeof snapshot.pet === "object" ? snapshot.pet : null,
+      dishes: Array.isArray(snapshot.dishes) ? snapshot.dishes : [],
+      updated: Number(snapshot.updated) || Date.now(),
+    };
     const { error } = await sb
       .from("pet_profiles")
-      .upsert({ user_id: cloud.user.id, data: snapshot, updated_at: new Date().toISOString() });
+      .upsert({ user_id: cloud.user.id, data: payload, updated_at: new Date().toISOString() });
     if (error) throw error;
     return true;
   } catch (e) {
@@ -591,7 +622,8 @@ export async function cloudPetInteract(ownerId, kind, viewer = "") {
     });
     if (error) throw error;
     if (!data || data.ok === false) return null;
-    const c = data.counts && typeof data.counts === "object" ? data.counts : {};
+    /* 兼容两种返回：{counts:{pats,feeds}}（当前）与顶层 {pats,feeds}（老版本） */
+    const c = data.counts && typeof data.counts === "object" ? data.counts : data;
     return {
       counted: data.counted === true,
       pats: Math.max(0, Number(c.pats) || 0),

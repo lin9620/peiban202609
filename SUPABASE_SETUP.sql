@@ -311,11 +311,19 @@ grant execute on function public.wall_add_view(bigint, text) to anon, authentica
 grant execute on function public.wall_toggle_dislike(bigint) to authenticated;
 
 -- 7) 主页的伙伴（/u/:id）：宠物 + 手绘厨房镜像 + 访客互动
+--    data = 展示快照（pet/dishes/updated）；互动计数单独占列 pats/feeds，
+--    这样主人同步时整体覆盖 data 也不会把访客的计数冲掉。
 create table if not exists public.pet_profiles (
   user_id    uuid primary key references public.profiles (id) on delete cascade,
-  data       jsonb not null default '{"pet":null,"dishes":[],"counts":{"pats":0,"feeds":0}}'::jsonb,
+  data       jsonb not null default '{"pet":null,"dishes":[],"updated":0}'::jsonb,
+  pats       integer not null default 0,
+  feeds      integer not null default 0,
   updated_at timestamptz not null default now()
 );
+
+-- 老库补列（幂等）：早期版本把计数写在 data.counts 里，会被主人镜像覆盖成 0
+alter table public.pet_profiles add column if not exists pats  integer not null default 0;
+alter table public.pet_profiles add column if not exists feeds integer not null default 0;
 
 alter table public.pet_profiles enable row level security;
 
@@ -348,7 +356,8 @@ declare
   v_viewer  text := coalesce(nullif(trim(coalesce(p_viewer, '')), ''),
                              coalesce(auth.uid()::text, 'anon'));
   v_counted boolean;
-  v_counts  jsonb;
+  v_pats    integer;
+  v_feeds   integer;
 begin
   if p_kind not in ('pat', 'feed') then
     return jsonb_build_object('ok', false, 'reason', 'bad-kind');
@@ -360,18 +369,22 @@ begin
   v_counted := found;
 
   if v_counted then
-    /* 快照里的计数键是复数：pat → pats，feed → feeds（前端 wall.js 读 counts.pats / counts.feeds） */
+    /* 只动 pats / feeds 列，绝不碰 data（主人镜像 upsert 会整体覆盖 data） */
+    insert into public.pet_profiles (user_id) values (p_owner)
+      on conflict (user_id) do nothing;
+
     update public.pet_profiles
-      set data = jsonb_set(data, array['counts', case p_kind when 'pat' then 'pats' else 'feeds' end],
-                           to_jsonb(coalesce((data->'counts'->>(case p_kind when 'pat' then 'pats' else 'feeds' end))::int, 0) + 1))
+      set pats  = pats  + case when p_kind = 'pat'  then 1 else 0 end,
+          feeds = feeds + case when p_kind = 'feed' then 1 else 0 end
       where user_id = p_owner;
   end if;
 
-  select coalesce(data->'counts', '{"pats":0,"feeds":0}'::jsonb) into v_counts
+  select pats, feeds into v_pats, v_feeds
     from public.pet_profiles where user_id = p_owner;
 
   return jsonb_build_object('ok', true, 'counted', v_counted,
-                            'counts', coalesce(v_counts, '{"pats":0,"feeds":0}'::jsonb));
+                            'counts', jsonb_build_object('pats',  coalesce(v_pats, 0),
+                                                         'feeds', coalesce(v_feeds, 0)));
 end $$;
 
 grant execute on function public.pet_interact(uuid, text, text) to anon, authenticated;

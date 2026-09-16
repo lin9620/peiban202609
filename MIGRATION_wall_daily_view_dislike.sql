@@ -181,13 +181,21 @@ grant execute on function public.wall_toggle_dislike(bigint) to authenticated;
 -- ═══════════════════════════════════════════════════════════════
 
 -- ── 1) 宠物档案镜像：主人登录后由前端自动同步（jsonb 存展示快照）──
---    data = { pet:{species,name,personality,level,sleeping,custom}, dishes:[{id,name,img,effort}], counts:{pats,feeds}, updated }
+--    data = { pet:{species,name,personality,level,sleeping,custom}, dishes:[{id,name,img,effort}], updated }
 --    只放「公开面」字段，亲密度/金币/心情日记等私人数据不进云端。
+--    访客互动计数单独占列（pats / feeds）：主人同步是整体覆盖 data，
+--    计数若放在 data 里会被覆盖成 0（本次修复的根因）。
 create table if not exists public.pet_profiles (
   user_id    uuid primary key references public.profiles (id) on delete cascade,
-  data       jsonb not null default '{"pet":null,"dishes":[],"counts":{"pats":0,"feeds":0}}'::jsonb,
+  data       jsonb not null default '{"pet":null,"dishes":[],"updated":0}'::jsonb,
+  pats       integer not null default 0,
+  feeds      integer not null default 0,
   updated_at timestamptz not null default now()
 );
+
+-- 老库补列（幂等）：早期版本把计数写在 data.counts 里，会被主人镜像覆盖
+alter table public.pet_profiles add column if not exists pats  integer not null default 0;
+alter table public.pet_profiles add column if not exists feeds integer not null default 0;
 
 alter table public.pet_profiles enable row level security;
 
@@ -217,14 +225,16 @@ create policy "pet interactions readable by all" on public.pet_interactions
   for select using (true);
 -- 不开放直接写：计数只能走下面的 pet_interact()（防刷）
 
--- ── 3) RPC：访客互动（摸摸头 / 投喂），去重后把计数累进主人档案 ──
+-- ── 3) RPC：访客互动（摸摸头 / 投喂），去重后把计数累进主人档案的独立列 ──
+--    只动 pats / feeds 两列，绝不碰 data（主人镜像 upsert 会整体覆盖 data）
 create or replace function public.pet_interact(p_owner uuid, p_kind text, p_viewer text default '')
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   v_viewer  text := coalesce(nullif(trim(coalesce(p_viewer, '')), ''),
                              coalesce(auth.uid()::text, 'anon'));
   v_counted boolean;
-  v_counts  jsonb;
+  v_pats    integer;
+  v_feeds   integer;
 begin
   if p_kind not in ('pat', 'feed') then
     return jsonb_build_object('ok', false, 'reason', 'bad-kind');
@@ -236,18 +246,22 @@ begin
   v_counted := found;                      -- 真的插进去了才算一次（同人同日同类型只一次）
 
   if v_counted then
-    /* 快照里的计数键是复数：pat → pats，feed → feeds（前端 wall.js 读 counts.pats / counts.feeds） */
+    /* 主人还没推过快照也先建好行，保证计数不丢（主人之后的 upsert 只改 data / updated_at） */
+    insert into public.pet_profiles (user_id) values (p_owner)
+      on conflict (user_id) do nothing;
+
     update public.pet_profiles
-      set data = jsonb_set(data, array['counts', case p_kind when 'pat' then 'pats' else 'feeds' end],
-                           to_jsonb(coalesce((data->'counts'->>(case p_kind when 'pat' then 'pats' else 'feeds' end))::int, 0) + 1))
+      set pats  = pats  + case when p_kind = 'pat'  then 1 else 0 end,
+          feeds = feeds + case when p_kind = 'feed' then 1 else 0 end
       where user_id = p_owner;
   end if;
 
-  select coalesce(data->'counts', '{"pats":0,"feeds":0}'::jsonb) into v_counts
+  select pats, feeds into v_pats, v_feeds
     from public.pet_profiles where user_id = p_owner;
 
   return jsonb_build_object('ok', true, 'counted', v_counted,
-                            'counts', coalesce(v_counts, '{"pats":0,"feeds":0}'::jsonb));
+                            'counts', jsonb_build_object('pats',  coalesce(v_pats, 0),
+                                                         'feeds', coalesce(v_feeds, 0)));
 end $$;
 
 -- 游客也要能互动（去重与防刷都在服务端）

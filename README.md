@@ -68,7 +68,7 @@
 node tools/comment-test.mjs   # 评论系统纯函数单测（26 项：二级回复/parentId 封顶/级联删除/评论数兜底）
 node tools/wall-test.mjs      # 暖心墙云端数据层纯函数单测（33 项：行映射/二级字段/评论数聚合/浏览与厌恶字段）
 node tools/wall-rules-test.mjs # 暖心墙进阶规则纯函数单测（29 项：排序/时间范围/浏览去重/1% 下架/每日一条/错误归类）
-node tools/pet-home-test.mjs   # 宠物主页云层纯函数单测（10 项：宠物快照/菜谱差集同步/互动计费/镜像行映射）
+node tools/pet-home-test.mjs   # 宠物主页云层纯函数单测（13 项：宠物快照 / 手绘厨房清洗 / 互动计数独立列 / 镜像队列安全性）
 node tools/i18n-test.mjs      # 文案完整性与插值回归（19 项：en/zh 键集合对称、修复过的 key、$ 特殊字符）
 node tools/snack-test.mjs     # 零食雨游戏纯逻辑单测（20 项：难度曲线/生成/碰撞/结算上限）
 node tools/seo-test.mjs       # SEO 资产检查（35 项：robots/sitemap/OG 标签/PNG 尺寸/安全头/产物）
