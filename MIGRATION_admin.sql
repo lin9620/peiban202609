@@ -17,11 +17,8 @@ create table if not exists public.admin_users (
 
 alter table public.admin_users enable row level security;
 
-drop policy if exists "admins manage admins" on public.admin_users;
-create policy "admins manage admins" on public.admin_users
-  for all using (public.is_admin()) with check (public.is_admin());
-
 -- ── 2) 身份判定：全站唯一的管理员判断入口 ─────────────────────
+--    注意顺序：必须先建函数，下面的策略才能引用它（create policy 会在创建期解析表达式）。
 create or replace function public.is_admin()
 returns boolean
 language sql stable security definer set search_path = public as $$
@@ -30,7 +27,12 @@ $$;
 
 grant execute on function public.is_admin() to anon, authenticated;
 
--- ── 3) 收紧帖子读取：已下架帖只有作者本人与管理员可见 ──────────
+-- ── 3) 管理员名单策略（引用上面已就位的 is_admin）─────────────
+drop policy if exists "admins manage admins" on public.admin_users;
+create policy "admins manage admins" on public.admin_users
+  for all using (public.is_admin()) with check (public.is_admin());
+
+-- ── 4) 收紧帖子读取：已下架帖只有作者本人与管理员可见 ──────────
 --    此前策略是 using(true)：任何人直查 REST API 都能看到已下架帖（前端只是不展示）。
 --    收紧后：公开流/用户主页查询（removed=false 或本人）行为不变，管理页能看全部。
 drop policy if exists "posts readable by all" on public.wall_posts;
@@ -38,7 +40,7 @@ drop policy if exists "posts visible or own or admin" on public.wall_posts;
 create policy "posts visible or own or admin" on public.wall_posts
   for select using (removed = false or auth.uid() = user_id or public.is_admin());
 
--- ── 4) 治理动作（下架/恢复/删除）──────────────────────────────
+-- ── 5) 治理动作（下架/恢复/删除）──────────────────────────────
 --    update 允许管理员改任意列（可信角色）；删除帖子/评论时子行靠 FK 级联清掉。
 drop policy if exists "posts admin update" on public.wall_posts;
 create policy "posts admin update" on public.wall_posts
@@ -52,7 +54,7 @@ drop policy if exists "comments admin delete" on public.wall_comments;
 create policy "comments admin delete" on public.wall_comments
   for delete using (public.is_admin());
 
--- ── 5) 看板 RPC：一次返回全部总览数据 ─────────────────────────
+-- ── 6) 看板 RPC：一次返回全部总览数据 ─────────────────────────
 --    非管理员调用只拿 {admin:false}（不泄露任何数字）；
 --    security definer 让统计可以读 auth 侧与 storage.objects（bucket 计数/体积）。
 create or replace function public.admin_overview()
@@ -130,7 +132,7 @@ end $$;
 
 grant execute on function public.admin_overview() to anon, authenticated;
 
--- ── 6) 把自己设为管理员（改邮箱后执行；可重复跑）──────────────
+-- ── 7) 把自己设为管理员（改邮箱后执行；可重复跑）──────────────
 -- insert into public.admin_users (user_id)
 -- select id from auth.users where email = '你的邮箱@example.com'
 -- on conflict (user_id) do nothing;
