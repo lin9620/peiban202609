@@ -5,6 +5,7 @@
 import assert from "node:assert/strict";
 import {
   SORTS, SORT_MODES, DEFAULT_SORT, sortPosts, reactCount,
+  RANGES, RANGE_KEYS, DEFAULT_RANGE, rangeStartTs, inRange,
   VIEW_KEY, ANON_KEY, POST_DAY_KEY, postRef, utcDay, pruneStamps, collectViews,
   DISLIKE_RATIO, REMOVAL_MIN_VIEWS, dislikeRatio, ratioPct, shouldRemove,
   isVisible, visibleOnly, postedOnDay, canPostToday, errorKind,
@@ -211,6 +212,52 @@ t("T22 errorKind：每日限额 / 未跑迁移 / 其它失败分得开", () => {
   assert.equal(errorKind("network timeout"), "");
   assert.equal(errorKind(""), "");
   assert.equal(errorKind(null), "");
+});
+
+/* ═════════ 时间范围（默认近两天；另有 近 7 天 / 这个月） ══════════ */
+
+t("T25 时间范围：共 3 档，默认近两天，key 与 i18n 对齐", () => {
+  assert.equal(RANGES.length, 3);
+  assert.deepEqual(RANGES.map((r) => r.key), ["2d", "7d", "month"]);
+  assert.deepEqual(RANGE_KEYS, ["2d", "7d", "month"]);
+  assert.equal(DEFAULT_RANGE, "2d");
+  for (const r of RANGES) assert.ok(r.tk.startsWith("community.range"), "i18n key: " + r.tk);
+});
+
+t("T26 rangeStartTs：近 2 天 / 近 7 天 / 本月 1 日 0 点（UTC）；未知档回退近两天", () => {
+  const now = Date.parse("2026-03-06T12:00:00Z");
+  assert.equal(rangeStartTs("2d", now), now - 2 * 86400000);
+  assert.equal(rangeStartTs("7d", now), now - 7 * 86400000);
+  assert.equal(rangeStartTs("month", now), Date.UTC(2026, 2, 1), "3 月 → 2026-03-01T00:00:00Z");
+  assert.equal(rangeStartTs("bogus", now), now - 2 * 86400000);
+  assert.equal(rangeStartTs(undefined, now), now - 2 * 86400000);
+});
+
+t("T27 inRange：边界内外、跨月归 UTC 月、示例帖永在、无时间戳不显示", () => {
+  const now = Date.parse("2026-03-06T12:00:00Z");
+  const p = (ts) => ({ id: 1, ts });
+  assert.equal(inRange(p(now - 86400000), "2d", now), true, "1 天前 ∈ 近两天");
+  assert.equal(inRange(p(now - 3 * 86400000), "2d", now), false, "3 天前 ∉ 近两天");
+  assert.equal(inRange(p(now - 6 * 86400000), "7d", now), true, "6 天前 ∈ 近 7 天");
+  assert.equal(inRange(p(now - 9 * 86400000), "7d", now), false, "9 天前 ∉ 近 7 天");
+  assert.equal(inRange(p(Date.parse("2026-03-01T00:00:00Z")), "month", now), true, "本月 1 日 ∈ 这个月");
+  assert.equal(inRange(p(Date.parse("2026-02-28T23:59:59Z")), "month", now), false, "上月末 ∉ 这个月");
+  assert.equal(inRange(p(now - 3 * 86400000), "bogus", now), false, "未知档回退近两天 → 3 天前不在");
+  assert.equal(inRange(null, "2d", now), false);
+  assert.equal(inRange({ id: 2 }, "2d", now), false, "没有时间戳不显示（不瞎猜）");
+  assert.equal(inRange({ id: "s1", sample: true, ts: 0 }, "2d", now), true, "示例帖不参与筛选");
+});
+
+t("T28 端到端：范围筛掉旧帖后，热度排序仍在剩下的帖里生效", () => {
+  const now = Date.parse("2026-03-06T12:00:00Z");
+  const list = [
+    { id: 1, ts: now - 86400000, reacts: { relate: 1 } },          // 1 天前，同感 1
+    { id: 2, ts: now - 3600000, reacts: { relate: 0 } },           // 1 小时前，同感 0
+    { id: 3, ts: now - 40 * 86400000, reacts: { relate: 99 } },    // 40 天前，同感再多也被范围筛掉
+    { id: 4, ts: now - 7200000, removed: true, reacts: { relate: 5 } }, // 已下架
+  ];
+  const out = sortPosts(visibleOnly(list).filter((x) => inRange(x, "2d", now)), "relate");
+  assert.deepEqual(out.map((x) => x.id), [1, 2], "下架的 4 与超范围的 3 都不见；同感多的 1 排前");
 });
 
 /* ═════════ 组合：新规矩串起来跑一遍 ═════════ */

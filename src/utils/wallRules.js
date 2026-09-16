@@ -174,6 +174,48 @@ export function canPostToday({ list = [], userId = "", day = utcDay(), localDay 
   return !postedOnDay(list, userId, day);
 }
 
+/* ══════════ 时间范围（默认近两天；另有 近 7 天 / 这个月） ══════════ */
+
+/** 时间范围档位（顺序 = UI 上的按钮顺序），tk 为 i18n key */
+export const RANGES = [
+  { key: "2d", tk: "community.range2d" },
+  { key: "7d", tk: "community.range7d" },
+  { key: "month", tk: "community.rangeMonth" },
+];
+export const RANGE_KEYS = RANGES.map((r) => r.key);
+export const DEFAULT_RANGE = "2d";
+
+const DAY_MS = 86400000;
+
+/**
+ * 某个时间范围的起点时间戳。
+ * month = 当前 UTC 月的 1 日 0 点 —— 全站判「天/月」都用 UTC，口径才不会和数据库错开。
+ * 未知档位回退默认近两天（存档里存了老值也不会让列表变空）。
+ */
+export function rangeStartTs(range, now = Date.now()) {
+  const n = Number(now) || 0;
+  if (range === "7d") return n - 7 * DAY_MS;
+  if (range === "month") {
+    const d = new Date(n);
+    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
+  }
+  return n - 2 * DAY_MS;
+}
+
+/**
+ * 帖子是否落在时间范围内。
+ *   - 示例帖不参与筛选（示范内容永远在，否则新用户一进页面可能空无一物）
+ *   - 没有时间戳的帖子不显示（宁可少一条也不瞎猜它多老）
+ */
+export function inRange(post, range = DEFAULT_RANGE, now = Date.now()) {
+  if (!post) return false;
+  if (post.sample) return true;   // 示例帖不参与筛选（要在「无时间戳」判断之前）
+  if (!post.ts) return false;
+  const r = RANGE_KEYS.includes(range) ? range : DEFAULT_RANGE;
+  if (r === "month") return utcDay(post.ts).slice(0, 7) === utcDay(now).slice(0, 7);
+  return post.ts >= rangeStartTs(r, now);
+}
+
 /* ══════════ 云操作失败原因 ══════════ */
 
 /**

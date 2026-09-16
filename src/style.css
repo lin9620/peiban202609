@@ -789,6 +789,8 @@ button, input, textarea { font-family: inherit; }
   margin: 14px 2px 12px;
 }
 .sort-label { font-size: 11.5px; font-weight: 800; color: var(--ink-faint); letter-spacing: .04em; }
+/* 第二行（时间范围）与排序行之间留点呼吸感 */
+.sort-row + .sort-row { margin-top: 8px; }
 .sort-btn {
   border: none; font-family: inherit; cursor: pointer;
   padding: 6px 13px; border-radius: 999px;

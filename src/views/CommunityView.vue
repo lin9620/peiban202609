@@ -18,6 +18,7 @@ import {
 import {
   SORTS, sortPosts, collectViews, visibleOnly, utcDay, ratioPct,
   canPostToday, errorKind, VIEW_KEY, ANON_KEY, POST_DAY_KEY,
+  RANGES, inRange,
 } from "../utils/wallRules.js";
 import {
   validateImageFile, isSaneShape, isUsableDataUrl, shrinkToDataUrl,
@@ -109,6 +110,14 @@ const sortMode = ref(SORTS.some((s) => s.key === getItem(SORT_KEY)) ? getItem(SO
 function pickSort(key) {
   sortMode.value = key;
   setItem(SORT_KEY, key);
+}
+
+/* ═════════ 时间范围（默认近两天；另有 近 7 天 / 这个月） ═════════ */
+const RANGE_KEY = "warm-paws-range-v1";   /* 记住用户选的时间范围 */
+const rangeMode = ref(RANGES.some((r) => r.key === getItem(RANGE_KEY)) ? getItem(RANGE_KEY) : RANGES[0].key);
+function pickRange(key) {
+  rangeMode.value = key;
+  setItem(RANGE_KEY, key);
 }
 
 /* ═════════ 浏览数：同一访客对同一条帖，一天只 +1 ═════════ */
@@ -476,8 +485,12 @@ const all = computed(() => [
   ...(cloud.ready && cloudPosts.value.length ? cloudPosts.value : posts.value),
   ...SAMPLES,
 ]);
-/* 展示用：先剔掉已下架（假删除）的帖子，再按当前排序方式排 */
-const shown = computed(() => sortPosts(visibleOnly(all.value), sortMode.value));
+/* 展示用：先剔掉已下架（假删除）的帖子，再按时间范围筛（默认近两天），最后按当前排序方式排 */
+const shown = computed(() =>
+  sortPosts(
+    visibleOnly(all.value).filter((p) => inRange(p, rangeMode.value)),
+    sortMode.value
+  ));
 /* 下架线提示用：厌恶 ÷ 浏览（达 1% 即下架，看得到比例就知道离下架多远） */
 function disPct(p) { return ratioPct(p.views, (p.reacts && p.reacts.dislike) || 0); }
 const when = (ts) =>
@@ -540,6 +553,17 @@ const when = (ts) =>
         class="sort-btn" :class="{ on: sortMode === s.key }"
         @click="pickSort(s.key)">
         {{ t(s.tk) }}
+      </button>
+    </div>
+
+    <!-- 时间范围：默认近两天；还有 近 7 天 / 这个月 -->
+    <div class="sort-row range-row">
+      <span class="sort-label">{{ t("community.rangeLabel") }}</span>
+      <button
+        v-for="r in RANGES" :key="r.key"
+        class="sort-btn" :class="{ on: rangeMode === r.key }"
+        @click="pickRange(r.key)">
+        {{ t(r.tk) }}
       </button>
     </div>
 

@@ -35,6 +35,7 @@
 - **每条帖子都有评论区**：可回复 / 删除自己的评论，示范评论只在首次访问注入一次（删了就不会复活）
 - 评论逻辑抽成纯函数模块 `src/utils/comments.js`（注入幂等 / 200 字截断 / 权限校验 / 脏数据兜底）
 - **排序**：默认「最新」，另有「同感最多 / 抱抱最多 / 暖暖最多」（票数相同按时间倒序，选择持久化）→ `src/utils/wallRules.js`
+- **时间范围**：默认「近两天」，另有「近 7 天 / 这个月」（按 UTC 判，选择持久化；示例帖不参与筛选，示范内容永远在）
 - **每人每天最多一条**：前端即时提示 + 数据库触发器兜底（`wall_daily_limit`，UTC 日）；删掉今天那条可以重发
 - **浏览次数**：同一访客对同一条帖一天只算一次（登录用户按 uid、游客按本机匿名 id），服务端 `wall_post_views` 再去重一次，刷新页面刷不高
 - **厌恶 🙁 与自动下架**：登录后可点「不喜欢」；当 **厌恶数 ÷ 浏览数 ≥ 1%** 时帖子自动**下架**（数据库**假删除**：`removed = true`，数据仍在库里，前台不再展示，不再自动恢复以免忽隐忽现）
@@ -64,8 +65,8 @@
 
 ```bash
 node tools/comment-test.mjs   # 评论系统纯函数单测（26 项：二级回复/parentId 封顶/级联删除/评论数兜底）
-node tools/wall-test.mjs      # 暖心墙云端数据层纯函数单测（31 项：行映射/二级字段/评论数聚合/浏览与厌恶字段）
-node tools/wall-rules-test.mjs # 暖心墙进阶规则纯函数单测（25 项：排序/浏览去重/1% 下架/每日一条/错误归类）
+node tools/wall-test.mjs      # 暖心墙云端数据层纯函数单测（33 项：行映射/二级字段/评论数聚合/浏览与厌恶字段）
+node tools/wall-rules-test.mjs # 暖心墙进阶规则纯函数单测（29 项：排序/时间范围/浏览去重/1% 下架/每日一条/错误归类）
 node tools/i18n-test.mjs      # 文案完整性与插值回归（19 项：en/zh 键集合对称、修复过的 key、$ 特殊字符）
 node tools/snack-test.mjs     # 零食雨游戏纯逻辑单测（20 项：难度曲线/生成/碰撞/结算上限）
 node tools/seo-test.mjs       # SEO 资产检查（35 项：robots/sitemap/OG 标签/PNG 尺寸/安全头/产物）
@@ -223,7 +224,7 @@ src/
     lottiePet.js       Lottie 动画工厂（运行时生成 5 种宠物的矢量动画）
     snackGame.js       零食雨游戏纯逻辑（坐标系 0~1、随机源可注入 → Node 可单测）
     wall.js            暖心墙云端数据层（行映射 / 上传 / 浏览 / 厌恶 / 评论计数）
-    wallRules.js       暖心墙进阶规则纯逻辑（排序 / 浏览去重 / 1% 下架 / 每日一条）
+    wallRules.js       暖心墙进阶规则纯逻辑（排序 / 时间范围 / 浏览去重 / 1% 下架 / 每日一条）
   stores/petStore.js   宠物状态机（多宠物 / 养成 / 食谱 / 任务 / 心情打卡）
   components/
     LottiePet.vue      Lottie 渲染器（预设宠物动画）
@@ -254,7 +255,7 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 | 体验 | `#/` 路由直接访问 `/pet` 会 404 | 迁移到 history 模式 + 每条路由独立静态 HTML + SPA 回退 | `router.js` / `vite.config.js` / `wrangler.jsonc` |
 | 体验 | 「在线陪伴数」是本地随机数，易误导 | 去掉虚构人数，改如实文案（路线图保留"等有真实统计再接"） | `views/HomeView.vue` / `i18n.js` |
 
-回归验证（全部本地可跑）：`wall-rules-test` 25 项 · `comment-test` 26 项 · `wall-test` 31 项 · `uifix-test` 20 项 · `image-fit` 20 项 · `snack-test` 20 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `arity-test` 8 项 · `seo-test` 35 项 · `undef-check`。
+回归验证（全部本地可跑）：`wall-rules-test` 29 项 · `comment-test` 26 项 · `wall-test` 33 项 · `uifix-test` 20 项 · `image-fit` 20 项 · `snack-test` 20 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `arity-test` 8 项 · `seo-test` 35 项 · `undef-check`。
 
 ## 🗺️ 路线图
 
