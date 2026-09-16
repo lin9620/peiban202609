@@ -5,7 +5,7 @@
  * 运行：node tools/admin-test.mjs
  */
 import {
-  fmtNum, fmtBytes, clip, dailySeries, barHeights, sumReactions, dayOf,
+  fmtNum, fmtBytes, clip, dailySeries, barHeights, sumReactions, dayOf, dayTimeOf,
 } from "../src/utils/admin.js";
 
 let pass = 0;
@@ -69,9 +69,12 @@ eq("sumReactions 聚合", sumReactions({ hug: "2", warm: 3, relate: 0, dislike: 
 eq("sumReactions 空 → 全零", sumReactions(null), { hug: 0, warm: 0, relate: 0, dislike: 0, total: 0 });
 eq("sumReactions 负数忽略", sumReactions({ hug: -3 }), { hug: 0, warm: 0, relate: 0, dislike: 0, total: 0 });
 
-/* dayOf：YYYY-MM-DD 提取 + 脏值空串 */
+/* dayOf / dayTimeOf：北京时间（Asia/Shanghai）口径 + 脏值空串 */
 eq("dayOf 标准时间戳", dayOf("2026-01-02T03:04:05.123Z"), "2026-01-02");
 eq("dayOf 纯日期", dayOf("2026-01-02"), "2026-01-02");
+eq("dayOf UTC 20:00 → 北京次日", dayOf("2026-01-02T20:00:00Z"), "2026-01-03");
+eq("dayTimeOf 日期+时分", dayTimeOf("2026-01-02T20:00:00Z"), "2026-01-03 04:00");
+eq("dayTimeOf 脏值", dayTimeOf("nope"), "");
 eq("dayOf 非日期", dayOf("nope"), "");
 eq("dayOf 数字", dayOf(42), "");
 eq("dayOf undefined", dayOf(undefined), "");

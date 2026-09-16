@@ -8,7 +8,7 @@ import { NButton, NTag } from "naive-ui";
 import { t } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
 import { db } from "../utils/api/db.js";
-import { fmtNum, fmtBytes, clip, dailySeries, barHeights, sumReactions, dayOf } from "../utils/admin.js";
+import { fmtNum, fmtBytes, clip, dailySeries, barHeights, sumReactions, dayOf, dayTimeOf } from "../utils/admin.js";
 
 const state = ref("loading"); /* loading | denied | ready | error */
 const err = ref("");
@@ -377,7 +377,7 @@ const recentUsers = computed(() => (Array.isArray(ov.value && ov.value.recent_us
           <span class="admin-grow admin-clip">{{ u.nickname || "?" }}</span>
           <span class="admin-u-mail admin-clip" :title="u.email || ''">{{ u.email || "—" }}</span>
           <span class="admin-u-id admin-clip" :title="u.id">{{ u.id }}</span>
-          <span class="admin-u-at">{{ dayOf(u.created_at) }}</span>
+          <span class="admin-u-at">{{ dayTimeOf(u.created_at) }}</span>
         </div>
         <div v-if="usersTotal > 0" class="admin-page-bar">
           <n-button size="tiny" quaternary :disabled="usersOffset <= 0" @click="pageUsers(-1)">

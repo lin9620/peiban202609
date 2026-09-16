@@ -78,9 +78,25 @@ export function sumReactions(raw) {
   return { hug, warm, relate, dislike, total: hug + warm + relate + dislike };
 }
 
-/** 时间戳 → YYYY-MM-DD；脏值 → 空串 */
+/* 时区口径：全站按北京时间（Asia/Shanghai）——与 admin_overview() 的
+ * 「今日 / 近 14 天」切日一致；不再直接截 UTC 字符串（每天 0-8 点会显示成前一天）。 */
+const TZ = "Asia/Shanghai";
+const FMT_DATE = new Intl.DateTimeFormat("sv", { timeZone: TZ });
+const FMT_TIME = new Intl.DateTimeFormat("sv", { timeZone: TZ, hour: "2-digit", minute: "2-digit" });
+const toDate = (ts) => {
+  if (typeof ts !== "string" || !ts) return null;
+  const d = new Date(ts);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+/** 时间戳 → 北京时间 YYYY-MM-DD；脏值 → 空串 */
 export function dayOf(ts) {
-  if (typeof ts !== "string" || !ts) return "";
-  const m = ts.slice(0, 10);
-  return /^\d{4}-\d{2}-\d{2}$/.test(m) ? m : "";
+  const d = toDate(ts);
+  return d ? FMT_DATE.format(d) : "";
+}
+
+/** 时间戳 → 北京时间 YYYY-MM-DD HH:mm（用户名单的「注册时间」用，消除跨日歧义） */
+export function dayTimeOf(ts) {
+  const d = toDate(ts);
+  return d ? `${FMT_DATE.format(d)} ${FMT_TIME.format(d)}` : "";
 }

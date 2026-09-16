@@ -57,6 +57,7 @@ create policy "comments admin delete" on public.wall_comments
 -- ── 6) 看板 RPC：一次返回全部总览数据 ─────────────────────────
 --    非管理员调用只拿 {admin:false}（不泄露任何数字）；
 --    security definer 让统计可以读 auth 侧与 storage.objects（bucket 计数/体积）。
+--    「今日 / 近 14 天」按北京时间（Asia/Shanghai）切日，与前端显示口径一致。
 create or replace function public.admin_overview()
 returns jsonb
 language plpgsql
@@ -64,7 +65,7 @@ security definer
 set search_path = public
 as $$
 declare
-  v_today date := (timezone('utc', now()))::date;
+  v_today date := (timezone('Asia/Shanghai', now()))::date;
 begin
   if not exists (select 1 from public.admin_users where user_id = auth.uid()) then
     return jsonb_build_object('admin', false);
@@ -75,14 +76,14 @@ begin
 
     'users_total',    (select count(*) from public.profiles),
     'users_today',    (select count(*) from public.profiles
-                        where (timezone('utc', created_at))::date = v_today),
+                        where (timezone('Asia/Shanghai', created_at))::date = v_today),
     'posts_total',    (select count(*) from public.wall_posts),
     'posts_today',    (select count(*) from public.wall_posts
-                        where (timezone('utc', created_at))::date = v_today),
+                        where (timezone('Asia/Shanghai', created_at))::date = v_today),
     'posts_removed',  (select count(*) from public.wall_posts where removed = true),
     'comments_total', (select count(*) from public.wall_comments),
     'comments_today', (select count(*) from public.wall_comments
-                        where (timezone('utc', created_at))::date = v_today),
+                        where (timezone('Asia/Shanghai', created_at))::date = v_today),
     'views_total',    (select coalesce(sum(views), 0) from public.wall_posts),
 
     'reactions', (select coalesce(jsonb_object_agg(kind, c), '{}'::jsonb)
@@ -101,11 +102,11 @@ begin
       select jsonb_agg(jsonb_build_object(
                'day', d::date,
                'posts',    (select count(*) from public.wall_posts
-                             where (timezone('utc', created_at))::date = d::date),
+                             where (timezone('Asia/Shanghai', created_at))::date = d::date),
                'users',    (select count(*) from public.profiles
-                             where (timezone('utc', created_at))::date = d::date),
+                             where (timezone('Asia/Shanghai', created_at))::date = d::date),
                'comments', (select count(*) from public.wall_comments
-                             where (timezone('utc', created_at))::date = d::date)
+                             where (timezone('Asia/Shanghai', created_at))::date = d::date)
              ) order by d)
         from generate_series(v_today - 13, v_today, interval '1 day') g(d)
     ),
