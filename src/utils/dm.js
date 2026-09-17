@@ -67,5 +67,16 @@ export async function unreadTotal() {
   return db.dmUnreadTotal();
 }
 
+/** 未读总览的「绝不抛错」版本：角标轮询失败时退化为零，不打断界面 */
+export async function unreadTotalSafe() {
+  try {
+    if (!db.ready()) return { total: 0, requests: 0 };
+    const r = await db.dmUnreadTotal();
+    return { total: (r && r.total) || 0, requests: (r && r.requests) || 0 };
+  } catch (e) {
+    return { total: 0, requests: 0 };
+  }
+}
+
 /** 图片消息：走同一 IMAGE_BUCKET（复用 wall 的上传约定，路径 <uid>/dm-<ts>） */
 export { db };

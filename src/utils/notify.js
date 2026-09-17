@@ -19,6 +19,16 @@ export async function unread() {
   return normUnread(await db.notifUnread());
 }
 
+/** 「绝不抛错」版本：角标轮询失败时退化为全 0 */
+export async function unreadSafe() {
+  try {
+    if (!db.ready()) return normUnread(null);
+    return normUnread(await db.notifUnread());
+  } catch (e) {
+    return normUnread(null);
+  }
+}
+
 /** 标记已读：ids 数组或全部 */
 export async function mark({ ids = null, all = false } = {}) {
   return db.notifMark(ids, all);

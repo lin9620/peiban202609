@@ -10,6 +10,11 @@ export const router = createRouter({
     { path: "/community", name: "community", component: () => import("./views/CommunityView.vue") },
     { path: "/profile", name: "profile", component: () => import("./views/ProfileView.vue") },
     { path: "/u/:id", name: "waller", component: () => import("./views/WallerView.vue") },
+    /* 私信：列表与具体会话同页（/messages/:id 可直链，通知点击跳这里） */
+    { path: "/messages", name: "messagesList", component: () => import("./views/MessagesView.vue") },
+    { path: "/messages/:id", name: "messages", component: () => import("./views/MessagesView.vue") },
+    /* 通知中心 */
+    { path: "/notifications", name: "notifications", component: () => import("./views/NotificationsView.vue") },
     { path: "/admin", name: "admin", component: () => import("./views/AdminView.vue") },
     /* 隐私政策：Google OAuth 发布需要可公开访问的政策链接（外部审核会来抓这页） */
     { path: "/privacy", name: "privacy", component: () => import("./views/PrivacyView.vue") },

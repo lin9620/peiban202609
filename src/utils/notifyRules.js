@@ -38,11 +38,13 @@ export function normUnread(u) {
   };
 }
 
-/** 聚合键：同 actor + 同 kind + 同 post（dm/system 不聚合） */
+/** 聚合键：同帖 + 同类型（反应再按种类细分）合并「多人做了同一件事」
+ *  dm / system 不聚合（每条都是独立事件）；无帖子的通知也不聚合。 */
 export function aggKey(n) {
   if (!n) return "";
   if (n.kind === "dm" || n.kind === "system" || !n.post_id) return `solo:${n.id}`;
-  return `${n.kind}:${n.actor_id || ""}:${n.post_id}`;
+  const extra = n.kind === "reaction" ? `:${(n.meta && n.meta.reaction) || ""}` : "";
+  return `${n.kind}:${n.post_id}${extra}`;
 }
 
 /** 时间倒序聚合：连续同键的通知合并为一条带 count 的展示项

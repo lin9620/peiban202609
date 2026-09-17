@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, onMounted, onErrorCaptured } from "vue";
+import { computed, ref, onMounted, onErrorCaptured, onBeforeUnmount, watch } from "vue";
 import {
   NConfigProvider, NMessageProvider, NDialogProvider, NDropdown, NTag, NButton, darkTheme,
 } from "naive-ui";
@@ -9,6 +9,7 @@ import { THEMES } from "./data/themes.js";
 import SideRails from "./components/SideRails.vue";
 import { wallet, moodStreak } from "./stores/petStore.js";
 import { cloud, initCloud } from "./utils/supabase.js";
+import { badge, startBadge, stopBadge } from "./stores/badgeStore.js";
 
 const NAV = [
   { to: "/", key: "nav.home" },
@@ -16,6 +17,10 @@ const NAV = [
   { to: "/community", key: "nav.community" },
   { to: "/profile", key: "nav.profile" },
 ];
+
+/* 私信 / 通知角标：登录后由 badgeStore 每 30s 智能轮询（后台暂停） */
+const dmBadge = computed(() => badge.dm + badge.requests);
+const notifBadge = computed(() => badge.notif);
 
 const langOptions = languages.map((l) => ({ label: l.label, key: l.code }));
 const currentLang = computed(
@@ -29,6 +34,10 @@ const cloudSigned = computed(() => !!(cloud.ready && cloud.user));
 const accountLabel = computed(() =>
   cloudSigned.value ? (cloud.nickname || t("common.guest")) : t("common.signIn"));
 onMounted(() => { initCloud(); });
+
+/* 登录态变化 → 起停角标轮询（未登录不轮询，省流量） */
+watch(cloudSigned, (v) => { if (v) startBadge(); else stopBadge(); }, { immediate: true });
+onBeforeUnmount(() => { stopBadge(); });
 
 function onLangPick(code) {
   setLocale(code);
@@ -104,6 +113,15 @@ function reload() {
                 <n-tag round size="small" :bordered="false" class="soft-tag" :class="{ signed: cloudSigned }">
                   {{ cloudSigned ? "\u2601\uFE0F" : "\u{1F464}" }} {{ accountLabel }}
                 </n-tag>
+              </router-link>
+              <!-- 私信 / 通知：只有登录后才显示（未登录没有收件人身份） -->
+              <router-link v-if="cloudSigned" to="/messages" class="icon-link" :title="t('dm.title')">
+                <span class="icon-emoji">💬</span>
+                <span v-if="dmBadge" class="icon-badge">{{ dmBadge > 99 ? "99+" : dmBadge }}</span>
+              </router-link>
+              <router-link v-if="cloudSigned" to="/notifications" class="icon-link" :title="t('notif.title')">
+                <span class="icon-emoji">🔔</span>
+                <span v-if="notifBadge" class="icon-badge">{{ notifBadge > 99 ? "99+" : notifBadge }}</span>
               </router-link>
               <n-dropdown :options="themeOptions" trigger="click" @select="applyTheme">
                 <button class="lang-btn theme-btn" :title="t('theme.pick')">{{ "\u{1F3A8}" }}</button>

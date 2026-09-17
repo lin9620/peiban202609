@@ -1,6 +1,6 @@
 <script setup>
-import { ref, computed, onMounted, watch } from "vue";
-import { useRouter } from "vue-router";
+import { ref, computed, onMounted, watch, nextTick } from "vue";
+import { useRouter, useRoute } from "vue-router";
 import { NButton, NInput, NAvatar, NTag } from "naive-ui";
 import { t, i18n } from "../i18n.js";
 import { getItem, setItem } from "../utils/storage.js";
@@ -506,6 +506,32 @@ function goProfile(p) { if (canOpen(p)) router.push({ name: "waller", params: { 
 const when = (ts) =>
   new Date(ts).toLocaleDateString(i18n.locale === "zh" ? "zh-CN" : "en-US",
     { month: "short", day: "numeric" });
+
+/* —— 深链到某帖：/community?post=<dbId>（通知中心点「评论/回应」跳回来时用） ——
+ * 云端帖的 dbId 才是数据库里的真实 id；还没加载出来（或不是本页可见帖）就什么都不做。 */
+const route = useRoute();
+const focusId = ref(String(route.query.post || ""));
+
+function findPostEl(id) {
+  if (typeof document === "undefined" || !id) return null;
+  return document.getElementById(`post-${id}`);
+}
+
+async function focusPost(id) {
+  const key = String(id || "");
+  focusId.value = key;
+  if (!key) return;
+  await nextTick();
+  const el = findPostEl(key);
+  if (el && el.scrollIntoView) {
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+}
+
+/* 首屏（含云端帖异步到达）与地址栏变化都要重新定位一次 */
+watch(() => route.query.post, (v) => focusPost(v), { immediate: false });
+watch(cloudPosts, () => { if (focusId.value) focusPost(focusId.value); });
+onMounted(() => { if (focusId.value) focusPost(focusId.value); });
 </script>
 
 <template>
@@ -578,7 +604,9 @@ const when = (ts) =>
     </div>
 
     <!-- 动态流 -->
-    <article v-for="p in shown" :key="p.id" class="post-card card">
+    <article v-for="p in shown" :key="p.id" class="post-card card"
+      :id="p.dbId != null ? 'post-' + p.dbId : undefined"
+      :class="{ 'post-focus': focusId && String(p.dbId) === focusId }">
       <div class="post-head">
         <n-avatar round :size="42" class="post-avatar"
           :class="{ clickable: canOpen(p) }"
