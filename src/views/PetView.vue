@@ -5,7 +5,7 @@ import { stories } from "../data/stories.js";
 import { dayIndex } from "../utils/daily.js";
 import { SPECIES, PERSONALITIES } from "../data/pets.js";
 import {
-  petStore, activePet, petUi, say,
+  petStore, activePet, petUi, say, MAX_PETS,
   doPlay, doPetting, doClean, toggleSleep, savePet, talkByStatus,
   cookbook, feedDish, removeDish, wallet,
   dailyTasks, claimTasks, TASK_LIST,
@@ -49,23 +49,34 @@ const adoptMsg = ref("");
 const maxLevel = computed(() =>
   petStore.pets.length ? Math.max(...petStore.pets.map((p) => p.level)) : 1
 );
+/* #12 存活的伙伴数（死亡的不占名额），领养弹窗里展示 X / 3 */
+const aliveCount = computed(() => petStore.pets.filter((p) => !p.dead).length);
+function adoptLimitHit() {
+  if (aliveCount.value >= MAX_PETS) {
+    adoptMsg.value = t("pet.adoptLimit", { max: MAX_PETS });
+    return true;
+  }
+  return false;
+}
 
 function canAfford(sp) {
   return wallet.coins >= sp.cost && maxLevel.value >= sp.unlockLv;
 }
 
 function confirmAdoptSpecies() {
+  if (adoptLimitHit()) return;
   const sp = SPECIES.find((s) => s.key === selectedSpecies.value);
   if (!sp || !canAfford(sp)) {
     adoptMsg.value = t("pet.notEnough");
     return;
   }
-  wallet.coins -= sp.cost;
   const pet = petStore.adopt(
     sp.key,
     newName.value.trim() || sp.name[i18n.locale] || sp.name.en,
     newPersona.value
   );
+  if (!pet) return adoptLimitHit(); // 服务端式兜底：撞上限不扣金币
+  wallet.coins -= sp.cost;          // 成功才扣（#12 修复：满员时金币不再被吞）
   adoptMsg.value = t("pet.adopted", { n: pet.name });
   say(t("pet.adopted", { n: pet.name }), 4000);
   resetForm();
@@ -107,6 +118,7 @@ function pickCustomImg(e) {
 }
 
 function createCustom() {
+  if (adoptLimitHit()) return;
   if (!customImg.value) return;
   const pet = petStore.adopt(
     "custom",
@@ -117,6 +129,7 @@ function createCustom() {
       lines: customLines.value.map((l) => l.trim()).filter(Boolean).slice(0, 3),
     }
   );
+  if (!pet) return adoptLimitHit(); // 撞上限不吞任何已填内容
   adoptMsg.value = t("pet.created");
   say(t("pet.created"), 4000);
   resetForm();
@@ -583,6 +596,7 @@ function onToggleFramed(d) {
   <div v-if="showAdopt" class="adopt-mask" @click.self="showAdopt = false">
     <div class="adopt-modal">
       <h3>{{ t("pet.adoptNew") }}</h3>
+      <p class="adopt-quota">{{ t("pet.quota", { n: aliveCount, max: MAX_PETS }) }}</p>
       <div class="tabs" style="justify-content: center">
         <button class="tab" :class="{ on: adoptTab === 'species' }" @click="adoptTab = 'species'">
           {{ t("pet.tabAdopt") }}
@@ -693,6 +707,7 @@ function onToggleFramed(d) {
 }
 .adopt-modal h3 { font-size: 17px; margin-bottom: 14px; text-align: center; font-weight: 800; }
 .adopt-row { display: flex; justify-content: center; margin-top: 14px; }
+.adopt-quota { font-size: 12.5px; font-weight: 700; color: var(--accent-deep); text-align: center; margin: -6px 0 10px; opacity: .85; }
 .adopt-msg { font-size: 12.5px; font-weight: 700; color: var(--accent-deep); margin-top: 12px; text-align: center; }
 
 .custom-up { display: flex; align-items: center; gap: 14px; margin-top: 10px; }

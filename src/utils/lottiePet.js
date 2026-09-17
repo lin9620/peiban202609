@@ -82,6 +82,32 @@ function ellipseGroup(size, at, fill, opacity = 100) {
   };
 }
 
+/** 贝塞尔路径组：p.path = { c, v, o, i }（顶点为相对 center 的局部坐标）；
+ *  p.stroke 给定时画描边（开放曲线，如微笑嘴），否则填充 */
+function pathGroup(p) {
+  const d = p.path;
+  const paint = p.stroke
+    ? { ty: "st", nm: "st", c: still(rgb(p.stroke)), o: still(100), w: still(p.weight || 2.5), lc: 2, lj: 2 }
+    : { ty: "fl", nm: "fl", c: still(rgb(p.fill)), o: still(p.opacity == null ? 100 : p.opacity), r: 1 };
+  return {
+    ty: "gr",
+    nm: "path",
+    it: [
+      {
+        ty: "sh", nm: "sh",
+        ks: { a: 0, k: { c: d.c !== false, v: d.v, o: d.o, i: d.i } },
+      },
+      paint,
+      {
+        ty: "tr", nm: "tr",
+        p: still([0, 0]), a: still([0, 0]),
+        s: still([100, 100]), r: still(0), o: still(100),
+        sk: still(0), sa: still(0),
+      },
+    ],
+  };
+}
+
 /**
  * 统一动画字段：undefined -> 静止值；数组 -> 当作关键帧对；对象 -> 已是动画
  */
@@ -106,14 +132,14 @@ function layer(ind, p) {
     nm: p.name,
     sr: 1,
     ks: {
-      o: still(p.dim ? 55 : 100),
+      o: anim(p.opac, p.dim ? 55 : (p.opacity == null ? 100 : p.opacity)),
       r: anim(p.rot, 0),
-      p: still([pos[0], pos[1], 0]),
+      p: anim(p.pos, [pos[0], pos[1], 0]),
       a: still([0, 0, 0]),
       s: anim(p.scale, [100, 100, 100]),
     },
     ao: 0,
-    shapes: [ellipseGroup(p.size, at, p.fill, p.opacity == null ? 100 : p.opacity)],
+    shapes: [p.path ? pathGroup(p) : ellipseGroup(p.size, at, p.fill, p.opacity == null ? 100 : p.opacity)],
     ip: 0,
     op: 0, // 由组装函数统一填充
     st: 0,
@@ -163,10 +189,77 @@ function eyes({ l, r, y, size, color, frames, sleep, dim }) {
     { name: "eyeR", center: [r, y], size: [w, h], fill: color, scale: sc },
     { name: "hlL", center: [l + 4, y - 5], size: [5, 5], fill: "#FFFFFF", opacity: 88 },
     { name: "hlR", center: [r + 4, y - 5], size: [5, 5], fill: "#FFFFFF", opacity: 88 },
+    { name: "hl2L", center: [l - 3, y + 4], size: [3, 3], fill: "#FFFFFF", opacity: 55 },
+    { name: "hl2R", center: [r - 3, y + 4], size: [3, 3], fill: "#FFFFFF", opacity: 55 },
   ];
 }
 
-/** 通用腮红 */
+/** 微笑嘴（贝塞尔描边；k=开心弧度，睡觉时压平） */
+function smile(cx, y, w = 22, sleep = false, color = "#B0714F") {
+  const k = sleep ? 2 : 6;
+  return {
+    name: "smile", center: [cx, y],
+    path: {
+      c: false,
+      v: [[cx - w / 2, y - k * 0.2], [cx, y + k], [cx + w / 2, y - k * 0.2]],
+      i: [[w * 0.22, 0], [0, 0], [-w * 0.22, 0]],
+      o: [[-w * 0.22, 0], [0, 0], [w * 0.22, 0]],
+    },
+    stroke: color, weight: 3,
+  };
+}
+
+/** 张嘴笑（实心小半圆，比微笑更 Q；睡时不用） */
+function openMouth(cx, y, color = "#8C5A44", tongue = "#FF9AA8") {
+  return [
+    {
+      name: "mouthO", center: [cx, y],
+      path: {
+        c: true,
+        v: [[cx - 9, y], [cx, y + 9], [cx + 9, y]],
+        i: [[0, -5], [6, -1], [-6, -1]],
+        o: [[0, 5], [-6, 1], [6, 1]],
+      },
+      fill: color,
+    },
+    {
+      name: "tongue", center: [cx, y + 5],
+      path: {
+        c: true,
+        v: [[cx - 5, y + 3], [cx, y + 10], [cx + 5, y + 3]],
+        i: [[0, -2], [3, 0], [-3, 0]],
+        o: [[0, 2], [-3, 0], [3, 0]],
+      },
+      fill: tongue,
+    },
+  ];
+}
+
+/** 漂浮小心心（贝塞尔实心 + 上飘 + 呼吸透明度） */
+function heart(cx, y, s = 1, frames = 120, offset = 0) {
+  const u = 6 * s;
+  const bob = (t) => y - t;
+  return {
+    name: "heart",
+    center: [cx, y],
+    pos: keys([
+      [1 + offset, [cx, bob(0), 0]],
+      [Math.floor(frames / 2), [cx + 2 * s, bob(8 * s), 0]],
+      [frames + offset, [cx, bob(16 * s), 0]],
+    ]),
+    opac: keys([
+      [1 + offset, 0], [Math.floor(frames / 3), 80], [frames + offset, 0],
+    ]),
+    path: {
+      c: true,
+      v: [[cx, y + u * 1.4], [cx - u * 1.8, y - u * 0.4], [cx, y - u * 0.8], [cx + u * 1.8, y - u * 0.4]],
+      i: [[-u * 1.2, -u * 0.8], [u * 0.6, u * 0.9], [0, -u * 1.1], [-u * 0.6, u * 0.9]],
+      o: [[u * 1.2, -u * 0.8], [-u * 0.6, u * 0.9], [0, -u * 1.1], [u * 0.6, u * 0.9]],
+    },
+    fill: "#FF8FA3",
+  };
+}
+
 function blush(l, r, y, fill = "#FFB3A0") {
   return [
     { name: "blushL", center: [l, y], size: [19, 10], fill, dim: true },
@@ -195,6 +288,7 @@ function cat(c) {
     ...blush(74, 146, 122),
     { name: "muzzle", center: [110, 122], size: [34, 24], fill: "#FFE6CB" },
     { name: "nose", center: [110, 115], size: [10, 8], fill: "#F2897F" },
+    smile(110, 127, 16, sleep, "#C77B5A"),
     ...eyes({ l: 88, r: 132, y: 104, size: [13, 16], color: "#4A3B2F", frames, sleep }),
   ];
 }
@@ -218,6 +312,7 @@ function dog(c) {
     ...blush(72, 148, 118),
     { name: "muzzle", center: [110, 120], size: [44, 32], fill: "#FFF3E0" },
     { name: "nose", center: [110, 110], size: [13, 10], fill: "#4A3B2F" },
+    smile(110, 124, 20, sleep, "#8A6248"),
     ...eyes({ l: 86, r: 134, y: 100, size: [12, 15], color: "#3E3128", frames, sleep }),
   ];
 }
@@ -241,9 +336,9 @@ function rabbit(c) {
     { name: "head", center: [110, 106], size: [84, 78], fill: "#FFF6EE",
       scale: breathe(frames, sleep ? 4 : 2.4) },
     ...blush(78, 142, 124, "#FFC3CC"),
-    { name: "mouth", center: [110, 126], size: [18, 10], fill: "#FFCDD8", opacity: 85 },
+    smile(110, 130, 18, sleep, "#D98A9A"),
     { name: "nose", center: [110, 117], size: [9, 7], fill: "#F5A0AE" },
-    ...eyes({ l: 90, r: 130, y: 106, size: [12, 15], color: "#5A4A44", frames, sleep }),
+    ...eyes({ l: 90, r: 130, y: 106, size: [14, 17], color: "#5A4A44", frames, sleep }),
   ];
 }
 
@@ -267,6 +362,7 @@ function dino(c) {
     ...blush(74, 146, 122),
     { name: "nostrilL", center: [102, 116], size: [6, 5], fill: "#7FC08F" },
     { name: "nostrilR", center: [118, 116], size: [6, 5], fill: "#7FC08F" },
+    smile(110, 126, 18, sleep, "#6FAE80"),
     ...eyes({ l: 88, r: 132, y: 104, size: [13, 15], color: "#3E4A3C", frames, sleep }),
   ];
 }
@@ -290,6 +386,7 @@ function otter(c) {
     ...blush(74, 146, 120),
     { name: "muzzle", center: [110, 122], size: [40, 28], fill: "#F3E0CE" },
     { name: "nose", center: [110, 113], size: [11, 9], fill: "#4A3B2F" },
+    smile(110, 126, 18, sleep, "#8A6248"),
     ...eyes({ l: 88, r: 132, y: 102, size: [12, 14], color: "#42342C", frames, sleep }),
   ];
 }
@@ -310,7 +407,10 @@ export function petAnimation(species, variant = "idle") {
   const key = species + ":" + variant;
   if (cache[key]) return cache[key];
   const cfg = VARIANTS[variant] || VARIANTS.idle;
-  cache[key] = build(SHAPES[species](cfg), cfg.frames, species + "-" + variant);
+  let layers = SHAPES[species](cfg);
+  /* 互动时（清醒 idle）漂浮一颗小心心 —— 每只宠物都有的萌化点缀 */
+  if (!cfg.sleep) layers = layers.concat(heart(163, 66, 1, cfg.frames, 10));
+  cache[key] = build(layers, cfg.frames, species + "-" + variant);
   return cache[key];
 }
 
