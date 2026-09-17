@@ -565,7 +565,7 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
         </div>
         <p v-if="loadingCloud" class="notice">{{ t("community.loading") }}</p>
         <p v-if="posted" class="streak-note" style="color: var(--good); font-weight: 700">
-          {{ t("home.dailyQ.thanks") }}
+          {{ t("community.postedThanks") }}
         </p>
         <p v-if="wallMsg" class="streak-note" style="color: var(--low); font-weight: 700">
           {{ t(wallMsg) }}

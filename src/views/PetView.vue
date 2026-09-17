@@ -416,6 +416,20 @@ function onToggleFramed(d) {
         </div>
       </div>
 
+      <!-- #3 动作栏紧贴舞台：按玩耍/喂食时宠物就在同一屏内，不用再往下翻 -->
+      <div v-if="!away" class="pet-actions">
+        <button class="act" @click="feedHint"><span>{{ "\u{1F35A}" }}</span>{{ t("pet.actions.feed") }}</button>
+        <button class="act" @click="fxDoPlay"><span>🎾</span>{{ t("pet.actions.play") }}</button>
+        <button class="act" @click="onStageClick"><span>{{ "\u{1F497}" }}</span>{{ t("pet.actions.pet") }}</button>
+        <button class="act" @click="fxClean"><span>🫧</span>{{ t("pet.actions.clean") }}</button>
+        <button class="act" @click="toggleSleep">
+          <span>{{ activePet.sleeping ? "\u2600\uFE0F" : "\u{1F319}" }}</span>
+          {{ activePet.sleeping ? t("pet.actions.wake") : t("pet.actions.sleep") }}
+        </button>
+        <button class="act" @click="snackOn = true"><span>{{ "\u{1F36C}" }}</span>{{ t("pet.snack.btn") }}</button>
+        <button class="act" @click="showShare = true"><span>🖼️</span>{{ t("home.share") }}</button>
+      </div>
+
       <div class="pet-stats">
         <div v-for="s in stats" :key="s.key" class="pstat">
           <span class="ps-ico">{{ s.ico }}</span>
@@ -443,18 +457,6 @@ function onToggleFramed(d) {
         <p class="sub">{{ t("wardrobe.hint") }}</p>
       </div>
 
-      <div v-if="!away" class="pet-actions">
-        <button class="act" @click="feedHint"><span>{{ "\u{1F35A}" }}</span>{{ t("pet.actions.feed") }}</button>
-        <button class="act" @click="fxDoPlay"><span>🎾</span>{{ t("pet.actions.play") }}</button>
-        <button class="act" @click="onStageClick"><span>{{ "\u{1F497}" }}</span>{{ t("pet.actions.pet") }}</button>
-        <button class="act" @click="fxClean"><span>🫧</span>{{ t("pet.actions.clean") }}</button>
-        <button class="act" @click="toggleSleep">
-          <span>{{ activePet.sleeping ? "\u2600\uFE0F" : "\u{1F319}" }}</span>
-          {{ activePet.sleeping ? t("pet.actions.wake") : t("pet.actions.sleep") }}
-        </button>
-        <button class="act" @click="snackOn = true"><span>{{ "\u{1F36C}" }}</span>{{ t("pet.snack.btn") }}</button>
-        <button class="act" @click="showShare = true"><span>🖼️</span>{{ t("home.share") }}</button>
-      </div>
       <p class="streak-note">{{ t("pet.tip") }}</p>
     </template>
 

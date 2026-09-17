@@ -3,7 +3,7 @@ import { i18n, t } from "../i18n.js";
 import { todayKey, dateKey } from "../utils/daily.js";
 import { LINES } from "../data/pets.js";
 import { DESTS, SOUVENIRS, VISITORS, destByKey } from "../data/adventure.js";
-import { ACCESSORIES, MAIL_REPLIES } from "../data/extras.js";
+import { ACCESSORIES } from "../data/extras.js";
 import { getItem, setItem } from "../utils/storage.js";
 import { finalReward as snackReward } from "../utils/snackGame.js";
 import { petHomeSnapshot, queuePetHomeSync } from "../utils/wall.js";
@@ -22,7 +22,9 @@ const RATE = {
 export const DISH_MAX = 7;                     // #1 画的食物最多存 7 个
 export const DISH_TTL_MS = 48 * 3600 * 1000;   // #1 食物保质期 48 小时，过期消失
 export const MAX_PETS = 3;                     // #12 角色最多 3 只（存活的）
-export const NEGLECT_MS = 7 * 24 * 3600 * 1000; // #2 连续 7 天不照顾
+export const NEGLECT_MS = 7 * 24 * 3600 * 1000; // #2 连续 7 天不照顾 → 领养宠物去世
+export const NEGLECT_GRACE_DAYS = 3;           // #2 前 3 天缓冲：一直不登录也不掉级，给用户一点缓冲时间
+export const NEGLECT_DECAY_DAYS = 4;           // #2 第 4~7 天：把等级均摊降到 1 级（第 7 天正好见底）
 export const RAIN_REWARD_COINS = 2;            // #3 玩一局游戏奖励 2 金币
 export const RAIN_REWARD_MAX = 3;              // #3 每天最多奖励 3 次，多玩不奖励
 
@@ -239,8 +241,11 @@ function applyOffline(pet) {
 }
 
 /* ---------- #2 疏忽结算（登录与心跳都会调用） ----------
- * 领养的宠物：连续 7 天（NEGLECT_MS）没有任何照顾动作 → 去世；
- * 初始宠物：不会去世，每疏忽满 1 天等级 −1，直到 1 级。
+ * 规则（前 3 天缓冲 → 第 4 天起均摊降级 → 第 7 天见底）：
+ *  - 连续 NEGLECT_GRACE_DAYS（3 天）内没登录：什么都不掉，给用户缓冲；
+ *  - 第 4 天起每多空一天，按 (进入扣级时的等级 − 1) 在 NEGLECT_DECAY_DAYS（4 天）内均摊扣，
+ *    所以第 7 天正好降到 1 级；用 pet.neglectBase 记基准 → 同一天重复结算不会再掉一级（幂等）；
+ *  - 领养的宠物满 NEGLECT_MS（7 天）仍未照顾 → 去世；初始宠物永不去世（保到 1 级）。
  * 产生的通知推进 petNotices，由登录流程/界面统一展示（哀悼、降级提示）。 */
 export const petNotices = reactive([]);
 
@@ -251,22 +256,26 @@ export function settleNeglect(pet) {
   const anchor = pet.lastCareAt || pet.lastTick || Date.now();
   const idleMs = Date.now() - anchor;
   const DAY = 24 * 3600 * 1000;
-  if (pet.isInitial) {
-    const daysIdle = Math.floor(idleMs / DAY);
-    if (daysIdle >= 1) {
-      const target = Math.max(1, pet.level - daysIdle);
-      if (target < pet.level) {
-        petNotices.push({ kind: "decay", name: pet.name, from: pet.level, to: target });
-        pet.level = target;
-        pet.exp = 0;
-      }
+  const daysIdle = Math.floor(idleMs / DAY);
+
+  /* 缓冲期外才扣等级：基准取「进入扣级那天」的等级，之后按天均摊逼近 1 级 */
+  if (daysIdle > NEGLECT_GRACE_DAYS) {
+    if (!(pet.neglectBase > 0)) pet.neglectBase = pet.level;
+    const step = Math.min(daysIdle - NEGLECT_GRACE_DAYS, NEGLECT_DECAY_DAYS);
+    const drop = Math.ceil(((pet.neglectBase - 1) * step) / NEGLECT_DECAY_DAYS);
+    const target = Math.max(1, pet.neglectBase - drop);
+    if (target < pet.level) {
+      petNotices.push({ kind: "decay", name: pet.name, from: pet.level, to: target });
+      pet.level = target;
+      pet.exp = 0;
     }
-    return;
   }
-  if (idleMs >= NEGLECT_MS) {
+
+  /* 领养宠物：满 7 天去世；初始宠物只有降级、不会死 */
+  if (!pet.isInitial && idleMs >= NEGLECT_MS) {
     pet.dead = true;
     pet.sleeping = false;
-    petNotices.push({ kind: "death", name: pet.name });
+    petNotices.push({ kind: "dead", name: pet.name });
   }
 }
 
@@ -278,7 +287,6 @@ export function initPet() {
   petStore.pets.forEach(settleNeglect);   // #2 登录时结算疏忽（死亡/降级 → petNotices）
   pruneCookbook();                        // #1 清掉已过期的手绘食物
   initAdventure();
-  initMailbox();
   const first = activePet.value;
   if (first && petStore.pets.length === 1 && !getItem(LEGACY_KEY)) {
     setTimeout(() => sayLine(first, "hello", 4000), 600);
@@ -313,7 +321,12 @@ export function tickPet() {
 function cur() { return activePet.value; }
 
 /* #2 任一照顾动作都刷新 lastCareAt（7 天倒计时的锚点） */
-function touchCare(pet) { if (pet && !pet.dead) pet.lastCareAt = Date.now(); }
+function touchCare(pet) {
+  if (pet && !pet.dead) {
+    pet.lastCareAt = Date.now();
+    pet.neglectBase = 0;   // #2 有人照顾了：下次再疏忽时重新取基准等级（缓冲期也重新算）
+  }
+}
 
 export function doPlay() {
   const pet = cur();
@@ -783,58 +796,4 @@ export function toggleFramed(id) {
   d.framed = !d.framed;
   saveCookbook();
   return d.framed;
-}
-
-/* ═══════════ 温暖信箱 ═══════════ */
-const MAIL_KEY = "warm-paws-mail-v1";
-
-function loadMail() {
-  try {
-    const r = JSON.parse(getItem(MAIL_KEY));
-    return r && Array.isArray(r.letters) ? r : { letters: [] };
-  } catch (e) { return { letters: [] }; }
-}
-
-export const mailbox = reactive(loadMail());
-
-function saveMail() {
-  try { setItem(MAIL_KEY, JSON.stringify(mailbox)); } catch (e) {}
-}
-
-/* 寄出烦恼：45-120 秒后收到宠物回信 */
-export function sendLetter(text) {
-  const body = (text || "").trim();
-  if (!body) return null;
-  const ts = Date.now();
-  const letter = {
-    id: ts, text: body.slice(0, 300),
-    reply: "", replyAt: ts + 45000 + Math.floor(Math.random() * 75000),
-    ts,
-  };
-  mailbox.letters.unshift(letter);
-  if (mailbox.letters.length > 30) mailbox.letters.pop();
-  saveMail();
-  return letter;
-}
-
-/* 每秒心跳：检查是否到了回信时间 */
-export function tickMailbox() {
-  const now = Date.now();
-  let changed = false;
-  mailbox.letters.forEach((l) => {
-    if (!l.reply && l.replyAt && now >= l.replyAt) {
-      const r = MAIL_REPLIES[Math.floor(Math.random() * MAIL_REPLIES.length)];
-      l.reply = i18n.locale === "zh" ? r.zh : r.en;
-      changed = true;
-    }
-  });
-  if (changed) {
-    saveMail();
-    const pet = cur();
-    say(t("mail.replyArrived", { n: pet ? pet.name : "" }), 5000);
-  }
-}
-
-function initMailbox() {
-  tickMailbox();
 }

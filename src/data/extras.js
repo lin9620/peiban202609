@@ -53,17 +53,3 @@ export function seasonNow() {
   const hit = SEASONS.find((s) => mdInRange(md, s.from, s.to));
   return hit || DEFAULT_SEASON;
 }
-
-/* 温暖信箱：小橘/宠物的回信池（发信后随机延迟回信） */
-export const MAIL_REPLIES = [
-  { en: "I read your letter twice. Whatever it is, you don't have to carry it alone tonight.", zh: "你的信我读了两遍。不管是什么，今晚你都不用一个人扛。" },
-  { en: "Thank you for telling me. Small courage like this counts the most.", zh: "谢谢你告诉我。这样小小的勇气，最了不起了。" },
-  { en: "I can't fix it, but I'll sit right here with you while it passes.", zh: "我可能帮不上忙，但我会一直坐在这里，陪你等它过去。" },
-  { en: "Have you eaten today? Start there. Then one more small thing.", zh: "今天吃饭了吗？先从这里开始，然后再做一件小事就好。" },
-  { en: "You did better today than you give yourself credit for. I noticed.", zh: "你今天做得比你以为的好，我都看在眼里。" },
-  { en: "Some days are for growing, some are just for resting. Both are fine.", zh: "有些日子用来成长，有些只用来休息。都可以的。" },
-  { en: "Your feelings are allowed to be loud. I'll stay quiet with you until they aren't.", zh: "情绪可以大声一点。我陪你安静地等它变小。" },
-  { en: "I saved a warm spot on the floor for you. Always.", zh: "我一直在地板上给你留了个暖暖的位置。" },
-  { en: "The stars took forever too, and look how they turned out.", zh: "星星也是花了很久才亮起来的，你看现在多好看。" },
-  { en: "Tomorrow, one small kind thing — for you, from you. Deal?", zh: "明天为你自己做一件温柔的小事，好吗？说定了。" },
-];

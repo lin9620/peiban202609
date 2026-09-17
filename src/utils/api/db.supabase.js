@@ -168,6 +168,38 @@ export const db = {
     return unwrap(sb().rpc("pet_interact", { p_owner: ownerId, p_kind: kind, p_viewer: viewer }));
   },
 
+  /* ══════════ 温暖漂流瓶（#6：写/捞/回/放回/我的信/我捞到的） ══════════ */
+
+  /** 投一封信进海里（每日 3 封由 RPC 里数 created_day 把关） */
+  bottleSend(body) {
+    return unwrap(sb().rpc("bottle_send", { p_body: body }));
+  },
+
+  /** 随机捞一封（不是自己的；捞起即独占，48h 不处理自动回海） */
+  bottleFish() {
+    return unwrap(sb().rpc("bottle_fish"));
+  },
+
+  /** 给手里这封写回信（只有当前持有者能回） */
+  bottleReply(id, reply) {
+    return unwrap(sb().rpc("bottle_reply", { p_id: id, p_reply: reply }));
+  },
+
+  /** 不想回，放回海里 */
+  bottleRelease(id) {
+    return unwrap(sb().rpc("bottle_release", { p_id: id }));
+  },
+
+  /** 我投的信（含收到的回信），新→旧 */
+  bottleMine() {
+    return unwrap(sb().rpc("bottle_mine"));
+  },
+
+  /** 我捞到、还没回的信（换页/刷新后找回来） */
+  bottleHeld() {
+    return unwrap(sb().rpc("bottle_held"));
+  },
+
   /* ══════════ 宠物主页（展示镜像 + 计数独立列） ══════════ */
 
   /** 取宠物主页行（行不存在返回 null）；pats/feeds 列缺失（老库）时退回只读 data */

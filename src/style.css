@@ -837,6 +837,19 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 .m-who { font-size: 11px; font-weight: 800; color: var(--accent-deep); }
 .m-body { color: var(--ink); }
 .m-wait { margin-top: 8px; font-size: 12px; color: var(--ink-faint); font-weight: 700; animation: mailPulse 1.6s ease-in-out infinite; }
+
+/* —— 温暖漂流瓶（#6）：海 / 捞到的信 / 次数 —— */
+.bottle-sea {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-top: 18px; padding: 12px 14px; border-radius: 16px;
+  background: linear-gradient(120deg, rgba(148, 187, 233, .18), rgba(183, 166, 232, .14));
+  border: 1px dashed rgba(120, 140, 200, .35);
+}
+.bottle-tray {
+  margin-top: 12px; padding: 12px 14px; border-radius: 16px;
+  background: rgba(255, 255, 255, .78); border: 1.5px solid rgba(148, 187, 233, .5);
+}
+.m-count { font-size: 12px; color: var(--ink-faint); font-weight: 700; margin-right: auto; }
 @keyframes mailPulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
 
 /* ═══════════ 暖心墙 · 评论 ═══════════ */

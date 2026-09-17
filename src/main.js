@@ -1,7 +1,7 @@
 import { createApp } from "vue";
 import App from "./App.vue";
 import { router } from "./router.js";
-import { initPet, tickPet, savePet, tickAdventure, tickMailbox } from "./stores/petStore.js";
+import { initPet, tickPet, savePet, tickAdventure } from "./stores/petStore.js";
 import "./style.css";
 
 /* 读档 + 离线结算（必须在挂载前执行，否则宠物栏为空） */
@@ -24,7 +24,6 @@ app.use(router).mount("#app");
 setInterval(() => {
   try { tickPet(); } catch (e) { console.error("[Warm Paws] tickPet 出错：", e); }
   try { tickAdventure(); } catch (e) { console.error("[Warm Paws] tickAdventure 出错：", e); }
-  try { tickMailbox(); } catch (e) { console.error("[Warm Paws] tickMailbox 出错：", e); }
 }, 1000);
 
 setInterval(() => {

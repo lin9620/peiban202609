@@ -174,6 +174,38 @@ export const db = {
     return call(`/pet/${enc(ownerId)}/interact`, { method: "POST", body: { kind, viewer } });
   },
 
+  /* ══════════ 温暖漂流瓶（#6：Worker 收口 /api/bottle/*，同名 RPC 在 DB 里） ══════════ */
+
+  /** 投一封信进海里（每日 3 封由服务端把关） */
+  bottleSend(body) {
+    return call("/bottle/send", { method: "POST", body: { body } });
+  },
+
+  /** 随机捞一封（不是自己的；捞起即独占） */
+  bottleFish() {
+    return call("/bottle/fish", { method: "POST", body: {} });
+  },
+
+  /** 给手里这封写回信（只有当前持有者能回） */
+  bottleReply(id, reply) {
+    return call("/bottle/reply", { method: "POST", body: { id, reply } });
+  },
+
+  /** 不想回，放回海里 */
+  bottleRelease(id) {
+    return call("/bottle/release", { method: "POST", body: { id } });
+  },
+
+  /** 我投的信（含收到的回信），新→旧 */
+  bottleMine() {
+    return call("/bottle/mine");
+  },
+
+  /** 我捞到、还没回的信 */
+  bottleHeld() {
+    return call("/bottle/held");
+  },
+
   /* ══════════ 宠物主页（展示镜像 + 计数独立列） ══════════ */
 
   /** 取宠物主页行（行不存在返回 null）；pats/feeds 列缺失的兼容由 Worker 内部处理 */

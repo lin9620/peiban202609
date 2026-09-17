@@ -81,6 +81,7 @@ node tools/worker-test.mjs    # API 网关 Worker 契约测试（180 项：/api/
 node tools/dm-test.mjs        # 私信规则层单测（280 项：撤回窗口 / 未读计数 / 日期分隔 / 错误码→i18n 映射 / 迁移覆盖）
 node tools/notify-test.mjs    # 通知规则层单测（148 项：分栏白名单 / 聚合语义 / 点击落点 / 未读兜底）
 node tools/status-test.mjs    # 陪你大厅状态规则层单测（48 项：四键前后端一致 / 24h 窗口纯函数 / emoji 归文案不重复 / 两条链路契约 / 降级分支 / 迁移与文档覆盖）
+node tools/bottle-test.mjs    # 温暖漂流瓶规则层单测（36 项：每日 3 封 7 瓶 / 48h 回海 / 1000 字上限 / 错误码↔i18n 闭环 / 六 RPC 与 Worker 路由契约 / RLS 可见性 / 旧信箱清理）
 node tools/i18n-test.mjs      # 文案完整性与插值回归（19 项：en/zh 键集合对称、修复过的 key、$ 特殊字符）
 node tools/admin-test.mjs     # 管理中心纯函数单测（39 项：admin:false 兜底 / 字段缺省 / 趋势图 14 天补零 / 行规整 / 北京时间口径）
 node tools/auth-test.mjs      # 登录规则单测（48 项：邮箱密码校验 / Google 昵称兜底 / 重置邮件链接解析与失效识别 / 回跳地址 / 页面接线）
@@ -94,6 +95,7 @@ node tools/cloud-verify.mjs   # Supabase 连通性：Auth/四张表/Storage桶/R
 node tools/cloud-e2e.mjs      # 云端全链路实测（38 项：注册→建档→发帖→评论→二级回复(层级/级联/计数)→回应→权限→浏览去重→厌恶下架→每日一条→宠物主页(计数列/图外置)→清理；会造测试数据并清理）
 node tools/dm-e2e.mjs         # 私信+通知线上实测（47 项：双账号开会话/互发/未读水位/撤回/免打扰/隐藏/拉黑/消息请求/通知触发器/偏好开关/匿名 RLS；需先跑 MIGRATION_dm_notifications.sql）
 node tools/status-e2e.mjs     # 大厅状态线上实测（走 Worker，与浏览器同链路）：注册→写状态(服务端盖章)→状态流读回→非法 key 被拒→匿名/他人改不动→24h 过期隐去→清除（需先跑 MIGRATION_profile_status.sql）
+node tools/bottle-e2e.mjs     # 漂流瓶线上实测（走 Worker，双账号）：A 投信→B 捞→回信→A 收到回信→放回海里→每日限额→空海提示（需先跑 MIGRATION_bottle.sql）
 node tools/smoke.mjs          # 模块冒烟：需 dev 服务器在跑，探测 30 个关键模块 + 5 个 SEO 静态文件
 node tools/live-check.mjs     # 线上部署验证：页面/缓存/安全头/SEO 资产（部署后跑，应输出 LIVE ALL PASS）
 node tools/online-check.mjs   # 旧版线上检查（已被 live-check 替代，如无特别需要可忽略）
@@ -129,6 +131,7 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 > 3. `MIGRATION_admin.sql` —— **管理中心**：`admin_users` 管理员白名单表 + `is_admin()` / `admin_overview()` 函数 + 管理员治理策略（读已下架帖 / 下架恢复 / 删帖删评；顺带把 `wall_posts` 的匿名读策略收紧为「未下架」）。跑完后执行文件末尾注释里的 `insert into admin_users ...`（换成你的注册邮箱）把自己设为管理员，然后访问 `/admin`（「我的」页会出现管理中心入口，仅管理员可见）；仓库里的 `MIGRATION_add_admin.sql` 就是这一步的现成示例（按昵称 / 按邮箱两种写法，复制即跑）。
 > 4. `MIGRATION_dm_notifications.sql` —— **私信 + 通知中心**：六张新表（`dm_blocks` 拉黑 / `dm_conversations` 会话 / `dm_messages` 消息 / `dm_states` 已读水位与免打扰 / `notifications` 通知 / `notification_prefs` 偏好），写路径全部收口在 security definer RPC（建会话 / 发消息 / 撤回 / 已读 / 免打扰 / 管理员公告），评论·回应·宠物互动的通知由 AFTER INSERT 触发器生成。没跑它时：私信页提示「功能未开启」，其余功能照旧。
 > 5. `MIGRATION_profile_status.sql` —— **陪你大厅状态上云**：`profiles` 加 `status` / `status_at` 两列 + 按时间倒序索引；写路径沿用现有 `profiles self update` RLS（`auth.uid() = id`），不需要新 RPC。没跑它时：状态照旧只存本机（点状态会提示「云端状态还没开启」），大厅「此刻大厅里」区块不显示 —— 不报错、不白屏。跑完后可 `node tools/status-e2e.mjs` 实测（写状态 → 状态流读回 → 24h 过期隐去 → 清除）。
+> 6. `MIGRATION_bottle.sql` —— **温暖漂流瓶**：两张表（`bottle_letters` 信件 / `bottle_fishes` 捞信日志）+ 六个 security definer RPC（投信 / 捞信 / 回信 / 放回 / 我的信 / 我捞到的）；每日最多投 3 封、捞 7 瓶（按 UTC 日计数），捞起 48h 不处理自动回海，不能捞自己的信，回信只有写信人可见（RLS 只放行「写信人 + 写过回信的人」直接读）。没跑它时：漂流瓶卡片会提示「海浪大了一点」（礼貌降级），其余功能照旧。跑完后可 `node tools/bottle-e2e.mjs` 实测（双账号投信 → 捞 → 回信 / 放回 → 限额 → 清理）。
 >
 
 **② 配置密钥**（二选一，anon key 是公开密钥，安全由 RLS 保证）：
@@ -288,7 +291,7 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 | 体验 | `#/` 路由直接访问 `/pet` 会 404 | 迁移到 history 模式 + 每条路由独立静态 HTML + SPA 回退 | `router.js` / `vite.config.js` / `wrangler.jsonc` |
 | 体验 | 「在线陪伴数」是本地随机数，易误导 | 去掉虚构人数，改如实文案（路线图保留"等有真实统计再接"） | `views/HomeView.vue` / `i18n.js` |
 
-回归验证（全部本地可跑）：`wall-rules-test` 33 项 · `comment-test` 26 项 · `wall-test` 34 项 · `pet-home-test` 19 项 · `uifix-test` 21 项 · `image-fit` 20 项 · `snack-test` 24 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 48 项 · `privacy-test` 34 项 · `arity-test` 8 项 · `seo-test` 42 项 · `dm-test` 280 项 · `notify-test` 148 项 · `status-test` 48 项 · `api-contract-test` 83 项 · `gateway-contract-test` 65 项 · `worker-test` 180 项 · `undef-check`。
+回归验证（全部本地可跑）：`wall-rules-test` 33 项 · `comment-test` 26 项 · `wall-test` 34 项 · `pet-home-test` 19 项 · `uifix-test` 21 项 · `image-fit` 20 项 · `snack-test` 24 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 48 项 · `privacy-test` 34 项 · `arity-test` 8 项 · `seo-test` 42 项 · `dm-test` 280 项 · `notify-test` 148 项 · `status-test` 48 项 · `bottle-test` 36 项 · `api-contract-test` 83 项 · `gateway-contract-test` 65 项 · `worker-test` 180 项 · `undef-check`。
 
 ## 🗺️ 路线图
 
@@ -299,13 +302,13 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 - ✅ **已完成**：用户主页 `/u/:id`——点帖子头像/昵称进入；展示宠物（云端镜像，访客可摸摸头/投喂，互动计入 TA 的亲密度/饱食度）、TA 的手绘厨房（点菜投喂）、TA 的帖子与收到的回应
 - ✅ **已完成**：宠物图外置 + 互动计数独立列——立绘 / 手绘菜图进 Storage（`wall-images/<uid>/pet-<hash>.<ext>`，按内容哈希命名、重复上传即覆盖），`pet_profiles` 的互动计数改用独立列 `pats`/`feeds`：修掉「主人同步把访客计数清零」，并把单行数据从 MB 级降到几百字节（解掉将来迁库时单行 2MB 的硬限制）
 - ✅ **已完成**：数据访问适配层——`wall.js` 里所有云端调用（查询 / RPC / Storage）收口到 `src/utils/api/db.js` 一个文件（行为不变），附 `api-contract-test.mjs` 契约测试锁定调用形状；将来换库 / 换托管（Cloudflare Hyperdrive、D1 或自建 API）只改适配层，页面与业务逻辑零改动
-- ✅ **已完成**：API 网关骨架（阶段 2）——Cloudflare Worker 同时托管静态资源与同源 `/api/*` 具名端点（**纯翻译层**：Supabase REST/Storage，用户 JWT 原样透传、RLS 仍由数据库执行、不解析 token、非开放代理、图片路径白名单防穿越）；前端数据层变成可切换实现（默认直连，`VITE_API_GATEWAY=1` 走网关），Auth 仍直连。三套契约测试锁形（api 36 / gateway 30 / worker 53 项）——阶段 3（Hyperdrive / D1 / R2）只换 Worker 内部与适配实现，端点契约不动
+- ✅ **已完成**：API 网关骨架（阶段 2）——Cloudflare Worker 同时托管静态资源与同源 `/api/*` 具名端点（**纯翻译层**：Supabase REST/Storage，用户 JWT 原样透传、RLS 仍由数据库执行、不解析 token、非开放代理、图片路径白名单防穿越）；前端数据层变成可切换实现（默认直连，`VITE_API_GATEWAY=1` 走网关），Auth 仍直连。三套契约测试锁形（api 83 / gateway 65 / worker 180 项）——阶段 3（Hyperdrive / D1 / R2）只换 Worker 内部与适配实现，端点契约不动
 - ✅ **已完成**：管理中心 `/admin`（仅管理员）——总览看板（用户/帖子/评论/浏览/回应分布/宠物互动/存储用量 + 近 14 天趋势 + 浏览最多帖子 + 最新注册）与内容治理（帖子下架/恢复/删除、评论删除）；总览的「用户」卡可点进用户名单页签（昵称/邮箱/用户ID/注册时间，100 条/页，最新在前）；权限由数据库 `admin_users` 白名单 + RLS 兜底，前端只做展示壳；非管理员调用只拿 `{admin:false}` 不泄露数字
 - ✅ **已完成**：墙上的主页（/u/:id）——点帖子头像/昵称进入，看 TA 的帖子、加入时间与收到的抱抱/暖暖/同感
-- 每日一问接入真实数据、陪你大厅接入真实在线人数（**当前刻意不显示人数**，等有真实统计再接）
+- 陪你大厅接入真实在线人数（**当前刻意不显示人数**，等有真实统计再接）
 - 宠物冒险（带回手绘明信片图鉴）、装扮系统、季节彩蛋
 - 🏅 成就徽章：连续打卡 / 养成等级 / 评论互动解锁勋章墙
-- 手绘画作上墙、温暖信箱（树洞回信）
+- ✅ **已完成**：温暖漂流瓶（原「宠物回信信箱」按需求重构）——写信投进「温暖的海」，其他用户随机捞起：回一句话 或 放回海里；每日最多投 3 封 / 捞 7 瓶（UTC 日，明牌展示在卡片上）、捞起 48h 不处理自动回海、不能捞自己的信、字数放宽到 1000；两张表 + 六个 security definer RPC（`MIGRATION_bottle.sql`），Worker `/api/bottle/*` 收口，前端 `utils/bottle.js` 纯规则层；同批把「今日一问」从首页摘除（后续按需求改为暖心故事投稿 + 点赞页，等通知）
 - ✅ **已完成**：登录方式扩展——**Google 一键登录**（`signInWithOAuth`，昵称按 `full_name / name → 邮箱前缀` 兜底）+ **忘记密码**（邮件重置链接回到 `/profile` 直接设置新密码，link 失效有专门识别与重发入口）；两者都有本地前置校验与失败人话提示 → `utils/authRules.js` / `utils/supabase.js` / `views/ProfileView.vue`
 - ✅ **已完成**：隐私政策页 `/privacy`（页脚入口 + 预渲染独立页面 + **正文写进静态 HTML** + sitemap）—— 同时用作 Google OAuth 发布审核的 Privacy policy URL，含 Limited Use 承诺
 - 云端宠物存档多设备同步

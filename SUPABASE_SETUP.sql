@@ -1333,11 +1333,143 @@ create trigger notify_pet_interaction_trg
   after insert on public.pet_interactions
   for each row execute function public.notify_on_pet();
 
+-- ============================================================
+-- 温暖漂流瓶（#6；与 MIGRATION_bottle.sql 同源）
+-- ============================================================
+create table if not exists public.bottle_letters (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references auth.users (id) on delete cascade,
+  nickname    text not null default '',
+  body        text not null,
+  status      text not null default 'sea',   -- sea 漂流中 | held 被捞起 | answered 已有回信
+  holder      uuid references auth.users (id) on delete set null,
+  held_at     timestamptz,
+  reply       text,
+  reply_by    uuid references auth.users (id) on delete set null,
+  reply_at    timestamptz,
+  created_day date not null default (now() at time zone 'utc')::date,
+  created_at  timestamptz not null default now()
+);
+create index if not exists bottle_letters_sea_idx
+  on public.bottle_letters (created_at desc) where status = 'sea';
+create index if not exists bottle_letters_owner_idx
+  on public.bottle_letters (user_id, created_at desc);
+
+create table if not exists public.bottle_fishes (
+  user_id   uuid not null references auth.users (id) on delete cascade,
+  day       date not null default (now() at time zone 'utc')::date,
+  letter_id uuid not null references public.bottle_letters (id) on delete cascade,
+  primary key (user_id, day, letter_id)
+);
+
+alter table public.bottle_letters enable row level security;
+alter table public.bottle_fishes  enable row level security;
+drop policy if exists "bottle readable by owner or replier" on public.bottle_letters;
+create policy "bottle readable by owner or replier" on public.bottle_letters
+  for select using (user_id = auth.uid() or reply_by = auth.uid());
+
+-- 写路径收口在 RPC（每日 3 封 / 7 瓶、48h 自动回海、不能捞自己的信）
+create or replace function public.bottle_send(p_body text)
+returns public.bottle_letters
+language plpgsql security definer set search_path = public as $$
+declare
+  v_count int;
+  v_row   public.bottle_letters;
+begin
+  if auth.uid() is null then raise exception 'bottle-auth'; end if;
+  p_body := btrim(coalesce(p_body, ''));
+  if p_body = '' or char_length(p_body) > 1000 then raise exception 'bottle-too-long'; end if;
+  select count(*) into v_count from public.bottle_letters
+    where user_id = auth.uid() and created_day = (now() at time zone 'utc')::date;
+  if v_count >= 3 then raise exception 'bottle-limit-send'; end if;
+  insert into public.bottle_letters (user_id, nickname, body)
+    values (auth.uid(),
+            coalesce((select nickname from public.profiles where id = auth.uid()), ''),
+            p_body)
+    returning * into v_row;
+  return v_row;
+end $$;
+
+create or replace function public.bottle_fish()
+returns public.bottle_letters
+language plpgsql security definer set search_path = public as $$
+declare
+  v_count int;
+  v_id    uuid;
+  v_row   public.bottle_letters;
+begin
+  if auth.uid() is null then raise exception 'bottle-auth'; end if;
+  update public.bottle_letters set status = 'sea', holder = null, held_at = null
+    where status = 'held' and held_at < now() - interval '48 hours';
+  select count(*) into v_count from public.bottle_fishes
+    where user_id = auth.uid() and day = (now() at time zone 'utc')::date;
+  if v_count >= 7 then raise exception 'bottle-limit-fish'; end if;
+  select id into v_id from public.bottle_letters
+    where status = 'sea' and user_id <> auth.uid()
+    order by random() limit 1;
+  if v_id is null then raise exception 'bottle-empty-sea'; end if;
+  insert into public.bottle_fishes (user_id, day, letter_id)
+    values (auth.uid(), (now() at time zone 'utc')::date, v_id);
+  update public.bottle_letters set status = 'held', holder = auth.uid(), held_at = now()
+    where id = v_id and status = 'sea'
+    returning * into v_row;
+  return v_row;
+end $$;
+
+create or replace function public.bottle_reply(p_id uuid, p_reply text)
+returns public.bottle_letters
+language plpgsql security definer set search_path = public as $$
+declare
+  v_row public.bottle_letters;
+begin
+  if auth.uid() is null then raise exception 'bottle-auth'; end if;
+  p_reply := btrim(coalesce(p_reply, ''));
+  if p_reply = '' or char_length(p_reply) > 1000 then raise exception 'bottle-too-long'; end if;
+  update public.bottle_letters
+    set status = 'answered', reply = p_reply, reply_by = auth.uid(), reply_at = now()
+    where id = p_id and status = 'held' and holder = auth.uid()
+    returning * into v_row;
+  if v_row is null then raise exception 'bottle-not-holder'; end if;
+  return v_row;
+end $$;
+
+create or replace function public.bottle_release(p_id uuid)
+returns public.bottle_letters
+language plpgsql security definer set search_path = public as $$
+declare
+  v_row public.bottle_letters;
+begin
+  if auth.uid() is null then raise exception 'bottle-auth'; end if;
+  update public.bottle_letters
+    set status = 'sea', holder = null, held_at = null
+    where id = p_id and status = 'held' and holder = auth.uid()
+    returning * into v_row;
+  if v_row is null then raise exception 'bottle-not-holder'; end if;
+  return v_row;
+end $$;
+
+create or replace function public.bottle_mine()
+returns setof public.bottle_letters
+language sql security definer set search_path = public as $$
+  select * from public.bottle_letters
+    where user_id = auth.uid() or reply_by = auth.uid()
+    order by created_at desc limit 30
+$$;
+
+create or replace function public.bottle_held()
+returns setof public.bottle_letters
+language sql security definer set search_path = public as $$
+  select * from public.bottle_letters
+    where holder = auth.uid() and status = 'held'
+    order by held_at desc limit 10
+$$;
+
+
 -- 执行权限：与既有函数一致（anon 可达但一律被 auth-required 拦下）
 grant execute on all functions in schema public to anon, authenticated;
 
 -- ============================================================
 -- 执行完毕。请在 Supabase SQL Editor 运行本文件，然后跑：
---   node tools/dm-test.mjs && node tools/notify-test.mjs
+--   node tools/dm-test.mjs && node tools/notify-test.mjs && node tools/bottle-test.mjs
 -- ============================================================
 
