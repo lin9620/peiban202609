@@ -379,6 +379,10 @@ if (!getClient()) {
   const { fake } = await run([{ data: { admin: true, sent: 1 } }], () => db.adminBroadcast("hi"));
   ok("adminBroadcast 形状", fake.calls[0] === 'rpc:admin_broadcast:{"p_body":"hi"}', fake.calls[0]);
 }
+{
+  const { fake } = await run([{ data: { ok: true, removed: 3 } }], () => db.notifClear());
+  ok("notifClear 形状", fake.calls[0] === "rpc:notif_clear:undefined", fake.calls[0]);
+}
 
 setDbClient(null); /* 兜底：绝不把假 client 泄漏出测试进程 */
 console.log(`api-contract: ${pass} pass, ${fails.length} fail`);

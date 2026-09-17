@@ -320,6 +320,11 @@ export const db = {
     return call("/admin/broadcast", { method: "POST", body: { body } });
   },
 
+  /** 清空我的全部通知 */
+  async notifClear() {
+    return call("/notifications/clear", { method: "POST", body: {} });
+  },
+
   /* ══════════ 图片（Storage） ══════════ */
 
   /** 上传字节：路径约定 <uid>/... 由 storage 策略按第一段授权 */

@@ -1152,7 +1152,21 @@ begin
   end if;
   return jsonb_build_object('ok', true);
 end $$;
--- (待续9)
+
+-- 清空我的全部通知（通知页「清空」按钮；返回删除条数）
+create or replace function public.notif_clear()
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  me uuid := auth.uid();
+  v_n integer := 0;
+begin
+  if me is null then raise exception 'auth-required'; end if;
+  with del as (
+    delete from public.notifications where user_id = me returning 1
+  )
+  select count(*) into v_n from del;
+  return jsonb_build_object('ok', true, 'removed', v_n);
+end $$;
 
 -- 通知偏好：读（缺行 = 全开）+ 写
 create or replace function public.notif_prefs_get()
@@ -1301,11 +1315,6 @@ drop trigger if exists notify_pet_interaction_trg on public.pet_interactions;
 create trigger notify_pet_interaction_trg
   after insert on public.pet_interactions
   for each row execute function public.notify_on_pet();
-
--- ============================================================
--- 执行完毕。请在 Supabase SQL Editor 运行本文件，然后跑：
---   node tools/dm-test.mjs && node tools/notify-test.mjs
--- ============================================================
 
 -- 执行权限：与既有函数一致（anon 可达但一律被 auth-required 拦下）
 grant execute on all functions in schema public to anon, authenticated;

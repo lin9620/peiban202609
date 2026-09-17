@@ -596,6 +596,9 @@ export default {
         if (seg[1] === "unread" && seg.length === 2 && m === "GET") {
           return rpc(env, request, "notif_unread", {});
         }
+        if (seg[1] === "clear" && seg.length === 2 && m === "POST") {
+          return rpc(env, request, "notif_clear", {});
+        }
         if (seg[1] === "read" && seg.length === 2 && m === "POST") {
           const b = await readJson(request);
           if (b.err) return b.err;

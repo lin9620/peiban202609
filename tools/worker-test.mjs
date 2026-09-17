@@ -785,6 +785,12 @@ async function hit(script, path, init) {
   ok("adminBroadcast → rpc admin_broadcast", c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/admin_broadcast` &&
     c.outbound[0].init.body === JSON.stringify({ p_body: "hi" }), c.outbound[0].init.body);
 }
+{
+  const { res, c } = await hit([{ body: { ok: true, removed: 3 } }], "/api/notifications/clear", { method: "POST", body: "{}" });
+  ok("notifClear 200", res.status === 200);
+  ok("notifClear → rpc notif_clear", c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/notif_clear` &&
+    c.outbound[0].init.body === "{}", c.outbound[0].url);
+}
 
 console.log(`worker-test: ${pass} pass, ${fails.length} fail`);
 for (const f of fails) console.log("FAIL  " + f);

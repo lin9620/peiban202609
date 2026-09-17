@@ -330,6 +330,11 @@ export const db = {
     return unwrap(sb().rpc("admin_broadcast", { p_body: body }));
   },
 
+  /** 清空我的全部通知（返回 {ok, removed}） */
+  notifClear() {
+    return unwrap(sb().rpc("notif_clear"));
+  },
+
   /* ══════════ 图片（Storage） ══════════ */
 
   /** 上传字节：路径约定 <uid>/... 由 storage 策略按第一段授权 */
