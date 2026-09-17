@@ -555,6 +555,7 @@ grant execute on function public.admin_users_page(integer, integer) to anon, aut
 -- on conflict (user_id) do nothing;
 
 -- 完成 ✅ 接下来在项目根目录配置 URL 和 anon key（见 README「Supabase 配置」）
+
 -- ============================================================
 -- 9) 私信与通知中心（阶段 4：DM + Notifications）
 --    与 MIGRATION_dm_notifications.sql 正文一致（tools/dm-test.mjs 校验覆盖）
@@ -593,9 +594,14 @@ create table if not exists public.dm_messages (
   deleted_at timestamptz,
   created_at timestamptz not null default now(),
   constraint dm_msg_body_len  check (char_length(body) <= 2000),
-  constraint dm_msg_not_empty check (char_length(body) > 0 or image_path is not null)
+  constraint dm_msg_not_empty check (deleted_at is not null or char_length(body) > 0 or image_path is not null)
 );
 create index if not exists dm_msg_conv_idx on public.dm_messages (conv_id, id desc);
+-- 撤回会把正文清空（deleted_at 置位）—— 约束必须放行「已撤回的空消息」；
+-- 跑过旧版迁移的库重跑本文件时在此重建，完成自愈。
+alter table public.dm_messages drop constraint if exists dm_msg_not_empty;
+alter table public.dm_messages add constraint dm_msg_not_empty
+  check (deleted_at is not null or char_length(body) > 0 or image_path is not null);
 -- (待续1)
 
 -- 4) 每人每会话状态（已读水位 last_read_id：读到的最大消息 id，微信/IG 式）
@@ -795,11 +801,15 @@ begin
   update public.dm_states set hidden_until = null where conv_id = p_conv;
 
   -- 通知对方：看对方偏好（dms 开关）与免打扰
+  -- 注意：PL/pgSQL 的 SELECT INTO 在「无行」时把 NULL 赋给目标 —— 必须在赋值后再兜底，
+  -- 否则没建偏好行的新用户（select 无行 → v_dms=NULL → if NULL 走 else）永远收不到私信通知。
   select coalesce(s.muted, false) into v_muted
     from public.dm_states s where s.conv_id = p_conv and s.user_id = v_other;
-  select coalesce(p.dms, true) into v_dms
+  v_muted := coalesce(v_muted, false);
+  select p.dms into v_dms
     from public.notification_prefs p where p.user_id = v_other;
-  if not coalesce(v_muted, false) and v_dms then
+  v_dms := coalesce(v_dms, true);
+  if not v_muted and v_dms then
     insert into public.notifications (user_id, actor_id, kind, conv_id, meta)
       values (v_other, me, 'dm', p_conv, jsonb_build_object('preview', v_prev));
   end if;
@@ -1318,3 +1328,9 @@ create trigger notify_pet_interaction_trg
 
 -- 执行权限：与既有函数一致（anon 可达但一律被 auth-required 拦下）
 grant execute on all functions in schema public to anon, authenticated;
+
+-- ============================================================
+-- 执行完毕。请在 Supabase SQL Editor 运行本文件，然后跑：
+--   node tools/dm-test.mjs && node tools/notify-test.mjs
+-- ============================================================
+
