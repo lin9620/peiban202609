@@ -10,7 +10,7 @@ import { seasonNow } from "../data/extras.js";
 import { cloud } from "../utils/supabase.js";
 import { cloudSetStatus, cloudFetchStatuses } from "../utils/wall.js";
 import { errorKind } from "../utils/wallRules.js";
-import { STATUS_KEYS, STATUS_EMOJI } from "../utils/statuses.js";
+import { STATUS_KEYS } from "../utils/statuses.js";
 import SeasonFx from "../components/SeasonFx.vue";
 import PetMotion from "../components/PetMotion.vue";
 import ShareCard from "../components/ShareCard.vue";
@@ -195,7 +195,7 @@ function sendLetterNow() {
           :type="myStatus === k ? 'primary' : 'default'"
           :quaternary="myStatus !== k"
           @click="setStatus(k)">
-          {{ STATUS_EMOJI[k] }} {{ t("home.companions." + k) }}
+          {{ t("home.companions." + k) }}
         </n-button>
       </div>
       <p v-if="myStatus" class="streak-note">
@@ -215,7 +215,7 @@ function sendLetterNow() {
         <div class="hall-pill-row">
           <span v-for="o in others" :key="o.id" class="hall-pill">
             <b>{{ o.nickname || t("home.companions.anon") }}</b>
-            <span>{{ STATUS_EMOJI[o.status] || "💬" }} {{ statusLabel(o.status) }}</span>
+            <span>{{ statusLabel(o.status) }}</span>
             <span class="hall-ago">{{ agoLabel(o.status_at) }}</span>
           </span>
         </div>

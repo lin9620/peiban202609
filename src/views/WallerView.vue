@@ -13,7 +13,7 @@ import { cloud } from "../utils/supabase.js";
 import { openConv } from "../utils/dm.js";
 import { sendErrKey } from "../utils/dmRules.js";
 import { jump } from "../stores/petStore.js";
-import { STATUS_EMOJI, STATUS_KEYS, statusFresh } from "../utils/statuses.js";
+import { STATUS_KEYS, statusFresh } from "../utils/statuses.js";
 import PetMotion from "../components/PetMotion.vue";
 
 const route = useRoute();
@@ -134,7 +134,7 @@ onMounted(async () => {
         </p>
         <!-- 陪你大厅状态：TA 近 24h 内在大厅选的状态（没设/过期都不显示） -->
         <span v-if="profStatus" class="waller-status">
-          {{ STATUS_EMOJI[profStatus] || "💬" }} {{ statusLabel(profStatus) }}
+          {{ statusLabel(profStatus) }}
         </span>
         <!-- 发私信：登录且非本人主页才有；失败原因按 dmRules.sendErrKey 映射 -->
         <div v-if="!failed && !loading && canDm" class="waller-dm">
