@@ -312,12 +312,21 @@ if (hasAdvanced) {
       pubCounts ? "pats=" + pubCounts.pats + " feeds=" + pubCounts.feeds : "读不到");
 
     /* T32 宠物图外置：dataURL → Storage 路径，行里只留短引用（为将来 D1 的 2MB 单行上限铺路） */
+    /* 用真实 4×4 PNG（120 字节 → dataURL 182 字符）：必须大于 isUsableDataUrl 的 128 字符下限，
+       否则会被当成「占位小串」拒掉（下面 T32e 专门钉这条边界，免得夹具退化后又变成静默跳过） */
+    const PNG_4x4 =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAP0lEQVR42gXBoQHAIAwAQdz7ejwirpYFkFmjDpORsub3bgAGmGCBg42xH3NPay8HF+NO877WPQ4ao5fZx+rPHyENGz3VtD1BAAAAAElFTkSuQmCC";
+    const parsed = parseImageDataUrl(PNG_4x4);
+    ok("T32 前端解析器认这张真实 PNG（mime/ext/字节数/hash 齐全）",
+      !!parsed && parsed.mime === "image/png" && parsed.ext === "png" && parsed.size === 120
+        && typeof parsed.hash === "string" && parsed.hash.length > 0,
+      parsed ? parsed.mime + " " + parsed.size + "B hash=" + String(parsed.hash).slice(0, 8) : "解析失败");
+    /* T32e 边界：1×1 PNG 的 dataURL 只有 118 字符 < 128 → 按「占位串」拒（这是既有语义，不是 bug） */
     const PNG_1x1 =
       "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==";
-    const parsed = parseImageDataUrl(PNG_1x1);
-    ok("T32 前端解析器认这张图（mime/ext/字节数）",
-      !!parsed && parsed.mime === "image/png" && parsed.ext === "png" && parsed.size > 0,
-      parsed ? parsed.mime + " " + parsed.size + "B" : "解析失败");
+    ok("T32e 过短的 dataURL（1×1，118 字符）被当占位串拒绝 —— 夹具必须大于 128 字符",
+      PNG_1x1.length < 128 && parseImageDataUrl(PNG_1x1) === null,
+      "len=" + PNG_1x1.length);
 
     if (parsed) {
       /* 路径规则与前端一致：<uid>/pet-<hash>.<ext>；storage 策略只看第一段 = auth.uid() */
