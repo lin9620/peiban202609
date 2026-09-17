@@ -79,10 +79,16 @@ try {
   const rm = t.match(/<meta[^>]+name=["']robots["'][^>]*>/i);
   ok("meta robots 允许索引", !!rm && /index/i.test(rm[0]), rm ? rm[0] : "缺失");
 } catch (e) { ok("Googlebot 索引体检", false, e.message); }
+/* SPA 回退：这是有意设计（wrangler.jsonc 的 not_found_handling = single-page-application），
+   未知路径返回应用外壳 200，深链（如 /wall/u/:id）才不会 404；
+   已知路由另有各自预渲染的独立 HTML（见 tools/seo-test.mjs）。
+   注意：这里不能断言「真 404」—— 那与 SPA 回退互相矛盾。 */
 try {
   const r = await get("/no-such-page-xyz");
-  ok("不存在路径返回 404（非软 404）", r.status === 404, "HTTP " + r.status);
-} catch (e) { ok("软 404 检查", false, e.message); }
+  const t = await r.text();
+  ok("未知路径由 SPA 回退兜住（200 + 应用外壳，深链不 404）",
+    r.status === 200 && t.includes('id="app"'), "HTTP " + r.status);
+} catch (e) { ok("SPA 回退检查", false, e.message); }
 
 console.log("\nTOTAL " + (pass + fail) + "  PASS " + pass + "  FAIL " + fail);
 process.exit(fail ? 1 : 0);

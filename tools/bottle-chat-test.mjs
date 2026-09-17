@@ -77,4 +77,17 @@ eq(read("src/views/NotificationsView.vue").includes('tg.type === "bottle"'), tru
 // 静态迁移检查：仅确认脚本包含关键步骤，不证明事务及幂等行为已在数据库通过。
 const sql = read("MIGRATION_bottle_chat.sql");
 for (const text of ["begin;", "commit;", "bottle_reply_notification", "bottle_chat_decide", "bottle_records", "letter.body, letter.created_at", "letter.reply, letter.reply_at"]) eq(sql.includes(text), true);
+/* 新装库一致性：SUPABASE_SETUP.sql 必须与迁移同源，否则新部署会缺续聊功能 */
+const setup = read("SUPABASE_SETUP.sql");
+for (const text of [
+  "add column if not exists conv_id bigint",
+  "add column if not exists chat_decision text",
+  "function public.bottle_notify_reply()",
+  "function public.bottle_chat_decide(p_id uuid, p_accept boolean)",
+  "function public.bottle_records(p_id uuid default null, p_offset integer default 0)",
+  "revoke all on function public.bottle_chat_decide(uuid, boolean) from public, anon;",
+  "grant execute on function public.bottle_chat_decide(uuid, boolean) to authenticated;",
+]) eq(setup.includes(text), true);
+for (const fn of [...sql.matchAll(/create or replace function public\.(\w+)/g)].map((m) => m[1]))
+  eq(setup.includes("function public." + fn), true);
 console.log(`bottle-chat-test: ${pass} pass, 0 fail (offline; SQL not executed)`);
