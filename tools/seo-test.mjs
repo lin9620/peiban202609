@@ -23,6 +23,12 @@ const robots = exists("public/robots.txt") ? read("public/robots.txt") : "";
 ok("T1 robots.txt 存在", robots.length > 0);
 ok("T2 robots 允许抓取", /User-agent:\s*\*/i.test(robots) && /Allow:\s*\//i.test(robots));
 ok("T3 robots 声明站点地图", robots.includes(`Sitemap: ${SITE}/sitemap.xml`));
+/* T3b：私密页必须挡掉（登录后才有内容；收录了是空壳，且属个人数据） */
+for (const p of ["/messages", "/notifications", "/admin"]) {
+  ok(`T3b robots 屏蔽 ${p}`, robots.includes(`Disallow: ${p}`));
+}
+ok("T3c robots 只有一个 User-agent 组（规范写法）",
+  (robots.match(/User-agent:/g) || []).length === 1, robots);
 
 /* ─── ② sitemap.xml ─── */
 const sm = exists("public/sitemap.xml") ? read("public/sitemap.xml") : "";

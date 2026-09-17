@@ -273,6 +273,16 @@ export const messages = {
       react: { title: "Reactions", hug: "Hug", warm: "Warm", relate: "Relate", dislike: "Dislike" },
       trend: { title: "Last 14 days", posts: "Posts", users: "Signups", comments: "Comments" },
       top: { title: "Most viewed posts", views: "views", react: "reactions" },
+      broadcast: {
+        title: "Announcement",
+        hint: "Goes to everyone's notification centre as a system notice (up to 5000 people per send).",
+        ph: "Something you'd like everyone to know…",
+        count: "{n} / 1000",
+        send: "Send to everyone",
+        done: "Sent to {n} people.",
+        denied: "Only admins can send announcements.",
+        fail: "Couldn't send: {r}",
+      },
       recent: { title: "Newest members", posts: "{n} posts" },
       usersCol: { nick: "Nickname", email: "Email", uid: "User ID", at: "Registered" },
       page: { prev: "Prev", next: "Next", info: "{a}–{b} of {n}" },
@@ -336,6 +346,7 @@ export const messages = {
       errNoUser: "Couldn't find that person",
       errNetwork: "The network is being shy — try again shortly",
       errTooLate: "Messages can only be recalled within 15 minutes",
+      sendTo: "Send a message",
     },
 
     /* Notification centre (/notifications) */
@@ -763,6 +774,16 @@ export const messages = {
       react: { title: "回应分布", hug: "抱抱", warm: "暖暖", relate: "同感", dislike: "厌恶" },
       trend: { title: "近 14 天", posts: "发帖", users: "注册", comments: "评论" },
       top: { title: "浏览最多的帖子", views: "浏览", react: "回应" },
+      broadcast: {
+        title: "全员公告",
+        hint: "发出去会以系统通知的形式进每个人的通知中心（单次最多 5000 人）。",
+        ph: "想让大家知道的事…",
+        count: "{n} / 1000",
+        send: "发给所有人",
+        done: "已发给 {n} 位伙伴。",
+        denied: "只有管理员能发公告。",
+        fail: "发送失败：{r}",
+      },
       recent: { title: "最新的伙伴", posts: "{n} 条帖子" },
       usersCol: { nick: "昵称", email: "邮箱", uid: "用户 ID", at: "注册时间" },
       page: { prev: "上一页", next: "下一页", info: "第 {a}–{b} 位 · 共 {n} 人" },
@@ -824,6 +845,7 @@ export const messages = {
       errNoUser: "找不到这位伙伴",
       errNetwork: "网络不太顺，稍后再试",
       errTooLate: "超过 15 分钟的消息不能撤回了",
+      sendTo: "发私信",
     },
 
     /* 通知中心（/notifications） */

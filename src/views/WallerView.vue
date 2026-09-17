@@ -1,7 +1,7 @@
 <!-- 墙上的主页：/u/:id —— 点暖心墙的头像/昵称进来，看 TA 的帖子、宠物与手绘厨房（访客可互动） -->
 <script setup>
 import { ref, computed, onMounted } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { NAvatar } from "naive-ui";
 import { t, i18n } from "../i18n.js";
 import {
@@ -10,11 +10,34 @@ import {
 import { visibleOnly, ANON_KEY } from "../utils/wallRules.js";
 import { getItem } from "../utils/storage.js";
 import { cloud } from "../utils/supabase.js";
+import { openConv } from "../utils/dm.js";
+import { sendErrKey } from "../utils/dmRules.js";
 import { jump } from "../stores/petStore.js";
 import PetMotion from "../components/PetMotion.vue";
 
 const route = useRoute();
 const uid = String(route.params.id || "");
+
+/* —— 发私信：登录且不是自己的主页才显示；点一下开/建会话再跳进对话 —— */
+const router = useRouter();
+const dmBusy = ref(false);
+const dmMsg = ref("");
+const isSelf = computed(() => !!(cloud.user && cloud.user.id === uid));
+const canDm = computed(() => !!(cloud.ready && cloud.user && uid && !isSelf.value));
+
+async function startDm() {
+  if (dmBusy.value || !canDm.value) return;
+  dmBusy.value = true;
+  dmMsg.value = "";
+  try {
+    const convId = await openConv(uid);
+    if (convId) router.push({ name: "messages", params: { id: String(convId) } });
+    else dmMsg.value = t("dm.errNetwork");
+  } catch (e) {
+    dmMsg.value = t(sendErrKey(e));
+  }
+  dmBusy.value = false;
+}
 
 const prof = ref(null);        // profiles 行：{ nickname, created_at }
 const posts = ref([]);         // TA 的帖子（已排除下架的）
@@ -101,6 +124,11 @@ onMounted(async () => {
         <p v-if="!failed && joinedAt" class="sub" style="margin: 4px 0 0">
           &#128062; {{ t("waller.joined", { d: joinedAt }) }}
         </p>
+        <!-- 发私信：登录且非本人主页才有；失败原因按 dmRules.sendErrKey 映射 -->
+        <div v-if="!failed && !loading && canDm" class="waller-dm">
+          <button class="waller-act" :disabled="dmBusy" @click="startDm">✉️ {{ t("dm.sendTo") }}</button>
+          <span v-if="dmMsg" class="sub" style="margin: 6px 0 0">{{ dmMsg }}</span>
+        </div>
       </div>
     </section>
 

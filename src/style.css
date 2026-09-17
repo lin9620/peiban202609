@@ -1399,6 +1399,9 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 }
 .dm-back:hover { color: var(--accent-deep); }
 
+/* 墙上主页的发私信按钮（与摸摸头/投喂同一排的视觉语言） */
+.waller-dm { display: flex; flex-direction: column; align-items: flex-start; margin-top: 10px; }
+
 /* 窄屏：会话列表在上、对话在下（单列） */
 @media (max-width: 780px) {
   .dm-wrap { grid-template-columns: 1fr; }

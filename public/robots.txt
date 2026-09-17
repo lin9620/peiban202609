@@ -1,5 +1,10 @@
 User-agent: *
 Allow: /
 
-# history 路由：/ /pet /community /profile 均为可独立收录的页面
+# 登录后才有意义的私密页面：收录了也是空壳，且内容是个人数据，直接挡掉
+Disallow: /messages
+Disallow: /notifications
+Disallow: /admin
+
+# history 路由：/ /pet /community /profile /privacy 均为可独立收录的页面
 Sitemap: https://dale.de5.net/sitemap.xml

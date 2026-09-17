@@ -98,6 +98,26 @@ function switchTab(name) {
   if (name === "users" && !usersLoaded.value) loadUsers(0);
 }
 
+/* —— 全员公告：走 db.adminBroadcast（RPC 内再查一次 is_admin，前端只是壳） —— */
+const announce = ref("");
+async function sendBroadcast() {
+  const text = announce.value.trim();
+  if (!text || busy.value !== "") return;
+  busy.value = "broadcast";
+  try {
+    const r = await db.adminBroadcast(text);
+    if (!r || r.admin === false) {
+      actionMsg.value = t("admin.broadcast.denied");
+    } else {
+      actionMsg.value = t("admin.broadcast.done", { n: r.sent || 0 });
+      announce.value = "";
+    }
+  } catch (e) {
+    actionMsg.value = t("admin.broadcast.fail", { r: (e && e.message) || "" });
+  }
+  busy.value = "";
+}
+
 /* ── 治理动作 ── */
 async function setRemoved(p, removed) {
   if (busy.value) return;
@@ -260,6 +280,22 @@ const recentUsers = computed(() => (Array.isArray(ov.value && ov.value.recent_us
         </div>
 
         <div class="admin-grid2" style="margin-top: 18px">
+          <!-- 全员公告：写入 notifications(kind=system)，所有人通知中心可见（RPC 复用 is_admin()） -->
+          <section class="card" style="margin-bottom: 0">
+            <h2>{{ t("admin.broadcast.title") }}</h2>
+            <p class="sub">{{ t("admin.broadcast.hint") }}</p>
+            <n-input
+              v-model:value="announce" type="textarea" :rows="3" :maxlength="1000"
+              :placeholder="t('admin.broadcast.ph')" />
+            <div class="row-between" style="margin-top: 10px">
+              <span class="sub" style="margin: 0">{{ t("admin.broadcast.count", { n: announce.length }) }}</span>
+              <n-button type="primary" size="small" round
+                :disabled="!announce.trim() || busy !== ''" @click="sendBroadcast">
+                {{ t("admin.broadcast.send") }}
+              </n-button>
+            </div>
+          </section>
+
           <section class="card" style="margin-bottom: 0">
             <h2>{{ t("admin.top.title") }}</h2>
             <p v-if="!topPosts.length" class="sub">{{ t("admin.empty") }}</p>
