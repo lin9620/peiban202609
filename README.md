@@ -43,7 +43,12 @@
 - **用户主页 `/u/:id`**：点帖子头像 / 昵称进入（匿名也能看）。展示昵称、加入时间、TA 的帖子与收到的回应；**TA 的伙伴**——云端镜像的宠物（登录后自动同步，含形象 / 性格 / 等级），**访客可以摸摸头、投喂**，互动真实计入 TA 的亲密度 / 饱食度（RPC 计费，非本地演出）；**TA 的手绘厨房**——TA 画的食物墙，点菜即投喂。立绘与菜图都存在 Storage，云端快照里只留路径（主人每次同步只写几百字节，不再写 MB 级 JSON）
 
 ### 👤 我的
-访客昵称 / 我的食谱管理 / 近 30 天心情日历
+访客昵称 / 我的食谱管理 / 近 30 天心情日历 / 登录与注册（邮箱 + Google 一键登录、忘记密码重置）
+
+### 🔒 隐私与合规
+- **隐私政策页 `/privacy`**：页脚常驻入口，四语言无关的中英双语正文（数据收集范围 / 存储位置与保护 / 撤回与删号途径 / 儿童条款 / 联系邮箱）
+- 该页同时是 **Google OAuth 发布审核要求的 Privacy policy URL**：第 4、5 节逐条写明「只申请 email 与 profile」「不读 Gmail / Drive / 日历」「不出售不转售」「不用于广告」「Limited Use 承诺」「如何撤销授权」
+- 合规表述由 `tools/privacy-test.mjs`（30 项）锁形：文案改了但漏掉任何一条，测试会红
 
 ### 🌐 双语与视觉
 - 英文为主，右上角一键切换中文；新增语言只需加一个语言块
@@ -75,8 +80,9 @@ node tools/worker-test.mjs    # API 网关 Worker 契约测试（53 项：/api/*
 node tools/i18n-test.mjs      # 文案完整性与插值回归（19 项：en/zh 键集合对称、修复过的 key、$ 特殊字符）
 node tools/admin-test.mjs     # 管理中心纯函数单测（39 项：admin:false 兜底 / 字段缺省 / 趋势图 14 天补零 / 行规整 / 北京时间口径）
 node tools/auth-test.mjs      # 登录规则单测（48 项：邮箱密码校验 / Google 昵称兜底 / 重置邮件链接解析与失效识别 / 回跳地址 / 页面接线）
+node tools/privacy-test.mjs   # 隐私政策页回归（30 项：路由与页脚入口 / sitemap 与预渲染产物 / 合规表述逐条核对 —— 权限范围、不转售、不投放广告、Limited Use、撤销授权 / 中英键对称）
 node tools/snack-test.mjs     # 零食雨游戏纯逻辑单测（20 项：难度曲线/生成/碰撞/结算上限）
-node tools/seo-test.mjs       # SEO 资产检查（35 项：robots/sitemap/OG 标签/PNG 尺寸/安全头/产物）
+node tools/seo-test.mjs       # SEO 资产检查（38 项：robots/sitemap/5 条路由/OG 标签/PNG 尺寸/安全头/预渲染产物）
 node tools/image-fit.mjs       # 图片纯函数单测（20 项：尺寸缩放/形状体检/文件预检/dataURL 校验）
 node tools/undef-check.mjs    # 静态检查「用了项目内导出符号但没导入」（白屏元凶），报告写 undef-report.txt
 node tools/arity-test.mjs     # 静态检查「模板/同文件自调用 参数个数 < 函数签名必填参数」（undefined 崩溃元凶）
@@ -135,6 +141,7 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 - **忘记密码**：登录表单上有「忘记密码」→ 填邮箱 → Supabase 发重置链接 → 点开链接回到 `/profile`，页面显示「设置新密码」，保存后即已登录。链接带 `redirect_to`，因此必须把站点地址加进白名单（否则会停在 Supabase 域名上）。
 - **Google 一键登录**：需在 Supabase Dashboard → Authentication → Providers → **Google** 开启并填 Client ID / Secret；Google Cloud Console 的 **Authorized redirect URI** 填 `https://<项目>.supabase.co/auth/v1/callback`（不是本站地址）。开启后登录卡片上会出现「使用 Google 登录」按钮，一键跳转，回来即已登录；昵称按 `full_name / name → 邮箱前缀` 兜底（Google 不返回 nickname）。
 - 两者都要求 **Authentication → URL Configuration**：Site URL 填线上地址，Redirect URLs 加 `https://dale.de5.net/**` 与 `http://localhost:5173/**`（与下方「上线检查清单」同一条要求）。
+- **Google 正式发布（In production）**：Google Cloud Console → OAuth consent screen / Google Auth Platform → **Branding** 要填齐四项，其中两项必须是本站真实地址：`Application home page` = `https://dale.de5.net`，`Application privacy policy link` = **`https://dale.de5.net/privacy`**（站内已备好这页，含 Google 用户数据用途与 Limited Use 声明）；`Audience` 页里可加 Test users——**只想自己/朋友用的话，留在 Testing 模式即可**，不必发布。
 
 > 说明：新注册用户需到邮箱确认验证邮件（Supabase 默认开启）。若要关闭验证：Dashboard → Authentication → Providers → Email → Confirm email 关闭。
 
@@ -249,7 +256,7 @@ src/
     FoodPainter.vue    手绘食物画板
     SnackRain.vue      零食雨小游戏（鼠标/键盘操作 + 结算面板）
     ShareCard.vue      分享卡片生成
-  views/               Home / Pet（宠物乐园）/ Community / Waller（用户主页 /u/:id）/ Profile
+  views/               Home / Pet（宠物乐园）/ Community / Waller（用户主页 /u/:id）/ Profile / Privacy（隐私政策）/ Admin（管理中心，仅管理员）
 public/                robots.txt · sitemap.xml · og-image.png · favicon.png · apple-touch-icon.png · _headers（安全头 + 资产长缓存）
 ```
 
@@ -272,7 +279,7 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 | 体验 | `#/` 路由直接访问 `/pet` 会 404 | 迁移到 history 模式 + 每条路由独立静态 HTML + SPA 回退 | `router.js` / `vite.config.js` / `wrangler.jsonc` |
 | 体验 | 「在线陪伴数」是本地随机数，易误导 | 去掉虚构人数，改如实文案（路线图保留"等有真实统计再接"） | `views/HomeView.vue` / `i18n.js` |
 
-回归验证（全部本地可跑）：`wall-rules-test` 29 项 · `comment-test` 26 项 · `wall-test` 33 项 · `pet-home-test` 10 项 · `uifix-test` 20 项 · `image-fit` 20 项 · `snack-test` 20 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `arity-test` 8 项 · `seo-test` 35 项 · `undef-check`。
+回归验证（全部本地可跑）：`wall-rules-test` 33 项 · `comment-test` 26 项 · `wall-test` 34 项 · `pet-home-test` 19 项 · `uifix-test` 20 项 · `image-fit` 20 项 · `snack-test` 20 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 48 项 · `privacy-test` 30 项 · `arity-test` 8 项 · `seo-test` 38 项 · `undef-check`。
 
 ## 🗺️ 路线图
 
@@ -290,4 +297,6 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 - 宠物冒险（带回手绘明信片图鉴）、装扮系统、季节彩蛋
 - 🏅 成就徽章：连续打卡 / 养成等级 / 评论互动解锁勋章墙
 - 手绘画作上墙、温暖信箱（树洞回信）
-- Google 一键登录、云端宠物存档多设备同步
+- ✅ **已完成**：登录方式扩展——**Google 一键登录**（`signInWithOAuth`，昵称按 `full_name / name → 邮箱前缀` 兜底）+ **忘记密码**（邮件重置链接回到 `/profile` 直接设置新密码，link 失效有专门识别与重发入口）；两者都有本地前置校验与失败人话提示 → `utils/authRules.js` / `utils/supabase.js` / `views/ProfileView.vue`
+- ✅ **已完成**：隐私政策页 `/privacy`（页脚入口 + 预渲染独立页面 + sitemap）—— 同时用作 Google OAuth 发布审核的 Privacy policy URL，含 Limited Use 承诺
+- 云端宠物存档多设备同步

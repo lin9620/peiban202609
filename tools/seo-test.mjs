@@ -30,8 +30,8 @@ ok("T4 sitemap.xml 存在", sm.length > 0);
 ok("T5 XML 声明 + urlset 命名空间", sm.startsWith("<?xml") && sm.includes("http://www.sitemaps.org/schemas/sitemap/0.9"));
 ok("T6 标签闭合平衡", (sm.match(/<url>/g) || []).length === (sm.match(/<\/url>/g) || []).length);
 const locs = [...sm.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
-const expected4 = [`${SITE}/`, `${SITE}/pet`, `${SITE}/community`, `${SITE}/profile`].sort();
-ok("T7 sitemap 登记全部 4 条 history 路由", locs.length === 4 && JSON.stringify([...locs].sort()) === JSON.stringify(expected4), locs.join(","));
+const expected5 = [`${SITE}/`, `${SITE}/pet`, `${SITE}/community`, `${SITE}/profile`, `${SITE}/privacy`].sort();
+ok("T7 sitemap 登记全部 5 条 history 路由", locs.length === 5 && JSON.stringify([...locs].sort()) === JSON.stringify(expected5), locs.join(","));
 ok("T8 lastmod 为 ISO 日期", /<lastmod>\d{4}-\d{2}-\d{2}<\/lastmod>/.test(sm));
 
 /* ─── ③ index.html 元信息 ─── */
@@ -87,7 +87,7 @@ if (exists("dist/index.html")) {
 
 /* ─── ⑦ history 路由产物（若已构建） ─── */
 if (exists("dist/pet/index.html")) {
-  const routeDirs = ["pet", "community", "profile"];
+  const routeDirs = ["pet", "community", "profile", "privacy"];
   const missingH = routeDirs.filter((d) => !exists(`dist/${d}/index.html`));
   ok("T27 每路由静态 HTML 已生成", missingH.length === 0, missingH.join(","));
   const petHtml = read("dist/pet/index.html");
@@ -96,6 +96,11 @@ if (exists("dist/pet/index.html")) {
   const cHtml = exists("dist/community/index.html") ? read("dist/community/index.html") : "";
   ok("T30 /community 标题+canonical 独立", cHtml.includes("<title>Warm Paws · The Kindness Wall</title>") && cHtml.includes(`href="${SITE}/community"`));
   ok("T31 /profile 生成且描述独立", exists("dist/profile/index.html") && read("dist/profile/index.html").includes("Your pets, coins, badges"));
+  /* 隐私政策：Google OAuth 发布要看这页，标题 / canonical / 描述都必须独立且真实 */
+  const pHtml = exists("dist/privacy/index.html") ? read("dist/privacy/index.html") : "";
+  ok("T31b /privacy 标题独立", pHtml.includes("<title>Warm Paws · Privacy Policy</title>"));
+  ok("T31c /privacy canonical 独立", pHtml.includes(`href="${SITE}/privacy"`));
+  ok("T31d /privacy 描述提到 Google 登录数据", pHtml.includes("how Google sign-in data is used"));
 } else {
   console.log("SKIP  T27~T31 尚未构建 dist（先跑 npm run build）");
 }

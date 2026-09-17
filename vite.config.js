@@ -51,6 +51,13 @@ function seoRoutes() {
           title: "Warm Paws · Your Gentle Corner",
           desc: "Your pets, coins, badges and gentle daily records — all in one cozy place.",
         },
+        {
+          /* 隐私政策：Google OAuth 发布要求一个可公开访问的政策页，
+             独立静态 HTML 能让外部审核不执行 JS 也看到内容 */
+          dir: "privacy",
+          title: "Warm Paws · Privacy Policy",
+          desc: "What Warm Paws stores, why it stores it, and how Google sign-in data is used — plain words, no tracking, no ads.",
+        },
       ];
       let made = 0;
       for (const r of routes) {
@@ -67,7 +74,7 @@ function seoRoutes() {
         fs.writeFileSync(path.join(distDir, r.dir, "index.html"), h);
         made++;
       }
-      console.log(`\n  seo-routes  ${made} route pages → /pet /community /profile\n`);
+      console.log(`\n  seo-routes  ${made} route pages → /pet /community /profile /privacy\n`);
     },
   };
 }

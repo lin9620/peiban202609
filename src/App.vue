@@ -131,7 +131,11 @@ function reload() {
             </router-view>
           </main>
 
-          <footer class="footer">{{ t("footerNote") }}</footer>
+          <footer class="footer">
+            <span>{{ t("footerNote") }}</span>
+            <!-- 隐私政策入口：常驻页脚，让访客与外部审核都能直接找到（Google 发布要求） -->
+            <router-link to="/privacy" class="footer-link">{{ t("privacy.title") }}</router-link>
+          </footer>
         </div>
 
         <SideRails />

@@ -289,6 +289,82 @@ export const messages = {
       pick: "Theme",
     },
 
+    /* 隐私政策页（/privacy）——Google OAuth 发布要求可公开访问的政策链接，
+       且必须逐条声明 Google 用户数据的使用方式与 Limited Use 承诺 */
+    privacy: {
+      title: "Privacy Policy",
+      intro: "Warm Paws is a small, gentle place. This page explains, in plain words, what we store and why — including what happens when you sign in with Google.",
+      updated: "Last updated: September 17, 2026",
+      back: "Back to Home",
+
+      s1t: "Who we are",
+      s1p1: "Warm Paws (this website, dale.de5.net) is a personal, non-commercial pet & kindness corner. This policy covers everything you do on this site. It does not cover other sites you reach by leaving us.",
+
+      s2t: "What we collect",
+      s2p1: "We only collect what the site needs to work. There is no profiling, no advertising and no data broker involved.",
+      s2l: [
+        "Account: your email address and a password. Passwords are hashed by our auth provider — we never see or store the plain text.",
+        "Profile: the nickname you choose (or the one Google shares), shown next to your posts.",
+        "Your content: posts, comments, reactions and images you upload to the kindness wall.",
+        "Your pet: the pet you draw, its levels, your food drawings and mood check-ins, so it looks the same on any device.",
+        "Basic activity data: view counts and reaction counts on posts (used by the auto-hide rule below), and timestamps.",
+      ],
+
+      s3t: "Why we use it",
+      s3l: [
+        "To sign you in and keep your session on this device.",
+        "To show your nickname, posts and comments to other visitors — posts on the kindness wall are public by design.",
+        "To sync your pet, food drawings and mood records across your devices.",
+        "To keep the place calm: one post per person per day, and posts that many people dislike are hidden automatically.",
+        "To reply to you when you write to us.",
+      ],
+
+      s4t: "Signing in with Google",
+      s4p1: "Signing in with Google is optional — email sign-in works the same. If you choose it, this is exactly what happens:",
+      s4l: [
+        "We request only the basic scopes email and profile (your email address, nickname and avatar).",
+        "We do NOT request access to Gmail, Drive, Calendar, Contacts, Photos or any other Google service, and we cannot read them.",
+        "The Google data we receive is used for one thing only: creating your account and showing your nickname. Nothing else.",
+        "We never sell, rent or share Google user data with third parties, and we never use it for advertising, ad targeting or credit decisions.",
+        "Google user data is stored with our hosting provider (Supabase) as part of your account record, protected by database row-level security.",
+        "You can revoke access at any time at myaccount.google.com → Security → Third-party apps. Revoking only breaks the Google shortcut; your account and content stay.",
+      ],
+
+      s5t: "Google Limited Use disclosure",
+      s5p1: "Warm Paws' use of information received from Google APIs adheres to the Google API Services User Data Policy, including the Limited Use requirements. Concretely: Google user data is used only to provide and improve the sign-in and profile features you see; it is not transferred to others except as needed to run those features, not used for advertising, and not read by a human unless you ask us to, or we are required to for security or legal reasons.",
+
+      s6t: "Who processes the data",
+      s6p1: "We do not run our own servers. Accounts, posts, comments and images live with Supabase (database, authentication and image storage). Images are served from Supabase Storage. There are no advertising networks, no tracking pixels and no social-media embeds on this site.",
+
+      s7t: "What stays on your device",
+      s7p1: "Some things never leave your browser: your language, theme, nickname, the time-range and sorting you picked, an anonymous id used to count views once per day, and your sign-in session token. These live in your browser's local storage — clearing site data removes them. We do not use advertising cookies.",
+      s7note: "This site uses no cookies for tracking or advertising.",
+
+      s8t: "Sharing and public content",
+      s8p1: "We do not sell or rent your data. Anything you post on the kindness wall, together with your nickname and avatar, is visible to anyone who visits this site. Admins can additionally see the list of registered emails for moderation; they cannot see passwords. We may disclose data if the law requires it.",
+
+      s9t: "Your choices and rights",
+      s9l: [
+        "Change or remove your posts and comments yourself, any time.",
+        "Change your nickname in the Me page.",
+        "Ask us to export or permanently delete your account and all its data — write to the address below and we will handle it within 7 days.",
+        "Revoke Google access from your Google account as described above.",
+        "Use the site without an account: browsing and playing stay open, and nothing is sent to the cloud.",
+      ],
+
+      s10t: "Children",
+      s10p1: "This site is not directed at children under 13 (or the equivalent age in your country). If we learn that we hold an account created by a child below that age, we will delete the account and its data.",
+
+      s11t: "How we protect it",
+      s11p1: "Traffic is encrypted with HTTPS. The database enforces row-level security, so only you can modify your own content, and the private keys of the project stay server-side. Passwords are hashed. No system is perfect, so please use a password you do not reuse elsewhere.",
+
+      s12t: "Changes to this policy",
+      s12p1: "If the way we handle data changes, we will update this page and its date above. Continuing to use Warm Paws after an update means you accept the new version.",
+
+      s13t: "Contact",
+      s13p1: "Questions, deletion requests or anything else: {mail}. We usually reply within a few days.",
+    },
+
     profile: {
       title: "Me",
       hello: "Hi, {n} 👋", notSigned: "Not signed in",
@@ -608,6 +684,81 @@ export const messages = {
 
     theme: {
       pick: "主题",
+    },
+
+    /* 隐私政策页（/privacy）——与 en 的键一一对应（i18n-test 会校验键集合对称） */
+    privacy: {
+      title: "隐私政策",
+      intro: "暖爪是个很小、很温柔的地方。这一页用大白话说明：我们存了什么、为什么存——包括用 Google 登录时到底发生了什么。",
+      updated: "最后更新：2026 年 9 月 17 日",
+      back: "回到首页",
+
+      s1t: "我们是谁",
+      s1p1: "暖爪（本站 dale.de5.net）是一个个人性质、非商业的小角落。这份政策管的是你在本站的所作所为；你从本站跳出去访问的其他网站，不归它管。",
+
+      s2t: "我们收集什么",
+      s2p1: "只收集让站点能跑起来的那点东西。没有画像、没有广告、也没有把数据卖给数据商这回事。",
+      s2l: [
+        "账号：你的邮箱和一个密码。密码由认证服务商加密保存，我们看不到、也不存明文。",
+        "资料：你起的昵称（或用 Google 登录时 Google 给的那个），会显示在你的帖子旁边。",
+        "你的内容：暖心墙上的帖子、评论、回应，以及你上传的图片。",
+        "你的宠物：你画的宠物、它的等级、你画的食物和心情打卡——这样换台设备它也还是原样。",
+        "基本活动数据：帖子的浏览数与回应数（下面那条自动下架规则要用），以及各种时间戳。",
+      ],
+
+      s3t: "为什么用它",
+      s3l: [
+        "让你登录，并把登录状态留在这台设备上。",
+        "把你的昵称、帖子和评论展示给其他访客——暖心墙上的帖子本来就是公开的。",
+        "把你的宠物、手绘食物和心情记录同步到你的各个设备。",
+        "让这里保持安静：每人每天一条；被很多人厌恶的帖子会自动下架。",
+        "你写信给我们时，好回你。",
+      ],
+
+      s4t: "用 Google 登录",
+      s4p1: "Google 登录是可选的——用邮箱登录完全一样。如果你选了它，事情就是这样：",
+      s4l: [
+        "只申请最基础的 email 和 profile 两个权限（你的邮箱、昵称、头像）。",
+        "不申请、也读不到 Gmail、Drive、日历、通讯录、相册或任何其他 Google 服务。",
+        "拿到的 Google 数据只做一件事：建你的账号、显示你的昵称。没有别的用途。",
+        "绝不把 Google 用户数据出售、出租或分享给第三方，也绝不用于广告、定向投放或信用评估。",
+        "Google 用户数据随你的账号记录一起存在托管服务商（Supabase），由数据库行级安全策略保护。",
+        "你随时可以在 myaccount.google.com → 安全性 → 第三方应用 里撤销授权。撤销只是断掉 Google 这条捷径，你的账号和内容都还在。",
+      ],
+
+      s5t: "Google 有限使用声明",
+      s5p1: "暖爪对 Google API 所获信息的使用，遵守《Google API 服务用户数据政策》，包括其中的「有限使用」（Limited Use）要求。具体讲：Google 用户数据只用于提供并改进你所看到的登录与资料功能；除运行这些功能所必需之外不转交他人；不用于广告；除非你主动要求，或出于安全/法律原因必须如此，不会有任何人去人工读取它。",
+
+      s6t: "谁在处理这些数据",
+      s6p1: "我们自己没有服务器。账号、帖子、评论和图片都在 Supabase（数据库、登录认证、图片存储）那边；图片由 Supabase Storage 提供。本站没有广告联盟、没有追踪像素、也没有嵌入任何社交平台组件。",
+
+      s7t: "留在这台设备上的东西",
+      s7p1: "有些东西从不离开你的浏览器：语言、主题、昵称、你选的时间范围与排序、用于「同一天只记一次浏览」的匿名标识，以及登录会话令牌。它们都放在浏览器本地存储里——清掉站点数据就没了。我们不使用广告 Cookie。",
+      s7note: "本站不使用任何用于追踪或广告的 Cookie。",
+
+      s8t: "分享与公开内容",
+      s8p1: "我们不出售、也不出租你的数据。你发在暖心墙上的内容，连同昵称和头像，任何访客都能看见。管理员为了治理内容，还能看到注册邮箱名单，但看不到密码。法律要求时，我们可能会依法提供数据。",
+
+      s9t: "你的选择与权利",
+      s9l: [
+        "随时自己修改或删除你的帖子和评论。",
+        "在「我的」页改昵称。",
+        "要求我们导出或彻底删除你的账号及其全部数据——写信到下面的邮箱，我们会在 7 天内处理。",
+        "按上面说的办法，从 Google 账号里撤销授权。",
+        "不注册也能用：浏览和玩耍照常，不会往云端发任何东西。",
+      ],
+
+      s10t: "关于孩子",
+      s10p1: "本站不面向 13 岁以下（或你所在地区规定的相应年龄）的孩子。如果发现我们持有这样一个账号，我们会把账号及其数据删掉。",
+
+      s11t: "我们怎么保护它",
+      s11p1: "流量走 HTTPS 加密。数据库启用了行级安全策略，只有你本人能改自己的内容；项目的私钥只存在服务端。密码是加密保存的。没有哪个系统是完美无缺的，所以请用一个别处没用过的密码。",
+
+      s12t: "政策的变更",
+      s12p1: "如果数据的处理方式有变，我们会更新这一页和上面的日期。更新后你继续使用暖爪，就表示接受新版本。",
+
+      s13t: "联系我们",
+      s13p1: "提问、删号或其他任何事：{mail}。我们通常几天内回复。",
     },
 
     profile: {

@@ -11,6 +11,8 @@ export const router = createRouter({
     { path: "/profile", name: "profile", component: () => import("./views/ProfileView.vue") },
     { path: "/u/:id", name: "waller", component: () => import("./views/WallerView.vue") },
     { path: "/admin", name: "admin", component: () => import("./views/AdminView.vue") },
+    /* 隐私政策：Google OAuth 发布需要可公开访问的政策链接（外部审核会来抓这页） */
+    { path: "/privacy", name: "privacy", component: () => import("./views/PrivacyView.vue") },
     { path: "/:pathMatch(.*)*", redirect: "/" },
   ],
 });
