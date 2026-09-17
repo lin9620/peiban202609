@@ -9,6 +9,7 @@ import { checkInMood, moodStreak, activePet, activePetAway, mailbox, sendLetter 
 import { seasonNow } from "../data/extras.js";
 import { cloud } from "../utils/supabase.js";
 import { cloudSetStatus, cloudFetchStatuses } from "../utils/wall.js";
+import { errorKind } from "../utils/wallRules.js";
 import { STATUS_KEYS, STATUS_EMOJI } from "../utils/statuses.js";
 import SeasonFx from "../components/SeasonFx.vue";
 import PetMotion from "../components/PetMotion.vue";
@@ -34,7 +35,7 @@ const quote = computed(() =>
 
 /* —— 陪你大厅（#4 状态上云：本机兜底 + 云端同步/广播）—— */
 const myStatus = ref(getItem("wp-status") || "");
-const myStatusFail = ref(false); // 登录后云端同步失败（状态先留本机）
+const myStatusHint = ref("");   // "" | "sync"（网络/被拒）| "setup"（未跑迁移，功能未开启）
 const others = ref([]);          // 大厅里其他人的近 24h 状态（云端）
 const isMember = computed(() => !!(cloud.user && cloud.user.id));
 
@@ -57,10 +58,13 @@ function agoLabel(iso) {
 async function setStatus(k) {
   const next = myStatus.value === k ? "" : k;
   myStatus.value = next;
-  myStatusFail.value = false;
+  myStatusHint.value = "";
   if (next) setItem("wp-status", next);
   else removeItem("wp-status");
-  if (isMember.value && !(await cloudSetStatus(next || null))) myStatusFail.value = true;
+  /* 失败原因分类：未跑迁移 → 「功能还没开启」，其余 → 「同步没成功」（状态都先留本机） */
+  if (isMember.value && !(await cloudSetStatus(next || null))) {
+    myStatusHint.value = errorKind(cloud.error) === "not-migrated" ? "setup" : "sync";
+  }
 }
 
 /* 进大厅先对表：云端是登录用户的权威状态（含 24h 过期自动隐去）；同时拉其他人的近况 */
@@ -197,7 +201,10 @@ function sendLetterNow() {
       <p v-if="myStatus" class="streak-note">
         {{ t("home.companions.youSet", { s: statusLabel(myStatus) }) }}
       </p>
-      <p v-if="myStatusFail" class="streak-note hall-warn">
+      <p v-if="myStatusHint === 'setup'" class="streak-note hall-warn">
+        {{ t("home.companions.syncNeedSetup") }}
+      </p>
+      <p v-else-if="myStatusHint === 'sync'" class="streak-note hall-warn">
         {{ t("home.companions.syncFail") }}
       </p>
       <p v-else-if="!isMember" class="streak-note">{{ t("home.companions.loginHint") }}</p>

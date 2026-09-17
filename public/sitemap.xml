@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- history 路由：四个页面均有独立 URL，全部登记（构建时 lastmod 会自动刷新为当天） -->
+<!-- history 路由：五个页面（含隐私政策）均有独立 URL，全部登记（构建时 lastmod 会自动刷新为当天） -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://dale.de5.net/</loc>

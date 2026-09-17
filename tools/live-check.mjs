@@ -28,8 +28,11 @@ await check("/community 200 + canonical 独立", "/community?cb=" + Date.now(), 
 await check("/profile 200", "/profile", (r) => r.status === 200);
 await check("robots.txt 200 且含 Sitemap", "/robots.txt?cb=" + Date.now(), async (r) =>
   r.status === 200 && (await r.text()).includes("Sitemap:"));
-await check("sitemap.xml 恰好 4 条 <loc>", "/sitemap.xml?cb=" + Date.now(), async (r) =>
-  ((await r.text()).match(/<loc>/g) || []).length === 4);
+await check("sitemap.xml 恰好 5 条 <loc>（含 /privacy）", "/sitemap.xml?cb=" + Date.now(), async (r) => {
+  const t = await r.text();
+  const locs = (t.match(/<loc>/g) || []).length;
+  return t.includes("<loc>https://dale.de5.net/privacy</loc>") && locs === 5;
+});
 await check("og-image.png 200（PNG 可部署）", "/og-image.png", (r) =>
   r.status === 200 && (r.headers.get("content-type") || "").includes("image/png"));
 await check("favicon.png 200", "/favicon.png", (r) => r.status === 200);

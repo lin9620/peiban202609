@@ -75,15 +75,17 @@ node tools/comment-test.mjs   # 评论系统纯函数单测（26 项：二级回
 node tools/wall-test.mjs      # 暖心墙云端数据层纯函数单测（34 项：行映射/二级字段/评论数聚合/浏览与厌恶字段）
 node tools/wall-rules-test.mjs # 暖心墙进阶规则纯函数单测（33 项：排序/时间范围显隐与筛选/浏览去重/1% 下架/每日一条/错误归类）
 node tools/pet-home-test.mjs   # 宠物主页云层纯函数单测（19 项：宠物快照 / 手绘厨房清洗 / 互动计数独立列 / 图片引用外置与行体积安全阀 / 镜像队列安全性）
-node tools/api-contract-test.mjs # 云端数据访问适配层契约测试（36 项：表名 / 过滤 / 排序 / RPC 参数 / Storage 桶与路径 / 降级查询形状 / upsert 只写 user_id+data+updated_at 的计数红线）
-node tools/gateway-contract-test.mjs # 网关模式前端侧契约测试（30 项：/api/* 端点形状 / 鉴权头 / 计数红线 / 错误上抛）
-node tools/worker-test.mjs    # API 网关 Worker 契约测试（53 项：/api/* → Supabase REST 翻译形状 / JWT 透传 / PGRST116→null / 路径穿越防护）
+node tools/api-contract-test.mjs # 云端数据访问适配层契约测试（83 项：表名 / 过滤 / 排序 / RPC 参数 / Storage 桶与路径 / 降级查询形状 / upsert 只写 user_id+data+updated_at 的计数红线）
+node tools/gateway-contract-test.mjs # 网关模式前端侧契约测试（65 项：/api/* 端点形状 / 鉴权头 / 计数红线 / 错误上抛）
+node tools/worker-test.mjs    # API 网关 Worker 契约测试（180 项：/api/* → Supabase REST 翻译形状 / JWT 透传 / PGRST116→null / 路径穿越防护）
+node tools/dm-test.mjs        # 私信规则层单测（280 项：撤回窗口 / 未读计数 / 日期分隔 / 错误码→i18n 映射 / 迁移覆盖）
+node tools/notify-test.mjs    # 通知规则层单测（148 项：分栏白名单 / 聚合语义 / 点击落点 / 未读兜底）
 node tools/i18n-test.mjs      # 文案完整性与插值回归（19 项：en/zh 键集合对称、修复过的 key、$ 特殊字符）
 node tools/admin-test.mjs     # 管理中心纯函数单测（39 项：admin:false 兜底 / 字段缺省 / 趋势图 14 天补零 / 行规整 / 北京时间口径）
 node tools/auth-test.mjs      # 登录规则单测（48 项：邮箱密码校验 / Google 昵称兜底 / 重置邮件链接解析与失效识别 / 回跳地址 / 页面接线）
 node tools/privacy-test.mjs   # 隐私政策页回归（34 项：路由与页脚入口 / sitemap 与预渲染产物 / 合规表述逐条核对 —— 权限范围、不转售、不投放广告、Limited Use、撤销授权 / 中英键对称 / 不执行 JS 也能读到完整正文）
-node tools/snack-test.mjs     # 零食雨游戏纯逻辑单测（20 项：难度曲线/生成/碰撞/结算上限）
-node tools/seo-test.mjs       # SEO 资产检查（38 项：robots/sitemap/5 条路由/OG 标签/PNG 尺寸/安全头/预渲染产物）
+node tools/snack-test.mjs     # 零食雨游戏纯逻辑单测（24 项：难度曲线/生成/碰撞/结算上限）
+node tools/seo-test.mjs       # SEO 资产检查（42 项：robots/sitemap/5 条路由/OG 标签/PNG 尺寸/安全头/预渲染产物）
 node tools/image-fit.mjs       # 图片纯函数单测（20 项：尺寸缩放/形状体检/文件预检/dataURL 校验）
 node tools/undef-check.mjs    # 静态检查「用了项目内导出符号但没导入」（白屏元凶），报告写 undef-report.txt
 node tools/arity-test.mjs     # 静态检查「模板/同文件自调用 参数个数 < 函数签名必填参数」（undefined 崩溃元凶）
@@ -94,7 +96,7 @@ node tools/live-check.mjs     # 线上部署验证：页面/缓存/安全头/SEO
 node tools/online-check.mjs   # 旧版线上检查（已被 live-check 替代，如无特别需要可忽略）
 node tools/mood-test.mjs      # 心情打卡纯逻辑单测（12 项：连续天数/死循环回归）
 node tools/make-og.mjs        # 重新生成分享图与图标到 public/（改了品牌色或文案后可跑）
-node tools/uifix-test.mjs     # 修复项回归（20 项：评论字数上限/立绘上传校验/大厅文案/安全头/图片纯函数）
+node tools/uifix-test.mjs     # 修复项回归（21 项：评论字数上限/立绘上传校验/大厅文案/状态同步提示/安全头/图片纯函数）
 node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite 只在启动时读环境变量）
 ```
 
@@ -115,13 +117,16 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 - 函数与触发器：`wall_daily_limit()`（每人每天一条）· `wall_add_view()` · `wall_toggle_dislike()`（含 1% 自动下架）· `pet_interact()`（摸头/投喂）· `is_admin()` / `admin_overview()` / `admin_users_page()`（管理中心；非管理员调用只拿 `{admin:false}`；用户名单的邮箱只由 `admin_users_page` 在库内 join `auth.users` 提供，REST 永远读不到）
 - Storage 桶 `wall-images`（公开读、登录上传、只能改删自己路径；**帖子配图与宠物立绘 / 手绘菜图共用此桶**——宠物图放 `<uid>/pet-<hash>.<ext>`，云端快照里只留路径、不留 dataURL，一行只有几百字节）
 
-> **已经建过库的老用户**：按顺序跑三个增量迁移（都在 SQL Editor 里粘贴全部内容 → Run，幂等、可重复跑）：
+> **已经建过库的老用户**：按顺序跑五个增量迁移（都在 SQL Editor 里粘贴全部内容 → Run，幂等、可重复跑）：
 > 1. `MIGRATION_two_level_comments.sql` —— 评论改成二级结构（旧评论不用回填，会当一级评论正常显示）
 > 2. `MIGRATION_wall_daily_view_dislike.sql` —— 每日一条 + 浏览数 + 厌恶与 1% 自动下架
 >
 > 没跑第 2 个时：查看看板、发帖、评论一切照旧（浏览数不显示、点厌恶会出现「这个功能还没开启」提示），不会报错白屏。
 >
 > 3. `MIGRATION_admin.sql` —— **管理中心**：`admin_users` 管理员白名单表 + `is_admin()` / `admin_overview()` 函数 + 管理员治理策略（读已下架帖 / 下架恢复 / 删帖删评；顺带把 `wall_posts` 的匿名读策略收紧为「未下架」）。跑完后执行文件末尾注释里的 `insert into admin_users ...`（换成你的注册邮箱）把自己设为管理员，然后访问 `/admin`（「我的」页会出现管理中心入口，仅管理员可见）；仓库里的 `MIGRATION_add_admin.sql` 就是这一步的现成示例（按昵称 / 按邮箱两种写法，复制即跑）。
+> 4. `MIGRATION_dm_notifications.sql` —— **私信 + 通知中心**：六张新表（`dm_blocks` 拉黑 / `dm_conversations` 会话 / `dm_messages` 消息 / `dm_states` 已读水位与免打扰 / `notifications` 通知 / `notification_prefs` 偏好），写路径全部收口在 security definer RPC（建会话 / 发消息 / 撤回 / 已读 / 免打扰 / 管理员公告），评论·回应·宠物互动的通知由 AFTER INSERT 触发器生成。没跑它时：私信页提示「功能未开启」，其余功能照旧。
+> 5. `MIGRATION_profile_status.sql` —— **陪你大厅状态上云**：`profiles` 加 `status` / `status_at` 两列 + 按时间倒序索引；写路径沿用现有 `profiles self update` RLS（`auth.uid() = id`），不需要新 RPC。没跑它时：状态照旧只存本机（点状态会提示「云端状态还没开启」），大厅「此刻大厅里」区块不显示 —— 不报错、不白屏。
+>
 
 **② 配置密钥**（二选一，anon key 是公开密钥，安全由 RLS 保证）：
 - 左侧 **Settings → API** 复制 `Project URL` 和 `anon public key`，然后：
@@ -146,7 +151,7 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 
 > 说明：新注册用户需到邮箱确认验证邮件（Supabase 默认开启）。若要关闭验证：Dashboard → Authentication → Providers → Email → Confirm email 关闭。
 
-**④ 可选：API 网关模式（默认关，不影响任何现有功能）**：前端数据请求默认**直连** Supabase。想改为走自托管网关：先把 Worker 侧密钥配好（`npx wrangler secret put SUPABASE_URL`、`npx wrangler secret put SUPABASE_ANON_KEY`；本地联调写进根目录 `.dev.vars` 再 `npm run dev:api`），然后以 `VITE_API_GATEWAY=1` 构建/启动前端。此时数据请求全部走同源 `/api/*`，由 `worker/api.js`（Cloudflare Worker，与静态资源同一 Worker 部署）把具名端点**纯翻译**到 Supabase REST/Storage：用户 JWT 原样透传、RLS 照旧由数据库执行、Worker 不解析 token、也不是开放代理（每个端点只指向固定表/RPC/桶，图片路径按 `<uid>/<file>` 白名单校验）；Auth 仍直连 Supabase。数据层实现可切换：`src/utils/api/db.js` 是选择器（默认 `db.supabase.js` 直连，置 1 时 `db.gateway.js` 走网关），契约由三套测试锁形（直连 36 / 网关前端侧 30 / Worker 侧 53 项）——阶段 3 换 Hyperdrive/D1/R2 时只重写 Worker 内部与适配实现，端点契约与页面零改动。
+**④ 可选：API 网关模式（默认关，不影响任何现有功能）**：前端数据请求默认**直连** Supabase。想改为走自托管网关：先把 Worker 侧密钥配好（`npx wrangler secret put SUPABASE_URL`、`npx wrangler secret put SUPABASE_ANON_KEY`；本地联调写进根目录 `.dev.vars` 再 `npm run dev:api`），然后以 `VITE_API_GATEWAY=1` 构建/启动前端。此时数据请求全部走同源 `/api/*`，由 `worker/api.js`（Cloudflare Worker，与静态资源同一 Worker 部署）把具名端点**纯翻译**到 Supabase REST/Storage：用户 JWT 原样透传、RLS 照旧由数据库执行、Worker 不解析 token、也不是开放代理（每个端点只指向固定表/RPC/桶，图片路径按 `<uid>/<file>` 白名单校验）；Auth 仍直连 Supabase。数据层实现可切换：`src/utils/api/db.js` 是选择器（默认 `db.supabase.js` 直连，置 1 时 `db.gateway.js` 走网关），契约由三套测试锁形（直连 83 / 网关前端侧 65 / Worker 侧 180 项）——阶段 3 换 Hyperdrive/D1/R2 时只重写 Worker 内部与适配实现，端点契约与页面零改动。
 
 ## 🔍 收录与站点地图（Google Search Console）
 
@@ -280,7 +285,7 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 | 体验 | `#/` 路由直接访问 `/pet` 会 404 | 迁移到 history 模式 + 每条路由独立静态 HTML + SPA 回退 | `router.js` / `vite.config.js` / `wrangler.jsonc` |
 | 体验 | 「在线陪伴数」是本地随机数，易误导 | 去掉虚构人数，改如实文案（路线图保留"等有真实统计再接"） | `views/HomeView.vue` / `i18n.js` |
 
-回归验证（全部本地可跑）：`wall-rules-test` 33 项 · `comment-test` 26 项 · `wall-test` 34 项 · `pet-home-test` 19 项 · `uifix-test` 20 项 · `image-fit` 20 项 · `snack-test` 20 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 48 项 · `privacy-test` 34 项 · `arity-test` 8 项 · `seo-test` 38 项 · `undef-check`。
+回归验证（全部本地可跑）：`wall-rules-test` 33 项 · `comment-test` 26 项 · `wall-test` 34 项 · `pet-home-test` 19 项 · `uifix-test` 21 项 · `image-fit` 20 项 · `snack-test` 24 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 48 项 · `privacy-test` 34 项 · `arity-test` 8 项 · `seo-test` 42 项 · `dm-test` 280 项 · `notify-test` 148 项 · `api-contract-test` 83 项 · `gateway-contract-test` 65 项 · `worker-test` 180 项 · `undef-check`。
 
 ## 🗺️ 路线图
 

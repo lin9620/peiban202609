@@ -134,11 +134,32 @@ t("T19 大厅文案改为如实描述（tag + hall）", () => {
   assert.ok(!i18n.includes('online: "此刻有 {n} 位温柔的人陪着你"'), "残留 online 文案（zh）");
 });
 
-/* ══════════ ⑤ 文档同步 ══════════ */
-t("T20 README 不再宣称展示在线人数，且登记新测试", () => {
+/* ══════════ ⑤ 陪你大厅状态上云：未跑迁移时给一句人话 ══════════ */
+t("T20 状态同步失败区分「未开启」与「同步失败」", () => {
+  assert.ok(home.includes('t("home.companions.syncNeedSetup")'), "缺少未迁移提示");
+  assert.ok(home.includes('t("home.companions.syncFail")'), "缺少同步失败提示");
+  assert.ok(home.includes('errorKind(cloud.error) === "not-migrated"'), "未用 errorKind 归类失败原因");
+  assert.ok(!home.includes("myStatusFail"), "残留旧的布尔失败标记");
+  const i18n = read("src/i18n.js");
+  assert.ok(i18n.includes("syncNeedSetup:"), "词典缺 syncNeedSetup");
+  assert.ok(
+    i18n.split("syncNeedSetup:").length === 3,
+    "syncNeedSetup 未做到双语（en/zh 各一份）",
+  );
+  const wall = read("src/utils/wall.js");
+  assert.ok(
+    /catch \(e\) \{[\s\S]{0,160}cloud\.error = e && e\.message/.test(wall.split("export async function cloudSetStatus")[1] || ""),
+    "cloudSetStatus 未记录 cloud.error（errorKind 归类无依据）",
+  );
+});
+
+/* ══════════ ⑥ 文档同步 ══════════ */
+t("T21 README 不再宣称展示在线人数，且登记新测试与迁移", () => {
   const md = read("README.md");
   assert.ok(!md.includes("显示此刻在线陪伴人数"), "README 仍在描述在线人数");
   assert.ok(md.includes("tools/uifix-test.mjs"), "README 未登记 uifix-test");
+  assert.ok(md.includes("MIGRATION_profile_status.sql"), "README 未登记大厅状态迁移");
+  assert.ok(md.includes("MIGRATION_dm_notifications.sql"), "README 未登记私信迁移");
 });
 
 out.push("");

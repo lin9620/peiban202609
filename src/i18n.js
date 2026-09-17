@@ -49,6 +49,7 @@ export const messages = {
         anon: "Someone",
         loginHint: "Log in and your status shows up for other visitors too.",
         syncFail: "Cloud sync didn't go through — your status stays on this device.",
+        syncNeedSetup: "Cloud status isn't switched on yet — the site owner needs to run one database update 🔧",
         agoMin: "{n}m ago", agoHour: "{n}h ago",
       },
       mood: {
@@ -565,6 +566,7 @@ quota: "Companions: {n} / {max}",
         anon: "一位小伙伴",
         loginHint: "登录后，你的状态也会出现在其他访客的大厅里。",
         syncFail: "云端同步没成功 —— 状态先留在本机。",
+        syncNeedSetup: "云端状态还没开启 —— 站点主人需要先执行一次数据库更新 🔧",
         agoMin: "{n} 分钟前", agoHour: "{n} 小时前",
       },
       mood: {

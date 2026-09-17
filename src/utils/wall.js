@@ -356,6 +356,8 @@ export async function cloudSetStatus(status) {
     return true;
   } catch (e) {
     console.warn("[cloud] setStatus:", e);
+    /* 记下原因：未跑迁移（42703）与网络失败要给用户不同的话 —— 调用方用 errorKind() 归类 */
+    cloud.error = e && e.message ? e.message : String(e);
     return false;
   }
 }
