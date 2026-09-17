@@ -29,6 +29,9 @@ export function bottleErrKey(e) {
   if (msg.includes("bottle-empty-sea")) return "bottle.errEmpty";
   if (msg.includes("bottle-not-holder")) return "bottle.errNotHolder";
   if (msg.includes("bottle-too-long")) return "bottle.errTooLong";
+  if (msg.includes("bottle-chat-blocked")) return "bottle.chatBlocked";
+  if (msg.includes("bottle-not-owner") || msg.includes("bottle-not-answered")) return "bottle.chatUnavailable";
+  if (/42703|PGRST202|does not exist/.test(msg)) return "bottle.chatSetup";
   return "bottle.errGeneric";
 }
 
@@ -68,4 +71,21 @@ export async function bottleMine() {
 /** 我捞到、还没回的信（换页/刷新后找回来） */
 export async function bottleHeld() {
   return db.bottleHeld();
+}
+
+export function bottleRecords(id = null, offset = 0) {
+  return db.bottleRecords(id, offset);
+}
+export function bottleChatDecide(id, accept) {
+  if (typeof accept !== "boolean") throw new Error("bottle-bad-decision");
+  return db.bottleChatDecide(id, accept);
+}
+
+/** 仅作者能决定，双方都能进入已建立的会话；最终权限由数据库裁定。 */
+export function bottleChatState(row, userId) {
+  if (!row || !userId || (row.user_id !== userId && row.reply_by !== userId)) return "unavailable";
+  if (row.chat_decision === "accepted" && row.conv_id) return "accepted";
+  if (row.chat_decision === "declined") return "declined";
+  if (row.status !== "answered") return "drifting";
+  return row.user_id === userId ? "choose" : "waiting";
 }

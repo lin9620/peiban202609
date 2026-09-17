@@ -91,7 +91,7 @@ export function itemView(n, myName = "") {
     case "reply":    return { ...base, key: "notif.reply",   unread: n.read_at == null };
     case "reaction": return { ...base, key: "notif.reaction", unread: n.read_at == null };
     case "pet":      return { ...base, key: "notif.pet",      unread: n.read_at == null };
-    case "dm":       return { ...base, key: "notif.dm",       unread: n.read_at == null };
+    case "dm":       return { ...base, key: n.meta?.event === "bottle_reply" ? "bottle.notifyReply" : n.meta?.event === "bottle_chat" ? "bottle.notifyChat" : "notif.dm", unread: n.read_at == null };
     case "system":   return { ...base, key: "notif.system",   unread: n.read_at == null };
     default:         return { ...base, key: "notif.fallback", unread: n.read_at == null };
   }
@@ -100,6 +100,9 @@ export function itemView(n, myName = "") {
 /** 点击落点：dm → 会话；其余有 post → 帖子；否则原地 */
 export function targetOf(n) {
   if (!n) return null;
+  if (n.kind === "dm" && ["bottle_reply", "bottle_chat"].includes(n.meta?.event) && n.meta?.bottle_id) {
+    return { type: "bottle", bottleId: n.meta.bottle_id };
+  }
   if (n.kind === "dm" && n.conv_id != null) return { type: "dm", convId: n.conv_id };
   if (n.post_id != null) return { type: "post", postId: n.post_id };
   return null;

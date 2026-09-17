@@ -368,6 +368,16 @@ export async function cloudSetStatus(status) {
  * @param {number} [windowMs] 新鲜窗口，默认 STATUS_WINDOW_MS（24h）
  * @returns {Promise<Array<{id:string,nickname:string,status:string,status_at:string}>|null>} null = 云不可用
  */
+export async function cloudFetchStatusCounts() {
+  if (!canReadWall()) return null;
+  try {
+    return await db.countRecentStatuses(new Date(Date.now() - STATUS_WINDOW_MS).toISOString());
+  } catch (e) {
+    console.warn("[cloud] statusCounts:", e);
+    return null;
+  }
+}
+
 export async function cloudFetchStatuses(limit = 30, windowMs = STATUS_WINDOW_MS) {
   if (!canReadWall()) return null;
   try {

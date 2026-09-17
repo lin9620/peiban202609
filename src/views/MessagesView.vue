@@ -20,6 +20,7 @@ import {
   validateSend, sendErrKey, canRecall, relativeTime, rowView,
 } from "../utils/dmRules.js";
 import { refreshBadge } from "../stores/badgeStore.js";
+import BottleRecords from "../components/BottleRecords.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -79,6 +80,11 @@ async function loadConvs() {
     failed.value = true;
   }
   loadingConvs.value = false;
+}
+
+async function openBottleChat(id) {
+  await loadConvs();
+  await openConv(String(id));
 }
 
 async function loadMeta(id) {
@@ -340,6 +346,7 @@ const dayLabel = (ts) => new Date(ts).toLocaleDateString(
         </template>
 
         <p v-if="!normal.length && !requests.length && !loadingConvs" class="sub dm-empty">{{ t("dm.empty") }}</p>
+        <BottleRecords @open="openBottleChat" />
       </aside>
 
       <!-- 右列：当前会话 -->

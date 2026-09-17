@@ -70,15 +70,16 @@ for (const lang of ["zh", "en"]) {
   const used = [...(home + wallerView).matchAll(/["'](home\.companions\.[A-Za-z0-9_]+)["']/g)].map((m) => m[1]);
   const bad = [...new Set(used)].filter((k) =>
     typeof at(messages.zh, k) !== "string" || typeof at(messages.en, k) !== "string");
-  ok("两个视图引用的 home.companions.* 字面 key 全部存在（zh+en）", used.length >= 10 && bad.length === 0,
+  ok("两个视图引用的 home.companions.* 字面 key 全部存在（zh+en）", used.length >= 9 && bad.length === 0,
     bad.join(",") || `${used.length} 处引用全命中`);
 }
 
 /* ───────── 模板：不再重复 emoji，按钮/药丸直接用文案 ───────── */
 ok("HomeView 模板不再引用 emoji 映射/硬拼 emoji",
   !home.includes("STATUS_EMOJI") && has(home, '{{ t("home.companions." + k) }}'));
-ok("大厅药丸只输出 statusLabel（文案自带 emoji，不会前缀成两个）",
-  has(home, "{{ statusLabel(o.status) }}") && !home.includes('|| "💬"'));
+ok("大厅只渲染状态人数，不渲染个人昵称或个人列表",
+  has(home, "{{ statusLabel(row.status) }}", 't("home.companions.peopleCount", { n: row.count })')
+    && !home.includes("o.nickname") && !home.includes("cloudFetchStatuses"));
 ok("主页徽章同样只输出 statusLabel",
   has(wallerView, "{{ statusLabel(profStatus) }}") && !wallerView.includes("STATUS_EMOJI"));
 
@@ -149,10 +150,10 @@ ok("HomeView：登录才上云，写失败按 errorKind 区分「未开启」与
 ok("HomeView：再点一次同一状态即清除（本地与云端一起清）",
   has(home, 'const next = myStatus.value === k ? "" : k')
     && has(home, 'if (next) setItem("wp-status", next);') && has(home, "removeItem(\"wp-status\")"));
-ok("HomeView：进页面先对表（云端为准）并把其他人滤出来渲染",
-  has(home, "const rows = await cloudFetchStatuses(12)") && has(home, "others.value = rows.filter"));
-ok("HomeView：云端不可用/游客时保持本机行为（不报错、不空白提示）",
-  has(home, "if (!rows) return;"));
+ok("HomeView：单独读取自己的档案，状态更新后刷新人数",
+  has(home, "await cloudFetchProfile(uid)", "await refreshStatusCounts()", "revision !== statusRevision"));
+ok("HomeView：云端不可用时不伪造人数，也不覆盖本机状态",
+  has(home, 'v-if="statusCounts"', "if (!profile ||", "if (!uid || !cloud.ready) return;"));
 ok("WallerView：徽章只在 24h 内新鲜时显示（与大厅同一规则）",
   has(wallerView, "statusFresh(p.status_at)") && has(wallerView, "return p && p.status && statusFresh(p.status_at) ? p.status : \"\";"));
 

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import { NButton, NInput, NTag } from "naive-ui";
 import { t, i18n } from "../i18n.js";
 import { stories } from "../data/stories.js";
@@ -13,9 +13,9 @@ import {
 } from "../utils/bottle.js";
 import { seasonNow } from "../data/extras.js";
 import { cloud } from "../utils/supabase.js";
-import { cloudSetStatus, cloudFetchStatuses } from "../utils/wall.js";
+import { cloudSetStatus, cloudFetchStatusCounts, cloudFetchProfile } from "../utils/wall.js";
 import { errorKind } from "../utils/wallRules.js";
-import { STATUS_KEYS } from "../utils/statuses.js";
+import { STATUS_KEYS, statusFresh } from "../utils/statuses.js";
 import SeasonFx from "../components/SeasonFx.vue";
 import PetMotion from "../components/PetMotion.vue";
 import ShareCard from "../components/ShareCard.vue";
@@ -41,7 +41,9 @@ const quote = computed(() =>
 /* —— 陪你大厅（#4 状态上云：本机兜底 + 云端同步/广播）—— */
 const myStatus = ref(getItem("wp-status") || "");
 const myStatusHint = ref("");   // "" | "sync"（网络/被拒）| "setup"（未跑迁移，功能未开启）
-const others = ref([]);          // 大厅里其他人的近 24h 状态（云端）
+const statusCounts = ref(null);  // 只有 { status, count }，不含昵称或用户 ID
+const statusBusy = ref(false);
+let statusRevision = 0;
 const isMember = computed(() => !!(cloud.user && cloud.user.id));
 
 /* 状态 key → 当前语言文案（云端只存 key；非常规 key 原样显示） */
@@ -49,18 +51,15 @@ function statusLabel(k) {
   return STATUS_KEYS.includes(k) ? t("home.companions." + k) : (k || "");
 }
 
-/* 相对时间：状态都是近 24h 的，分钟/小时两档足够 */
-function agoLabel(iso) {
-  const ts = Date.parse(iso);
-  if (Number.isNaN(ts)) return "";
-  const m = Math.max(1, Math.round((Date.now() - ts) / 60000));
-  return m < 60
-    ? t("home.companions.agoMin", { n: m })
-    : t("home.companions.agoHour", { n: Math.round(m / 60) });
+async function refreshStatusCounts() {
+  statusCounts.value = await cloudFetchStatusCounts();
 }
 
 /* 选状态：再点一次清除；登录用户同步上云（RLS self update），游客只留本机 */
 async function setStatus(k) {
+  if (statusBusy.value) return;
+  statusRevision++;
+  statusBusy.value = true;
   const next = myStatus.value === k ? "" : k;
   myStatus.value = next;
   myStatusHint.value = "";
@@ -70,22 +69,26 @@ async function setStatus(k) {
   if (isMember.value && !(await cloudSetStatus(next || null))) {
     myStatusHint.value = errorKind(cloud.error) === "not-migrated" ? "setup" : "sync";
   }
+  await refreshStatusCounts();
+  statusBusy.value = false;
 }
 
-/* 进大厅先对表：云端是登录用户的权威状态（含 24h 过期自动隐去）；同时拉其他人的近况 */
-onMounted(async () => {
-  const rows = await cloudFetchStatuses(12);
-  if (!rows) return; /* 云端不可用 / 未登录游客看不到流 → 保持本机行为 */
-  const myId = cloud.user && cloud.user.id;
-  if (myId) {
-    const mine = rows.find((r) => r.id === myId);
-    const fresh = (mine && mine.status) || "";
-    myStatus.value = fresh;
-    if (fresh) setItem("wp-status", fresh);
-    else removeItem("wp-status");
-  }
-  others.value = rows.filter((r) => !myId || r.id !== myId);
-});
+/* 只查询自己的档案恢复选中态；大厅不再下载个人列表。 */
+async function refreshMyStatus() {
+  const revision = ++statusRevision;
+  const uid = cloud.user && cloud.user.id;
+  if (!uid || !cloud.ready) return;
+  const profile = await cloudFetchProfile(uid);
+  if (!profile || revision !== statusRevision || uid !== (cloud.user && cloud.user.id)) return;
+  const fresh = statusFresh(profile.status_at) && STATUS_KEYS.includes(profile.status) ? profile.status : "";
+  myStatus.value = fresh;
+  if (fresh) setItem("wp-status", fresh);
+  else removeItem("wp-status");
+}
+watch(() => [cloud.ready, cloud.user && cloud.user.id], () => {
+  refreshMyStatus();
+  refreshStatusCounts();
+}, { immediate: true });
 
 /* —— 心情打卡 —— */
 const checkedToday = ref(getItem("wp-mood-" + todayKey()) !== null);
@@ -259,6 +262,7 @@ onMounted(() => { refreshBottle(); });
           round size="small"
           :type="myStatus === k ? 'primary' : 'default'"
           :quaternary="myStatus !== k"
+          :disabled="statusBusy"
           @click="setStatus(k)">
           {{ t("home.companions." + k) }}
         </n-button>
@@ -274,14 +278,13 @@ onMounted(() => { refreshBottle(); });
       </p>
       <p v-else-if="!isMember" class="streak-note">{{ t("home.companions.loginHint") }}</p>
 
-      <!-- 其他人的近况：近 24h 内在大厅设过状态的人（云端；过期自动隐去） -->
-      <div v-if="others.length" class="hall-others">
+      <!-- 大厅仅展示分类人数，个人状态在用户主页查看。 -->
+      <div v-if="statusCounts" class="hall-others">
         <span class="sec-label">{{ t("home.companions.othersTitle") }}</span>
         <div class="hall-pill-row">
-          <span v-for="o in others" :key="o.id" class="hall-pill">
-            <b>{{ o.nickname || t("home.companions.anon") }}</b>
-            <span>{{ statusLabel(o.status) }}</span>
-            <span class="hall-ago">{{ agoLabel(o.status_at) }}</span>
+          <span v-for="row in statusCounts" :key="row.status" class="hall-pill">
+            <span>{{ statusLabel(row.status) }}</span>
+            <b>{{ t("home.companions.peopleCount", { n: row.count }) }}</b>
           </span>
         </div>
       </div>

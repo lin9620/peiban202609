@@ -108,6 +108,10 @@ export const db = {
     return call(`/statuses?limit=${enc(limit)}&since=${enc(since)}`);
   },
 
+  async countRecentStatuses(since) {
+    return call(`/statuses/counts?since=${enc(since)}`);
+  },
+
   /* ══════════ 评论 ══════════ */
 
   /** 某帖的评论（旧→新） */
@@ -194,6 +198,13 @@ export const db = {
   /** 不想回，放回海里 */
   bottleRelease(id) {
     return call("/bottle/release", { method: "POST", body: { id } });
+  },
+
+  bottleRecords(id = null, offset = 0) {
+    return call(`/bottle/records?offset=${enc(offset)}${id ? `&id=${enc(id)}` : ""}`);
+  },
+  bottleChatDecide(id, accept) {
+    return call("/bottle/chat", { method: "POST", body: { id, accept } });
   },
 
   /** 我投的信（含收到的回信），新→旧 */

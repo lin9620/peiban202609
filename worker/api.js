@@ -479,6 +479,23 @@ export default {
         }
       }
 
+      /* 大厅只返回精确人数，不返回任何用户身份字段。 */
+      if (seg[0] === "statuses" && seg[1] === "counts" && seg.length === 2 && m === "GET") {
+        const since = q.get("since") || new Date(Date.now() - 86400000).toISOString();
+        if (!Number.isFinite(Date.parse(since))) return fail(400, "bad-since");
+        const counts = await Promise.all([...VALID_STATUS].map(async (status) => {
+          const res = await upstream(env, request, restUrl(env, TABLE.profiles,
+            `select=id&status=eq.${status}&status_at=gte.${encodeURIComponent(since)}`), {
+            method: "HEAD", headers: { prefer: "count=exact" },
+          });
+          if (!res || !res.ok) throw new Error("status-count-unavailable");
+          const total = (res.headers.get("content-range") || "").split("/")[1];
+          if (!/^\d+$/.test(total || "") || !Number.isSafeInteger(Number(total))) throw new Error("invalid-status-count");
+          return { status, count: Number(total) };
+        }));
+        return json(counts, 200);
+      }
+
       /* —— 陪你大厅状态流（近 24h 有状态的人，新→旧；匿名可读） —— */
       if (seg[0] === "statuses" && seg.length === 1 && m === "GET") {
         return listProfileStatuses(
@@ -533,6 +550,18 @@ export default {
           if (!reply) return fail(400, "empty-body");
           if (reply.length > 1000) return fail(400, "bottle-too-long");
           return rpc(env, request, "bottle_reply", { p_id: id, p_reply: reply });
+        }
+        if (seg[1] === "records" && seg.length === 2 && m === "GET") {
+          const id = q.get("id") || null;
+          if (id && !UUID_RE.test(id)) return fail(400, "bad-id");
+          return rpc(env, request, "bottle_records", { p_id: id, p_offset: parseOffset(q.get("offset")) });
+        }
+        if (seg[1] === "chat" && seg.length === 2 && m === "POST") {
+          const b = await readJson(request);
+          if (b.err) return b.err;
+          if (typeof b.body.id !== "string" || !UUID_RE.test(b.body.id)) return fail(400, "bad-id");
+          if (typeof b.body.accept !== "boolean") return fail(400, "bottle-bad-decision");
+          return rpc(env, request, "bottle_chat_decide", { p_id: b.body.id, p_accept: b.body.accept });
         }
         if (seg[1] === "mine" && seg.length === 2 && m === "GET") return rpc(env, request, "bottle_mine", {});
         if (seg[1] === "held" && seg.length === 2 && m === "GET") return rpc(env, request, "bottle_held", {});

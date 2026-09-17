@@ -110,7 +110,8 @@ async function openItem(n) {
   refreshBadge();
   const tg = targetOf(n);
   if (!tg) return;
-  if (tg.type === "dm") router.push({ name: "messages", params: { id: String(tg.convId) } });
+  if (tg.type === "bottle") router.push({ name: "messagesList", query: { bottle: String(tg.bottleId) } });
+  else if (tg.type === "dm") router.push({ name: "messages", params: { id: String(tg.convId) } });
   else router.push({ path: "/community", query: { post: String(tg.postId) } });
 }
 

@@ -77,8 +77,12 @@ function drawTemplate() {
   c.restore();
 }
 
+let canvasRevision = 0; // 清空/新笔画后，旧的异步撤销不得覆盖新画布
 function clearCanvas(keepTemplate = true) {
   const c = ctx.value;
+  if (!c) return;
+  canvasRevision++;
+  c.globalCompositeOperation = "source-over";
   c.fillStyle = "#ffffff";
   c.fillRect(0, 0, W, H);
   if (keepTemplate) drawTemplate();
@@ -93,7 +97,9 @@ function undo() {
   const data = undoStack.value.pop();
   if (!data) return;
   const img = new Image();
+  const revision = ++canvasRevision;
   img.onload = () => {
+    if (revision !== canvasRevision) return;
     clearCanvas(false);
     ctx.value.drawImage(img, 0, 0);
   };
@@ -113,6 +119,7 @@ function pos(e) {
 let drawing = false, last = null;
 
 function down(e) {
+  canvasRevision++;
   drawing = true;
   pushUndo();
   strokes.value++;
@@ -167,7 +174,11 @@ function save() {
   colorsUsed.value = new Set();
   lengthPx.value = 0;
   undoStack.value = [];
-  clearCanvas();
+  drawing = false;
+  last = null;
+  tool.value = "brush";
+  template.value = "free";
+  clearCanvas(false);
   emit("saved", dish);
 }
 

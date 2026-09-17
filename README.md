@@ -75,13 +75,16 @@ node tools/comment-test.mjs   # 评论系统纯函数单测（26 项：二级回
 node tools/wall-test.mjs      # 暖心墙云端数据层纯函数单测（34 项：行映射/二级字段/评论数聚合/浏览与厌恶字段）
 node tools/wall-rules-test.mjs # 暖心墙进阶规则纯函数单测（33 项：排序/时间范围显隐与筛选/浏览去重/1% 下架/每日一条/错误归类）
 node tools/pet-home-test.mjs   # 宠物主页云层纯函数单测（19 项：宠物快照 / 手绘厨房清洗 / 互动计数独立列 / 图片引用外置与行体积安全阀 / 镜像队列安全性）
+node tools/food-painter-test.mjs # 手绘食物画板单测（20 项：保存后清空画板与撤销栈 / 画笔与橡皮模式复位 / 异步撤销不回流旧画 / 食谱 7 份上限 / 48 小时过期边界）
 node tools/api-contract-test.mjs # 云端数据访问适配层契约测试（83 项：表名 / 过滤 / 排序 / RPC 参数 / Storage 桶与路径 / 降级查询形状 / upsert 只写 user_id+data+updated_at 的计数红线）
 node tools/gateway-contract-test.mjs # 网关模式前端侧契约测试（65 项：/api/* 端点形状 / 鉴权头 / 计数红线 / 错误上抛）
 node tools/worker-test.mjs    # API 网关 Worker 契约测试（180 项：/api/* → Supabase REST 翻译形状 / JWT 透传 / PGRST116→null / 路径穿越防护）
 node tools/dm-test.mjs        # 私信规则层单测（280 项：撤回窗口 / 未读计数 / 日期分隔 / 错误码→i18n 映射 / 迁移覆盖）
 node tools/notify-test.mjs    # 通知规则层单测（148 项：分栏白名单 / 聚合语义 / 点击落点 / 未读兜底）
 node tools/status-test.mjs    # 陪你大厅状态规则层单测（48 项：四键前后端一致 / 24h 窗口纯函数 / emoji 归文案不重复 / 两条链路契约 / 降级分支 / 迁移与文档覆盖）
+node tools/status-counts-test.mjs # 大厅人数接口单测（11 项：只取四类人数不下载资料 / 零人 / 不显示昵称 / 非法日期 / 计数失败降级）
 node tools/bottle-test.mjs    # 温暖漂流瓶规则层单测（36 项：每日 3 封 7 瓶 / 48h 回海 / 1000 字上限 / 错误码↔i18n 闭环 / 六 RPC 与 Worker 路由契约 / RLS 可见性 / 旧信箱清理）
+node tools/bottle-chat-test.mjs # 漂流瓶续聊离线回归（66 项：规则与状态机 / 通知文案与跳转落点 / 双适配器与 Worker 转发 / SQL 静态检查；不执行数据库迁移）
 node tools/i18n-test.mjs      # 文案完整性与插值回归（19 项：en/zh 键集合对称、修复过的 key、$ 特殊字符）
 node tools/admin-test.mjs     # 管理中心纯函数单测（39 项：admin:false 兜底 / 字段缺省 / 趋势图 14 天补零 / 行规整 / 北京时间口径）
 node tools/auth-test.mjs      # 登录规则单测（48 项：邮箱密码校验 / Google 昵称兜底 / 重置邮件链接解析与失效识别 / 回跳地址 / 页面接线）
@@ -122,7 +125,7 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 - 函数与触发器：`wall_daily_limit()`（每人每天一条）· `wall_add_view()` · `wall_toggle_dislike()`（含 1% 自动下架）· `pet_interact()`（摸头/投喂）· `is_admin()` / `admin_overview()` / `admin_users_page()`（管理中心；非管理员调用只拿 `{admin:false}`；用户名单的邮箱只由 `admin_users_page` 在库内 join `auth.users` 提供，REST 永远读不到）
 - Storage 桶 `wall-images`（公开读、登录上传、只能改删自己路径；**帖子配图与宠物立绘 / 手绘菜图共用此桶**——宠物图放 `<uid>/pet-<hash>.<ext>`，云端快照里只留路径、不留 dataURL，一行只有几百字节）
 
-> **已经建过库的老用户**：按顺序跑五个增量迁移（都在 SQL Editor 里粘贴全部内容 → Run，幂等、可重复跑）：
+> **已经建过库的老用户**：按顺序跑以下增量迁移（都在 SQL Editor 里粘贴全部内容 → Run，幂等、可重复跑）：
 > 1. `MIGRATION_two_level_comments.sql` —— 评论改成二级结构（旧评论不用回填，会当一级评论正常显示）
 > 2. `MIGRATION_wall_daily_view_dislike.sql` —— 每日一条 + 浏览数 + 厌恶与 1% 自动下架
 >
@@ -133,6 +136,10 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 > 5. `MIGRATION_profile_status.sql` —— **陪你大厅状态上云**：`profiles` 加 `status` / `status_at` 两列 + 按时间倒序索引；写路径沿用现有 `profiles self update` RLS（`auth.uid() = id`），不需要新 RPC。没跑它时：状态照旧只存本机（点状态会提示「云端状态还没开启」），大厅「此刻大厅里」区块不显示 —— 不报错、不白屏。跑完后可 `node tools/status-e2e.mjs` 实测（写状态 → 状态流读回 → 24h 过期隐去 → 清除）。
 > 6. `MIGRATION_bottle.sql` —— **温暖漂流瓶**：两张表（`bottle_letters` 信件 / `bottle_fishes` 捞信日志）+ 六个 security definer RPC（投信 / 捞信 / 回信 / 放回 / 我的信 / 我捞到的）；每日最多投 3 封、捞 7 瓶（按 UTC 日计数），捞起 48h 不处理自动回海，不能捞自己的信，回信只有写信人可见（RLS 只放行「写信人 + 写过回信的人」直接读）。没跑它时：漂流瓶卡片会提示「海浪大了一点」（礼貌降级），其余功能照旧。跑完后可 `node tools/bottle-e2e.mjs` 实测（双账号投信 → 捞 → 回信 / 放回 → 限额 → 清理）。
 >
+
+> 7. `MIGRATION_bottle_chat.sql` —— **漂流瓶续聊**：先完成私信与漂流瓶迁移，再执行此文件；新装库执行 `SUPABASE_SETUP.sql` 后也需额外执行此文件。B 回信后通知 A；会话页保留双方的漂流瓶记录，只有 A 可以同意或拒绝续聊。同意后复用双方私信会话并导入原信、回信；记录中保留聊天入口。历史回信可在记录中处理，但不补发通知；通知沿用私信偏好，关闭私信通知时不推送。拒绝后保留信件，不建立聊天。
+>
+> 离线回归：`node tools/bottle-chat-test.mjs`（规则、通知文案与跳转、双适配器及 Worker 转发、SQL 静态检查；不执行数据库迁移）。这不代表双账号端到端已验收。请在隔离环境验证 B 回信 → A 通知 → 打开记录 → A 同意 → 双方续聊及原信导入；另验证拒绝、重复同意及旧记录。不要用会随机捞取信件的线上脚本测试真实用户的漂流瓶。
 
 **② 配置密钥**（二选一，anon key 是公开密钥，安全由 RLS 保证）：
 - 左侧 **Settings → API** 复制 `Project URL` 和 `anon public key`，然后：
@@ -291,7 +298,7 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 | 体验 | `#/` 路由直接访问 `/pet` 会 404 | 迁移到 history 模式 + 每条路由独立静态 HTML + SPA 回退 | `router.js` / `vite.config.js` / `wrangler.jsonc` |
 | 体验 | 「在线陪伴数」是本地随机数，易误导 | 去掉虚构人数，改如实文案（路线图保留"等有真实统计再接"） | `views/HomeView.vue` / `i18n.js` |
 
-回归验证（全部本地可跑）：`wall-rules-test` 33 项 · `comment-test` 26 项 · `wall-test` 34 项 · `pet-home-test` 19 项 · `uifix-test` 21 项 · `image-fit` 20 项 · `snack-test` 24 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 48 项 · `privacy-test` 34 项 · `arity-test` 8 项 · `seo-test` 42 项 · `dm-test` 280 项 · `notify-test` 148 项 · `status-test` 48 项 · `bottle-test` 36 项 · `api-contract-test` 83 项 · `gateway-contract-test` 65 项 · `worker-test` 180 项 · `undef-check`。
+回归验证（全部本地可跑）：`wall-rules-test` 33 项 · `comment-test` 26 项 · `wall-test` 34 项 · `pet-home-test` 19 项 · `food-painter-test` 20 项 · `uifix-test` 21 项 · `image-fit` 20 项 · `snack-test` 24 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 48 项 · `privacy-test` 34 项 · `arity-test` 8 项 · `seo-test` 42 项 · `dm-test` 280 项 · `notify-test` 148 项 · `status-test` 48 项 · `status-counts-test` 11 项 · `bottle-test` 36 项 · `bottle-chat-test` 66 项 · `api-contract-test` 83 项 · `gateway-contract-test` 65 项 · `worker-test` 180 项 · `undef-check`。
 
 ## 🗺️ 路线图
 

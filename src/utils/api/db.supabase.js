@@ -104,6 +104,17 @@ export const db = {
     );
   },
 
+  /** 大厅只取四类精确人数，不下载个人资料，也不受分页上限影响。 */
+  async countRecentStatuses(since) {
+    return Promise.all(["working", "studying", "sleepless", "chilling"].map(async (status) => {
+      const r = await sb().from(T.profiles).select("id", { count: "exact", head: true })
+        .eq("status", status).gte("status_at", since);
+      if (r.error) throw r.error;
+      if (!Number.isSafeInteger(r.count) || r.count < 0) throw new Error("invalid-status-count");
+      return { status, count: r.count };
+    }));
+  },
+
   /* ══════════ 评论 ══════════ */
 
   /** 某帖的评论（旧→新） */
@@ -188,6 +199,13 @@ export const db = {
   /** 不想回，放回海里 */
   bottleRelease(id) {
     return unwrap(sb().rpc("bottle_release", { p_id: id }));
+  },
+
+  bottleRecords(id = null, offset = 0) {
+    return unwrap(sb().rpc("bottle_records", { p_id: id, p_offset: offset }));
+  },
+  bottleChatDecide(id, accept) {
+    return unwrap(sb().rpc("bottle_chat_decide", { p_id: id, p_accept: accept }));
   },
 
   /** 我投的信（含收到的回信），新→旧 */
