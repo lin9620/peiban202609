@@ -134,12 +134,69 @@ async function hit(script, path, init) {
 /* ─────────── 档案 ─────────── */
 {
   const { c } = await hit([{ body: { nickname: "n", created_at: null } }], "/api/users/u1/profile");
-  ok("profile 出站 URL", c.outbound[0].url === `${ORIGIN}/rest/v1/profiles?select=nickname%2Ccreated_at&id=eq.u1`, c.outbound[0].url);
+  ok("profile 出站 URL（含状态列）",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/profiles?select=nickname%2Ccreated_at%2Cstatus%2Cstatus_at&id=eq.u1`,
+    c.outbound[0].url);
   ok("profile object accept", hdr(c.outbound[0].init).get("accept") === "application/vnd.pgrst.object+json");
 }
 {
   const { res } = await hit([{ status: 406, body: { code: "PGRST116", message: "x" } }], "/api/users/u1/profile");
   ok("profile 行不存在 → 200 null", res.status === 200 && (await res.text()) === "null");
+}
+{
+  const { res, c } = await hit(
+    [{ status: 400, body: { code: "42703" } }, { body: { nickname: "n", created_at: null } }],
+    "/api/users/u1/profile",
+  );
+  ok("profile 老库无状态列 → 退回两列查询仍 200", res.status === 200);
+  ok("profile 退回查询不带状态列",
+    c.outbound[1].url === `${ORIGIN}/rest/v1/profiles?select=nickname%2Ccreated_at&id=eq.u1`, c.outbound[1].url);
+}
+{
+  const since = "2026-01-01T00:00:00.000Z";
+  const { c } = await hit([{ body: [{ id: "u2", status: "working" }] }], `/api/statuses?limit=12&since=${enc(since)}`);
+  ok("statuses 出站 URL（非空 + since 窗口 + 新→旧）",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/profiles?select=id%2Cnickname%2Cstatus%2Cstatus_at&status=not.is.null&status_at=gte.${enc(since)}&order=status_at.desc&limit=12`,
+    c.outbound[0].url);
+}
+{
+  const { res, c } = await hit(
+    [{ status: 400, body: { code: "42703" } }],
+    "/api/statuses?limit=12",
+  );
+  ok("statuses 老库无列 → 400 透传（前端 catch 隐藏区块兜底）", res.status === 400);
+  ok("statuses 老库兜底：仅一次出站", c.outbound.length === 1);
+}
+{
+  const { res, c } = await hit(
+    [{ status: 204 }],
+    "/api/users/u1/status",
+    { method: "PATCH", body: JSON.stringify({ status: "working" }) },
+  );
+  ok("setStatus 204", res.status === 204);
+  ok("setStatus 出站 URL/方法（RLS self update 兜底）",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/profiles?id=eq.u1` && c.outbound[0].init.method === "PATCH", c.outbound[0].url);
+  const out = JSON.parse(c.outbound[0].init.body);
+  ok("setStatus body：status 原样 + 服务端盖 status_at",
+    out.status === "working" && !Number.isNaN(Date.parse(out.status_at)), c.outbound[0].init.body);
+}
+{
+  const { c } = await hit([{ status: 204 }], "/api/users/u1/status", {
+    method: "PATCH", body: JSON.stringify({ status: null }),
+  });
+  ok("setStatus null → 清除", JSON.parse(c.outbound[0].init.body).status === null, c.outbound[0].init.body);
+}
+{
+  const { res } = await hit([], "/api/users/u1/status", {
+    method: "PATCH", body: JSON.stringify({ status: 42 }),
+  });
+  ok("setStatus 非法类型（不在白名单）→ 400 bad-status", res.status === 400);
+}
+{
+  const { res } = await hit([], "/api/users/u1/status", {
+    method: "PATCH", body: JSON.stringify({ status: "x".repeat(120) }),
+  });
+  ok("setStatus 未知长 key（白名单外）→ 400", res.status === 400);
 }
 
 /* ─────────── 评论 ─────────── */

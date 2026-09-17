@@ -560,6 +560,29 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
   70% { box-shadow: 0 0 0 7px rgba(127, 200, 110, 0); }
   100% { box-shadow: 0 0 0 0 rgba(127, 200, 110, 0); }
 }
+/* ── 大厅：其他人的近况（#4 状态上云） ── */
+.hall-others { margin-top: 6px; padding-top: 12px; border-top: 1px dashed var(--ink-faint); }
+.hall-pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.hall-pill {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  max-width: 100%; padding: 5px 12px; border-radius: 999px;
+  background: #fff; border: 1px solid var(--ink-faint);
+  font-size: 12.5px; line-height: 1.35;
+}
+.hall-pill b {
+  font-weight: 700; max-width: 120px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.hall-pill-status { color: var(--ink); }
+.hall-ago { font-size: 11px; color: var(--ink-faint); }
+.hall-warn { color: var(--warn); font-weight: 700; }
+/* ── 墙上主页：TA 的大厅状态徽章 ── */
+.waller-status {
+  display: inline-flex; align-items: center; gap: 4px;
+  width: fit-content; margin-top: 6px; padding: 3px 12px;
+  border-radius: 999px; background: #fff; border: 1px solid var(--ink-faint);
+  font-size: 12.5px; font-weight: 700; color: var(--ink);
+}
 
 /* ═══ 双栏：语录 + 故事 ═══ */
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }

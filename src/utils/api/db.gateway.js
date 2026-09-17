@@ -93,9 +93,19 @@ export const db = {
     return call("/posts", { method: "POST", body: row });
   },
 
-  /** 公开档案（昵称 / 加入时间）；行不存在返回 null */
+  /** 公开档案（昵称 / 加入时间 / 陪你大厅状态）；行不存在返回 null（老库兼容由 Worker 内部处理） */
   async getProfile(userId) {
     return call(`/users/${enc(userId)}/profile`);
+  },
+
+  /** 我的陪你大厅状态上云（时间戳由 Worker 盖，body 只带 status）；status=null 清除 */
+  async setStatus(userId, status) {
+    return call(`/users/${enc(userId)}/status`, { method: "PATCH", body: { status } });
+  },
+
+  /** 大厅里的近期状态（24h 窗口的 since 由调用方算好） */
+  async listRecentStatuses(limit, since) {
+    return call(`/statuses?limit=${enc(limit)}&since=${enc(since)}`);
   },
 
   /* ══════════ 评论 ══════════ */

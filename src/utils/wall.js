@@ -8,6 +8,7 @@
 import { cloud } from "./supabase.js";
 import { normalizeText } from "./comments.js";
 import { isUsableDataUrl } from "./imaging.js";
+import { STATUS_WINDOW_MS } from "./statuses.js";
 /* 所有云端数据访问都走适配层：换库 / 换托管时只改 utils/api/db.js（见那里的文件头说明） */
 import { db } from "./api/db.js";
 
@@ -341,18 +342,52 @@ export async function cloudToggleDislike(dbPostId) {
 
 /* ═════════ 墙上的主页（/u/:id）：点帖子头像/昵称进入 ══════════ */
 
+/* ═════════ 陪你大厅状态（#4 状态上云） ══════════ */
+
 /**
- * 拉取某用户的公开档案（昵称 / 加入时间）。
+ * 把我的大厅状态写到云端 profiles（登录才可用）。
+ * @param {string} status STATUS_KEYS 之一；空串/null = 清除
+ * @returns {Promise<boolean>} true = 写成功（可清掉本地兜底），false = 云不可用（本地兜底继续用）
+ */
+export async function cloudSetStatus(status) {
+  if (!canUseWall()) return false;
+  try {
+    await db.setStatus(cloud.user.id, status || null);
+    return true;
+  } catch (e) {
+    console.warn("[cloud] setStatus:", e);
+    return false;
+  }
+}
+
+/**
+ * 大厅状态流：近 24h 内设过状态的登录用户（新→旧；含我自己，由调用方过滤）。
+ * @param {number} [limit] 默认 30
+ * @param {number} [windowMs] 新鲜窗口，默认 STATUS_WINDOW_MS（24h）
+ * @returns {Promise<Array<{id:string,nickname:string,status:string,status_at:string}>|null>} null = 云不可用
+ */
+export async function cloudFetchStatuses(limit = 30, windowMs = STATUS_WINDOW_MS) {
+  if (!canReadWall()) return null;
+  try {
+    return (await db.listRecentStatuses(limit, new Date(Date.now() - windowMs).toISOString())) || [];
+  } catch (e) {
+    console.warn("[cloud] fetchStatuses:", e);
+    return null;
+  }
+}
+
+/**
+ * 拉取某用户的公开档案（昵称 / 加入时间 / 陪你大厅状态）。
  * profiles 对匿名可读（RLS：readable by all），游客也能看主页。
  * @param {string} userId
- * @returns {Promise<{nickname:string, created_at:string|null}|null>} null = 查询失败
+ * @returns {Promise<{nickname:string, created_at:string|null, status:string|null, status_at:string|null}|null>} null = 查询失败
  */
 export async function cloudFetchProfile(userId) {
   if (!canReadWall() || !userId) return null;
   try {
     const data = await db.getProfile(userId);
     /* 档案行不存在（极早期注册用户）不算失败，给空档案让页面用帖子署名兜底 */
-    return data || { nickname: "", created_at: null };
+    return data || { nickname: "", created_at: null, status: null, status_at: null };
   } catch (e) {
     console.warn("[cloud] fetchProfile:", e);
     return null;

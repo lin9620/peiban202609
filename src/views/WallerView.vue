@@ -13,6 +13,7 @@ import { cloud } from "../utils/supabase.js";
 import { openConv } from "../utils/dm.js";
 import { sendErrKey } from "../utils/dmRules.js";
 import { jump } from "../stores/petStore.js";
+import { STATUS_EMOJI, STATUS_KEYS, statusFresh } from "../utils/statuses.js";
 import PetMotion from "../components/PetMotion.vue";
 
 const route = useRoute();
@@ -39,7 +40,7 @@ async function startDm() {
   dmBusy.value = false;
 }
 
-const prof = ref(null);        // profiles 行：{ nickname, created_at }
+const prof = ref(null);        // profiles 行：{ nickname, created_at, status, status_at }
 const posts = ref([]);         // TA 的帖子（已排除下架的）
 const loading = ref(true);
 const failed = ref(false);     // 档案与帖子都拿不到才算真失败
@@ -60,6 +61,13 @@ const joinedAt = computed(() => {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
 });
+
+/* 大厅状态徽章：TA 在陪你大厅选的状态，近 24h 内有效（过期自动隐去） */
+const profStatus = computed(() => {
+  const p = prof.value;
+  return p && p.status && statusFresh(p.status_at) ? p.status : "";
+});
+const statusLabel = (k) => (STATUS_KEYS.includes(k) ? t("home.companions." + k) : (k || ""));
 
 const when = (ts) =>
   new Date(ts).toLocaleDateString(i18n.locale === "zh" ? "zh-CN" : "en-US",
@@ -124,6 +132,10 @@ onMounted(async () => {
         <p v-if="!failed && joinedAt" class="sub" style="margin: 4px 0 0">
           &#128062; {{ t("waller.joined", { d: joinedAt }) }}
         </p>
+        <!-- 陪你大厅状态：TA 近 24h 内在大厅选的状态（没设/过期都不显示） -->
+        <span v-if="profStatus" class="waller-status">
+          {{ STATUS_EMOJI[profStatus] || "💬" }} {{ statusLabel(profStatus) }}
+        </span>
         <!-- 发私信：登录且非本人主页才有；失败原因按 dmRules.sendErrKey 映射 -->
         <div v-if="!failed && !loading && canDm" class="waller-dm">
           <button class="waller-act" :disabled="dmBusy" @click="startDm">✉️ {{ t("dm.sendTo") }}</button>

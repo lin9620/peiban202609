@@ -29,6 +29,8 @@ const OBJECT_ACCEPT = "application/vnd.pgrst.object+json";
 const LIMIT_MAX = 1000;
 const JSON_BODY_MAX = 2 * 1024 * 1024; /* 宠物快照降级保留 dataURL 时可达 ~1.8MB（shrinkPetPayload 预算） */
 const UPLOAD_BODY_MAX = 512 * 1024; /* 前端单图上限 200KB，这里留一倍余量 */
+/* 陪你大厅状态 key 白名单（与前端 src/utils/statuses.js 的 STATUS_KEYS 一致） */
+const VALID_STATUS = new Set(["working", "studying", "sleepless", "chilling"]);
 /* 图片路径白名单：uid 段不允许点号，文件段允许扩展名点号 —— ".." 穿越直接拒绝 */
 const UID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const FILE_RE = /^[A-Za-z0-9_.-]{1,128}$/;
@@ -259,6 +261,28 @@ async function patchRow(env, request, table, qs, patch) {
   return res || fail(502, "upstream-unreachable");
 }
 
+/** 陪你大厅状态上云：状态 key 白名单过滤（null=清除）+ 服务端盖时间戳（RLS self update 兜底只能写自己） */
+async function setProfileStatus(env, request, uid, status) {
+  if (!(status === null || VALID_STATUS.has(status))) return fail(400, "bad-status");
+  const res = await upstream(env, request, restUrl(env, TABLE.profiles, `id=eq.${encodeURIComponent(uid)}`), {
+    method: "PATCH",
+    body: JSON.stringify({ status, status_at: new Date().toISOString() }),
+  });
+  return res || fail(502, "upstream-unreachable");
+}
+
+/** 大厅状态流：status 非空且 status_at ≥ since，新→旧；since 为空表示不做时间过滤（老客户端兜底） */
+async function listProfileStatuses(env, request, limit, since) {
+  const parts = [
+    `select=${encodeURIComponent("id,nickname,status,status_at")}`,
+    "status=not.is.null",
+  ];
+  if (since) parts.push(`status_at=gte.${encodeURIComponent(since)}`);
+  parts.push("order=status_at.desc", `limit=${limit}`);
+  const res = await upstream(env, request, restUrl(env, TABLE.profiles, parts.join("&")));
+  return res || fail(502, "upstream-unreachable");
+}
+
 /** RPC：服务端权威逻辑（去重 / 计数 / 自动下架） */
 async function rpc(env, request, name, params) {
   const res = await upstream(env, request, restUrl(env, `rpc/${name}`, ""), {
@@ -432,13 +456,36 @@ export default {
           return listPosts(env, request, uid, parseLimit(q.get("limit"), 50));
         }
         if (seg[2] === "profile" && m === "GET") {
-          const res = await upstream(
-            env, request,
-            restUrl(env, TABLE.profiles, `select=${encodeURIComponent("nickname,created_at")}&id=eq.${encodeURIComponent(uid)}`),
-            { headers: { accept: OBJECT_ACCEPT } },
-          );
-          return res ? objectOrPassthrough(res) : fail(502, "upstream-unreachable");
+          /* 先带状态列；列不存在（老库未跑迁移）时退回两列查询（与直连模式对齐） */
+          const attempt = (cols) =>
+            upstream(
+              env, request,
+              restUrl(env, TABLE.profiles, `select=${encodeURIComponent(cols)}&id=eq.${encodeURIComponent(uid)}`),
+              { headers: { accept: OBJECT_ACCEPT } },
+            );
+          let res = await attempt("nickname,created_at,status,status_at");
+          if (!res) return fail(502, "upstream-unreachable");
+          if (!res.ok && res.status !== 406) {
+            res = await attempt("nickname,created_at");
+            if (!res) return fail(502, "upstream-unreachable");
+          }
+          return objectOrPassthrough(res);
         }
+        if (seg[2] === "status" && m === "PATCH") {
+          /* 陪你大厅状态上云：路径里带 uid（RLS self update 兜底，JWT 透传由数据库校验） */
+          const b = await readJson(request);
+          if (b.err) return b.err;
+          return setProfileStatus(env, request, uid, b.body.status);
+        }
+      }
+
+      /* —— 陪你大厅状态流（近 24h 有状态的人，新→旧；匿名可读） —— */
+      if (seg[0] === "statuses" && seg.length === 1 && m === "GET") {
+        return listProfileStatuses(
+          env, request,
+          parseLimit(q.get("limit"), 50),
+          q.get("since") || "",
+        );
       }
 
       /* —— 宠物主页 —— */

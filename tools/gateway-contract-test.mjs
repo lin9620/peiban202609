@@ -53,7 +53,7 @@ setGatewayAuthProbe(() => true); /* 单测注入：auth 就绪（与 db.supabase
   }
 }
 
-/* ── 端点形状（19 个方法一次跑完） ── */
+/* ── 端点形状（21 个方法一次跑完） ── */
 {
   const c = capture();
   try {
@@ -76,6 +76,8 @@ setGatewayAuthProbe(() => true); /* 单测注入：auth 就绪（与 db.supabase
     await db.getPetProfile("u1");
     await db.upsertPetProfile("u1", { pet: { name: "M" } }, "2026-01-01T00:00:00.000Z");
     await db.uploadImage("u1/pet-ab12.jpg", new Uint8Array([1, 2, 3]), { mime: "image/png", upsert: true });
+    await db.setStatus("u1", "working");
+    await db.listRecentStatuses(12, "2026-01-01T00:00:00.000Z");
 
     const u = (i) => c.calls[i].url;
     const m = (i) => c.calls[i].init.method || "GET";
@@ -103,6 +105,9 @@ setGatewayAuthProbe(() => true); /* 单测注入：auth 就绪（与 db.supabase
       b(17));
     ok("uploadImage 端点+upsert 标记", u(18) === `/api/uploads?path=${enc("u1/pet-ab12.jpg")}&upsert=1` && m(18) === "POST", u(18));
     ok("uploadImage content-type", new Headers(c.calls[18].init.headers).get("content-type") === "image/png");
+    ok("setStatus 端点+body（时间戳由 Worker 盖）",
+      u(19) === "/api/users/u1/status" && m(19) === "PATCH" && b(19) === JSON.stringify({ status: "working" }), u(19));
+    ok("listRecentStatuses 端点", u(20) === `/api/statuses?limit=12&since=${enc("2026-01-01T00:00:00.000Z")}`, u(20));
   } finally {
     c.restore();
   }

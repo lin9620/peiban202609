@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { NButton, NInput, NTag } from "naive-ui";
 import { t, i18n } from "../i18n.js";
 import { stories, prompts } from "../data/stories.js";
@@ -7,6 +7,9 @@ import { dayIndex, todayKey } from "../utils/daily.js";
 import { getItem, setItem, removeItem } from "../utils/storage.js";
 import { checkInMood, moodStreak, activePet, activePetAway, mailbox, sendLetter } from "../stores/petStore.js";
 import { seasonNow } from "../data/extras.js";
+import { cloud } from "../utils/supabase.js";
+import { cloudSetStatus, cloudFetchStatuses } from "../utils/wall.js";
+import { STATUS_KEYS, STATUS_EMOJI } from "../utils/statuses.js";
 import SeasonFx from "../components/SeasonFx.vue";
 import PetMotion from "../components/PetMotion.vue";
 import ShareCard from "../components/ShareCard.vue";
@@ -29,16 +32,51 @@ const quote = computed(() =>
   i18n.locale === "zh" ? todayStory.value.quote.zh : todayStory.value.quote.en
 );
 
-/* —— 陪你大厅 —— */
-const STATUS_KEYS = ["working", "studying", "sleepless", "chilling"];
-const STATUS_EMOJI = { working: "💻", studying: "📚", sleepless: "🌙", chilling: "☕" };
-
+/* —— 陪你大厅（#4 状态上云：本机兜底 + 云端同步/广播）—— */
 const myStatus = ref(getItem("wp-status") || "");
-function setStatus(k) {
-  myStatus.value = myStatus.value === k ? "" : k;
-  if (myStatus.value) setItem("wp-status", myStatus.value);
-  else removeItem("wp-status");
+const myStatusFail = ref(false); // 登录后云端同步失败（状态先留本机）
+const others = ref([]);          // 大厅里其他人的近 24h 状态（云端）
+const isMember = computed(() => !!(cloud.user && cloud.user.id));
+
+/* 状态 key → 当前语言文案（云端只存 key；非常规 key 原样显示） */
+function statusLabel(k) {
+  return STATUS_KEYS.includes(k) ? t("home.companions." + k) : (k || "");
 }
+
+/* 相对时间：状态都是近 24h 的，分钟/小时两档足够 */
+function agoLabel(iso) {
+  const ts = Date.parse(iso);
+  if (Number.isNaN(ts)) return "";
+  const m = Math.max(1, Math.round((Date.now() - ts) / 60000));
+  return m < 60
+    ? t("home.companions.agoMin", { n: m })
+    : t("home.companions.agoHour", { n: Math.round(m / 60) });
+}
+
+/* 选状态：再点一次清除；登录用户同步上云（RLS self update），游客只留本机 */
+async function setStatus(k) {
+  const next = myStatus.value === k ? "" : k;
+  myStatus.value = next;
+  myStatusFail.value = false;
+  if (next) setItem("wp-status", next);
+  else removeItem("wp-status");
+  if (isMember.value && !(await cloudSetStatus(next || null))) myStatusFail.value = true;
+}
+
+/* 进大厅先对表：云端是登录用户的权威状态（含 24h 过期自动隐去）；同时拉其他人的近况 */
+onMounted(async () => {
+  const rows = await cloudFetchStatuses(12);
+  if (!rows) return; /* 云端不可用 / 未登录游客看不到流 → 保持本机行为 */
+  const myId = cloud.user && cloud.user.id;
+  if (myId) {
+    const mine = rows.find((r) => r.id === myId);
+    const fresh = (mine && mine.status) || "";
+    myStatus.value = fresh;
+    if (fresh) setItem("wp-status", fresh);
+    else removeItem("wp-status");
+  }
+  others.value = rows.filter((r) => !myId || r.id !== myId);
+});
 
 /* —— 心情打卡 —— */
 const checkedToday = ref(getItem("wp-mood-" + todayKey()) !== null);
@@ -157,8 +195,24 @@ function sendLetterNow() {
         </n-button>
       </div>
       <p v-if="myStatus" class="streak-note">
-        {{ t("home.companions.youSet", { s: t("home.companions." + myStatus) }) }}
+        {{ t("home.companions.youSet", { s: statusLabel(myStatus) }) }}
       </p>
+      <p v-if="myStatusFail" class="streak-note hall-warn">
+        {{ t("home.companions.syncFail") }}
+      </p>
+      <p v-else-if="!isMember" class="streak-note">{{ t("home.companions.loginHint") }}</p>
+
+      <!-- 其他人的近况：近 24h 内在大厅设过状态的人（云端；过期自动隐去） -->
+      <div v-if="others.length" class="hall-others">
+        <span class="sec-label">{{ t("home.companions.othersTitle") }}</span>
+        <div class="hall-pill-row">
+          <span v-for="o in others" :key="o.id" class="hall-pill">
+            <b>{{ o.nickname || t("home.companions.anon") }}</b>
+            <span>{{ STATUS_EMOJI[o.status] || "💬" }} {{ statusLabel(o.status) }}</span>
+            <span class="hall-ago">{{ agoLabel(o.status_at) }}</span>
+          </span>
+        </div>
+      </div>
     </section>
 
     <!-- ═══ 心情打卡（今天过得怎么样：紧跟「不止你一个人」） ═══ -->

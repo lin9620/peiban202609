@@ -21,6 +21,8 @@ function makeFake(script = []) {
     const b = {
       select: (c) => { ops.push(`select:${c}`); return b; },
       eq: (k, v) => { ops.push(`eq:${k}:${JSON.stringify(v)}`); return b; },
+      not: (k, op, v) => { ops.push(`not:${k}:${op}:${JSON.stringify(v)}`); return b; },
+      gte: (k, v) => { ops.push(`gte:${k}:${JSON.stringify(v)}`); return b; },
       in: (k, a) => { ops.push(`in:${k}:${JSON.stringify(a)}`); return b; },
       order: (k, o = {}) => { ops.push(`order:${k}:${o && o.ascending === false ? "desc" : "asc"}`); return b; },
       limit: (n) => { ops.push(`limit:${n}`); return b; },
@@ -108,13 +110,46 @@ const rows = [{ id: 1 }, { id: 2 }];
 
 /* ─────────── 档案 ─────────── */
 {
-  const { fake, out } = await run([{ data: { nickname: "N", created_at: null } }], () => db.getProfile("u1"));
-  ok("getProfile 形状", fake.calls[0] === 'from:profiles|select:nickname,created_at|eq:id:"u1"|maybeSingle', fake.calls[0]);
-  ok("getProfile 返回行", out && out.nickname === "N");
+  const { fake, out } = await run(
+    [{ data: { nickname: "N", created_at: null, status: "working", status_at: "2026-01-01T00:00:00.000Z" } }],
+    () => db.getProfile("u1"),
+  );
+  ok("getProfile 形状（含状态列）",
+    fake.calls[0] === 'from:profiles|select:nickname,created_at,status,status_at|eq:id:"u1"|maybeSingle', fake.calls[0]);
+  ok("getProfile 返回行（含状态）", out && out.nickname === "N" && out.status === "working");
+}
+{
+  const { fake, out } = await run(
+    [{ error: { code: "42703" } }, { data: { nickname: "N", created_at: null } }],
+    () => db.getProfile("u1"),
+  );
+  ok("getProfile 老库无状态列 → 退回两列查询",
+    fake.calls[1] === 'from:profiles|select:nickname,created_at|eq:id:"u1"|maybeSingle', fake.calls[1]);
+  ok("getProfile 降级返回行", out && out.nickname === "N");
 }
 {
   const { out } = await run([{ data: null }], () => db.getProfile("u1"));
   ok("getProfile 行不存在 → null", out === null);
+}
+{
+  const { fake } = await run([{ data: null }], () => db.setStatus("u1", "working"));
+  ok("setStatus 形状：只写 status/status_at（RLS self update 兜底）",
+    /^from:profiles\|update:\{"status":"working","status_at":"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z"\}\|eq:id:"u1"$/.test(fake.calls[0] || ""),
+    fake.calls[0]);
+}
+{
+  const { fake } = await run([{ data: null }], () => db.setStatus("u1", null));
+  ok("setStatus null → 清除（status=null + 服务端盖 status_at）",
+    /^from:profiles\|update:\{"status":null,"status_at":"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z"\}\|eq:id:"u1"$/.test(fake.calls[0] || ""),
+    fake.calls[0]);
+}
+{
+  const rows = [{ id: "u2", nickname: "B", status: "studying", status_at: "2026-01-01T01:00:00.000Z" }];
+  const { fake, out } = await run([{ data: rows }], () => db.listRecentStatuses(12, "2026-01-01T00:00:00.000Z"));
+  ok("listRecentStatuses 形状（非空 + since 窗口 + 新→旧）",
+    fake.calls[0] === 'from:profiles|select:id,nickname,status,status_at|not:status:is:null|gte:status_at:"2026-01-01T00:00:00.000Z"|order:status_at:desc|limit:12',
+    fake.calls[0]);
+  ok("listRecentStatuses 返回行", out && out.length === 1 && out[0].status === "studying");
 }
 
 /* ─────────── 评论 ─────────── */

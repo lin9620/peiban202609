@@ -8,6 +8,8 @@
 create table if not exists public.profiles (
   id         uuid primary key references auth.users (id) on delete cascade,
   nickname   text not null default '',
+  status     text,                        -- 陪你大厅状态 key（working/studying/sleepless/chilling）；null = 未设置
+  status_at  timestamptz,                 -- 状态更新时间；大厅与主页只显示近 24h 的状态
   created_at timestamptz not null default now()
 );
 
@@ -23,6 +25,11 @@ create policy "profiles self insert" on public.profiles
   for insert with check (auth.uid() = id);
 create policy "profiles self update" on public.profiles
   for update using (auth.uid() = id) with check (auth.uid() = id);
+
+-- 老库补列（幂等）：陪你大厅状态上云（#4；详见 MIGRATION_profile_status.sql）
+alter table public.profiles add column if not exists status    text;
+alter table public.profiles add column if not exists status_at timestamptz;
+create index if not exists profiles_status_at_idx on public.profiles (status_at desc);
 
 -- 注册后自动建档（昵称先取注册时填的 metadata.nickname）
 create or replace function public.handle_new_user()

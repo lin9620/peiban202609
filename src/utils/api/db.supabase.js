@@ -81,9 +81,27 @@ export const db = {
     return unwrap(sb().from(T.posts).insert(row).select("*").single());
   },
 
-  /** 公开档案（昵称 / 加入时间）；行不存在返回 null */
-  getProfile(userId) {
-    return unwrap(sb().from(T.profiles).select("nickname,created_at").eq("id", userId).maybeSingle());
+  /** 公开档案（昵称 / 加入时间 / 陪你大厅状态）；行不存在返回 null；老库无状态列时退回两列查询 */
+  async getProfile(userId) {
+    let res = await sb().from(T.profiles).select("nickname,created_at,status,status_at").eq("id", userId).maybeSingle();
+    if (res && res.error) {
+      res = await sb().from(T.profiles).select("nickname,created_at").eq("id", userId).maybeSingle();
+    }
+    return unwrap(Promise.resolve(res));
+  },
+
+  /** 我的陪你大厅状态上云：只写 status / status_at（RLS self update 兜底：只能写自己）；status=null 清除 */
+  setStatus(userId, status) {
+    return unwrap(sb().from(T.profiles).update({ status, status_at: new Date().toISOString() }).eq("id", userId));
+  },
+
+  /** 大厅里的近期状态：status 非空且 status_at ≥ since，新→旧 */
+  listRecentStatuses(limit, since) {
+    return unwrap(
+      sb().from(T.profiles).select("id,nickname,status,status_at")
+        .not("status", "is", null).gte("status_at", since)
+        .order("status_at", { ascending: false }).limit(limit),
+    );
   },
 
   /* ══════════ 评论 ══════════ */
