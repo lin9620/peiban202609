@@ -263,7 +263,7 @@ async function patchRow(env, request, table, qs, patch) {
 async function rpc(env, request, name, params) {
   const res = await upstream(env, request, restUrl(env, `rpc/${name}`, ""), {
     method: "POST",
-    body: JSON.stringify(params),
+    body: JSON.stringify(params ?? {}),
   });
   return res || fail(502, "upstream-unreachable");
 }
@@ -460,54 +460,9 @@ export default {
         return rpc(env, request, "pet_interact", { p_owner: uid, p_kind: b.body.kind, p_viewer: b.body.viewer });
       }
 
-      /* —— 管理员（鉴权靠 JWT 透传 + RLS is_admin；无 token 时上游按 anon 判 false） —— */
-      if (seg[0] === "admin") {
-        if (seg[1] === "me" && seg.length === 2 && m === "GET") {
-          return rpc(env, request, "is_admin", {});
-        }
-        if (seg[1] === "overview" && seg.length === 2 && m === "GET") {
-          return rpc(env, request, "admin_overview", {});
-        }
-        if (seg[1] === "posts" && seg.length === 2 && m === "GET") {
-          const res = await upstream(
-            env, request,
-            restUrl(env, TABLE.posts, `select=${encodeURIComponent("id,user_id,author_name,body,image_path,views,dislikes,removed,created_at")}&order=created_at.desc&limit=${parseLimit(q.get("limit"), 50)}`),
-          );
-          return res || fail(502, "upstream-unreachable");
-        }
-        if (seg[1] === "posts" && seg.length === 3) {
-          const id = decodeSeg(seg[2]);
-          if (!id) return fail(400, "bad-id");
-          if (m === "PATCH") {
-            const b = await readJson(request);
-            if (b.err) return b.err;
-            if (typeof b.body.removed !== "boolean") return fail(400, "bad-body");
-            const res = await upstream(env, request, restUrl(env, TABLE.posts, `id=eq.${encodeURIComponent(id)}`), {
-              method: "PATCH",
-              body: JSON.stringify({ removed: b.body.removed }),
-            });
-            return res || fail(502, "upstream-unreachable");
-          }
-          if (m === "DELETE") {
-            return deleteRows(env, request, TABLE.posts, `id=eq.${encodeURIComponent(id)}`);
-          }
-        }
-        if (seg[1] === "comments" && seg.length === 2 && m === "GET") {
-          const res = await upstream(
-            env, request,
-            restUrl(env, TABLE.comments, `select=${encodeURIComponent("id,post_id,parent_id,user_id,author_name,body,created_at")}&order=created_at.desc&limit=${parseLimit(q.get("limit"), 100)}`),
-          );
-          return res || fail(502, "upstream-unreachable");
-        }
-        if (seg[1] === "comments" && seg.length === 3 && m === "DELETE") {
-          const id = decodeSeg(seg[2]);
-          if (!id) return fail(400, "bad-id");
-          return deleteRows(env, request, TABLE.comments, `id=eq.${encodeURIComponent(id)}`);
-        }
-      }
-
       /* —— 管理员（RLS is_admin 兜底；Worker 只翻译） —— */
       if (seg[0] === "admin") {
+        if (seg[1] === "me" && seg.length === 2 && m === "GET") return rpc(env, request, "is_admin", {});
         if (seg.length === 1 && m === "GET") return rpc(env, request, "is_admin", {});
         if (seg[1] === "overview" && m === "GET") return rpc(env, request, "admin_overview", {});
         if (seg[1] === "users" && seg.length === 2 && m === "GET") {
@@ -548,6 +503,136 @@ export default {
             return deleteRows(env, request, TABLE.comments, `id=eq.${encodeURIComponent(id)}`);
           }
         }
+      }
+
+      /* —— 私信（阶段 4：写入全走 security definer RPC；Worker 只翻译） —— */
+      if (seg[0] === "dm") {
+        if (seg.length === 1 && m === "POST") {
+          const b = await readJson(request);
+          if (b.err) return b.err;
+          const t = b.body || {};
+          const other = typeof t.other === "string" ? t.other.trim() : "";
+          if (!other) return fail(400, "bad-target");
+          return rpc(env, request, "dm_open", { p_other: other });
+        }
+        if (seg[1] === "convs" && seg.length === 2 && m === "GET") {
+          return rpc(env, request, "dm_list_convs", {
+            p_limit: parseLimit(q.get("limit"), 100),
+            p_offset: parseOffset(q.get("offset")),
+          });
+        }
+        if (seg[1] === "unread" && seg.length === 2 && m === "GET") {
+          return rpc(env, request, "dm_unread_total", {});
+        }
+        if (seg[1] === "blocks") {
+          if (seg.length === 2 && m === "GET") return rpc(env, request, "dm_blocks", {});
+          if (seg.length === 2 && m === "POST") {
+            const b = await readJson(request);
+            if (b.err) return b.err;
+            const t = b.body || {};
+            const user = typeof t.user === "string" ? t.user.trim() : "";
+            if (!user) return fail(400, "bad-target");
+            return rpc(env, request, "dm_block", { p_user: user });
+          }
+          if (seg.length === 3 && m === "DELETE") {
+            const user = decodeSeg(seg[2]);
+            if (!user) return fail(400, "bad-id");
+            return rpc(env, request, "dm_unblock", { p_user: user });
+          }
+        }
+        const convId = /^[1-9]\d*$/.test(String(seg[1] || "")) ? parseInt(seg[1], 10) : null;
+        if (seg.length === 3 && convId !== null) {
+          if (seg[2] === "messages") {
+            if (m === "GET") {
+              const before = q.get("before");
+              return rpc(env, request, "dm_list_messages", {
+                p_conv: convId,
+                p_before: before && /^\d+$/.test(before) ? parseInt(before, 10) : null,
+                p_limit: parseLimit(q.get("limit"), 30),
+              });
+            }
+            if (m === "POST") {
+              const b = await readJson(request);
+              if (b.err) return b.err;
+              const t = b.body || {};
+              if (!("body" in t) || typeof t.body !== "string") return fail(400, "bad-body");
+              if ("image" in t && t.image !== null && typeof t.image !== "string") return fail(400, "bad-image");
+              const image = typeof t.image === "string" ? t.image : null;
+              return rpc(env, request, "dm_send", { p_conv: convId, p_body: t.body, p_image: image });
+            }
+          }
+          if (seg[2] === "meta" && m === "GET") {
+            return rpc(env, request, "dm_conv_meta", { p_conv: convId });
+          }
+          if (m === "POST") {
+            if (seg[2] === "read") return rpc(env, request, "dm_mark_read", { p_conv: convId });
+            if (seg[2] === "hide") return rpc(env, request, "dm_hide", { p_conv: convId });
+            if (seg[2] === "unhide") return rpc(env, request, "dm_unhide", { p_conv: convId });
+            if (seg[2] === "accept") return rpc(env, request, "dm_accept", { p_conv: convId });
+            if (seg[2] === "mute") {
+              const b = await readJson(request);
+              if (b.err) return b.err;
+              const t = b.body || {};
+              const on = typeof t.on === "boolean" ? t.on : true;
+              return rpc(env, request, "dm_mute", { p_conv: convId, p_on: on });
+            }
+          }
+        }
+        if (seg.length === 4 && seg[1] === "messages" && seg[3] === "recall" && m === "POST" && /^\d+$/.test(seg[2])) {
+          return rpc(env, request, "dm_recall", { p_msg: parseInt(seg[2], 10) });
+        }
+      }
+
+      /* —— 通知中心（阶段 4） —— */
+      if (seg[0] === "notifications") {
+        if (seg.length === 1 && m === "GET") {
+          return rpc(env, request, "notif_page", {
+            p_offset: parseOffset(q.get("offset")),
+            p_limit: parseLimit(q.get("limit"), 30),
+            p_kinds: q.get("kinds"),
+            p_unread: q.get("unread") === "1" || q.get("unread") === "true",
+          });
+        }
+        if (seg[1] === "unread" && seg.length === 2 && m === "GET") {
+          return rpc(env, request, "notif_unread", {});
+        }
+        if (seg[1] === "read" && seg.length === 2 && m === "POST") {
+          const b = await readJson(request);
+          if (b.err) return b.err;
+          const t = b.body || {};
+          const ids = Array.isArray(t.ids)
+            ? t.ids.filter((x) => /^\d+$/.test(String(x))).map((x) => parseInt(x, 10))
+            : null;
+          return rpc(env, request, "notif_mark", {
+            p_ids: t.all === true ? null : ids && ids.length ? ids : null,
+            p_all: t.all === true,
+          });
+        }
+        if (seg[1] === "prefs") {
+          if (seg.length === 2 && m === "GET") return rpc(env, request, "notif_prefs_get", {});
+          if (seg.length === 2 && m === "POST") {
+            const b = await readJson(request);
+            if (b.err) return b.err;
+            const t = b.body || {};
+            const bool = (v) => (typeof v === "boolean" ? v : undefined);
+            return rpc(env, request, "notif_prefs_set", {
+              p_comments: bool(t.comments) ?? true,
+              p_reactions: bool(t.reactions) ?? true,
+              p_pets: bool(t.pets) ?? true,
+              p_dms: bool(t.dms) ?? true,
+            });
+          }
+        }
+      }
+
+      /* —— 管理员公告（阶段 4：全员 system 通知） —— */
+      if (seg[0] === "admin" && seg[1] === "broadcast" && seg.length === 2 && m === "POST") {
+        const b = await readJson(request);
+        if (b.err) return b.err;
+        const t = b.body || {};
+        const body = typeof t.body === "string" ? t.body : "";
+        if (!body.trim()) return fail(400, "empty-body");
+        return rpc(env, request, "admin_broadcast", { p_body: body });
       }
 
       return fail(404, "not-found");

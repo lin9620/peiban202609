@@ -216,6 +216,118 @@ export const db = {
   /** 删除评论（二级回复靠 parent_id FK 级联；RLS 管理员 delete 策略兜底） */
   adminDeleteComment(id) {
     return unwrap(sb().from(T.comments).delete().eq("id", id));
+  },
+  /* ══════════ 私信（阶段 4：写路径全部走 RPC，表直写被 RLS 拒绝） ══════════ */
+
+  /** 找或建与某用户的会话 → {conv_id} */
+  dmOpen(otherId) {
+    return unwrap(sb().rpc("dm_open", { p_other: otherId }));
+  },
+
+  /** 会话列表（对方昵称/未读/预览/我方状态一次聚合） */
+  dmListConvs(limit, offset) {
+    return unwrap(sb().rpc("dm_list_convs", { p_limit: limit, p_offset: offset }));
+  },
+
+  /** 消息分页（游标 before = 上一页最小 id；返回新→旧，客户端反转） */
+  dmListMessages(convId, before, limit) {
+    return unwrap(sb().rpc("dm_list_messages", { p_conv: convId, p_before: before ?? null, p_limit: limit }));
+  },
+
+  /** 单会话元信息（深链直达用） */
+  dmConvMeta(convId) {
+    return unwrap(sb().rpc("dm_conv_meta", { p_conv: convId }));
+  },
+
+  /** 发消息：正文与图片至少其一（图片为 Storage 路径） */
+  dmSend(convId, body, image) {
+    return unwrap(sb().rpc("dm_send", { p_conv: convId, p_body: body, p_image: image ?? null }));
+  },
+
+  /** 已读：抬到本会话最新一条 */
+  dmMarkRead(convId) {
+    return unwrap(sb().rpc("dm_mark_read", { p_conv: convId }));
+  },
+
+  /** 隐藏 / 取消隐藏 / 免打扰 / 接受消息请求 */
+  dmHide(convId) {
+    return unwrap(sb().rpc("dm_hide", { p_conv: convId }));
+  },
+
+  dmUnhide(convId) {
+    return unwrap(sb().rpc("dm_unhide", { p_conv: convId }));
+  },
+
+  dmMute(convId, on) {
+    return unwrap(sb().rpc("dm_mute", { p_conv: convId, p_on: !!on }));
+  },
+
+  dmAccept(convId) {
+    return unwrap(sb().rpc("dm_accept", { p_conv: convId }));
+  },
+
+  /** 撤回（15 分钟内、作者本人） */
+  dmRecall(msgId) {
+    return unwrap(sb().rpc("dm_recall", { p_msg: msgId }));
+  },
+
+  /** 拉黑 / 解除拉黑 / 名单 */
+  dmBlock(userId) {
+    return unwrap(sb().rpc("dm_block", { p_user: userId }));
+  },
+
+  dmUnblock(userId) {
+    return unwrap(sb().rpc("dm_unblock", { p_user: userId }));
+  },
+
+  dmBlocks() {
+    return unwrap(sb().rpc("dm_blocks"));
+  },
+
+  /** 未读总览 {total, requests}（导航角标轮询用） */
+  dmUnreadTotal() {
+    return unwrap(sb().rpc("dm_unread_total"));
+  },
+
+  /* ══════════ 通知中心（阶段 4） ══════════ */
+
+  /** 分页：既支持对象参数 {offset,limit,kinds,unread}，也支持位置参数；kinds 可传数组（拼接为逗号串） */
+  notifPage(q, limitB, kindsB, unreadB) {
+    const o = q && typeof q === "object" && !Array.isArray(q) ? q : { offset: q, limit: limitB, kinds: kindsB, unread: unreadB };
+    const kinds = Array.isArray(o.kinds) ? o.kinds.filter(Boolean).join(",") : (o.kinds || null);
+    return unwrap(sb().rpc("notif_page", {
+      p_offset: o.offset ?? 0, p_limit: o.limit ?? 30, p_kinds: kinds ?? null, p_unread: !!o.unread,
+    }));
+  },
+
+  /** 各分类未读数 {total, comments, reactions, pets, dms, system} */
+  notifUnread() {
+    return unwrap(sb().rpc("notif_unread"));
+  },
+
+  /** 标记已读：all=true 全部；否则按 id 列表 */
+  notifMark(ids, all) {
+    return unwrap(sb().rpc("notif_mark", { p_ids: all ? null : ids, p_all: !!all }));
+  },
+
+  /** 通知偏好（缺行 = 全开） */
+  notifPrefsGet() {
+    return unwrap(sb().rpc("notif_prefs_get"));
+  },
+
+  /** 保存偏好（对象参数；布尔强制） */
+  notifPrefsSet(prefs) {
+    return unwrap(sb().rpc("notif_prefs_set", {
+      p_comments: prefs.comments !== false,
+      p_reactions: prefs.reactions !== false,
+      p_pets: prefs.pets !== false,
+      p_dms: prefs.dms !== false,
+    }));
+  },
+
+  /** 管理员公告 → 全员 system 通知（非管理员得到 {admin:false}） */
+  adminBroadcast(body) {
+    return unwrap(sb().rpc("admin_broadcast", { p_body: body }));
   },
 
   /* ══════════ 图片（Storage） ══════════ */

@@ -287,6 +287,99 @@ if (!getClient()) {
 }
 
 
+/* ─────────── 私信（阶段 4：RPC 形状） ─────────── */
+{
+  const { fake } = await run([{ data: { conv_id: 7 } }], () => db.dmOpen("u2"));
+  ok("dmOpen 形状", fake.calls[0] === 'rpc:dm_open:{"p_other":"u2"}', fake.calls[0]);
+}
+{
+  const { fake } = await run([{ data: { msg_id: 1 } }], () => db.dmSend(7, "hi", null));
+  ok("dmSend 形状（空图片传 null）", fake.calls[0] === 'rpc:dm_send:{"p_conv":7,"p_body":"hi","p_image":null}', fake.calls[0]);
+}
+{
+  const { fake } = await run([{ data: [] }], () => db.dmListConvs(50, 10));
+  ok("dmListConvs 形状", fake.calls[0] === 'rpc:dm_list_convs:{"p_limit":50,"p_offset":10}', fake.calls[0]);
+}
+{
+  const { fake } = await run([{ data: [] }], () => db.dmListMessages(7, null, 30));
+  ok("dmListMessages 首页（before=null）", fake.calls[0] === 'rpc:dm_list_messages:{"p_conv":7,"p_before":null,"p_limit":30}', fake.calls[0]);
+}
+{
+  const { fake } = await run([{ data: [] }], () => db.dmListMessages(7, 123, 30));
+  ok("dmListMessages 游标翻页", fake.calls[0] === 'rpc:dm_list_messages:{"p_conv":7,"p_before":123,"p_limit":30}', fake.calls[0]);
+}
+{
+  const { fake } = await run([{ data: {} }], () => db.dmConvMeta(7));
+  ok("dmConvMeta 形状", fake.calls[0] === 'rpc:dm_conv_meta:{"p_conv":7}', fake.calls[0]);
+}
+{
+  const { fake } = await run([{ data: { ok: true } }], () => db.dmMarkRead(7));
+  ok("dmMarkRead 形状", fake.calls[0] === 'rpc:dm_mark_read:{"p_conv":7}', fake.calls[0]);
+}
+{
+  const { fake, out } = await run([{ data: { ok: true } }], () => db.dmMute(7, true));
+  ok("dmMute 形状（p_on 布尔）", fake.calls[0] === 'rpc:dm_mute:{"p_conv":7,"p_on":true}', fake.calls[0]);
+  ok("dmMute 返回透传", out && out.ok === true);
+}
+{
+  const { fake } = await run([{ data: { ok: true } }], () => db.dmHide(7));
+  const { fake: f2 } = await run([{ data: { ok: true } }], () => db.dmUnhide(7));
+  const { fake: f3 } = await run([{ data: { ok: true } }], () => db.dmAccept(7));
+  ok("dmHide 形状", fake.calls[0] === 'rpc:dm_hide:{"p_conv":7}', fake.calls[0]);
+  ok("dmUnhide 形状", f2.calls[0] === 'rpc:dm_unhide:{"p_conv":7}', f2.calls[0]);
+  ok("dmAccept 形状", f3.calls[0] === 'rpc:dm_accept:{"p_conv":7}', f3.calls[0]);
+}
+{
+  const { fake } = await run([{ data: { ok: true } }], () => db.dmRecall(99));
+  ok("dmRecall 形状", fake.calls[0] === 'rpc:dm_recall:{"p_msg":99}', fake.calls[0]);
+}
+{
+  const { fake } = await run([{ data: { ok: true } }], () => db.dmBlock("u3"));
+  const { fake: f2 } = await run([{ data: { ok: true } }], () => db.dmUnblock("u3"));
+  const { fake: f3 } = await run([{ data: [] }], () => db.dmBlocks());
+  ok("dmBlock 形状", fake.calls[0] === 'rpc:dm_block:{"p_user":"u3"}', fake.calls[0]);
+  ok("dmUnblock 形状", f2.calls[0] === 'rpc:dm_unblock:{"p_user":"u3"}', f2.calls[0]);
+  ok("dmBlocks 形状", f3.calls[0] === "rpc:dm_blocks:undefined", f3.calls[0]);
+}
+{
+  const { fake } = await run([{ data: { total: 1, requests: 0 } }], () => db.dmUnreadTotal());
+  ok("dmUnreadTotal 形状", fake.calls[0] === "rpc:dm_unread_total:undefined", fake.calls[0]);
+}
+
+/* ─────────── 通知中心（阶段 4：RPC 形状） ─────────── */
+{
+  const { fake } = await run([{ data: [] }], () => db.notifPage({ offset: 10, limit: 30, kinds: null, unread: false }));
+  ok("notifPage 全部（kinds=null）", fake.calls[0] === 'rpc:notif_page:{"p_offset":10,"p_limit":30,"p_kinds":null,"p_unread":false}', fake.calls[0]);
+}
+{
+  const { fake } = await run([{ data: [] }], () => db.notifPage({ offset: 0, limit: 30, kinds: ["comment", "reply"], unread: true }));
+  ok("notifPage 过滤（kinds 拼接 + unread）", fake.calls[0] === 'rpc:notif_page:{"p_offset":0,"p_limit":30,"p_kinds":"comment,reply","p_unread":true}', fake.calls[0]);
+}
+{
+  const { fake } = await run([{ data: { total: 0 } }], () => db.notifUnread());
+  ok("notifUnread 形状", fake.calls[0] === "rpc:notif_unread:undefined", fake.calls[0]);
+}
+{
+  const { fake } = await run([{ data: { ok: true } }], () => db.notifMark([1, 2], false));
+  ok("notifMark 按列表", fake.calls[0] === 'rpc:notif_mark:{"p_ids":[1,2],"p_all":false}', fake.calls[0]);
+}
+{
+  const { fake } = await run([{ data: { ok: true } }], () => db.notifMark([], true));
+  ok("notifMark 全部（ids 传 null）", fake.calls[0] === 'rpc:notif_mark:{"p_ids":null,"p_all":true}', fake.calls[0]);
+}
+{
+  const { fake } = await run([{ data: { comments: true } }], () => db.notifPrefsGet());
+  ok("notifPrefsGet 形状", fake.calls[0] === "rpc:notif_prefs_get:undefined", fake.calls[0]);
+}
+{
+  const { fake } = await run([{ data: { ok: true } }], () => db.notifPrefsSet({ comments: true, reactions: false, pets: true, dms: false }));
+  ok("notifPrefsSet 形状（布尔强转）", fake.calls[0] === 'rpc:notif_prefs_set:{"p_comments":true,"p_reactions":false,"p_pets":true,"p_dms":false}', fake.calls[0]);
+}
+{
+  const { fake } = await run([{ data: { admin: true, sent: 1 } }], () => db.adminBroadcast("hi"));
+  ok("adminBroadcast 形状", fake.calls[0] === 'rpc:admin_broadcast:{"p_body":"hi"}', fake.calls[0]);
+}
+
 setDbClient(null); /* 兜底：绝不把假 client 泄漏出测试进程 */
 console.log(`api-contract: ${pass} pass, ${fails.length} fail`);
 for (const f of fails) console.log("FAIL  " + f);

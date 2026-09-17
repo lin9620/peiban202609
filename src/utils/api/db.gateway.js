@@ -221,7 +221,106 @@ export const db = {
     await call(`/admin/comments/${enc(id)}`, { method: "DELETE" });
   },
 
-  /* ══════════ 图片（Storage） ═════════ */
+  /* ══════════ 私信（阶段 4） ══════════ */
+
+  /** 找或建会话 → {conv_id} */
+  async dmOpen(other) {
+    return call("/dm", { method: "POST", body: { other } });
+  },
+  /** 会话列表（一次聚合） */
+  async dmListConvs(limit, offset) {
+    return call(`/dm/convs?limit=${enc(limit)}&offset=${enc(offset)}`);
+  },
+  /** 消息分页（游标） */
+  async dmListMessages(convId, before, limit) {
+    const b = before == null ? "" : `&before=${enc(before)}`;
+    return call(`/dm/${enc(convId)}/messages?limit=${enc(limit)}${b}`);
+  },
+  /** 单会话元信息 */
+  async dmConvMeta(convId) {
+    return call(`/dm/${enc(convId)}/meta`);
+  },
+  /** 发消息 */
+  async dmSend(convId, body, image) {
+    return call(`/dm/${enc(convId)}/messages`, { method: "POST", body: { body, image: image ?? null } });
+  },
+  /** 已读水位 */
+  async dmMarkRead(convId) {
+    return call(`/dm/${enc(convId)}/read`, { method: "POST", body: {} });
+  },
+  /** 隐藏 / 取消隐藏 / 接受 / 免打扰 */
+  async dmHide(convId) {
+    return call(`/dm/${enc(convId)}/hide`, { method: "POST", body: {} });
+  },
+  async dmUnhide(convId) {
+    return call(`/dm/${enc(convId)}/unhide`, { method: "POST", body: {} });
+  },
+  async dmAccept(convId) {
+    return call(`/dm/${enc(convId)}/accept`, { method: "POST", body: {} });
+  },
+  async dmMute(convId, on) {
+    return call(`/dm/${enc(convId)}/mute`, { method: "POST", body: { on } });
+  },
+  /** 撤回 */
+  async dmRecall(msgId) {
+    return call(`/dm/messages/${enc(msgId)}/recall`, { method: "POST", body: {} });
+  },
+  /** 拉黑名单 / 拉黑 / 解除 */
+  async dmBlocks() {
+    return call("/dm/blocks");
+  },
+  async dmBlock(userId) {
+    return call("/dm/blocks", { method: "POST", body: { user: userId } });
+  },
+  async dmUnblock(userId) {
+    return call(`/dm/blocks/${enc(userId)}`, { method: "DELETE" });
+  },
+  /** 未读总览（导航角标） */
+  async dmUnreadTotal() {
+    return call("/dm/unread");
+  },
+
+  /* ══════════ 通知中心（阶段 4） ══════════ */
+
+  /** 通知分页：既支持对象参数 {offset,limit,kinds,unread}，也支持位置参数；kinds 可传数组 */
+  async notifPage(q, limitB, kindsB, unreadB) {
+    const o = q && typeof q === "object" && !Array.isArray(q) ? q : { offset: q, limit: limitB, kinds: kindsB, unread: unreadB };
+    const kinds = Array.isArray(o.kinds) ? o.kinds.filter(Boolean).join(",") : (o.kinds || "");
+    const u = o.unread ? "&unread=1" : "";
+    return call(`/notifications?offset=${enc(o.offset ?? 0)}&limit=${enc(o.limit ?? 30)}${kinds ? `&kinds=${enc(kinds)}` : ""}${u}`);
+  },
+  /** 各分类未读数 */
+  async notifUnread() {
+    return call("/notifications/unread");
+  },
+  /** 标记已读 */
+  async notifMark(ids, all) {
+    return call("/notifications/read", {
+      method: "POST",
+      body: { ids: all ? null : (Array.isArray(ids) && ids.length ? ids : null), all: !!all },
+    });
+  },
+  /** 通知偏好读写 */
+  async notifPrefsGet() {
+    return call("/notifications/prefs");
+  },
+  async notifPrefsSet(prefs) {
+    return call("/notifications/prefs", {
+      method: "POST",
+      body: {
+        comments: prefs.comments !== false,
+        reactions: prefs.reactions !== false,
+        pets: prefs.pets !== false,
+        dms: prefs.dms !== false,
+      },
+    });
+  },
+  /** 管理员公告 */
+  async adminBroadcast(body) {
+    return call("/admin/broadcast", { method: "POST", body: { body } });
+  },
+
+  /* ══════════ 图片（Storage） ══════════ */
 
   /** 上传字节：路径约定 <uid>/... 由 storage 策略按第一段授权 */
   async uploadImage(path, bytes, { mime, upsert = false } = {}) {

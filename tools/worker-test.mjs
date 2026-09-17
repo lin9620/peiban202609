@@ -363,6 +363,429 @@ async function hit(script, path, init) {
   ok("非管理员 RPC 403 原样透传", res.status === 403);
 }
 
+/* ─────────── 私信（阶段 4：/api/dm/* → rpc dm_*） ─────────── */
+{
+  const { res, c } = await hit([{ body: { conv_id: 7 } }], "/api/dm", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ other: "u2" }),
+  });
+  ok("dmOpen 200", res.status === 200);
+  ok("dmOpen → rpc dm_open（p_other）",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/dm_open` &&
+    c.outbound[0].init.body === JSON.stringify({ p_other: "u2" }), c.outbound[0].url);
+}
+{
+  const { res } = await hit([], "/api/dm", { method: "POST", body: JSON.stringify({ other: "" }) });
+  ok("dmOpen 空 other → 400", res.status === 400);
+}
+{
+  const { res, c } = await hit([{ body: [] }], "/api/dm/convs?limit=50&offset=10");
+  ok("dmListConvs 200", res.status === 200);
+  ok("dmListConvs → rpc dm_list_convs（分页）",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/dm_list_convs` &&
+    c.outbound[0].init.body === JSON.stringify({ p_limit: 50, p_offset: 10 }), c.outbound[0].url);
+}
+{
+  const { res, c } = await hit([{ body: [] }], "/api/dm/7/messages?limit=30&before=123");
+  ok("dmListMessages 200", res.status === 200);
+  ok("dmListMessages → rpc（游标）",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/dm_list_messages` &&
+    c.outbound[0].init.body === JSON.stringify({ p_conv: 7, p_before: 123, p_limit: 30 }), c.outbound[0].url);
+  const r2 = await hit([{ body: [] }], "/api/dm/7/messages?limit=30");
+  ok("dmListMessages 无游标 → p_before=null",
+    r2.c.outbound[0].init.body === JSON.stringify({ p_conv: 7, p_before: null, p_limit: 30 }), r2.c.outbound[0].init.body);
+}
+{
+  const { res, c } = await hit([{ body: { msg_id: 1 } }], "/api/dm/7/messages", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ body: "hi", image: null }),
+  });
+  ok("dmSend 200", res.status === 200);
+  ok("dmSend → rpc dm_send（正文 + 空图片→null）",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/dm_send` &&
+    c.outbound[0].init.body === JSON.stringify({ p_conv: 7, p_body: "hi", p_image: null }), c.outbound[0].init.body);
+}
+{
+  const { res } = await hit([], "/api/dm/7/messages", { method: "POST", body: JSON.stringify({ body: 42 }) });
+  ok("dmSend 非字符串正文 → 400", res.status === 400);
+  const r2 = await hit([], "/api/dm/7/messages", { method: "POST", body: JSON.stringify({ body: "ok", image: 5 }) });
+  ok("dmSend 非字符串图片 → 400", r2.res.status === 400);
+  const r3 = await hit([], "/api/dm/abc/meta");
+  ok("非数字会话 id → 404", r3.res.status === 404);
+}
+{
+  const { c } = await hit([{ body: {} }], "/api/dm/7/meta");
+  ok("dmConvMeta → rpc", c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/dm_conv_meta` &&
+    c.outbound[0].init.body === JSON.stringify({ p_conv: 7 }), c.outbound[0].url);
+}
+{
+  const r = await hit([{ body: { ok: true } }], "/api/dm/7/read", { method: "POST", body: "{}" });
+  ok("dmMarkRead → rpc dm_mark_read", r.c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/dm_mark_read` &&
+    r.c.outbound[0].init.body === JSON.stringify({ p_conv: 7 }), r.c.outbound[0].url);
+  const r2 = await hit([{ body: { ok: true } }], "/api/dm/7/hide", { method: "POST", body: "{}" });
+  ok("dmHide → rpc dm_hide", r2.c.outbound[0].init.body === JSON.stringify({ p_conv: 7 }));
+  const r3 = await hit([{ body: { ok: true } }], "/api/dm/7/unhide", { method: "POST", body: "{}" });
+  ok("dmUnhide → rpc dm_unhide", r3.c.outbound[0].init.body === JSON.stringify({ p_conv: 7 }));
+  const r4 = await hit([{ body: { ok: true } }], "/api/dm/7/accept", { method: "POST", body: "{}" });
+  ok("dmAccept → rpc dm_accept", r4.c.outbound[0].init.body === JSON.stringify({ p_conv: 7 }));
+}
+{
+  const { c } = await hit([{ body: { ok: true } }], "/api/dm/7/mute", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ on: true }),
+  });
+  ok("dmMute → rpc dm_mute（p_on）", c.outbound[0].init.body === JSON.stringify({ p_conv: 7, p_on: true }), c.outbound[0].init.body);
+}
+{
+  const { c } = await hit([{ body: { ok: true } }], "/api/dm/messages/99/recall", { method: "POST", body: "{}" });
+  ok("dmRecall → rpc dm_recall", c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/dm_recall` &&
+    c.outbound[0].init.body === JSON.stringify({ p_msg: 99 }), c.outbound[0].url);
+}
+{
+  const { c } = await hit([{ body: [] }], "/api/dm/blocks");
+  ok("dmBlocks → rpc dm_blocks", c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/dm_blocks` &&
+    c.outbound[0].init.body === "{}", c.outbound[0].url);
+  const r = await hit([{ body: { ok: true } }], "/api/dm/blocks", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ user: "u3" }),
+  });
+  ok("dmBlock → rpc dm_block", r.c.outbound[0].init.body === JSON.stringify({ p_user: "u3" }), r.c.outbound[0].init.body);
+  const r2 = await hit([{ body: { ok: true } }], "/api/dm/blocks/u3", { method: "DELETE" });
+  ok("dmUnblock → rpc dm_unblock", r2.c.outbound[0].init.body === JSON.stringify({ p_user: "u3" }), r2.c.outbound[0].init.body);
+  const r3 = await hit([], "/api/dm/blocks", { method: "POST", body: JSON.stringify({ user: "" }) });
+  ok("dmBlock 空 user → 400", r3.res.status === 400);
+}
+{
+  const { c } = await hit([{ body: { total: 1, requests: 0 } }], "/api/dm/unread");
+  ok("dmUnreadTotal → rpc dm_unread_total", c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/dm_unread_total` &&
+    c.outbound[0].init.body === "{}", c.outbound[0].url);
+}
+
+/* ─────────── 通知中心（阶段 4：/api/notifications/* → rpc notif_*） ─────────── */
+{
+  const { c } = await hit([{ body: [] }], "/api/notifications?offset=10&limit=30");
+  ok("notifPage → rpc notif_page（默认全部）",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/notif_page` &&
+    c.outbound[0].init.body === JSON.stringify({ p_offset: 10, p_limit: 30, p_kinds: null, p_unread: false }), c.outbound[0].init.body);
+  const r = await hit([{ body: [] }], `/api/notifications?offset=0&limit=30&kinds=${enc("comment,reply")}&unread=1`);
+  ok("notifPage 过滤参数透传",
+    r.c.outbound[0].init.body === JSON.stringify({ p_offset: 0, p_limit: 30, p_kinds: "comment,reply", p_unread: true }), r.c.outbound[0].init.body);
+}
+{
+  const { c } = await hit([{ body: { total: 0 } }], "/api/notifications/unread");
+  ok("notifUnread → rpc notif_unread", c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/notif_unread` &&
+    c.outbound[0].init.body === "{}", c.outbound[0].url);
+}
+{
+  const { c } = await hit([{ body: { ok: true } }], "/api/notifications/read", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ids: [1, 2, "x"], all: false }),
+  });
+  ok("notifMark → rpc notif_mark（ids 过滤非法值）",
+    c.outbound[0].init.body === JSON.stringify({ p_ids: [1, 2], p_all: false }), c.outbound[0].init.body);
+  const r = await hit([{ body: { ok: true } }], "/api/notifications/read", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ all: true }),
+  });
+  ok("notifMark 全部 → p_ids=null",
+    r.c.outbound[0].init.body === JSON.stringify({ p_ids: null, p_all: true }), r.c.outbound[0].init.body);
+}
+{
+  const { c } = await hit([{ body: { comments: true } }], "/api/notifications/prefs");
+  ok("notifPrefsGet → rpc", c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/notif_prefs_get` &&
+    c.outbound[0].init.body === "{}", c.outbound[0].url);
+  const r = await hit([{ body: { ok: true } }], "/api/notifications/prefs", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ comments: true, reactions: false, pets: true, dms: false }),
+  });
+  ok("notifPrefsSet → rpc（布尔）",
+    r.c.outbound[0].init.body === JSON.stringify({ p_comments: true, p_reactions: false, p_pets: true, p_dms: false }), r.c.outbound[0].init.body);
+}
+{
+  const { res, c } = await hit([{ body: { admin: true, sent: 1 } }], "/api/admin/broadcast", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ body: "hi" }),
+  });
+  ok("adminBroadcast 200", res.status === 200);
+  ok("adminBroadcast → rpc admin_broadcast", c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/admin_broadcast` &&
+    c.outbound[0].init.body === JSON.stringify({ p_body: "hi" }), c.outbound[0].init.body);
+}
+
+/* ─────────── 私信（阶段 4：/api/dm/* → rpc dm_*） ─────────── */
+{
+  const { res, c } = await hit([{ body: { conv_id: 7 } }], "/api/dm", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ other: "u2" }),
+  });
+  ok("dmOpen 200", res.status === 200);
+  ok("dmOpen → rpc dm_open（p_other）",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/dm_open` &&
+    c.outbound[0].init.body === JSON.stringify({ p_other: "u2" }), c.outbound[0].url);
+}
+{
+  const { res } = await hit([], "/api/dm", { method: "POST", body: JSON.stringify({ other: "" }) });
+  ok("dmOpen 空 other → 400", res.status === 400);
+}
+{
+  const { res, c } = await hit([{ body: [] }], "/api/dm/convs?limit=50&offset=10");
+  ok("dmListConvs 200", res.status === 200);
+  ok("dmListConvs → rpc dm_list_convs（分页）",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/dm_list_convs` &&
+    c.outbound[0].init.body === JSON.stringify({ p_limit: 50, p_offset: 10 }), c.outbound[0].url);
+}
+{
+  const { res, c } = await hit([{ body: [] }], "/api/dm/7/messages?limit=30&before=123");
+  ok("dmListMessages 200", res.status === 200);
+  ok("dmListMessages → rpc（游标）",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/dm_list_messages` &&
+    c.outbound[0].init.body === JSON.stringify({ p_conv: 7, p_before: 123, p_limit: 30 }), c.outbound[0].url);
+  const r2 = await hit([{ body: [] }], "/api/dm/7/messages?limit=30");
+  ok("dmListMessages 无游标 → p_before=null",
+    r2.c.outbound[0].init.body === JSON.stringify({ p_conv: 7, p_before: null, p_limit: 30 }), r2.c.outbound[0].init.body);
+}
+{
+  const { res, c } = await hit([{ body: { msg_id: 1 } }], "/api/dm/7/messages", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ body: "hi", image: null }),
+  });
+  ok("dmSend 200", res.status === 200);
+  ok("dmSend → rpc dm_send（正文 + 空图片→null）",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/dm_send` &&
+    c.outbound[0].init.body === JSON.stringify({ p_conv: 7, p_body: "hi", p_image: null }), c.outbound[0].init.body);
+}
+{
+  const { res } = await hit([], "/api/dm/7/messages", { method: "POST", body: JSON.stringify({ body: 42 }) });
+  ok("dmSend 非字符串正文 → 400", res.status === 400);
+  const r2 = await hit([], "/api/dm/7/messages", { method: "POST", body: JSON.stringify({ body: "ok", image: 5 }) });
+  ok("dmSend 非字符串图片 → 400", r2.res.status === 400);
+  const r3 = await hit([], "/api/dm/abc/meta");
+  ok("非数字会话 id → 404", r3.res.status === 404);
+}
+{
+  const { c } = await hit([{ body: {} }], "/api/dm/7/meta");
+  ok("dmConvMeta → rpc", c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/dm_conv_meta` &&
+    c.outbound[0].init.body === JSON.stringify({ p_conv: 7 }), c.outbound[0].url);
+}
+{
+  const r = await hit([{ body: { ok: true } }], "/api/dm/7/read", { method: "POST", body: "{}" });
+  ok("dmMarkRead → rpc dm_mark_read", r.c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/dm_mark_read` &&
+    r.c.outbound[0].init.body === JSON.stringify({ p_conv: 7 }), r.c.outbound[0].url);
+  const r2 = await hit([{ body: { ok: true } }], "/api/dm/7/hide", { method: "POST", body: "{}" });
+  ok("dmHide → rpc dm_hide", r2.c.outbound[0].init.body === JSON.stringify({ p_conv: 7 }));
+  const r3 = await hit([{ body: { ok: true } }], "/api/dm/7/unhide", { method: "POST", body: "{}" });
+  ok("dmUnhide → rpc dm_unhide", r3.c.outbound[0].init.body === JSON.stringify({ p_conv: 7 }));
+  const r4 = await hit([{ body: { ok: true } }], "/api/dm/7/accept", { method: "POST", body: "{}" });
+  ok("dmAccept → rpc dm_accept", r4.c.outbound[0].init.body === JSON.stringify({ p_conv: 7 }));
+}
+{
+  const { c } = await hit([{ body: { ok: true } }], "/api/dm/7/mute", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ on: true }),
+  });
+  ok("dmMute → rpc dm_mute（p_on）", c.outbound[0].init.body === JSON.stringify({ p_conv: 7, p_on: true }), c.outbound[0].init.body);
+}
+{
+  const { c } = await hit([{ body: { ok: true } }], "/api/dm/messages/99/recall", { method: "POST", body: "{}" });
+  ok("dmRecall → rpc dm_recall", c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/dm_recall` &&
+    c.outbound[0].init.body === JSON.stringify({ p_msg: 99 }), c.outbound[0].url);
+}
+{
+  const { c } = await hit([{ body: [] }], "/api/dm/blocks");
+  ok("dmBlocks → rpc dm_blocks", c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/dm_blocks` &&
+    c.outbound[0].init.body === "{}", c.outbound[0].url);
+  const r = await hit([{ body: { ok: true } }], "/api/dm/blocks", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ user: "u3" }),
+  });
+  ok("dmBlock → rpc dm_block", r.c.outbound[0].init.body === JSON.stringify({ p_user: "u3" }), r.c.outbound[0].init.body);
+  const r2 = await hit([{ body: { ok: true } }], "/api/dm/blocks/u3", { method: "DELETE" });
+  ok("dmUnblock → rpc dm_unblock", r2.c.outbound[0].init.body === JSON.stringify({ p_user: "u3" }), r2.c.outbound[0].init.body);
+  const r3 = await hit([], "/api/dm/blocks", { method: "POST", body: JSON.stringify({ user: "" }) });
+  ok("dmBlock 空 user → 400", r3.res.status === 400);
+}
+{
+  const { c } = await hit([{ body: { total: 1, requests: 0 } }], "/api/dm/unread");
+  ok("dmUnreadTotal → rpc dm_unread_total", c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/dm_unread_total` &&
+    c.outbound[0].init.body === "{}", c.outbound[0].url);
+}
+
+/* ─────────── 通知中心（阶段 4：/api/notifications/* → rpc notif_*） ─────────── */
+{
+  const { c } = await hit([{ body: [] }], "/api/notifications?offset=10&limit=30");
+  ok("notifPage → rpc notif_page（默认全部）",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/notif_page` &&
+    c.outbound[0].init.body === JSON.stringify({ p_offset: 10, p_limit: 30, p_kinds: null, p_unread: false }), c.outbound[0].init.body);
+  const r = await hit([{ body: [] }], `/api/notifications?offset=0&limit=30&kinds=${enc("comment,reply")}&unread=1`);
+  ok("notifPage 过滤参数透传",
+    r.c.outbound[0].init.body === JSON.stringify({ p_offset: 0, p_limit: 30, p_kinds: "comment,reply", p_unread: true }), r.c.outbound[0].init.body);
+}
+{
+  const { c } = await hit([{ body: { total: 0 } }], "/api/notifications/unread");
+  ok("notifUnread → rpc notif_unread", c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/notif_unread` &&
+    c.outbound[0].init.body === "{}", c.outbound[0].url);
+}
+{
+  const { c } = await hit([{ body: { ok: true } }], "/api/notifications/read", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ids: [1, 2, "x"], all: false }),
+  });
+  ok("notifMark → rpc notif_mark（ids 过滤非法值）",
+    c.outbound[0].init.body === JSON.stringify({ p_ids: [1, 2], p_all: false }), c.outbound[0].init.body);
+  const r = await hit([{ body: { ok: true } }], "/api/notifications/read", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ all: true }),
+  });
+  ok("notifMark 全部 → p_ids=null",
+    r.c.outbound[0].init.body === JSON.stringify({ p_ids: null, p_all: true }), r.c.outbound[0].init.body);
+}
+{
+  const { c } = await hit([{ body: { comments: true } }], "/api/notifications/prefs");
+  ok("notifPrefsGet → rpc", c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/notif_prefs_get` &&
+    c.outbound[0].init.body === "{}", c.outbound[0].url);
+  const r = await hit([{ body: { ok: true } }], "/api/notifications/prefs", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ comments: true, reactions: false, pets: true, dms: false }),
+  });
+  ok("notifPrefsSet → rpc（布尔）",
+    r.c.outbound[0].init.body === JSON.stringify({ p_comments: true, p_reactions: false, p_pets: true, p_dms: false }), r.c.outbound[0].init.body);
+}
+{
+  const { res, c } = await hit([{ body: { admin: true, sent: 1 } }], "/api/admin/broadcast", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ body: "hi" }),
+  });
+  ok("adminBroadcast 200", res.status === 200);
+  ok("adminBroadcast → rpc admin_broadcast", c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/admin_broadcast` &&
+    c.outbound[0].init.body === JSON.stringify({ p_body: "hi" }), c.outbound[0].init.body);
+}
+
+/* ─────────── 私信（阶段 4：/api/dm/* → rpc dm_*） ─────────── */
+{
+  const { res, c } = await hit([{ body: { conv_id: 7 } }], "/api/dm", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ other: "u2" }),
+  });
+  ok("dmOpen 200", res.status === 200);
+  ok("dmOpen → rpc dm_open（p_other）",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/dm_open` &&
+    c.outbound[0].init.body === JSON.stringify({ p_other: "u2" }), c.outbound[0].url);
+}
+{
+  const { res } = await hit([], "/api/dm", { method: "POST", body: JSON.stringify({ other: "" }) });
+  ok("dmOpen 空 other → 400", res.status === 400);
+}
+{
+  const { res, c } = await hit([{ body: [] }], "/api/dm/convs?limit=50&offset=10");
+  ok("dmListConvs 200", res.status === 200);
+  ok("dmListConvs → rpc dm_list_convs（分页）",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/dm_list_convs` &&
+    c.outbound[0].init.body === JSON.stringify({ p_limit: 50, p_offset: 10 }), c.outbound[0].url);
+}
+{
+  const { res, c } = await hit([{ body: [] }], "/api/dm/7/messages?limit=30&before=123");
+  ok("dmListMessages 200", res.status === 200);
+  ok("dmListMessages → rpc（游标）",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/dm_list_messages` &&
+    c.outbound[0].init.body === JSON.stringify({ p_conv: 7, p_before: 123, p_limit: 30 }), c.outbound[0].url);
+  const r2 = await hit([{ body: [] }], "/api/dm/7/messages?limit=30");
+  ok("dmListMessages 无游标 → p_before=null",
+    r2.c.outbound[0].init.body === JSON.stringify({ p_conv: 7, p_before: null, p_limit: 30 }), r2.c.outbound[0].init.body);
+}
+{
+  const { res, c } = await hit([{ body: { msg_id: 1 } }], "/api/dm/7/messages", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ body: "hi", image: null }),
+  });
+  ok("dmSend 200", res.status === 200);
+  ok("dmSend → rpc dm_send（正文 + 空图片→null）",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/dm_send` &&
+    c.outbound[0].init.body === JSON.stringify({ p_conv: 7, p_body: "hi", p_image: null }), c.outbound[0].init.body);
+}
+{
+  const { res } = await hit([], "/api/dm/7/messages", { method: "POST", body: JSON.stringify({ body: 42 }) });
+  ok("dmSend 非字符串正文 → 400", res.status === 400);
+  const r2 = await hit([], "/api/dm/7/messages", { method: "POST", body: JSON.stringify({ body: "ok", image: 5 }) });
+  ok("dmSend 非字符串图片 → 400", r2.res.status === 400);
+  const r3 = await hit([], "/api/dm/abc/meta");
+  ok("非数字会话 id → 404（不匹配 conv 分支）", r3.res.status === 404);
+}
+{
+  const { c } = await hit([{ body: {} }], "/api/dm/7/meta");
+  ok("dmConvMeta → rpc", c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/dm_conv_meta` &&
+    c.outbound[0].init.body === JSON.stringify({ p_conv: 7 }), c.outbound[0].url);
+}
+{
+  const r = await hit([{ body: { ok: true } }], "/api/dm/7/read", { method: "POST", body: "{}" });
+  ok("dmMarkRead → rpc dm_mark_read", r.c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/dm_mark_read` &&
+    r.c.outbound[0].init.body === JSON.stringify({ p_conv: 7 }), r.c.outbound[0].url);
+  const r2 = await hit([{ body: { ok: true } }], "/api/dm/7/hide", { method: "POST", body: "{}" });
+  ok("dmHide → rpc dm_hide", r2.c.outbound[0].init.body === JSON.stringify({ p_conv: 7 }));
+  const r3 = await hit([{ body: { ok: true } }], "/api/dm/7/unhide", { method: "POST", body: "{}" });
+  ok("dmUnhide → rpc dm_unhide", r3.c.outbound[0].init.body === JSON.stringify({ p_conv: 7 }));
+  const r4 = await hit([{ body: { ok: true } }], "/api/dm/7/accept", { method: "POST", body: "{}" });
+  ok("dmAccept → rpc dm_accept", r4.c.outbound[0].init.body === JSON.stringify({ p_conv: 7 }));
+}
+{
+  const { c } = await hit([{ body: { ok: true } }], "/api/dm/7/mute", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ on: true }),
+  });
+  ok("dmMute → rpc dm_mute（p_on）", c.outbound[0].init.body === JSON.stringify({ p_conv: 7, p_on: true }), c.outbound[0].init.body);
+}
+{
+  const { c } = await hit([{ body: { ok: true } }], "/api/dm/messages/99/recall", { method: "POST", body: "{}" });
+  ok("dmRecall → rpc dm_recall", c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/dm_recall` &&
+    c.outbound[0].init.body === JSON.stringify({ p_msg: 99 }), c.outbound[0].url);
+}
+{
+  const { c } = await hit([{ body: [] }], "/api/dm/blocks");
+  ok("dmBlocks → rpc dm_blocks", c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/dm_blocks` &&
+    c.outbound[0].init.body === "{}", c.outbound[0].url);
+  const r = await hit([{ body: { ok: true } }], "/api/dm/blocks", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ user: "u3" }),
+  });
+  ok("dmBlock → rpc dm_block", r.c.outbound[0].init.body === JSON.stringify({ p_user: "u3" }), r.c.outbound[0].init.body);
+  const r2 = await hit([{ body: { ok: true } }], "/api/dm/blocks/u3", { method: "DELETE" });
+  ok("dmUnblock → rpc dm_unblock", r2.c.outbound[0].init.body === JSON.stringify({ p_user: "u3" }), r2.c.outbound[0].init.body);
+  const r3 = await hit([], "/api/dm/blocks", { method: "POST", body: JSON.stringify({ user: "" }) });
+  ok("dmBlock 空 user → 400", r3.res.status === 400);
+}
+{
+  const { c } = await hit([{ body: { total: 1, requests: 0 } }], "/api/dm/unread");
+  ok("dmUnreadTotal → rpc dm_unread_total", c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/dm_unread_total` &&
+    c.outbound[0].init.body === "{}", c.outbound[0].url);
+}
+
+/* ─────────── 通知中心（阶段 4：/api/notifications/* → rpc notif_*） ─────────── */
+{
+  const { c } = await hit([{ body: [] }], "/api/notifications?offset=10&limit=30");
+  ok("notifPage → rpc notif_page（默认全部）",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/notif_page` &&
+    c.outbound[0].init.body === JSON.stringify({ p_offset: 10, p_limit: 30, p_kinds: null, p_unread: false }), c.outbound[0].init.body);
+  const r = await hit([{ body: [] }], `/api/notifications?offset=0&limit=30&kinds=${enc("comment,reply")}&unread=1`);
+  ok("notifPage 过滤参数透传",
+    r.c.outbound[0].init.body === JSON.stringify({ p_offset: 0, p_limit: 30, p_kinds: "comment,reply", p_unread: true }), r.c.outbound[0].init.body);
+}
+{
+  const { c } = await hit([{ body: { total: 0 } }], "/api/notifications/unread");
+  ok("notifUnread → rpc notif_unread", c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/notif_unread` &&
+    c.outbound[0].init.body === "{}", c.outbound[0].url);
+}
+{
+  const { c } = await hit([{ body: { ok: true } }], "/api/notifications/read", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ids: [1, 2, "x"], all: false }),
+  });
+  ok("notifMark → rpc notif_mark（ids 过滤非法值）",
+    c.outbound[0].init.body === JSON.stringify({ p_ids: [1, 2], p_all: false }), c.outbound[0].init.body);
+  const r = await hit([{ body: { ok: true } }], "/api/notifications/read", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ all: true }),
+  });
+  ok("notifMark 全部 → p_ids=null",
+    r.c.outbound[0].init.body === JSON.stringify({ p_ids: null, p_all: true }), r.c.outbound[0].init.body);
+}
+{
+  const { c } = await hit([{ body: { comments: true } }], "/api/notifications/prefs");
+  ok("notifPrefsGet → rpc", c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/notif_prefs_get` &&
+    c.outbound[0].init.body === "{}", c.outbound[0].url);
+  const r = await hit([{ body: { ok: true } }], "/api/notifications/prefs", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ comments: true, reactions: false, pets: true, dms: false }),
+  });
+  ok("notifPrefsSet → rpc（布尔）",
+    r.c.outbound[0].init.body === JSON.stringify({ p_comments: true, p_reactions: false, p_pets: true, p_dms: false }), r.c.outbound[0].init.body);
+}
+{
+  const { res, c } = await hit([{ body: { admin: true, sent: 1 } }], "/api/admin/broadcast", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ body: "hi" }),
+  });
+  ok("adminBroadcast 200", res.status === 200);
+  ok("adminBroadcast → rpc admin_broadcast", c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/admin_broadcast` &&
+    c.outbound[0].init.body === JSON.stringify({ p_body: "hi" }), c.outbound[0].init.body);
+}
+
 console.log(`worker-test: ${pass} pass, ${fails.length} fail`);
 for (const f of fails) console.log("FAIL  " + f);
 if (fails.length) process.exit(1);

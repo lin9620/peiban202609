@@ -173,6 +173,92 @@ setGatewayAuthProbe(() => true); /* 单测注入：auth 就绪（与 db.supabase
   }
 }
 
+/* ── 私信端点形状（阶段 4） ── */
+{
+  setGatewayAuthProbe(() => true);
+  const c = capture();
+  try {
+    await db.dmOpen("u2");
+    await db.dmListConvs(50, 10);
+    await db.dmBlocks();
+    await db.dmBlock("u3");
+    await db.dmUnblock("u3");
+    await db.dmUnreadTotal();
+    await db.dmRecall(99);
+    const u = (i) => c.calls[i].url;
+    const m = (i) => c.calls[i].init.method || "GET";
+    const b = (i) => c.calls[i].init.body;
+    ok("dmOpen 端点+body", u(0) === "/api/dm" && m(0) === "POST" && b(0) === JSON.stringify({ other: "u2" }), u(0));
+    ok("dmListConvs 端点", u(1) === "/api/dm/convs?limit=50&offset=10", u(1));
+    ok("dmBlocks 端点", u(2) === "/api/dm/blocks", u(2));
+    ok("dmBlock 端点+body", u(3) === "/api/dm/blocks" && m(3) === "POST" && b(3) === JSON.stringify({ user: "u3" }), u(3));
+    ok("dmUnblock 端点", u(4) === "/api/dm/blocks/u3" && m(4) === "DELETE", u(4));
+    ok("dmUnreadTotal 端点", u(5) === "/api/dm/unread", u(5));
+    ok("dmRecall 端点", u(6) === "/api/dm/messages/99/recall" && m(6) === "POST", u(6));
+  } finally {
+    c.restore();
+  }
+}
+{
+  setGatewayAuthProbe(() => true);
+  const c = capture();
+  try {
+    await db.dmListMessages(7, null, 30);
+    await db.dmListMessages(7, 123, 30);
+    await db.dmSend(7, "hi", null);
+    await db.dmConvMeta(7);
+    await db.dmMarkRead(7);
+    await db.dmHide(7);
+    await db.dmUnhide(7);
+    await db.dmMute(7, true);
+    await db.dmAccept(7);
+    const u = (i) => c.calls[i].url;
+    const m = (i) => c.calls[i].init.method || "GET";
+    const b = (i) => c.calls[i].init.body;
+    ok("dmListMessages 首页", u(0) === "/api/dm/7/messages?limit=30", u(0));
+    ok("dmListMessages 游标", u(1) === "/api/dm/7/messages?limit=30&before=123", u(1));
+    ok("dmSend 端点+body", u(2) === "/api/dm/7/messages" && m(2) === "POST" && b(2) === JSON.stringify({ body: "hi", image: null }), u(2));
+    ok("dmConvMeta 端点", u(3) === "/api/dm/7/meta", u(3));
+    ok("dmMarkRead 端点", u(4) === "/api/dm/7/read" && m(4) === "POST", u(4));
+    ok("dmHide 端点", u(5) === "/api/dm/7/hide" && m(5) === "POST", u(5));
+    ok("dmUnhide 端点", u(6) === "/api/dm/7/unhide" && m(6) === "POST", u(6));
+    ok("dmMute 端点+body", u(7) === "/api/dm/7/mute" && b(7) === JSON.stringify({ on: true }), u(7));
+    ok("dmAccept 端点", u(8) === "/api/dm/7/accept" && m(8) === "POST", u(8));
+  } finally {
+    c.restore();
+  }
+}
+
+/* ── 通知中心端点形状（阶段 4） ── */
+{
+  setGatewayAuthProbe(() => true);
+  const c = capture();
+  try {
+    await db.notifPage({ offset: 10, limit: 30, kinds: null, unread: false });
+    await db.notifPage({ offset: 0, limit: 30, kinds: ["comment", "reply"], unread: true });
+    await db.notifUnread();
+    await db.notifMark([1, 2], false);
+    await db.notifMark([], true);
+    await db.notifPrefsGet();
+    await db.notifPrefsSet({ comments: true, reactions: false, pets: true, dms: false });
+    await db.adminBroadcast("hi");
+    const u = (i) => c.calls[i].url;
+    const m = (i) => c.calls[i].init.method || "GET";
+    const b = (i) => c.calls[i].init.body;
+    ok("notifPage 全部", u(0) === "/api/notifications?offset=10&limit=30", u(0));
+    ok("notifPage 过滤", u(1) === `/api/notifications?offset=0&limit=30&kinds=${enc("comment,reply")}&unread=1`, u(1));
+    ok("notifUnread 端点", u(2) === "/api/notifications/unread", u(2));
+    ok("notifMark 按列表", u(3) === "/api/notifications/read" && m(3) === "POST" && b(3) === JSON.stringify({ ids: [1, 2], all: false }), b(3));
+    ok("notifMark 全部", b(4) === JSON.stringify({ ids: null, all: true }), b(4));
+    ok("notifPrefsGet 端点", u(5) === "/api/notifications/prefs", u(5));
+    ok("notifPrefsSet 端点+body", u(6) === "/api/notifications/prefs" && m(6) === "POST" &&
+      b(6) === JSON.stringify({ comments: true, reactions: false, pets: true, dms: false }), b(6));
+    ok("adminBroadcast 端点+body", u(7) === "/api/admin/broadcast" && m(7) === "POST" && b(7) === JSON.stringify({ body: "hi" }), u(7));
+  } finally {
+    c.restore();
+  }
+}
+
 setGatewayAuthProbe(null);
 setAuthTokenProvider(() => "");
 console.log(`gateway-contract: ${pass} pass, ${fails.length} fail`);
