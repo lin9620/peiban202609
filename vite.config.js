@@ -3,6 +3,9 @@ import vue from "@vitejs/plugin-vue";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+/* 构建期直接读 i18n 词典（Node 下可安全加载：storage.js 有 typeof window 守卫），
+ * 让预渲染的静态正文与页面文案共用同一份词条，不存在第二份文案 */
+import { messages } from "./src/i18n.js";
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -20,6 +23,64 @@ function seoSitemap() {
       console.log(`\n  seo-sitemap  sitemap.xml lastmod → ${today}\n`);
     },
   };
+}
+
+/* 隐私政策页的联系邮箱：与 src/views/PrivacyView.vue 里的 CONTACT_MAIL、
+ * MIGRATION_add_admin.sql 里登记的管理员邮箱保持同一个（privacy-test P34 会校验一致） */
+const PRIVACY_MAIL = "linyi0123456@outlook.com";
+
+const escapeHtml = (s) =>
+  String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+
+/* 把隐私政策正文真正写进静态 HTML（只用于 /privacy）。
+ *
+ * 为什么必须这么做：这页是给「站点外的人」看的 —— Google 存品牌页时会抓取
+ * 你填的 Privacy policy URL，OAuth 审核方也可能直接取 HTML。纯 SPA 壳子
+ * （<div id="app"></div>）在不执行 JS 的抓取方面前等于空白页，政策写得再全
+ * 也读不到。所以这里在构建期把 i18n 词条（唯一文案来源）展开成静态标记。
+ *
+ * 章节由键名约定派生（s1t..s13t，配 sNp1 / sNl / sNnote），与
+ * src/views/PrivacyView.vue 的 SECTIONS 表同构；改文案只动 i18n.js，
+ * 漏改由 privacy-test P31/P32 兜住。挂载后 Vue 会接管这个容器，视觉无差别。 */
+function privacyStaticHtml(locale) {
+  const P = messages[locale].privacy;
+  const parts = [
+    '<section class="card legal-head">',
+    `<h1 class="legal-title">🔒 ${escapeHtml(P.title)}</h1>`,
+    `<p class="sub">${escapeHtml(P.intro)}</p>`,
+    `<p class="notice legal-updated">${escapeHtml(P.updated)}</p>`,
+    "</section>",
+  ];
+  for (let i = 1; i <= 13; i++) {
+    const head = P[`s${i}t`];
+    if (!head) continue;
+    const para = P[`s${i}p1`];
+    const list = P[`s${i}l`];
+    const note = P[`s${i}note`];
+    parts.push('<section class="card legal-sec">');
+    parts.push(`<h2>${escapeHtml(head)}</h2>`);
+    if (para) {
+      /* 正文里的 {mail} 占位符跟组件里 t(key, {mail}) 是同一套约定 */
+      parts.push(`<p class="legal-p">${escapeHtml(String(para).replace("{mail}", PRIVACY_MAIL))}</p>`);
+      if (String(para).includes("{mail}")) {
+        parts.push(`<p class="legal-mail">${escapeHtml(PRIVACY_MAIL)}</p>`);
+      }
+    }
+    if (Array.isArray(list) && list.length) {
+      parts.push('<ul class="legal-list">');
+      for (const it of list) parts.push(`<li>${escapeHtml(it)}</li>`);
+      parts.push("</ul>");
+    }
+    if (note) parts.push(`<p class="notice">${escapeHtml(note)}</p>`);
+    parts.push("</section>");
+  }
+  /* 无 JS 时也要能回到首页，等价于组件里 back() 的 router.push({name:"home"}) */
+  parts.push(`<div class="legal-foot"><a href="/">${escapeHtml(P.back)}</a></div>`);
+  return parts.join("\n      ");
 }
 
 /* history 路由：为每个子路由生成独立静态 HTML（独立 title/canonical/OG），
@@ -52,11 +113,13 @@ function seoRoutes() {
           desc: "Your pets, coins, badges and gentle daily records — all in one cozy place.",
         },
         {
-          /* 隐私政策：Google OAuth 发布要求一个可公开访问的政策页，
-             独立静态 HTML 能让外部审核不执行 JS 也看到内容 */
+          /* 隐私政策：Google OAuth 发布要求一个可公开访问的政策页。
+             除独立 title/canonical 外，还把正文预渲染进静态 HTML —— 不执行 JS
+             的抓取方（Google 存品牌页时的校验、OAuth 审核）也能读到完整政策 */
           dir: "privacy",
           title: "Warm Paws · Privacy Policy",
           desc: "What Warm Paws stores, why it stores it, and how Google sign-in data is used — plain words, no tracking, no ads.",
+          html: privacyStaticHtml("en"),
         },
       ];
       let made = 0;
@@ -70,6 +133,14 @@ function seoRoutes() {
           .replace(/<meta name="twitter:title" content="[^"]*"/, `<meta name="twitter:title" content="${r.title}"`);
         /* og:description 与 twitter:description 的 content 值相同，一次全部替换 */
         h = h.split(ROOT_DESC).join(`content="${r.desc}"`);
+        /* <meta name="description"> 与 OG 那句不是同一个字符串，得单独换，
+           否则子页面在搜索结果里仍显示全站通用描述 */
+        h = h.replace(/<meta\s+name="description"[\s\S]*?\/>/, `<meta name="description" content="${r.desc}" />`);
+        /* 需要正文的子页面：把内容塞进挂载点。Vue 挂载时会清空该容器，视觉无差别；
+           不执行 JS 的抓取方则能读到真实内容而不是空壳 */
+        if (r.html) {
+          h = h.replace('<div id="app"></div>', `<div id="app">\n      ${r.html}\n    </div>`);
+        }
         fs.mkdirSync(path.join(distDir, r.dir), { recursive: true });
         fs.writeFileSync(path.join(distDir, r.dir, "index.html"), h);
         made++;

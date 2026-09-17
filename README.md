@@ -48,7 +48,8 @@
 ### 🔒 隐私与合规
 - **隐私政策页 `/privacy`**：页脚常驻入口，四语言无关的中英双语正文（数据收集范围 / 存储位置与保护 / 撤回与删号途径 / 儿童条款 / 联系邮箱）
 - 该页同时是 **Google OAuth 发布审核要求的 Privacy policy URL**：第 4、5 节逐条写明「只申请 email 与 profile」「不读 Gmail / Drive / 日历」「不出售不转售」「不用于广告」「Limited Use 承诺」「如何撤销授权」
-- 合规表述由 `tools/privacy-test.mjs`（30 项）锁形：文案改了但漏掉任何一条，测试会红
+- 合规表述由 `tools/privacy-test.mjs`（34 项）锁形：文案改了但漏掉任何一条，测试会红
+- **正文预渲染进静态 HTML**：`vite.config.js` 的 `seoRoutes()` 在构建期把政策正文（章节由 `s1t..s13t` 键名约定派生）写进 `<div id="app">`，因此**不执行 JS 的抓取方**（Google 存 Branding 页时的 URL 校验、OAuth 审核）也能读到完整政策，而不是一个空壳；文案仍只有 i18n 一份来源，漏改由 P31/P32 兜住
 
 ### 🌐 双语与视觉
 - 英文为主，右上角一键切换中文；新增语言只需加一个语言块
@@ -80,7 +81,7 @@ node tools/worker-test.mjs    # API 网关 Worker 契约测试（53 项：/api/*
 node tools/i18n-test.mjs      # 文案完整性与插值回归（19 项：en/zh 键集合对称、修复过的 key、$ 特殊字符）
 node tools/admin-test.mjs     # 管理中心纯函数单测（39 项：admin:false 兜底 / 字段缺省 / 趋势图 14 天补零 / 行规整 / 北京时间口径）
 node tools/auth-test.mjs      # 登录规则单测（48 项：邮箱密码校验 / Google 昵称兜底 / 重置邮件链接解析与失效识别 / 回跳地址 / 页面接线）
-node tools/privacy-test.mjs   # 隐私政策页回归（30 项：路由与页脚入口 / sitemap 与预渲染产物 / 合规表述逐条核对 —— 权限范围、不转售、不投放广告、Limited Use、撤销授权 / 中英键对称）
+node tools/privacy-test.mjs   # 隐私政策页回归（34 项：路由与页脚入口 / sitemap 与预渲染产物 / 合规表述逐条核对 —— 权限范围、不转售、不投放广告、Limited Use、撤销授权 / 中英键对称 / 不执行 JS 也能读到完整正文）
 node tools/snack-test.mjs     # 零食雨游戏纯逻辑单测（20 项：难度曲线/生成/碰撞/结算上限）
 node tools/seo-test.mjs       # SEO 资产检查（38 项：robots/sitemap/5 条路由/OG 标签/PNG 尺寸/安全头/预渲染产物）
 node tools/image-fit.mjs       # 图片纯函数单测（20 项：尺寸缩放/形状体检/文件预检/dataURL 校验）
@@ -279,7 +280,7 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 | 体验 | `#/` 路由直接访问 `/pet` 会 404 | 迁移到 history 模式 + 每条路由独立静态 HTML + SPA 回退 | `router.js` / `vite.config.js` / `wrangler.jsonc` |
 | 体验 | 「在线陪伴数」是本地随机数，易误导 | 去掉虚构人数，改如实文案（路线图保留"等有真实统计再接"） | `views/HomeView.vue` / `i18n.js` |
 
-回归验证（全部本地可跑）：`wall-rules-test` 33 项 · `comment-test` 26 项 · `wall-test` 34 项 · `pet-home-test` 19 项 · `uifix-test` 20 项 · `image-fit` 20 项 · `snack-test` 20 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 48 项 · `privacy-test` 30 项 · `arity-test` 8 项 · `seo-test` 38 项 · `undef-check`。
+回归验证（全部本地可跑）：`wall-rules-test` 33 项 · `comment-test` 26 项 · `wall-test` 34 项 · `pet-home-test` 19 项 · `uifix-test` 20 项 · `image-fit` 20 项 · `snack-test` 20 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 48 项 · `privacy-test` 34 项 · `arity-test` 8 项 · `seo-test` 38 项 · `undef-check`。
 
 ## 🗺️ 路线图
 
@@ -298,5 +299,5 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 - 🏅 成就徽章：连续打卡 / 养成等级 / 评论互动解锁勋章墙
 - 手绘画作上墙、温暖信箱（树洞回信）
 - ✅ **已完成**：登录方式扩展——**Google 一键登录**（`signInWithOAuth`，昵称按 `full_name / name → 邮箱前缀` 兜底）+ **忘记密码**（邮件重置链接回到 `/profile` 直接设置新密码，link 失效有专门识别与重发入口）；两者都有本地前置校验与失败人话提示 → `utils/authRules.js` / `utils/supabase.js` / `views/ProfileView.vue`
-- ✅ **已完成**：隐私政策页 `/privacy`（页脚入口 + 预渲染独立页面 + sitemap）—— 同时用作 Google OAuth 发布审核的 Privacy policy URL，含 Limited Use 承诺
+- ✅ **已完成**：隐私政策页 `/privacy`（页脚入口 + 预渲染独立页面 + **正文写进静态 HTML** + sitemap）—— 同时用作 Google OAuth 发布审核的 Privacy policy URL，含 Limited Use 承诺
 - 云端宠物存档多设备同步

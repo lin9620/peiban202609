@@ -212,6 +212,8 @@ t_("P28 页脚改为可换行的一行（窄屏不挤压）", () => {
 /* ═════════ ⑤ 构建产物（若已构建） ═════════ */
 if (exists("dist/privacy/index.html")) {
   const h = read("dist/privacy/index.html");
+  /* 邮箱常量以组件为准，产物必须与它一致（两处不能各写各的） */
+  const CONTACT_MAIL = (view.match(/const CONTACT_MAIL = "([^"]+)"/) || [])[1] || "";
   t_("P29 产物 /privacy/index.html 标题与 canonical 独立", () => {
     assert.ok(h.includes("<title>Warm Paws · Privacy Policy</title>"), "标题不对");
     assert.ok(h.includes('rel="canonical" href="https://dale.de5.net/privacy"'), "canonical 不对");
@@ -222,8 +224,49 @@ if (exists("dist/privacy/index.html")) {
     assert.ok(h.includes('content="index, follow"'), "缺少 index,follow");
     assert.ok(!/noindex/i.test(h), "产物里出现 noindex");
   });
+  /* ── 以下四项锁住「不执行 JS 也能读到完整政策」──
+     这正是 Google 存品牌页时抓取该链接、OAuth 审核方直接取 HTML 的场景：
+     纯 SPA 壳子（空 <div id="app">）在它们眼里等于空白页 */
+  t_("P31 正文预渲染进静态 HTML（13 节标题 + 4 个列表都展开）", () => {
+    const body = h.slice(h.indexOf('<div id="app">'), h.indexOf("<noscript>"));
+    for (let i = 1; i <= 13; i++) {
+      const head = messages.en.privacy[`s${i}t`];
+      assert.ok(head, `i18n 缺第 ${i} 节标题`);
+      assert.ok(body.includes(`<h2>${head}</h2>`), `静态正文缺第 ${i} 节：${head}`);
+    }
+    assert.equal((body.match(/<h2>/g) || []).length, 13, "静态正文的章节数不是 13");
+    for (const k of ["s2l", "s3l", "s4l", "s9l"]) {
+      for (const it of messages.en.privacy[k]) {
+        assert.ok(body.includes(`<li>${it}</li>`), `${k} 的词条未进静态正文：${it}`);
+      }
+    }
+  });
+  t_("P32 全部词条都进静态正文（防改文案后预渲染失同步）", () => {
+    const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const body = h.slice(h.indexOf('<div id="app">'), h.indexOf("<noscript>"));
+    const missing = [];
+    for (const [k, v] of Object.entries(messages.en.privacy)) {
+      for (const one of Array.isArray(v) ? v : [v]) {
+        const want = esc(String(one).replace("{mail}", CONTACT_MAIL));
+        if (!body.includes(want)) missing.push(`${k}=${want.slice(0, 40)}`);
+      }
+    }
+    assert.equal(missing.length, 0, "未进静态正文：" + missing.join(" | "));
+  });
+  t_("P33 描述按路由独立（不再沿用全站通用那句）", () => {
+    /* 只看 <head>：<noscript> 里保留全站那句话是正常的（无 JS 的兜底说明） */
+    const head = h.slice(0, h.indexOf("<body>"));
+    assert.ok(!head.includes("一个温暖的角落"), "head 里仍带着全站通用描述");
+    assert.ok(/<meta name="description" content="What Warm Paws stores/.test(head), "描述未换成隐私政策专用");
+  });
+  t_("P34 预渲染邮箱与组件常量同源", () => {
+    assert.ok(CONTACT_MAIL, "组件里找不到 CONTACT_MAIL");
+    assert.ok(h.includes(`<p class="legal-mail">${CONTACT_MAIL}</p>`),
+      "产物里的邮箱与组件常量不一致");
+  });
 } else {
-  out.push("SKIP  P29~P30 尚未构建 dist（先跑 npm run build）");
+  out.push("SKIP  P29~P34 尚未构建 dist（先跑 npm run build）");
 }
 
 /* 还原语言，避免影响同进程后续断言 */
