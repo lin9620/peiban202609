@@ -264,11 +264,15 @@ button, input, textarea { font-family: inherit; }
   background:
     radial-gradient(circle at 78% 18%, rgba(255, 224, 130, .55), transparent 26%),
     linear-gradient(180deg, #cfeaff 0%, #e9f7ff 52%, #d9f3d1 52%, #bfe8b4 100%);
-  display: flex; align-items: flex-end; justify-content: center;
+  display: flex; align-items: center; justify-content: center;
   cursor: pointer; overflow: hidden;
   border-radius: var(--r-md);
 }
-.pet-stage .pet-motion { width: 215px; margin-bottom: 12px; }
+/* #3 宠物悬空居中：不再贴底，喂食/玩耍时不被按钮和草地挡住 */
+.pet-stage .pet-motion {
+  width: 215px; margin-bottom: 34px;
+  filter: drop-shadow(0 18px 14px rgba(90, 60, 30, .18));
+}
 
 .pet-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 22px; margin-top: 16px; }
 .pstat { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 700; }
@@ -632,6 +636,32 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
   border-radius: 12px; padding: 10px 12px;
   margin-bottom: 16px; word-break: break-word;
 }
+
+/* —— 宠物系统通知浮层（#2：死亡哀悼 / 初始宠物降级 / 食物过期） —— */
+.pet-notice-stack {
+  position: sticky; top: 70px; z-index: 60;
+  display: flex; flex-direction: column; gap: 10px;
+  max-width: 520px; margin: 0 auto 14px;
+  pointer-events: none;
+}
+.pet-notice {
+  pointer-events: auto;
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(255, 255, 255, .96);
+  border: 1.5px solid #ffd9a8; border-radius: 16px;
+  padding: 12px 14px;
+  box-shadow: 0 10px 26px rgba(160, 110, 50, .18);
+  font-size: 13px; font-weight: 700;
+}
+.pet-notice-icon { font-size: 20px; }
+.pet-notice-text { flex: 1; line-height: 1.5; }
+.pet-notice-close {
+  border: none; background: transparent; cursor: pointer;
+  font-size: 14px; color: var(--ink-soft); padding: 4px 6px; border-radius: 8px;
+}
+.pet-notice-close:hover { background: rgba(0, 0, 0, .06); }
+.notice-enter-active, .notice-leave-active { transition: all .35s ease; }
+.notice-enter-from, .notice-leave-to { opacity: 0; transform: translateY(-12px); }
 
 /* ═══════════ 旅行冒险（Travel-frog style） ═══════════ */
 .away-note {

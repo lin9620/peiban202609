@@ -51,9 +51,17 @@ export function advanceY(item, dt) {
   return item.y + item.vy * dt;
 }
 
-/** 是否被接住：落到嘴部高度带，且 x 距离在宠物半宽内 */
-export function isCaught(item, petX, petHalfW) {
-  return item.y >= 0.86 && item.y <= 1.0 && Math.abs(item.x - petX) <= petHalfW;
+/**
+ * 是否被接住：掉落物进入以宠物为中心的接住带（竖直 ± 带宽），且 x 距离在宠物半宽内。
+ * #3 宠物可以全屏移动（x/y 都自由），所以判定从「贴底高度带」改成「宠物自身的 2D 邻域」。
+ * @param {{x:number,y:number}} item  掉落物
+ * @param {number} petX  宠物 x（0~1）
+ * @param {number} petHalfW  宠物半宽（比例）
+ * @param {number} [petY=0.86]  宠物 y（0~1；缺省按贴底兼容旧签名）
+ */
+export function isCaught(item, petX, petHalfW, petY = 0.86) {
+  const inBand = item.y >= petY - 0.09 && item.y <= petY + 0.13;
+  return inBand && Math.abs(item.x - petX) <= petHalfW;
 }
 
 /** 是否已落地漏掉 */
@@ -61,14 +69,19 @@ export function isMissed(item) {
   return item.y > 1.06;
 }
 
+/** 宠物游戏内可移动的 y 范围（0~1 比例）：顶部留出计分条，底部贴地 */ 
+export const PET_Y_MIN = 0.2;
+export const PET_Y_MAX = 0.92;
+export const PET_Y_SPEED = 0.7;   // 键盘上下移动速度（比例/秒）
+
 /**
- * 结算奖励：分数 → 四维/金币/经验（有上限，防止刷爆）
+ * 结算奖励：分数 → 四维/经验（有上限，防止刷爆）。
+ * 金币不在纯函数里发 —— 由 petStore 按 RAIN_REWARD_COINS 固定 2 金币/局、每日 3 次上限发放。
  * @param {number} score 接到的总分数
  */
 export function finalReward(score) {
   const s = Math.max(0, Math.floor(score) || 0);
   return {
-    coins: s * 2,
     hunger: Math.min(45, s * 3),
     mood: Math.min(30, s * 2),
     exp: s * 2,

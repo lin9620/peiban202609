@@ -161,23 +161,7 @@ function sendLetterNow() {
       </p>
     </section>
 
-    <!-- ═══ 语录 + 故事 ═══ -->
-    <div class="grid-2">
-      <section class="card quote-card">
-        <span class="sec-label">{{ t("home.quoteLabel") }}</span>
-        <p class="quote-hero">
-          <span class="quote-mark">“</span>{{ quote }}<span class="quote-mark">”</span>
-        </p>
-      </section>
-
-      <section class="card story-card">
-        <span class="sec-label">{{ t("home.storyLabel") }}</span>
-        <h2 class="story-title">{{ story.title }}</h2>
-        <p class="story-body">{{ story.body }}</p>
-      </section>
-    </div>
-
-    <!-- ═══ 心情打卡 ═══ -->
+    <!-- ═══ 心情打卡（今天过得怎么样：紧跟「不止你一个人」） ═══ -->
     <section class="card">
       <div class="row-between">
         <h2>{{ t("home.mood.title") }}</h2>
@@ -200,6 +184,22 @@ function sendLetterNow() {
       </p>
       <p v-else-if="checkedToday" class="streak-note">{{ t("home.mood.again") }}</p>
     </section>
+
+    <!-- ═══ 语录 + 故事 ═══ -->
+    <div class="grid-2">
+      <section class="card quote-card">
+        <span class="sec-label">{{ t("home.quoteLabel") }}</span>
+        <p class="quote-hero">
+          <span class="quote-mark">“</span>{{ quote }}<span class="quote-mark">”</span>
+        </p>
+      </section>
+
+      <section class="card story-card">
+        <span class="sec-label">{{ t("home.storyLabel") }}</span>
+        <h2 class="story-title">{{ story.title }}</h2>
+        <p class="story-body">{{ story.body }}</p>
+      </section>
+    </div>
 
     <!-- ═══ 每日一问 ═══ -->
     <section class="card">

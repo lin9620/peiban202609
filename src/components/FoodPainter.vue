@@ -162,6 +162,12 @@ function save() {
   savedMsg.value = true;
   setTimeout(() => { savedMsg.value = false; }, 2200);
   name.value = "";
+  /* #1 存入食谱后从画板消失：清空画布 + 重置笔画统计（下一幅从头画） */
+  strokes.value = 0;
+  colorsUsed.value = new Set();
+  lengthPx.value = 0;
+  undoStack.value = [];
+  clearCanvas();
   emit("saved", dish);
 }
 

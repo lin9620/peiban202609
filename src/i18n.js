@@ -78,6 +78,13 @@ export const messages = {
         over: "Round over!",
         newBest: "New personal best!",
         again: "Play again",
+        rewardLeft: "Coins today: {n}/{max} left",
+        rewardDone: "Daily coin reward reached — play for fun!",
+      },
+      notice: {
+        dead: "{n} has passed away after 7 days without care. Rest in peace. 🕯️",
+        decay: "{n} was alone for a while and dropped to Lv.{lv} — take care of it!",
+        expired: "{n} dish(es) in your cookbook expired and were cleared.",
       },
       painter: {
         title: "Draw its food 🎨",
@@ -88,6 +95,7 @@ export const messages = {
         feed: "Feed this", feedDone: "Yum! Handmade food hits different.",
         effort: "Made with love: {n}%",
         name: "Name this dish…", nameDefault: "Unnamed dish",
+        keepNote: "Kept {n} days, then it spoils.",
       },
       parkTitle: "Pet Park",
       switchPet: "Your companions",
@@ -579,6 +587,13 @@ export const messages = {
         over: "这局结束啦！",
         newBest: "刷新了个人纪录！",
         again: "再来一局",
+        rewardLeft: "今日金币：还可得 {n}/{max} 局",
+        rewardDone: "今天的三次奖励已拿完——纯玩不限量！",
+      },
+      notice: {
+        dead: "{n} 离开你了——已经整整 7 天没有被照顾。愿它在云朵那头安好。🕯️",
+        decay: "{n} 独自待了太久，掉到了 {lv} 级——多陪陪它吧！",
+        expired: "食谱里的 {n} 道菜放坏了，已经清掉。",
       },
       painter: {
         title: "画它的食物 🎨",
@@ -589,6 +604,7 @@ export const messages = {
         feed: "喂这个", feedDone: "好吃！亲手做的食物就是不一样。",
         effort: "用心程度：{n}%",
         name: "给这道菜起个名字…", nameDefault: "未命名料理",
+        keepNote: "冷藏 {n} 天，过时会坏掉哦。",
       },
       parkTitle: "宠物乐园",
       switchPet: "你的伙伴们",

@@ -7,7 +7,9 @@ import { t, i18n, setLocale, languages } from "./i18n.js";
 import { naiveThemeFor } from "./theme.js";
 import { THEMES } from "./data/themes.js";
 import SideRails from "./components/SideRails.vue";
-import { wallet, moodStreak } from "./stores/petStore.js";
+import {
+  wallet, moodStreak, petNotices, dismissPetNotice,
+} from "./stores/petStore.js";
 import { cloud, initCloud } from "./utils/supabase.js";
 import { badge, startBadge, stopBadge } from "./stores/badgeStore.js";
 
@@ -28,6 +30,15 @@ const currentLang = computed(
 );
 
 const streak = computed(() => moodStreak());
+
+/* —— 宠物登录通知（#2）：死亡哀悼 / 初始宠物降级 / 食物过期 —— 全局浮层 */
+const noticeIcon = { dead: "🕯️", decay: "📉", expired: "🥣" };
+function noticeText(n) {
+  if (n.kind === "dead") return t("pet.notice.dead", { name: n.name });
+  if (n.kind === "decay") return t("pet.notice.decay", { name: n.name, from: n.from, to: n.to });
+  if (n.kind === "expired") return t("pet.notice.expired", { n: n.n });
+  return "";
+}
 
 /* 云端探测（未配置时静默保持本地模式） */
 const cloudSigned = computed(() => !!(cloud.ready && cloud.user));
@@ -133,6 +144,15 @@ function reload() {
           </header>
 
           <main>
+            <!-- 宠物系统通知浮层（#2：死亡哀悼 / 初始宠物降级 / 食物过期） -->
+            <transition-group name="notice" tag="div" class="pet-notice-stack">
+              <div v-for="(n, i) in petNotices" :key="n.kind + '-' + i" class="pet-notice">
+                <span class="pet-notice-icon">{{ noticeIcon[n.kind] || "🐾" }}</span>
+                <span class="pet-notice-text">{{ noticeText(n) }}</span>
+                <button class="pet-notice-close" @click="dismissPetNotice(i)">✕</button>
+              </div>
+            </transition-group>
+
             <div v-if="crashed" class="crash-box">
               <p class="crash-title">😿 {{ t("common.oops") }}</p>
               <p class="crash-msg">{{ crashed }}</p>

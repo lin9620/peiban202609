@@ -3,11 +3,11 @@
 import { ref, computed, onBeforeUnmount, onMounted } from "vue";
 import { t } from "../i18n.js";
 import { SPECIES } from "../data/pets.js";
-import { activePet, cookbook, applySnackRain } from "../stores/petStore.js";
+import { activePet, cookbook, applySnackRain, rainRewardLeft, RAIN_REWARD_MAX } from "../stores/petStore.js";
 import { getItem, setItem } from "../utils/storage.js";
 import {
   GAME_SECONDS, MAX_MISSED, difficulty, spawnItem, advanceY,
-  isCaught, isMissed,
+  isCaught, isMissed, PET_Y_MIN, PET_Y_MAX, PET_Y_SPEED,
 } from "../utils/snackGame.js";
 
 const emit = defineEmits(["close"]);
@@ -23,6 +23,7 @@ const left = ref(GAME_SECONDS);
 const best = ref(Number(getItem(BEST_KEY)) || 0);
 const newBest = ref(false);
 const reward = ref(null);
+const rewardLeft = ref(RAIN_REWARD_MAX);   // #3 今日还剩几次金币奖励（说明页/结算都显示）
 
 /* 宠物形象：自定义立绘 > 物种 emoji */
 const petImg = computed(() => (activePet.value && activePet.value.custom && activePet.value.custom.img) || "");
@@ -35,18 +36,21 @@ const petFace = computed(() => {
 /* 运行时状态 */
 const items = ref([]);
 const petX = ref(0.5);
+const petY = ref(0.86);   // #3 宠物全屏移动：y 也自由（0.2~0.92）
 const fx = ref([]);
 const happy = ref(0);
 const dishCount = ref(0);
 
 let raf = 0, last = 0, spawnAcc = 0, elapsed = 0, fxId = 0;
-let keyL = false, keyR = false;
+let keyL = false, keyR = false, keyU = false, keyD = false;
 let dishPool = [];
 
 function onKey(e) {
   const on = e.type === "keydown";
   if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") keyL = on;
   if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") keyR = on;
+  if (e.key === "ArrowUp" || e.key === "w" || e.key === "W") keyU = on;
+  if (e.key === "ArrowDown" || e.key === "s" || e.key === "S") keyD = on;
 }
 
 function onMove(e) {
@@ -54,8 +58,11 @@ function onMove(e) {
   const el = e.currentTarget;
   if (!el || !el.getBoundingClientRect) return;
   const rect = el.getBoundingClientRect();
-  if (!rect.width) return;
+  if (!rect.width || !rect.height) return;
   petX.value = Math.min(0.94, Math.max(0.06, (e.clientX - rect.left) / rect.width));
+  /* 触摸/鼠标也控制 y：只在明显低于顶栏的区域内跟随，避免误触计分条 */
+  const yRatio = (e.clientY - rect.top) / rect.height;
+  if (yRatio > 0.12) petY.value = Math.min(PET_Y_MAX, Math.max(PET_Y_MIN, yRatio));
 }
 
 function loop(ts) {
@@ -68,6 +75,8 @@ function loop(ts) {
 
   if (keyL) petX.value = Math.max(0.06, petX.value - dt * 0.95);
   if (keyR) petX.value = Math.min(0.94, petX.value + dt * 0.95);
+  if (keyU) petY.value = Math.max(PET_Y_MIN, petY.value - dt * PET_Y_SPEED);
+  if (keyD) petY.value = Math.min(PET_Y_MAX, petY.value + dt * PET_Y_SPEED);
 
   spawnAcc += dt;
   let iv = difficulty(elapsed);
@@ -79,11 +88,11 @@ function loop(ts) {
   const keep = [];
   for (const it of items.value) {
     it.y = advanceY(it, dt);
-    if (isCaught(it, petX.value, PET_HALF_W)) {
+    if (isCaught(it, petX.value, PET_HALF_W, petY.value)) {
       score.value += it.value;
       happy.value++;
       const fid = "f" + fxId++;
-      fx.value.push({ id: fid, x: it.x, text: "+" + it.value });
+      fx.value.push({ id: fid, x: it.x, y: it.y, text: "+" + it.value });
       setTimeout(() => { fx.value = fx.value.filter((f) => f.id !== fid); }, 700);
     } else if (isMissed(it)) {
       missed.value++;
@@ -121,6 +130,7 @@ function finish() {
   phase.value = "over";
   items.value = [];
   reward.value = applySnackRain(score.value);
+  rewardLeft.value = rainRewardLeft();   // 结算后立即刷新（含本轮消耗）
   if (score.value > best.value) {
     best.value = score.value; newBest.value = true;
     try { setItem(BEST_KEY, String(best.value)); } catch (e) {}
@@ -133,6 +143,7 @@ onBeforeUnmount(cleanup);
 onMounted(() => {
   dishPool = cookbook.filter((d) => d && d.img).slice(0, 12);
   dishCount.value = dishPool.length;
+  rewardLeft.value = rainRewardLeft();
 });
 
 /* —— 内联样式助手 —— */
@@ -157,6 +168,7 @@ const itemStyle = (it) => ({ left: (it.x * 100) + "%", top: (Math.max(0, it.y) *
       </p>
       <button class="sr-btn" @click="onStart">{{ t("pet.snack.start") }}</button>
       <p class="sr-best">🏆 {{ t("pet.snack.best") }}: {{ best }}</p>
+      <p class="sr-left">💰 {{ t("pet.snack.rewardLeft", { n: rewardLeft, m: RAIN_REWARD_MAX }) }}</p>
     </div>
 
     <!-- 游戏中 -->
@@ -168,8 +180,8 @@ const itemStyle = (it) => ({ left: (it.x * 100) + "%", top: (Math.max(0, it.y) *
         <img v-if="it.kind === 'dish' && it.img" :src="it.img" alt="" draggable="false" />
         <span v-else>{{ it.emoji }}</span>
       </div>
-      <div v-for="f in fx" :key="f.id" class="sr-fx" :style="{ left: (f.x * 100) + '%' }">{{ f.text }}</div>
-      <div :key="happy" class="sr-pet bounce" :style="{ left: (petX * 100) + '%' }">
+      <div v-for="f in fx" :key="f.id" class="sr-fx" :style="{ left: (f.x * 100) + '%', top: (f.y * 100) + '%' }">{{ f.text }}</div>
+      <div :key="happy" class="sr-pet bounce" :style="{ left: (petX * 100) + '%', top: (petY * 100) + '%' }">
         <img v-if="petImg" :src="petImg" alt="" draggable="false" />
         <span v-else>{{ petFace }}</span>
       </div>
@@ -186,6 +198,10 @@ const itemStyle = (it) => ({ left: (it.x * 100) + "%", top: (Math.max(0, it.y) *
         <li>💛 +{{ (reward && reward.mood) || 0 }}</li>
         <li>✨ +{{ (reward && reward.exp) || 0 }} EXP</li>
       </ul>
+      <p v-if="rewardLeft > 0" class="sr-left">
+        💰 {{ t("pet.snack.rewardLeft", { n: rewardLeft, m: RAIN_REWARD_MAX }) }}
+      </p>
+      <p v-else class="sr-left dim">💤 {{ t("pet.snack.rewardDone") }}</p>
       <p class="sr-best">🏆 {{ t("pet.snack.best") }}: {{ best }}</p>
       <div class="sr-row">
         <button class="sr-btn" @click="onStart">{{ t("pet.snack.again") }}</button>
@@ -233,6 +249,8 @@ const itemStyle = (it) => ({ left: (it.x * 100) + "%", top: (Math.max(0, it.y) *
 }
 .sr-btn.ghost { background: transparent; color: var(--ink, #4a3b2f); box-shadow: inset 0 0 0 2px rgba(120, 100, 80, .25); }
 .sr-best { margin: 14px 0 0; font-size: 13px; opacity: .65; }
+.sr-left { margin: 6px 0 0; font-size: 13px; font-weight: 700; color: #F0842F; }
+.sr-left.dim { color: var(--ink, #4a3b2f); opacity: .55; font-weight: 600; }
 .sr-score { font-size: 44px; font-weight: 800; margin: 4px 0; color: #F0842F; }
 .sr-newbest { color: #46A78E; font-weight: 700; margin: 0 0 6px; }
 .sr-reward { list-style: none; padding: 0; margin: 8px 0 4px; display: flex; gap: 12px; justify-content: center; font-weight: 700; }
@@ -250,18 +268,18 @@ const itemStyle = (it) => ({ left: (it.x * 100) + "%", top: (Math.max(0, it.y) *
   box-shadow: 0 4px 12px rgba(0, 0, 0, .2);
 }
 .sr-fx {
-  position: absolute; top: 80%; transform: translateX(-50%);
+  position: absolute; transform: translate(-50%, -50%);
   font-weight: 800; font-size: 20px; color: #ffd76a;
   text-shadow: 0 2px 6px rgba(0, 0, 0, .4);
   pointer-events: none; animation: srUp .7s ease-out forwards;
 }
 .sr-pet {
-  position: absolute; bottom: 4%; transform: translateX(-50%);
+  position: absolute; transform: translate(-50%, -50%);
   font-size: 72px; line-height: 1; pointer-events: none;
   filter: drop-shadow(0 8px 14px rgba(0, 0, 0, .3));
 }
 .sr-pet img { width: 96px; height: 96px; object-fit: contain; }
 .sr-pet.bounce { animation: srBounce .3s ease; }
-@keyframes srBounce { 0% { transform: translateX(-50%) scale(1); } 40% { transform: translateX(-50%) scale(1.12, .9); } 100% { transform: translateX(-50%) scale(1); } }
+@keyframes srBounce { 0% { transform: translate(-50%, -50%) scale(1); } 40% { transform: translate(-50%, -50%) scale(1.12, .9); } 100% { transform: translate(-50%, -50%) scale(1); } }
 @keyframes srUp { 0% { opacity: 1; margin-top: 0; } 100% { opacity: 0; margin-top: -56px; } }
 </style>

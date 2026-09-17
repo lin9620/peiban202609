@@ -18,6 +18,14 @@ const RATE = {
   sleepEnergy: 6,
 };
 
+/* ---------- 阶段 A 新规（画板上限/保质期、疏于照顾、领养上限、游戏奖励） ---------- */
+export const DISH_MAX = 7;                     // #1 画的食物最多存 7 个
+export const DISH_TTL_MS = 48 * 3600 * 1000;   // #1 食物保质期 48 小时，过期消失
+export const MAX_PETS = 3;                     // #12 角色最多 3 只（存活的）
+export const NEGLECT_MS = 7 * 24 * 3600 * 1000; // #2 连续 7 天不照顾
+export const RAIN_REWARD_COINS = 2;            // #3 玩一局游戏奖励 2 金币
+export const RAIN_REWARD_MAX = 3;              // #3 每天最多奖励 3 次，多玩不奖励
+
 /* ---------- 玩家钱包（全局共享） ---------- */
 export const wallet = reactive({ coins: 50 });
 
@@ -53,6 +61,9 @@ export function makePet(species, name, personality, custom = null) {
     level: 1, exp: 0,
     sleeping: false,
     lastTick: Date.now(),
+    lastCareAt: Date.now(),   // #2 最后被照顾时间（喂/玩/摸/洗/睡任一刷新）
+    dead: false,              // #2 领养的宠物 7 天不照顾 → 去世
+    isInitial: false,         // #2 初始宠物不去世：等级逐日衰减，直到 1 级
   };
 }
 
@@ -67,6 +78,12 @@ export const petStore = reactive({
       this.pets = raw.pets;
       this.activeId = raw.activeId || raw.pets[0].id;
       wallet.coins = raw.coins ?? 50;
+      /* 旧存档补齐阶段 A 新字段：首只视为初始宠物，其余按领养算 */
+      this.pets.forEach((p, i) => {
+        if (p.isInitial === undefined) p.isInitial = i === 0;
+        if (!p.lastCareAt) p.lastCareAt = p.lastTick || Date.now();
+        if (p.dead === undefined) p.dead = false;
+      });
       return;
     }
     // 旧版单宠物存档迁移
@@ -79,6 +96,7 @@ export const petStore = reactive({
           clean: legacy.clean ?? 80, energy: legacy.energy ?? 80,
           level: legacy.level ?? 1, exp: legacy.exp ?? 0,
         });
+        old.isInitial = true;   // 初始宠物：不去世，只衰减等级
         this.pets = [old];
         this.activeId = old.id;
         return;
@@ -86,6 +104,7 @@ export const petStore = reactive({
     } catch (e) {}
     // 全新玩家：送一只小橘猫
     const first = makePet("cat", "Mandarin", "gentle");
+    first.isInitial = true;
     this.pets = [first];
     this.activeId = first.id;
     wallet.coins = 50;
@@ -100,6 +119,7 @@ export const petStore = reactive({
   },
 
   adopt(species, name, personality, custom = null) {
+    if (this.pets.filter((p) => !p.dead).length >= MAX_PETS) return null; // #12 上限 3 只
     const pet = makePet(species, name, personality, custom);
     this.pets.push(pet);
     this.activeId = pet.id;
@@ -115,9 +135,15 @@ export const petStore = reactive({
   },
 });
 
-export const activePet = computed(
-  () => petStore.pets.find((p) => p.id === petStore.activeId) || petStore.pets[0]
-);
+export const activePet = computed(() => {
+  const pets = petStore.pets;
+  return (
+    pets.find((p) => p.id === petStore.activeId && !p.dead) ||  // 当前活着
+    pets.find((p) => !p.dead) ||                                 // 任一活着
+    pets.find((p) => p.id === petStore.activeId) ||              // 全去世时仍指回（纪念页用）
+    pets[0]
+  );
+});
 
 /* ---------- 台词 ---------- */
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
@@ -202,6 +228,7 @@ export function savePet() {
 }
 
 function applyOffline(pet) {
+  if (pet.dead) return;
   const mins = Math.min((Date.now() - pet.lastTick) / 60000, 720);
   if (mins < 3) return;
   pet.hunger = clamp(pet.hunger - RATE.hunger * mins);
@@ -211,11 +238,45 @@ function applyOffline(pet) {
   pet.sleeping = false;
 }
 
+/* ---------- #2 疏忽结算（登录与心跳都会调用） ----------
+ * 领养的宠物：连续 7 天（NEGLECT_MS）没有任何照顾动作 → 去世；
+ * 初始宠物：不会去世，每疏忽满 1 天等级 −1，直到 1 级。
+ * 产生的通知推进 petNotices，由登录流程/界面统一展示（哀悼、降级提示）。 */
+export const petNotices = reactive([]);
+
+export function dismissPetNotice(i) { petNotices.splice(i, 1); }
+
+export function settleNeglect(pet) {
+  if (!pet || pet.dead) return;
+  const anchor = pet.lastCareAt || pet.lastTick || Date.now();
+  const idleMs = Date.now() - anchor;
+  const DAY = 24 * 3600 * 1000;
+  if (pet.isInitial) {
+    const daysIdle = Math.floor(idleMs / DAY);
+    if (daysIdle >= 1) {
+      const target = Math.max(1, pet.level - daysIdle);
+      if (target < pet.level) {
+        petNotices.push({ kind: "decay", name: pet.name, from: pet.level, to: target });
+        pet.level = target;
+        pet.exp = 0;
+      }
+    }
+    return;
+  }
+  if (idleMs >= NEGLECT_MS) {
+    pet.dead = true;
+    pet.sleeping = false;
+    petNotices.push({ kind: "death", name: pet.name });
+  }
+}
+
 export function initPet() {
   wallet.load();
   petStore.load();
   petStore.pets.forEach(applyOffline);
   petStore.pets.forEach((p) => { if (p.wear === undefined) p.wear = null; });
+  petStore.pets.forEach(settleNeglect);   // #2 登录时结算疏忽（死亡/降级 → petNotices）
+  pruneCookbook();                        // #1 清掉已过期的手绘食物
   initAdventure();
   initMailbox();
   const first = activePet.value;
@@ -227,7 +288,10 @@ export function initPet() {
 }
 
 export function tickPet() {
+  petStore.pets.forEach(settleNeglect);   // #2 心跳里持续结算（长时间挂机也会触发）
+  pruneCookbook();                        // #1 画板上的过期食物按时消失
   petStore.pets.forEach((pet) => {
+    if (pet.dead) return;
     if (pet.sleeping) {
       pet.energy = clamp(pet.energy + RATE.sleepEnergy / 60);
       if (pet.energy >= 100) {
@@ -248,10 +312,14 @@ export function tickPet() {
 /* ---------- 互动（作用于当前宠物） ---------- */
 function cur() { return activePet.value; }
 
+/* #2 任一照顾动作都刷新 lastCareAt（7 天倒计时的锚点） */
+function touchCare(pet) { if (pet && !pet.dead) pet.lastCareAt = Date.now(); }
+
 export function doPlay() {
   const pet = cur();
-  if (!pet || pet.sleeping) return;
+  if (!pet || pet.sleeping || pet.dead) return;
   if (pet.energy < 15 || pet.hunger < 15) return sayLine(pet, "tired");
+  touchCare(pet);
   pet.mood = clamp(pet.mood + rand(15, 25));
   pet.energy = clamp(pet.energy - 10);
   pet.hunger = clamp(pet.hunger - 6);
@@ -265,7 +333,8 @@ export function doPlay() {
 
 export function doPetting() {
   const pet = cur();
-  if (!pet || pet.sleeping) return;
+  if (!pet || pet.sleeping || pet.dead) return;
+  touchCare(pet);
   pet.mood = clamp(pet.mood + rand(8, 12));
   wallet.coins += pet.mood >= 60 ? 2 : 1;
   gainExp(pet, 5);
@@ -276,8 +345,9 @@ export function doPetting() {
 
 export function doClean() {
   const pet = cur();
-  if (!pet || pet.sleeping) return;
+  if (!pet || pet.sleeping || pet.dead) return;
   if (pet.clean >= 95) return;
+  touchCare(pet);
   pet.clean = 100;
   pet.energy = clamp(pet.energy - 5);
   gainExp(pet, 8);
@@ -288,7 +358,8 @@ export function doClean() {
 
 export function toggleSleep() {
   const pet = cur();
-  if (!pet) return;
+  if (!pet || pet.dead) return;
+  touchCare(pet);
   if (pet.sleeping) {
     pet.sleeping = false;
     sayLine(pet, "sleepOut");
@@ -300,10 +371,13 @@ export function toggleSleep() {
   petStore.save();
 }
 
-/* ---------- 手绘食谱 ---------- */
+/* ---------- 手绘食谱（#1：最多 7 份、48 小时保质期） ---------- */
 function loadCookbook() {
-  try { return JSON.parse(getItem(BOOK_KEY)) || []; }
-  catch (e) { return []; }
+  try {
+    const list = JSON.parse(getItem(BOOK_KEY));
+    const now = Date.now();
+    return Array.isArray(list) ? list.filter((d) => d && (!d.expiresAt || d.expiresAt > now)) : [];
+  } catch (e) { return []; }
 }
 
 export const cookbook = reactive(loadCookbook());
@@ -313,9 +387,23 @@ export function saveCookbook() {
   syncPetHome();
 }
 
+/* #1 清掉过期食物；返回清掉的数量（initPet 与心跳都会调用） */
+export function pruneCookbook() {
+  const now = Date.now();
+  let removed = 0;
+  for (let i = cookbook.length - 1; i >= 0; i--) {
+    const d = cookbook[i];
+    if (!d || (d.expiresAt && d.expiresAt <= now)) { cookbook.splice(i, 1); removed++; }
+  }
+  if (removed) saveCookbook();
+  return removed;
+}
+
 export function addDish(dish) {
+  pruneCookbook();
+  dish.expiresAt = Date.now() + DISH_TTL_MS;          // #1 保质期
   cookbook.unshift(dish);
-  if (cookbook.length > 24) cookbook.pop();
+  while (cookbook.length > DISH_MAX) cookbook.pop();  // #1 最多 7 份，挤掉最旧
   saveCookbook();
   markTask("draw");
 }
@@ -327,8 +415,9 @@ export function removeDish(id) {
 
 export function feedDish(dish) {
   const pet = cur();
-  if (!pet || pet.sleeping) return;
+  if (!pet || pet.sleeping || pet.dead) return;
   if (pet.hunger >= 98) return sayLine(pet, "full");
+  touchCare(pet);
   const e = dish.effort || 40;
   pet.hunger = clamp(pet.hunger + 25 + Math.round(e * 0.25));
   pet.mood = clamp(pet.mood + 8 + Math.round(e * 0.15));
@@ -340,20 +429,50 @@ export function feedDish(dish) {
   petStore.save();
 }
 
-/* ---------- 零食雨结算：分数 → 四维/金币/经验 ---------- */
+/* ---------- 零食雨结算：分数 → 四维/经验；金币走每日上限（#3：一局 2 金币、每天 3 次） ---------- */
+const RAIN_KEY = "warm-paws-rain-v1";
+
+function loadRain() {
+  try {
+    const r = JSON.parse(getItem(RAIN_KEY));
+    if (r && r.date === todayKey()) return r;
+  } catch (e) {}
+  return { date: todayKey(), games: 0 };
+}
+
+export const rainLog = reactive(loadRain());
+
+function saveRain() {
+  try { setItem(RAIN_KEY, JSON.stringify(rainLog)); } catch (e) {}
+}
+
+/* 今天还剩几次有奖励的游戏次数（跨天自动重置） */
+export function rainRewardLeft() {
+  if (rainLog.date !== todayKey()) {
+    rainLog.date = todayKey();
+    rainLog.games = 0;
+    saveRain();
+  }
+  return Math.max(0, RAIN_REWARD_MAX - rainLog.games);
+}
+
 export function applySnackRain(score) {
   const pet = cur();
-  if (!pet) return null;
+  if (!pet || pet.dead) return null;
+  touchCare(pet);                       // 玩游戏也算照顾（刷新 7 天倒计时）
   const r = snackReward(score);
+  const left = rainRewardLeft();
+  const coins = left > 0 ? RAIN_REWARD_COINS : 0;   // #3 超过 3 局只回状态不给金币
+  if (left > 0) { rainLog.games += 1; saveRain(); }
   pet.hunger = clamp(pet.hunger + r.hunger);
   pet.mood = clamp(pet.mood + r.mood);
-  wallet.coins += r.coins;
+  wallet.coins += coins;
   gainExp(pet, r.exp);
   if (score >= 5) markTask("feed");
   sayLine(pet, "play");
   jump();
   petStore.save();
-  return r;
+  return { ...r, coins };
 }
 
 /* ---------- 心情打卡 ---------- */
@@ -375,6 +494,7 @@ export function checkInMood(index) {
   saveMoodLog();
   const pet = cur();
   if (pet) {
+    touchCare(pet);                     // 心情打卡也算照顾
     pet.mood = clamp(pet.mood + 5 + (index <= 1 ? 3 : 0));
     gainExp(pet, 8);
   }
