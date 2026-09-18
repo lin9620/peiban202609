@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, watch } from "vue";
+import { useRouter } from "vue-router";
 import { NButton, NInput, NTag } from "naive-ui";
 import { t, i18n } from "../i18n.js";
 import { stories } from "../data/stories.js";
@@ -9,8 +10,10 @@ import { checkInMood, moodStreak, activePet, activePetAway } from "../stores/pet
 import {
   BOTTLE_BODY_MAX, BOTTLE_SEND_MAX, BOTTLE_FISH_MAX,
   canBottle, bottleErrKey,
-  bottleSend, bottleFish, bottleReply, bottleRelease, bottleMine, bottleHeld,
+  bottleSend, bottleFish, bottleReply, bottleRelease, bottleHeld,
+  bottleRecords, bottleChatState,
 } from "../utils/bottle.js";
+import { relativeTime } from "../utils/dmRules.js";
 import { seasonNow } from "../data/extras.js";
 import { cloud } from "../utils/supabase.js";
 import { cloudSetStatus, cloudFetchStatusCounts, cloudFetchProfile } from "../utils/wall.js";
@@ -115,6 +118,7 @@ const season = seasonNow();
 const seasonName = computed(() => season.name[i18n.locale] || season.name.en);
 
 /* —— 温暖漂流瓶（#6）：写信投进海里，其他用户捞起回信或放回 —— */
+const router = useRouter();   /* #17 记录里「去聊天」直接进会话页 */
 const cloudSigned = computed(() => !!(cloud.ready && cloud.user));
 const mailDraft = ref("");
 const replyDraft = ref("");
@@ -122,7 +126,6 @@ const mailBusy = ref(false);
 const mailHint = ref("");
 const fishing = ref(false);
 const fished = ref(null);       /* 刚捞起、还没处理的这封 */
-const mine = ref([]);           /* 我投的信（含收到的回信） */
 const held = ref([]);           /* 我之前捞起、还没回的信（换页/刷新后找回来） */
 
 /* 每日次数用本机日键记账（展示用）；超不超由服务端说了算 */
@@ -146,9 +149,8 @@ const tray = computed(() => fished.value || held.value[0] || null);
 
 async function refreshBottle() {
   if (!cloudSigned.value) return;
-  const [m, h] = await Promise.all([bottleMine(), bottleHeld()]);
-  mine.value = m || [];
-  held.value = h || [];
+  /* #17 记录区改走 bottleRecords 分类分页；这里只管「捞起的信」找回（tray） */
+  held.value = await bottleHeld() || [];
   fished.value = null;
 }
 
@@ -207,7 +209,64 @@ async function doRelease() {
   }
 }
 
-onMounted(() => { refreshBottle(); });
+onMounted(() => { refreshBottle(); loadRecords(true); });
+
+/* —— 漂流瓶记录（#17）：我发布的 / 我捞到的 两类，按发布时间新→旧，10 条一页 —— */
+const REC_PAGE = 10;
+const recTab = ref("mine");      /* mine = 我发布的；held = 我捞到的 */
+const recRows = ref([]);
+const recPage = ref(0);
+const recDone = ref(false);
+const recLoading = ref(false);
+const myId = computed(() => (cloud.user && cloud.user.id) || "");
+
+async function loadRecords(reset = false) {
+  if (!cloudSigned.value || recLoading.value) return;
+  recLoading.value = true;
+  const target = reset ? 0 : recPage.value;
+  try {
+    const got = await bottleRecords(null, target * REC_PAGE, {
+      mine: recTab.value === "mine", limit: REC_PAGE,
+    }) || [];
+    recRows.value = got;
+    recPage.value = target;
+    recDone.value = got.length < REC_PAGE;
+  } catch (e) {
+    recRows.value = [];
+    recDone.value = true;
+  } finally { recLoading.value = false; }
+}
+function switchRecTab(x) {
+  if (recTab.value === x) return;
+  recTab.value = x;
+  loadRecords(true);
+}
+function recPageGo(d) {
+  const next = recPage.value + d;
+  if (next < 0 || (d > 0 && recDone.value)) return;
+  recPage.value = next;
+  loadRecords(false);
+}
+const whenRec = (ts) => relativeTime(ts, Date.now(), t);
+
+/* 我发布的一封的当前状态：被捞走 / 已有回信 / 还在海里；我捞到的：已回信 / 在我手里 / 已放回 */
+function recState(l) {
+  if (recTab.value === "mine") {
+    if (l.status === "answered") return "bottle.stReplied";
+    if (l.status === "held") return "bottle.stPicked";
+    return "bottle.stSea";
+  }
+  if (l.reply_by === myId.value) return "bottle.stAnswered";
+  if (l.status === "held") return "bottle.stInHand";
+  return "bottle.stReleased";
+}
+/* 点击记录进聊天：仅双方确认建立会话后（数据库裁定，按钮只对 accepted 出现） */
+function canChat(l) {
+  return bottleChatState(l, myId.value) === "accepted" && !!l.conv_id;
+}
+function openRec(l) {
+  if (canChat(l)) router.push({ name: "messages", params: { id: String(l.conv_id) } });
+}
 </script>
 
 <template>
@@ -375,14 +434,41 @@ onMounted(() => { refreshBottle(); });
           </div>
         </div>
 
-        <div v-if="mine.length" class="mail-list">
-          <div v-for="l in mine.slice(0, 8)" :key="l.id" class="mail-item">
+        <!-- #17 记录：我发布的 / 我捞到的，按发布时间新→旧，10 条一页；能聊天的点进去 -->
+        <div class="mail-list">
+          <div class="bottle-tabs">
+            <button class="bottle-tab" :class="{ on: recTab === 'mine' }" @click="switchRecTab('mine')">
+              {{ t("bottle.mineTab") }}
+            </button>
+            <button class="bottle-tab" :class="{ on: recTab === 'held' }" @click="switchRecTab('held')">
+              {{ t("bottle.heldTab") }}
+            </button>
+          </div>
+          <p v-if="recLoading" class="sub">{{ t("bottle.recordsLoading") }}</p>
+          <p v-else-if="!recRows.length" class="sub">{{ t("bottle.recordsEmpty") }}</p>
+          <div
+            v-for="l in recRows" :key="l.id"
+            class="mail-item" :class="{ clickable: canChat(l) }"
+            @click="openRec(l)">
             <div class="m-q">{{ l.body }}</div>
+            <div class="m-meta">
+              <span class="m-when">{{ whenRec(recTab === "mine" ? l.created_at : (l.held_at || l.created_at)) }}</span>
+              <span class="m-state">{{ t(recState(l)) }}</span>
+            </div>
             <div v-if="l.reply" class="m-a">
               <span class="m-who">{{ t("bottle.replyFrom") }}</span>
               <span class="m-body">{{ l.reply }}</span>
             </div>
-            <div v-else class="m-wait">{{ t("bottle.pending") }}</div>
+            <span v-if="canChat(l)" class="bottle-chat">{{ t("bottle.openChat") }} →</span>
+          </div>
+          <div class="bottle-pager">
+            <n-button size="tiny" round :disabled="recPage <= 0 || recLoading" @click="recPageGo(-1)">
+              ← {{ t("notif.prev") }}
+            </n-button>
+            <span class="sub">{{ t("bottle.pageInfo", { p: recPage + 1 }) }}</span>
+            <n-button size="tiny" round :disabled="recDone || recLoading" @click="recPageGo(1)">
+              {{ t("notif.next") }} →
+            </n-button>
           </div>
         </div>
       </template>

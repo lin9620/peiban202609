@@ -305,7 +305,7 @@ begin
     return jsonb_build_object('ok', false, 'reason', 'not-found');
   end if;
 
-  if not v_rm and v_views > 0 and (v_dis::numeric / v_views) >= 0.01 then
+  if not v_rm and v_views > 0 and v_dis >= 5 and (v_dis::numeric / v_views) >= 0.01 then
     update public.wall_posts set removed = true, removed_at = now() where id = p_post;
     v_rm := true;
   end if;
@@ -782,6 +782,18 @@ begin
   end if;
   if exists (select 1 from public.dm_blocks where blocker = v_other and blocked = me) then
     raise exception 'blocked';         -- 对方拉黑了我
+  end if;
+
+  -- #22 首次会话限制：对方从没回过时，先发起的一方最多发 3 条（防骚扰；对方一回复即解锁）。
+  -- 漂流瓶续聊导入的会话双方各有一条消息，天然解锁，不受影响；已撤回的不计数。
+  if not exists (
+    select 1 from public.dm_messages
+     where conv_id = p_conv and sender = v_other and deleted_at is null
+  ) then
+    if (select count(*) from public.dm_messages
+         where conv_id = p_conv and sender = me and deleted_at is null) >= 3 then
+      raise exception 'first-limit';
+    end if;
   end if;
 
   insert into public.dm_messages (conv_id, sender, body, image_path)
@@ -1545,24 +1557,36 @@ begin
 end $$;
 
 -- 独立记录分页，深链按 ID 取单条；只返回参与者自己的信件。
-create or replace function public.bottle_records(p_id uuid default null, p_offset integer default 0)
+create or replace function public.bottle_records(
+  p_id     uuid default null,
+  p_offset integer default 0,
+  p_mine   boolean default null,
+  p_limit  integer default 30
+)
 returns setof public.bottle_letters language sql stable security definer set search_path = public as $$
-  select * from public.bottle_letters
-   where (user_id = auth.uid() or reply_by = auth.uid())
-     and (p_id is null or id = p_id)
-   order by coalesce(reply_at, created_at) desc, id
-   limit 30 offset greatest(coalesce(p_offset, 0), 0)
+  select l.* from public.bottle_letters l
+   where (p_id is null or l.id = p_id)
+     and (
+       (p_mine is null and (l.user_id = auth.uid() or l.reply_by = auth.uid()))
+       or (p_mine is true and l.user_id = auth.uid())
+       or (p_mine is false and exists (
+             select 1 from public.bottle_fishes f
+              where f.user_id = auth.uid() and f.letter_id = l.id))
+     )
+   order by l.created_at desc, l.id
+   limit greatest(coalesce(p_limit, 30), 1)
+   offset greatest(coalesce(p_offset, 0), 0)
 $$;
 
 -- 执行权限：与既有函数一致（anon 可达但一律被 auth-required 拦下）
 grant execute on all functions in schema public to anon, authenticated;
 
--- 漂流瓶续聊函数收权：只给登录用户（与 MIGRATION_bottle_chat.sql 一致）
+-- 漂流瓶续聊/记录函数收权：只给登录用户（与各 MIGRATION 一致）
 revoke all on function public.bottle_notify_reply() from public, anon, authenticated;
 revoke all on function public.bottle_chat_decide(uuid, boolean) from public, anon;
-revoke all on function public.bottle_records(uuid, integer) from public, anon;
+revoke all on function public.bottle_records(uuid, integer, boolean, integer) from public, anon;
 grant execute on function public.bottle_chat_decide(uuid, boolean) to authenticated;
-grant execute on function public.bottle_records(uuid, integer) to authenticated;
+grant execute on function public.bottle_records(uuid, integer, boolean, integer) to authenticated;
 
 -- ============================================================
 -- 执行完毕。请在 Supabase SQL Editor 运行本文件，然后跑：

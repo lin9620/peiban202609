@@ -107,6 +107,7 @@ ok("刚好 2000 → 通过", validateSend("x".repeat(BODY_MAX), null) === null);
 const ERR = [
   ["blocked-by-me", "dm.errBlockedByMe"],
   ["blocked", "dm.errBlocked"],
+  ["first-limit", "dm.errFirstLimit"],
   ["forbidden", "dm.errForbidden"],
   ["bad-conv", "dm.errForbidden"],
   ["empty-message", "dm.errEmpty"],
@@ -148,7 +149,7 @@ const NEED_DM = [
   "dm.sendFailed", "dm.recalled", "dm.recall", "dm.noMessages", "dm.gateBlockedByMe",
   "dm.gateRequest", "dm.placeholder", "dm.hint", "dm.send", "dm.pickOne",
   "dm.emptyPreview", "dm.errEmpty", "dm.errTooLong", "dm.errBlocked", "dm.errBlockedByMe",
-  "dm.errForbidden", "dm.errAuth", "dm.errNoUser", "dm.errNetwork", "dm.errTooLate",
+  "dm.errForbidden", "dm.errAuth", "dm.errNoUser", "dm.errNetwork", "dm.errTooLate", "dm.errFirstLimit",
   "time.now", "time.minAgo", "time.hourAgo", "time.yesterday",
 ];
 for (const k of NEED_DM) {
@@ -250,8 +251,15 @@ const mv = fs.readFileSync("src/views/MessagesView.vue", "utf8");
 ok("会话页轮询只在可见时跑", mv.includes("document.hidden") && mv.includes("visibilitychange"));
 ok("会话页进页面即抬已读水位", mv.includes("markRead"));
 const nv = fs.readFileSync("src/views/NotificationsView.vue", "utf8");
-ok("通知页有分栏与偏好", nv.includes("TABS") && nv.includes("prefsGet"));
+/* #14 偏好开关移到设置页；通知页负责分栏 + 每页 20 条手动翻页 */
+ok("通知页有分栏与手动分页（每页 20 条）", nv.includes("TABS") && nv.includes("PAGE = 20") && nv.includes("goPage"));
+ok("通知页不再内嵌偏好开关（已迁到设置页）", !nv.includes("prefsGet") && !nv.includes("prefsSet"));
 ok("通知页点击会标记已读并跳转", nv.includes("openItem") && nv.includes("targetOf"));
+const sv = fs.readFileSync("src/views/SettingsView.vue", "utf8");
+ok("设置页收拢皮肤/语言/总通知开关/四类偏好（#13）",
+  sv.includes("themeOptions") && sv.includes("langOptions") && sv.includes("prefsSet") && sv.includes("toggleMaster"));
+const mvRouter = fs.readFileSync("src/router.js", "utf8");
+ok("/settings 路由已注册", mvRouter.includes('"/settings"'));
 
 console.log(`dm-test: ${pass} pass, ${fails.length} fail`);
 for (const f of fails) console.log("FAIL  " + f);

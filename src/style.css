@@ -416,6 +416,12 @@ button, input, textarea { font-family: inherit; }
 .post .text { font-size: 13.5px; white-space: pre-line; }
 .post .pic { max-width: 100%; border-radius: 14px; margin-top: 10px; border: 2px solid rgba(255, 255, 255, .95); }
 .react-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+/* #18 反应按钮「颜色变化跟不上手」：把 naive-ui 按钮的默认 ~.3s 过渡压到 60ms */
+.react-row .n-button,
+.react-row .n-button .n-button__border,
+.react-row .n-button .n-button__state-border {
+  transition: background-color .06s ease, color .06s ease, border-color .06s ease, box-shadow .06s ease;
+}
 .react {
   border: 2px solid rgba(255, 159, 90, .3); background: rgba(255, 255, 255, .85);
   border-radius: 999px; padding: 5px 14px; font-size: 12.5px;
@@ -851,6 +857,43 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 }
 .m-count { font-size: 12px; color: var(--ink-faint); font-weight: 700; margin-right: auto; }
 @keyframes mailPulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+
+/* —— 漂流瓶记录（#17）：两类 tab / 时间与状态 / 分页 / 去聊天 —— */
+.bottle-tabs { display: flex; gap: 8px; margin: 4px 0 10px; }
+.bottle-tab {
+  border: 1.5px solid rgba(120, 140, 200, .3); background: rgba(255, 255, 255, .6);
+  border-radius: 999px; padding: 5px 14px; font-size: 12.5px; font-weight: 800;
+  color: var(--ink-soft); cursor: pointer; transition: background-color .12s ease, color .12s ease, border-color .12s ease;
+}
+.bottle-tab.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-deep); }
+.mail-item.clickable { cursor: pointer; }
+.mail-item.clickable:hover { border-color: var(--accent); }
+.m-meta { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 6px; }
+.m-when { font-size: 11px; color: var(--ink-faint); font-weight: 700; }
+.m-state { font-size: 11px; font-weight: 800; color: var(--accent-deep); }
+.bottle-chat { display: inline-block; margin-top: 8px; font-size: 12.5px; font-weight: 800; color: var(--accent-deep); }
+.bottle-pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 10px; }
+
+/* —— 设置页（#13）—— */
+.settings-page { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+.settings-title { font-size: 22px; font-weight: 900; margin: 0 0 4px; }
+.set-block { margin-top: 14px; }
+.set-opts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.set-opt {
+  border: 1.5px solid var(--line); background: rgba(255, 255, 255, .6);
+  border-radius: 999px; padding: 7px 16px; font-size: 13px; font-weight: 800;
+  color: var(--ink-soft); cursor: pointer; transition: background-color .12s ease, color .12s ease, border-color .12s ease;
+}
+.set-opt.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-deep); }
+.set-opt:disabled { opacity: .55; cursor: not-allowed; }
+.set-opt.master { width: 100%; text-align: left; }
+.set-block.dimmed { opacity: .6; }
+
+/* —— 已拉黑面板（#19）—— */
+.dm-blocked-bar { margin-top: 8px; }
+.dm-blocked { margin-top: 8px; padding: 10px 12px; border-radius: 14px; border: 1px dashed var(--line); }
+.dm-blocked-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.dm-blocked-row .dm-name { flex: 1; min-width: 0; }
 
 /* ═══════════ 暖心墙 · 评论 ═══════════ */
 .cmt-toggle {
@@ -1373,6 +1416,9 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 .dm-row-body { flex: 1; min-width: 0; }
 .dm-row-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .dm-name { font-size: 13.5px; font-weight: 800; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* #15 聊天头部的对方名字可点进主页 */
+.dm-peer-link { cursor: pointer; }
+.dm-peer-link:hover { color: var(--accent-deep); text-decoration: underline; }
 .dm-time { font-size: 11px; flex: 0 0 auto; }
 .dm-preview {
   margin: 3px 0 0; font-size: 12.5px; color: var(--ink-soft);

@@ -200,8 +200,12 @@ export const db = {
     return call("/bottle/release", { method: "POST", body: { id } });
   },
 
-  bottleRecords(id = null, offset = 0) {
-    return call(`/bottle/records?offset=${enc(offset)}${id ? `&id=${enc(id)}` : ""}`);
+  bottleRecords(id = null, offset = 0, { mine = null, limit = 0 } = {}) {
+    const qs = [`offset=${enc(offset)}`];
+    if (id) qs.push(`id=${enc(id)}`);
+    if (mine === true || mine === false) qs.push(`mine=${mine}`);
+    if (limit > 0) qs.push(`limit=${enc(limit)}`);
+    return call(`/bottle/records?${qs.join("&")}`);
   },
   bottleChatDecide(id, accept) {
     return call("/bottle/chat", { method: "POST", body: { id, accept } });

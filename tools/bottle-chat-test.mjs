@@ -84,9 +84,14 @@ for (const text of [
   "add column if not exists chat_decision text",
   "function public.bottle_notify_reply()",
   "function public.bottle_chat_decide(p_id uuid, p_accept boolean)",
-  "function public.bottle_records(p_id uuid default null, p_offset integer default 0)",
+  /* #17：记录分类与分页签名（p_mine / p_limit） */
+  "function public.bottle_records(",
+  "p_mine   boolean default null",
+  "p_limit  integer default 30",
   "revoke all on function public.bottle_chat_decide(uuid, boolean) from public, anon;",
   "grant execute on function public.bottle_chat_decide(uuid, boolean) to authenticated;",
+  "revoke all on function public.bottle_records(uuid, integer, boolean, integer) from public, anon;",
+  "grant execute on function public.bottle_records(uuid, integer, boolean, integer) to authenticated;",
 ]) eq(setup.includes(text), true);
 for (const fn of [...sql.matchAll(/create or replace function public\.(\w+)/g)].map((m) => m[1]))
   eq(setup.includes("function public." + fn), true);

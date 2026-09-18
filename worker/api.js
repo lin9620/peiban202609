@@ -554,7 +554,13 @@ export default {
         if (seg[1] === "records" && seg.length === 2 && m === "GET") {
           const id = q.get("id") || null;
           if (id && !UUID_RE.test(id)) return fail(400, "bad-id");
-          return rpc(env, request, "bottle_records", { p_id: id, p_offset: parseOffset(q.get("offset")) });
+          /* #17 记录分类与分页：mine=true/false 只看一类，limit 每页条数（缺省维持旧行为） */
+          const mineRaw = (q.get("mine") || "").toLowerCase();
+          const mine = mineRaw === "true" ? true : mineRaw === "false" ? false : null;
+          const params = { p_id: id, p_offset: parseOffset(q.get("offset")) };
+          if (mine !== null) params.p_mine = mine;
+          if (q.get("limit")) params.p_limit = parseLimit(q.get("limit"), 30);
+          return rpc(env, request, "bottle_records", params);
         }
         if (seg[1] === "chat" && seg.length === 2 && m === "POST") {
           const b = await readJson(request);

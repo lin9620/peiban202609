@@ -118,6 +118,7 @@ export function sendErrKey(err) {
   const s = String((err && (err.message || err)) || "");
   if (s.includes("blocked-by-me")) return "dm.errBlockedByMe";
   if (s.includes("blocked")) return "dm.errBlocked";
+  if (s.includes("first-limit")) return "dm.errFirstLimit";   // #22 首次会话 3 条限制
   if (s.includes("forbidden") || s.includes("bad-conv")) return "dm.errForbidden";
   if (s.includes("empty-message")) return "dm.errEmpty";
   if (s.includes("auth-required") || s.includes("cloud-not-ready")) return "dm.errAuth";

@@ -20,6 +20,8 @@ const canvas = { toDataURL: () => "data:image/png;base64,test" };
 const sandbox = vm.createContext({
   ref, computed, onMounted() {}, t: (k) => k,
   addDish: (dish) => dishes.push(dish),
+  cookbook: dishes,        /* #16 满谱提示：save() 会读 cookbook.length 与 DISH_MAX */
+  DISH_MAX: 7,
   defineEmits: () => (...args) => events.push(args),
   setTimeout() {},
   Image: class { constructor() { images.push(this); } },
@@ -55,6 +57,14 @@ images[0].onload();
 p.undo();
 assert.equal(calls.length, before, "保存后的旧撤销不能恢复旧画面");
 
+// #16 满谱拒收：画板在食谱已满（7 份）时不再收第 8 份，且提示键存在
+dishes.splice(0);
+for (let i = 0; i < 7; i++) dishes.push({ id: i, name: "d" + i });
+p.name.value = "第八道";
+p.save();
+assert.equal(dishes.length, 7, "食谱满 7 份时保存被拒，画板保留继续编辑");
+p.name.value = "";
+
 // 实际 store 行为；Node 使用内存存储，不访问线上、不改浏览器数据。
 const originalNow = Date.now;
 const now = 1800000000000;
@@ -63,8 +73,11 @@ try {
   cookbook.splice(0);
   assert.equal(DISH_MAX, 7);
   assert.equal(DISH_TTL_MS, 48 * 3600 * 1000);
-  for (let id = 0; id < 8; id++) addDish({ id, name: "test", createdAt: now });
-  assert.deepEqual(cookbook.map((d) => d.id), [7, 6, 5, 4, 3, 2, 1]);
+  /* #16 新语义：满 7 份拒收（不再挤掉最旧的一道） */
+  for (let id = 0; id < 7; id++) assert.equal(addDish({ id, name: "test", createdAt: now }), true);
+  assert.deepEqual(cookbook.map((d) => d.id), [6, 5, 4, 3, 2, 1, 0]);
+  assert.equal(addDish({ id: 99, name: "over" }), false, "第 8 份被拒收");
+  assert.deepEqual(cookbook.map((d) => d.id), [6, 5, 4, 3, 2, 1, 0]);
   assert.ok(cookbook.every((d) => d.expiresAt === now + DISH_TTL_MS));
   Date.now = () => now + DISH_TTL_MS - 1;
   assert.equal(pruneCookbook(), 0);
@@ -75,4 +88,4 @@ try {
   Date.now = originalNow;
   cookbook.splice(0);
 }
-console.log("food-painter-test: PASS (保存重置、橡皮模式、异步撤销、7份上限、48小时过期边界)");
+console.log("food-painter-test: PASS (保存重置、橡皮模式、异步撤销、满7份拒收、48小时过期边界)");

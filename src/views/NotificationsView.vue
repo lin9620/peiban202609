@@ -11,11 +11,11 @@
 <script setup>
 import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
-import { NButton, NSwitch, NTag } from "naive-ui";
+import { NButton } from "naive-ui";
 import { t } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
 import * as notifyApi from "../utils/notify.js";
-import { aggregate, kindsFor, itemView, targetOf, normPrefs } from "../utils/notifyRules.js";
+import { aggregate, kindsFor, itemView, targetOf } from "../utils/notifyRules.js";
 import { relativeTime } from "../utils/dmRules.js";
 import { badge, refreshBadge } from "../stores/badgeStore.js";
 
@@ -29,14 +29,14 @@ const TABS = [
   { key: "dms", tk: "notif.tabDms" },
   { key: "system", tk: "notif.tabSystem" },
 ];
-const PAGE = 30;
+const PAGE = 20;   /* #14 每页 20 条，手动翻页（不再一次拉 30 条往下堆） */
 
 const tab = ref("all");
 const unreadOnly = ref(false);
-const rows = ref([]);        // 原始通知（新→旧）
-const offset = ref(0);
+const rows = ref([]);        // 原始通知（当前页，新→旧）
+const page = ref(0);         // #14 当前页码（0 起）
 const loading = ref(false);
-const done = ref(false);     // 没有更多了
+const done = ref(false);     // 当前页不满 → 没有下一页了
 const failed = ref(false);
 const signedIn = computed(() => !!(cloud.ready && cloud.user));
 
@@ -54,27 +54,35 @@ const counts = computed(() => ({
 const shown = computed(() =>
   aggregate(rows.value).map((n) => ({ ...n, view: itemView(n) })));
 
-const prefs = ref(normPrefs(null));
+/* 偏好开关已移到设置页（#13）；这里只负责列表、分栏与翻页 */
 
+/* #14 分页：每次只取一页（20 条）；reset 回到第 0 页 */
 async function load(reset = false) {
   if (!signedIn.value || loading.value) return;
   loading.value = true;
-  if (reset) { rows.value = []; offset.value = 0; done.value = false; failed.value = false; }
+  const target = reset ? 0 : page.value;
+  if (reset) { failed.value = false; done.value = false; }
   let got = [];
   try {
     got = await notifyApi.page({
-      offset: offset.value, limit: PAGE, kinds: kindsFor(tab.value), unreadOnly: unreadOnly.value,
+      offset: target * PAGE, limit: PAGE, kinds: kindsFor(tab.value), unreadOnly: unreadOnly.value,
     }) || [];
   } catch (e) {
     failed.value = true;
     got = [];
   }
-  if (got.length) {
-    rows.value = offset.value === 0 ? got : rows.value.concat(got);
-    offset.value += got.length;
-  }
-  if (got.length < PAGE) done.value = true;
+  rows.value = got;
+  page.value = target;
+  done.value = got.length < PAGE;
   loading.value = false;
+}
+
+/* 翻页（#14）：手动点击才加载下一页/上一页 */
+function goPage(delta) {
+  const next = page.value + delta;
+  if (next < 0 || (delta > 0 && done.value)) return;
+  page.value = next;   /* load(false) 以 page.value 为目标页 */
+  load(false);
 }
 
 function pickTab(k) {
@@ -112,6 +120,7 @@ async function openItem(n) {
   if (!tg) return;
   if (tg.type === "bottle") router.push({ name: "messagesList", query: { bottle: String(tg.bottleId) } });
   else if (tg.type === "dm") router.push({ name: "messages", params: { id: String(tg.convId) } });
+  else if (tg.type === "user") router.push({ name: "waller", params: { id: tg.userId } });  /* #15 摸宠物等 → TA 的主页 */
   else router.push({ path: "/community", query: { post: String(tg.postId) } });
 }
 
@@ -128,16 +137,10 @@ async function clearAll() {
   refreshBadge();
 }
 
-async function savePrefs(next) {
-  prefs.value = normPrefs(next);
-  try { await notifyApi.prefsSet(prefs.value); } catch (e) { /* 静默 */ }
-}
-
 onMounted(async () => {
   if (!signedIn.value) return;
   load(true);
   refreshBadge();
-  try { prefs.value = normPrefs(await notifyApi.prefsGet()); } catch (e) { /* 保持全开 */ }
 });
 </script>
 
@@ -194,32 +197,14 @@ onMounted(async () => {
       <p v-if="!shown.length && !loading" class="sub notif-empty">{{ t("notif.empty") }}</p>
 
       <div class="notif-foot">
-        <n-button v-if="!done" round :loading="loading" @click="load(false)">{{ t("notif.more") }}</n-button>
-        <span v-else-if="shown.length" class="sub">{{ t("notif.noMore") }}</span>
+        <n-button size="small" round :disabled="page <= 0 || loading" @click="goPage(-1)">
+          ← {{ t("notif.prev") }}
+        </n-button>
+        <span class="sub notif-pageinfo">{{ t("notif.pageInfo", { p: page + 1 }) }}</span>
+        <n-button size="small" round :disabled="done || loading" @click="goPage(1)">
+          {{ t("notif.next") }} →
+        </n-button>
       </div>
-
-      <!-- 通知偏好：改一次存一次；缺行 = 全开 -->
-      <section class="card notif-prefs">
-        <h2>{{ t("notif.prefs") }}</h2>
-        <p class="sub">{{ t("notif.prefsHint") }}</p>
-        <label class="notif-pref">
-          <span>{{ t("notif.prefComments") }}</span>
-          <n-switch :value="prefs.comments" @update:value="(v) => savePrefs({ ...prefs, comments: v })" />
-        </label>
-        <label class="notif-pref">
-          <span>{{ t("notif.prefReactions") }}</span>
-          <n-switch :value="prefs.reactions" @update:value="(v) => savePrefs({ ...prefs, reactions: v })" />
-        </label>
-        <label class="notif-pref">
-          <span>{{ t("notif.prefPets") }}</span>
-          <n-switch :value="prefs.pets" @update:value="(v) => savePrefs({ ...prefs, pets: v })" />
-        </label>
-        <label class="notif-pref">
-          <span>{{ t("notif.prefDms") }}</span>
-          <n-switch :value="prefs.dms" @update:value="(v) => savePrefs({ ...prefs, dms: v })" />
-        </label>
-        <n-tag round size="small" :bordered="false" class="soft-tag">{{ t("notif.prefsSaved") }}</n-tag>
-      </section>
     </template>
 
     <router-link class="notif-back" to="/">{{ "← " + t("nav.home") }}</router-link>

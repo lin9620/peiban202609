@@ -426,11 +426,13 @@ export function pruneCookbook() {
 
 export function addDish(dish) {
   pruneCookbook();
+  /* #16 食谱满（7 份）就拒收：不再挤掉最旧的一道，等喂掉或过期腾出位置 */
+  if (cookbook.length >= DISH_MAX) return false;
   dish.expiresAt = Date.now() + DISH_TTL_MS;          // #1 保质期
   cookbook.unshift(dish);
-  while (cookbook.length > DISH_MAX) cookbook.pop();  // #1 最多 7 份，挤掉最旧
   saveCookbook();
   markTask("draw");
+  return true;
 }
 
 export function removeDish(id) {

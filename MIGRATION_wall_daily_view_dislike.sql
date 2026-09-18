@@ -158,9 +158,10 @@ begin
     return jsonb_build_object('ok', false, 'reason', 'not-found');
   end if;
 
-  -- 下架线：厌恶数 ÷ 浏览数 ≥ 1%（与前端 wallRules.shouldRemove 口径一致）
+  -- 下架线：厌恶 ≥ 5 个 且 厌恶数 ÷ 浏览数 ≥ 1%（与前端 wallRules.shouldRemove 口径一致）
+  -- #21：不是一个人点厌恶就直接下架 —— 至少凑够 5 个厌恶，比例线才生效
   -- 一旦下架就不再自动恢复：避免「比例来回摆动」让帖子忽隐忽现
-  if not v_rm and v_views > 0 and (v_dis::numeric / v_views) >= 0.01 then
+  if not v_rm and v_views > 0 and v_dis >= 5 and (v_dis::numeric / v_views) >= 0.01 then
     update public.wall_posts set removed = true, removed_at = now() where id = p_post;
     v_rm := true;
   end if;

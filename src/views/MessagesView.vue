@@ -46,6 +46,11 @@ const menuFor = ref("");     // 展开操作菜单的会话 id
 const REQ = "requests";      // 伪会话分组键（消息请求）
 const meId = computed(() => (cloud.user && cloud.user.id) || "");
 
+/* #15 点头像/名字进对方主页（列表行与聊天头部共用） */
+function goUser(id) {
+  if (id) router.push({ name: "waller", params: { id } });
+}
+
 /* 常规会话 / 消息请求 分组（被拉黑的会话在 rowView 里把未读清零） */
 const normal = computed(() => sortConvs(filterConvs(convs.value.filter((c) => c.accepted !== false), q.value)).map(rowView));
 const requests = computed(() => sortConvs(filterConvs(convs.value.filter((c) => c.accepted === false), q.value)).map(rowView));
@@ -67,6 +72,28 @@ const canType = computed(() => {
   return true;
 });
 const blockedByMe = computed(() => !!(activeConv.value || meta.value || {}).blocked);
+
+/* #19 已拉黑列表：集中查看、逐个解除（RPC dm_blocks / dm_unblock；拉黑本身零通知） */
+const showBlocked = ref(false);
+const blockedRows = ref([]);
+const blockedBusy = ref("");
+async function loadBlocked() {
+  try { blockedRows.value = (await dmApi.blocks()) || []; }
+  catch (e) { blockedRows.value = []; }
+}
+async function unblockOne(b) {
+  blockedBusy.value = b.user_id;
+  try {
+    await dmApi.unblock(b.user_id);
+    blockedRows.value = blockedRows.value.filter((x) => x.user_id !== b.user_id);
+    await loadConvsImplicit();   /* 解除后会话恢复可见 */
+  } catch (e) { /* 静默，行保留 */ }
+  finally { blockedBusy.value = ""; }
+}
+function toggleBlockedPanel() {
+  showBlocked.value = !showBlocked.value;
+  if (showBlocked.value) loadBlocked();
+}
 
 /* ─────────── 数据加载 ─────────── */
 
@@ -293,6 +320,26 @@ const dayLabel = (ts) => new Date(ts).toLocaleDateString(
       <aside class="card dm-list">
         <n-input v-model:value="q" size="small" round clearable :placeholder="t('dm.search')" class="dm-search" />
 
+        <!-- #19 已拉黑：集中查看 / 解除（拉黑与解除都不通知对方） -->
+        <div class="dm-blocked-bar">
+          <button class="dm-act" @click="toggleBlockedPanel">
+            {{ t("dm.blockedTitle") }}<template v-if="blockedRows.length"> · {{ blockedRows.length }}</template>
+          </button>
+        </div>
+        <div v-if="showBlocked" class="dm-blocked">
+          <p class="sub">{{ t("dm.blockedHint") }}</p>
+          <p v-if="!blockedRows.length" class="sub">{{ t("dm.blockedEmpty") }}</p>
+          <div v-for="b in blockedRows" :key="b.user_id" class="dm-blocked-row">
+            <n-avatar round :size="30" class="post-avatar clickable" :title="t('dm.viewHome')" @click="goUser(b.user_id)">
+              {{ (b.nickname || "?").slice(0, 1).toUpperCase() }}
+            </n-avatar>
+            <b class="dm-name">{{ b.nickname || t("dm.someone") }}</b>
+            <button class="dm-act" :disabled="blockedBusy === b.user_id" @click="unblockOne(b)">
+              {{ t("dm.blockedGo") }}
+            </button>
+          </div>
+        </div>
+
         <p v-if="failed" class="notice">{{ t("dm.loadFail") }}</p>
 
         <!-- 消息请求：陌生人首条消息，同意才进列表 -->
@@ -302,7 +349,7 @@ const dayLabel = (ts) => new Date(ts).toLocaleDateString(
             <span class="notif-count">{{ requests.length }}</span>
           </div>
           <div v-for="c in requests" :key="'r' + c.conv_id" class="dm-row req">
-            <n-avatar round :size="38" class="post-avatar">{{ (c.nickname || "?").slice(0, 1).toUpperCase() }}</n-avatar>
+            <n-avatar round :size="38" class="post-avatar clickable" :title="t('dm.viewHome')" @click.stop="goUser(c.other_id)">{{ (c.nickname || "?").slice(0, 1).toUpperCase() }}</n-avatar>
             <div class="dm-row-body">
               <div class="dm-row-top">
                 <b class="dm-name">{{ c.nickname }}</b>
@@ -323,7 +370,7 @@ const dayLabel = (ts) => new Date(ts).toLocaleDateString(
             v-for="c in normal" :key="c.conv_id"
             class="dm-row" :class="{ on: String(c.conv_id) === String(activeId) }"
             @click="openConv(c.conv_id)">
-            <n-avatar round :size="38" class="post-avatar">{{ (c.nickname || "?").slice(0, 1).toUpperCase() }}</n-avatar>
+            <n-avatar round :size="38" class="post-avatar clickable" :title="t('dm.viewHome')" @click.stop="goUser(c.other_id)">{{ (c.nickname || "?").slice(0, 1).toUpperCase() }}</n-avatar>
             <div class="dm-row-body">
               <div class="dm-row-top">
                 <b class="dm-name">{{ c.nickname }}</b>
@@ -353,7 +400,7 @@ const dayLabel = (ts) => new Date(ts).toLocaleDateString(
       <section class="card dm-thread">
         <template v-if="activeId">
           <header class="dm-thread-head">
-            <b class="dm-name">{{ title || t("dm.someone") }}</b>
+            <b class="dm-name dm-peer-link" :title="t('dm.viewHome')" @click="goUser(activeConv && activeConv.other_id)">{{ title || t("dm.someone") }}</b>
             <span v-if="activeConv && activeConv.muted" class="dm-muted">🔇 {{ t("dm.mutedTag") }}</span>
             <n-tag v-if="activeConv && activeConv.accepted === false" round size="small" :bordered="false" class="soft-tag">
               {{ t("dm.requestTag") }}

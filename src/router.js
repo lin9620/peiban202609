@@ -15,6 +15,7 @@ export const router = createRouter({
     { path: "/messages/:id", name: "messages", component: () => import("./views/MessagesView.vue") },
     /* 通知中心 */
     { path: "/notifications", name: "notifications", component: () => import("./views/NotificationsView.vue") },
+{ path: "/settings", name: "settings", component: () => import("./views/SettingsView.vue") },
     { path: "/admin", name: "admin", component: () => import("./views/AdminView.vue") },
     /* 隐私政策：Google OAuth 发布需要可公开访问的政策链接（外部审核会来抓这页） */
     { path: "/privacy", name: "privacy", component: () => import("./views/PrivacyView.vue") },

@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from "vue";
 import { t } from "../i18n.js";
-import { addDish } from "../stores/petStore.js";
+import { addDish, cookbook, DISH_MAX } from "../stores/petStore.js";
 
 const emit = defineEmits(["saved"]);
 
@@ -18,6 +18,8 @@ const colorsUsed = ref(new Set());   // 用过的颜色
 const lengthPx = ref(0);             // 笔画总长
 const undoStack = ref([]);
 const savedMsg = ref(false);
+const fullMsg = ref(false);      // #16 食谱已满提示
+const bookFull = computed(() => cookbook.length >= DISH_MAX);
 
 const COLORS = ["#5b4636", "#e2873d", "#f6a55c", "#ef7d6a", "#e56ba0", "#7f9df5", "#7fc86e", "#8a6a4a"];
 
@@ -154,6 +156,12 @@ const effort = computed(() => {
 });
 
 function save() {
+  /* #16 食谱满（7 份）就不再收：提示先喂掉或等过期，画板保留继续编辑 */
+  if (cookbook.length >= DISH_MAX) {
+    fullMsg.value = true;
+    setTimeout(() => { fullMsg.value = false; }, 2600);
+    return;
+  }
   // 压缩成 320x240 JPEG 存储，保护 localStorage
   const small = document.createElement("canvas");
   small.width = 320; small.height = 240;
@@ -223,13 +231,16 @@ onMounted(() => {
       <input
         v-model="name" class="input" style="flex: 1; min-width: 160px"
         :placeholder="t('pet.painter.name')" />
-      <button class="btn small" @click="save">{{ t('pet.painter.save') }}</button>
+      <button class="btn small" :disabled="bookFull" @click="save">{{ t('pet.painter.save') }}</button>
     </div>
 
     <p class="streak-note">
       {{ t('pet.painter.effort', { n: effort }) }}
       <span v-if="savedMsg" style="color: var(--good); font-weight: 700">
         · {{ t('pet.painter.saved') }}
+      </span>
+      <span v-if="fullMsg || bookFull" style="color: var(--low); font-weight: 700">
+        · {{ t('pet.painter.full', { n: DISH_MAX }) }}
       </span>
     </p>
   </div>

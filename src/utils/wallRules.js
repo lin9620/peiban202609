@@ -3,7 +3,7 @@
  * 这里放四件事，全部是「输入 → 输出」的纯函数：
  *   1. 排序：默认最新，另有 同感最多 / 抱抱最多 / 暖暖最多
  *   2. 浏览去重：同一个访客对同一条帖，一天只记一次浏览
- *   3. 厌恶比例与自动下架：厌恶数 ÷ 浏览数 ≥ 1% → 下架（数据库假删除）
+ *   3. 厌恶比例与自动下架：厌恶 ≥ 5 个 且 厌恶数 ÷ 浏览数 ≥ 1% → 下架（数据库假删除；#21 单人点不掉）
  *   4. 每日限额：每个用户每天最多发一条暖心墙内容
  * 云端同名规则在 MIGRATION_wall_daily_view_dislike.sql 里用 SQL 再实现一遍
  * （前端只是提示，服务端才是权威）；两边的判定口径必须一致，改动时同步。
@@ -113,6 +113,7 @@ export function collectViews(stamps, list, viewer, day = utcDay()) {
 
 export const DISLIKE_RATIO = 0.01;   // 1%：厌恶数 ÷ 浏览数 达到它即下架
 export const REMOVAL_MIN_VIEWS = 1;  // 严格按「比例」判：只要有浏览数就按比例算
+export const DISLIKE_MIN_COUNT = 5;  // #21 至少 5 个厌恶才可能下架（一个人点不掉别人的帖子）
 
 /**
  * 厌恶比例。没有浏览数时返回 0 ——「0 次浏览 1 个厌恶」不构成比例，
@@ -131,12 +132,14 @@ export function ratioPct(views, dislikes) {
   return (Math.round(r * 1000) / 10).toFixed(1) + "%";
 }
 
-/** 是否达到下架线（1%）。示例帖不参与下架。 */
+/** 是否达到下架线：厌恶 ≥ 5 个 且 比例 ≥ 1%（#21：单个用户点厌恶不能直接下架）。示例帖不参与下架。 */
 export function shouldRemove(views, dislikes, post = null) {
   if (post && post.sample) return false;
   const v = Math.max(0, Number(views) || 0);
   if (v < REMOVAL_MIN_VIEWS) return false;
-  return dislikeRatio(v, dislikes) >= DISLIKE_RATIO;
+  const d = Math.max(0, Number(dislikes) || 0);
+  if (d < DISLIKE_MIN_COUNT) return false;
+  return dislikeRatio(v, d) >= DISLIKE_RATIO;
 }
 
 /** 假删除的帖子不进动态流 */

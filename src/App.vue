@@ -1,17 +1,17 @@
 <script setup>
 import { computed, ref, onMounted, onErrorCaptured, onBeforeUnmount, watch } from "vue";
 import {
-  NConfigProvider, NMessageProvider, NDialogProvider, NDropdown, NTag, NButton, darkTheme,
+  NConfigProvider, NMessageProvider, NDialogProvider, NTag, NButton,
 } from "naive-ui";
-import { t, i18n, setLocale, languages } from "./i18n.js";
-import { naiveThemeFor } from "./theme.js";
-import { THEMES } from "./data/themes.js";
+import { t } from "./i18n.js";
 import SideRails from "./components/SideRails.vue";
 import {
   wallet, moodStreak, petNotices, dismissPetNotice,
 } from "./stores/petStore.js";
 import { cloud, initCloud } from "./utils/supabase.js";
 import { badge, startBadge, stopBadge } from "./stores/badgeStore.js";
+/* 皮肤/语言：状态在 uiStore（与「设置」页共用）；App 只消费主题 */
+import { naiveTheme, naiveOverrides } from "./stores/uiStore.js";
 
 const NAV = [
   { to: "/", key: "nav.home" },
@@ -20,14 +20,9 @@ const NAV = [
   { to: "/profile", key: "nav.profile" },
 ];
 
-/* 私信 / 通知角标：登录后由 badgeStore 每 30s 智能轮询（后台暂停） */
+/* 私信 / 通知角标：登录后由 badgeStore 每 30s 智能轮询（后台暂停）。
+ * #14：红点只挂在聊天入口（💬）——🔔 不再显示红点，通知进页面看。 */
 const dmBadge = computed(() => badge.dm + badge.requests);
-const notifBadge = computed(() => badge.notif);
-
-const langOptions = languages.map((l) => ({ label: l.label, key: l.code }));
-const currentLang = computed(
-  () => (languages.find((l) => l.code === i18n.locale) || languages[0]).label
-);
 
 const streak = computed(() => moodStreak());
 
@@ -49,29 +44,6 @@ onMounted(() => { initCloud(); });
 /* 登录态变化 → 起停角标轮询（未登录不轮询，省流量） */
 watch(cloudSigned, (v) => { if (v) startBadge(); else stopBadge(); }, { immediate: true });
 onBeforeUnmount(() => { stopBadge(); });
-
-function onLangPick(code) {
-  setLocale(code);
-}
-
-/* —— UI 主题套件 —— */
-const THEME_KEY = "wp-theme";
-const themeKey = ref(localStorage.getItem(THEME_KEY) || "cream");
-const themeDef = computed(
-  () => THEMES.find((x) => x.key === themeKey.value) || THEMES[0]
-);
-const naiveOverrides = computed(() => naiveThemeFor(themeKey.value));
-const naiveTheme = computed(() => (themeDef.value.dark ? darkTheme : null));
-const themeOptions = THEMES.map((x) => ({
-  label: (x.dark ? "\u{1F319} " : "\u{1F3A8} ") + (x.name[i18n.locale] || x.name.en),
-  key: x.key,
-}));
-function applyTheme(key) {
-  themeKey.value = key;
-  try { localStorage.setItem(THEME_KEY, key); } catch (e) {}
-  document.documentElement.dataset.theme = key;
-}
-document.documentElement.dataset.theme = themeKey.value;
 
 /* —— 错误边界：某个页面渲染出错时显示提示，而不是整页白屏 —— */
 const crashed = ref("");
@@ -130,16 +102,10 @@ function reload() {
                 <span class="icon-emoji">💬</span>
                 <span v-if="dmBadge" class="icon-badge">{{ dmBadge > 99 ? "99+" : dmBadge }}</span>
               </router-link>
+              <!-- #14 通知入口不再挂红点；皮肤/语言移到「设置」页（#13） -->
               <router-link v-if="cloudSigned" to="/notifications" class="icon-link" :title="t('notif.title')">
                 <span class="icon-emoji">🔔</span>
-                <span v-if="notifBadge" class="icon-badge">{{ notifBadge > 99 ? "99+" : notifBadge }}</span>
               </router-link>
-              <n-dropdown :options="themeOptions" trigger="click" @select="applyTheme">
-                <button class="lang-btn theme-btn" :title="t('theme.pick')">{{ "\u{1F3A8}" }}</button>
-              </n-dropdown>
-              <n-dropdown :options="langOptions" trigger="click" @select="onLangPick">
-                <button class="lang-btn">🌐 {{ currentLang }}</button>
-              </n-dropdown>
             </div>
           </header>
 

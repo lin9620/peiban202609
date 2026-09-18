@@ -236,6 +236,18 @@ begin
     raise exception 'blocked';         -- 对方拉黑了我
   end if;
 
+  -- #22 首次会话限制：对方从没回过时，先发起的一方最多发 3 条（防骚扰；对方一回复即解锁）。
+  -- 漂流瓶续聊导入的会话双方各有一条消息，天然解锁，不受影响；已撤回的不计数。
+  if not exists (
+    select 1 from public.dm_messages
+     where conv_id = p_conv and sender = v_other and deleted_at is null
+  ) then
+    if (select count(*) from public.dm_messages
+         where conv_id = p_conv and sender = me and deleted_at is null) >= 3 then
+      raise exception 'first-limit';
+    end if;
+  end if;
+
   insert into public.dm_messages (conv_id, sender, body, image_path)
     values (p_conv, me, v_body, nullif(coalesce(p_image, ''), ''))
     returning id into v_mid;

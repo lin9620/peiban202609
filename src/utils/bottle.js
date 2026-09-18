@@ -73,8 +73,9 @@ export async function bottleHeld() {
   return db.bottleHeld();
 }
 
-export function bottleRecords(id = null, offset = 0) {
-  return db.bottleRecords(id, offset);
+/** 漂流瓶记录：p_mine=true 我发布的 / false 我捞到的 / null 原行为；limit 每页条数（#17） */
+export function bottleRecords(id = null, offset = 0, { mine = null, limit = 0 } = {}) {
+  return db.bottleRecords(id, offset, { mine, limit });
 }
 export function bottleChatDecide(id, accept) {
   if (typeof accept !== "boolean") throw new Error("bottle-bad-decision");

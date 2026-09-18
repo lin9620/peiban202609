@@ -104,6 +104,8 @@ export function targetOf(n) {
     return { type: "bottle", bottleId: n.meta.bottle_id };
   }
   if (n.kind === "dm" && n.conv_id != null) return { type: "dm", convId: n.conv_id };
+  /* #15 「谁摸了你的宠物」这类互动没有帖子可跳 → 进对方的用户主页 */
+  if (n.kind === "pet" && n.actor_id) return { type: "user", userId: n.actor_id };
   if (n.post_id != null) return { type: "post", postId: n.post_id };
   return null;
 }

@@ -201,8 +201,11 @@ export const db = {
     return unwrap(sb().rpc("bottle_release", { p_id: id }));
   },
 
-  bottleRecords(id = null, offset = 0) {
-    return unwrap(sb().rpc("bottle_records", { p_id: id, p_offset: offset }));
+  bottleRecords(id = null, offset = 0, { mine = null, limit = 0 } = {}) {
+    const params = { p_id: id, p_offset: offset };
+    if (mine === true || mine === false) params.p_mine = mine;
+    if (limit > 0) params.p_limit = limit;
+    return unwrap(sb().rpc("bottle_records", params));
   },
   bottleChatDecide(id, accept) {
     return unwrap(sb().rpc("bottle_chat_decide", { p_id: id, p_accept: accept }));

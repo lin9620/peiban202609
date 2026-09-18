@@ -276,6 +276,10 @@ const brightRatio = computed(() => {
         <router-link v-if="isAdmin" to="/admin" class="admin-entry">
           {{ t("admin.entry") }}
         </router-link>
+        <!-- #13 设置入口：皮肤 / 语言 / 通知偏好都收在设置页 -->
+        <router-link to="/settings" class="admin-entry">
+          ⚙️ {{ t("settings.entry") }}
+        </router-link>
       </div>
     </section>
 

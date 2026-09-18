@@ -4,6 +4,7 @@
  * 非管理员：is_admin() → false → 只看到「没有权限」，拿不到任何数字。
  */
 import { ref, computed, watch } from "vue";
+import { useRouter } from "vue-router";
 import { NButton, NTag } from "naive-ui";
 import { t } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
@@ -26,6 +27,7 @@ const usersOffset = ref(0);
 const usersTotal = ref(0);
 const busy = ref(""); /* 正在操作的行 id（防连点） */
 const actionMsg = ref("");
+const router = useRouter(); /* #20 帖子行点入：跳到暖心墙原帖 */
 
 const signedIn = computed(() => !!(cloud.ready && cloud.user));
 
@@ -340,7 +342,9 @@ const recentUsers = computed(() => (Array.isArray(ov.value && ov.value.recent_us
         </p>
         <div v-for="p in posts" :key="p.id" class="admin-row">
           <img v-if="p.image_path" :src="db.imageUrl(p.image_path)" class="admin-thumb" alt="" />
-          <div class="admin-grow">
+          <div
+            class="admin-grow admin-open" :title="t('admin.actions.openPost')"
+            @click="router.push({ path: '/community', query: { post: String(p.id) } })">
             <div class="admin-clip">{{ clip(p.body, 80) || "…" }}</div>
             <span class="admin-meta">
               {{ p.author_name || "?" }} · {{ fmtNum(p.views) }} {{ t("admin.postsCol.views") }} ·
