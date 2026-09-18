@@ -167,6 +167,8 @@ function sceneLines(pet, scene) {
 export const petUi = reactive({
   speech: "",
   happyTick: 0,
+  mood: "",      // #11 互动表情：happy|play|clean|eat（PetMotion 播完约 1.9s 自动清空）
+  moodTick: 0,
 });
 
 let sayTimer = null;
@@ -177,6 +179,12 @@ export function say(text, ms = 3200) {
 }
 
 export function jump() { petUi.happyTick++; }
+
+/** #11 触发互动表情变体（PetMotion 监听 moodTick，切换 Lottie 的 happy/play/clean/eat 变体） */
+export function petMood(kind) {
+  petUi.mood = kind;
+  petUi.moodTick++;
+}
 
 function sayLine(pet, scene, ms = 3200) {
   const entry = sceneLines(pet, scene);
@@ -341,6 +349,7 @@ export function doPlay() {
   gainExp(pet, 15);
   sayLine(pet, "play");
   jump();
+  petMood("play");
   markTask("play");
   petStore.save();
 }
@@ -354,6 +363,7 @@ export function doPetting() {
   gainExp(pet, 5);
   sayLine(pet, "petting");
   jump();
+  petMood("happy");
   petStore.save();
 }
 
@@ -367,6 +377,7 @@ export function doClean() {
   gainExp(pet, 8);
   sayLine(pet, "clean");
   jump();
+  petMood("clean");
   petStore.save();
 }
 
@@ -439,6 +450,7 @@ export function feedDish(dish) {
   gainExp(pet, 12 + Math.round(e / 10));
   sayLine(pet, "handFed");
   jump();
+  petMood("eat");
   markTask("feed");
   petStore.save();
 }

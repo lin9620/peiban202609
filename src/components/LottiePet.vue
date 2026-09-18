@@ -13,13 +13,15 @@ import lottieAssets from "../data/lottieAssets.js";
 const props = defineProps({
   species: { type: String, required: true },
   sleeping: { type: Boolean, default: false },
+  mood: { type: String, default: "" },   // #11 互动表情：happy|play|clean|eat（空串 = idle）
 });
 
 const host = ref(null);
 let anim = null; // 非响应式，避免 Vue 代理 lottie 实例
 
 function animationData() {
-  return lottieAssets[props.species] || petAnimation(props.species, props.sleeping ? "sleep" : "idle");
+  const variant = props.sleeping ? "sleep" : (props.mood || "idle");
+  return lottieAssets[props.species] || petAnimation(props.species, variant);
 }
 
 function destroy() {
@@ -53,7 +55,7 @@ function mount() {
 }
 
 onMounted(mount);
-watch(() => [props.species, props.sleeping], mount);
+watch(() => [props.species, props.sleeping, props.mood], mount);
 onBeforeUnmount(destroy);
 </script>
 

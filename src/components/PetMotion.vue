@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, onBeforeUnmount } from "vue";
 import LottiePet from "./LottiePet.vue";
 import { petUi } from "../stores/petStore.js";
 
@@ -9,6 +9,16 @@ const props = defineProps({
 
 /** 用户上传的二次元立绘 */
 const isCustom = computed(() => !!(props.pet.custom && props.pet.custom.img));
+
+/* #11 互动表情变体：petMood() 触发，约 1.9s 后回到 idle（与 Lottie 变体时长一致） */
+const mood = ref("");
+let moodTimer = null;
+watch(() => petUi.moodTick, () => {
+  mood.value = petUi.mood || "";
+  clearTimeout(moodTimer);
+  if (mood.value) moodTimer = setTimeout(() => { mood.value = ""; }, 1900);
+});
+onBeforeUnmount(() => clearTimeout(moodTimer));
 
 /* 点击跳跃（CSS 驱动，兼容 Lottie 与自定义立绘） */
 const hopOn = ref(false);
@@ -26,8 +36,10 @@ watch(() => petUi.happyTick, () => {
     <template v-if="isCustom">
       <img :src="pet.custom.img" class="custom-img" :alt="pet.name" draggable="false" />
       <div v-if="pet.sleeping" class="custom-sleep"><span>💤</span></div>
+      <span v-if="mood === 'clean'" class="custom-spark cs1">✨</span>
+      <span v-if="mood === 'clean'" class="custom-spark cs2">✨</span>
     </template>
-    <LottiePet v-else :species="pet.species" :sleeping="pet.sleeping" />
+    <LottiePet v-else :species="pet.species" :sleeping="pet.sleeping" :mood="mood" />
   </div>
 </template>
 
@@ -74,4 +86,14 @@ watch(() => petUi.happyTick, () => {
 
 .custom-sleep { position: absolute; top: 6%; right: 14%; font-size: 30px; animation: petBob 1.8s ease-in-out infinite; }
 @keyframes petBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+
+/* #11 自定义立绘的洗澡星星（表情变体对图片立绘不可用，用粒子补互动感） */
+.custom-spark { position: absolute; font-size: 24px; pointer-events: none; animation: sparkPop 1.5s ease forwards; }
+.custom-spark.cs1 { left: 8%; top: 4%; }
+.custom-spark.cs2 { right: 6%; top: 16%; animation-delay: .25s; }
+@keyframes sparkPop {
+  0% { opacity: 0; transform: scale(.4) rotate(0deg); }
+  35% { opacity: 1; transform: scale(1.15) rotate(18deg); }
+  100% { opacity: 0; transform: scale(.85) translateY(-16px) rotate(32deg); }
+}
 </style>

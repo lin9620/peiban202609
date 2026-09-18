@@ -75,6 +75,7 @@ node tools/comment-test.mjs   # 评论系统纯函数单测（26 项：二级回
 node tools/wall-test.mjs      # 暖心墙云端数据层纯函数单测（34 项：行映射/二级字段/评论数聚合/浏览与厌恶字段）
 node tools/wall-rules-test.mjs # 暖心墙进阶规则纯函数单测（33 项：排序/时间范围显隐与筛选/浏览去重/1% 下架/每日一条/错误归类）
 node tools/pet-home-test.mjs   # 宠物主页云层纯函数单测（19 项：宠物快照 / 手绘厨房清洗 / 互动计数独立列 / 图片引用外置与行体积安全阀 / 镜像队列安全性）
+node tools/pet-visual-test.mjs # 宠物形象与互动表情单测（163 项：五物种×六变体生成合法 Lottie / 表情随 mood 切换（弯弯眼·张嘴·星星·双心·Zzz）/ 贴纸描边·胡须·眉毛·曲线尾 / petMood 信号与缓存守卫）
 node tools/food-painter-test.mjs # 手绘食物画板单测（20 项：保存后清空画板与撤销栈 / 画笔与橡皮模式复位 / 异步撤销不回流旧画 / 食谱 7 份上限 / 48 小时过期边界）
 node tools/api-contract-test.mjs # 云端数据访问适配层契约测试（83 项：表名 / 过滤 / 排序 / RPC 参数 / Storage 桶与路径 / 降级查询形状 / upsert 只写 user_id+data+updated_at 的计数红线）
 node tools/gateway-contract-test.mjs # 网关模式前端侧契约测试（65 项：/api/* 端点形状 / 鉴权头 / 计数红线 / 错误上抛）
@@ -298,7 +299,7 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 | 体验 | `#/` 路由直接访问 `/pet` 会 404 | 迁移到 history 模式 + 每条路由独立静态 HTML + SPA 回退 | `router.js` / `vite.config.js` / `wrangler.jsonc` |
 | 体验 | 「在线陪伴数」是本地随机数，易误导 | 去掉虚构人数，改如实文案（路线图保留"等有真实统计再接"） | `views/HomeView.vue` / `i18n.js` |
 
-回归验证（全部本地可跑）：`wall-rules-test` 33 项 · `comment-test` 26 项 · `wall-test` 34 项 · `pet-home-test` 19 项 · `food-painter-test` 20 项 · `uifix-test` 24 项 · `image-fit` 20 项 · `snack-test` 24 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 48 项 · `privacy-test` 34 项 · `arity-test` 8 项 · `seo-test` 42 项 · `dm-test` 280 项 · `notify-test` 148 项 · `status-test` 48 项 · `status-counts-test` 11 项 · `bottle-test` 36 项 · `bottle-chat-test` 76 项 · `api-contract-test` 83 项 · `gateway-contract-test` 65 项 · `worker-test` 180 项 · `undef-check`。
+回归验证（全部本地可跑）：`wall-rules-test` 33 项 · `comment-test` 26 项 · `wall-test` 34 项 · `pet-home-test` 19 项 · `pet-visual-test` 163 项 · `food-painter-test` 20 项 · `uifix-test` 24 项 · `image-fit` 20 项 · `snack-test` 24 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 48 项 · `privacy-test` 34 项 · `arity-test` 8 项 · `seo-test` 42 项 · `dm-test` 280 项 · `notify-test` 148 项 · `status-test` 48 项 · `status-counts-test` 11 项 · `bottle-test` 36 项 · `bottle-chat-test` 76 项 · `api-contract-test` 83 项 · `gateway-contract-test` 65 项 · `worker-test` 180 项 · `undef-check`。
 
 ## 🗺️ 路线图
 
