@@ -252,8 +252,8 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 |---|---|
 | 项目 | peiban（陪伴 / warm-paws），路径 `D:\05ruanjian\peiban` |
 | 技术栈 | Vue 3 + Vite + Naive UI；数据层双模式：直连 Supabase（`db.supabase.js`）/ Worker 网关（`db.gateway.js` + `worker/api.js`，**线上走网关**）；Cloudflare 部署 https://dale.de5.net；Supabase Postgres + RLS + security definer RPC |
-| 代码 | `HEAD = origin/main = 39c9bb5`（第 13–22 条），工作区干净 |
-| 部署 | Worker 版本 `d9c6b2a7` 已上线；前端产物与本地 dist 逐字节一致（SHA 比对通过）；`live-check` 13 项全过 |
+| 代码 | `HEAD = origin/main = 4443b1e`（忘记密码修复），工作区干净 |
+| 部署 | Worker 版本已上线（修复含 `index-CGmbko5p.js`，SHA 与本地一致）；`live-check` 13 项全过 |
 | 数据库 | 10 个迁移文件**全部已在 Supabase 执行**（最后两个 `MIGRATION_bottle_records.sql` / `MIGRATION_dm_first_contact.sql` 由用户于 09-18 手动执行，已探针确认） |
 | 测试 | 24 套离线测试全绿 + `undef-check` 0 问题 + 三套线上 e2e（cloud 38 / dm 47 / status 17 全 PASS） |
 
@@ -312,6 +312,11 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
 ### 交付流水线（每轮固定动作，全部通过后才提交）
 全量 24 套离线测试 → `undef-check` → `vite build`（明确退出码）→ `git diff --check` → commit → `wrangler deploy` → push → `live-check` → 线上产物 SHA 与本地比对 → （有新迁移时）给用户迁移文件并探针确认执行结果。
+
+### 轮 8：遗留问题修复 —— 忘记密码重置必失败（4443b1e）
+- **根因**：`supabase.js captureRedirect()` 在 createClient 前把地址栏恢复令牌抹掉；本项目 supabase-js 默认 implicit 流程，auth-js 靠该令牌建恢复会话（它自己建完才清 URL）→ 令牌被抢先清掉 = 会话建不起来 = `updateUser` 报 `Auth session missing`（用户看到"没成功"）。
+- **修复**：captureRedirect 改为**只读不清**（error 分支无令牌可消费，才立即清）；会话在手（onAuthStateChange 有 session）时兜底清地址栏残留。
+- **验证**：auth-test 49 项（A30/A30b 新断言钉住"恢复令牌不被提前抹"）；全量测试/build/live-check/SHA 全过；**真实邮件闭环待用户实机验收**。
 
 
 ## 四、还没做的
