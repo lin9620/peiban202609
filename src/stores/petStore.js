@@ -21,7 +21,7 @@ const RATE = {
 /* ---------- 阶段 A 新规（画板上限/保质期、疏于照顾、领养上限、游戏奖励） ---------- */
 export const DISH_MAX = 7;                     // #1 画的食物最多存 7 个
 export const DISH_TTL_MS = 48 * 3600 * 1000;   // #1 食物保质期 48 小时，过期消失
-export const MAX_PETS = 3;                     // #12 角色最多 3 只（存活的）
+export const MAX_CUSTOM_PETS = 3;              // #12 上传的「我的角色」最多 3 个（初始伙伴/物种伙伴不占名额）
 export const NEGLECT_MS = 7 * 24 * 3600 * 1000; // #2 连续 7 天不照顾 → 领养宠物去世
 export const NEGLECT_GRACE_DAYS = 3;           // #2 前 3 天缓冲：一直不登录也不掉级，给用户一点缓冲时间
 export const NEGLECT_DECAY_DAYS = 4;           // #2 第 4~7 天：把等级均摊降到 1 级（第 7 天正好见底）
@@ -121,7 +121,8 @@ export const petStore = reactive({
   },
 
   adopt(species, name, personality, custom = null) {
-    if (this.pets.filter((p) => !p.dead).length >= MAX_PETS) return null; // #12 上限 3 只
+    /* #12 名额只数「上传的自定义角色」（存活的）：初始伙伴与领养的物种伙伴不占名额 */
+    if (custom && this.pets.filter((p) => p.custom && !p.dead).length >= MAX_CUSTOM_PETS) return null;
     const pet = makePet(species, name, personality, custom);
     this.pets.push(pet);
     this.activeId = pet.id;

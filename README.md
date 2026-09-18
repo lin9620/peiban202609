@@ -104,7 +104,7 @@ node tools/live-check.mjs     # 线上部署验证：页面/缓存/安全头/SEO
 node tools/online-check.mjs   # 旧版线上检查（已被 live-check 替代，如无特别需要可忽略）
 node tools/mood-test.mjs      # 心情打卡纯逻辑单测（12 项：连续天数/死循环回归）
 node tools/make-og.mjs        # 重新生成分享图与图标到 public/（改了品牌色或文案后可跑）
-node tools/uifix-test.mjs     # 修复项回归（21 项：评论字数上限/立绘上传校验/大厅文案/状态同步提示/安全头/图片纯函数）
+node tools/uifix-test.mjs     # 修复项回归（24 项：评论字数上限/立绘上传校验/大厅文案/状态同步提示/安全头/浏览眼睛摘除/我的页帖子/角色名额口径）
 node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite 只在启动时读环境变量）
 ```
 
@@ -298,7 +298,7 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 | 体验 | `#/` 路由直接访问 `/pet` 会 404 | 迁移到 history 模式 + 每条路由独立静态 HTML + SPA 回退 | `router.js` / `vite.config.js` / `wrangler.jsonc` |
 | 体验 | 「在线陪伴数」是本地随机数，易误导 | 去掉虚构人数，改如实文案（路线图保留"等有真实统计再接"） | `views/HomeView.vue` / `i18n.js` |
 
-回归验证（全部本地可跑）：`wall-rules-test` 33 项 · `comment-test` 26 项 · `wall-test` 34 项 · `pet-home-test` 19 项 · `food-painter-test` 20 项 · `uifix-test` 21 项 · `image-fit` 20 项 · `snack-test` 24 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 48 项 · `privacy-test` 34 项 · `arity-test` 8 项 · `seo-test` 42 项 · `dm-test` 280 项 · `notify-test` 148 项 · `status-test` 48 项 · `status-counts-test` 11 项 · `bottle-test` 36 项 · `bottle-chat-test` 76 项 · `api-contract-test` 83 项 · `gateway-contract-test` 65 项 · `worker-test` 180 项 · `undef-check`。
+回归验证（全部本地可跑）：`wall-rules-test` 33 项 · `comment-test` 26 项 · `wall-test` 34 项 · `pet-home-test` 19 项 · `food-painter-test` 20 项 · `uifix-test` 24 项 · `image-fit` 20 项 · `snack-test` 24 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 48 项 · `privacy-test` 34 项 · `arity-test` 8 项 · `seo-test` 42 项 · `dm-test` 280 项 · `notify-test` 148 项 · `status-test` 48 项 · `status-counts-test` 11 项 · `bottle-test` 36 项 · `bottle-chat-test` 76 项 · `api-contract-test` 83 项 · `gateway-contract-test` 65 项 · `worker-test` 180 项 · `undef-check`。
 
 ## 🗺️ 路线图
 

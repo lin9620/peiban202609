@@ -643,7 +643,7 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
       <!-- 浏览数 + 厌恶：厌恶 ÷ 浏览 达 1% 会被自动下架（假删除，数据仍在库里） -->
       <!-- p.stats：只有库跑过迁移、真拿到统计字段才显示，避免未迁移时出现假的「0 次浏览」 -->
       <div v-if="p.cloud && p.stats" class="post-foot">
-        <span class="post-views">&#128065; {{ t("community.views", { n: p.views || 0 }) }}</span>
+        <span class="post-views">{{ t("community.views", { n: p.views || 0 }) }}</span>
         <button
           class="post-dis" :class="{ on: p.mine && p.mine.dislike }"
           :disabled="!signedIn"

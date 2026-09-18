@@ -207,7 +207,7 @@ onMounted(async () => {
           <span class="r-chip">&#9728;&#65039; {{ p.reacts.warm || 0 }}</span>
           <span class="r-chip">&#129309; {{ p.reacts.relate || 0 }}</span>
           <span v-if="p.stats" class="r-chip r-chip-views">
-            &#128065; {{ t("community.views", { n: p.views || 0 }) }}
+            {{ t("community.views", { n: p.views || 0 }) }}
           </span>
         </div>
       </article>

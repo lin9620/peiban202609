@@ -12,6 +12,7 @@ import {
 /* 登录规则（纯函数，Node 单测覆盖）：本地校验 / 昵称兜底 / 邮件链接解析 / 回跳地址 */
 import { MIN_PASSWORD, emailProblem, passwordProblem } from "../utils/authRules.js";
 import { db } from "../utils/api/db.js";
+import { cloudFetchUserPosts } from "../utils/wall.js";
 
 /* 心情图标：一律用 Unicode 转义，避免源码中的 emoji 编码损坏 */
 const MOOD = ["\u{1F929}", "\u{1F642}", "\u{1F60C}", "\u{1F327}\uFE0F", "\u{1F614}"];
@@ -43,6 +44,21 @@ watch(
     } catch (e) {
       isAdmin.value = false;
     }
+  },
+  { immediate: true },
+);
+
+/* #9 我在暖心墙的帖子（「我的」页也展示；登录后跟随登录态拉取，点一条跳到墙上那条帖子） */
+const myPosts = ref([]);
+const myPostsBusy = ref(false);
+watch(
+  () => [cloud.ready, cloud.user && cloud.user.id],
+  async ([ready, uid]) => {
+    if (!ready || !uid) { myPosts.value = []; return; }
+    myPostsBusy.value = true;
+    try { myPosts.value = (await cloudFetchUserPosts(uid, 20)) || []; }
+    catch (e) { myPosts.value = []; }
+    myPostsBusy.value = false;
   },
   { immediate: true },
 );
@@ -263,6 +279,24 @@ const brightRatio = computed(() => {
       </div>
     </section>
 
+    <!-- #9 我在暖心墙的帖子（登录后展示；点一条就跳到墙上那条帖子） -->
+    <section v-if="cloudSigned" class="card">
+      <div class="row-between">
+        <h2>{{ t("profile.myPosts") }}</h2>
+        <router-link class="my-posts-link" to="/community">{{ t("nav.community") }} →</router-link>
+      </div>
+      <p v-if="myPostsBusy" class="sub">…</p>
+      <p v-else-if="!myPosts.length" class="sub">{{ t("profile.myPostsEmpty") }}</p>
+      <div v-else class="my-posts">
+        <router-link
+          v-for="p in myPosts" :key="p.id"
+          class="my-post" :to="{ path: '/community', query: { post: p.dbId } }">
+          <span class="mp-text">{{ p.text ? (p.text.length > 60 ? p.text.slice(0, 60) + "…" : p.text) : "🖼️" }}</span>
+          <span class="mp-meta">{{ new Date(p.ts).toLocaleDateString() }}</span>
+        </router-link>
+      </div>
+    </section>
+
     <!-- 刚完成动作的提示（如「新密码已保存」）—— 放在登录卡片外：成功后那张卡片会被隐藏 -->
     <section v-if="flash" class="card auth-flash">{{ flash }}</section>
 
@@ -425,3 +459,16 @@ const brightRatio = computed(() => {
     </section>
   </div>
 </template>
+
+<style scoped>
+.my-posts-link { text-decoration: none; }
+.my-posts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.my-post {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+  padding: 10px 12px; border-radius: 14px; text-decoration: none; color: inherit;
+  background: var(--glass);
+}
+.my-post:hover { background: var(--accent-soft); }
+.mp-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mp-meta { flex: none; font-size: 12px; color: var(--ink-soft); }
+</style>

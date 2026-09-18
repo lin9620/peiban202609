@@ -162,6 +162,41 @@ t("T21 README 不再宣称展示在线人数，且登记新测试与迁移", () 
   assert.ok(md.includes("MIGRATION_dm_notifications.sql"), "README 未登记私信迁移");
 });
 
+/* ══════════ ⑦ 浏览眼睛摘除 / 我的页帖子 / 角色名额口径（#8 #9 #12） ══════════ */
+const communityView = read("src/views/CommunityView.vue");
+const wallerViewSrc = read("src/views/WallerView.vue");
+const profileView = read("src/views/ProfileView.vue");
+const petStoreSrc = read("src/stores/petStore.js");
+const petViewSrc = read("src/views/PetView.vue");
+t("T22 浏览眼睛已摘除（#8）：视图不再渲染 👁，浏览数文案保留", () => {
+  for (const s of [communityView, wallerViewSrc]) {
+    assert.ok(!s.includes("&#128065;") && !s.includes("👁"), "视图仍渲染眼睛图标");
+  }
+  assert.ok(communityView.includes('t("community.views"'), "浏览数文案被误删（应只去图标）");
+});
+t("T23 「我的」页展示我在暖心墙的帖子（#9）：登录拉取 + 深链用 dbId", () => {
+  assert.ok(profileView.includes("cloudFetchUserPosts(uid, 20)"), "ProfileView 未拉取我的帖子");
+  assert.ok(profileView.includes("profile.myPosts") && profileView.includes("profile.myPostsEmpty"), "缺少帖子区块文案键");
+  assert.ok(profileView.includes("query: { post: p.dbId }"), "深链必须用 dbId（CommunityView 用 dbId 匹配）");
+  const i18n = read("src/i18n.js");
+  assert.ok(i18n.split("myPosts:").length >= 3, "myPosts 未做到双语（en/zh 各一份）");
+});
+t("T24 角色名额只数上传的「我的角色」（#12）：初始/物种伙伴不占名额", () => {
+  assert.ok(petStoreSrc.includes("MAX_CUSTOM_PETS = 3"), "常量未改为 MAX_CUSTOM_PETS");
+  assert.ok(!petStoreSrc.includes("MAX_PETS "), "残留旧常量 MAX_PETS");
+  assert.ok(
+    petStoreSrc.includes("if (custom && this.pets.filter((p) => p.custom && !p.dead).length >= MAX_CUSTOM_PETS)"),
+    "adopt 的名额判定未按 custom 过滤",
+  );
+  assert.ok(petViewSrc.includes("customCount") && petViewSrc.includes("customQuotaHit"), "PetView 未切换到 customCount/customQuotaHit");
+  assert.ok(!petViewSrc.includes("aliveCount") && !petViewSrc.includes("MAX_PETS,"), "PetView 残留旧口径");
+  assert.ok(!petViewSrc.includes('t("pet.quota"'), "模板仍引用已删除的 pet.quota");
+  assert.ok(petViewSrc.includes('t("pet.customQuota"'), "缺少 customQuota 名额展示");
+  const i18n = read("src/i18n.js");
+  assert.ok(!i18n.includes('quota: "Companions') && !i18n.includes('quota: "伙伴名额'), "旧 quota 文案未清理");
+  assert.ok(i18n.split("customQuota:").length >= 3, "customQuota 未做到双语（en/zh 各一份）");
+});
+
 out.push("");
 out.push("TOTAL " + (pass + fail) + "  PASS " + pass + "  FAIL " + fail);
 console.log(out.join("\n"));
