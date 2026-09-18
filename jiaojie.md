@@ -386,7 +386,8 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 5. **通知 kind 拼写不一致**：库发 `death`、前端认 `dead` → 死亡通知不显示。**教训**：事件 kind 建常量清单，生产方与消费方同源。
 6. **`SUPABASE_SETUP.sql` 漂移**：只改了 MIGRATION，新装脚本没同步 → 新装库缺功能。**教训**：动 SQL 迁移必须同步 SETUP 文件（bottle_chat 漂过一次已补）。
 7. **匿名探针误判"函数缺失"**：anon 调 security definer 函数报 `42501 permission denied`，与 `PGRST202` 不存在是两回事。**教训**：判定函数存在性必须区分这两个错误码；拿不准就用带 JWT 的账号探测。
-8. **PowerShell 终端截断/引号地狱**：长命令被截断、中文乱码、退出码拿不到 → 我曾连续多轮重复读文件不发结论（**最严重的一次卡死**）。**教训（强制）**：复杂检查写成 `tools/_xxx.mjs` 用 node 跑；输出落盘后用 read_files 读；**拿到结果必须立刻给结论**，禁止连续多轮只读不答；收尾阶段禁止重复确认同一状态，直接执行提交/部署。
+8. **PowerShell 终端截断/引号地狱 + 中文乱码**：长命令被截断、中文乱码、退出码拿不到 → 曾连续多轮重复读文件不发结论（**最严重的一次卡死**）。**教训（强制）**：复杂检查写成 `tools/_xxx.mjs` 用 node 跑；输出落盘后用 read_files 读；**拿到结果必须立刻给结论**，禁止连续多轮只读不答；收尾阶段禁止重复确认同一状态，直接执行提交/部署。
+   **编码已做的持久修复（2026-09-18）**：① 用户 profile `Documents\PowerShell\profile.ps1` 已写 UTF-8（Console In/Out + `$OutputEncoding` + `chcp 65001`）——**手动打开的终端自动生效**（已子会话验证 utf-8/65001；注意 agent 工具会话是 -NoProfile 启动，不加载 profile）；② git 全局 `core.quotepath=false` + `i18n.logOutputEncoding/commitEncoding=utf-8`（中文文件名/提交信息不再转义）。**命令写法规矩（agent 会话必须遵守）**：读文件带 `-Encoding UTF8`；node 输出**不要**再经 `Select-String`/`Format-*` 等 PS cmdlet 管道过滤（会用 GBK 重编码致乱码）——要么整段直出，要么落盘用 read_files 读；复杂检查一律 node 脚本。
 9. **构建通过 ≠ 没问题**：路由漏接线、模板引用旧符号，构建照样绿。**教训**：视图改动后跑 undef-check + grep 引用面 + e2e/探针验证线上行为，不能只报 build OK。
 10. **测试账号副作用**：线上 e2e 会注册 `wp-*` 测试账号；profiles 无 delete 策略删不掉行，只能清空状态字段。**教训**：e2e 头部注明副作用；不碰真实用户数据。
 11. **源码标识符在打包产物中被混淆**：搜 `sparkle0`、`petMood` 等源码名在产物里找不到，误判"没部署上"。**教训**：线上产物验证要用不会被混淆的字符串（i18n 文案、CSS 类名）或直接 SHA 比对 dist。
