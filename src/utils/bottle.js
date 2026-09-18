@@ -31,7 +31,9 @@ export function bottleErrKey(e) {
   if (msg.includes("bottle-too-long")) return "bottle.errTooLong";
   if (msg.includes("bottle-chat-blocked")) return "bottle.chatBlocked";
   if (msg.includes("bottle-not-owner") || msg.includes("bottle-not-answered")) return "bottle.chatUnavailable";
-  if (/42703|PGRST202|does not exist/.test(msg)) return "bottle.chatSetup";
+  /* 没跑迁移：列/RPC 不存在。真实响应里码在 error.code，消息是
+     「Could not find the function … in the schema cache」——两句都要认 */
+  if (/42703|PGRST202|does not exist/i.test(msg) || /could not find the function/i.test(msg)) return "bottle.chatSetup";
   return "bottle.errGeneric";
 }
 

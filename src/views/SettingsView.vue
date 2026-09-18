@@ -29,6 +29,24 @@
           </button>
         </div>
       </div>
+
+      <!-- 昵称（登录用户改云端 profiles，署名/主页即时生效；游客先去「我的」页登录） -->
+      <div class="set-block">
+        <span class="sec-label">{{ t("profile.nickTitle") }}</span>
+        <template v-if="signedIn">
+          <div class="set-opts wrap nick-row">
+            <n-input
+              v-model:value="nickDraft" :placeholder="cloud.nickname || t('profile.needNick')"
+              :maxlength="NICK_MAX" :disabled="nickBusy" @keyup.enter="saveNick" />
+            <button class="set-opt" :disabled="nickBusy" @click="saveNick">
+              {{ t("profile.nickSave") }}
+            </button>
+          </div>
+          <p v-if="nickMsg" class="streak-note">{{ nickMsg }}</p>
+          <p class="sub">{{ t("profile.nickHint") }}</p>
+        </template>
+        <p v-else class="notice">{{ t("notif.needSignIn") }}</p>
+      </div>
     </section>
 
     <!-- 通知（#13/#14：总开关 + 四类偏好，从通知中心页迁来） -->
@@ -68,9 +86,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
+import { NInput } from "naive-ui";
 import { t, i18n } from "../i18n.js";
-import { cloud } from "../utils/supabase.js";
+import { cloud, cloudUpdateNickname } from "../utils/supabase.js";
+import { NICK_MAX } from "../utils/authRules.js";
 import * as notifyApi from "../utils/notify.js";
 import { normPrefs } from "../utils/notifyRules.js";
 import {
@@ -79,6 +99,27 @@ import {
 } from "../stores/uiStore.js";
 
 /* #13 皮肤 / 语言 / 总通知开关 / 通知四类偏好，全部收进设置页 */
+
+/* —— 昵称修改（常驻；与「我的」页同一套校验与写入路径） —— */
+const nickDraft = ref("");
+const nickBusy = ref(false);
+const nickMsg = ref("");
+watch(() => cloud.nickname, (v) => { if (!nickDraft.value && v) nickDraft.value = v; }, { immediate: true });
+async function saveNick() {
+  if (nickBusy.value) return;
+  const s = String(nickDraft.value || "").trim();
+  if (!s) { nickMsg.value = t("profile.needNick"); return; }
+  nickBusy.value = true;
+  nickMsg.value = "";
+  const r = await cloudUpdateNickname(s);
+  nickBusy.value = false;
+  nickMsg.value = !r.ok
+    ? t("profile.authFail", { r: r.reason || "unknown" })
+    : r.synced
+      ? t("profile.nickSavedSynced", { p: r.posts || 0, c: r.comments || 0 })
+      : t("profile.nickSavedOld");
+  if (r.ok) nickDraft.value = "";
+}
 
 const PREFS = [
   { key: "comments", tk: "notif.prefComments" },

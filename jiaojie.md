@@ -318,6 +318,16 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 - **修复**：captureRedirect 改为**只读不清**（error 分支无令牌可消费，才立即清）；会话在手（onAuthStateChange 有 session）时兜底清地址栏残留。
 - **验证**：auth-test 49 项（A30/A30b 新断言钉住"恢复令牌不被提前抹"）；全量测试/build/live-check/SHA 全过；**真实邮件闭环待用户实机验收**。
 
+### 轮 9：Google 登录昵称提示 + 设置页改昵称（提交待查）
+- Google 登录用户昵称是自动取的（bestNickname 兜底），**首次登录后 ProfileView 给「改一改」提示**（cloudNicknameIsAuto 判定，只在 provider=google 且昵称仍等于自动值时提示）；设置页加常驻改昵称入口（登录改云端，游客提示先登录）。
+- 改名写库：首选 RPC `rename_me`（一个事务里连旧帖/旧评论署名一起改）；缺失时退回只改 profiles 并如实返回 synced:false。
+
+### 轮 10：改昵称署名同步 + PGRST202 判定修复（已部署 70ef53fd，迁移未跑）
+- **新迁移 `MIGRATION_nickname_sync.sql`**：security definer RPC `rename_me(p_nick)` —— 一个事务里改 profiles.nickname + 同步自己全部 wall_posts/wall_comments 的 author_name（校验非空与 24 字上限 = authRules.NICK_MAX），返回改动行数；执行权只给 authenticated。**已知局限**：别人评论里「@旧名」的 reply_to_name 是纯文本无 uuid，无法回填（README 已注明）。未跑时前端退回「只改档案，旧帖留旧名」（不报错）。
+- **修复三处漏判 bug（重要）**：PostgREST 找不到 RPC 时 **错误码 PGRST202 在 error.code 里，error.message 是 "Could not find the function … in the schema cache"，不含 PGRST202** —— 项目里 `wallRules.errorKind` / `authRules.isMissingFnError` / `bottle.bottleErrKey` 三处只匹配消息文本，全部漏判（用户会直接看到英文报错而不是优雅降级文案）。已改为 **code 与 message 双认**（含 42883/42703/42P01），调用点补传 error.code。
+- **验证**：`nick-e2e.mjs` 线上 6/6（RPC 未就绪 → 退化路径实测：改名成功、旧帖留旧名）；auth-test 77、wall-rules 33（T22 新增真实响应文本用例）、bottle 36、bottle-chat 80 全绿；build + wrangler 部署 70ef53fd + live-check 13 过 + 线上产物含新判定与 rename_me 调用。
+- **待办**：`MIGRATION_nickname_sync.sql` 需用户在 SQL Editor 执行；跑完后再 `node tools/nick-e2e.mjs`（应显示 RPC 路径生效、旧帖署名一起改）。
+
 
 ## 四、还没做的
 
@@ -383,3 +393,5 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 11. **源码标识符在打包产物中被混淆**：搜 `sparkle0`、`petMood` 等源码名在产物里找不到，误判"没部署上"。**教训**：线上产物验证要用不会被混淆的字符串（i18n 文案、CSS 类名）或直接 SHA 比对 dist。
 12. **"已完成"口径纪律**：多次被提醒"不要把代码存在/测试通过说成完成"。**教训（强制）**：每条交付必须标注到三层验收的哪一层；数据库类改动必须注明"迁移已执行/未执行"。
 13. **重置密码令牌被提前抹掉（auth 时序 bug，已修）**：`captureRedirect()` 在 createClient 前就把地址栏 `#access_token` 清了，而本项目 supabase-js 默认 `flowType:'implicit'`——auth-js 要靠这个令牌建恢复会话（它自己会在建会话成功后才清 URL）。结果：点重置链接能到"设置新密码"表单，但提交必报 `Auth session missing`。**教训（强制）**：读 URL 信号 ≠ 可以清 URL；凡是"先读后交给库处理"的参数，清理必须交给库或等处理完成后兜底清。测试 auth-test A30/A30b 已钉住。
+14. **PGRST202 在 error.code 而非 message（已修，影响面大）**：PostgREST 找不到 RPC 时，`error.message` 是 "Could not find the function public.xxx(...) in the schema cache"，**不含 "PGRST202" 字样**；项目三处降级判定（errorKind / isMissingFnError / bottleErrKey）只匹配消息文本 → 全部漏判，用户直接看到英文报错。离线测试里用 `"PGRST202"` 当消息喂进去是**假通过**。**教训（强制）**：写错误分类前先打一次真实请求看 message/code 长什么样；测试夹具必须用真实响应文本，不能想当然拼。
+15. **改名后旧内容署名不会自动变**：署名冗余存（列表免 join 的代价）→ 改昵称必须配 RPC 同步（rename_me），否则「我改名了、墙上是旧名」。**教训**：任何「插入时快照」字段，在改源头时都要想清楚要不要回填、能不能回填（reply_to_name 无 uuid 就回填不了）。

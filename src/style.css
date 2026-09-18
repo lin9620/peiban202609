@@ -889,6 +889,12 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 .set-opt.master { width: 100%; text-align: left; }
 .set-block.dimmed { opacity: .6; }
 
+/* —— 改昵称（Google 首登提示 + 随时可改）：「我的」页与设置页共用这一行布局 —— */
+.nick-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+/* 输入框吃掉剩余宽度（naive-ui 的根元素是 .n-input，全局选择器才管得到） */
+.nick-row .n-input { flex: 1 1 200px; min-width: 0; }
+.nick-box .sub { margin-top: 6px; }
+
 /* —— 已拉黑面板（#19）—— */
 .dm-blocked-bar { margin-top: 8px; }
 .dm-blocked { margin-top: 8px; padding: 10px 12px; border-radius: 14px; border: 1px dashed var(--line); }

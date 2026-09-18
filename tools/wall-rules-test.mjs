@@ -219,6 +219,10 @@ t("T22 errorKind：每日限额 / 未跑迁移 / 其它失败分得开", () => {
   assert.equal(errorKind("column wall_posts.views does not exist"), "not-migrated");
   assert.equal(errorKind("column wall_posts.removed does not exist"), "not-migrated");
   assert.equal(errorKind("PGRST202"), "not-migrated");
+  /* 真实响应：码在 error.code，消息里没有 PGRST202（只匹配消息会漏判 → 用户看到英文报错） */
+  assert.equal(errorKind("Could not find the function public.wall_toggle_dislike(p_post bigint) in the schema cache", "PGRST202"), "not-migrated");
+  assert.equal(errorKind("Could not find the function public.wall_toggle_dislike(p_post bigint) in the schema cache"), "not-migrated");
+  assert.equal(errorKind("", "PGRST202"), "not-migrated");
   assert.equal(errorKind("network timeout"), "");
   assert.equal(errorKind(""), "");
   assert.equal(errorKind(null), "");

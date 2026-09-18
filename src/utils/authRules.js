@@ -55,6 +55,26 @@ export function passwordProblem(pass) {
 export const NICK_MAX = 24;
 
 /**
+ * 这个数据库报错是不是「函数/列还没建」？（未跑迁移的典型信号）
+ * 用于改名 RPC rename_me 缺失时退回「只改档案」——不把「没跑迁移」当成真失败甩给用户。
+ *
+ * ⚠️ 踩过的坑：PostgREST 找不到 RPC 时，**错误码 PGRST202 在 error.code 里，
+ *    error.message 是「Could not find the function public.xxx(args) in the schema cache」**
+ *    ——只匹配消息文本会漏判（用户会直接看到报错，而不是静默降级）。
+ *    所以这里同时认 code 与 message，且把真实消息话术也列进来。
+ * @param {string} msg error.message（脏值安全）
+ * @param {string} [code] error.code（可选；传了更可靠）
+ * @returns {boolean}
+ */
+export function isMissingFnError(msg, code) {
+  const c = String(code == null ? "" : code).toUpperCase();
+  if (c === "PGRST202" || c === "42883" || c === "42703" || c === "42P01") return true;
+  const m = String(msg == null ? "" : msg).toLowerCase();
+  return m.includes("pgrst202") || m.includes("42883") || m.includes("42703")
+    || m.includes("does not exist") || m.includes("could not find the function");
+}
+
+/**
  * 从登录元数据里挑一个能看的昵称。
  * 优先级：nickname（我们自己注册时写的）> full_name / name（Google 给的）> 邮箱前缀 > Guest。
  * @param {Object} meta user.user_metadata（可能是 null / 脏值）

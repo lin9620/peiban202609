@@ -16,9 +16,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   MIN_PASSWORD, NICK_MAX, isEmail, emailProblem, passwordProblem, bestNickname,
-  parseAuthRedirect, hasAuthParams, isRecoveryEvent, redirectUrl,
+  parseAuthRedirect, hasAuthParams, isRecoveryEvent, redirectUrl, isMissingFnError,
 } from "../src/utils/authRules.js";
 import { messages, t, i18n } from "../src/i18n.js";
+import { cloud, cloudNicknameIsAuto, cloudUpdateNickname } from "../src/utils/supabase.js";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (rel) => fs.readFileSync(path.join(root, rel), "utf8");
@@ -154,12 +155,104 @@ ok("A44 样式齐备（按钮 / 分隔线 / 提示配色 / 页面级提示）", 
     .every((s) => css.includes(s));
 })());
 
+/* ═════════ ⑧ 改昵称（Google 首登自动昵称 → 提示可改；设置页常驻可改） ═════════ */
+const sbSrc = read("src/utils/supabase.js");
+const profSrc = read("src/views/ProfileView.vue");
+const setSrc = read("src/views/SettingsView.vue");
+ok("A49 supabase.js 导出「是否自动昵称」与「改昵称」两个入口",
+  /export function cloudNicknameIsAuto\(\)/.test(sbSrc) && /export async function cloudUpdateNickname\(/.test(sbSrc));
+ok("A50 仅 Google 登录判定为自动昵称（邮箱注册自己起过名，不该被提示）",
+  sbSrc.includes('if (provider !== "google") return false;'));
+ok("A51 与 bestNickname 兜底值比对（改过一次就不再提示）",
+  sbSrc.includes("cloud.nickname === auto"));
+ok("A52 写库走 profiles self update（RLS 兜底只能改自己这一行）",
+  sbSrc.includes('from("profiles").update({ nickname: v }).eq("id", cloud.user.id)'));
+ok("A52b 首选 RPC rename_me（一个事务里连旧帖/旧评论署名一起改）",
+  sbSrc.includes('sb.rpc("rename_me", { p_nick: v })') && sbSrc.includes("synced: true"));
+ok("A52c RPC 缺失时退回只改档案，并如实返回 synced:false（不谎报旧内容已同步）",
+  sbSrc.includes("if (!isMissingFnError(error.message, error.code)) return { ok: false, reason: error.message };")
+  && sbSrc.includes("return { ok: true, synced: false };"));
+ok("A52c2 判定时连 error.code 一起传（真实响应里码在 code、消息里没有 PGRST202）",
+  sbSrc.includes("isMissingFnError(error.message, error.code)"));
+ok("A52d 「函数不存在」判定复用 authRules 纯函数（PGRST202/42883/42703）",
+  sbSrc.includes("isMissingFnError,") && !/function isFnMissing/.test(sbSrc));
+{
+  const fnMiss = isMissingFnError("PGRST202: Could not find the function public.rename_me");
+  const colMiss = isMissingFnError('column "author_name" does not exist');
+  const denied = isMissingFnError("permission denied for table profiles");
+  ok("A52e 纯函数：RPC 缺失 / 列不存在 → 判定为「没跑迁移」", fnMiss === true && colMiss === true);
+  /* 线上实测到的真实响应：码在 error.code，消息为 "Could not find the function … in the schema cache" */
+  const realMsg = "Could not find the function public.rename_me(p_nick) in the schema cache";
+  ok("A52e2 线上真实响应（消息无 PGRST202、码在 code）也认得出 → 退化路径真会走",
+    isMissingFnError(realMsg, "PGRST202") === true && isMissingFnError(realMsg) === true);
+  ok("A52f 纯函数：权限等其他错误不被当成「没跑迁移」（否则会静默降级掩盖真问题）",
+    denied === false && isMissingFnError(null) === false && isMissingFnError(undefined) === false);
+}
+ok("A52g 迁移文件存在且幂等（create or replace + 收权只给 authenticated）",
+  (() => {
+    const m = read("MIGRATION_nickname_sync.sql");
+    return m.includes("create or replace function public.rename_me(p_nick text)")
+      && m.includes("grant execute on function public.rename_me(text) to authenticated")
+      && m.includes("revoke all on function public.rename_me(text) from public")
+      && m.includes("update public.wall_posts    set author_name = v_nick where user_id = me")
+      && m.includes("update public.wall_comments set author_name = v_nick where user_id = me")
+      && read("SUPABASE_SETUP.sql").includes("create or replace function public.rename_me(p_nick text)");
+  })());
+ok("A52h 迁移里 24 字上限与前端 NICK_MAX 齐平（超长署名会撑破布局）",
+  read("MIGRATION_nickname_sync.sql").includes("char_length(v_nick) > 24")
+  && read("MIGRATION_nickname_sync.sql").includes("empty-nickname"));
+ok("A53 空昵称被拒 + 超长按 NICK_MAX 截断（与注册表单同一上限）",
+  sbSrc.includes('reason: "empty-nickname"') && /\.slice\(0, NICK_MAX\)/.test(sbSrc));
+ok("A54 写成功后同步 cloud.nickname（页面各处署名立即生效）",
+  sbSrc.includes("cloud.nickname = v;"));
+ok("A55 「我的」页：自动昵称时给紧凑提示 + 「改一改」，点开才出输入框",
+  profSrc.includes('t("profile.nickAutoHint")') && profSrc.includes('t("profile.nickChange")')
+  && profSrc.includes('v-if="cloudSigned && (nickAuto || nickEdit)"'));
+ok("A56 保存成功后同步本地署名键并收起输入框",
+  profSrc.includes("syncNickname();") && profSrc.includes("nickEdit.value = false;"));
+ok("A56b 「我的」页按结果分别提示：同步了旧内容 / 只改了档案（不谎报）",
+  profSrc.includes('t("profile.nickSavedSynced", { p: r.posts || 0, c: r.comments || 0 })')
+  && profSrc.includes('t("profile.nickSavedOld")'));
+ok("A56c 设置页同样区分两种结果",
+  setSrc.includes('t("profile.nickSavedSynced", { p: r.posts || 0, c: r.comments || 0 })')
+  && setSrc.includes('t("profile.nickSavedOld")'));
+ok("A57 设置页常驻改名（登录可改、游客提示先登录）",
+  setSrc.includes("cloudUpdateNickname") && setSrc.includes('t("profile.nickSave")')
+  && setSrc.includes('t("notif.needSignIn")'));
+ok("A58 未登录时不显示提示框（不在游客面前露改名面板）",
+  profSrc.includes("if (!(ready && uid)) cancelNickEdit();"));
+ok("A59 昵称行有全局布局样式（.n-input 能撑开，不会挤成默认窄框）",
+  /\.nick-row \.n-input/.test(read("src/style.css")));
+
+/* ═════════ ⑨ 改昵称判定逻辑：真调函数（源码对了不代表跑起来对） ═════════ */
+const googleUser = {
+  app_metadata: { provider: "google" },
+  user_metadata: { full_name: "Dale Chen" },
+  email: "d@e.net",
+};
+const setCloud = (u, n) => { cloud.user = u; cloud.nickname = n; };
+setCloud(googleUser, "Dale Chen");
+ok("A60 Google 首登（昵称仍是自动兜底）→ 判定为「可提示改名」", cloudNicknameIsAuto() === true);
+setCloud(googleUser, "爪爪");
+ok("A61 改成自己喜欢的名字后不再提示", cloudNicknameIsAuto() === false);
+setCloud({ app_metadata: { provider: "email" }, user_metadata: { nickname: "小橘" }, email: "x@y.net" }, "小橘");
+ok("A62 邮箱注册的用户从不提示（名字是自己起的）", cloudNicknameIsAuto() === false);
+setCloud(null, "");
+ok("A63 未登录时不提示", cloudNicknameIsAuto() === false);
+{
+  const r = await cloudUpdateNickname("新名字");
+  ok("A64 云端未配置时改名安全失败（no-cloud，不抛错、不谎报成功）", r.ok === false && r.reason === "no-cloud");
+}
+setCloud(googleUser, "Dale Chen"); /* 还原，避免影响后续用例 */
+
 /* ═════════ ⑦ 文案：双语齐备 ═════════ */
 const KEYS = [
   "googleSignIn", "googleBusy", "orEmail", "needEmail", "badEmail", "needPass", "shortPass",
   "passRule", "forgot", "forgotTitle", "forgotHint", "forgotHint2", "forgotSend", "forgotSent",
   "setPassTitle", "setPassHint", "newPass", "savePass", "backToSignIn", "resetDone",
   "resetLinkBad", "resetLinkBadWhy",
+  "nickTitle", "nickChange", "nickAutoHint", "nickHint", "needNick", "nickLong", "nickSave", "nickSaved",
+  "nickSavedSynced", "nickSavedOld",
 ];
 const missEn = KEYS.filter((k) => !messages.en.profile[k]);
 const missZh = KEYS.filter((k) => !messages.zh.profile[k]);
@@ -178,6 +271,14 @@ ok("A47 passRule / shortPass 的 {n} 真会被替换（不是原样吐出来）"
 ok("A48 没有本地假成功文案（重置必须走邮件，不能宣称密码已改）", (() => {
   const s = JSON.stringify(messages);
   return !/密码已(修改|重置)/.test(s);
+})());
+ok("A48b nickLong 的 {n} 真会被替换（昵称上限提示不留占位符）", (() => {
+  i18n.locale = "zh";
+  const zh = t("profile.nickLong", { n: NICK_MAX });
+  i18n.locale = "en";
+  const en = t("profile.nickLong", { n: NICK_MAX });
+  i18n.locale = "en";
+  return zh.includes(String(NICK_MAX)) && !zh.includes("{n}") && en.includes(String(NICK_MAX)) && !en.includes("{n}");
 })());
 
 console.log(`\nTOTAL ${pass + fail}  PASS ${pass}  FAIL ${fail}`);

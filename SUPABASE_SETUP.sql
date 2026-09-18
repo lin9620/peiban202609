@@ -1588,6 +1588,37 @@ revoke all on function public.bottle_records(uuid, integer, boolean, integer) fr
 grant execute on function public.bottle_chat_decide(uuid, boolean) to authenticated;
 grant execute on function public.bottle_records(uuid, integer, boolean, integer) to authenticated;
 
+-- ══════════════════ 改昵称同步旧内容署名（轮 9 · 昵称修改） ══════════════════
+-- 详情见 MIGRATION_nickname_sync.sql。墙上的帖子/评论把作者名冗余存成 author_name，
+-- 只改 profiles 会出现「我改名了、旧帖还是旧名」；此 RPC 一个事务里两处一起改。
+-- 未跑时前端退回「只改 profiles」（旧帖留旧名，不报错）。
+create or replace function public.rename_me(p_nick text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  me         uuid := auth.uid();
+  v_nick     text;
+  v_posts    integer := 0;
+  v_comments integer := 0;
+begin
+  if me is null then raise exception 'auth-required'; end if;
+  v_nick := btrim(coalesce(p_nick, ''));
+  if v_nick = '' then raise exception 'empty-nickname'; end if;
+  if char_length(v_nick) > 24 then raise exception 'nick-too-long'; end if;
+
+  update public.profiles set nickname = v_nick where id = me;
+  if not found then raise exception 'no-profile'; end if;
+
+  update public.wall_posts    set author_name = v_nick where user_id = me;
+  get diagnostics v_posts = row_count;
+  update public.wall_comments set author_name = v_nick where user_id = me;
+  get diagnostics v_comments = row_count;
+
+  return jsonb_build_object('nickname', v_nick, 'posts', v_posts, 'comments', v_comments);
+end $$;
+
+revoke all on function public.rename_me(text) from public;
+grant execute on function public.rename_me(text) to authenticated;
+
 -- ============================================================
 -- 执行完毕。请在 Supabase SQL Editor 运行本文件，然后跑：
 --   node tools/dm-test.mjs && node tools/notify-test.mjs && node tools/bottle-test.mjs

@@ -14,7 +14,8 @@ import { reactive } from "vue";
 import { createClient } from "@supabase/supabase-js";
 import { setAuthTokenProvider } from "./api/authToken.js";
 import {
-  bestNickname, hasAuthParams, isRecoveryEvent, parseAuthRedirect, redirectUrl,
+  bestNickname, hasAuthParams, isRecoveryEvent, parseAuthRedirect, redirectUrl, NICK_MAX,
+  isMissingFnError,
 } from "./authRules.js";
 
 export const cloud = reactive({
@@ -223,4 +224,49 @@ export async function cloudSignInWithGoogle() {
 export function cloudClearRecovery() {
   cloud.recovery = false;
   cloud.recoveryErr = "";
+}
+
+/* —— 昵称是否还是登录时的自动兜底（只针对 Google 登录：它用 full_name/邮箱前缀起名） ——
+ * 邮箱注册的用户在注册表单里自己起过名，不算"自动"；改过一次（哪怕又改回原样）也不再提示。
+ * 「我的」页据此在首登后给出"可以改昵称"的提示框。 */
+export function cloudNicknameIsAuto() {
+  const u = cloud.user;
+  if (!u) return false;
+  const provider = u.app_metadata && u.app_metadata.provider;
+  if (provider !== "google") return false;
+  const auto = bestNickname(u.user_metadata, u.email);
+  return !!cloud.nickname && cloud.nickname === auto;
+}
+
+/* —— 修改昵称（登录用户）——
+ * 首选 RPC rename_me：一个事务里改 profiles.nickname + 自己旧帖/旧评论的 author_name
+ * （墙上署名是插入时写死的冗余列，只改 profiles 会出现「我改名了、旧帖还是旧名」）。
+ * 没跑 MIGRATION_nickname_sync.sql 时函数不存在（PGRST202/42883）→ 退回只改 profiles，
+ * 旧帖留旧名，返回 synced:false 让界面如实提示，不报错、不白屏。
+ * 成功后同步 cloud.nickname，页面各处（头像/署名/主页）立即生效 */
+export async function cloudUpdateNickname(nick) {
+  if (!sb) return { ok: false, reason: "no-cloud" };
+  if (!cloud.user) return { ok: false, reason: "auth-required" };
+  const v = String(nick == null ? "" : nick).trim().slice(0, NICK_MAX);
+  if (!v) return { ok: false, reason: "empty-nickname" };
+  try {
+    const { data, error } = await sb.rpc("rename_me", { p_nick: v });
+    if (!error) {
+      cloud.nickname = v;
+      const row = Array.isArray(data) ? data[0] : data;
+      return { ok: true, synced: true, posts: (row && row.posts) || 0, comments: (row && row.comments) || 0 };
+    }
+    if (!isMissingFnError(error.message, error.code)) return { ok: false, reason: error.message };
+  } catch (e) {
+    if (!isMissingFnError(e && e.message)) return { ok: false, reason: e && e.message ? e.message : String(e) };
+  }
+  /* 退化路径：只改档案（旧内容署名保持旧名） */
+  try {
+    const { error } = await sb.from("profiles").update({ nickname: v }).eq("id", cloud.user.id);
+    if (error) return { ok: false, reason: error.message };
+    cloud.nickname = v;
+    return { ok: true, synced: false };
+  } catch (e) {
+    return { ok: false, reason: e && e.message ? e.message : String(e) };
+  }
 }

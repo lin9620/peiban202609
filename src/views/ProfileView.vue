@@ -8,9 +8,10 @@ import { todayKey } from "../utils/daily.js";
 import {
   cloud, cloudSignUp, cloudSignIn, cloudSignOut,
   cloudResetPassword, cloudUpdatePassword, cloudSignInWithGoogle, cloudClearRecovery,
+  cloudUpdateNickname, cloudNicknameIsAuto,
 } from "../utils/supabase.js";
 /* 登录规则（纯函数，Node 单测覆盖）：本地校验 / 昵称兜底 / 邮件链接解析 / 回跳地址 */
-import { MIN_PASSWORD, emailProblem, passwordProblem } from "../utils/authRules.js";
+import { MIN_PASSWORD, NICK_MAX, emailProblem, passwordProblem } from "../utils/authRules.js";
 import { db } from "../utils/api/db.js";
 import { cloudFetchUserPosts } from "../utils/wall.js";
 
@@ -85,6 +86,59 @@ const passMsg = ref("");
 
 /* 页面级提示（保存成功的提示要放在登录卡片外——那时卡片已被隐藏） */
 const flash = ref("");
+
+/* —— 改昵称（Google 首登提示 + 任何时候可改） ——
+ * 昵称还是 Google 自动兜底时就一直给一个紧凑入口（提示语 + 「改一改」），
+ * 点开才出现输入框；改成功（或本来就不是自动昵称）框就不出现。设置页里也常驻可改。 */
+const nickEdit = ref(false);
+const nickDraft = ref("");
+const nickBusy = ref(false);
+const nickMsg = ref("");
+const nickAuto = ref(false);
+
+function nickProblem(v) {
+  const s = String(v == null ? "" : v).trim();
+  if (!s) return t("profile.needNick");
+  if (s.length > NICK_MAX) return t("profile.nickLong", { n: NICK_MAX });
+  return "";
+}
+function startNickEdit() {
+  nickDraft.value = cloud.nickname || "";
+  nickMsg.value = "";
+  nickEdit.value = true;
+}
+function cancelNickEdit() {
+  nickEdit.value = false;
+  nickDraft.value = "";
+  nickMsg.value = "";
+}
+async function saveNick() {
+  if (nickBusy.value) return;
+  const bad = nickProblem(nickDraft.value);
+  if (bad) { nickMsg.value = bad; return; }
+  nickBusy.value = true;
+  nickMsg.value = "";
+  const r = await cloudUpdateNickname(nickDraft.value);
+  nickBusy.value = false;
+  if (!r.ok) { nickMsg.value = t("profile.authFail", { r: r.reason || "unknown" }); return; }
+  /* 成功：署名键与云端同步（syncNickname 走 cloud.nickname），提示框收起 */
+  syncNickname();
+  nickAuto.value = false;
+  nickEdit.value = false;
+  nickDraft.value = "";
+  flash.value = r.synced
+    ? t("profile.nickSavedSynced", { p: r.posts || 0, c: r.comments || 0 })
+    : t("profile.nickSavedOld");
+}
+/* 登录态变化时判定：昵称是否仍是 Google 自动兜底 */
+watch(
+  () => [cloud.ready, cloud.user && cloud.user.id, cloud.nickname],
+  async ([ready, uid]) => {
+    nickAuto.value = !!(ready && uid) && cloudNicknameIsAuto();
+    if (!(ready && uid)) cancelNickEdit();
+  },
+  { immediate: true },
+);
 
 function syncNickname() {
   if (cloud.nickname) { nickname.value = cloud.nickname; setItem(NICK_KEY, cloud.nickname); }
@@ -281,6 +335,30 @@ const brightRatio = computed(() => {
           ⚙️ {{ t("settings.entry") }}
         </router-link>
       </div>
+    </section>
+
+    <!-- 改昵称：Google 首登自动昵称 → 常驻紧凑提示；点「改一改」出现输入框。
+         保存走 profiles self update（RLS），署名/主页/头像即时生效 -->
+    <section v-if="cloudSigned && (nickAuto || nickEdit)" class="card nick-box">
+      <div class="row-between">
+        <span class="sec-label">{{ t("profile.nickTitle") }}</span>
+        <n-button v-if="!nickEdit" quaternary size="small" round @click="startNickEdit">
+          {{ t("profile.nickChange") }}
+        </n-button>
+        <n-button v-else quaternary size="small" round :disabled="nickBusy" @click="cancelNickEdit">
+          {{ t("common.cancel") }}
+        </n-button>
+      </div>
+      <p class="sub">{{ nickAuto ? t("profile.nickAutoHint") : t("profile.nickHint") }}</p>
+      <div v-if="nickEdit" class="nick-row">
+        <n-input
+          v-model:value="nickDraft" :placeholder="displayName"
+          :maxlength="NICK_MAX" :disabled="nickBusy" @keyup.enter="saveNick" />
+        <n-button type="primary" :loading="nickBusy" @click="saveNick">
+          {{ t("profile.nickSave") }}
+        </n-button>
+      </div>
+      <p v-if="nickMsg" class="streak-note">{{ nickMsg }}</p>
     </section>
 
     <!-- #9 我在暖心墙的帖子（登录后展示；点一条就跳到墙上那条帖子） -->

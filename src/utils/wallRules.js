@@ -260,10 +260,15 @@ export function inRange(post, range = DEFAULT_RANGE, now = Date.now()) {
  * 每日限额由数据库触发器抛出 'wall_daily_limit'。
  * @returns {"daily-limit"|"not-migrated"|""}
  */
-export function errorKind(message) {
+export function errorKind(message, code) {
+  const c = String(code == null ? "" : code).toUpperCase();
+  if (c === "PGRST202" || c === "42883" || c === "42703" || c === "42P01") return "not-migrated";
   const m = String(message || "").toLowerCase();
   if (m.includes("wall_daily_limit")) return "daily-limit";
-  /* 42703 = 列不存在；PGRST202 = 找不到 RPC（都是「还没跑迁移」的典型信号） */
-  if (m.includes("pgrst202") || m.includes("42703") || m.includes("does not exist")) return "not-migrated";
+  /* 42703 = 列不存在；PGRST202 = 找不到 RPC（都是「还没跑迁移」的典型信号）。
+     注意：真实响应里码在 error.code，消息是「Could not find the function … in the schema cache」，
+     所以既认码也认这句真实话术（只写 "PGRST202" 当消息测会假通过）。 */
+  if (m.includes("pgrst202") || m.includes("42703") || m.includes("does not exist")
+    || m.includes("could not find the function")) return "not-migrated";
   return "";
 }

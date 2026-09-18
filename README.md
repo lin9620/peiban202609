@@ -99,6 +99,7 @@ node tools/cloud-verify.mjs   # Supabase 连通性：Auth/四张表/Storage桶/R
 node tools/cloud-e2e.mjs      # 云端全链路实测（38 项：注册→建档→发帖→评论→二级回复(层级/级联/计数)→回应→权限→浏览去重→厌恶下架→每日一条→宠物主页(计数列/图外置)→清理；会造测试数据并清理）
 node tools/dm-e2e.mjs         # 私信+通知线上实测（47 项：双账号开会话/互发/未读水位/撤回/免打扰/隐藏/拉黑/消息请求/通知触发器/偏好开关/匿名 RLS；需先跑 MIGRATION_dm_notifications.sql）
 node tools/status-e2e.mjs     # 大厅状态线上实测（走 Worker，与浏览器同链路）：注册→写状态(服务端盖章)→状态流读回→非法 key 被拒→匿名/他人改不动→24h 过期隐去→清除（需先跑 MIGRATION_profile_status.sql）
+node tools/nick-e2e.mjs       # 改昵称署名同步线上实测（注册→发帖评论→改名）：迁移未跑时应走退化路径(旧帖留旧名)，跑完 MIGRATION_nickname_sync.sql 后旧署名一起改（会建测试帖/评论并清理）
 node tools/bottle-e2e.mjs     # 漂流瓶线上实测（走 Worker，双账号）：A 投信→B 捞→回信→A 收到回信→放回海里→每日限额→空海提示（需先跑 MIGRATION_bottle.sql）
 node tools/smoke.mjs          # 模块冒烟：需 dev 服务器在跑，探测 30 个关键模块 + 5 个 SEO 静态文件
 node tools/live-check.mjs     # 线上部署验证：页面/缓存/安全头/SEO 资产（部署后跑，应输出 LIVE ALL PASS）
@@ -143,6 +144,10 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 > 8. `MIGRATION_bottle_records.sql` —— **漂流瓶记录分类与分页**（#17，老库升级用；新装库无需单独跑）：`bottle_records` 换成新签名（`p_mine` 只看我发布的 / 我捞到的 —— 我捞到的含「放回海里」的，`p_limit` 每页条数），排序统一按发布时间新→旧。没跑它时：首页记录区请求会因函数签名不符而拿不到数据（其余投/捞/回不受影响），跑完即恢复。
 >
 > 离线回归：`node tools/bottle-chat-test.mjs`（规则、通知文案与跳转、双适配器及 Worker 转发、SQL 静态检查；不执行数据库迁移）。这不代表双账号端到端已验收。请在隔离环境验证 B 回信 → A 通知 → 打开记录 → A 同意 → 双方续聊及原信导入；另验证拒绝、重复同意及旧记录。不要用会随机捞取信件的线上脚本测试真实用户的漂流瓶。
+
+> 9. `MIGRATION_nickname_sync.sql` —— **改昵称同步旧内容署名**（轮 9，老库升级用；新装库无需单独跑）：`wall_posts` / `wall_comments` 的作者名是插入时写死的冗余列（列表一次查询出全量、不做 join），只改 `profiles.nickname` 会出现「我改名了、墙上的旧帖还是旧名」。此迁移加一个 security definer RPC `rename_me(p_nick)`，在一个事务里改档案并同步自己所有帖子与评论的署名（同时校验非空与 24 字上限），返回改动行数。没跑它时：仍可改名，但**旧帖/旧评论留旧名**（前端按真实结果提示，不谎报已同步）。跑完后可 `node tools/nick-e2e.mjs` 验证（会建测试帖/评论并清理）。
+>
+> 已知局限：别人评论里「@旧名」的 `reply_to_name` 是纯文本、不记 uuid，无法可靠回填，保留当时的称呼（历史记录语义）。
 
 **② 配置密钥**（二选一，anon key 是公开密钥，安全由 RLS 保证）：
 - 左侧 **Settings → API** 复制 `Project URL` 和 `anon public key`，然后：
