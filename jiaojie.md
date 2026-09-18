@@ -405,3 +405,80 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 15. **改名后旧内容署名不会自动变**：署名冗余存（列表免 join 的代价）→ 改昵称必须配 RPC 同步（rename_me），否则「我改名了、墙上是旧名」。**教训**：任何「插入时快照」字段，在改源头时都要想清楚要不要回填、能不能回填（reply_to_name 无 uuid 就回填不了）。
 16. **supabase-js 同一 client 在 signUp 后的"匿名"是假的**：auth-js 把会话留在内存，同一 client 后续 `.rpc()` 自动带 JWT —— 用它测"匿名被拒"会测成"匿名成功"。**教训**：真匿名断言必须 `createClient` 全新实例；同理 auth-test 等凡涉及"无 JWT"的用例都要用 fresh client。
 17. **`revoke from public` 撤不掉旧库的显式 `grant to anon`**：SETUP 文件曾 `grant execute on all functions to anon`，那是显式授权，后补的 `revoke ... from public` 只撤 PUBLIC。**教训**：收权要写全角色（`from public, anon`）；判定"被拒"的测试不要写死报错话术（权限层 42501 permission denied 与函数层 raise 的 message 不同，都算拒）。
+
+---
+
+## 十、容量评估（能承接多少日活）—— 决定「要不要提前优化」
+
+> 结论先说：**当前免费套餐 ≈ 500 日活**；但真正压垮它的不是文本接口（文本极小），
+> 而是**图片字节走 Supabase 出口、且没被 Cloudflare 缓存**。有一个**零成本**优化能把图片出口打到接近 0。
+
+### 1. 官方额度（2026-09 核实，来源：Supabase「Manage Egress usage」文档）
+
+- **Egress 覆盖所有服务**：Database、Auth、**Storage**、Edge Functions、Realtime、Log Drains。
+  也就是说 **图片下载算 egress**，不是只有数据库查询算。
+- 免费：**5 GB 未缓存 + 5 GB 已缓存**（两个独立额度，合计最多约 10 GB/月）
+  → 超出价 $0.09/GB（未缓存）、$0.03/GB（已缓存）
+- Pro（$25/月）：**250 GB + 250 GB**
+- ⚠️ **额度按「组织」共享**，不是按项目 —— 以后同组织下再开项目会互相挤占。
+- 其他额度：DB 体积 500 MB · Storage 体积 1 GB · Auth MAU 5 万 · Workers 免费 **10 万请求/天**
+
+### 2. 本项目实测消耗口径（这些数字是量出来的，不是猜的）
+
+| 项 | 实测值 | 位置/证据 |
+|---|---|---|
+| 帖子列表响应 | **995 B**（br 压缩） | 线上 `/api/posts` 实测 |
+| 状态流响应 | **393 B** | 线上 `/api/statuses` 实测 |
+| 图片压缩 | JPEG **q0.78**、最长边 **≤900px** | `imaging.js` `shrinkToDataUrl` |
+| 单图典型字节 | **~80–150 KB**（照片/截图；手绘食物更小） | 由 q0.78 + 900px 推算 |
+| 图片分发 | `/api/img/*` → Worker **302** → 浏览器直连 `<proj>.supabase.co/storage/...` | `worker/api.js` `imgRedirect` |
+| 图片缓存 | 文件名是内容哈希 → **浏览器**可永久缓存；但**Cloudflare 不缓存字节** | 同上 |
+| 调用密度 | 私信页可见时 **5s** 轮询（=720 次/小时）· 角标 **30s**（可见才发）· 逛墙一次 3–6 次 | `MessagesView.vue:281`、`badgeStore.js` |
+
+**关键点**：`/api/img/*` 是 **302 重定向**，不是代理 —— 浏览器最终从 Supabase 直接下载字节，
+**Cloudflare 完全不经手**。所以：**每一个新访客看每一张图，都是一次 Supabase Storage 出口。**
+
+### 3. 算术（假设已写明，可自行替换）
+
+- 每人每天：文本 ~150 次调用 × ~1.5 KB ≈ **0.23 MB** ＋ 首见图片 ~5 张 × ~100 KB ≈ **0.5 MB**
+  → 合计 **~0.7 MB/人/天**
+- Supabase 免费：10 GB/月 ÷ 30 = **341 MB/天** ÷ 0.7 MB ≈ **≈ 490 日活**
+- Workers 免费：10 万请求/天 ÷ 150 次 ≈ **≈ 660 日活**
+
+→ **两条线在 500–650 日活附近同时触顶**（所以我此前回答的「几百」数值是对的，
+但机制说错了：不是列表 JSON 大，而是**图片字节**）。
+
+### 4. 零成本优化（最高杠杆，建议优先做）
+
+**把图片放到 Cloudflare 侧**，二选一：
+
+- **方案 A（改动小）**：Worker 不再 302，而是**代理字节** + `Cache-Control: public, max-age=31536000, immutable`
+  （文件名已是内容哈希，命中率暖机后≈100%）→ Supabase 图片出口降到约 **1/N**（N=重复观看次数）。
+- **方案 B（架构更正，推荐长期）**：存到 **Cloudflare R2**（免费 10 GB 存储 + **出口永久免费**），
+  公开桶 + CDN。图片出口从此与日活脱钩。
+
+效果：免费套餐从 ~490 → **~1,000+ 日活**（此后瓶颈变成文本 egress 与 Workers 请求数）；
+Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
+
+### 5. 阶梯表（架构都不用动，纯加钱；加完再做第 4 节的优化）
+
+| 档位 | 月费 | 约合日活 | 当时的第一瓶颈 |
+|---|---|---|---|
+| 免费 | $0 | **~500** | Supabase egress（图片）＋ Workers 请求数 |
+| 只升 Workers Paid | $5 | ~700（仍被 Supabase 免费 egress 卡住） | Supabase egress |
+| ＋Supabase Pro | $30 | **~2,000–3,000** | Workers 请求数（10M/月） |
+| ＋图片走 Cloudflare（第 4 节） | $30 | **~2 万+** | 调用密度 |
+| 再往上 | — | 需减调用 | 私信 5s 轮询 → Realtime |
+
+### 6. 触顶前会看到的信号（现在不用管，但知道去哪看）
+
+- Cloudflare → Workers → 请求数日曲线接近 **10 万**
+- Supabase → **Organization** → Usage → Egress（注意看 uncached 与 cached 两条）接近 5 GB
+- Supabase → Storage → 体积接近 1 GB（用户传图先到量的是**存储**，不是带宽）
+
+### 7. 结论一句话
+
+架构本身没有承载缺陷（Workers 无状态可横向扩展、Supabase 可平滑升配），
+这是**「花钱阶梯 + 一个免费的图片缓存优化」**问题，不是重构问题。
+增长到几百日活之前无需任何动作；真要提前做，**先做第 4 节的图片缓存**（性价比最高）。
+
