@@ -72,15 +72,23 @@ async function refreshSession(session) {
 
 /* —— 邮件链接落地的两个信号（重置密码 / 链接失效） ——
  * 必须在 createClient 之前读：supabase-js 解析完会话会把地址栏参数清掉，
- * 之后就读不到了。读完顺手把令牌从地址栏抹掉（别留在会被复制分享的链接里）。 */
+ * 之后就读不到了。
+ * ⚠️ 这里【只读不清】：令牌必须留在地址栏里交给 supabase-js —— 它会在用
+ * #access_token 建立恢复会话【成功之后】自己清 URL（auth-js _getSessionFromURL
+ * 内部 window.location.hash = ''）。若在这里抢先抹掉，恢复会话永远建立不起来，
+ * 「设置新密码」会报 Auth session missing（踩过：忘记密码重置必失败）。
+ * 失效链接（error 参数，无令牌可消费）则可以安全地提前清掉。 */
 function captureRedirect() {
   if (typeof window === "undefined" || !window.location) return;
   const loc = window.location;
   const r = parseAuthRedirect(loc.hash, loc.search);
   if (r.kind === "recovery") cloud.recovery = true;
-  if (r.kind === "error") cloud.recoveryErr = r.reason || r.code;
-  if (hasAuthParams(loc.hash, loc.search)) {
-    try { window.history.replaceState(null, "", loc.pathname); } catch (e) { /* 忽略 */ }
+  if (r.kind === "error") {
+    cloud.recoveryErr = r.reason || r.code;
+    /* error 分支没有可用令牌，直接清掉难看的错误参数（supabase-js 不会碰它） */
+    if (hasAuthParams(loc.hash, loc.search)) {
+      try { window.history.replaceState(null, "", loc.pathname); } catch (e) { /* 忽略 */ }
+    }
   }
 }
 
@@ -112,6 +120,11 @@ export async function initCloud() {
     sb.auth.onAuthStateChange((evt, session) => {
       /* PKCE 流程的地址栏里没有 type=recovery，靠这个事件识别重置链接落地 */
       if (isRecoveryEvent(evt)) cloud.recovery = true;
+      /* 会话建立完成后 supabase-js 已消费并清掉地址栏令牌；若 URL 仍残留
+         （个别 implicit 边界情况），这里兜底抹一次 —— 只在会话在手时才安全 */
+      if (session && typeof window !== "undefined" && hasAuthParams(window.location.hash, window.location.search)) {
+        try { window.history.replaceState(null, "", window.location.pathname); } catch (e) { /* 忽略 */ }
+      }
       refreshSession(session);
     });
   } catch (e) {

@@ -101,8 +101,19 @@ ok("A29 令牌在 createClient 之前读取（否则解析完就没了）", (() 
   const cc = sb.indexOf("createClient(");
   return cap > 0 && cc > 0 && cap < cc;
 })(), "captureRedirect 必须在 createClient 之前");
-ok("A30 读到令牌后把地址栏抹掉（replaceState 到 pathname）",
-  /history\.replaceState\(null,\s*"",\s*loc\.pathname\)/.test(sb));
+ok("A30 恢复令牌【不】在 createClient 前被抹掉（auth-js 要用它建会话；只读不清）",
+  (() => {
+    /* 只看 captureRedirect 函数体，避免误伤相邻分支 */
+    const m = sb.match(/function captureRedirect\(\)[\s\S]*?\n}/);
+    const body = m ? m[0] : "";
+    /* recovery 分支后面不允许跟 replaceState（error 分支可以） */
+    const recPart = body.split('kind === "error"')[0];
+    return /kind === "recovery"/.test(body)
+      && !/replaceState/.test(recPart)
+      && /kind === "error"[\s\S]*replaceState/.test(body);
+  })());
+ok("A30b 会话在手时才兜底清地址栏残留（session 存在才 replaceState）",
+  /if \(session[\s\S]{0,120}hasAuthParams\(window\.location/.test(sb));
 ok("A31 PASSWORD_RECOVERY 事件挂上了（PKCE 流程兜底）",
   /isRecoveryEvent\(evt\)/.test(sb) && /onAuthStateChange\(\(evt,\s*session\)/.test(sb));
 ok("A32 昵称兜底改走 bestNickname（Google 没有 nickname 字段）",
