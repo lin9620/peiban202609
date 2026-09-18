@@ -1,8 +1,15 @@
 # 🐾 Warm Paws · 暖爪
 
+[![Live 站点](https://img.shields.io/badge/%F0%9F%8C%90_%E7%BA%BF%E4%B8%8A%E4%BD%93%E9%AA%8C-dale.de5.net-e07a3f?style=flat-square)](https://dale.de5.net)
+[![Vue](https://img.shields.io/badge/Vue-3-42b883?style=flat-square&logo=vuedotjs&logoColor=white)](https://vuejs.org)
+[![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers%20%2B%20Pages-f38020?style=flat-square&logo=cloudflare&logoColor=white)](https://workers.cloudflare.com)
+[![Supabase](https://img.shields.io/badge/Supabase-Postgres%20%2B%20Auth-3ecf8e?style=flat-square&logo=supabase&logoColor=white)](https://supabase.com)
+
+👉 **线上地址：<https://dale.de5.net>** —— [暖心墙](https://dale.de5.net/community) · [宠物乐园](https://dale.de5.net/pet) · [隐私政策](https://dale.de5.net/privacy)
+
 一个面向海外用户的**温馨治愈系网站**：每日暖心故事、手绘食物喂养的宠物伙伴、温柔的社区墙。
 
-技术栈：**Vite + Vue 3 + Naive UI**（前端）· **Lottie**（宠物动画）· **Supabase**（登录/数据/图片，第二批接入）· Vercel（托管）。
+技术栈：**Vite + Vue 3 + Naive UI**（前端）· **Lottie**（宠物动画）· **Supabase**（登录 / 数据 / 图片存储）· **Cloudflare Workers**（API 网关 + 静态托管，已上线 https://dale.de5.net ）。
 
 ## ✨ 功能
 
