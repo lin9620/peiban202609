@@ -325,14 +325,78 @@ async function hit(script, path, init) {
   ok("upload 超限 → 413", res.status === 413);
 }
 {
-  const res = await worker.fetch(req("/api/img/u1/x.jpg"), makeEnv(), {});
-  ok("img 302 → Storage 公开地址",
-    res.status === 302 &&
-    res.headers.get("location") === `${ORIGIN}/storage/v1/object/public/wall-images/u1/x.jpg`,
-    String(res.headers.get("location")));
-  ok("img 长缓存（内容哈希文件名）", (res.headers.get("cache-control") || "").includes("immutable"));
-  const res2 = await worker.fetch(req("/api/img/u1/%2E%2E/x.jpg"), makeEnv(), {});
-  ok("img 拒绝目录穿越", res2.status === 400);
+  /* 图片改为「字节代理 + 边缘缓存」：不再是 302 直连（302 跨用户不共享 → 每张图的每次浏览
+     都算一次 Supabase egress）。这里逐一钉住：代理语义、长缓存头、缓存命中不再回源、上游故障兜底 302。 */
+  const IMG = `${ORIGIN}/storage/v1/object/public/wall-images/u1/x.jpg`;
+  const imgUp = { status: 200, headers: { "content-type": "image/jpeg", etag: '"abc"' }, text: "BINARY-IMG" };
+
+  const { res, c } = await hit([imgUp], "/api/img/u1/x.jpg");
+  ok("img 代理字节（200，不再 302 直连）", res.status === 200 && (await res.text()) === "BINARY-IMG");
+  ok("img 出站取 Storage 公开地址", c.outbound.length === 1 && c.outbound[0].url === IMG, c.outbound.map((o) => o.url).join(","));
+  ok("img 透传 content-type/etag", res.headers.get("content-type") === "image/jpeg" && res.headers.get("etag") === '"abc"');
+  ok("img 长缓存 immutable（路径含时间戳/内容哈希且不覆盖 → 字节不变）",
+    (res.headers.get("cache-control") || "").includes("immutable"));
+  ok("img 无 Cache API 时标 BYPASS（行为仍正确，只是不共享）", res.headers.get("x-img-cache") === "BYPASS");
+}
+
+/* 有 Cache API 时：首次 MISS 写缓存 → 第二次 HIT 不再回源（这正是省 egress 的地方） */
+{
+  const store = new Map();
+  globalThis.caches = {
+    default: {
+      match: async (k) => store.get(k.url),
+      put: async (k, r) => { store.set(k.url, r); },
+    },
+  };
+  try {
+    const waits = [];
+    const ctx = { waitUntil: (p) => waits.push(p) };
+    const c1 = capture([{ status: 200, headers: { "content-type": "image/jpeg" }, text: "IMG" }]);
+    let r1;
+    try {
+      r1 = await worker.fetch(req("/api/img/u1/y.jpg"), makeEnv(), ctx);
+      ok("首次回源标 MISS 且出站一次", r1.headers.get("x-img-cache") === "MISS" && c1.outbound.length === 1);
+      ok("内容正确回传", (await r1.text()) === "IMG");
+    } finally { c1.restore(); }
+    await Promise.all(waits);
+    ok("MISS 后写入边缘缓存", store.has(`https://site.test/api/img/u1/y.jpg`), [...store.keys()].join(","));
+
+    const c2 = capture([]); /* 这次不该有任何出站 */
+    try {
+      const r2 = await worker.fetch(req("/api/img/u1/y.jpg"), makeEnv(), ctx);
+      ok("命中边缘缓存 → HIT 且零回源（egress 由此降到 1/N）",
+        r2.headers.get("x-img-cache") === "HIT" && c2.outbound.length === 0,
+        `x-cache=${r2.headers.get("x-img-cache")} outbound=${c2.outbound.length}`);
+    } finally { c2.restore(); }
+  } finally { delete globalThis.caches; }
+}
+
+/* 缓存读取抛错 / 上游故障：都不能白块 —— 退回改造前的 302 直连 */
+{
+  globalThis.caches = { default: { match: async () => { throw new Error("cache-down"); }, put: async () => {} } };
+  try {
+    const { res } = await hit([{ status: 200, headers: { "content-type": "image/jpeg" }, text: "OK" }], "/api/img/u1/z.jpg");
+    ok("缓存读失败不致命：照常回源出图", res.status === 200 && (await res.text()) === "OK");
+  } finally { delete globalThis.caches; }
+}
+{
+  const { res } = await hit([{ throw: true }], "/api/img/u1/z.jpg");
+  ok("上游网络故障 → 兜底 302 直连（图仍能显示，不白块）",
+    res.status === 302 && res.headers.get("location") === `${ORIGIN}/storage/v1/object/public/wall-images/u1/z.jpg`
+    && res.headers.get("x-img-cache") === "FALLBACK");
+}
+{
+  const { res } = await hit([{ status: 404 }], "/api/img/u1/z.jpg");
+  ok("上游 404（图不存在）→ 也兜底 302，让 Storage 自己回准确状态",
+    res.status === 302 && res.headers.get("x-img-cache") === "FALLBACK");
+}
+{
+  const { res } = await hit([], "/api/img/u1/%2E%2E/x.jpg");
+  ok("img 拒绝目录穿越", res.status === 400);
+}
+{
+  const { res } = await hit([], "/api/img/u1/x.jpg", { method: "POST" });
+  ok("img 只允许 GET", res.status === 405);
 }
 
 /* ─────────── 错误路径 ─────────── */

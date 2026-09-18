@@ -6,6 +6,10 @@
  *                   用户 JWT 原样转发 → RLS 照旧由数据库执行；本文件绝不解析/验证 token。
  *   2. 其余路径  —— 静态资源（env.ASSETS；SPA 兜底由 wrangler.jsonc 的 assets 配置决定）。
  *
+ * 图片例外：/api/img/* 不走 302 直连 Storage，而是由本 Worker 代理字节 + Cache API
+ *   长效缓存（见 imgResponse）—— 302 跨用户不共享，每张图的每次浏览都算一次
+ *   Supabase egress，是免费额度最先触顶的地方；边缘缓存后同一张图只回源一次。
+ *
  * 阶段 3（换 D1 / R2 / DO）时只重写本文件里 upstream 的指向，端点契约与前端不动；
  * 契约由 tools/worker-test.mjs（Worker 侧形状）+ tools/gateway-contract-test.mjs（前端侧）双面钉死。
  *
@@ -29,6 +33,8 @@ const OBJECT_ACCEPT = "application/vnd.pgrst.object+json";
 const LIMIT_MAX = 1000;
 const JSON_BODY_MAX = 2 * 1024 * 1024; /* 宠物快照降级保留 dataURL 时可达 ~1.8MB（shrinkPetPayload 预算） */
 const UPLOAD_BODY_MAX = 512 * 1024; /* 前端单图上限 200KB，这里留一倍余量 */
+/* 图片永久缓存：路径含时间戳/内容哈希且上传 upsert=false → 同 URL 字节不变（见 imgResponse） */
+const CACHE_IMMUTABLE = "public, max-age=31536000, immutable";
 /* 陪你大厅状态 key 白名单（与前端 src/utils/statuses.js 的 STATUS_KEYS 一致） */
 const VALID_STATUS = new Set(["working", "studying", "sleepless", "chilling"]);
 /* 图片路径白名单：uid 段不允许点号，文件段允许扩展名点号 —— ".." 穿越直接拒绝 */
@@ -340,17 +346,74 @@ async function upload(env, request, url) {
   return res || fail(502, "upstream-unreachable");
 }
 
-/** 公开图 URL：302 到 Storage 公开地址；文件名是内容哈希 → 浏览器可永久缓存 */
-function imgRedirect(env, rawSegs) {
+/** 公开图：边缘缓存的字节代理（取代原先的 302 直连 Storage）
+ *
+ *  为什么改：302 只是把浏览器甩去 Storage 直连 ——  跨用户完全不共享，
+ *  每个新访客的每张图都算一次 Supabase egress（免费额度 5GB/月主要被这项吃掉）。
+ *  改成 Worker 取字节 + Cache API 长效缓存后，同一张图在边缘只回源一次，
+ *  图片出口量降到约 1/N（N = 同一张图被看的次数）。
+ *
+ *  为什么敢 immutable：路径是 `<uid>/<时间戳|内容哈希>.<ext>`，且上传一律 upsert=false
+ *  （宠物图是同内容同哈希覆盖）→ 同一 URL 的字节永不改变，永久缓存是安全的。
+ *
+ *  为什么不白块：上游取不到（网络抖动/Storage 报错）时退回 302 直连 ——
+ *  图仍能显示，最差退化成改造前的行为。
+ */
+async function imgResponse(env, request, ctx, rawSegs) {
   const path = safeImagePath(rawSegs.join("/"));
   if (!path) return fail(400, "bad-path");
-  return new Response(null, {
+
+  const upstreamUrl = `${env.SUPABASE_URL}/storage/v1/object/public/${IMAGE_BUCKET}/${path.split("/").map(encodeURIComponent).join("/")}`;
+  /* 兜底：与改造前完全一致的 302（location 指向 Storage 公开地址） */
+  const fallback = (why) => new Response(null, {
     status: 302,
-    headers: {
-      location: `${env.SUPABASE_URL}/storage/v1/object/public/${IMAGE_BUCKET}/${path.split("/").map(encodeURIComponent).join("/")}`,
-      "cache-control": "public, max-age=31536000, immutable",
-    },
+    headers: { location: upstreamUrl, "cache-control": CACHE_IMMUTABLE, "x-img-cache": why },
   });
+
+  /* Node 测试环境 / 无 Cache API 的运行时：跳过缓存，仍代理字节（行为正确，只是不共享） */
+  const store = typeof caches !== "undefined" && caches && caches.default ? caches.default : null;
+  const key = store ? new Request(new URL(`/api/img/${path}`, request.url).toString(), { method: "GET" }) : null;
+  if (store) {
+    try {
+      const hitRes = await store.match(key);
+      if (hitRes) {
+        const h = new Headers(hitRes.headers);
+        h.set("x-img-cache", "HIT");
+        return new Response(hitRes.body, { status: 200, headers: h });
+      }
+    } catch (e) { /* 读缓存失败不该让图挂掉：继续回源 */ }
+  }
+
+  let up = null;
+  try {
+    up = await fetch(upstreamUrl);
+  } catch (e) {
+    up = null;
+  }
+  if (!up || !up.ok) return fallback("FALLBACK"); /* 上游不可用 / 图不存在 → 交回浏览器直连 */
+
+  const headers = new Headers();
+  for (const k of ["content-type", "content-length", "etag", "last-modified"]) {
+    const v = up.headers.get(k);
+    if (v) headers.set(k, v);
+  }
+  headers.set("cache-control", CACHE_IMMUTABLE);
+  headers.set("access-control-allow-origin", "*");
+  headers.set("x-img-cache", store ? "MISS" : "BYPASS");
+
+  let buf;
+  try {
+    buf = await up.arrayBuffer();
+  } catch (e) {
+    return fallback("FALLBACK");
+  }
+
+  /* 写边缘缓存：失败不影响本次响应（waitUntil 里再兜一层） */
+  if (store && ctx && typeof ctx.waitUntil === "function") {
+    const toCache = new Response(buf.slice(0), { status: 200, headers: new Headers(headers) });
+    ctx.waitUntil(store.put(key, toCache).catch(() => {}));
+  }
+  return new Response(buf, { status: 200, headers });
 }
 
 
@@ -359,7 +422,7 @@ function imgRedirect(env, rawSegs) {
 /* ══════════ 路由分发 ══════════ */
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
 
@@ -381,7 +444,7 @@ export default {
         return m === "GET" ? json({ ok: true, mode: "gateway", ts: Date.now() }) : fail(405, "method-not-allowed");
       }
       if (seg[0] === "img") {
-        return m === "GET" ? imgRedirect(env, seg.slice(1)) : fail(405, "method-not-allowed");
+        return m === "GET" ? imgResponse(env, request, ctx, seg.slice(1)) : fail(405, "method-not-allowed");
       }
       if (seg[0] === "uploads") {
         return m === "POST" ? upload(env, request, url) : fail(405, "method-not-allowed");

@@ -29,7 +29,7 @@ git -c http.proxy= -c https.proxy= -c http.version=HTTP/1.1 push   # push（本�
 node tools/<x>-test.mjs # 24 套离线测试（提交前全跑）
 node tools/undef-check.mjs  # 未导入符号检查（白屏元凶，必跑）
 node tools/live-check.mjs   # 部署后线上验证，应输出 LIVE ALL PASS (13)
-node tools/cloud-e2e.mjs / dm-e2e.mjs / status-e2e.mjs  # 线上端到端（自造 wp-* 测试账号并清理）
+node tools/cloud-e2e.mjs / dm-e2e.mjs / status-e2e.mjs / nick-e2e.mjs / bottle-e2e.mjs / img-cache-e2e.mjs  # 线上端到端（自造 wp-* 测试账号并清理）
 ```
 
 ### 0.4 目录与文件红线
@@ -161,7 +161,7 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 ## F. 测试与验证体系（接手后跑什么）
 - **24 套离线测试**（`node tools/x-test.mjs`，秒级、不碰网络）：规则层纯函数 + 契约（前端↔Worker↔SQL 形状）+ i18n 对称 + 迁移覆盖。
 - **undef-check / arity-test**：静态检查未导入符号与参数个数（白屏/undefined 元凶）。
-- **三套线上 e2e**（注册 `wp-*` 测试账号，结束清理）：cloud-e2e 38 项、dm-e2e 47 项、status-e2e 17 项。
+- **六套线上 e2e**（除 img-cache 外都注册 `wp-*` 测试账号，结束清理）：cloud-e2e 38 项、dm-e2e 47 项、status-e2e 17 项、nick-e2e 12 项、img-cache-e2e 11 项、bottle-e2e（双账号漂流瓶全链路）。
 - **live-check**：部署后必跑（13 项：页面/缓存/安全头/SEO）。
 - **线上探针纪律**：判函数存在性必须区分 `42501`（存在无权）与 `PGRST202`（不存在）。
 
@@ -252,15 +252,16 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 |---|---|
 | 项目 | peiban（陪伴 / warm-paws），路径 `D:\05ruanjian\peiban` |
 | 技术栈 | Vue 3 + Vite + Naive UI；数据层双模式：直连 Supabase（`db.supabase.js`）/ Worker 网关（`db.gateway.js` + `worker/api.js`，**线上走网关**）；Cloudflare 部署 https://dale.de5.net；Supabase Postgres + RLS + security definer RPC |
-| 代码 | `HEAD = origin/main = 4443b1e`（忘记密码修复），工作区干净 |
-| 部署 | Worker 版本已上线（修复含 `index-CGmbko5p.js`，SHA 与本地一致）；`live-check` 13 项全过 |
-| 数据库 | 10 个迁移文件**全部已在 Supabase 执行**（最后两个 `MIGRATION_bottle_records.sql` / `MIGRATION_dm_first_contact.sql` 由用户于 09-18 手动执行，已探针确认） |
-| 测试 | 24 套离线测试全绿 + `undef-check` 0 问题 + 三套线上 e2e（cloud 38 / dm 47 / status 17 全 PASS） |
+| 代码 | `HEAD = daee1d2`（容量评估）+ 本轮未提交改动：图片边缘缓存、README 数字校准、本文件；推送后与 `origin/main` 同步 |
+| 部署 | Worker 版本 `b025d9cb`（图片边缘缓存）；`live-check` 13/13；`img-cache-e2e` 11/11 |
+| 数据库 | 11 个迁移文件**全部已在 Supabase 执行**（含 `MIGRATION_nickname_sync.sql`，用户于 09-18 执行，`nick-e2e` 12/12 确认） |
+| 测试 | 25 套离线测试全绿 + `undef-check` 0 问题 + 五套线上 e2e（cloud 38 / dm 47 / status 17 / nick 12 / img-cache 11 全 PASS） |
 
 ## 二、现在在做什么
 
-- **当前任务**：无进行中的代码任务。第 13–22 条已全部提交部署，数据库迁移已执行并确认。
+- **当前任务**：无进行中的代码任务。轮 12（图片边缘缓存）已完成并部署，验证通过。
 - **等待用户输入**：① 实机验收结果（见「八、下一步」清单）；② 第 10 条的浏览器型号/版本；③ 第 7 条暖心故事、#12 宠物年龄衰老的开工通知。
+- **可选加码（等有量再做）**：图片搬 Cloudflare R2（出口永久免费，见「十、容量评估」方案 B）。
 
 ## 三、已完成（按轮次，均含验证证据）
 
@@ -336,6 +337,16 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 - **Always Use HTTPS 已由用户在 Cloudflare 开启（同日）**：http://dale.de5.net/ 与 /pet 等全部实测 **301 → https**（保留原路径）。http/https 重复内容风险消除。**踩坑**：这个开关在 zone 层（SSL/TLS → 边缘证书 → 始终使用 HTTPS），Worker 代码兜不了静态路径的 http 请求；若加密模式为「关闭」则该开关不显示，需先把加密模式设为「完全」。
 
 
+### 轮 12：图片边缘缓存 —— 把 Supabase egress 降到 1/N（已部署 b025d9cb）
+- **问题根源（带货来源）**：`/api/img/*` 原来是 **302 重定向**到 `<proj>.supabase.co/storage/...` —— 浏览器**最终直连 Supabase 下载字节，Cloudflare 压根不经手**，所以每个新访客的每张图都算一次 Supabase egress（免费 5GB/月主要被这项吃掉）。302 虽然带了 `immutable`，但 **Cloudflare 默认不缓存 302**，跨用户完全不共享。
+- **修法**：`worker/api.js` 的 `imgRedirect` → **`imgResponse`**：Worker 取字节后直出 + **Cache API（`caches.default`）长效缓存**；响应头 `x-img-cache: MISS|HIT|FALLBACK|BYPASS` 便于线上取证。
+  - 敢用 `immutable` 的依据：路径为 `<uid>/<时间戳|内容哈希>.<ext>`，上传一律 `upsert=false` → **同一 URL 字节永不改变**。
+  - **降级不白块**：上游取不到/图不存在 → 退回与原实现完全一致的 **302 直连 Storage**（最差退化成改造前行为）；写缓存失败只 `waitUntil().catch()`，不影响本次响应。
+  - **安全阀没放松**：`safeImagePath` 仍先行校验，路径穿越照旧 **400**。
+- **验证**：`worker-test` **180 → 191**（新增 11 项：Miss→Hit、字节一致、immutable 头、content-type 透传、上游失败退回 302、非法路径 400、非 GET 405…）；新工具 **`img-cache-e2e.mjs` 线上 11/11**（经 Worker 上传真实 PNG → 连打两次：`MISS` 首字节代理、**`HIT` 无凭证的另一访客命中边缘缓存** ⭐ 跨用户共享成立）；build + 部署 `b025d9cb` + live-check 13/13。
+- **收益**：图片出口量降到约 **1/N**（N = 同一张图被看的次数），免费套餐 ~490 → **~1,000+ 日活**；Pro ~2.3 万 → **约 7 万**。
+- 剩余可选（不着急）：方案 B 搬 **Cloudflare R2**（存储 10GB 免费 + 出口永久免费）→ 图片流量与日活彻底脱钩。
+
 ## 四、还没做的
 
 | 项 | 说明 | 依赖 |
@@ -383,7 +394,8 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 1. **等用户实机反馈** #13–#22（尤其设置页、通知分页、漂流瓶记录、拉黑管理、管理员上下架）。
 2. 收到 #10 的浏览器信息后：复现 → 定位 → 修复 → 验收。
 3. 用户通知后开工 **#7 暖心故事**（标题+正文/每日一篇/点赞/7 天榜页面）与 **#12 宠物年龄衰老**。
-4. 下一轮任务完成时：**先更新本文件再结束回复**。
+4. 有量之后（不急）：图片搬 **Cloudflare R2**（方案 B，出口永久免费）。
+5. 下一轮任务完成时：**先更新本文件再结束回复**（含 README 两处项数校准，见踩坑 #19）。
 
 ## 九、踩坑录（勿重复）
 
@@ -406,12 +418,16 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 16. **supabase-js 同一 client 在 signUp 后的"匿名"是假的**：auth-js 把会话留在内存，同一 client 后续 `.rpc()` 自动带 JWT —— 用它测"匿名被拒"会测成"匿名成功"。**教训**：真匿名断言必须 `createClient` 全新实例；同理 auth-test 等凡涉及"无 JWT"的用例都要用 fresh client。
 17. **`revoke from public` 撤不掉旧库的显式 `grant to anon`**：SETUP 文件曾 `grant execute on all functions to anon`，那是显式授权，后补的 `revoke ... from public` 只撤 PUBLIC。**教训**：收权要写全角色（`from public, anon`）；判定"被拒"的测试不要写死报错话术（权限层 42501 permission denied 与函数层 raise 的 message 不同，都算拒）。
 
+18. **302 让 Cloudflare 完全不经手（本轮真凶）**：`/api/img/*` 原来 302 到 Storage，浏览器**最终直连 Supabase 下字节** —— 边缘没有字节可缓存，且 **Cloudflare 默认不缓存 302**（尽管响应带了 `immutable`）→ 每个新访客的每张图都算一次 Supabase egress。**教训（强制）**：判断「内容有没有走边缘缓存」要看**最终响应是谁发的、字节从哪来**，不能只看 `cache-control` 头；重定向 ≠ 缓存。改造后必须用线上探针看 `x-img-cache` MISS→HIT 才算证据。
+19. **README 里的测试项数会悄悄过期**：`auth-test` 实际 77 项而文档写 48、`worker-test` 实际 191 项而文档写 180（加了用例没回头改文档）。**教训（强制）**：每次加/改用例后，跑一遍全量采集真实项数并同步 README 两处（测试清单行 + 第 317 行「回归验证」汇总）；文档数字与实际不符 = 误导交接人。
+20. **Node 里没有 `caches`**：本地跑 Worker 测试时 `typeof caches === "undefined"`，缓存分支会走 `BYPASS`（代理字节但不共享）。**教训**：涉及边缘 API 的代码要做能力探测 + 明确降级（本项目 `x-img-cache: BYPASS`），并另用线上 e2e 验证真实缓存行为 —— 离线绿不等于线上缓存成立。
+
 ---
 
 ## 十、容量评估（能承接多少日活）—— 决定「要不要提前优化」
 
 > 结论先说：**当前免费套餐 ≈ 500 日活**；但真正压垮它的不是文本接口（文本极小），
-> 而是**图片字节走 Supabase 出口、且没被 Cloudflare 缓存**。有一个**零成本**优化能把图片出口打到接近 0。
+> 而是**图片字节走 Supabase 出口、且没被 Cloudflare 缓存**。有一项**零成本**优化（**已在轮 12 落地**）把图片出口打到约 1/N。
 
 ### 1. 官方额度（2026-09 核实，来源：Supabase「Manage Egress usage」文档）
 
@@ -448,14 +464,16 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 → **两条线在 500–650 日活附近同时触顶**（所以我此前回答的「几百」数值是对的，
 但机制说错了：不是列表 JSON 大，而是**图片字节**）。
 
-### 4. 零成本优化（最高杠杆，建议优先做）
+### 4. 零成本优化（最高杠杆）
 
-**把图片放到 Cloudflare 侧**，二选一：
+**方案 A —— 已做（轮 12，已部署 b025d9cb）** ✅
+`/api/img/*` 不再 302，改为 **Worker 代理字节 + Cache API 长效缓存**（`immutable`）。
+线上实测 `x-img-cache` MISS → **HIT（跨用户共享）**，Supabase 图片出口降到约 **1/N**。
+（历史背景：302 曾带 `immutable`，但**跨用户不共享** —— Cloudflare 默认不缓存 302，
+每个新访客的每张图仍打一次 Supabase。）
 
-- **方案 A（改动小）**：Worker 不再 302，而是**代理字节** + `Cache-Control: public, max-age=31536000, immutable`
-  （文件名已是内容哈希，命中率暖机后≈100%）→ Supabase 图片出口降到约 **1/N**（N=重复观看次数）。
-- **方案 B（架构更正，推荐长期）**：存到 **Cloudflare R2**（免费 10 GB 存储 + **出口永久免费**），
-  公开桶 + CDN。图片出口从此与日活脱钩。
+**方案 B（长期，尚未做）**：图片搬到 **Cloudflare R2**（免费 10 GB 存储 + **出口永久免费**），
+公开桶 + CDN。图片出口从此与日活彻底脱钩。等真正有量了再考虑。
 
 效果：免费套餐从 ~490 → **~1,000+ 日活**（此后瓶颈变成文本 egress 与 Workers 请求数）；
 Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
