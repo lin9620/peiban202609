@@ -8,7 +8,10 @@
     "directory": "./dist",
     "binding": "ASSETS",
     "html_handling": "drop-trailing-slash",
-    "not_found_handling": "single-page-application",
+    // 未知路径返回 dist/404.html（真 404 状态码）：此前 SPA 全兜底会把任意乱路径
+    // 当首页 200 返回（软 404 原料，拖累 Google 收录）。真实路由全部有静态文件，
+    // 前端路由不依赖回退（history 模式的每条路由都有独立 HTML）。
+    "not_found_handling": "404-page",
     // 保险：即使 dist 里意外出现 api/ 目录，/api/* 也一定先进 Worker
     "run_worker_first": ["/api/*"]
   }

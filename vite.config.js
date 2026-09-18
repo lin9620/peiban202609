@@ -83,8 +83,27 @@ function privacyStaticHtml(locale) {
   return parts.join("\n      ");
 }
 
-/* history 路由：为每个子路由生成独立静态 HTML（独立 title/canonical/OG），
- * 部署后 /pet、/community、/profile 直接返回对应页面，SEO 与分享卡片各自正确 */
+/* —— SEO 预渲染正文（文案唯一来源是 i18n，不新造句子）——
+ * 为什么必须做：Googlebot 对「不执行 JS 只有一行 slogan 的页面」极其保守，
+ * 表现就是 GSC 里「已抓取 - 尚未编入索引」。把每个页面最核心的 2-3 句真实文案
+ * 在构建期写进静态 HTML（Vue 挂载时会被替换，视觉无差别），无 JS 的抓取方
+ * 才能读到「这一页到底是干什么的」。h2 而非 h1：noscript 里已有唯一 h1。 */
+function seoHero(en) {
+  const H = escapeHtml;
+  return (title, paras) =>
+    `<section class="card seo-hero"><h2 class="seo-title">${H(title)}</h2>` +
+    paras.map((p) => `<p>${H(p)}</p>`).join("") +
+    `<ul class="seo-links">
+      <li><a href="/pet">Meet your little pet</a></li>
+      <li><a href="/community">The Warm Wall</a></li>
+      <li><a href="/privacy">Privacy Policy</a></li>
+    </ul></section>`;
+}
+
+/* seoRoutes：子页独立 HTML（title/canonical/OG/正文）+ 首页正文 + 404 页。
+ * 404 页是给「不存在的路径」用的：此前 not_found_handling=SPA 会把任意
+ * 乱路径都当首页 200 返回（软 404 原料，拖累整站收录）；改成 404-page 后
+ * 未知路径返回真 404。真实路由全部有静态文件，不依赖回退。 */
 function seoRoutes() {
   return {
     name: "seo-routes",
@@ -94,23 +113,29 @@ function seoRoutes() {
       const tpl = path.join(distDir, "index.html");
       if (!fs.existsSync(tpl)) return;
       const SITE = "https://dale.de5.net";
+      /* og:description / twitter:description 共用的占位串（来自 index.html），子页替换用 */
       const ROOT_DESC =
         'content="Care for a little pet, draw its food, share kindness with gentle people."';
+      const hero = seoHero(messages.en);
+      const E = messages.en;
       const routes = [
         {
           dir: "pet",
           title: "Warm Paws · Meet Your Little Pet",
           desc: "Care for an adorable hand-drawn pet: draw its food, play gentle games, and watch it grow.",
+          html: hero(E.pet.subtitle, [E.pet.tip, E.home.companions.hall]),
         },
         {
           dir: "community",
           title: "Warm Paws · The Kindness Wall",
           desc: "Share gentle thoughts and kind replies on the cloud kindness wall — everyone can read, members can post.",
+          html: hero(E.community.title, [E.community.subtitle, E.community.cloudOn, E.community.empty]),
         },
         {
           dir: "profile",
           title: "Warm Paws · Your Gentle Corner",
           desc: "Your pets, coins, badges and gentle daily records — all in one cozy place.",
+          html: hero(E.home.heroTitle, [E.profile.cloudReady, "Your pets, coins, badges and gentle daily records — all in one cozy place."]),
         },
         {
           /* 隐私政策：Google OAuth 发布要求一个可公开访问的政策页。
@@ -145,7 +170,49 @@ function seoRoutes() {
         fs.writeFileSync(path.join(distDir, r.dir, "index.html"), h);
         made++;
       }
-      console.log(`\n  seo-routes  ${made} route pages → /pet /community /profile /privacy\n`);
+      /* 首页本体也注入正文（先做子页再做首页，子页拿到的模板仍是干净壳） */
+      {
+        let h = fs.readFileSync(tpl, "utf8");
+        const heroHome = hero(E.home.heroTitle, [
+          E.home.heroSub.split("{n}").join("Warm Paws"),
+          E.home.companions.title + ". " + E.home.companions.hall,
+          E.home.mood.title + " " + E.home.mood.subtitle,
+        ]);
+        h = h.replace('<div id="app"></div>', `<div id="app">\n      ${heroHome}\n    </div>`);
+        fs.writeFileSync(tpl, h);
+        made++;
+      }
+      /* 404 页：未知路径返回真 404（配合 wrangler not_found_handling=404-page）。
+         noindex + 回首页链接；独立小 HTML，不依赖站点 JS。 */
+      {
+        const notFound = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Page not found · Warm Paws</title>
+  <meta name="robots" content="noindex, follow" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/favicon.png" />
+  <style>
+    body { font-family: system-ui, sans-serif; background: #fff7ee; color: #5b4a3f;
+           display: grid; place-items: center; min-height: 100vh; margin: 0; text-align: center; }
+    a { color: #e07a3f; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <main>
+    <p style="font-size: 44px; margin: 0;">🐾</p>
+    <h1>This page wandered off.</h1>
+    <p>The address doesn't exist — the gentle rooms are still where they always were.</p>
+    <p><a href="/">Back to Warm Paws</a></p>
+  </main>
+</body>
+</html>
+`;
+        fs.writeFileSync(path.join(distDir, "404.html"), notFound);
+        made++;
+      }
+      console.log(`\n  seo-routes  ${made} pages → /pet /community /profile /privacy / + 404.html\n`);
     },
   };
 }

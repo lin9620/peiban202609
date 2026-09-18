@@ -110,7 +110,7 @@ if (exists("dist/pet/index.html")) {
 } else {
   console.log("SKIP  T27~T31 尚未构建 dist（先跑 npm run build）");
 }
-ok("T32 SPA 回退配置（wrangler not_found_handling）", exists("wrangler.jsonc") && read("wrangler.jsonc").includes("single-page-application"));
+ok("T32 未知路径返回真 404（wrangler not_found_handling=404-page，防软 404 拖累收录）", exists("wrangler.jsonc") && read("wrangler.jsonc").includes('"404-page"'));
 const hdr = exists("public/_headers") ? read("public/_headers") : "";
 ok("T33 _headers 含 nosniff + 资产长缓存", hdr.includes("X-Content-Type-Options") && hdr.includes("/assets/*") && hdr.includes("immutable"));
 ok("T34 _headers 含 CSP（object-src none + frame-ancestors）", hdr.includes("Content-Security-Policy:") && hdr.includes("object-src 'none'") && hdr.includes("frame-ancestors 'self'"));

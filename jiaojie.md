@@ -327,6 +327,12 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 - **修复三处漏判 bug（重要）**：PostgREST 找不到 RPC 时 **错误码 PGRST202 在 error.code 里，error.message 是 "Could not find the function … in the schema cache"，不含 PGRST202** —— 项目里 `wallRules.errorKind` / `authRules.isMissingFnError` / `bottle.bottleErrKey` 三处只匹配消息文本，全部漏判（用户会直接看到英文报错而不是优雅降级文案）。已改为 **code 与 message 双认**（含 42883/42703/42P01），调用点补传 error.code。
 - **验证**：`nick-e2e.mjs` 线上 **12/12**（迁移已由用户执行：RPC 同步旧署名 ✓ / 匿名被权限层拒绝 ✓ / 空与超长被拒 ✓ / 幂等 ✓）；auth-test 77、wall-rules 33（T22 新增真实响应文本用例）、bottle 36、bottle-chat 80 全绿；build + wrangler 部署 70ef53fd + live-check 13 过 + 线上产物含新判定与 rename_me 调用。
 
+### 轮 11：GSC「已抓取-尚未编入索引」治理（已部署 b55e3b9e）
+- **线上探针取证**（`tools/_seo_probe.mjs`，Googlebot UA）：发现 ① 任意乱路径都被 SPA 兜底返回 200+首页（软 404 原料）② 无 JS 时各页仅 ~295 字（薄内容——「抓了不收录」的根本原因）③ `http://` 明文直接 200 不跳 https（zone 层未开 Always Use HTTPS，**代码兜不了静态路径，待用户在 Cloudflare 开**）。
+- **修复**：① `wrangler.jsonc` not_found_handling 改 `"404-page"` + 构建期生成 `dist/404.html`（noindex + 回首页）——乱路径/大小写错误全部真 404；② `vite.config.js` seoRoutes 扩展：首页与 /pet /community /profile 构建期预渲染 hero 正文（**文案唯一来源仍是 i18n en 词条**，不新造句子；h2 避免与 noscript h1 重复），无 JS 文本量 295 → 502-575 字。
+- **验证**：seo-test 42/42、live-check 13/13（T32 与未知路径断言同步更新为新行为）；线上复测：乱路径 404、尾斜杠 307 归一、五页 canonical/description/og 健康、sitemap lastmod=当天。
+- **SEO 事实**：「已抓取-尚未编入索引」非报错；新站+低权重普遍要几天~几周。技术上能做的已做完，剩下靠 GSC 请求编入索引 + 外链积累。
+
 
 ## 四、还没做的
 
