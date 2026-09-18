@@ -75,7 +75,7 @@ function confirmAdoptSpecies() {
     newName.value.trim() || sp.name[i18n.locale] || sp.name.en,
     newPersona.value
   );
-  if (!pet) return adoptLimitHit(); // 服务端式兜底：撞上限不扣金币
+  if (!pet) return; // adopt 只在「我的角色」撞名额时返回 null；物种路径不会走到（防御式兜底）
   wallet.coins -= sp.cost;          // 成功才扣（#12 修复：满员时金币不再被吞）
   adoptMsg.value = t("pet.adopted", { n: pet.name });
   say(t("pet.adopted", { n: pet.name }), 4000);

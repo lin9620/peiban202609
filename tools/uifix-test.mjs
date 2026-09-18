@@ -189,6 +189,7 @@ t("T24 角色名额只数上传的「我的角色」（#12）：初始/物种伙
     "adopt 的名额判定未按 custom 过滤",
   );
   assert.ok(petViewSrc.includes("customCount") && petViewSrc.includes("customQuotaHit"), "PetView 未切换到 customCount/customQuotaHit");
+  assert.ok(!petViewSrc.includes("adoptLimitHit"), "残留已改名的 adoptLimitHit（未定义符号，走到即 ReferenceError）");
   assert.ok(!petViewSrc.includes("aliveCount") && !petViewSrc.includes("MAX_PETS,"), "PetView 残留旧口径");
   assert.ok(!petViewSrc.includes('t("pet.quota"'), "模板仍引用已删除的 pet.quota");
   assert.ok(petViewSrc.includes('t("pet.customQuota"'), "缺少 customQuota 名额展示");
