@@ -332,6 +332,7 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 - **修复**：① `wrangler.jsonc` not_found_handling 改 `"404-page"` + 构建期生成 `dist/404.html`（noindex + 回首页）——乱路径/大小写错误全部真 404；② `vite.config.js` seoRoutes 扩展：首页与 /pet /community /profile 构建期预渲染 hero 正文（**文案唯一来源仍是 i18n en 词条**，不新造句子；h2 避免与 noscript h1 重复），无 JS 文本量 295 → 502-575 字。
 - **验证**：seo-test 42/42、live-check 13/13（T32 与未知路径断言同步更新为新行为）；线上复测：乱路径 404、尾斜杠 307 归一、五页 canonical/description/og 健康、sitemap lastmod=当天。
 - **SEO 事实**：「已抓取-尚未编入索引」非报错；新站+低权重普遍要几天~几周。技术上能做的已做完，剩下靠 GSC 请求编入索引 + 外链积累。
+- **Always Use HTTPS 已由用户在 Cloudflare 开启（同日）**：http://dale.de5.net/ 与 /pet 等全部实测 **301 → https**（保留原路径）。http/https 重复内容风险消除。**踩坑**：这个开关在 zone 层（SSL/TLS → 边缘证书 → 始终使用 HTTPS），Worker 代码兜不了静态路径的 http 请求；若加密模式为「关闭」则该开关不显示，需先把加密模式设为「完全」。
 
 
 ## 四、还没做的
