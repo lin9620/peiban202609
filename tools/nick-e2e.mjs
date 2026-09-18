@@ -75,9 +75,15 @@ if (missing) {
   ok("旧评论署名已同步为新名", c2.data && c2.data.author_name === NEW, "author_name=" + (c2.data && c2.data.author_name));
   const pr = await sb.from("profiles").select("nickname").eq("id", uid).maybeSingle();
   ok("profiles.nickname 也已更新", pr.data && pr.data.nickname === NEW);
-  /* 越权：不能用别人的身份改名（auth.uid 为准，函数不接 id） */
-  const other = await sbAnon.rpc("rename_me", { p_nick: "匿名乱改" });
-  ok("匿名调 rename_me 被拒（auth-required）", !!other.error && /auth-required/i.test(other.error.message || ""),
+  /* 越权：不能用别人的身份改名（auth.uid 为准，函数不接 id）。
+     注意：sbAnon 已 signUp，auth-js 在内存里持有该 session，.rpc() 会自动带 JWT——
+     必须用全新 client 才是真正的匿名调用（踩坑：上一版就用 sbAnon，测成"匿名成功"）。
+     拒绝可能在两层：权限层（42501 permission denied，anon 授权已撤时）
+     或函数层（auth-required）——都算被拒，不写死话术 */
+  const sbFresh = createClient(URL_, KEY, { auth: { persistSession: false } });
+  const other = await sbFresh.rpc("rename_me", { p_nick: "匿名乱改" });
+  ok("匿名调 rename_me 被拒（权限层或函数层都算）",
+    !!other.error && !("nickname" in (other.data || {})),
     other.error ? other.error.message : "竟然成功了");
   /* 空/超长 */
   const e1 = await sb.rpc("rename_me", { p_nick: "   " });

@@ -1616,7 +1616,7 @@ begin
   return jsonb_build_object('nickname', v_nick, 'posts', v_posts, 'comments', v_comments);
 end $$;
 
-revoke all on function public.rename_me(text) from public;
+revoke all on function public.rename_me(text) from public, anon;
 grant execute on function public.rename_me(text) to authenticated;
 
 -- ============================================================

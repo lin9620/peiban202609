@@ -41,8 +41,9 @@ begin
   return jsonb_build_object('nickname', v_nick, 'posts', v_posts, 'comments', v_comments);
 end $$;
 
--- 只允许登录用户调用；函数内部以 auth.uid() 为准，不接别人的 id
-revoke all on function public.rename_me(text) from public;
+-- 执行权限：anon 可能带着旧库 `grant execute on all functions to anon` 的**显式授权**
+-- （revoke from public 撤不掉显式 grant），必须显式 revoke anon；函数内部还有 auth.uid() 兜底
+revoke all on function public.rename_me(text) from public, anon;
 grant execute on function public.rename_me(text) to authenticated;
 
 comment on function public.rename_me(text) is
