@@ -770,6 +770,10 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
 
 ## E. 环境备忘（2026-09 核实）
 
+- **JDK**：AS 自带 JBR 是 Java **25**（`D:\00ruanjiananzhuang\android-studio-quail4-windows\jbr`）→ Gradle 8.14 不支持（class file 69 报错）；**构建用 `D:\00ruanjiananzhuang\jdk-21\jdk-21`（OpenJDK 21，华为镜像下载解压）**
+- **SDK**：`C:\Users\lin\AppData\Local\Android\Sdk`（adb ✓）；`android/local.properties` 已写 sdk.dir（gitignore 内）
+- **出包命令**：`$env:JAVA_HOME='D:\00ruanjiananzhuang\jdk-21\jdk-21'` → `cd android; .\gradlew.bat assembleDebug --no-daemon` → **`android/app/build/outputs/apk/debug/app-debug.apk`（4.5MB）**；全流程含依赖下载首次 3m23s 成功，依赖已缓存（后续增量构建更快）
+- **网络备忘**：Gradle 发行版/大文件用「**curl 多段并行 + copy /b 合并**」（单连接仅 ~150-250KB/s，6 段并行 ~900KB/s，华为云 CDN 最快）；清华镜像会封异常网段；腾讯云 OpenJDK 镜像 404；分段的 Range 边界必须统一且最后一记 `total-1`
 - Capacitor 8：Node 22+；Android Studio 2025.2.1+（自带 JDK）；SDK API 24+（最新稳定 Android 16 / API 36）
 - iOS（日后）：Xcode 26、需 macOS（可用 GitHub Actions macOS runner 云构建）
 - Play target API：以 Play 后台当年要求为准；App Store 审核对「与网站同内容的壳」更严（Guideline 4.2），iOS 版届时需补原生价值设计
@@ -785,7 +789,7 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
   - **批 1 ✅ 全部收官（T1–T4）**。
   - **T5 ✅（2026-09-20）**：底部 TabBar（`src/components/TabBar.vue`：4 Tab + 中间暖橙 ＋ 钮，点击旋转 135° 弹两瓣「投漂流瓶/发帖」带副标题；红点 = `badge.dm + requests` 与桌面同口径）+ App.vue 双形态接线（`shell--mobile-nav` 形态类：窄屏/App 隐藏顶部 nav 与 💬🔔 图标、SideRails 改桌面专属、main 让位 padding；**桌面 ≥900px 零渲染零变化**）+ i18n `tab.*` 8 键 zh/en 成对（zh `tab.home`=首页 区别于 `nav.home`=今天）+ 样式（safe-area、≥44px 热区、毛玻璃、弹层动画）+ 新测试 `tools/app-shell-test.mjs` **14 项**（含桌面锚点断言：`const NAV = [` 原样、SideRails 条件渲染）。验收：app-shell 14/14、i18n 19、seo 42、privacy 34、undef 0、build 0、cap sync ✓、部署 `1c7baa18`、LIVE 14/14，提交 `d3d571d`。**投瓶跳 `/?tab=bottle`（T6 三联消费）、发帖跳 `/community?compose=1`（T10 聚焦）**。
   - **T6 准备中**：HomeView 解剖完（漂流瓶 script 120–269 + 模板 392–444，抽 `BottleView.vue`；今日内容抽 `TodayPane.vue`；HomeView 变形态路由器：桌面=TodayPane+BottleView 嵌尾，App/窄屏=三联容器）；**PetView 零路由依赖已确认可嵌 pane**。
-  - **首包出包进行中**：Android Studio 已装（`D:\00ruanjiananzhuang\android-studio-quail4-windows`，JBR Java 25.0.3）；SDK ✓ adb ✓；`gradlew assembleDebug` 首跑：腾讯镜像直连仅 ~250KB/s（VPN 未开），Gradle 8.14.3 zip（214MB）改用 curl 后台直塞 wrapper dists 目录（`gradle-dl-done.flag` 完成标记）后重跑构建。**出包后交用户装真机看 T5 视觉**。
+  - **首包 ✅ 出包成功（2026-09-20）**：环境两坑已解——① AS 自带 JBR 是 Java 25，Gradle 8.14 不支持 → 装 **OpenJDK 21**（华为镜像，curl 6 段并行 90 秒）；② 缺 `android/local.properties`（sdk.dir 已写，gitignore 内）。`gradlew assembleDebug` **BUILD SUCCESSFUL 3m23s（93 tasks）→ app-debug.apk 4.5MB**。adb 未检出设备（用户未连线），等用户装机看 T5 视觉。详细命令与网络备忘已记入 E 节。
   - **验收（三层口径）**：第一层离线 ✅ —— **25 套全绿**（auth 84→**94**、worker 191→**193**、gateway 65→**66**、privacy 34、i18n 19）+ `undef-check problems=0` + build exit 0；README 已登记迁移第 11 条与计数。第二层契约 ✅（三套契约测试含新路由断言）。第三层线上：删号 RPC 探针三绿 ✅（见 T3）；**删号 e2e（真实注册→删号→复查残留）⏳ 可随后补 `tools/account-e2e.mjs`**。
   - **待用户**：① ~~执行 `MIGRATION_delete_account.sql`~~ ✅ 已执行（探针三绿）；② 装 Android Studio 后我陪跑 T1 出包；③（可选）真机/设置页点一次删号验证 UI 流程。
 
