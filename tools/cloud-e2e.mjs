@@ -9,6 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 /* 复用前端的纯函数：路径/哈希规则必须和线上一致，避免测试与实现漂移 */
 import { parseImageDataUrl } from "../src/utils/wall.js";
+import { shouldRemove } from "../src/utils/wallRules.js";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const env = fs.readFileSync(path.join(root, ".env"), "utf8");
@@ -165,7 +166,7 @@ if (hasParent) {
   }
 }
 
-/* T16~T25 进阶规则实测：浏览去重 / 厌恶→1% 下架 / 每人每天一条（未迁移则 SKIP） */
+/* T16~T25 进阶规则实测：浏览去重 / 厌恶→双档下架 / 每人每天一条（未迁移则 SKIP） */
 let hasAdvanced = false;
 {
   const { error } = await sb.from("wall_posts").select("views,dislikes,removed,created_day").limit(1);
@@ -197,36 +198,38 @@ if (hasAdvanced) {
       r.error ? r.error.message : "counted=true, views=" + (r.data ? r.data.views : "?"));
   }
 
-  /* T19~T22 厌恶切换 + 1% 自动下架（假删除）。
-     下架取决于「厌恶数 ÷ 浏览数 ≥ 1%」：1 个厌恶在 views≤100 时必下架；views>100 时
-     比例不足 1%（真实访客把分母推大了），此时跳过 removed 断言 —— 阈值逻辑已由
-     wall-rules-test.mjs 的纯函数单测覆盖，这里验证服务端把计数与状态写对 */
+  /* T19~T22 厌恶切换 + 双档自动下架（假删除）。
+     #26 双档规则：views < 100 时厌恶 > 3 个（≥4 人）→ 下架；views ≥ 100 时厌恶 ÷ 浏览 > 0.5% → 下架。
+     期望值不写死：直接调前端纯函数 shouldRemove(views, dislikes) 推导（与 SQL 同口径），
+     这样真实访客把 views 推高时断言依然成立，也不会出现「测试里另抄一份阈值」的漂移 */
   {
     const on = await sb.rpc("wall_toggle_dislike", { p_post: postId });
-    const removed = !!(on.data && on.data.removed);
-    const views = on.data ? on.data.views : 0;
-    const canJudge = views > 0 && views <= 100;
+    const views = on.data ? Number(on.data.views) || 0 : 0;
+    const expectRemoved = shouldRemove(views, 1);
     ok("T19 厌恶生效：服务端重数并把 dislikes 写回帖子",
       !on.error && on.data && on.data.on === true && on.data.dislikes === 1,
       on.error ? on.error.message : JSON.stringify(on.data));
-    if (!canJudge) {
-      console.log("SKIP  T19b 下架判定：此刻 views=" + views + "（1 个厌恶不足 1%），跳过 removed 断言");
-    } else {
-      ok("T19b 达到 1% 即下架（removed=true）", removed === true, "views=" + views);
-    }
+    /* 期望值由前端纯函数推导；若线上把「1 个厌恶」判成下架，说明库里还是旧规则
+       （最早的纯比例 1% 在 views=2 时 1 个厌恶即 50% ≥ 1% → 会误下架），给出可执行的修复提示 */
+    const gotRemoved = !!(on.data && on.data.removed);
+    const staleSql = !on.error && !!on.data && gotRemoved && !expectRemoved;
+    ok("T19b 服务端下架判定与双档规则一致（views=" + views + "，1 个厌恶 → 期望 removed=" + expectRemoved + "）",
+      !on.error && !!on.data && gotRemoved === expectRemoved,
+      on.error ? on.error.message
+        : JSON.stringify(on.data) + (staleSql ? "  ← 线上 SQL 还是旧规则，请重跑 MIGRATION_wall_daily_view_dislike.sql" : ""));
 
     /* 帖子行仍在库里（假删除：前台看不见，数据没丢） */
     const { data: row } = await sb.from("wall_posts").select("removed,views,dislikes").eq("id", postId).maybeSingle();
     ok("T20 假删除：行还在，dislikes 已写回（不是物理删除）",
-      !!row && row.dislikes === 1 && row.removed === removed, row ? JSON.stringify(row) : "行不见了?!");
+      !!row && row.dislikes === 1 && row.removed === expectRemoved, row ? JSON.stringify(row) : "行不见了?!");
 
     /* 取消厌恶：计数回 0；下架不因取消而自动恢复（避免帖子忽隐忽现） */
     const off = await sb.rpc("wall_toggle_dislike", { p_post: postId });
-    ok("T21 取消厌恶：dislikes 归零" + (removed ? "，下架状态保持（不自动恢复）" : "，未下架状态不变"),
-      !off.error && off.data && off.data.on === false && off.data.dislikes === 0 && off.data.removed === removed,
+    ok("T21 取消厌恶：dislikes 归零" + (expectRemoved ? "，下架状态保持（不自动恢复）" : "，未下架状态不变"),
+      !off.error && off.data && off.data.on === false && off.data.dislikes === 0 && off.data.removed === expectRemoved,
       off.error ? off.error.message : JSON.stringify(off.data));
 
-    if (removed) {
+    if (expectRemoved) {
       /* 看板的读写路径都不该再看到它（已跑迁移时查询带 removed=false 过滤） */
       const { data: visible } = await sb.from("wall_posts").select("id").eq("removed", false).eq("id", postId);
       ok("T22 下架帖不出现在「未下架」查询里（前台动态流的取数口径）",

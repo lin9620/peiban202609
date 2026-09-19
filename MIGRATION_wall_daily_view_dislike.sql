@@ -120,7 +120,7 @@ begin
                             'views', v_views, 'dislikes', v_dis, 'removed', v_rm);
 end $$;
 
--- ─ 6) RPC：切换厌恶 + 达到 1% 自动下架（假删除）──────────────
+-- ─ 6) RPC：切换厌恶 + 达 #26 双档下架线自动下架（假删除）──────────────
 create or replace function public.wall_toggle_dislike(p_post bigint)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare

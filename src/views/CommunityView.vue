@@ -150,7 +150,7 @@ async function countViews(list) {
   }
 }
 
-/* ════════ 厌恶：≥5 人 且 ≥浏览的 1% 由服务端下架（假删除）——注意是「且」，防小样本误杀 ═════════ */
+/* ════════ 厌恶：#26 双档下架线由服务端假删除（浏览<100 时 >3 个；≥100 时 >0.5%） ═════════ */
 async function dislike(p) {
   /* #28 未登录：不静默，给一句温柔的登录提示 */
   if (p.cloud && !signedIn.value) return showWallMsg("community.dislikeSignIn");
@@ -531,7 +531,7 @@ const shown = computed(() =>
     visibleOnly(all.value).filter((p) => inRange(p, rangeFor(sortMode.value, rangeMode.value))),
     sortMode.value
   ));
-/* 下架线提示用：厌恶 ÷ 浏览（达 1% 即下架，看得到比例就知道离下架多远） */
+/* 下架线提示用：厌恶 ÷ 浏览（#26 双档，看得到比例就知道离下架多远） */
 function disPct(p) { return ratioPct(p.views, (p.reacts && p.reacts.dislike) || 0); }
 
 /* 头像/昵称 → TA 的墙上的主页（/u/:id）；示例帖与本地帖没有云身份，不响应点击 */
@@ -674,7 +674,7 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
         </n-button>
       </div>
 
-      <!-- 浏览数 + 厌恶：厌恶 ÷ 浏览 达 1% 会被自动下架（假删除，数据仍在库里） -->
+      <!-- 浏览数 + 厌恶：#26 双档下架线（浏览<100 超 3 个 / ≥100 超 0.5%）达线自动下架（假删除，数据仍在库里） -->
       <!-- p.stats：只有库跑过迁移、真拿到统计字段才显示，避免未迁移时出现假的「0 次浏览」 -->
       <div v-if="p.cloud && p.stats" class="post-foot">
         <span class="post-views">{{ t("community.views", { n: p.views || 0 }) }}</span>

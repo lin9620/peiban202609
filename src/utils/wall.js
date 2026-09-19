@@ -315,7 +315,8 @@ export async function cloudAddView(dbPostId, viewer = "") {
 }
 
 /**
- * 切换厌恶（登录用户；RPC 内部计数并在达到 1% 时把帖子下架）。
+ * 切换厌恶（登录用户；RPC 内部计数并在达到 #26 双档阈值时把帖子下架：
+ * 浏览 < 100 超 3 个 / 浏览 ≥ 100 超 0.5%）。
  * @param {number} dbPostId
  * @returns {Promise<{on:boolean,views:number,dislikes:number,removed:boolean}|null>}
  */

@@ -268,7 +268,7 @@ begin
                             'views', v_views, 'dislikes', v_dis, 'removed', v_rm);
 end $$;
 
--- RPC：切换厌恶；厌恶数 ÷ 浏览数 ≥ 1% → 下架（假删除，不再自动恢复）
+-- RPC：切换厌恶；达 #26 双档下架线 → 下架（假删除，不再自动恢复）
 create or replace function public.wall_toggle_dislike(p_post bigint)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare

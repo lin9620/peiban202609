@@ -168,7 +168,7 @@ export const db = {
     return call(`/posts/${enc(postId)}/view`, { method: "POST", body: { viewer } });
   },
 
-  /** 切换厌恶（服务端计数，达 1% 时把帖子假删除） */
+  /** 切换厌恶（服务端计数，达 #26 双档阈值时把帖子假删除：浏览<100 超 3 个 / ≥100 超 0.5%） */
   async toggleDislike(postId) {
     return call(`/posts/${enc(postId)}/dislike`, { method: "POST" });
   },

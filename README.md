@@ -109,7 +109,7 @@ node tools/status-e2e.mjs     # 大厅状态线上实测（走 Worker，与浏�
 node tools/nick-e2e.mjs       # 改昵称署名同步线上实测（注册→发帖评论→改名）：迁移未跑时应走退化路径(旧帖留旧名)，跑完 MIGRATION_nickname_sync.sql 后旧署名一起改（会建测试帖/评论并清理）
 node tools/img-cache-e2e.mjs  # 图片边缘缓存线上实测（11 项）：经 Worker 上传真实 PNG → 连打 /api/img/* 两次，验证 MISS→HIT 跨用户共享（另一访客不再打 Supabase）/ 字节一致 / 图不存在退回 302 / 路径穿越 400（会建测试对象并删除）
 node tools/bottle-e2e.mjs     # 漂流瓶线上实测（走 Worker，双账号）：A 投信→B 捞→回信→A 收到回信→放回海里→每日限额→空海提示（需先跑 MIGRATION_bottle.sql）
-node tools/dislike-e2e.mjs    # 下架阈值线上判别（4 账号各投 1 次厌恶，看第 4 个是否触发下架）：新规(浏览<100 且 >3 个)=下架 / 旧规(≥5 且 ≥1%)=不下架；removed 一律取 RPC 返回值（下架后普通用户读不到行，直接 select 会误判）；会建测试帖并清理
+node tools/dislike-e2e.mjs    # 下架阈值线上判别（**唯一解**：低浏览档 + 高浏览档双验）：5 个账号；低浏览档(views≈2) 第 1 个厌恶该**不下架**、第 4 个才下架；高浏览档(views≥100) 1 个厌恶(≈0.83% > 0.5%)该**下架** —— 两档合起来可唯一区分历史三版规则（①纯比例 1% / ②≥5 且 ≥1% / ③#26 双档）；removed 一律取 RPC 返回值（下架后普通用户读不到行，直接 select 会误判）；会建两条测试帖并清理
 node tools/smoke.mjs          # 模块冒烟：需 dev 服务器在跑，探测 30 个关键模块 + 5 个 SEO 静态文件
 node tools/live-check.mjs     # 线上部署验证：页面/缓存/安全头/SEO 资产（部署后跑，应输出 LIVE ALL PASS）
 node tools/online-check.mjs   # 旧版线上检查（已被 live-check 替代，如无特别需要可忽略）
