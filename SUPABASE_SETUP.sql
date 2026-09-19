@@ -1619,6 +1619,25 @@ end $$;
 revoke all on function public.rename_me(text) from public, anon;
 grant execute on function public.rename_me(text) to authenticated;
 
+-- ══════════════════ 私信退出通知中心（#23；与 MIGRATION_notifications_drop_dm.sql 同步） ══════════════════
+-- ① 历史 dm 通知清理；② BEFORE INSERT 触发器把 kind='dm' 静默丢弃（dm_send /
+--    漂流瓶触发器不用改，通知行不再落表）；notif_unread 的 total 从此自然不含 dm。
+delete from public.notifications where kind = 'dm';
+
+create or replace function public.notifications_drop_dm()
+returns trigger language plpgsql as $$
+begin
+  if new.kind = 'dm' then
+    return null;   -- 私信有自己的入口（💬 + /messages），不再进通知中心
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists notifications_drop_dm on public.notifications;
+create trigger notifications_drop_dm
+  before insert on public.notifications
+  for each row execute function public.notifications_drop_dm();
+
 -- ============================================================
 -- 执行完毕。请在 Supabase SQL Editor 运行本文件，然后跑：
 --   node tools/dm-test.mjs && node tools/notify-test.mjs && node tools/bottle-test.mjs

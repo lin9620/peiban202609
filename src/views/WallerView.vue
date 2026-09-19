@@ -7,7 +7,7 @@ import { t, i18n } from "../i18n.js";
 import {
   cloudFetchProfile, cloudFetchUserPosts, cloudGetPetHome, cloudPetInteract,
 } from "../utils/wall.js";
-import { visibleOnly, ANON_KEY } from "../utils/wallRules.js";
+import { visibleOnly, ANON_KEY, fmtWhen } from "../utils/wallRules.js";
 import { getItem } from "../utils/storage.js";
 import { cloud } from "../utils/supabase.js";
 import { openConv } from "../utils/dm.js";
@@ -69,9 +69,7 @@ const profStatus = computed(() => {
 });
 const statusLabel = (k) => (STATUS_KEYS.includes(k) ? t("home.companions." + k) : (k || ""));
 
-const when = (ts) =>
-  new Date(ts).toLocaleDateString(i18n.locale === "zh" ? "zh-CN" : "en-US",
-    { year: "numeric", month: "short", day: "numeric" });
+const when = (ts) => fmtWhen(ts, i18n.locale);   /* #25 帖子时间显示到分钟 */
 
 /* 收到的温暖：TA 帖子上的真实回应求和（不掺别人的，不算浏览；统计窗口为最近 50 条帖子） */
 const sumOf = (kind) =>

@@ -37,8 +37,6 @@ function noticeText(n) {
 
 /* 云端探测（未配置时静默保持本地模式） */
 const cloudSigned = computed(() => !!(cloud.ready && cloud.user));
-const accountLabel = computed(() =>
-  cloudSigned.value ? (cloud.nickname || t("common.guest")) : t("common.signIn"));
 onMounted(() => { initCloud(); });
 
 /* 登录态变化 → 起停角标轮询（未登录不轮询，省流量） */
@@ -92,11 +90,7 @@ function reload() {
               <n-tag round size="small" :bordered="false" class="soft-tag">
                  &#128176; {{ wallet.coins }}
               </n-tag>
-              <router-link to="/profile" class="account-link" :title="t('profile.title')">
-                <n-tag round size="small" :bordered="false" class="soft-tag" :class="{ signed: cloudSigned }">
-                  {{ cloudSigned ? "\u2601\uFE0F" : "\u{1F464}" }} {{ accountLabel }}
-                </n-tag>
-              </router-link>
+              <!-- #24 云按钮已移除：与导航「我的」重复，登录态在「我的」页看 -->
               <!-- 私信 / 通知：只有登录后才显示（未登录没有收件人身份） -->
               <router-link v-if="cloudSigned" to="/messages" class="icon-link" :title="t('dm.title')">
                 <span class="icon-emoji">💬</span>

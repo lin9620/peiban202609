@@ -19,7 +19,7 @@ import {
 import {
   SORTS, sortPosts, collectViews, visibleOnly, utcDay, ratioPct,
   canPostToday, errorKind, VIEW_KEY, ANON_KEY, POST_DAY_KEY,
-  RANGES, inRange, usesRange, rangeFor,
+  RANGES, inRange, usesRange, rangeFor, fmtWhen,
 } from "../utils/wallRules.js";
 import {
   validateImageFile, isSaneShape, isUsableDataUrl, shrinkToDataUrl,
@@ -150,12 +150,19 @@ async function countViews(list) {
   }
 }
 
-/* ════════ 厌恶：达到「厌恶 ÷ 浏览 ≥ 1%」由服务端下架（假删除） ═════════ */
+/* ════════ 厌恶：≥5 人 且 ≥浏览的 1% 由服务端下架（假删除）——注意是「且」，防小样本误杀 ═════════ */
 async function dislike(p) {
+  /* #28 未登录：不静默，给一句温柔的登录提示 */
+  if (p.cloud && !signedIn.value) return showWallMsg("community.dislikeSignIn");
   if (!(p.cloud && signedIn.value)) return;
+  /* #29 乐观翻转：先改 UI（跟手），网络回来用权威计数校正；失败回滚 */
+  const wasOn = !!(p.mine && p.mine.dislike);
+  p.mine = { ...(p.mine || {}), dislike: !wasOn };
+  p.reacts = { ...p.reacts, dislike: Math.max(0, (p.reacts.dislike || 0) + (wasOn ? -1 : 1)) };
   const r = await cloudToggleDislike(p.dbId);
   if (!r) {
-    /* 失败给出可见提示，不静默：未迁移 → 告诉用户功能还没开；其它 → 让他重试 */
+    p.mine = { ...(p.mine || {}), dislike: wasOn };
+    p.reacts = { ...p.reacts, dislike: Math.max(0, (p.reacts.dislike || 0) + (wasOn ? 1 : -1)) };
     showWallMsg(errorKind(cloud.error) === "not-migrated" ? "community.needSetup" : "community.dislikeFail");
     return;
   }
@@ -262,17 +269,40 @@ async function submit() {
   setTimeout(() => { posted.value = false; }, 2500);
 }
 
-/* —— 回应：云端帖走 DB（点过可再点取消），本地/示例帖沿用「每样一次」 —— */
+/* —— 回应：点击即变（乐观更新），再点一次 = 取消（#29 跟手）——
+   登录用户走 DB（服务端权威计数校正）；示例/本地帖沿用本机表态 —— */
+const reactBusy = new Set();   /* 防连点竞态：同一帖同一回应在途时忽略再次点击 */
 async function react(post, kind) {
   if (post.cloud && signedIn.value) {
+    const busyKey = `${post.dbId}:${kind}`;
+    if (reactBusy.has(busyKey)) return;
+    reactBusy.add(busyKey);
+    const wasOn = !!(post.mine && post.mine[kind]);
+    post.mine = { ...(post.mine || {}), [kind]: !wasOn };
+    post.reacts = { ...post.reacts, [kind]: Math.max(0, (post.reacts[kind] || 0) + (wasOn ? -1 : 1)) };
     const fresh = await cloudToggleReaction(post.dbId, kind);
-    if (fresh) { post.reacts = { hug: fresh.hug, warm: fresh.warm, relate: fresh.relate }; post.mine = fresh.mine; }
+    reactBusy.delete(busyKey);
+    if (fresh) {
+      post.reacts = { hug: fresh.hug, warm: fresh.warm, relate: fresh.relate };
+      post.mine = fresh.mine;
+    } else {
+      post.mine = { ...(post.mine || {}), [kind]: wasOn };
+      post.reacts = { ...post.reacts, [kind]: Math.max(0, (post.reacts[kind] || 0) + (wasOn ? 1 : -1)) };
+      showWallMsg(errorKind(cloud.error) === "not-migrated" ? "community.needSetup" : "community.reactFail");
+    }
     return;
   }
+  /* #28 未登录不能参与云端帖的回应（别人看不到的假 +1 只会误导）；示例帖保持本地演示 */
+  if (post.cloud && !signedIn.value) return showWallMsg("community.reactSignIn");
   const key = post.sample ? post.id : String(post.id);
-  if ((myReacts.value[key] || []).includes(kind)) return;
-  post.reacts[kind]++;
-  myReacts.value[key] = [...(myReacts.value[key] || []), kind];
+  const mine = myReacts.value[key] || [];
+  if (mine.includes(kind)) {
+    post.reacts[kind] = Math.max(0, (post.reacts[kind] || 0) - 1);   /* 再点一次 = 取消 */
+    myReacts.value[key] = mine.filter((x) => x !== kind);
+  } else {
+    post.reacts[kind] = (post.reacts[kind] || 0) + 1;
+    myReacts.value[key] = [...mine, kind];
+  }
   persist();
 }
 
@@ -341,6 +371,8 @@ const atName = ref({});
 function isReplyOpen(p, cm) { return replyTo.value[cmtKey(p)] === cm.id; }
 /* 回复一级评论：挂到它下面，不 @（视觉上已经挨着作者） */
 function openReply(p, cm) {
+  /* #28 未登录不能回复云端帖 */
+  if (p.cloud && !signedIn.value) return showWallMsg("community.commentSignIn");
   const k = cmtKey(p);
   replyTo.value = { ...replyTo.value, [k]: cm.id };
   atName.value = { ...atName.value, [k]: "" };
@@ -348,6 +380,8 @@ function openReply(p, cm) {
 }
 /* 回复某条回复：仍挂在同一个一级评论下（两级封顶），并 @ 这位回复者 */
 function openReplyTo(p, cm, rp) {
+  /* #28 未登录不能回复云端帖 */
+  if (p.cloud && !signedIn.value) return showWallMsg("community.commentSignIn");
   const k = cmtKey(p);
   replyTo.value = { ...replyTo.value, [k]: cm.id };
   atName.value = { ...atName.value, [k]: rp.name || "" };
@@ -425,6 +459,8 @@ async function sendCmt(p, cm = null) {
   const draftRef = cm ? repDraft : cmtDraft;
   const text = draftRef.value[rk];
   if (!normalizeText(text)) return;
+  /* #28 未登录不能评论云端帖（评论只存本机、别人看不到，会误导）；示例帖保持本地演示 */
+  if (p.cloud && !signedIn.value) return;
   /* 回复某条回复时记下的 @ 对象（回复一级评论时为空） */
   const at = cm ? atName.value[k] || "" : "";
 
@@ -503,9 +539,7 @@ const router = useRouter();
 function canOpen(p) { return !!(p && p.cloud && p.userId); }
 function goProfile(p) { if (canOpen(p)) router.push({ name: "waller", params: { id: p.userId } }); }
 
-const when = (ts) =>
-  new Date(ts).toLocaleDateString(i18n.locale === "zh" ? "zh-CN" : "en-US",
-    { month: "short", day: "numeric" });
+const when = (ts) => fmtWhen(ts, i18n.locale);   /* #25 帖子/评论时间显示到分钟 */
 
 /* —— 深链到某帖：/community?post=<dbId>（通知中心点「评论/回应」跳回来时用） ——
  * 云端帖的 dbId 才是数据库里的真实 id；还没加载出来（或不是本页可见帖）就什么都不做。 */
@@ -711,8 +745,8 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
             </div>
           </div>
 
-          <!-- 二级：就地回复框 -->
-          <div v-if="isReplyOpen(p, cm)" class="cmt-input cmt-input-rep">
+          <!-- 二级：就地回复框（云端帖未登录不给开，openReply 已拦截；这里再守一道） -->
+          <div v-if="isReplyOpen(p, cm) && !(p.cloud && !signedIn)" class="cmt-input cmt-input-rep">
             <n-input
               v-model:value="repDraft[repKey(p, cm)]"
               round size="small"
@@ -735,8 +769,14 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
           {{ t("comment.empty") }}
         </p>
 
-        <!-- 新评论（一级） -->
-        <div class="cmt-input">
+        <!-- 新评论（一级）：云端帖未登录 → 登录提示（#28：只存本机的评论别人看不到，不误导） -->
+        <div v-if="p.cloud && !signedIn" class="cmt-input">
+          <p class="cmt-empty">
+            {{ t("community.commentSignIn") }}
+            <router-link class="cmt-login" to="/profile">{{ t("common.signIn") }}</router-link>
+          </p>
+        </div>
+        <div v-else class="cmt-input">
           <n-input
             v-model:value="cmtDraft[cmtKey(p)]"
             round size="small"

@@ -47,6 +47,31 @@
         </template>
         <p v-else class="notice">{{ t("notif.needSignIn") }}</p>
       </div>
+
+      <!-- 密码（#27：邮箱用户验旧密码后改；谷歌用户直接设新密码，之后可用邮箱＋密码登录） -->
+      <div class="set-block">
+        <span class="sec-label">{{ t("settings.password") }}</span>
+        <template v-if="signedIn">
+          <div class="set-opts wrap pw-row">
+            <n-input
+              v-if="!isGoogle"
+              v-model:value="pwOld" type="password" show-password-on="click"
+              :placeholder="t('settings.pwOld')" :disabled="pwBusy" />
+            <n-input
+              v-model:value="pwNew" type="password" show-password-on="click"
+              :placeholder="t('settings.pwNew', { n: MIN_PASSWORD })" :disabled="pwBusy" />
+            <n-input
+              v-model:value="pwConfirm" type="password" show-password-on="click"
+              :placeholder="t('settings.pwConfirm')" :disabled="pwBusy" />
+            <button class="set-opt" :disabled="pwBusy" @click="savePw">
+              {{ t("settings.pwSave") }}
+            </button>
+          </div>
+          <p v-if="pwMsg" class="streak-note">{{ pwMsg }}</p>
+          <p class="sub">{{ isGoogle ? t("settings.pwGoogleHint") : t("settings.pwHint") }}</p>
+        </template>
+        <p v-else class="notice">{{ t("notif.needSignIn") }}</p>
+      </div>
     </section>
 
     <!-- 通知（#13/#14：总开关 + 四类偏好，从通知中心页迁来） -->
@@ -89,8 +114,8 @@
 import { ref, computed, onMounted, watch } from "vue";
 import { NInput } from "naive-ui";
 import { t, i18n } from "../i18n.js";
-import { cloud, cloudUpdateNickname } from "../utils/supabase.js";
-import { NICK_MAX } from "../utils/authRules.js";
+import { cloud, cloudUpdateNickname, cloudChangePassword } from "../utils/supabase.js";
+import { NICK_MAX, MIN_PASSWORD, passwordProblem } from "../utils/authRules.js";
 import * as notifyApi from "../utils/notify.js";
 import { normPrefs } from "../utils/notifyRules.js";
 import {
@@ -121,11 +146,46 @@ async function saveNick() {
   if (r.ok) nickDraft.value = "";
 }
 
+/* —— 改密码（#27）：邮箱用户验旧密码；谷歌用户直接设新密码 —— */
+const isGoogle = computed(() =>
+  !!(cloud.user && cloud.user.app_metadata && cloud.user.app_metadata.provider === "google"));
+const pwOld = ref("");
+const pwNew = ref("");
+const pwConfirm = ref("");
+const pwBusy = ref(false);
+const pwMsg = ref("");
+
+async function savePw() {
+  if (pwBusy.value) return;
+  pwMsg.value = "";
+  /* 本地先校验（不打扰服务器）：新密码强度 / 两次一致 / 旧密码没填 */
+  const problem = passwordProblem(pwNew.value);
+  if (problem) { pwMsg.value = t("settings.pwShort", { n: MIN_PASSWORD }); return; }
+  if (pwNew.value !== pwConfirm.value) { pwMsg.value = t("settings.pwMismatch"); return; }
+  if (!isGoogle.value && !pwOld.value) { pwMsg.value = t("settings.pwNeedOld"); return; }
+
+  pwBusy.value = true;
+  const r = await cloudChangePassword(pwOld.value, pwNew.value);
+  pwBusy.value = false;
+  if (r.ok) {
+    pwMsg.value = isGoogle.value ? t("settings.pwGoogleSaved") : t("settings.pwSaved");
+    pwOld.value = ""; pwNew.value = ""; pwConfirm.value = "";
+    return;
+  }
+  /* reason 稳定暗号 → 文案（其余透出原文便于排查） */
+  pwMsg.value =
+    r.reason === "old-password-wrong" ? t("settings.pwOldWrong")
+    : r.reason === "old-password-required" ? t("settings.pwNeedOld")
+    : r.reason === "missing" || r.reason === "short" ? t("settings.pwShort", { n: MIN_PASSWORD })
+    : t("settings.pwFail", { r: r.reason || "unknown" });
+}
+
 const PREFS = [
+  /* #23 私信退出通知中心：dm 通知在库里已不生成（MIGRATION_notifications_drop_dm.sql），
+     「私信」开关随之移除（保留会给用户「关了就该生效」的错觉） */
   { key: "comments", tk: "notif.prefComments" },
   { key: "reactions", tk: "notif.prefReactions" },
   { key: "pets", tk: "notif.prefPets" },
-  { key: "dms", tk: "notif.prefDms" },
 ];
 
 const signedIn = computed(() => !!(cloud.ready && cloud.user));
@@ -153,12 +213,12 @@ async function savePrefs(next) {
   } finally { prefsBusy.value = false; }
 }
 
-/* 总开关：关 = 四类全关（服务器不再投递任何通知）；开 = 全开（回到默认收齐） */
+/* 总开关：关 = 全关（服务器不再投递任何通知）；开 = 全开（回到默认收齐） */
 function toggleMaster() {
   if (masterOn.value) {
-    savePrefs({ comments: false, reactions: false, pets: false, dms: false });
+    savePrefs({ comments: false, reactions: false, pets: false });
   } else {
-    savePrefs({ comments: true, reactions: true, pets: true, dms: true });
+    savePrefs({ comments: true, reactions: true, pets: true });
   }
 }
 function togglePref(key) {

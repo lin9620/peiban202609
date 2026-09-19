@@ -23,14 +23,16 @@ function ok(name, cond, extra = "") {
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 /* ───────── 分栏映射 ───────── */
-ok("6 类通知与 SQL 白名单同源", eq(KINDS, ["comment", "reply", "reaction", "pet", "dm", "system"]));
-ok("全部 → 不过滤", kindsFor("all") === null);
+ok("6 类通知与 SQL 白名单同源（数据库层仍收 dm；前端已不消费）", eq(KINDS, ["comment", "reply", "reaction", "pet", "dm", "system"]));
+/* #23：私信退出通知中心——「全部」不再用 null（防老库残留 dm 冒出来），而是显式非 dm 白名单 */
+ok("全部 → 显式非 dm 白名单", kindsFor("all") === "comment,reply,reaction,pet,system");
+ok("全部 → 永不含 dm", !String(kindsFor("all") || "").split(",").includes("dm"));
 ok("评论栏 = comment,reply", kindsFor("comments") === "comment,reply");
 ok("回应栏 = reaction,pet", kindsFor("reactions") === "reaction,pet");
 ok("宠物栏 = pet", kindsFor("pets") === "pet");
-ok("私信栏 = dm", kindsFor("dms") === "dm");
+ok("私信分栏已移除（kindsFor 不再认识 dms → 落到 all 兜底）", kindsFor("dms") === "comment,reply,reaction,pet,system");
 ok("系统栏 = system", kindsFor("system") === "system");
-ok("未知分栏 → 不过滤（不炸）", kindsFor("nope") === null);
+ok("未知分栏 → all 兜底（不炸、不漏 dm）", kindsFor("nope") === "comment,reply,reaction,pet,system");
 ok("isKind 校验", isKind("reply") === true && isKind("pokes") === false);
 
 /* 与迁移文件里的 check 约束逐字对齐 */

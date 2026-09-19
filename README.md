@@ -80,7 +80,7 @@
 ```bash
 node tools/comment-test.mjs   # 评论系统纯函数单测（26 项：二级回复/parentId 封顶/级联删除/评论数兜底）
 node tools/wall-test.mjs      # 暖心墙云端数据层纯函数单测（34 项：行映射/二级字段/评论数聚合/浏览与厌恶字段）
-node tools/wall-rules-test.mjs # 暖心墙进阶规则纯函数单测（33 项：排序/时间范围显隐与筛选/浏览去重/1% 下架/每日一条/错误归类）
+node tools/wall-rules-test.mjs # 暖心墙进阶规则纯函数单测（37 项：排序/时间范围显隐与筛选/浏览去重/1% 下架/每日一条/错误归类/帖子时间到分钟）
 node tools/pet-home-test.mjs   # 宠物主页云层纯函数单测（19 项：宠物快照 / 手绘厨房清洗 / 互动计数独立列 / 图片引用外置与行体积安全阀 / 镜像队列安全性）
 node tools/pet-visual-test.mjs # 宠物形象与互动表情单测（163 项：五物种×六变体生成合法 Lottie / 表情随 mood 切换（弯弯眼·张嘴·星星·双心·Zzz）/ 贴纸描边·胡须·眉毛·曲线尾 / petMood 信号与缓存守卫）
 node tools/food-painter-test.mjs # 手绘食物画板单测（20 项：保存后清空画板与撤销栈 / 画笔与橡皮模式复位 / 异步撤销不回流旧画 / 食谱 7 份上限 / 48 小时过期边界）
@@ -88,14 +88,14 @@ node tools/api-contract-test.mjs # 云端数据访问适配层契约测试（83 
 node tools/gateway-contract-test.mjs # 网关模式前端侧契约测试（65 项：/api/* 端点形状 / 鉴权头 / 计数红线 / 错误上抛）
 node tools/worker-test.mjs    # API 网关 Worker 契约测试（191 项：/api/* → Supabase REST 翻译形状 / JWT 透传 / PGRST116→null / 路径穿越防护 / 图片边缘缓存 MISS→HIT 与降级）
 node tools/dm-test.mjs        # 私信规则层单测（280 项：撤回窗口 / 未读计数 / 日期分隔 / 错误码→i18n 映射 / 迁移覆盖）
-node tools/notify-test.mjs    # 通知规则层单测（148 项：分栏白名单 / 聚合语义 / 点击落点 / 未读兜底）
+node tools/notify-test.mjs    # 通知规则层单测（149 项：分栏白名单(私信已退出) / 聚合语义 / 点击落点 / 未读兜底）
 node tools/status-test.mjs    # 陪你大厅状态规则层单测（48 项：四键前后端一致 / 24h 窗口纯函数 / emoji 归文案不重复 / 两条链路契约 / 降级分支 / 迁移与文档覆盖）
 node tools/status-counts-test.mjs # 大厅人数接口单测（11 项：只取四类人数不下载资料 / 零人 / 不显示昵称 / 非法日期 / 计数失败降级）
 node tools/bottle-test.mjs    # 温暖漂流瓶规则层单测（36 项：每日 3 封 7 瓶 / 48h 回海 / 1000 字上限 / 错误码↔i18n 闭环 / 六 RPC 与 Worker 路由契约 / RLS 可见性 / 旧信箱清理）
 node tools/bottle-chat-test.mjs # 漂流瓶续聊离线回归（80 项：规则与状态机 / 通知文案与跳转落点 / 双适配器与 Worker 转发 / SQL 与 SUPABASE_SETUP 同源检查；不执行数据库迁移）
 node tools/i18n-test.mjs      # 文案完整性与插值回归（19 项：en/zh 键集合对称、修复过的 key、$ 特殊字符）
 node tools/admin-test.mjs     # 管理中心纯函数单测（39 项：admin:false 兜底 / 字段缺省 / 趋势图 14 天补零 / 行规整 / 北京时间口径）
-node tools/auth-test.mjs      # 登录规则单测（77 项：邮箱密码校验 / 昵称校验 / Google 昵称兜底与首登改昵提示 / 重置邮件链接解析与失效识别 / 回跳地址 / 没跑迁移的判定 / 页面接线）
+node tools/auth-test.mjs      # 登录规则单测（84 项：邮箱密码校验 / 昵称校验 / Google 昵称兜底与首登改昵提示 / 设置页改密码(旧密码验证·谷歌直设) / 重置邮件链接解析与失效识别 / 回跳地址 / 没跑迁移的判定 / 页面接线）
 node tools/privacy-test.mjs   # 隐私政策页回归（34 项：路由与页脚入口 / sitemap 与预渲染产物 / 合规表述逐条核对 —— 权限范围、不转售、不投放广告、Limited Use、撤销授权 / 中英键对称 / 不执行 JS 也能读到完整正文）
 node tools/snack-test.mjs     # 零食雨游戏纯逻辑单测（24 项：难度曲线/生成/碰撞/结算上限）
 node tools/seo-test.mjs       # SEO 资产检查（42 项：robots/sitemap/5 条路由/OG 标签/PNG 尺寸/安全头/预渲染产物）
@@ -156,6 +156,8 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 > 9. `MIGRATION_nickname_sync.sql` —— **改昵称同步旧内容署名**（轮 9，老库升级用；新装库无需单独跑）：`wall_posts` / `wall_comments` 的作者名是插入时写死的冗余列（列表一次查询出全量、不做 join），只改 `profiles.nickname` 会出现「我改名了、墙上的旧帖还是旧名」。此迁移加一个 security definer RPC `rename_me(p_nick)`，在一个事务里改档案并同步自己所有帖子与评论的署名（同时校验非空与 24 字上限），返回改动行数。没跑它时：仍可改名，但**旧帖/旧评论留旧名**（前端按真实结果提示，不谎报已同步）。跑完后可 `node tools/nick-e2e.mjs` 验证（会建测试帖/评论并清理）。
 >
 > 已知局限：别人评论里「@旧名」的 `reply_to_name` 是纯文本、不记 uuid，无法可靠回填，保留当时的称呼（历史记录语义）。
+
+> 10. `MIGRATION_notifications_drop_dm.sql` —— **私信退出通知中心**（#23，老库升级用；新装库无需单独跑）：私信有自己的聊天页与导航角标，不再进通知中心。迁移做两件事：清掉历史 `kind='dm'` 的通知行；加一个 BEFORE INSERT 触发器把 `kind='dm'` 的插入**静默丢弃**（`dm_send` / 漂流瓶触发器不用改，通知行从此不再生成）。没跑它时：通知中心「全部」里可能还残留老私信条目（前端已不显示「私信」分栏）。设置页的「私信」通知偏好开关随之移除（开关已无效果）。
 
 **② 配置密钥**（二选一，anon key 是公开密钥，安全由 RLS 保证）：
 - 左侧 **Settings → API** 复制 `Project URL` 和 `anon public key`，然后：
@@ -314,7 +316,7 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 | 体验 | `#/` 路由直接访问 `/pet` 会 404 | 迁移到 history 模式 + 每条路由独立静态 HTML + SPA 回退 | `router.js` / `vite.config.js` / `wrangler.jsonc` |
 | 体验 | 「在线陪伴数」是本地随机数，易误导 | 去掉虚构人数，改如实文案（路线图保留"等有真实统计再接"） | `views/HomeView.vue` / `i18n.js` |
 
-回归验证（全部本地可跑）：`wall-rules-test` 33 项 · `comment-test` 26 项 · `wall-test` 34 项 · `pet-home-test` 19 项 · `pet-visual-test` 163 项 · `food-painter-test` 20 项 · `uifix-test` 24 项 · `image-fit` 20 项 · `snack-test` 24 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 77 项 · `privacy-test` 34 项 · `arity-test` 8 项 · `seo-test` 42 项 · `dm-test` 286 项 · `notify-test` 148 项 · `status-test` 48 项 · `status-counts-test` 11 项 · `bottle-test` 36 项 · `bottle-chat-test` 80 项 · `api-contract-test` 83 项 · `gateway-contract-test` 65 项 · `worker-test` 191 项 · `undef-check`。
+回归验证（全部本地可跑）：`wall-rules-test` 37 项 · `comment-test` 26 项 · `wall-test` 34 项 · `pet-home-test` 19 项 · `pet-visual-test` 163 项 · `food-painter-test` 20 项 · `uifix-test` 24 项 · `image-fit` 20 项 · `snack-test` 24 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 84 项 · `privacy-test` 34 项 · `arity-test` 8 项 · `seo-test` 42 项 · `dm-test` 286 项 · `notify-test` 149 项 · `status-test` 48 项 · `status-counts-test` 11 项 · `bottle-test` 36 项 · `bottle-chat-test` 80 项 · `api-contract-test` 83 项 · `gateway-contract-test` 65 项 · `worker-test` 191 项 · `undef-check`。
 
 ## 🗺️ 路线图
 

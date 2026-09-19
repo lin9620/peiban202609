@@ -15,7 +15,7 @@ import { createClient } from "@supabase/supabase-js";
 import { setAuthTokenProvider } from "./api/authToken.js";
 import {
   bestNickname, hasAuthParams, isRecoveryEvent, parseAuthRedirect, redirectUrl, NICK_MAX,
-  isMissingFnError,
+  isMissingFnError, passwordProblem,
 } from "./authRules.js";
 
 export const cloud = reactive({
@@ -200,6 +200,36 @@ export async function cloudUpdatePassword(password) {
     /* 会话还是同一个人，但昵称最近可能刚同步过，统一再同步一次保持一致 */
     const { data } = await sb.auth.getSession();
     await refreshSession(data ? data.session : null);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, reason: e && e.message ? e.message : String(e) };
+  }
+}
+
+/* —— 设置页改密码（#27）——
+ * 邮箱用户：先用旧密码重登一次（signInWithPassword 成功即证明旧密码正确），再 updateUser；
+ * 谷歌用户：没有旧密码，直接设置新密码 —— 之后即可用「邮箱＋密码」登录（不再只依赖谷歌）。
+ * 返回 { ok, reason }：reason 走稳定暗号，由设置页映射文案（old-password-wrong / missing / short 等）。
+ */
+export async function cloudChangePassword(oldPw, newPw) {
+  if (!sb) return { ok: false, reason: "no-cloud" };
+  if (!cloud.user) return { ok: false, reason: "auth-required" };
+  const v = String(newPw == null ? "" : newPw);
+  const problem = passwordProblem(v);   /* 与注册同款校验（missing / short） */
+  if (problem) return { ok: false, reason: problem };
+  const isGoogle = !!(cloud.user.app_metadata && cloud.user.app_metadata.provider === "google");
+  if (!isGoogle) {
+    if (!oldPw) return { ok: false, reason: "old-password-required" };
+    try {
+      const { error } = await sb.auth.signInWithPassword({ email: cloud.user.email || "", password: String(oldPw) });
+      if (error) return { ok: false, reason: "old-password-wrong" };
+    } catch (e) {
+      return { ok: false, reason: e && e.message ? e.message : String(e) };
+    }
+  }
+  try {
+    const { error } = await sb.auth.updateUser({ password: v });
+    if (error) return { ok: false, reason: error.message };
     return { ok: true };
   } catch (e) {
     return { ok: false, reason: e && e.message ? e.message : String(e) };

@@ -927,6 +927,8 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 .cmt-del:hover { color: var(--low); background: rgba(239, 125, 106, .12); }
 .cmt-text { font-size: 12.5px; line-height: 1.65; margin-top: 4px; color: var(--ink); }
 .cmt-empty { font-size: 12px; color: var(--ink-faint); font-weight: 700; }
+.cmt-login { color: var(--low); font-weight: 700; text-decoration: none; margin-left: 4px; }
+.cmt-login:hover { text-decoration: underline; }
 .cmt-input { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .cmt-input .input { flex: 1; }
 /* 评论字数：剩余多少 / 已达 200 字上限 */

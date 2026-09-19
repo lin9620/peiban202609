@@ -7,15 +7,17 @@
 
 export const KINDS = ["comment", "reply", "reaction", "pet", "dm", "system"];
 
-/** 分栏 → kinds 白名单（传给 notifPage 的 p_kinds；all = null 不过滤） */
+/** 分栏 → kinds 白名单（传给 notifPage 的 p_kinds）。
+ *  #23：私信（dm）退出通知中心——它有自己的聊天页与角标，这里不再展示，
+ *  所以「全部」也传**非 dm 白名单**（不再用 null=不过滤，防止老库残留的 dm 行冒出来）。
+ *  数据层的 notif_kind 白名单仍含 dm（迁移 notifications_drop_dm 在库里拦生成），前端只是不消费。 */
 export function kindsFor(tab) {
   switch (tab) {
     case "comments":  return "comment,reply";
     case "reactions": return "reaction,pet";
     case "pets":      return "pet";
-    case "dms":       return "dm";
     case "system":    return "system";
-    default:          return null; // all
+    default:          return "comment,reply,reaction,pet,system"; // all（含未知分栏兜底；永不含 dm）
   }
 }
 

@@ -246,20 +246,20 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
 ---
 
-# 一、当前状态速览（2026-09-18 更新）
+# 一、当前状态速览（2026-09-19 更新）
 
 | 项 | 值 |
 |---|---|
 | 项目 | peiban（陪伴 / warm-paws），路径 `D:\05ruanjian\peiban` |
 | 技术栈 | Vue 3 + Vite + Naive UI；数据层双模式：直连 Supabase（`db.supabase.js`）/ Worker 网关（`db.gateway.js` + `worker/api.js`，**线上走网关**）；Cloudflare 部署 https://dale.de5.net；Supabase Postgres + RLS + security definer RPC |
-| 代码 | `HEAD = daee1d2`（容量评估）+ 本轮未提交改动：图片边缘缓存、README 数字校准、本文件；推送后与 `origin/main` 同步 |
-| 部署 | Worker 版本 `b025d9cb`（图片边缘缓存）；`live-check` 13/13；`img-cache-e2e` 11/11 |
-| 数据库 | 11 个迁移文件**全部已在 Supabase 执行**（含 `MIGRATION_nickname_sync.sql`，用户于 09-18 执行，`nick-e2e` 12/12 确认） |
-| 测试 | 25 套离线测试全绿 + `undef-check` 0 问题 + 五套线上 e2e（cloud 38 / dm 47 / status 17 / nick 12 / img-cache 11 全 PASS） |
+| 代码 | `HEAD = 52adfa1` + 本轮 #23–#29 改动（见轮 13） |
+| 部署 | 前端新包 `index-CV4U24yC.js` 已上线；`live-check` 13/13 |
+| 数据库 | **新增 `MIGRATION_notifications_drop_dm.sql`（#23）待用户执行**；其余 11 个迁移全部已执行（含 `MIGRATION_nickname_sync.sql`，`nick-e2e` 12/12 确认） |
+| 测试 | 25 套离线测试全绿（auth 84 / notify 149 / wall-rules 37 为本轮新计数）+ `undef-check` 0 问题 + 五套线上 e2e（cloud 38 / dm 47 / status 17 / nick 12 / img-cache 11 全 PASS） |
 
 ## 二、现在在做什么
 
-- **当前任务**：无进行中的代码任务。轮 12（图片边缘缓存）已完成并部署，验证通过。
+- **当前任务**：轮 13（清单 #23–#29 共 7 条）已完成并部署前端；**等用户在 Supabase 跑 `MIGRATION_notifications_drop_dm.sql`**（私信退出通知中心）+ 实机验收。
 - **等待用户输入**：① 实机验收结果（见「八、下一步」清单）；② 第 10 条的浏览器型号/版本；③ 第 7 条暖心故事、#12 宠物年龄衰老的开工通知。
 - **可选加码（等有量再做）**：图片搬 Cloudflare R2（出口永久免费，见「十、容量评估」方案 B）。
 
@@ -347,11 +347,24 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 - **收益**：图片出口量降到约 **1/N**（N = 同一张图被看的次数），免费套餐 ~490 → **~1,000+ 日活**；Pro ~2.3 万 → **约 7 万**。
 - 剩余可选（不着急）：方案 B 搬 **Cloudflare R2**（存储 10GB 免费 + 出口永久免费）→ 图片流量与日活彻底脱钩。
 
+### 轮 13：清单 #23–#29（7 条，前端已部署 `index-CV4U24yC.js`，live-check 13/13）
+
+- **#23 私信退出通知中心**：通知中心去掉「私信」分栏；「全部」不再用 `null=不过滤`，改为**显式非 dm 白名单**（`kindsFor` 兜底也不含 dm，防老库残留冒出来）。数据层用 **BEFORE INSERT 触发器把 `kind='dm'` 静默丢弃**（`MIGRATION_notifications_drop_dm.sql`，清历史 + 拦生成）——**不重写** `dm_send`/漂流瓶触发器这些复杂函数，一处拦住所有生成点；`notif_unread` 的 total 从此自然不含 dm。设置页同步移除「私信」偏好开关（开关已无效果）。⭐ **待用户在 Supabase SQL Editor 执行**（SUPABASE_SETUP.sql 已同步同款块）。
+- **#24 云按钮移除**：App.vue 顶栏的账号标签（☁️→/profile）与导航「我的」重复，已删（`accountLabel` 一并清理）。
+- **#25 帖子时间到分钟**：新纯函数 `wallRules.fmtWhen`（月日 + HH:mm，跨年补年份；非法/null → 空串 —— **踩坑**：`new Date(null)` 是 1970-01-01 而非 Invalid，必须显式拦）。CommunityView（帖子+评论）与 WallerView（帖子）都接上。
+- **#26 厌恶文案放软**：`community.dislikeRule` 重写。⚠️ **向用户澄清过**：真实规则是 **「≥5 人 且 ≥浏览的 1%」同时满足**（SQL 164 行），不是用户复述的「或」——「且」防小样本误杀（2 个浏览 1 个厌恶 ≠ 50% 就下架）；文案按「且」写、语气放软（"退下休息——不会删掉，随时能回来"）。
+- **#27 设置页改密码**：`cloudChangePassword(oldPw, newPw)` —— 邮箱用户**先用旧密码重登一次**验证（signInWithPassword 失败 → `old-password-wrong`），再 `updateUser`；**谷歌用户没有旧密码，直接设新密码**，之后可用邮箱+密码登录。设置页新增密码区（旧/新/确认三框，谷歌用户不显示旧密码框），本地先拦「两次不一致/太短/没填旧密码」。`auth-test` 77→**84**。
+- **#28 游客不能参与云端帖互动**：评论（含二级回复框）、回应、厌恶——未登录点击云端帖一律**给登录提示**（`reactSignIn`/`commentSignIn`；评论输入区直接换成提示+登录链接；`openReply` 也拦）。**修复的原始抱怨**：之前游客评论走本地分支"能写但别人看不到"，误导。示例帖保留本地演示行为。
+- **#29 回应再点取消 + 跟手**：登录用户**乐观翻转**（`p.mine[kind]` + 计数立即变），网络回来用权威计数校正，失败**回滚 + 提示**（`reactFail`）；`reactBusy` Set 防连点竞态；本地/示例帖第二次点击也会**取消**（原来是 `includes→return`，取消不了——用户遇到的正是这个）；厌恶按钮同样乐观化。
+- **验证**：`wall-rules-test` 33→**37**（fmtWhen 4 项）、`notify-test` 148→**149**（分栏断言按 #23 重写）、`auth-test` 77→**84**（#27 契约 7 项）、`i18n-test`/`uifix-test`/`undef-check`/`arity-test` 全绿 + **全部 25 套重跑通过**；build ✓ 部署 ✓ live-check 13/13；README（迁移清单第 10 条 + 工具计数 + 回归行）与 SUPABASE_SETUP.sql 已同步。
+- **待办**：① 用户跑 `MIGRATION_notifications_drop_dm.sql`；② 实机验收 #23（通知页无私信栏）、#27（改密码闭环）、#28/#29（游客提示 + 再点取消跟手）。
+
 ## 四、还没做的
 
 | 项 | 说明 | 依赖 |
 |---|---|---|
-| #1/#3/#11/#17/#22 实机验收 | 代码已上线，但真实浏览器/手机交互未验收（本地无浏览器自动化） | 用户实机点一遍 |
+| #23 迁移待执行 | `MIGRATION_notifications_drop_dm.sql`（清历史 dm 通知 + 拦新生成） | **用户在 Supabase SQL Editor 执行** |
+| #1/#3/#11/#17/#22/#23/#27/#28/#29 实机验收 | 代码已上线，但真实浏览器/手机交互未验收（本地无浏览器自动化） | 用户实机点一遍 |
 | #7 暖心故事 | 今日一问位置的替换品：标题+正文、每日一篇、点赞、7 天点赞榜新页面 | **等用户通知开工** |
 | #12 宠物年龄与衰老 | 用户明确"以后再改" | **等用户通知开工** |
 | #10 评论数跨浏览器 | 有预取逻辑，但问题未在故障浏览器复现定位，不能算解决 | 需用户提供浏览器与版本 |

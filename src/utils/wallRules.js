@@ -9,6 +9,28 @@
  * （前端只是提示，服务端才是权威）；两边的判定口径必须一致，改动时同步。
  */
 
+/* ══════════ 帖子时间：显示到分钟（#25） ══════════ */
+
+/**
+ * 暖心墙帖子/评论的时间：月日 + 时分（当年），跨年补年份。
+ * 纯函数（now 可注入便于单测）；语言 zh→zh-CN，其余→en-US。
+ * @param {string|number|Date} ts
+ * @param {string} locale "zh" | 其它
+ * @param {number} [now] 当前时间戳（默认 Date.now()）
+ * @returns {string} 如 "9月19日 14:32" / "Sep 19, 14:32"；跨年 "2025年9月19日 14:32"；非法 → ""
+ */
+export function fmtWhen(ts, locale = "zh", now = Date.now()) {
+  /* null/undefined/"" 不当有效时间（new Date(null) 会变成 1970-01-01） */
+  const d = ts == null || ts === "" ? new Date(NaN) : new Date(ts);
+  if (isNaN(d.getTime())) return "";
+  const sameYear = d.getFullYear() === new Date(now).getFullYear();
+  return d.toLocaleString(locale === "zh" ? "zh-CN" : "en-US", {
+    month: "short", day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  });
+}
+
 /* ══════════ 排序 ══════════ */
 
 /** 排序方式（顺序 = UI 上的按钮顺序），tk 为 i18n key */

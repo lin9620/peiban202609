@@ -281,5 +281,30 @@ ok("A48b nickLong 的 {n} 真会被替换（昵称上限提示不留占位符）
   return zh.includes(String(NICK_MAX)) && !zh.includes("{n}") && en.includes(String(NICK_MAX)) && !en.includes("{n}");
 })());
 
+/* ───────── #27 设置页改密码（源码契约 + i18n 双语对称） ───────── */
+{
+  const sb = read("src/utils/supabase.js");
+  const sv = read("src/views/SettingsView.vue");
+  ok("A49 cloudChangePassword 存在且先本地校验新密码（passwordProblem）",
+    sb.includes("export async function cloudChangePassword") && sb.includes("passwordProblem(v)"));
+  ok("A50 邮箱用户先用旧密码重登验证（signInWithPassword；失败=old-password-wrong）",
+    sb.includes('signInWithPassword({ email: cloud.user.email || "", password: String(oldPw) })')
+      && sb.includes('return { ok: false, reason: "old-password-wrong" }'));
+  ok("A51 谷歌用户跳过旧密码直接设新密码（provider 判定）",
+    sb.includes('provider === "google"'));
+  ok("A52 设置页有密码区（旧/新/确认 + isGoogle 分支 + 保存按钮）",
+    sv.includes('t("settings.password")') && sv.includes("v-model:value=\"pwOld\"")
+      && sv.includes("v-model:value=\"pwConfirm\"") && sv.includes("isGoogle") && sv.includes("savePw"));
+  ok("A53 两次不一致与缺旧密码在本地就拦下（不惊动服务器）",
+    sv.includes("pwNew.value !== pwConfirm.value") && sv.includes("t(\"settings.pwNeedOld\")"));
+  for (const lang of ["zh", "en"]) {
+    const c = messages[lang] && messages[lang].settings;
+    const keys = ["password", "pwOld", "pwNew", "pwConfirm", "pwSave", "pwSaved", "pwGoogleSaved",
+      "pwOldWrong", "pwMismatch", "pwNeedOld", "pwShort", "pwFail", "pwHint", "pwGoogleHint"];
+    ok(`A54 ${lang}: settings 密码文案齐备`, !!c && keys.every((k) => typeof c[k] === "string" && c[k].trim()),
+      (c ? keys.filter((k) => !c[k]) : keys).join(","));
+  }
+}
+
 console.log(`\nTOTAL ${pass + fail}  PASS ${pass}  FAIL ${fail}`);
 if (fail > 0) process.exitCode = 1;

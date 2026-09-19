@@ -26,7 +26,6 @@ const TABS = [
   { key: "comments", tk: "notif.tabComments" },
   { key: "reactions", tk: "notif.tabReactions" },
   { key: "pets", tk: "notif.tabPets" },
-  { key: "dms", tk: "notif.tabDms" },
   { key: "system", tk: "notif.tabSystem" },
 ];
 const PAGE = 20;   /* #14 每页 20 条，手动翻页（不再一次拉 30 条往下堆） */
@@ -40,13 +39,12 @@ const done = ref(false);     // 当前页不满 → 没有下一页了
 const failed = ref(false);
 const signedIn = computed(() => !!(cloud.ready && cloud.user));
 
-/* 分栏未读：全部 = 通知未读 + 私信未读（与导航角标同口径） */
+/* 分栏未读：全部 = 通知表未读（私信不在通知中心，#23 —— 私信未读只看导航 💬 角标） */
 const counts = computed(() => ({
-  all: badge.notif + badge.dm,
+  all: badge.notif,
   comments: badge.comments,
   reactions: badge.reactions,
   pets: badge.pets,
-  dms: badge.dm,
   system: badge.system,
 }));
 

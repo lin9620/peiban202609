@@ -12,7 +12,7 @@ import {
   rangeStartTs, inRange,
   VIEW_KEY, ANON_KEY, POST_DAY_KEY, postRef, utcDay, pruneStamps, collectViews,
   DISLIKE_RATIO, REMOVAL_MIN_VIEWS, DISLIKE_MIN_COUNT, dislikeRatio, ratioPct, shouldRemove,
-  isVisible, visibleOnly, postedOnDay, canPostToday, errorKind,
+  isVisible, visibleOnly, postedOnDay, canPostToday, errorKind, fmtWhen,
 } from "../src/utils/wallRules.js";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -26,6 +26,31 @@ function t(name, fn) {
 }
 
 const post = (id, ts, reacts = {}, extra = {}) => ({ id: "c" + id, dbId: id, ts, reacts, ...extra });
+
+/* ══════════ 帖子时间：显示到分钟（#25） ══════════ */
+/* 注：绝对文案随运行环境时区变，这里只锁「结构」——必须带 时:分，且跨年补年份 */
+t("#25 当年时间 → 含 时:分（不再只有月日）", () => {
+  const now = new Date(); now.setMonth(8, 19); now.setHours(14, 32, 0, 0);
+  const s = fmtWhen(now.getTime(), "zh", now.getTime());
+  assert.ok(/\d{1,2}:\d{2}/.test(s), `输出=${s}`);
+});
+t("#25 跨年 → 补年份（当年则不带）", () => {
+  const now = new Date();
+  const past = new Date(now); past.setFullYear(now.getFullYear() - 1);
+  const a = fmtWhen(past.getTime(), "zh", now.getTime());
+  const b = fmtWhen(now.getTime(), "zh", now.getTime());
+  assert.ok(a.includes(String(past.getFullYear())), `跨年应带年份，输出=${a}`);
+  assert.ok(!b.includes(String(now.getFullYear())), `当年不应再带年份，输出=${b}`);
+});
+t("#25 非法时间 → 空串（不抛错）", () => {
+  assert.equal(fmtWhen("不是时间", "zh"), "");
+  assert.equal(fmtWhen(null, "zh"), "");
+});
+t("#25 英文口径 → 也含 时:分", () => {
+  const now = new Date();
+  const s = fmtWhen(now.getTime(), "en", now.getTime());
+  assert.ok(/\d{1,2}:\d{2}/.test(s), `输出=${s}`);
+});
 
 /* ══════════ 排序 ══════════ */
 
