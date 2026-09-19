@@ -1600,11 +1600,43 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 .tabbar-opt-txt small { font-size: 12px; color: var(--ink-soft); font-weight: 600; }
 @keyframes tabbar-up { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
 
-/* App/窄屏形态：隐藏与 Tab 重复的顶栏导航与私信图标，正文给 TabBar 让位 */
-.shell--mobile-nav .nav { display: none; }
-.shell--mobile-nav .topbar-right .icon-link { display: none; }
+/* ═══════════ App 轨道：手机形态去顶栏（T5 视觉反馈）+ 消息页微信式（T7 提前） ═══════════ */
+/* 手机端「暖爪」置顶条整体隐藏：品牌感交给启动屏/图标，导航交给底部 TabBar，账号信息在「我的」页。
+   顶部导航与私信/通知图标都在 .topbar 内，一并消失（桌面 ≥900px 完全不受影响）。
+   原「只藏 .nav/.icon-link」的写法保留在下方注释里，便于回溯：
+   .shell--mobile-nav .nav / .shell--mobile-nav .topbar-right .icon-link */
+.shell--mobile-nav .topbar { display: none; }
 .shell--mobile-nav main { padding-bottom: calc(78px + env(safe-area-inset-bottom, 0px)); }
 .shell--mobile-nav .footer { padding: 20px 0 8px; }
+
+/* 消息页 = 微信式：列表页 ↔ 聊天页 二选一（v-show 由 isMobileNav/activeId 驱动） */
+.shell--mobile-nav .dm-head { display: none; }
+.shell--mobile-nav .dm-list { max-height: none; overflow: visible; }
+.shell--mobile-nav .dm-row { padding: 10px 8px; }
+
+/* 聊天页整屏（微信同款）：TabBar 与页脚让位，消息区内部滚动、输入区自然吸底 */
+.shell--mobile-nav.shell--chat { padding-bottom: 0; }
+.shell--mobile-nav.shell--chat main { padding-bottom: 0; }
+.shell--mobile-nav.shell--chat .footer { display: none; }
+.shell--mobile-nav.shell--chat .dm-page { height: 100dvh; gap: 0; }
+.shell--mobile-nav.shell--chat .dm-wrap {
+  display: flex; flex-direction: column; gap: 0; flex: 1; min-height: 0;
+}
+.shell--mobile-nav.shell--chat .dm-thread {
+  flex: 1; min-height: 0; padding: calc(14px + env(safe-area-inset-top, 0px)) 12px calc(10px + env(safe-area-inset-bottom, 0px));
+}
+.shell--mobile-nav.shell--chat .dm-scroll {
+  flex: 1; min-height: 0; max-height: none; overscroll-behavior: contain;
+}
+
+/* ← 返回钮（仅手机聊天页） */
+.dm-thread-back {
+  border: 0; cursor: pointer; background: var(--accent-soft); color: var(--accent-deep);
+  font-family: inherit; font-size: 15px; font-weight: 800; line-height: 1;
+  width: 30px; height: 30px; border-radius: 50%; flex: 0 0 30px; padding: 0 0 2px;
+}
+.dm-thread-back:active { transform: scale(.92); }
+
 
 
 

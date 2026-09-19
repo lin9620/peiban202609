@@ -3,10 +3,12 @@ import { computed, ref, onMounted, onErrorCaptured, onBeforeUnmount, watch } fro
 import {
   NConfigProvider, NMessageProvider, NDialogProvider, NTag, NButton,
 } from "naive-ui";
+import { useRoute, useRouter } from "vue-router";
+import { App as CapApp } from "@capacitor/app";
 import { t } from "./i18n.js";
 import SideRails from "./components/SideRails.vue";
 import TabBar from "./components/TabBar.vue";
-import { isMobileNav } from "./stores/uiStore.js";
+import { isApp, isMobileNav } from "./stores/uiStore.js";
 import {
   wallet, moodStreak, petNotices, dismissPetNotice,
 } from "./stores/petStore.js";
@@ -21,6 +23,13 @@ const NAV = [
   { to: "/community", key: "nav.community" },
   { to: "/profile", key: "nav.profile" },
 ];
+
+const route = useRoute();
+const router = useRouter();
+
+/* 手机形态的聊天页（/messages/:id）= 微信式整屏：底部 TabBar 与页脚让位，
+ * 返回靠聊天页的 ← 钮与系统返回键。桌面双列同页不触发（isMobileNav=false）。 */
+const inChat = computed(() => isMobileNav.value && route.name === "messages" && !!route.params.id);
 
 /* 私信 / 通知角标：登录后由 badgeStore 每 30s 智能轮询（后台暂停）。
  * #14：红点只挂在聊天入口（💬）——🔔 不再显示红点，通知进页面看。 */
@@ -39,7 +48,28 @@ function noticeText(n) {
 
 /* 云端探测（未配置时静默保持本地模式） */
 const cloudSigned = computed(() => !!(cloud.ready && cloud.user));
-onMounted(() => { initCloud(); });
+
+/* ─── T9 · 安卓系统返回键（App 内导航与原生一致）───
+ * 手机形态导航 = 「Tab 根视图 + push 二级页」：
+ *   聊天页 / 其他二级页（他人主页 · 设置 · 通知…）→ 回上一页
+ *   四个 Tab 根视图 → 最小化到桌面（Android 惯例；不误退出、后台保留） */
+const ROOT_VIEWS = ["home", "community", "messagesList", "profile"];
+let backHandle = null;
+
+onMounted(async () => {
+  initCloud();
+  if (!isApp) return; /* 浏览器里没有系统返回键 */
+  try {
+    backHandle = await CapApp.addListener("backButton", () => {
+      if (inChat.value || !ROOT_VIEWS.includes(route.name)) {
+        router.back();
+        return;
+      }
+      CapApp.minimizeApp();
+    });
+  } catch (e) { /* 插件缺失（网页调试）时静默 */ }
+});
+onBeforeUnmount(() => { if (backHandle) backHandle.remove(); });
 
 /* 登录态变化 → 起停角标轮询（未登录不轮询，省流量） */
 watch(cloudSigned, (v) => { if (v) startBadge(); else stopBadge(); }, { immediate: true });
@@ -67,7 +97,7 @@ function reload() {
         <div class="orb orb-2"></div>
         <div class="orb orb-3"></div>
 
-        <div class="shell" :class="{ 'shell--mobile-nav': isMobileNav }">
+        <div class="shell" :class="{ 'shell--mobile-nav': isMobileNav, 'shell--chat': inChat }">
           <header class="topbar">
             <router-link to="/" class="brand">
               <span class="brand-paw">🐾</span>
@@ -138,7 +168,7 @@ function reload() {
           </footer>
         </div>
 
-        <TabBar v-if="isMobileNav" />
+        <TabBar v-if="isMobileNav && !inChat" />
         <SideRails v-if="!isMobileNav" />
       </n-dialog-provider>
     </n-message-provider>

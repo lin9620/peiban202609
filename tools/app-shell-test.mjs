@@ -22,7 +22,7 @@ ok("T4 投瓶走 /?tab=bottle（T6 三联消费）", tb.includes('query: { tab: 
 
 /* ─── ② App.vue 双形态接线（桌面零变化锚点） ─── */
 const app = read("src/App.vue");
-ok("T5 TabBar 仅 isMobileNav 渲染", app.includes('<TabBar v-if="isMobileNav"'));
+ok("T5 TabBar 仅 isMobileNav 渲染（聊天页让位）", app.includes('<TabBar v-if="isMobileNav'));
 ok("T6 SideRails 桌面专属（isMobileNav 时隐藏）", app.includes('<SideRails v-if="!isMobileNav"'));
 ok("T7 桌面顶栏 NAV 数组原样保留（零变化锚点）", app.includes("const NAV = [") && app.includes('exact-active-class="active"'));
 ok("T8 shell 挂 mobile-nav 形态类", app.includes("shell--mobile-nav"));
@@ -44,7 +44,27 @@ i18n.locale = "en";
 
 /* ─── ④ 样式与 safe-area ─── */
 const css = read("src/style.css");
-ok("T13 TabBar 样式含 safe-area 与桌面隔离", css.includes("env(safe-area-inset-bottom") && css.includes(".shell--mobile-nav .nav") && css.includes(".tabbar {"));
+ok("T13 TabBar 样式含 safe-area 与桌面隔离",
+  css.includes("env(safe-area-inset-bottom") && css.includes(".shell--mobile-nav .topbar") && css.includes(".tabbar {"));
+
+/* ─── ⑤ 消息页微信式（手机：列表页 ↔ 聊天页 二选一，聊天页整屏） ─── */
+const mv = read("src/views/MessagesView.vue");
+ok("T14 聊天页整屏样式（shell--chat + 100dvh + 内部滚动）",
+  css.includes(".shell--mobile-nav.shell--chat .dm-page") && css.includes("height: 100dvh")
+  && css.includes(".shell--mobile-nav.shell--chat .dm-scroll"));
+ok("T15 聊天页隐藏 TabBar 与页脚（shell--chat 形态类）",
+  app.includes("'shell--chat': inChat") && app.includes('<TabBar v-if="isMobileNav && !inChat"')
+  && css.includes(".shell--mobile-nav.shell--chat .footer { display: none; }"));
+ok("T16 手机形态 push / 桌面形态 replace（历史不污染、返回键可用）",
+  mv.includes("if (isMobileNav.value) {") && mv.includes('router.push({ name: "messages"')
+  && mv.includes('router.replace({ name: "messages"'));
+ok("T17 ← 返回钮走 backToList（非硬跳 /messages）", mv.includes('class="dm-thread-back" @click="backToList"'));
+ok("T18 回到列表时清空当前会话（activeId='' + msgs=[]）",
+  mv.includes('activeId.value = "";') && mv.includes("msgs.value = [];"));
+
+/* ─── ⑥ 安卓系统返回键（T9 提前） ─── */
+ok("T19 系统返回键：二级页/聊天页回退 + 根视图最小化",
+  app.includes('addListener("backButton"') && app.includes("minimizeApp") && app.includes("const ROOT_VIEWS = ["));
 
 out.push("");
 out.push(`TOTAL ${pass + fail}  PASS ${pass}  FAIL ${fail}`);

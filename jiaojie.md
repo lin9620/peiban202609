@@ -792,6 +792,11 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
   - **首包 ✅ 出包成功（2026-09-20）**：环境两坑已解——① AS 自带 JBR 是 Java 25，Gradle 8.14 不支持 → 装 **OpenJDK 21**（华为镜像，curl 6 段并行 90 秒）；② 缺 `android/local.properties`（sdk.dir 已写，gitignore 内）。`gradlew assembleDebug` **BUILD SUCCESSFUL 3m23s（93 tasks）→ app-debug.apk 4.5MB**。adb 未检出设备（用户未连线），等用户装机看 T5 视觉。详细命令与网络备忘已记入 E 节。
   - **验收（三层口径）**：第一层离线 ✅ —— **25 套全绿**（auth 84→**94**、worker 191→**193**、gateway 65→**66**、privacy 34、i18n 19）+ `undef-check problems=0` + build exit 0；README 已登记迁移第 11 条与计数。第二层契约 ✅（三套契约测试含新路由断言）。第三层线上：删号 RPC 探针三绿 ✅（见 T3）；**删号 e2e（真实注册→删号→复查残留）⏳ 可随后补 `tools/account-e2e.mjs`**。
   - **待用户**：① ~~执行 `MIGRATION_delete_account.sql`~~ ✅ 已执行（探针三绿）；② 装 Android Studio 后我陪跑 T1 出包；③（可选）真机/设置页点一次删号验证 UI 流程。
+  - **T5 视觉反馈改造 ✅（2026-09-20，真机 APK 验收后当日落地）**：
+    ① **手机端去掉「暖爪」置顶顶栏** → `.shell--mobile-nav .topbar { display: none; }`（品牌感交给启动屏/图标，导航交给底部 TabBar，账号信息去「我的」页；原「只藏 `.nav`/`.icon-link`」写法已删，`main`/`footer` 让位规则保留）；
+    ② **消息页微信式（T7 提前）**：手机形态 = 会话列表页 ↔ **整屏聊天页** 二选一 —— `openConv` 手机走 **push**（历史保留列表 → ← 与系统返回键都能回列表）/ 桌面走 **replace**（双列同页，原行为零变化、不污染浏览器历史）；新增 `shell--chat` 形态类（`inChat = isMobileNav && route.name === "messages" && 有 id`）→ **TabBar 与页脚让位 + `100dvh` 整屏 + 消息区内部滚动 + 输入区自然吸底 + 顶部 ← 返回钮**（`backToList`：列表点进来用 `router.back()`，深链进来用 `router.push('/messages')`）；路由回到 `""` 时清空 `activeId/msgs/meta`（列表页立刻接管整屏）；
+    ③ **安卓系统返回键（T9 提前，`@capacitor/app` 8.1.1）**：聊天页/其他二级页（他人主页 · 设置 · 通知…）→ 回上一页；四个 Tab 根视图（home/community/messagesList/profile）→ `minimizeApp()` 最小化到桌面（Android 惯例，后台保留、避免误退出）。装插件 → `cap sync`（Found 1 plugin）→ 重新出包 `BUILD SUCCESSFUL 13s（123 tasks）` → `adb install` Success，真机复验。
+    **验收**：`app-shell-test` 14→**20 项**（新增 T14–T19：整屏样式 · 隐藏 TabBar/页脚 · push/replace 双形态 · ← 走 backToList · 回列表清会话 · 返回键策略）+ undef `problems=0` + i18n 19 + dm 286 + **26 套全绿** + build exit 0 + 部署 `c1973a8c` + **LIVE 14/14**。
 
 ## G. 开发任务拆解（动工路线图，逐批交付）
 

@@ -21,6 +21,7 @@ import {
 } from "../utils/dmRules.js";
 import { refreshBadge } from "../stores/badgeStore.js";
 import BottleRecords from "../components/BottleRecords.vue";
+import { isMobileNav } from "../stores/uiStore.js";
 
 const route = useRoute();
 const router = useRouter();
@@ -42,6 +43,7 @@ const oldestId = ref(null);
 const listEl = ref(null);
 const meta = ref(null);      // 当前会话元信息（昵称 / 免打扰 / 拉黑 / 消息请求）
 const menuFor = ref("");     // 展开操作菜单的会话 id
+const fromList = ref(false); // 手机形态：本会话是从会话列表点进来的（← 用 router.back 回列表）
 
 const REQ = "requests";      // 伪会话分组键（消息请求）
 const meId = computed(() => (cloud.user && cloud.user.id) || "");
@@ -145,13 +147,33 @@ function scrollBottom(smooth = false) {
 
 async function openConv(id) {
   menuFor.value = "";
+  const same = String(activeId.value) === String(id);
   activeId.value = String(id);
-  router.replace({ name: "messages", params: { id: String(id) } }).catch(() => {});
+  /* 双形态导航（微信式）：
+   *  - 手机形态：聊天是独立整屏页 → push，历史保留列表 → ← 钮 / 系统返回键都能回列表；
+   *  - 桌面形态：列表与聊天同页双列 → replace，点会话不污染浏览器历史（原行为不变）。 */
+  if (isMobileNav.value) {
+    if (!same) fromList.value = true;
+    router.push({ name: "messages", params: { id: String(id) } }).catch(() => {});
+  } else {
+    router.replace({ name: "messages", params: { id: String(id) } }).catch(() => {});
+  }
   meta.value = null;
   await Promise.all([loadMessages(activeId.value), loadMeta(activeId.value)]);
   scrollBottom();
   dmApi.markRead(id).catch(() => {});
   refreshBadge();
+}
+
+/* ← 返回会话列表（手机形态）：从列表点进来 → 退一步（不留多余历史）；
+ * 直链进来（通知中心 / 瓶子记录）→ 直接跳列表。 */
+function backToList() {
+  if (fromList.value) {
+    fromList.value = false;
+    router.back();
+    return;
+  }
+  router.push({ name: "messagesList" }).catch(() => {});
 }
 
 /* ─────────── 发送 / 撤回 ─────────── */
@@ -287,10 +309,18 @@ onBeforeUnmount(() => {
   if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVisible);
 });
 
-/* 地址栏变了（通知中心点私信跳进来）→ 切会话 */
+/* 地址栏变了（通知中心点私信跳进来 / ← 钮 / 系统返回键）→ 切会话或回列表 */
 watch(() => route.params.id, (v) => {
   const id = String(v || "");
-  if (id && id !== activeId.value) openConv(id);
+  if (id) {
+    if (id !== activeId.value) openConv(id);
+    return;
+  }
+  /* 回到列表：清空当前会话（手机形态下 .dm-list 立刻接管整屏） */
+  activeId.value = "";
+  msgs.value = [];
+  meta.value = null;
+  fromList.value = false;
 });
 
 const when = (ts) => relativeTime(ts, Date.now(), t);
@@ -305,7 +335,7 @@ const dayLabel = (ts) => new Date(ts).toLocaleDateString(
 
 <template>
   <div class="dm-page">
-    <section class="card dm-head">
+    <section v-if="!isMobileNav" class="card dm-head">
       <h1 class="dm-title">💬 {{ t("dm.title") }}</h1>
       <p class="sub">{{ t("dm.intro") }}</p>
     </section>
@@ -316,8 +346,8 @@ const dayLabel = (ts) => new Date(ts).toLocaleDateString(
     </section>
 
     <div v-else class="dm-wrap">
-      <!-- 左列：会话列表 -->
-      <aside class="card dm-list">
+      <!-- 左列：会话列表（手机形态 = 微信式列表页；进入会话后整页让给聊天区） -->
+      <aside v-show="!isMobileNav || !activeId" class="card dm-list">
         <n-input v-model:value="q" size="small" round clearable :placeholder="t('dm.search')" class="dm-search" />
 
         <!-- #19 已拉黑：集中查看 / 解除（拉黑与解除都不通知对方） -->
@@ -396,10 +426,11 @@ const dayLabel = (ts) => new Date(ts).toLocaleDateString(
         <BottleRecords @open="openBottleChat" />
       </aside>
 
-      <!-- 右列：当前会话 -->
-      <section class="card dm-thread">
+      <!-- 右列：当前会话（手机形态 = 微信式独立聊天页，带返回） -->
+      <section v-show="!isMobileNav || !!activeId" class="card dm-thread">
         <template v-if="activeId">
           <header class="dm-thread-head">
+            <button v-if="isMobileNav" class="dm-thread-back" @click="backToList">←</button>
             <b class="dm-name dm-peer-link" :title="t('dm.viewHome')" @click="goUser(activeConv && activeConv.other_id)">{{ title || t("dm.someone") }}</b>
             <span v-if="activeConv && activeConv.muted" class="dm-muted">🔇 {{ t("dm.mutedTag") }}</span>
             <n-tag v-if="activeConv && activeConv.accepted === false" round size="small" :bordered="false" class="soft-tag">
@@ -464,6 +495,6 @@ const dayLabel = (ts) => new Date(ts).toLocaleDateString(
       </section>
     </div>
 
-    <router-link class="dm-back" to="/">{{ "← " + t("nav.home") }}</router-link>
+    <router-link v-if="!isMobileNav" class="dm-back" to="/">{{ "← " + t("nav.home") }}</router-link>
   </div>
 </template>
