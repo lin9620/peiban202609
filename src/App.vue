@@ -5,6 +5,8 @@ import {
 } from "naive-ui";
 import { t } from "./i18n.js";
 import SideRails from "./components/SideRails.vue";
+import TabBar from "./components/TabBar.vue";
+import { isMobileNav } from "./stores/uiStore.js";
 import {
   wallet, moodStreak, petNotices, dismissPetNotice,
 } from "./stores/petStore.js";
@@ -65,7 +67,7 @@ function reload() {
         <div class="orb orb-2"></div>
         <div class="orb orb-3"></div>
 
-        <div class="shell">
+        <div class="shell" :class="{ 'shell--mobile-nav': isMobileNav }">
           <header class="topbar">
             <router-link to="/" class="brand">
               <span class="brand-paw">🐾</span>
@@ -136,7 +138,8 @@ function reload() {
           </footer>
         </div>
 
-        <SideRails />
+        <TabBar v-if="isMobileNav" />
+        <SideRails v-if="!isMobileNav" />
       </n-dialog-provider>
     </n-message-provider>
   </n-config-provider>

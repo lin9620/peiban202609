@@ -1,0 +1,52 @@
+/* App 壳测试（T5）：底部 TabBar / 双形态切换 / i18n tab 键成对
+ *   node tools/app-shell-test.mjs
+ * 口径：静态断言关键接线（组件存在、条件渲染、桌面锚点保留）+ i18n 运行时渲染。 */
+import { readFileSync } from "node:fs";
+import { t, i18n, messages } from "../src/i18n.js";
+
+const out = [];
+let pass = 0, fail = 0;
+function ok(name, cond, extra = "") {
+  out.push((cond ? "PASS  " : "FAIL  ") + name + (cond ? "" : "  → " + extra));
+  cond ? pass++ : fail++;
+}
+const read = (p) => readFileSync(new URL("../" + p, import.meta.url), "utf8");
+
+/* ─── ① TabBar 组件 ─── */
+const tb = read("src/components/TabBar.vue");
+ok("T1 TabBar 存在且含 4 Tab 路由",
+  ['path: "/"', '"/community"', '"/messages"', '"/profile"'].every((s) => tb.includes(s)));
+ok("T2 TabBar 含 ＋ 弹层与两瓣入口", tb.includes("tabbar-sheet") && tb.includes("composeBottle") && tb.includes("composePost"));
+ok("T3 消息红点接 badgeStore（dm+requests）", tb.includes("badge.dm + badge.requests"));
+ok("T4 投瓶走 /?tab=bottle（T6 三联消费）", tb.includes('query: { tab: "bottle" }'));
+
+/* ─── ② App.vue 双形态接线（桌面零变化锚点） ─── */
+const app = read("src/App.vue");
+ok("T5 TabBar 仅 isMobileNav 渲染", app.includes('<TabBar v-if="isMobileNav"'));
+ok("T6 SideRails 桌面专属（isMobileNav 时隐藏）", app.includes('<SideRails v-if="!isMobileNav"'));
+ok("T7 桌面顶栏 NAV 数组原样保留（零变化锚点）", app.includes("const NAV = [") && app.includes('exact-active-class="active"'));
+ok("T8 shell 挂 mobile-nav 形态类", app.includes("shell--mobile-nav"));
+
+/* ─── ③ i18n：tab 组键成对 + 运行时渲染 ─── */
+const keys = ["tab.home", "tab.community", "tab.messages", "tab.profile",
+  "tab.composeBottle", "tab.composeBottleSub", "tab.composePost", "tab.composePostSub"];
+for (const loc of ["en", "zh"]) {
+  const grp = messages[loc].tab || {};
+  const missing = keys.map((k) => k.split(".")[1]).filter((k) => !grp[k]);
+  ok(`T9 ${loc} tab 组 8 键齐全`, missing.length === 0, missing.join(","));
+}
+i18n.locale = "en";
+ok("T10 en 渲染不冒 key", keys.every((k) => t(k) !== k));
+i18n.locale = "zh";
+ok("T11 zh 渲染不冒 key", keys.every((k) => t(k) !== k));
+ok("T12 zh tab.home=首页（区别于 nav.home=今天）", t("tab.home") === "首页" && t("nav.home") === "今天");
+i18n.locale = "en";
+
+/* ─── ④ 样式与 safe-area ─── */
+const css = read("src/style.css");
+ok("T13 TabBar 样式含 safe-area 与桌面隔离", css.includes("env(safe-area-inset-bottom") && css.includes(".shell--mobile-nav .nav") && css.includes(".tabbar {"));
+
+out.push("");
+out.push(`TOTAL ${pass + fail}  PASS ${pass}  FAIL ${fail}`);
+console.log(out.join("\n"));
+process.exit(fail ? 1 : 0);

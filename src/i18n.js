@@ -14,6 +14,12 @@ export const messages = {
     brand: "Warm Paws",
     tagline: "A gentle place to be",
     nav: { home: "Home", pet: "My Pet", community: "Warm Wall", profile: "Me" },
+    /* App 轨道 T5：底部 Tab Bar（与顶部 nav 独立成组，zh/en 成对） */
+    tab: {
+      home: "Home", community: "Warm Wall", messages: "Messages", profile: "Me",
+      composeBottle: "Send a Bottle", composeBottleSub: "A letter into the sea",
+      composePost: "Post to Wall", composePostSub: "Share a feeling with gentle people",
+    },
     langBtn: "中文",
     footerNote: "Made with warmth · You are doing better than you think.",
 
@@ -613,6 +619,12 @@ export const messages = {
     brand: "暖爪",
     tagline: "一个温柔的地方",
     nav: { home: "今天", pet: "我的宠物", community: "暖心墙", profile: "我的" },
+    /* App 轨道 T5：底部 Tab Bar（zh nav.home=「今天」，Tab 用「首页」更贴导航心智） */
+    tab: {
+      home: "首页", community: "暖心墙", messages: "消息", profile: "我的",
+      composeBottle: "投漂流瓶", composeBottleSub: "把心事写进海里",
+      composePost: "发暖心墙帖", composePostSub: "和温柔的人分享心情",
+    },
     langBtn: "English",
     footerNote: "用心制作 · 你做得比你以为的更好。",
 

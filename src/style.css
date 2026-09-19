@@ -1532,5 +1532,80 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
   .dm-scroll { max-height: 46vh; }
 }
 
+/* ═══════════ App 轨道 T5：底部 Tab Bar（仅 isApp/窄屏渲染；桌面 ≥900px 零变化） ═══════════ */
+.tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 140;
+  display: flex; justify-content: space-around; align-items: stretch;
+  background: var(--glass-strong, rgba(255, 255, 255, .92));
+  backdrop-filter: blur(18px) saturate(1.3);
+  -webkit-backdrop-filter: blur(18px) saturate(1.3);
+  border-top: 1px solid rgba(160, 110, 60, .14);
+  padding: 4px 6px calc(4px + env(safe-area-inset-bottom, 0px));
+  max-width: 640px; margin: 0 auto;
+}
+.tab-item {
+  position: relative; flex: 1; display: flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: 5px 0 3px; text-decoration: none; color: var(--ink-soft);
+  border-radius: 14px; transition: color .18s ease, transform .12s ease; min-height: 44px;
+}
+.tab-item:active { transform: scale(.94); }
+.tab-item.active { color: var(--accent-deep); }
+.tab-ico { font-size: 20px; line-height: 1.15; filter: grayscale(.35); transition: filter .18s ease; }
+.tab-item.active .tab-ico { filter: none; }
+.tab-label { font-size: 10.5px; font-weight: 800; letter-spacing: .2px; }
+.tab-badge {
+  position: absolute; top: 1px; right: calc(50% - 20px);
+  min-width: 17px; height: 17px; padding: 0 4px; border-radius: 99px;
+  background: #f56b4d; color: #fff; font-size: 10px; font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 6px rgba(245, 107, 77, .4);
+}
+
+/* 中间 ＋ 钮（暖橙凸起圆钮） */
+.tab-compose {
+  position: relative; flex: 0 0 66px; border: 0; cursor: pointer; background: none;
+  display: flex; align-items: center; justify-content: center; min-height: 44px;
+}
+.tab-compose-x {
+  width: 46px; height: 46px; margin-top: -16px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #ffb277, #f58c50);
+  color: #fff; font-size: 26px; font-weight: 700; line-height: 1;
+  box-shadow: 0 8px 20px rgba(245, 140, 80, .45), 0 2px 6px rgba(245, 140, 80, .35);
+  border: 3px solid rgba(255, 255, 255, .85);
+  transition: transform .22s cubic-bezier(.34, 1.56, .64, 1), box-shadow .2s ease;
+}
+.tab-compose.open .tab-compose-x { transform: rotate(135deg); }
+.tab-compose-x:active { transform: scale(.92); }
+.tab-compose.open .tab-compose-x:active { transform: rotate(135deg) scale(.92); }
+
+/* ＋ 弹层：遮罩 + 两瓣创作入口 */
+.tabbar-mask { position: fixed; inset: 0; z-index: 130; background: rgba(38, 30, 22, .38); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+.tabbar-sheet {
+  position: fixed; left: 0; right: 0; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); z-index: 135;
+  display: flex; flex-direction: column; gap: 10px; padding: 0 18px;
+  animation: tabbar-up .22s cubic-bezier(.34, 1.4, .64, 1);
+}
+.tabbar-opt {
+  display: flex; align-items: center; gap: 13px; text-align: left; cursor: pointer;
+  border: 0; font-family: inherit; padding: 14px 18px; border-radius: 20px;
+  background: var(--glass-strong, #fff); color: var(--ink);
+  box-shadow: var(--shadow, 0 10px 30px rgba(40, 28, 16, .12));
+  transition: transform .15s ease;
+}
+.tabbar-opt:active { transform: scale(.97); }
+.tabbar-opt-ico { font-size: 26px; }
+.tabbar-opt-txt { display: flex; flex-direction: column; gap: 2px; }
+.tabbar-opt-txt b { font-size: 15px; font-weight: 800; }
+.tabbar-opt-txt small { font-size: 12px; color: var(--ink-soft); font-weight: 600; }
+@keyframes tabbar-up { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+
+/* App/窄屏形态：隐藏与 Tab 重复的顶栏导航与私信图标，正文给 TabBar 让位 */
+.shell--mobile-nav .nav { display: none; }
+.shell--mobile-nav .topbar-right .icon-link { display: none; }
+.shell--mobile-nav main { padding-bottom: calc(78px + env(safe-area-inset-bottom, 0px)); }
+.shell--mobile-nav .footer { padding: 20px 0 8px; }
+
+
 
 
