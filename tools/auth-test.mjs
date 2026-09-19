@@ -306,5 +306,52 @@ ok("A48b nickLong 的 {n} 真会被替换（昵称上限提示不留占位符）
   }
 }
 
+/* ───────── #T3 应用内自助删号（Play 2024 政策硬门槛；App 轨道批 1） ───────── */
+{
+  const mig = read("MIGRATION_delete_account.sql");
+  const setup = read("SUPABASE_SETUP.sql");
+  const sbj = read("src/utils/supabase.js");
+  const sv = read("src/views/SettingsView.vue");
+  const gw = read("src/utils/api/db.gateway.js");
+  const direct = read("src/utils/api/db.supabase.js");
+  const worker = read("worker/api.js");
+  const style = read("src/style.css");
+  ok("A70 迁移：RPC delete_my_account 存在，auth.uid 只删自己 + 级联删 auth.users",
+    mig.includes("create or replace function public.delete_my_account()")
+    && mig.includes("uid := auth.uid()")
+    && mig.includes("raise exception 'not-signed-in'")
+    && mig.includes("delete from auth.users where id = uid"));
+  ok("A71 迁移：Storage 按前缀删 + 授权只给 authenticated（显式 revoke anon，坑 #17）",
+    mig.includes("bucket_id = 'wall-images'") && mig.includes("name like uid::text || '/%'")
+    && mig.includes("revoke all on function public.delete_my_account() from public, anon")
+    && mig.includes("grant execute on function public.delete_my_account() to authenticated"));
+  ok("A72 SUPABASE_SETUP.sql 与迁移同步（新装库也带删号，坑 #6）",
+    setup.includes("delete_my_account") && setup.includes("storage_removed"));
+  ok("A73 cloudDeleteAccount：调 RPC + 成功后 signOut（会话随账号消失）",
+    sbj.includes("export async function cloudDeleteAccount()")
+    && sbj.includes('sb.rpc("delete_my_account")')
+    && /cloudDeleteAccount[\s\S]{0,400}cloudSignOut\(\)/.test(sbj));
+  ok("A74 db 双模式成对加 deleteMyAccount（改一个必须同轮改另一个，规则 0.2）",
+    direct.includes("deleteMyAccount()") && direct.includes('rpc("delete_my_account")')
+    && gw.includes("deleteMyAccount()") && gw.includes('"/account/delete"'));
+  ok("A75 Worker 路由 /account/delete → rpc delete_my_account（白名单 + JWT 透传）",
+    worker.includes('seg[0] === "account" && seg[1] === "delete"')
+    && worker.includes('"delete_my_account"'));
+  ok("A76 设置页危险区：两步确认（arm → 执行）+ 警示文案 + 危险样式",
+    sv.includes("cloudDeleteAccount") && sv.includes("armDelete") && sv.includes("disarmDelete")
+    && sv.includes('t("settings.delWarn")') && sv.includes('t("settings.delAsk")')
+    && style.includes(".set-opt.danger"));
+  for (const lang of ["zh", "en"]) {
+    const c = messages[lang] && messages[lang].settings;
+    const keys = ["delTitle", "delWarn", "delBtn", "delAsk", "delDone", "delFail"];
+    ok(`A77 ${lang}: settings 删号文案齐备`, !!c && keys.every((k) => typeof c[k] === "string" && c[k].trim()),
+      (c ? keys.filter((k) => !c[k]) : keys).join(","));
+  }
+  ok("A78 隐私政策：删号表述改为自助、立即生效（en/zh 同步，不再承诺 7 天人工）",
+    messages.en.privacy.s9l.join("").includes("Settings page")
+    && messages.zh.privacy.s9l.join("").includes("「设置」页删除账号")
+    && !JSON.stringify(messages).includes("7 天内处理"));
+}
+
 console.log(`\nTOTAL ${pass + fail}  PASS ${pass}  FAIL ${fail}`);
 if (fail > 0) process.exitCode = 1;

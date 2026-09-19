@@ -382,6 +382,13 @@ export const db = {
     return call("/notifications/clear", { method: "POST", body: {} });
   },
 
+  /* ══════════ 账号（App 轨道 T3：自助删号） ══════════ */
+
+  /** 自助删号：Worker 透传到 delete_my_account RPC（成功后调用方需退出登录） */
+  async deleteMyAccount() {
+    return call("/account/delete", { method: "POST", body: {} });
+  },
+
   /* ══════════ 图片（Storage） ══════════ */
 
   /** 上传字节：路径约定 <uid>/... 由 storage 策略按第一段授权 */

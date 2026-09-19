@@ -72,6 +72,29 @@
         </template>
         <p v-else class="notice">{{ t("notif.needSignIn") }}</p>
       </div>
+
+      <!-- 删号（App 轨道 T3 · Play 2024 政策硬门槛）：危险区两步确认，删除后立即退出登录 -->
+      <div class="set-block">
+        <span class="sec-label">{{ t("settings.delTitle") }}</span>
+        <template v-if="signedIn">
+          <p class="sub">{{ t("settings.delWarn") }}</p>
+          <div class="set-opts wrap">
+            <template v-if="!delArm">
+              <button class="set-opt danger" @click="armDelete">{{ t("settings.delBtn") }}</button>
+            </template>
+            <template v-else>
+              <button class="set-opt danger" :disabled="delBusy" @click="doDelete">
+                {{ t("settings.delAsk") }}
+              </button>
+              <button class="set-opt" :disabled="delBusy" @click="disarmDelete">
+                {{ t("common.cancel") }}
+              </button>
+            </template>
+          </div>
+          <p v-if="delMsg" class="streak-note">{{ delMsg }}</p>
+        </template>
+        <p v-else class="notice">{{ t("notif.needSignIn") }}</p>
+      </div>
     </section>
 
     <!-- 通知（#13/#14：总开关 + 四类偏好，从通知中心页迁来） -->
@@ -114,7 +137,7 @@
 import { ref, computed, onMounted, watch } from "vue";
 import { NInput } from "naive-ui";
 import { t, i18n } from "../i18n.js";
-import { cloud, cloudUpdateNickname, cloudChangePassword } from "../utils/supabase.js";
+import { cloud, cloudUpdateNickname, cloudChangePassword, cloudDeleteAccount } from "../utils/supabase.js";
 import { NICK_MAX, MIN_PASSWORD, passwordProblem } from "../utils/authRules.js";
 import * as notifyApi from "../utils/notify.js";
 import { normPrefs } from "../utils/notifyRules.js";
@@ -178,6 +201,23 @@ async function savePw() {
     : r.reason === "old-password-required" ? t("settings.pwNeedOld")
     : r.reason === "missing" || r.reason === "short" ? t("settings.pwShort", { n: MIN_PASSWORD })
     : t("settings.pwFail", { r: r.reason || "unknown" });
+}
+
+/* —— 自助删号（T3 · Play 2024 政策）：两步确认（先亮出警示，再点「真的要删除吗」执行）——
+ * 成功后账号已从云端消失（cloudDeleteAccount 内部已 signOut），本页给出告别语。 */
+const delArm = ref(false);
+const delBusy = ref(false);
+const delMsg = ref("");
+function armDelete() { delArm.value = true; delMsg.value = ""; }
+function disarmDelete() { delArm.value = false; }
+async function doDelete() {
+  if (delBusy.value) return;
+  delBusy.value = true;
+  delMsg.value = "";
+  const r = await cloudDeleteAccount();
+  delBusy.value = false;
+  if (r.ok) { delArm.value = false; delMsg.value = t("settings.delDone"); return; }
+  delMsg.value = t("settings.delFail", { r: r.reason || "unknown" });
 }
 
 const PREFS = [

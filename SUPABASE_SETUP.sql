@@ -1641,6 +1641,52 @@ create trigger notifications_drop_dm
   before insert on public.notifications
   for each row execute function public.notifications_drop_dm();
 
+-- ══════════════════ 应用内自助删号（App 轨道 T3；与 MIGRATION_delete_account.sql 同步） ══════════════════
+-- Play 2024 政策硬门槛：登录用户可在设置页一键删除账号与全部个人数据。
+-- 图片路径恒为两段 <uid>/<file>（Worker safeImagePath 保证）→ wall-images/<uid>/ 前缀删除即可；
+-- 业务表外键全部 cascade（漂流瓶 holder/reply_by 为 set null：信保留、摘除作者身份）→ 删 auth.users 一行即清全部。
+create or replace function public.delete_my_account()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid;
+  removed bigint;
+begin
+  uid := auth.uid();
+  if uid is null then
+    raise exception 'not-signed-in';
+  end if;
+
+  -- 1) Storage：wall-images/<uid>/ 前缀全删（失败不阻塞，返回 removed = -1）
+  begin
+    with del as (
+      delete from storage.objects
+      where bucket_id = 'wall-images'
+        and name like uid::text || '/%'
+      returning 1
+    )
+    select count(*) into removed from del;
+  exception when others then
+    removed := -1;
+  end;
+
+  -- 2) 业务数据：删 auth.users 一行 → 外键级联清理全部（单语句，原子）
+  delete from auth.users where id = uid;
+
+  return jsonb_build_object('ok'::text, true, 'storage_removed', removed);
+end;
+$$;
+
+-- 执行权限（必须显式 revoke anon：旧库可能带 grant all to anon 的显式授权，revoke from public 撤不掉）
+revoke all on function public.delete_my_account() from public, anon;
+grant execute on function public.delete_my_account() to authenticated;
+
+comment on function public.delete_my_account() is
+'自助删号：删除 wall-images/<uid>/ 存储对象 + 级联删除全部业务数据。仅限删除自己的账号（auth.uid() 校验）。';
+
 -- ============================================================
 -- 执行完毕。请在 Supabase SQL Editor 运行本文件，然后跑：
 --   node tools/dm-test.mjs && node tools/notify-test.mjs && node tools/bottle-test.mjs

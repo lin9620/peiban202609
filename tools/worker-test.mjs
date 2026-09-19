@@ -912,6 +912,12 @@ async function hit(script, path, init) {
   ok("notifClear → rpc notif_clear", c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/notif_clear` &&
     c.outbound[0].init.body === "{}", c.outbound[0].url);
 }
+{
+  const { res, c } = await hit([{ body: { ok: true, storage_removed: 2 } }], "/api/account/delete", { method: "POST", body: "{}" });
+  ok("accountDelete 200（自助删号，Play 2024 政策）", res.status === 200);
+  ok("accountDelete → rpc delete_my_account", c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/delete_my_account` &&
+    c.outbound[0].init.body === "{}", c.outbound[0].url);
+}
 
 console.log(`worker-test: ${pass} pass, ${fails.length} fail`);
 for (const f of fails) console.log("FAIL  " + f);

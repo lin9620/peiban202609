@@ -4,6 +4,18 @@
 > 「当前状态速览 / 正在做 / 已完成 / 未完成 / 现存问题 / 下一步」各节，并把这轮新踩的坑补进「踩坑录」。
 > 本文件是唯一权威进度记录：口头说"做完了"不算数，以这里的证据（提交号/测试/探针结果）为准。
 
+## 🗂️ 文档三大类分区（2026-09-20 起的结构约定）
+
+本文件按**三大类**组织。历史章节编号保持不变（保住「见 四」「踩坑 #21」这类交叉引用），归属如下：
+
+| 大类 | 内容 | 承载章节 |
+|---|---|---|
+| **第一大类 · 网页端** | 网站本身：架构、进度轮次、待办、决策、容量 | ⓪½ 架构总览 · 一～十 · 十一（App 交接背景，已归档） |
+| **第二大类 · App** | 以后**所有 App 相关**内容：决策 / 规范 / 进度 / 踩坑 / 发布 | **十二「App 轨道（Capacitor）」** —— 唯一锚点，新内容一律续写在此，不再新开编号 |
+| **第三大类 · 两端共通** | 网页端与 App 都适用的规则与方法 | **⓪ 长期固定规则**（技术栈/数据层双模式/命令/红线/代码规范/交付流程/协作守则）；踩坑录中与端无关的通用条目（如 #8 终端编码、#24 行尾噪声） |
+
+**归档规则**：以后新增内容先判断归属 → 网页端写进对应网页章节、App 写进「十二」续小节、两端共用的放 ⓪ 或踩坑录并注明适用范围。App 与网页共享的资产（`src/` 代码、Supabase 库、i18n、测试工具链）改动时，**两个大类都要各自记录一行**，避免只记一头。
+
 ## ⓪ 长期固定规则（先读这里 —— 除非用户明说，否则永不违反）
 
 ### 0.1 技术栈与环境
@@ -713,4 +725,95 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
 - #10 评论数跨浏览器：等用户提供故障浏览器
 - 实机验收：#1/#3/#11/#17/#22/#27/#29 等（见 四）
 - Workers 容量 ~700-1000 日活见 十；付费阶梯与三项优化清单也在 十
+
+---
+
+# 十二、App 轨道（Capacitor）—— 设计规范与进度（2026-09-20 起，App 事项唯一权威记录）
+
+> 路线已拍板：**Capacitor**（推翻第十一节「TWA 推荐起步」的倾向；对比讨论后用户选定，动因：iOS 规划与推送等原生能力预留）。
+> 本节为 App 事项的唯一权威记录，以后 App 的决策/进度/踩坑都记在这里；第十一节保留作交接背景。
+
+## A. 已拍板决策（设计规范 v0.1）
+
+| # | 决策 | 内容 |
+|---|---|---|
+| D1 | 技术路线 | **Capacitor 8**（非 TWA）：`dist` 打包进 APK/AAB；每次网站改动需 `build → cap sync → AAB → versionCode+1 → Play 审核`；工程在 **peiban 仓库内集成**（`android/` 进仓库，`*.keystore`/`local.properties`/build 产物进 .gitignore）。**定案：appId=`net.de5.dale`（域名反写，上架后不可改）、appName=`Warm Paws`（Play 商店展示名另填完整版，如「Warm Paws · 暖心陪伴」）** |
+| D2 | 信息架构 | 向小红书看齐：底部 Tab「**首页 · 暖心墙 · ＋ · 消息 · 我的**」+ 中间暖橙 ＋ 钮 |
+| D3 | 首页形态 | 顶部频道条（**今日 · 漂流瓶 · 宠物**）+ 手势左右滑三联，**默认居中「漂流瓶」**；宠物联内禁用滑动穿透（画板/零食雨手势优先）；频道条只在首页 Tab 显示 |
+| D4 | 中间 ＋ 钮 | 上弹两瓣：✉️ 投漂流瓶 / 🧱 发暖心墙帖；未登录点击 → 登录页 |
+| D5 | 登录时机 | **小红书式「游客可玩、互动时才登录」**：浏览/本地养成免登录；发帖/评论/回应/私信/漂流瓶触发登录（与双模式数据层天然契合） |
+| D6 | 通知入口 | 🔔 并入「消息」Tab 内分栏（私信 \| 通知，小红书同款）；消息 Tab 红点 = `dm + requests`（badgeStore 现状），通知红点挂分栏 |
+| D7 | **UI 全面重设计** | 用户明确：**网页端布局不直接套用，位置/颜色/形状都要重新设计**（见 B） |
+| D8 | 双形态共存 | 桌面 Web 版保持现有顶栏/SideRails 不变；App/窄屏走新导航 —— `Capacitor.isNativePlatform()` + 视口宽度双条件切换 |
+| D9 | 数据合并 | **B：登录后以云端为准，本地数据留在设备不迁移**（≈现有网站行为）；游客期成果不升舱，登录前给出提示文案 |
+
+## B. UI 重设计范围（D7 展开）
+
+- **布局**：780px 单栏文档流 → 移动端全屏卡片流；SideRails 在 App 内移除/入口化
+- **颜色**：品牌暖橙变量体系（`--accent` 等）保留，按移动端重新映射 surface/状态栏/导航栏；多皮肤 + 暗色跟随系统
+- **形状/密度**：999px 胶囊、26px 大圆角按移动端重定密度；触控热区 ≥44px
+- **组件形态**：Naive UI 桌面件（Dropdown/Dialog 顶部弹出）→ 底部 Sheet、Toast 顶部避让键盘
+- **特殊场景**：手绘画板鼠标→手指；零食雨 ←→ 键→触屏操控方案；私信键盘顶起输入框；刘海屏 safe-area（现顶栏 `top:12px` 会被压住）
+- **字体**：Quicksand / LXGW WenKai 打进包内（离线可用）
+- **页面映射**：HomeView→首页左联；漂流瓶区块→独立中联主页面；PetView→右联；CommunityView→暖心墙 Tab；Messages+Notifications→消息 Tab 两栏（会话详情保留 push 页）；Profile/Settings→我的；WallerView/Privacy/Admin/BottleRecords→push 二级页
+
+## C. Google Play 硬门槛与第一批任务
+
+1. **应用内自助删号（2024 政策强制，第一批开发任务）**：设置页「删除我的账号」→ security-definer RPC（`auth.uid()` 只删自己）级联清理 profiles/posts/comments/reactions/pet_*/dm_*/notifications（FK 多已 on delete cascade，逐表核对）+ Storage 对象删除；隐私政策删号时限同步改
+2. 开发者账号 $25（**用户注册**，审核数天）；数据安全/内容分级表单如实填；AAB + Play App Signing
+3. 图标 512px + adaptive icon（前/背景分层）；`manifest.json` 与 `assetlinks.json`（深链校验仍建议放）
+
+## D. 待拍板
+
+- 壳层细节：App 图标/启动屏/状态栏具体方案（随批 3 推进逐项定）
+- 深链与返回键细节（二级页逐级返回、首页双击退出、全屏场景先退场景）
+
+## E. 环境备忘（2026-09 核实）
+
+- Capacitor 8：Node 22+；Android Studio 2025.2.1+（自带 JDK）；SDK API 24+（最新稳定 Android 16 / API 36）
+- iOS（日后）：Xcode 26、需 macOS（可用 GitHub Actions macOS runner 云构建）
+- Play target API：以 Play 后台当年要求为准；App Store 审核对「与网站同内容的壳」更严（Guideline 4.2），iOS 版届时需补原生价值设计
+
+## F. 进度
+
+- **2026-09-20**：路线拍板 Capacitor；设计规范 v0.1 全部拍板（**D1–D9**：IA/Tab/频道条/登录时机/通知入口/＋钮/UI 全面重设计/双形态共存/数据合并=B）；UI 全面重设计原则确立；G 节动工路线图定稿；本节建档。**代码未动，等用户令开工批 1**。
+- **2026-09-20 · 批 1**：
+  - **T1 ✅（代码层；出包待 Android Studio）**：Capacitor **8.5.2** 安装（npm 缓存绕权限 → `D:\05ruanjian\npm-cache`，全局 npm 配置目录无写权限）；`capacitor.config.json`（appId=`net.de5.dale`、appName=`Warm Paws`、webDir=`dist`、androidScheme=https）；`cap add android` ✓ + `cap sync` ✓（Android 工程已生成）；`.gitignore` 补 `*.keystore`/`*.jks`/`android/local.properties`/build 产物红线。
+  - **T2 ✅**：`uiStore.js` 导出 `isApp`（`Capacitor.isNativePlatform()`）+ `isMobileNav`（isApp ‖ 视口 <900px，断点对齐 .shell 780px）；消费方未接（批 2 T5 用），**桌面行为零变化**。
+  - **T3 ✅（代码层；**⏳ 迁移未执行**）**：`MIGRATION_delete_account.sql`（security-definer RPC：按 `wall-images/<uid>/` 前缀删 Storage → 删 `auth.users` 行级联清全部业务数据；错误码 `not-signed-in`；revoke anon + grant authenticated）+ `SUPABASE_SETUP.sql` 同步 + db 双模式 `deleteMyAccount()` 成对 + Worker `/account/delete` 路由 + 设置页危险区（两步确认 + danger 样式）+ i18n zh/en 各 6 键 + 隐私政策 s9l 改「自助、立即生效」（**P23 锁形同步改**：en "immediately"/zh "立即生效"）。
+  - **T4 ⏳ 未开始**（manifest / 512px 图标）。
+  - **验收（三层口径）**：第一层离线 ✅ —— **25 套全绿**（auth 84→**94**、worker 191→**193**、gateway 65→**66**、privacy 34、i18n 19）+ `undef-check problems=0` + build exit 0；README 已登记迁移第 11 条与计数。第二层契约 ✅（三套契约测试含新路由断言）。第三层线上 e2e ⏳（依赖迁移执行，随后补 `tools/account-e2e.mjs`）。
+  - **待用户**：① **Supabase SQL Editor 执行 `MIGRATION_delete_account.sql`（整份粘贴，create or replace 幂等）**；② 装 Android Studio 后我陪跑 T1 出包；③ 迁移跑完 → 我写删号 e2e 线上闭环。
+
+## G. 开发任务拆解（动工路线图，逐批交付）
+
+### 批 1 · 地基与合规（先行，无 UI 风险）
+
+| # | 任务 | 产出 / 验收 |
+|---|---|---|
+| T1 | Node 22 环境核对 + Capacitor 8 初始化：`cap init`（appId/appName 待用户定名）、`cap add android`、`.gitignore` 补 `*.keystore`/`local.properties`/`android/app/build/` | `npm run build → cap sync` 通过；Android Studio 打开工程可出调试包 |
+| T2 | 双形态检测基建：`uiStore` 增加 `isApp`/`isMobileNav` 形态标志（`Capacitor.isNativePlatform()` + 视口宽度） | 桌面 Web 行为完全不变（回归测试全绿）；App 内能读到形态标志 |
+| T3 | **删号功能（Play 硬门槛，第一批任务）**：`MIGRATION_delete_account.sql`（security-definer RPC，`auth.uid()` 只删自己，逐表核对 cascade + Storage 对象删除）+ `SUPABASE_SETUP.sql` 同步 + db 双模式方法 + 设置页「删除我的账号」入口（网页/App 共用） | 离线测试全绿 → **用户在 SQL Editor 执行** → 线上探针验证；隐私政策删号时限同步改 |
+| T4 | 图标/manifest 资产：512px 图标（仓库现成 `sharp` 从品牌图导出）+ `public/manifest.json` | 构建产物含 manifest；图标供 App 与 PWA 共用 |
+
+### 批 2 · App 壳与导航（UI 重设计第一波）
+
+| # | 任务 | 产出 / 验收 |
+|---|---|---|
+| T5 | 底部 Tab Bar 组件（5 位含中间 ＋ 钮）+ 与桌面顶栏按 D8 切换共存 | 仅 isApp/窄屏出现；桌面回归全绿 |
+| T6 | 首页三联容器：频道条 + 手势滑动（今日/漂流瓶/宠物，默认漂流瓶）；漂流瓶从 HomeView 抽出独立组件；宠物联禁滑动穿透 | undef-check + 组件级离线测试；实机滑动验收 |
+| T7 | 消息 Tab 两栏（私信 \| 通知）+ 红点；我的 Tab 整合 | 复用现有 Messages/Notifications 数据层，不重写 |
+| T8 | 登录页 + 互动触发登录统一拦截（D4/D5/D9 提示文案） | 游客全流程可玩；触发点弹登录；登录后本地数据不迁移 |
+| T9 | Android 返回键 / 深链（App plugin） | 二级页逐级返回、首页双击退出、全屏场景先退场景 |
+
+### 批 3 · UI 重设计细化与发版
+
+| # | 任务 | 产出 / 验收 |
+|---|---|---|
+| T10 | 密度/组件形态重设计（BottomSheet、Toast 避让键盘、safe-area、≥44px 热区） | 逐页实机走查 |
+| T11 | 画板手指绘画 + 零食雨触屏操控方案 | 宠物联内实机验收 |
+| T12 | 字体打包离线、启动屏、adaptive icon、状态栏跟随皮肤 | 离线开 App 正常；暗色皮肤状态栏联动 |
+| T13 | AAB 签名 + Play 后台提交（**用户操作**）+ 内部测试轨道 | AI 出清单与素材，用户上传 |
+
+> 每批收尾按 ⓪.6 流程：全量离线测试 + `undef-check` + build（明确退出码）→ commit → 部署（网页侧改动）→ 更新本节 F 进度。SQL 类一律：文件就绪 → 用户执行 → 线上探针验证后才算完成。
 

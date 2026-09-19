@@ -478,6 +478,12 @@ export const messages = {
       pwShort: "The new password needs at least {n} characters.",
       pwMismatch: "The two new passwords don't match yet.",
       pwFail: "Couldn't save the password just now ({r}) — please try again.",
+      delTitle: "Delete my account",
+      delWarn: "This permanently deletes your account and everything tied to it — your posts, comments, reactions, your pet, direct messages, drift bottles and every image you uploaded. It cannot be undone.",
+      delBtn: "Delete my account…",
+      delAsk: "Really delete? Everything goes away right now.",
+      delDone: "Account deleted. Take care out there 💛",
+      delFail: "Couldn't delete the account just now ({r}) — please try again.",
     },
     privacy: {
       title: "Privacy Policy",
@@ -535,7 +541,7 @@ export const messages = {
       s9l: [
         "Change or remove your posts and comments yourself, any time.",
         "Change your nickname in the Me page.",
-        "Ask us to export or permanently delete your account and all its data — write to the address below and we will handle it within 7 days.",
+        "Delete your account yourself, any time, from the Settings page — it takes effect immediately and removes your profile, posts, comments, pet and uploaded images. You can also ask us to export your data — write to the address below.",
         "Revoke Google access from your Google account as described above.",
         "Use the site without an account: browsing and playing stay open, and nothing is sent to the cloud.",
       ],
@@ -1069,6 +1075,12 @@ export const messages = {
       pwShort: "新密码至少要 {n} 位。",
       pwMismatch: "两次输入的新密码还不一样。",
       pwFail: "密码暂时没存上（{r}）——再试一次吧。",
+      delTitle: "删除我的账号",
+      delWarn: "删除后，你的账号和与它相关的一切都会被清掉——帖子、评论、回应、宠物、私信、漂流瓶和你上传的每张图片。这一步无法撤销。",
+      delBtn: "删除我的账号…",
+      delAsk: "真的要删除吗？所有数据会立刻清掉。",
+      delDone: "账号已删除。往后也请多多保重 💛",
+      delFail: "账号暂时没删成（{r}）——再试一次吧。",
     },
     /* 隐私政策页（/privacy）——与 en 的键一一对应（i18n-test 会校验键集合对称） */
     privacy: {
@@ -1127,7 +1139,7 @@ export const messages = {
       s9l: [
         "随时自己修改或删除你的帖子和评论。",
         "在「我的」页改昵称。",
-        "要求我们导出或彻底删除你的账号及其全部数据——写信到下面的邮箱，我们会在 7 天内处理。",
+        "随时自己在「设置」页删除账号——立即生效，资料、帖子、宠物和上传的图片会一起清掉。要导出数据也可以写信到下面的邮箱。",
         "按上面说的办法，从 Google 账号里撤销授权。",
         "不注册也能用：浏览和玩耍照常，不会往云端发任何东西。",
       ],

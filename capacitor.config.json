@@ -1,0 +1,11 @@
+{
+  "appId": "net.de5.dale",
+  "appName": "Warm Paws",
+  "webDir": "dist",
+  "android": {
+    "allowMixedContent": false
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}

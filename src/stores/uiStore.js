@@ -5,6 +5,19 @@ import { i18n, setLocale, languages } from "../i18n.js";
 import { naiveThemeFor } from "../theme.js";
 import { THEMES } from "../data/themes.js";
 import { darkTheme } from "naive-ui";
+import { Capacitor } from "@capacitor/core";
+
+/* ═══ 双形态检测（App 轨道 D8）═══
+ * isApp：跑在 Capacitor 原生壳里（Android/iOS）→ 用 App 导航（底部 Tab）。
+ * isMobileNav：窄视口也走 App 导航 —— 手机浏览器访问网页版提前适配同一套布局，
+ *   桌面浏览器（≥900px）保持现有顶栏 + SideRails 完全不变。
+ * 断点 900px 与 .shell 现有 max-width: 780px + 侧栏空间对齐。 */
+export const isApp = Capacitor.isNativePlatform();
+const vw = ref(typeof window !== "undefined" ? window.innerWidth : 1280);
+if (typeof window !== "undefined") {
+  window.addEventListener("resize", () => { vw.value = window.innerWidth; }, { passive: true });
+}
+export const isMobileNav = computed(() => isApp || vw.value < 900);
 
 const THEME_KEY = "wp-theme";
 function loadTheme() {

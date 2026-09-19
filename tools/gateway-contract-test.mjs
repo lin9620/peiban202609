@@ -248,6 +248,7 @@ setGatewayAuthProbe(() => true); /* 单测注入：auth 就绪（与 db.supabase
     await db.notifPrefsSet({ comments: true, reactions: false, pets: true, dms: false });
     await db.adminBroadcast("hi");
     await db.notifClear();
+    await db.deleteMyAccount();
     const u = (i) => c.calls[i].url;
     const m = (i) => c.calls[i].init.method || "GET";
     const b = (i) => c.calls[i].init.body;
@@ -261,6 +262,7 @@ setGatewayAuthProbe(() => true); /* 单测注入：auth 就绪（与 db.supabase
       b(6) === JSON.stringify({ comments: true, reactions: false, pets: true, dms: false }), b(6));
     ok("adminBroadcast 端点+body", u(7) === "/api/admin/broadcast" && m(7) === "POST" && b(7) === JSON.stringify({ body: "hi" }), u(7));
     ok("notifClear 端点", u(8) === "/api/notifications/clear" && m(8) === "POST" && b(8) === JSON.stringify({}), u(8));
+    ok("accountDelete 端点", u(9) === "/api/account/delete" && m(9) === "POST" && b(9) === JSON.stringify({}), u(9));
   } finally {
     c.restore();
   }

@@ -176,9 +176,9 @@ t_("P21 声明不使用广告 Cookie / 不做画像", () => {
 t_("P22 有儿童条款（13 岁）", () => {
   bothHave("privacy.s10p1", ["13"]);
 });
-t_("P23 有用户权利与删号途径（含处理时限）", () => {
-  has("en", "privacy.s9l", ["delete", "7 days"]);
-  has("zh", "privacy.s9l", ["删除", "7 天"]);
+t_("P23 有用户权利与删号途径（自助、立即生效；导出仍可写信申请）", () => {
+  has("en", "privacy.s9l", ["delete", "immediately"]);
+  has("zh", "privacy.s9l", ["删除", "立即生效"]);
 });
 t_("P24 联系方式渲染后是一封真邮箱", () => {
   const mail = "linyi0123456@outlook.com";

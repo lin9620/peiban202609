@@ -887,6 +887,9 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 .set-opt.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-deep); }
 .set-opt:disabled { opacity: .55; cursor: not-allowed; }
 .set-opt.master { width: 100%; text-align: left; }
+/* 危险操作（删号 T3）：红调但仍是圆角胶囊，保持温柔语气里的「不可逆」提醒 */
+.set-opt.danger { border-color: rgba(239, 125, 106, .45); color: var(--low); }
+.set-opt.danger:hover:not(:disabled) { background: rgba(239, 125, 106, .12); border-color: var(--low); color: var(--low); }
 .set-block.dimmed { opacity: .6; }
 
 /* —— 改昵称（Google 首登提示 + 随时可改）：「我的」页与设置页共用这一行布局 —— */

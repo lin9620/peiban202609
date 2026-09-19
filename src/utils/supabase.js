@@ -300,3 +300,20 @@ export async function cloudUpdateNickname(nick) {
     return { ok: false, reason: e && e.message ? e.message : String(e) };
   }
 }
+
+/* —— 自助删号（App 轨道 T3 · Play 2024 政策）：调 delete_my_account RPC ——
+ * 语义：云端账号与全部个人数据立即删除；本机「游客/本地模式」数据与该账号无关，原样保留（D9 口径）。
+ * 成功后立即退出登录（auth.users 行已删，会话随之失效）；未跑迁移时 PGRST202 → 明确提示
+ * （错误分类沿用 isMissingFnError 的 code+message 双认，见坑录 #14）。与 cloudUpdateNickname 同款直连惯例。 */
+export async function cloudDeleteAccount() {
+  if (!sb) return { ok: false, reason: "no-cloud" };
+  if (!cloud.user) return { ok: false, reason: "auth-required" };
+  try {
+    const { error } = await sb.rpc("delete_my_account");
+    if (error) return { ok: false, reason: error.message };
+    await cloudSignOut();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, reason: e && e.message ? e.message : String(e) };
+  }
+}

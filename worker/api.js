@@ -450,6 +450,11 @@ export default {
         return m === "POST" ? upload(env, request, url) : fail(405, "method-not-allowed");
       }
 
+      /* —— 账号：自助删号（App 上架 Play 2024 政策硬门槛；T3）—— */
+      if (seg[0] === "account" && seg[1] === "delete") {
+        return m === "POST" ? rpc(env, request, "delete_my_account", {}) : fail(405, "method-not-allowed");
+      }
+
       /* —— 帖子 —— */
       if (seg[0] === "posts") {
         if (seg.length === 1) {

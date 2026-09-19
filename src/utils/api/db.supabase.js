@@ -406,6 +406,14 @@ export const db = {
     return unwrap(sb().rpc("notif_clear"));
   },
 
+  /* ══════════ 账号（App 轨道 T3：自助删号） ══════════ */
+
+  /** 自助删号：删 wall-images/<uid>/ 对象 + 级联清全部业务数据；
+   *  成功后调用方必须退出登录（会话随 auth.users 行一并消失） */
+  deleteMyAccount() {
+    return unwrap(sb().rpc("delete_my_account"));
+  },
+
   /* ══════════ 图片（Storage） ══════════ */
 
   /** 上传字节：路径约定 <uid>/... 由 storage 策略按第一段授权 */

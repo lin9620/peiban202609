@@ -12,6 +12,9 @@
     "deploy:dry": "wrangler deploy --dry-run --outdir .edge-final"
   },
   "dependencies": {
+    "@capacitor/android": "8.5.2",
+    "@capacitor/cli": "8.5.2",
+    "@capacitor/core": "8.5.2",
     "@iconify/vue": "^5.0.1",
     "@supabase/supabase-js": "^2.45.0",
     "lottie-web": "^5.13.0",
