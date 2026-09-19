@@ -2,7 +2,7 @@
  *   node tools/dm-e2e.mjs
  * 流程：注册 A/B 双账号 → 开会话 → 互发 → 未读/已读水位 → 撤回 → 免打扰/隐藏/拉黑
  *       → 消息请求 → 通知触发器（评论/回应/宠物互动）→ 偏好开关 → 匿名 RLS → 收尾。
- * 前置：MIGRATION_dm_notifications.sql 已在 Supabase 执行。
+ * 前置：MIGRATION_dm_notifications.sql 与 MIGRATION_notifications_drop_dm.sql（#23 私信退出通知中心）均已执行。
  * 说明：会话/消息无用户级删除（设计如此），测试会话会留在库里（双方列表里可见，无碍）。
  */
 import { createClient } from "@supabase/supabase-js";
@@ -89,15 +89,23 @@ let convId = 0;
   const { data: aConvs } = await sbA0.rpc("dm_list_convs", { p_limit: 50, p_offset: 0 });
   const aMine = (aConvs || []).find((c) => c.conv_id === convId);
   ok("T5b A 侧未读=0（自己发的不算）", aMine && aMine.unread === 0);
+  /* B 回复一条 → 解除首聊限制（#22：对方回复前 A 最多 3 条；后续用例 A 要连发多条） */
+  const { data: bSend, error: bErr0 } = await sbB0.rpc("dm_send", { p_conv: convId, p_body: "B 收到啦", p_image: null });
+  ok("T5c B 回复成功（解除首聊限制）", !bErr0 && bSend && bSend.msg_id > 0, bErr0 ? `(${bErr0.message})` : "");
+  const { data: aConvs2 } = await sbA0.rpc("dm_list_convs", { p_limit: 50, p_offset: 0 });
+  const aMine2 = (aConvs2 || []).find((c) => c.conv_id === convId);
+  ok("T5d A 未读=1（B 的回复）", aMine2 && aMine2.unread === 1, aMine2 ? `(unread=${aMine2.unread})` : "");
 }
 
-/* dm 通知：B 收到 + 分类计数 */
+/* dm 通知（#23 迁移后）：触发器拦截 dm 通知 —— 通知中心无私信条目/计数，
+ * 私信红点只走聊天入口的 dm_unread_total（与导航 💬 角标同一来源） */
 {
   const { data: u } = await sbB0.rpc("notif_unread");
-  ok("T6 B 的 dm 通知未读=1", u && u.dms === 1, `(dms=${u && u.dms})`);
+  ok("T6 dm 通知被拦截（dms 恒 0）", u && u.dms === 0, `(dms=${u && u.dms})`);
   const { data: page } = await sbB0.rpc("notif_page", { p_offset: 0, p_limit: 10, p_kinds: "dm", p_unread: true });
-  const row = (page || [])[0];
-  ok("T6b 通知页含 dm 行（actor=A，meta.preview）", row && row.actor_id === uidA && row.meta && !!row.meta.preview);
+  ok("T6b 通知页无 dm 行", (page || []).length === 0, `(rows=${(page || []).length})`);
+  const { data: t0 } = await sbB0.rpc("dm_unread_total");
+  ok("T6c B 已读后聊天角标=0", t0 && t0.total === 0, `(total=${t0 && t0.total})`);
 }
 
 /* 撤回（15 分钟窗口内） */
