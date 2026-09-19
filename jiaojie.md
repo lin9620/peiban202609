@@ -102,7 +102,7 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 | 功能域 | 表 | 说明 |
 |---|---|---|
 | 用户 | `profiles` | 昵称、created_at、**status/status_at（大厅状态，24h 窗口）**；注册触发器自动建档 |
-| 暖心墙 | `wall_posts` | 帖子（文字+可选图）；views/dislikes/removed/created_day；**dislikes≥5 自动下架（removed=假删除）** |
+| 暖心墙 | `wall_posts` | 帖子（文字+可选图）；views/dislikes/removed/created_day；**双档自动下架（<100 超 3 个 / ≥100 超 0.5%，removed=假删除）** |
 | | `wall_comments` | 二级评论（parent_id 封顶，级联删除） |
 | | `wall_reactions` | 回应（同感/抱抱/暖暖，一人一帖一种） |
 | | `wall_post_views` | 浏览记录（去重用） |
@@ -119,7 +119,7 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 - `dm_*`（15）：send/list_convs/list_messages/conv_meta/mark_read/hide/unhide/mute/accept/recall/**block/unblock/blocks**/unread_total/is_blocked/find_conv/open
 - `notif_*`（6）：page/unread/mark/clear/prefs_get/prefs_set
 - `bottle_*`（7）：send/fish/reply/release/mine/held/**records(p_id,p_offset,p_mine,p_limit)**/chat_decide（+触发器 notify_reply）
-- `wall_*`（3）：daily_limit/add_view/toggle_dislike（≥5 下架）
+- `wall_*`（3）：daily_limit/add_view/toggle_dislike（双档下架）
 - `pet_interact`、`admin_broadcast`、`is_admin`/`admin_overview`、触发器 `notify_on_comment/reaction/pet`
 
 ### RLS 惯例
@@ -149,7 +149,7 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
 ### 状态与工具层
 - **stores**：`petStore`（宠物数值/食谱/金币/死亡判定——最大的一个）、`uiStore`（皮肤/语言/总通知开关）、`badgeStore`（红点）。
-- **utils 规则层（纯函数，全有单测）**：`wallRules`（排序/范围/去重/1%→≥5 下架）、`dmRules`（撤回窗口/未读/错误码映射）、`notifyRules`（分栏/聚合/跳转）、`snackGame`、`statuses`（24h 窗口）、`authRules`、`imaging`。
+- **utils 规则层（纯函数，全有单测）**：`wallRules`（排序/范围/去重/双档下架阈值）、`dmRules`（撤回窗口/未读/错误码映射）、`notifyRules`（分栏/聚合/跳转）、`snackGame`、`statuses`（24h 窗口）、`authRules`、`imaging`。
 - **utils 云层**：`wall`/`dm`/`bottle`/`notify`/`comments`/`admin`（封装 db 调用+降级）、`storage`（本机 localStorage：未登录兜底如 `wp-status`）、`supabase`。
 
 ## E. 视觉与设计语言
@@ -176,7 +176,7 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 | 零食雨奖励 | 2 金币/局，每日 3 次 | `petStore.js RAIN_REWARD_COINS / RAIN_REWARD_MAX` |
 | 漂流瓶限额 | 每日写 3 封、捞 7 封；信与回信各 ≤1000 字 | `MIGRATION_bottle.sql` RPC 内 + `bottle.js` |
 | 首聊限制 | 对方回复前，发起方最多 3 条 | `MIGRATION_dm_first_contact.sql` 的 `dm_send`（错误码 `first-limit`） |
-| 厌恶下架 | 累计 ≥5 个不满才下架（假删除） | `wall_toggle_dislike` SQL + `wallRules.js` |
+| 厌恶下架 | 双档：浏览 <100 超 3 个 / ≥100 超 0.5%（假删除） | `wall_toggle_dislike` SQL + `wallRules.js`（`REMOVAL_LOW_VIEWS/DISLIKE_MIN_COUNT/DISLIKE_RATIO`） |
 | 私信正文 / 撤回窗口 | 2000 字 / 15 分钟 | `dmRules.js BODY_MAX / RECALL_WINDOW_MS` |
 | 通知分页 / 漂流瓶记录分页 | 20 条/页 / 10 条/页 | `NotificationsView.vue` / `HomeView.vue`+`BottleRecords.vue` |
 | 初始金币 | 50 | `petStore.js wallet` |
@@ -308,7 +308,7 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 18. 暖心墙按钮变色过渡加快（style.css 过渡时长）。
 19. **删除会话**功能；**已拉黑列表 + 取消拉黑**；**拉黑不再通知对方**（`dm_block` 去掉通知插入，迁移已同步）。
 20. 管理中心：帖子**可点进详情**并可**上架/下架**。
-21. 厌恶下架阈值：**累计 ≥5 个不满才下架**（SQL `wall_toggle_dislike` 内改，不再是 1 人/1% 即下架）。
+21. 厌恶下架阈值：**累计 ≥5 个不满才下架**（SQL `wall_toggle_dislike` 内改，不再是 1 人/1% 即下架）。→ **轮 14 又改**为双档（浏览 <100 超 3 个 / ≥100 超 0.5%），见下。
 22. **首聊限制**（`MIGRATION_dm_first_contact.sql` 替换 `dm_send`）：从暖心墙主页发起的首次会话，对方回复前发起方最多发 3 条，回复即解锁；错误码 `first-limit` 前端映射提示；漂流瓶导入的会话天然解锁。
 
 ### 交付流水线（每轮固定动作，全部通过后才提交）

@@ -305,7 +305,10 @@ begin
     return jsonb_build_object('ok', false, 'reason', 'not-found');
   end if;
 
-  if not v_rm and v_views > 0 and v_dis >= 5 and (v_dis::numeric / v_views) >= 0.01 then
+  if not v_rm and (
+       (v_views < 100 and v_dis > 3)                    -- #26 低浏览档：超过 3 个（≥4）就下架
+       or (v_views >= 100 and (v_dis::numeric / v_views) > 0.005)  -- 高浏览档：> 0.5% 就下架
+     ) then
     update public.wall_posts set removed = true, removed_at = now() where id = p_post;
     v_rm := true;
   end if;

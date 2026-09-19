@@ -131,15 +131,14 @@ export function collectViews(stamps, list, viewer, day = utcDay()) {
   return { stamps: next, pending };
 }
 
-/* ══════════ 厌恶比例 → 自动下架 ══════════ */
+/* ══════════ 厌恶比例 → 自动下架（#26 双档规则） ══════════ */
 
-export const DISLIKE_RATIO = 0.01;   // 1%：厌恶数 ÷ 浏览数 达到它即下架
-export const REMOVAL_MIN_VIEWS = 1;  // 严格按「比例」判：只要有浏览数就按比例算
-export const DISLIKE_MIN_COUNT = 5;  // #21 至少 5 个厌恶才可能下架（一个人点不掉别人的帖子）
+export const REMOVAL_LOW_VIEWS = 100;  // 浏览分界：< 100 走「个数」档，≥ 100 走「比例」档
+export const DISLIKE_MIN_COUNT = 3;    // #26 低浏览档：厌恶「超过 3 个」（即 ≥ 4）就下架
+export const DISLIKE_RATIO = 0.005;    // #26 高浏览档：厌恶 ÷ 浏览「大于 0.5%」就下架
 
 /**
- * 厌恶比例。没有浏览数时返回 0 ——「0 次浏览 1 个厌恶」不构成比例，
- * 不下架（保守：宁可不误伤）。
+ * 厌恶比例（展示用）。没有浏览数时返回 0 —— 「0 次浏览」不构成比例。
  */
 export function dislikeRatio(views, dislikes) {
   const v = Math.max(0, Number(views) || 0);
@@ -154,14 +153,14 @@ export function ratioPct(views, dislikes) {
   return (Math.round(r * 1000) / 10).toFixed(1) + "%";
 }
 
-/** 是否达到下架线：厌恶 ≥ 5 个 且 比例 ≥ 1%（#21：单个用户点厌恶不能直接下架）。示例帖不参与下架。 */
+/** 是否达到下架线（#26 双档；与 SQL wall_toggle_dislike 口径一致）。示例帖不参与下架。
+ *  浏览 < 100：厌恶 > 3 个（≥4 人）→ 下架；浏览 ≥ 100：厌恶 ÷ 浏览 > 0.5% → 下架。 */
 export function shouldRemove(views, dislikes, post = null) {
   if (post && post.sample) return false;
   const v = Math.max(0, Number(views) || 0);
-  if (v < REMOVAL_MIN_VIEWS) return false;
   const d = Math.max(0, Number(dislikes) || 0);
-  if (d < DISLIKE_MIN_COUNT) return false;
-  return dislikeRatio(v, d) >= DISLIKE_RATIO;
+  if (v < REMOVAL_LOW_VIEWS) return d > DISLIKE_MIN_COUNT;
+  return d / v > DISLIKE_RATIO;
 }
 
 /** 假删除的帖子不进动态流 */

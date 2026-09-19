@@ -1,6 +1,6 @@
 /* 暖心墙进阶规则单测（纯 Node，无需浏览器/服务器/网络）
  *   node tools/wall-rules-test.mjs
- * 覆盖：排序（最新 / 同感 / 抱抱 / 暖暖）· 浏览去重 · 厌恶 1% 下架 · 每人每天一条
+ * 覆盖：排序（最新 / 同感 / 抱抱 / 暖暖）· 浏览去重 · 厌恶双档下架 · 每人每天一条 · 帖子时间到分钟
  */
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -11,9 +11,10 @@ import {
   RANGES, RANGE_KEYS, DEFAULT_RANGE, RANGE_ALL, RANGE_SORTS, usesRange, rangeFor,
   rangeStartTs, inRange,
   VIEW_KEY, ANON_KEY, POST_DAY_KEY, postRef, utcDay, pruneStamps, collectViews,
-  DISLIKE_RATIO, REMOVAL_MIN_VIEWS, DISLIKE_MIN_COUNT, dislikeRatio, ratioPct, shouldRemove,
+  DISLIKE_RATIO, REMOVAL_LOW_VIEWS, DISLIKE_MIN_COUNT, dislikeRatio, ratioPct, shouldRemove,
   isVisible, visibleOnly, postedOnDay, canPostToday, errorKind, fmtWhen,
 } from "../src/utils/wallRules.js";
+import { messages } from "../src/i18n.js";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (rel) => fs.readFileSync(path.join(root, rel), "utf8");
@@ -163,10 +164,10 @@ t("T13 示例帖与无身份访客不计浏览", () => {
 
 /* ═════════ 厌恶比例 → 下架 ══════════ */
 
-t("T14 下架线 = 至少 5 个厌恶 且 1% 比例，阈值常量与需求一致", () => {
-  assert.equal(DISLIKE_RATIO, 0.01);
-  assert.equal(REMOVAL_MIN_VIEWS, 1);
-  assert.equal(DISLIKE_MIN_COUNT, 5);
+t("T14 下架阈值常量 = #26 双档（分界 100 / 个数 3 / 比例 0.5%）", () => {
+  assert.equal(REMOVAL_LOW_VIEWS, 100);
+  assert.equal(DISLIKE_MIN_COUNT, 3);
+  assert.equal(DISLIKE_RATIO, 0.005);
 });
 
 t("T15 dislikeRatio：比例计算 + 没有浏览时为 0（不凭空下架）", () => {
@@ -177,19 +178,32 @@ t("T15 dislikeRatio：比例计算 + 没有浏览时为 0（不凭空下架）",
   assert.equal(dislikeRatio(10, 99), 1, "比例封顶 1，不会 >100%");
 });
 
-t("T16 shouldRemove：≥5 个厌恶 且 ≥1% 才下架（#21 单人点不掉）", () => {
-  assert.equal(shouldRemove(100, 1), false, "1 个厌恶就算 1% 也不下架：没到 5 个");
-  assert.equal(shouldRemove(100, 4), false, "4 个还差一个");
-  assert.equal(shouldRemove(100, 5), true, "5 个厌恶 + 5% 比例 → 下架");
-  assert.equal(shouldRemove(1000, 10), true, "1000 浏览 10 厌恶 = 1% 且 ≥5 → 下架");
-  assert.equal(shouldRemove(1000, 9), false, "0.9% 还不到线");
-  assert.equal(shouldRemove(1000, 4), false, "0.4% 且不足 5 个");
-  assert.equal(shouldRemove(999, 5), false, "够了 5 个但只有 0.5% → 不下架");
-  assert.equal(shouldRemove(0, 5), false, "没有浏览数不判比例");
+t("T16 shouldRemove：#26 双档（<100 看「超3个」；≥100 看「>0.5%」）", () => {
+  /* 低浏览档（views < 100）：厌恶 > 3 个（≥4）→ 下架 */
+  assert.equal(shouldRemove(50, 3), false, "3 个没超过 3，不下架");
+  assert.equal(shouldRemove(50, 4), true, "4 个 = 超过 3 个 → 下架");
+  assert.equal(shouldRemove(99, 4), true, "99 浏览仍是低档：4 个 → 下架");
+  assert.equal(shouldRemove(0, 4), true, "0 浏览也属低档：超过 3 个 → 下架");
+  assert.equal(shouldRemove(0, 3), false, "3 个不超线");
+  /* 高浏览档（views ≥ 100）：比例 > 0.5% → 下架 */
+  assert.equal(shouldRemove(100, 1), true, "1/100 = 1% > 0.5% → 下架");
+  assert.equal(shouldRemove(200, 1), false, "1/200 = 0.5%，不是「大于」→ 不下架");
+  assert.equal(shouldRemove(1000, 6), true, "0.6% > 0.5% → 下架");
+  assert.equal(shouldRemove(1000, 5), false, "0.5% 不是大于 → 不下架");
+  assert.equal(shouldRemove(10000, 51), true, "0.51% > 0.5% → 下架");
 });
 
 t("T17 示例帖永不被下架（示范内容不该消失）", () => {
   assert.equal(shouldRemove(10, 10, { sample: true }), false);
+});
+
+t("T17b 规则提示文案：中文不超 15 字（用户明确要求），且中英都存在", () => {
+  const zh = messages.zh.community.dislikeRule;
+  const en = messages.en.community.dislikeRule;
+  assert.equal(typeof zh, "string");
+  assert.equal(typeof en, "string");
+  assert.ok([...zh].length <= 15, `中文提示 ${[...zh].length} 字：${zh}`);
+  assert.ok([...zh].length > 0 && [...en].length > 0);
 });
 
 t("T18 ratioPct：给用户看的百分比，一位小数", () => {
@@ -301,7 +315,7 @@ t("T28 端到端：范围筛掉旧帖后，热度排序仍在剩下的帖里生�
 
 /* ═════════ 组合：新规矩串起来跑一遍 ═════════ */
 
-t("T23 端到端纯逻辑：记浏览 → 攒到 100 → 凑够 5 个厌恶达 1% → 下架并从列表消失", () => {
+t("T23 端到端纯逻辑：记浏览 → 浏览 100 后 1 个厌恶即达 0.5% 线 → 下架并从列表消失", () => {
   const day = "2026-03-06";
   const list = [post(1, 100, { hug: 0, dislike: 0 }, { views: 0 })];
 
@@ -313,10 +327,14 @@ t("T23 端到端纯逻辑：记浏览 → 攒到 100 → 凑够 5 个厌恶达 1
   assert.equal(list[0].views, 100);
   assert.equal(ratioPct(list[0].views, 0), "0.0%");
 
-  assert.equal(shouldRemove(list[0].views, 4), false, "4 个厌恶：够 4% 但没到 5 个，不下架");
-  assert.equal(shouldRemove(list[0].views, 5), true, "5/100 = 5% 且 ≥5 个 → 触发下架");
+  /* 新双档（#26 改版）：100 浏览已进「比例档」，1 个厌恶 = 1% > 0.5% 即下架 */
+  assert.equal(shouldRemove(list[0].views, 1), true, "1/100 = 1% > 0.5% → 下架");
   list[0].removed = true;                      /* 服务端置 removed（假删除） */
   assert.equal(visibleOnly(list).length, 0, "下架后前台不再展示");
+
+  /* 低浏览档对照：同样 3 个厌恶，浏览没到 100 时不触发 */
+  assert.equal(shouldRemove(50, 3), false, "50 浏览 + 3 个厌恶：低档未超 3 → 不下架");
+  assert.equal(shouldRemove(50, 4), true, "50 浏览 + 4 个厌恶：超过 3 个 → 下架");
 });
 
 t("T24 关键存档键名稳定（改名会让老用户的记录读不到）", () => {
