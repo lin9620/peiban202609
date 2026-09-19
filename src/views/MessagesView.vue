@@ -478,7 +478,7 @@ const dayLabel = (ts) => new Date(ts).toLocaleDateString(
             <template v-else>
               <n-input
                 v-model:value="body" type="textarea" :rows="2" :maxlength="2000"
-                :placeholder="t('dm.placeholder')"
+                :placeholder="isMobileNav ? t('dm.placeholderMobile') : t('dm.placeholder')"
                 @keydown.enter.exact.prevent="send" />
               <div class="dm-send-row">
                 <span class="sub dm-hint">{{ t("dm.hint") }}</span>

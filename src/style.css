@@ -1619,15 +1619,22 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 .shell--mobile-nav.shell--chat main { padding-bottom: 0; }
 .shell--mobile-nav.shell--chat .footer { display: none; }
 .shell--mobile-nav.shell--chat .dm-page { height: 100dvh; gap: 0; }
+/* ⚠️ 必须重置 align-items：基础栅格 .dm-wrap 带 align-items:start，
+   改 flex column 后交叉轴变横向，start 会让聊天卡按内容宽度收缩（曾表现为「只占左侧一条」）。 */
 .shell--mobile-nav.shell--chat .dm-wrap {
-  display: flex; flex-direction: column; gap: 0; flex: 1; min-height: 0;
+  display: flex; flex-direction: column; align-items: stretch;
+  width: 100%; gap: 0; flex: 1; min-height: 0;
 }
 .shell--mobile-nav.shell--chat .dm-thread {
-  flex: 1; min-height: 0; padding: calc(14px + env(safe-area-inset-top, 0px)) 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  flex: 1; min-height: 0; width: 100%; margin-bottom: 0;
+  padding: calc(14px + env(safe-area-inset-top, 0px)) 12px calc(10px + env(safe-area-inset-bottom, 0px));
 }
 .shell--mobile-nav.shell--chat .dm-scroll {
-  flex: 1; min-height: 0; max-height: none; overscroll-behavior: contain;
+  flex: 1; min-height: 0; width: 100%; max-height: none; overscroll-behavior: contain;
 }
+/* 手机上「Enter 发送 · Shift+Enter 换行」是桌面说明，隐藏；发送键靠右（微信体感） */
+.shell--mobile-nav.shell--chat .dm-hint { display: none; }
+.shell--mobile-nav.shell--chat .dm-send-row { justify-content: flex-end; }
 
 /* ← 返回钮（仅手机聊天页） */
 .dm-thread-back {

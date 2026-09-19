@@ -66,6 +66,22 @@ ok("T18 回到列表时清空当前会话（activeId='' + msgs=[]）",
 ok("T19 系统返回键：二级页/聊天页回退 + 根视图最小化",
   app.includes('addListener("backButton"') && app.includes("minimizeApp") && app.includes("const ROOT_VIEWS = ["));
 
+/* ─── ⑦ 手机聊天页横向撑满（真机回归：曾表现为「只占左侧一条」） ─── */
+const chatWrap = (css.match(/\.shell--mobile-nav\.shell--chat \.dm-wrap \{[\s\S]*?\}/) || [""])[0];
+const chatThread = (css.match(/\.shell--mobile-nav\.shell--chat \.dm-thread \{[\s\S]*?\}/) || [""])[0];
+ok("T20 手机聊天卡横向撑满（flex column 必须重置 align-items:stretch）",
+  /align-items:\s*stretch/.test(chatWrap) && /width:\s*100%/.test(chatWrap)
+  && /width:\s*100%/.test(chatThread), chatWrap.replace(/\s+/g, " "));
+ok("T21 手机聊天页隐藏桌面提示（dm-hint）+ 发送键靠右",
+  css.includes(".shell--mobile-nav.shell--chat .dm-hint { display: none; }")
+  && css.includes(".shell--mobile-nav.shell--chat .dm-send-row { justify-content: flex-end; }"));
+
+ok("T22 手机输入框用短占位符（桌面仍保留 Enter/Shift 说明）",
+  mv.includes("isMobileNav ? t('dm.placeholderMobile') : t('dm.placeholder')")
+  && messages.en.dm.placeholderMobile === "Write something…"
+  && messages.zh.dm.placeholderMobile === "写点什么…"
+  && messages.en.dm.placeholder.includes("Shift+Enter"));
+
 out.push("");
 out.push(`TOTAL ${pass + fail}  PASS ${pass}  FAIL ${fail}`);
 console.log(out.join("\n"));

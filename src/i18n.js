@@ -394,6 +394,8 @@ export const messages = {
       gateBlockedByMe: "You blocked them — unblock first to keep talking.",
       gateRequest: "This is a message request. Accept it to reply.",
       placeholder: "Write something… (Enter to send, Shift+Enter for a new line)",
+      /* 手机形态：没有 Shift+Enter，桌面说明只会占用输入框高度 */
+      placeholderMobile: "Write something…",
       hint: "Enter to send · Shift+Enter for a new line",
       send: "Send",
       pickOne: "Pick a conversation on the left to start chatting.",
@@ -997,6 +999,8 @@ export const messages = {
       gateBlockedByMe: "你已拉黑对方——先解除拉黑才能继续说话。",
       gateRequest: "这是对方发来的消息请求，同意后才能回复。",
       placeholder: "写点什么…（Enter 发送，Shift+Enter 换行）",
+      /* 手机形态：没有 Shift+Enter，桌面说明只会占用输入框高度 */
+      placeholderMobile: "写点什么…",
       hint: "Enter 发送 · Shift+Enter 换行",
       send: "发送",
       pickOne: "左边选一个会话开始聊天。",
