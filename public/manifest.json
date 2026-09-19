@@ -1,0 +1,17 @@
+{
+  "name": "Warm Paws · 暖心陪伴",
+  "short_name": "Warm Paws",
+  "description": "A warm, healing corner: an adorable pet to care for, a kindness wall and gentle stories. 温暖的角落：养一只小宠物、暖心墙与温柔的每日故事。",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fff0e2",
+  "theme_color": "#fff7ee",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

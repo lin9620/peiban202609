@@ -780,10 +780,10 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
 - **2026-09-20 · 批 1**：
   - **T1 ✅（代码层；出包待 Android Studio）**：Capacitor **8.5.2** 安装（npm 缓存绕权限 → `D:\05ruanjian\npm-cache`，全局 npm 配置目录无写权限）；`capacitor.config.json`（appId=`net.de5.dale`、appName=`Warm Paws`、webDir=`dist`、androidScheme=https）；`cap add android` ✓ + `cap sync` ✓（Android 工程已生成）；`.gitignore` 补 `*.keystore`/`*.jks`/`android/local.properties`/build 产物红线。
   - **T2 ✅**：`uiStore.js` 导出 `isApp`（`Capacitor.isNativePlatform()`）+ `isMobileNav`（isApp ‖ 视口 <900px，断点对齐 .shell 780px）；消费方未接（批 2 T5 用），**桌面行为零变化**。
-  - **T3 ✅（代码层；**⏳ 迁移未执行**）**：`MIGRATION_delete_account.sql`（security-definer RPC：按 `wall-images/<uid>/` 前缀删 Storage → 删 `auth.users` 行级联清全部业务数据；错误码 `not-signed-in`；revoke anon + grant authenticated）+ `SUPABASE_SETUP.sql` 同步 + db 双模式 `deleteMyAccount()` 成对 + Worker `/account/delete` 路由 + 设置页危险区（两步确认 + danger 样式）+ i18n zh/en 各 6 键 + 隐私政策 s9l 改「自助、立即生效」（**P23 锁形同步改**：en "immediately"/zh "立即生效"）。
+  - **T3 ✅ 全链路完成（2026-09-20）**：`MIGRATION_delete_account.sql`（security-definer RPC：按 `wall-images/<uid>/` 前缀删 Storage → 删 `auth.users` 行级联清全部业务数据；错误码 `not-signed-in`；revoke anon + grant authenticated）+ `SUPABASE_SETUP.sql` 同步 + db 双模式 `deleteMyAccount()` 成对 + Worker `/account/delete` 路由 + 设置页危险区（两步确认 + danger 样式）+ i18n zh/en 各 6 键 + 隐私政策 s9l 改「自助、立即生效」（**P23 锁形同步改**：en "immediately"/zh "立即生效"）。**迁移已由用户在 SQL Editor 执行**，线上探针三绿（临时 `_probe_delete_rpc.mjs`，跑完已删）：① RPC 存在（非 PGRST202）② 匿名被拒——**权限层 42501**（revoke anon 生效，比函数层 not-signed-in 更严；与 nick-e2e「权限层/函数层都算被拒」同口径）③ Worker `/api/account/delete` 线上 401（路由已部署）。
   - **T4 ⏳ 未开始**（manifest / 512px 图标）。
-  - **验收（三层口径）**：第一层离线 ✅ —— **25 套全绿**（auth 84→**94**、worker 191→**193**、gateway 65→**66**、privacy 34、i18n 19）+ `undef-check problems=0` + build exit 0；README 已登记迁移第 11 条与计数。第二层契约 ✅（三套契约测试含新路由断言）。第三层线上 e2e ⏳（依赖迁移执行，随后补 `tools/account-e2e.mjs`）。
-  - **待用户**：① **Supabase SQL Editor 执行 `MIGRATION_delete_account.sql`（整份粘贴，create or replace 幂等）**；② 装 Android Studio 后我陪跑 T1 出包；③ 迁移跑完 → 我写删号 e2e 线上闭环。
+  - **验收（三层口径）**：第一层离线 ✅ —— **25 套全绿**（auth 84→**94**、worker 191→**193**、gateway 65→**66**、privacy 34、i18n 19）+ `undef-check problems=0` + build exit 0；README 已登记迁移第 11 条与计数。第二层契约 ✅（三套契约测试含新路由断言）。第三层线上：删号 RPC 探针三绿 ✅（见 T3）；**删号 e2e（真实注册→删号→复查残留）⏳ 可随后补 `tools/account-e2e.mjs`**。
+  - **待用户**：① ~~执行 `MIGRATION_delete_account.sql`~~ ✅ 已执行（探针三绿）；② 装 Android Studio 后我陪跑 T1 出包；③（可选）真机/设置页点一次删号验证 UI 流程。
 
 ## G. 开发任务拆解（动工路线图，逐批交付）
 

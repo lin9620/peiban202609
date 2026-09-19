@@ -36,6 +36,12 @@ await check("sitemap.xml 恰好 5 条 <loc>（含 /privacy）", "/sitemap.xml?cb
 await check("og-image.png 200（PNG 可部署）", "/og-image.png", (r) =>
   r.status === 200 && (r.headers.get("content-type") || "").includes("image/png"));
 await check("favicon.png 200", "/favicon.png", (r) => r.status === 200);
+await check("manifest.json 200 且含 512px 图标与名称", "/manifest.json?cb=" + Date.now(), async (r) => {
+  if (r.status !== 200) return false;
+  const j = await r.json().catch(() => null);
+  return !!j && j.name === "Warm Paws · 暖心陪伴" && Array.isArray(j.icons) &&
+    j.icons.some((i) => (i.sizes || "").split(" ").includes("512x512"));
+});
 await check("未知路径真 404（防软 404，not_found_handling=404-page）", "/this-path-does-not-exist?cb=" + Date.now(), (r) => r.status === 404);
 await check("安全头 nosniff", "/", (r) => r.headers.get("x-content-type-options") === "nosniff");
 await check("安全头 X-Frame-Options", "/", (r) => r.headers.get("x-frame-options") === "SAMEORIGIN");
