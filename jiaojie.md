@@ -665,4 +665,52 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
 云端持续故障时会**每 30 秒空转**（注释意图是「未登录不算失败，别退避」，意图合理但实现了空网）。
 改 60s 后空转减半算附带好处；**要真修得改判断逻辑**（见第 七 节现存问题）。
 
+---
+
+# 十一、App 轨道交接备注（2026-09-20 · 网页主线暂缓，用户将在新会话做安卓 App）
+
+> 用户决策：**App 开发在新的 Cline 会话进行**（本会话上下文过长、响应慢）。
+> 本节写给新会话：先读完 ⓪ 固定规则与 ⓪½ 架构，再读本节，即可直接开工。
+
+## 1. 任务定义
+
+把现有 Vue3 网站做成安卓 App 上架 Google Play。**复用现有网站，不重写。**
+三条候选路线（新会话需先给对比再等用户拍板）：
+
+| 路线 | 成本 | 说明 |
+|---|---|---|
+| **TWA**（Trusted Web Activity） | **最低，推荐起步** | 用 Bubblewrap/PWABuilder 把 `https://dale.de5.net` 包成 APK/AAB。前提：① 网站加 PWA `manifest.json` + 512px 图标（当前只有 favicon/apple-touch，**没有 manifest**）；② 域名根放 `.well-known/assetlinks.json`（Cloudflare public/ 加静态文件即可）做应用验证。注意 Worker 的 SPA 回退：`/.well-known/assetlinks.json` 需要能直接命中静态文件（workers assets 优先静态，应无碍，但要实测） |
+| Capacitor | 中 | 现有 `dist` 包进原生壳，可加原生插件（推送等）；构建链变重 |
+| 原生重写（RN/Flutter） | 高，**不建议** | 网站已功能完备，重写无收益 |
+
+## 2. Google Play 硬门槛（逐条对照现状）
+
+| 门槛 | 现状 | 待办 |
+|---|---|---|
+| 开发者账号 | 无 | 用户自行注册（**$25 一次性**，注册后审核需数天） |
+| **应用内自助删号**（账号系统 App 强制，2024 政策） | ❌ **没有**——只有隐私政策写了“联系管理员删除”（网页版探针确认过无删号能力） | **第一批任务**：设置页加「删除我的账号」，走 Supabase：前端调 `auth.deleteUser()` 需 service key 不行 → 正确做法是 security definer RPC（`is_admin` 同款授权思路：只删自己的行，`auth.uid()` 校验）级联清理 profiles/posts/comments/reactions/pet_*/dm_*/notifications（FK 大多已 on delete cascade，逐表核对）+ Storage 对象删除；隐私政策 §删号 时限同步改 |
+| 隐私政策链接 | ✅ `https://dale.de5.net/privacy`（预渲染、可抓取） | 无 |
+| 数据安全表单 | — | 按 privacy 页内容如实填（只收 email/昵称/用户内容图片；不转售/不分享） |
+| 内容分级/目标受众 | — | 表单如实填；13 岁以下定位会触发家庭政策，如实填“不面向儿童” |
+| 签名/上架格式 | — | AAB + Play App Signing；版本号递增 |
+
+## 3. 网页侧要为 App 做的配合改动（都在现有仓库）
+
+1. `public/manifest.json`（name/short_name/icons 192+512/start_display/theme_color——复用 `--brand` 橙）
+2. `public/.well-known/assetlinks.json`（TWA 签名指纹，Bubblewrap 生成时给出）
+3. 检查 WebView 兼容：全站依赖 localStorage/网络字体/Supabase——TWA WebView 均支持；**无浏览器扩展干扰**（反而更稳）
+4. iOS 若日后要做：同一套 PWA 基建，Add to Home Screen 即可，另议
+
+## 4. 不要重复踩的坑（见 九 踩坑录全文，App 轨道特别相关）
+
+- **#21/#22**：改 SQL 规则必须整份重跑迁移 + 判别器要能唯一解——App 上架改后端规则时同样适用
+- **#24**：`git diff --check` 的 CRLF 噪声是既有仓库问题，别误判自己引入
+- 用户能做/AI 不能做：**只有用户能**执行 SQL DDL、实机验收、注册 Google Play/开发者账号、在 Play 后台操作（分工见 ⓪½ L 节）
+
+## 5. 本会话遗留（新会话不用管，网页主线回本会话或另开）
+
+- #7 暖心故事、#12 宠物年龄衰老：等用户通知
+- #10 评论数跨浏览器：等用户提供故障浏览器
+- 实机验收：#1/#3/#11/#17/#22/#27/#29 等（见 四）
+- Workers 容量 ~700-1000 日活见 十；付费阶梯与三项优化清单也在 十
 
