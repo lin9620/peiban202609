@@ -109,6 +109,7 @@ node tools/status-e2e.mjs     # 大厅状态线上实测（走 Worker，与浏�
 node tools/nick-e2e.mjs       # 改昵称署名同步线上实测（注册→发帖评论→改名）：迁移未跑时应走退化路径(旧帖留旧名)，跑完 MIGRATION_nickname_sync.sql 后旧署名一起改（会建测试帖/评论并清理）
 node tools/img-cache-e2e.mjs  # 图片边缘缓存线上实测（11 项）：经 Worker 上传真实 PNG → 连打 /api/img/* 两次，验证 MISS→HIT 跨用户共享（另一访客不再打 Supabase）/ 字节一致 / 图不存在退回 302 / 路径穿越 400（会建测试对象并删除）
 node tools/bottle-e2e.mjs     # 漂流瓶线上实测（走 Worker，双账号）：A 投信→B 捞→回信→A 收到回信→放回海里→每日限额→空海提示（需先跑 MIGRATION_bottle.sql）
+node tools/dislike-e2e.mjs    # 下架阈值线上判别（4 账号各投 1 次厌恶，看第 4 个是否触发下架）：新规(浏览<100 且 >3 个)=下架 / 旧规(≥5 且 ≥1%)=不下架；removed 一律取 RPC 返回值（下架后普通用户读不到行，直接 select 会误判）；会建测试帖并清理
 node tools/smoke.mjs          # 模块冒烟：需 dev 服务器在跑，探测 30 个关键模块 + 5 个 SEO 静态文件
 node tools/live-check.mjs     # 线上部署验证：页面/缓存/安全头/SEO 资产（部署后跑，应输出 LIVE ALL PASS）
 node tools/online-check.mjs   # 旧版线上检查（已被 live-check 替代，如无特别需要可忽略）
@@ -137,7 +138,7 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 
 > **已经建过库的老用户**：按顺序跑以下增量迁移（都在 SQL Editor 里粘贴全部内容 → Run，幂等、可重复跑）：
 > 1. `MIGRATION_two_level_comments.sql` —— 评论改成二级结构（旧评论不用回填，会当一级评论正常显示）
-> 2. `MIGRATION_wall_daily_view_dislike.sql` —— 每日一条 + 浏览数 + 厌恶与双档自动下架（<100 看「超 3 个」/ ≥100 看「> 0.5%」）
+> 2. `MIGRATION_wall_daily_view_dislike.sql` —— 每日一条 + 浏览数 + 厌恶与双档自动下架（<100 看「超 3 个」/ ≥100 看「> 0.5%」）。**改过上架阈值后必须重跑这个文件里 `wall_toggle_dislike` 那一段**（函数是 create or replace，整体粘最稳），否则线上仍是旧规则；跑完可 `node tools/dislike-e2e.mjs` 判别线上到底哪一档生效（4 人各投 1 次，出新规=第 4 个即下架）。
 >
 > 没跑第 2 个时：查看看板、发帖、评论一切照旧（浏览数不显示、点厌恶会出现「这个功能还没开启」提示），不会报错白屏。
 >
