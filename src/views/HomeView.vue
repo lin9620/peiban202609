@@ -6,6 +6,7 @@ import { t, i18n } from "../i18n.js";
 import { stories } from "../data/stories.js";
 import { dayIndex, todayKey } from "../utils/daily.js";
 import { getItem, setItem, removeItem } from "../utils/storage.js";
+import { cacheKey, swr } from "../utils/cache.js";
 import { checkInMood, moodStreak, activePet, activePetAway } from "../stores/petStore.js";
 import {
   BOTTLE_BODY_MAX, BOTTLE_SEND_MAX, BOTTLE_FISH_MAX,
@@ -150,7 +151,14 @@ const tray = computed(() => fished.value || held.value[0] || null);
 async function refreshBottle() {
   if (!cloudSigned.value) return;
   /* #17 记录区改走 bottleRecords 分类分页；这里只管「捞起的信」找回（tray） */
-  held.value = await bottleHeld() || [];
+  await swr(
+    cacheKey("bottle:held", myId.value),
+    {
+      cached: (rows) => { held.value = rows || []; },
+      fresh: (rows) => { held.value = rows || []; },
+    },
+    () => bottleHeld(),
+  );
   fished.value = null;
 }
 
@@ -224,17 +232,23 @@ async function loadRecords(reset = false) {
   if (!cloudSigned.value || recLoading.value) return;
   recLoading.value = true;
   const target = reset ? 0 : recPage.value;
-  try {
-    const got = await bottleRecords(null, target * REC_PAGE, {
-      mine: recTab.value === "mine", limit: REC_PAGE,
-    }) || [];
+  const applyRows = (got) => {
     recRows.value = got;
     recPage.value = target;
     recDone.value = got.length < REC_PAGE;
-  } catch (e) {
-    recRows.value = [];
-    recDone.value = true;
-  } finally { recLoading.value = false; }
+  };
+  await swr(
+    reset ? cacheKey("bottle:rec", myId.value, recTab.value) : null,  /* 只缓存每栏第 0 页 */
+    {
+      cached: (got) => { applyRows(got); recLoading.value = false; },
+      fresh: applyRows,
+      onError: () => { recRows.value = []; recDone.value = true; },
+    },
+    () => bottleRecords(null, target * REC_PAGE, {
+      mine: recTab.value === "mine", limit: REC_PAGE,
+    }),
+  );
+  recLoading.value = false;
 }
 function switchRecTab(x) {
   if (recTab.value === x) return;

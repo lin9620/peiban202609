@@ -49,3 +49,19 @@ export function getJSON(key, fallback) {
 export function setJSON(key, value) {
   try { setItem(key, JSON.stringify(value)); } catch (e) { /* 忽略 */ }
 }
+
+/* 按前缀枚举 key（本地缓存清理用）。存储不可用时只看内存镜像。 */
+export function keys(prefix = "") {
+  const out = [];
+  if (usable) {
+    try {
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const k = window.localStorage.key(i);
+        if (k && k.startsWith(prefix)) out.push(k);
+      }
+      return out;
+    } catch (e) { /* 降级走内存 */ }
+  }
+  for (const k of memory.keys()) if (k.startsWith(prefix)) out.push(k);
+  return out;
+}

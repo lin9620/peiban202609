@@ -13,6 +13,7 @@ import {
   wallet, moodStreak, petNotices, dismissPetNotice,
 } from "./stores/petStore.js";
 import { cloud, initCloud } from "./utils/supabase.js";
+import { cacheDrop } from "./utils/cache.js";
 import { badge, startBadge, stopBadge } from "./stores/badgeStore.js";
 /* 皮肤/语言：状态在 uiStore（与「设置」页共用）；App 只消费主题 */
 import { naiveTheme, naiveOverrides } from "./stores/uiStore.js";
@@ -71,8 +72,15 @@ onMounted(async () => {
 });
 onBeforeUnmount(() => { if (backHandle) backHandle.remove(); });
 
-/* 登录态变化 → 起停角标轮询（未登录不轮询，省流量） */
-watch(cloudSigned, (v) => { if (v) startBadge(); else stopBadge(); }, { immediate: true });
+/* 登录态变化 → 起停角标轮询（未登录不轮询，省流量）；
+ * 登出 → 清掉个人域缓存（私信 / 通知 / 漂流瓶是个人数据，不留在设备上） */
+watch(cloudSigned, (v) => {
+  if (v) { startBadge(); return; }
+  stopBadge();
+  cacheDrop("dm:");
+  cacheDrop("notif:");
+  cacheDrop("bottle:");
+}, { immediate: true });
 onBeforeUnmount(() => { stopBadge(); });
 
 /* —— 错误边界：某个页面渲染出错时显示提示，而不是整页白屏 —— */

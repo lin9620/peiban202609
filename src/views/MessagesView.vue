@@ -15,6 +15,7 @@ import { NButton, NInput, NAvatar, NTag } from "naive-ui";
 import { t, i18n } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
 import * as dmApi from "../utils/dm.js";
+import { cacheKey, swr } from "../utils/cache.js";
 import {
   previewText, sortConvs, filterConvs, withDayDividers, displayMsg,
   validateSend, sendErrKey, canRecall, relativeTime, rowView,
@@ -102,12 +103,16 @@ function toggleBlockedPanel() {
 async function loadConvs() {
   if (!signedIn.value) return;
   loadingConvs.value = true;
-  try {
-    convs.value = (await dmApi.listConvs(200, 0)) || [];
-    failed.value = false;
-  } catch (e) {
-    failed.value = true;
-  }
+  /* 本地优先（SWR）：有缓存先渲染不闪「载入中」，后台刷新；换账号靠 key 里的 uid 隔离 */
+  await swr(
+    cacheKey("dm:convs", meId.value),
+    {
+      cached: (rows) => { convs.value = rows; loadingConvs.value = false; },
+      fresh: (rows) => { convs.value = rows; failed.value = false; },
+      onError: () => { failed.value = true; },
+    },
+    () => dmApi.listConvs(200, 0),
+  );
   loadingConvs.value = false;
 }
 
@@ -123,16 +128,27 @@ async function loadMeta(id) {
 async function loadMessages(id, { before = null } = {}) {
   if (!id) return;
   loadingMsgs.value = true;
-  let got = [];
-  try {
-    got = (await dmApi.listMessages(id, { before, limit: 30 })) || [];
-  } catch (e) { got = []; }
-  /* 服务端返回新→旧：反转为旧→新（渲染顺序） */
-  const asc = got.slice().reverse();
-  if (before == null) msgs.value = asc;
-  else msgs.value = asc.concat(msgs.value);
-  hasMore.value = got.length === 30;
-  oldestId.value = msgs.value.length ? msgs.value[0].id : null;
+  const applyRows = (rows) => {
+    /* 服务端返回新→旧：反转为旧→新（渲染顺序） */
+    const asc = rows.slice().reverse();
+    if (before == null) msgs.value = asc;
+    else msgs.value = asc.concat(msgs.value);
+    hasMore.value = rows.length === 30;
+    oldestId.value = msgs.value.length ? msgs.value[0].id : null;
+  };
+  await swr(
+    before == null ? cacheKey("dm:msgs", meId.value, id) : null,  /* 只缓存首屏；翻历史页不缓存 */
+    {
+      cached: (rows) => { applyRows(rows); loadingMsgs.value = false; scrollBottom(); },
+      fresh: (rows) => {
+        /* 刚发的乐观消息（负数临时 id）还在屏上 → 这轮先不覆盖，交给 5s 轮询 / send 后的重载 */
+        if (msgs.value.some((m) => m.id < 0)) return;
+        applyRows(rows);
+      },
+      onError: () => applyRows([]),
+    },
+    () => dmApi.listMessages(id, { before, limit: 30 }),
+  );
   loadingMsgs.value = false;
 }
 

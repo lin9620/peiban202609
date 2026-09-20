@@ -4,6 +4,7 @@ import { useRouter, useRoute } from "vue-router";
 import { NButton, NInput, NAvatar, NTag } from "naive-ui";
 import { t, i18n } from "../i18n.js";
 import { getItem, setItem } from "../utils/storage.js";
+import { cacheKey, swr } from "../utils/cache.js";
 import {
   CMT_KEY, seedComments, addComment, removeComment, displayCount,
   canDelete, normalizeText, postKey, MAX_LEN,
@@ -87,22 +88,30 @@ watch(() => cloud.ready, (v) => {
 
 async function loadCloud() {
   loadingCloud.value = true;
-  const rows = await cloudFetchPosts();
-  if (rows) {
-    cloudPosts.value = rows;
+  /* 本地优先（SWR）：缓存「帖 + 每帖评论数」整包 → 二次进页不闪「载入中」，评论数也是真的 */
+  const consume = (box) => {
+    cloudPosts.value = box.rows;
     /* 传响应式数组（cloudPosts.value）而不是 rows：浏览数要靠「写代理」才会即时刷新到界面，
        直接改原始对象（raw）不会触发 Vue 的更新 */
     countViews(cloudPosts.value);
-    /* 帖子到手就顺带拉一次「每帖评论数」：评论区标题马上有真实数字（含回复） */
-    cloudFetchCommentCounts(rows.map((r) => r.dbId)).then((counts) => {
-      if (!counts) return;
+    if (box.counts) {
       const next = { ...cloudCmtTotal.value };
       for (const p of cloudPosts.value) {
-        if (p.dbId != null) next[cmtKey(p)] = counts[p.dbId] || 0;
+        if (p.dbId != null) next[cmtKey(p)] = box.counts[p.dbId] || 0;
       }
       cloudCmtTotal.value = next;
-    });
-  }
+    }
+  };
+  await swr(
+    cacheKey("wall:posts", (cloud.user && cloud.user.id) || ""),
+    { cached: consume, fresh: consume },
+    async () => {
+      const rows = await cloudFetchPosts();
+      if (!rows) return null;   /* 拉取失败（原有语义）→ 不覆盖、不回写缓存 */
+      const counts = await cloudFetchCommentCounts(rows.map((r) => r.dbId)).catch(() => null);
+      return { rows, counts: counts || {} };
+    },
+  );
   loadingCloud.value = false;
 }
 

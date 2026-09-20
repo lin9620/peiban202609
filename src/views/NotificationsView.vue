@@ -15,6 +15,7 @@ import { NButton } from "naive-ui";
 import { t } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
 import * as notifyApi from "../utils/notify.js";
+import { cacheKey, swr } from "../utils/cache.js";
 import { aggregate, kindsFor, itemView, targetOf } from "../utils/notifyRules.js";
 import { relativeTime } from "../utils/dmRules.js";
 import { badge, refreshBadge } from "../stores/badgeStore.js";
@@ -60,18 +61,23 @@ async function load(reset = false) {
   loading.value = true;
   const target = reset ? 0 : page.value;
   if (reset) { failed.value = false; done.value = false; }
-  let got = [];
-  try {
-    got = await notifyApi.page({
+  const applyRows = (got) => {
+    rows.value = got;
+    page.value = target;
+    done.value = got.length < PAGE;
+  };
+  await swr(
+    /* 只缓存第 0 页（进页首屏）；翻页走网络 */
+    reset ? cacheKey("notif:p0", (cloud.user && cloud.user.id) || "", tab.value, unreadOnly.value ? 1 : 0) : null,
+    {
+      cached: (got) => { applyRows(got); loading.value = false; },
+      fresh: applyRows,
+      onError: () => { failed.value = true; applyRows([]); },
+    },
+    () => notifyApi.page({
       offset: target * PAGE, limit: PAGE, kinds: kindsFor(tab.value), unreadOnly: unreadOnly.value,
-    }) || [];
-  } catch (e) {
-    failed.value = true;
-    got = [];
-  }
-  rows.value = got;
-  page.value = target;
-  done.value = got.length < PAGE;
+    }),
+  );
   loading.value = false;
 }
 
