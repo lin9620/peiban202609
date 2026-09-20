@@ -141,6 +141,12 @@ ok("T33 长词断行护栏（乱码长词不再撑爆 grid 轨道：minmax(0,1fr
   && /\.shell \{[^}]*overflow-x: clip/.test(css)
   && /\.dm-text \{[^}]*overflow-wrap: anywhere/.test(css)
   && /\.notif-quote \{[\s\S]*?overflow-wrap: anywhere/.test(css));
+ok("T34 冻结过渡自愈（后台/遮挡时路由过渡停在 opacity:0 → 回前台整页空白）：可见性恢复+路由后延迟清扫 fade 类",
+  app.includes("function scrubStuckFade()")
+  && app.includes('document.addEventListener("visibilitychange"')
+  && app.includes("setTimeout(scrubStuckFade, 120)")
+  && app.includes("scrubTimer = setTimeout(scrubStuckFade, 700)")
+  && app.includes('querySelectorAll(".fade-enter-active, .fade-leave-active, .fade-enter-from, .fade-leave-to")'));
 
 out.push("");
 out.push(`TOTAL ${pass + fail}  PASS ${pass}  FAIL ${fail}`);

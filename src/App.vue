@@ -96,6 +96,31 @@ function reload() {
   crashed.value = "";
   window.location.reload();
 }
+
+/* ─── T9 · 冻结过渡自愈（真机空白屏实证）───
+ * Vue 过渡的 enter 起点是 rAF 驱动的：App 在后台/被遮挡时（WebView 冻结 rAF）若路由
+ * 恰好过渡中，会停在 opacity:0 的 enter-from → 回前台**整页永久空白**。
+ * 三道保险：回前台清一次 + 每次路由变更后延迟清一次（正常完成后是无操作）+ 轮询兜底。 */
+function scrubStuckFade() {
+  document
+    .querySelectorAll(".fade-enter-active, .fade-leave-active, .fade-enter-from, .fade-leave-to")
+    .forEach((el) => {
+      el.classList.remove("fade-enter-active", "fade-leave-active", "fade-enter-from", "fade-leave-to");
+    });
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    requestAnimationFrame(scrubStuckFade);
+    setTimeout(scrubStuckFade, 120); /* rAF 本身可能还没恢复，再补一刀 */
+  }
+});
+let scrubTimer = 0;
+watch(() => route.fullPath, () => {
+  clearTimeout(scrubTimer);
+  scrubTimer = setTimeout(scrubStuckFade, 700);
+});
+onBeforeUnmount(() => { clearTimeout(scrubTimer); scrubTimer = 0; });
+
 </script>
 
 <template>
