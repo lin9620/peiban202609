@@ -13,6 +13,10 @@ const arg = (name, dflt) => {
 };
 const file = arg("file", "");
 const waitMs = Number(arg("wait", "500"));
+/* 息屏/被遮挡时 WebView 的 rAF 冻结 → Vue 路由过渡（transition out-in）会停在中途、新视图不挂载。
+ * 默认开 Emulation.setFocusEmulationEnabled：让页面自认「可见且聚焦」，取数不再受屏幕状态影响。
+ * 需要真实可见性行为时传 --focus=0 关掉。 */
+const focus = arg("focus", "1") !== "0";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -32,6 +36,14 @@ async function main() {
     ws.on("message", onMsg);
     ws.send(JSON.stringify({ id: mid, method, params }));
   });
+  if (focus) {
+    try { await send("Emulation.setFocusEmulationEnabled", { enabled: true }); }
+    catch (e) { /* 老内核不支持则忽略 */ }
+    /* 息屏/后台时页面被判定 hidden → 定时器被节流到「1 分钟 1 次」、rAF 冻结：
+     * 强制置为 active 生命周期，取数不再被节流（--focus=0 可关掉看真实行为）。 */
+    try { await send("Page.setWebLifecycleState", { state: "active" }); }
+    catch (e) { /* 同上 */ }
+  }
   if (waitMs) await sleep(waitMs);
   const expr = fs.readFileSync(file, "utf8");
   const r = await send("Runtime.evaluate", {

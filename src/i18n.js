@@ -19,6 +19,8 @@ export const messages = {
       home: "Home", community: "Warm Wall", messages: "Messages", profile: "Me",
       composeBottle: "Send a Bottle", composeBottleSub: "A letter into the sea",
       composePost: "Post to Wall", composePostSub: "Share a feeling with gentle people",
+      /* App 轨道 T7：消息 Tab 内分栏（私信 | 通知，小红书同款），zh/en 成对 */
+      segDm: "Chats", segNotif: "Alerts",
     },
     langBtn: "中文",
     footerNote: "Made with warmth · You are doing better than you think.",
@@ -628,6 +630,8 @@ export const messages = {
       home: "首页", community: "暖心墙", messages: "消息", profile: "我的",
       composeBottle: "投漂流瓶", composeBottleSub: "把心事写进海里",
       composePost: "发暖心墙帖", composePostSub: "和温柔的人分享心情",
+      /* App 轨道 T7：消息 Tab 内分栏（私信 | 通知，小红书同款），zh/en 成对 */
+      segDm: "私信", segNotif: "通知",
     },
     langBtn: "English",
     footerNote: "用心制作 · 你做得比你以为的更好。",

@@ -36,7 +36,27 @@ export function applyTheme(key) {
   try { localStorage.setItem(THEME_KEY, key); } catch (e) {}
   document.documentElement.dataset.theme = key;
 }
-document.documentElement.dataset.theme = themeKey.value;
+/* 首帧即套用主题（Node 侧单测导入本模块时无 document → 跳过，测试只关心纯逻辑） */
+if (typeof document !== "undefined") document.documentElement.dataset.theme = themeKey.value;
+
+/* ═══ T7/T9 · 系统返回键拦截栈 ═══
+ * 视图可临时接管系统返回键（例：消息 Tab 的「通知」段 → 先退回「私信」段，
+ * 再退页面 —— App 惯例：先退内部层级）。App.vue 的 backButton 监听**先问栈**：
+ * 从栈顶往下逐级询问，任一层返回 true = 已处理（不再回退路由 / 最小化 App）；
+ * 全部返回 false = 放行。后进先出，卸载时弹栈。
+ * 拦截器抛异常视为「不处理」（异常不能吞掉用户按的返回键）。 */
+const backStack = [];
+export function pushBack(fn) { backStack.push(fn); }
+export function popBack(fn) {
+  const i = backStack.indexOf(fn);
+  if (i >= 0) backStack.splice(i, 1);
+}
+export function runBack() {
+  for (let i = backStack.length - 1; i >= 0; i--) {
+    try { if (backStack[i]() === true) return true; } catch (e) { /* 忽略：继续往下问 */ }
+  }
+  return false;
+}
 
 export const langOptions = languages.map((l) => ({ label: l.label, key: l.code }));
 export const currentLang = computed(

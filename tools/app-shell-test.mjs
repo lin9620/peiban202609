@@ -82,6 +82,37 @@ ok("T22 手机输入框用短占位符（桌面仍保留 Enter/Shift 说明）",
   && messages.zh.dm.placeholderMobile === "写点什么…"
   && messages.en.dm.placeholder.includes("Shift+Enter"));
 
+/* ─── ⑧ 消息 Tab 内分栏（T7：私信 | 通知，小红书同款） ─── */
+ok("T23 分栏条仅手机形态渲染，桌面零变化（桌面 template 恒渲染、通知组件不挂）",
+  mv.includes('<div v-if="isMobileNav" class="dm-seg" role="tablist">')
+  && mv.includes('v-if="!isMobileNav || seg === \'dm\'"')
+  && mv.includes("v-else-if=\"seg === 'notif'\"")
+  && mv.includes("seg.value = \"dm\";"));
+ok("T24 通知段复用 NotificationsView（懒加载 chunk）+ 红点挂分栏（私信=dm+requests / 通知=badge.notif）",
+  mv.includes("defineAsyncComponent(() => import(\"./NotificationsView.vue\"))")
+  && mv.includes("const dmBadge = computed(() => badge.dm + badge.requests);")
+  && mv.includes('v-if="badge.notif" class="notif-count"')
+  && messages.en.tab.segDm === "Chats" && messages.en.tab.segNotif === "Alerts"
+  && messages.zh.tab.segDm === "私信" && messages.zh.tab.segNotif === "通知");
+ok("T25 通知段避「卡中卡」（只去装饰、保留内缩，仅手机形态 + 仅通知段）",
+  mv.includes("'dm-list--seg': isMobileNav && seg === 'notif'")
+  && css.includes(".shell--mobile-nav .dm-list--seg {")
+  && /\.dm-list--seg \{[\s\S]*?background: transparent/.test(css)
+  && /\.dm-list--seg \{[\s\S]*?border-color: transparent/.test(css)
+  && !/\.dm-list--seg \{[\s\S]*?padding: 0;/.test(css)
+  && css.includes(".shell--mobile-nav .dm-seg-notif .notif-back { display: none; }"));
+ok("T26 系统返回键先退内部层级（拦截栈：通知段 → 私信段，再回退路由/最小化）",
+  read("src/stores/uiStore.js").includes("export function pushBack(")
+  && read("src/stores/uiStore.js").includes("export function runBack()")
+  && read("src/stores/uiStore.js").includes("export function popBack(")
+  && app.includes("if (runBack()) return;")
+  && mv.includes("function segBack()") && mv.includes("pushBack(segBack);")
+  && mv.includes("popBack(segBack);") && mv.includes('if (seg.value !== "notif") return false;'));
+ok("T27 我的 Tab 整合（手机形态补钱包金币 = 桌面顶栏口径；桌面零变化）",
+  read("src/views/ProfileView.vue").includes('v-if="isMobileNav" round :bordered="false" class="soft-tag"')
+  && read("src/views/ProfileView.vue").includes("{{ wallet.coins }}")
+  && read("src/views/ProfileView.vue").includes('import { isMobileNav } from "../stores/uiStore.js"'));
+
 out.push("");
 out.push(`TOTAL ${pass + fail}  PASS ${pass}  FAIL ${fail}`);
 console.log(out.join("\n"));

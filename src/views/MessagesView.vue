@@ -9,7 +9,7 @@
  *  - 打开会话即抬已读水位（服务端 dm_mark_read）；滚动到底部；仅在可见时轮询新消息。
  */
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch, defineAsyncComponent } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { NButton, NInput, NAvatar, NTag } from "naive-ui";
 import { t, i18n } from "../i18n.js";
@@ -20,9 +20,12 @@ import {
   previewText, sortConvs, filterConvs, withDayDividers, displayMsg,
   validateSend, sendErrKey, canRecall, relativeTime, rowView,
 } from "../utils/dmRules.js";
-import { refreshBadge } from "../stores/badgeStore.js";
+import { badge, refreshBadge } from "../stores/badgeStore.js";
 import BottleRecords from "../components/BottleRecords.vue";
-import { isMobileNav } from "../stores/uiStore.js";
+import { isMobileNav, pushBack, popBack } from "../stores/uiStore.js";
+/* T7 消息 Tab 内分栏（私信 | 通知）：通知段直接复用 NotificationsView
+ * （数据层零重写；异步 chunk 不拖慢首屏；挂载即拉第 0 页，配 SWR 缓存秒开） */
+const NotificationsView = defineAsyncComponent(() => import("./NotificationsView.vue"));
 
 const route = useRoute();
 const router = useRouter();
@@ -47,6 +50,19 @@ const menuFor = ref("");     // 展开操作菜单的会话 id
 const fromList = ref(false); // 手机形态：本会话是从会话列表点进来的（← 用 router.back 回列表）
 
 const REQ = "requests";      // 伪会话分组键（消息请求）
+
+/* T7 分栏：私信 | 通知（仅手机形态渲染分段条）；进聊天/回列表强制回私信段 */
+const seg = ref("dm");
+const dmBadge = computed(() => badge.dm + badge.requests);
+
+/* T7 系统返回键：通知段是消息 Tab 的**内部层级** → 先回私信段（App 惯例），
+ * 已被接管则不再回退路由/最小化 App；离开本页弹栈。
+ * 说明：聊天页共用「消息」Tab，但那时 seg 恒为 dm，这里返回 false 交回默认策略。 */
+function segBack() {
+  if (seg.value !== "notif") return false;
+  seg.value = "dm";
+  return true;
+}
 const meId = computed(() => (cloud.user && cloud.user.id) || "");
 
 /* #15 点头像/名字进对方主页（列表行与聊天头部共用） */
@@ -162,6 +178,7 @@ function scrollBottom(smooth = false) {
 }
 
 async function openConv(id) {
+  seg.value = "dm";
   menuFor.value = "";
   const same = String(activeId.value) === String(id);
   activeId.value = String(id);
@@ -313,6 +330,7 @@ function onVisible() {
 }
 
 onMounted(async () => {
+  pushBack(segBack);
   if (!signedIn.value) return;
   await loadConvs();
   if (activeId.value) await openConv(activeId.value);
@@ -321,6 +339,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  popBack(segBack);
   clearInterval(timer);
   if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVisible);
 });
@@ -332,11 +351,12 @@ watch(() => route.params.id, (v) => {
     if (id !== activeId.value) openConv(id);
     return;
   }
-  /* 回到列表：清空当前会话（手机形态下 .dm-list 立刻接管整屏） */
+  /* 回到列表：清空当前会话（手机形态下 .dm-list 立刻接管整屏）+ 回私信段 */
   activeId.value = "";
   msgs.value = [];
   meta.value = null;
   fromList.value = false;
+  seg.value = "dm";
 });
 
 const when = (ts) => relativeTime(ts, Date.now(), t);
@@ -363,7 +383,23 @@ const dayLabel = (ts) => new Date(ts).toLocaleDateString(
 
     <div v-else class="dm-wrap">
       <!-- 左列：会话列表（手机形态 = 微信式列表页；进入会话后整页让给聊天区） -->
-      <aside v-show="!isMobileNav || !activeId" class="card dm-list">
+      <aside
+        v-show="!isMobileNav || !activeId"
+        class="card dm-list"
+        :class="{ 'dm-list--seg': isMobileNav && seg === 'notif' }">
+        <!-- T7 分栏（仅手机形态）：私信 | 通知（红点 = badgeStore 实时未读，与桌面顶栏同口径） -->
+        <div v-if="isMobileNav" class="dm-seg" role="tablist">
+          <button type="button" class="dm-seg-btn" :class="{ on: seg === 'dm' }" role="tab" :aria-selected="seg === 'dm'" @click="seg = 'dm'">
+            {{ t("tab.segDm") }}
+            <span v-if="dmBadge" class="notif-count">{{ dmBadge > 99 ? "99+" : dmBadge }}</span>
+          </button>
+          <button type="button" class="dm-seg-btn" :class="{ on: seg === 'notif' }" role="tab" :aria-selected="seg === 'notif'" @click="seg = 'notif'">
+            {{ t("tab.segNotif") }}
+            <span v-if="badge.notif" class="notif-count">{{ badge.notif > 99 ? "99+" : badge.notif }}</span>
+          </button>
+        </div>
+
+        <template v-if="!isMobileNav || seg === 'dm'">
         <n-input v-model:value="q" size="small" round clearable :placeholder="t('dm.search')" class="dm-search" />
 
         <!-- #19 已拉黑：集中查看 / 解除（拉黑与解除都不通知对方） -->
@@ -440,6 +476,8 @@ const dayLabel = (ts) => new Date(ts).toLocaleDateString(
 
         <p v-if="!normal.length && !requests.length && !loadingConvs" class="sub dm-empty">{{ t("dm.empty") }}</p>
         <BottleRecords @open="openBottleChat" />
+        </template>
+        <NotificationsView v-else-if="seg === 'notif'" class="dm-seg-notif" />
       </aside>
 
       <!-- 右列：当前会话（手机形态 = 微信式独立聊天页，带返回） -->

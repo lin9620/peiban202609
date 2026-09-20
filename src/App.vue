@@ -8,7 +8,7 @@ import { App as CapApp } from "@capacitor/app";
 import { t } from "./i18n.js";
 import SideRails from "./components/SideRails.vue";
 import TabBar from "./components/TabBar.vue";
-import { isApp, isMobileNav } from "./stores/uiStore.js";
+import { isApp, isMobileNav, runBack } from "./stores/uiStore.js";
 import {
   wallet, moodStreak, petNotices, dismissPetNotice,
 } from "./stores/petStore.js";
@@ -62,6 +62,8 @@ onMounted(async () => {
   if (!isApp) return; /* 浏览器里没有系统返回键 */
   try {
     backHandle = await CapApp.addListener("backButton", () => {
+      /* T7：页面内部层级先接管（消息 Tab 通知段 → 回私信段），再走路由/最小化 */
+      if (runBack()) return;
       if (inChat.value || !ROOT_VIEWS.includes(route.name)) {
         router.back();
         return;

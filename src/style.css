@@ -1645,6 +1645,27 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 }
 .home-pane { flex: 0 0 100%; min-width: 100%; }
 .home-pane-lazy { display: grid; place-items: center; padding: 90px 0; font-size: 42px; }
+
+/* ═══ T7 · 消息 Tab 内分栏（私信 | 通知，小红书同款；仅手机形态渲染分段条）═══ */
+.dm-seg { display: flex; gap: 6px; padding: 2px 0 10px; }
+.dm-seg-btn {
+  flex: 1; appearance: none; cursor: pointer; font: inherit;
+  min-height: 42px; border-radius: 999px; font-size: 14px; font-weight: 800;
+  color: var(--ink-soft); background: transparent; border: 1.5px solid transparent;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  transition: background-color .12s ease, color .12s ease, border-color .12s ease;
+}
+.dm-seg-btn.on { color: var(--accent-deep); background: var(--accent-soft); border-color: var(--accent); }
+/* 嵌入消息页的通知段：藏「← 返回首页」（TabBar 可切，不需要）；标题卡收紧 */
+.shell--mobile-nav .dm-seg-notif .notif-back { display: none; }
+.shell--mobile-nav .dm-seg-notif .notif-head { padding: 14px 16px; }
+.shell--mobile-nav .dm-seg-notif .notif-title { font-size: 18px; }
+/* 通知段：外层会话列表卡让位（通知页自带卡片 → 免「卡中卡」）。
+   只去装饰（背景/描边/阴影），保留 14px 内缩 —— 否则通知卡会贴到屏幕边缘。 */
+.shell--mobile-nav .dm-list--seg {
+  background: transparent; border-color: transparent; box-shadow: none;
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+}
 /* ⚠️ 必须重置 align-items：基础栅格 .dm-wrap 带 align-items:start，
    改 flex column 后交叉轴变横向，start 会让聊天卡按内容宽度收缩（曾表现为「只占左侧一条」）。 */
 .shell--mobile-nav.shell--chat .dm-wrap {

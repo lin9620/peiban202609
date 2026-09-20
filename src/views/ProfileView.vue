@@ -3,7 +3,8 @@ import { ref, computed, watch } from "vue";
 import { NButton, NInput, NAvatar, NTag, NProgress } from "naive-ui";
 import { t } from "../i18n.js";
 import { getItem, setItem, removeItem } from "../utils/storage.js";
-import { cookbook, removeDish, moodLog, moodStreak } from "../stores/petStore.js";
+import { cookbook, removeDish, moodLog, moodStreak, wallet } from "../stores/petStore.js";
+import { isMobileNav } from "../stores/uiStore.js";
 import { todayKey } from "../utils/daily.js";
 import {
   cloud, cloudSignUp, cloudSignIn, cloudSignOut,
@@ -330,6 +331,10 @@ const brightRatio = computed(() => {
         <router-link v-if="isAdmin" to="/admin" class="admin-entry">
           {{ t("admin.entry") }}
         </router-link>
+        <!-- T7 我的 Tab 整合：手机形态顶栏已隐藏（金币/连签原本在桌面顶栏）→ 钱包挪进「我的」头部 -->
+        <n-tag v-if="isMobileNav" round :bordered="false" class="soft-tag">
+          &#128176; {{ wallet.coins }}
+        </n-tag>
         <!-- #13 设置入口：皮肤 / 语言 / 通知偏好都收在设置页 -->
         <router-link to="/settings" class="admin-entry">
           ⚙️ {{ t("settings.entry") }}
