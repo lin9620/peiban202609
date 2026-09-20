@@ -11,9 +11,11 @@ import {
   topComments, repliesOf, replyCount,
 } from "../utils/comments.js";
 import { cloud } from "../utils/supabase.js";
+/* 回应写入收敛器（纯逻辑，Node 单测覆盖）：连点串行落库 + 过期响应不回写 */
+import { createWriteQueue } from "../utils/reactQueue.js";
 import {
   cloudFetchPosts, cloudInsertPost, cloudFetchComments, cloudInsertComment,
-  cloudDeleteComment, cloudToggleReaction, cloudFetchCommentCounts, canUseWall, canReadWall,
+  cloudDeleteComment, cloudSetReaction, cloudFetchCommentCounts, canUseWall, canReadWall,
   cloudAddView, cloudToggleDislike,
 } from "../utils/wall.js";
 /* 进阶规则（纯函数，Node 单测覆盖）：排序 / 浏览去重 / 厌恶比例下架 / 每日一条 */
@@ -287,26 +289,39 @@ async function submit() {
 }
 
 /* —— 回应：点击即变（乐观更新），再点一次 = 取消（#29 跟手）——
-   登录用户走 DB（服务端权威计数校正）；示例/本地帖沿用本机表态 —— */
-const reactBusy = new Set();   /* 防连点竞态：同一帖同一回应在途时忽略再次点击 */
-async function react(post, kind) {
+   登录用户走 DB（服务端权威计数按幂等「设置」写）；示例/本地帖沿用本机表态 ——
+   连点两下必须当场生效，两道保险都在 src/utils/reactQueue.js（纯逻辑 + Node 单测）：
+     ① 同帖同回应串行落库（杜绝「查-插」并发撞唯一键）
+     ② 每次点击领序号，过期响应不回写（慢响应不许覆盖后来的意图） */
+const reactQ = createWriteQueue();
+const reactSaved = new WeakMap();    /* post → 服务端已确认的 {reacts, mine}（失败回滚用） */
+async function reactSync(post, kind, k, seq) {
+  const on = hasReacted(post, kind);            /* 执行时再取意图：连点时以最新一次为准 */
+  const fresh = await cloudSetReaction(post.dbId, kind, on);
+  /* 期间又点过（序号变了）：这次响应过期，什么都别改，后面的任务会把最终状态写对 */
+  if (!reactQ.isLatest(k, seq)) return;
+  if (fresh) {
+    post.reacts = { hug: fresh.hug, warm: fresh.warm, relate: fresh.relate };
+    post.mine = fresh.mine;
+    reactSaved.set(post, { reacts: { ...post.reacts }, mine: { ...fresh.mine } });
+    return;
+  }
+  /* 失败：回滚到服务端最后确认的状态（不是「再翻一次」，避免连点后状态错乱） */
+  const back = reactSaved.get(post);
+  if (back) { post.reacts = { ...back.reacts }; post.mine = { ...back.mine }; }
+  showWallMsg(errorKind(cloud.error) === "not-migrated" ? "community.needSetup" : "community.reactFail");
+}
+function react(post, kind) {
   if (post.cloud && signedIn.value) {
-    const busyKey = `${post.dbId}:${kind}`;
-    if (reactBusy.has(busyKey)) return;
-    reactBusy.add(busyKey);
+    if (!reactSaved.has(post)) {
+      reactSaved.set(post, { reacts: { ...post.reacts }, mine: { ...(post.mine || {}) } });
+    }
     const wasOn = !!(post.mine && post.mine[kind]);
     post.mine = { ...(post.mine || {}), [kind]: !wasOn };
     post.reacts = { ...post.reacts, [kind]: Math.max(0, (post.reacts[kind] || 0) + (wasOn ? -1 : 1)) };
-    const fresh = await cloudToggleReaction(post.dbId, kind);
-    reactBusy.delete(busyKey);
-    if (fresh) {
-      post.reacts = { hug: fresh.hug, warm: fresh.warm, relate: fresh.relate };
-      post.mine = fresh.mine;
-    } else {
-      post.mine = { ...(post.mine || {}), [kind]: wasOn };
-      post.reacts = { ...post.reacts, [kind]: Math.max(0, (post.reacts[kind] || 0) + (wasOn ? 1 : -1)) };
-      showWallMsg(errorKind(cloud.error) === "not-migrated" ? "community.needSetup" : "community.reactFail");
-    }
+    const k = `${post.dbId}:${kind}`;
+    const seq = reactQ.claim(k);
+    reactQ.push(k, () => reactSync(post, kind, k, seq));
     return;
   }
   /* #28 未登录不能参与云端帖的回应（别人看不到的假 +1 只会误导）；示例帖保持本地演示 */
@@ -386,6 +401,13 @@ function toggleReplies(p, cm) {
 const replyTo = ref({});
 const atName = ref({});
 function isReplyOpen(p, cm) { return replyTo.value[cmtKey(p)] === cm.id; }
+/* ─── 回复某条二级评论（用户反馈：点二级「回复」像没反应）───
+ * 老实现把输入框固定画在「一级评论最底部」：二级评论一多，框就出现在离手指很远的地方
+ * （甚至需要滚动才看得见）→ 用户以为点了没用。
+ * 现在改成就地出现：`replyRp[repKey(p, cm)] = 被回复的那条二级评论 id`，
+ * 输入框渲染在该条二级评论正下方；发送时依旧挂到同一条一级评论下 + @ 这位回复者。 */
+const replyRp = ref({});
+function replyRpOf(p, cm) { return replyRp.value[repKey(p, cm)] || null; }
 /* 回复一级评论：挂到它下面，不 @（视觉上已经挨着作者） */
 function openReply(p, cm) {
   /* #28 未登录不能回复云端帖 */
@@ -393,18 +415,33 @@ function openReply(p, cm) {
   const k = cmtKey(p);
   replyTo.value = { ...replyTo.value, [k]: cm.id };
   atName.value = { ...atName.value, [k]: "" };
+  /* 同级只有一个框：开一级回复框就先收掉这条评论下的二级回复框 */
+  clearReplyToRp(p, cm);
   if (p.cloud && canReadWall()) loadThread(p); /* 顺手刷新，边看边回 */
   focusSelector(repInputSel(p, cm));
 }
-/* 回复某条回复：仍挂在同一个一级评论下（两级封顶），并 @ 这位回复者 */
+/* 收掉某条一级评论下的「就地二级回复框」 */
+function clearReplyToRp(p, cm) {
+  const rk = repKey(p, cm);
+  if (replyRp.value[rk]) {
+    const next = { ...replyRp.value };
+    delete next[rk];
+    replyRp.value = next;
+  }
+}
+/* 回复某条回复：输入框就地出现在「这条二级评论」下方（仍挂在同一个一级评论下，两级封顶），并 @ 这位回复者 */
 function openReplyTo(p, cm, rp) {
   /* #28 未登录不能回复云端帖 */
   if (p.cloud && !signedIn.value) return showWallMsg("community.commentSignIn");
   const k = cmtKey(p);
-  replyTo.value = { ...replyTo.value, [k]: cm.id };
+  /* 一级回复框让位（否则一上一下两个框） */
+  const nextTo = { ...replyTo.value };
+  delete nextTo[k];
+  replyTo.value = nextTo;
+  replyRp.value = { ...replyRp.value, [repKey(p, cm)]: rp.id };
   atName.value = { ...atName.value, [k]: rp.name || "" };
   openRep.value = { ...openRep.value, [repOpenKey(p, cm)]: true };
-  focusSelector(repInputSel(p, cm));
+  focusSelector(repInputSel(p, cm, rp));
 }
 function cancelReply(p) {
   const k = cmtKey(p);
@@ -414,14 +451,25 @@ function cancelReply(p) {
   delete nextAt[k];
   replyTo.value = nextTo;
   atName.value = nextAt;
+  /* 二级「就地」回复框也一起收掉（key 形如 <帖key>:<一级评论id>） */
+  const nextRp = { ...replyRp.value };
+  for (const key of Object.keys(nextRp)) if (key.startsWith(k + ":")) delete nextRp[key];
+  replyRp.value = nextRp;
 }
 /* 只在该评论正是当前回复目标时才收起回复框（删别的评论不影响正在写的回复） */
 function cancelReplyIfTarget(p, cm) {
   if (replyTo.value[cmtKey(p)] === cm.id) cancelReply(p);
+  /* 删掉的是「正在被回复的那条二级评论」→ 就地把框也收起来（cm 可能是它，也可能是它挂的一级评论） */
+  clearReplyToRp(p, cm);
+  if (Object.values(replyRp.value).includes(cm.id)) {
+    const next = { ...replyRp.value };
+    for (const key of Object.keys(next)) if (next[key] === cm.id) delete next[key];
+    replyRp.value = next;
+  }
 }
-/* 回复框占位文案：「回复 xxx…」（xxx 优先取 @ 的对象） */
-function repPlaceholder(p, cm) {
-  const n = atName.value[cmtKey(p)] || cm.name;
+/* 回复框占位文案：「回复 xxx…」（xxx 优先取 @ 的对象；二级就地框用被回复那条的名字） */
+function repPlaceholder(p, cm, rp = null) {
+  const n = atName.value[cmtKey(p)] || (rp && rp.name) || cm.name;
   return t("comment.replyPh", { n });
 }
 /* 二级评论草稿（与一级评论分开，互不干扰） */
@@ -445,14 +493,19 @@ const cmtLoading = ref({});
 async function focusSelector(sel) {
   await nextTick();
   const el = document.querySelector(sel);
-  if (el && el.focus) el.focus();
+  if (!el) return;
+  /* 就地出框还要看得见：滚到视野中央（二级回复的框挂在整层线程末尾，不滚会被当成「没反应」） */
+  if (el.scrollIntoView) el.scrollIntoView({ block: "center", behavior: "smooth" });
+  if (el.focus) el.focus();
 }
 function cmtInputSel(p) {
   const k = CSS.escape(String(cmtKey(p)));
   return `#cmtbox-${k} input, #cmtbox-${k} textarea`;
 }
-function repInputSel(p, cm) {
-  const k = CSS.escape(String(repKey(p, cm)));
+function repInputSel(p, cm, rp = null) {
+  /* 一级回复框 id = repbox-<帖>:<一级评论>；二级「就地」框 = repbox-<帖>:<一级评论>:<二级评论> */
+  const id = repKey(p, cm) + (rp ? ":" + rp.id : "");
+  const k = CSS.escape(String(id));
   return `#repbox-${k} input, #repbox-${k} textarea`;
 }
 function loadThread(p, force = false) {
@@ -726,7 +779,7 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
       <div class="react-row">
         <n-button
           v-for="r in REACTIONS" :key="r.key"
-          round size="small"
+          round size="small" :focusable="false"
           :type="hasReacted(p, r.key) ? 'primary' : 'default'"
           :quaternary="!hasReacted(p, r.key)"
           @click="react(p, r.key)">
@@ -795,16 +848,38 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
                   class="cmt-del" :title="t('common.delete')"
                   @click="delCmt(p, rp)">×</button>
               </div>
-              <p class="cmt-text">{{ rp.text }}</p>
+              <p class="cmt-text cmt-text-open" :title="t('comment.reply')" @click="openReplyTo(p, cm, rp)">{{ rp.text }}</p>
               <div class="cmt-acts">
                 <button class="cmt-act" @click="openReplyTo(p, cm, rp)">
                   {{ t("comment.reply") }}
                 </button>
               </div>
+
+              <!-- 二级评论的回复框就地在它下面出现（用户反馈：以前甩到整块评论底部，像点了没反应） -->
+              <div
+                :id="'repbox-' + repKey(p, cm) + ':' + rp.id"
+                v-if="replyRpOf(p, cm) === rp.id && !(p.cloud && !signedIn)"
+                class="cmt-input cmt-input-rep-in">
+                <n-input
+                  v-model:value="repDraft[repKey(p, cm)]"
+                  round size="small"
+                  :placeholder="repPlaceholder(p, cm, rp)"
+                  :maxlength="MAX_LEN"
+                  @keyup.enter="sendCmt(p, cm)" />
+                <n-button type="primary" size="small" round @click="sendCmt(p, cm)">
+                  {{ t("common.send") }}
+                </n-button>
+                <n-button quaternary size="small" round @click="cancelReply(p)">
+                  {{ t("comment.cancel") }}
+                </n-button>
+                <p class="cmt-left" :class="{ full: repLeft(p, cm) <= 0 }">
+                  {{ repLeft(p, cm) <= 0 ? t("comment.full", { n: MAX_LEN }) : t("comment.left", { n: repLeft(p, cm) }) }}
+                </p>
+              </div>
             </div>
           </div>
 
-          <!-- 二级：就地回复框（云端帖未登录不给开，openReply 已拦截；这里再守一道） -->
+          <!-- 一级：就地回复框（云端帖未登录不给开，openReply 已拦截；这里再守一道） -->
           <div
             :id="'repbox-' + repKey(p, cm)"
             v-if="isReplyOpen(p, cm) && !(p.cloud && !signedIn)" class="cmt-input cmt-input-rep">

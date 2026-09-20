@@ -316,13 +316,16 @@ function offerFood() {
   spawnFx(["\u{1F9FA}", "\u{1F497}", "\u2728"], 4);
 }
 function depart() {
-  /* 睡着了：给明确提示（以前静默 return，用户以为按钮坏了） */
+  /* 睡着了：弹窗明示（以前只在角落 say 一句小字，用户根本看不到 → 以为按钮坏了） */
   if (activePet.value && activePet.value.sleeping) {
-    say(t("adventure.sleepingBlock", { n: activePet.value.name }), 4200);
+    sleepWarn.value = true;
     return;
   }
   if (departAdventure(advDish.value)) spawnFx(["\u{1F392}", "\u2728", "\u{1F43E}"], 5);
 }
+const sleepWarn = ref(false);
+/* 弹窗标题/正文都要带名字：没有宠物时兜底为空串（不显示 null） */
+const sleepName = computed(() => (activePet.value && activePet.value.name) || "");
 function dismissWelcome() { adventure.welcome = null; }
 function gainedNames(keys) {
   return keys.map((k) => {
@@ -674,6 +677,18 @@ function onToggleFramed(d) {
     </div>
   </div>
 
+  <!-- 睡着了送出门（用户反馈）：以前只在角落 say 一句小字，用户以为按钮坏了 —— 改成弹窗明示 -->
+  <div v-if="sleepWarn" class="adopt-mask" @click.self="sleepWarn = false">
+    <div class="adopt-modal sleep-modal">
+      <div class="sleep-ico">🌙</div>
+      <h3>{{ t("adventure.sleepingTitle", { n: sleepName }) }}</h3>
+      <p class="sleep-tip">{{ t("adventure.sleepingBlock", { n: sleepName }) }}</p>
+      <div class="adopt-row">
+        <button class="btn" @click="sleepWarn = false">{{ t("common.gotIt") }}</button>
+      </div>
+    </div>
+  </div>
+
   <ShareCard v-if="showShare" :quote="quote" :pet="activePet" @close="showShare = false" />
   <SnackRain v-if="snackOn" @close="snackOn = false" />
   </div>
@@ -719,6 +734,13 @@ function onToggleFramed(d) {
 }
 .adopt-modal h3 { font-size: 17px; margin-bottom: 14px; text-align: center; font-weight: 800; }
 .adopt-row { display: flex; justify-content: center; margin-top: 14px; }
+
+/* ═══════════ 睡着了 · 送出门拦截弹窗 ═══════════ */
+/* 用户反馈：按钮点了没反应 —— 现在弹窗明示（复用 .adopt-mask/.adopt-modal 与领养弹窗同款） */
+.sleep-modal { text-align: center; padding: 26px 24px 22px; }
+.sleep-ico { font-size: 44px; line-height: 1; margin-bottom: 8px; }
+.sleep-modal h3 { margin-bottom: 10px; }
+.sleep-tip { font-size: 13.5px; font-weight: 700; color: var(--ink-soft); line-height: 1.7; }
 .adopt-quota { font-size: 12.5px; font-weight: 700; color: var(--accent-deep); text-align: center; margin: -6px 0 10px; opacity: .85; }
 .adopt-msg { font-size: 12.5px; font-weight: 700; color: var(--accent-deep); margin-top: 12px; text-align: center; }
 

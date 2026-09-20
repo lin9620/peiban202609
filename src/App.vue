@@ -27,9 +27,11 @@ const NAV = [
 const route = useRoute();
 const router = useRouter();
 
-/* 手机形态的聊天页（/messages/:id）= 微信式整屏：底部 TabBar 与页脚让位，
- * 返回靠聊天页的 ← 钮与系统返回键。桌面双列同页不触发（isMobileNav=false）。 */
-const inChat = computed(() => isMobileNav.value && route.name === "messages" && !!route.params.id);
+/* 手机形态的整屏页（微信式）＝ 聊天页（/messages/:id）+ 独立发帖页（/compose）：
+ * 底部 TabBar 与页脚一并让位，返回靠页内 ← 钮与系统返回键。
+ * 桌面双列同页 / 桌面发布框不触发（isMobileNav=false，桌面零变化）。 */
+const inChat = computed(() => isMobileNav.value
+  && ((route.name === "messages" && !!route.params.id) || route.name === "compose"));
 
 /* 私信 / 通知角标：登录后由 badgeStore 每 30s 智能轮询（后台暂停）。
  * #14：红点只挂在聊天入口（💬）——🔔 不再显示红点，通知进页面看。 */

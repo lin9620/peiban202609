@@ -388,14 +388,14 @@ const dayLabel = (ts) => new Date(ts).toLocaleDateString(
         v-show="!isMobileNav || !activeId"
         class="card dm-list"
         :class="{ 'dm-list--seg': isMobileNav && seg === 'notif' }">
-        <!-- T8 分栏（仅手机形态）：会话 | 漂流瓶 | 通知（红点与桌面顶栏同口径） -->
+        <!-- T8 分栏（仅手机形态）：漂流瓶 | 会话中心 | 通知（红点与桌面顶栏同口径） -->
         <div v-if="isMobileNav" class="dm-seg" role="tablist">
+          <button type="button" class="dm-seg-btn" :class="{ on: seg === 'bottle' }" role="tab" :aria-selected="seg === 'bottle'" @click="seg = 'bottle'">
+            {{ t("tab.segBottle") }}
+          </button>
           <button type="button" class="dm-seg-btn" :class="{ on: seg === 'dm' }" role="tab" :aria-selected="seg === 'dm'" @click="seg = 'dm'">
             {{ t("tab.segDm") }}
             <span v-if="dmBadge" class="notif-count">{{ dmBadge > 99 ? "99+" : dmBadge }}</span>
-          </button>
-          <button type="button" class="dm-seg-btn" :class="{ on: seg === 'bottle' }" role="tab" :aria-selected="seg === 'bottle'" @click="seg = 'bottle'">
-            {{ t("tab.segBottle") }}
           </button>
           <button type="button" class="dm-seg-btn" :class="{ on: seg === 'notif' }" role="tab" :aria-selected="seg === 'notif'" @click="seg = 'notif'">
             {{ t("tab.segNotif") }}

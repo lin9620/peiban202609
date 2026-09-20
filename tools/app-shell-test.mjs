@@ -49,6 +49,7 @@ ok("T13 TabBar 样式含 safe-area 与桌面隔离",
 
 /* ─── ⑤ 消息页微信式（手机：列表页 ↔ 聊天页 二选一，聊天页整屏） ─── */
 const mv = read("src/views/MessagesView.vue");
+const cmt = read("src/views/CommunityView.vue");
 ok("T14 聊天页整屏样式（shell--chat + 100dvh + 内部滚动）",
   css.includes(".shell--mobile-nav.shell--chat .dm-page") && css.includes("height: 100dvh")
   && css.includes(".shell--mobile-nav.shell--chat .dm-scroll"));
@@ -96,7 +97,10 @@ ok("T24 消息Tab三段（手机端 1：会话|漂流瓶|通知）+ 红点挂分
   && mv.includes('<BottleRecords v-else-if="seg === \'bottle\'" @open="openBottleChat" />')
   && mv.includes('<BottleRecords v-if="!isMobileNav" @open="openBottleChat" />')
   && messages.en.tab.segDm === "Chats" && messages.en.tab.segBottle === "Bottle" && messages.en.tab.segNotif === "Alerts"
-  && messages.zh.tab.segDm === "私信" && messages.zh.tab.segBottle === "漂流瓶" && messages.zh.tab.segNotif === "通知");
+  && messages.zh.tab.segDm === "会话中心" && messages.zh.tab.segBottle === "漂流瓶" && messages.zh.tab.segNotif === "通知"
+  /* 手机端 1（返工）：分栏顺序 = 左漂流瓶 · 中会话中心 · 右通知（按分栏按钮的点击绑定取序，避免被 class 绑定误判） */
+  && mv.indexOf("@click=\"seg = 'bottle'\"") < mv.indexOf("@click=\"seg = 'dm'\"")
+  && mv.indexOf("@click=\"seg = 'dm'\"") < mv.indexOf("@click=\"seg = 'notif'\""));
 ok("T25 通知段避「卡中卡」（只去装饰、保留内缩，仅手机形态 + 仅通知段）",
   mv.includes("'dm-list--seg': isMobileNav && seg === 'notif'")
   && css.includes(".shell--mobile-nav .dm-list--seg {")
@@ -115,12 +119,22 @@ ok("T27 我的 Tab 整合（手机形态补钱包金币 = 桌面顶栏口径；�
   read("src/views/ProfileView.vue").includes('v-if="isMobileNav" round :bordered="false" class="soft-tag"')
   && read("src/views/ProfileView.vue").includes("{{ wallet.coins }}")
   && read("src/views/ProfileView.vue").includes('import { isMobileNav } from "../stores/uiStore.js"'));
-ok("T28 共有1 宠物睡着了送行给提示（adventure.sleepingBlock，不再静默）",
+const pet = read("src/views/PetView.vue");
+ok("T28 共有1 宠物睡着了送行给「弹窗」提示（以前角落一句小字没人看 → sleepWarn 弹窗 + 知道啦）",
   read("src/views/PetView.vue").includes('t("adventure.sleepingBlock"')
-  && read("src/views/PetView.vue").includes("activePet.value.sleeping"));
-ok("T29 共有6 我的食谱整卡可点 → /pet?tab=book（PetView 消费 ?tab= 直达 Tab）",
-  read("src/views/ProfileView.vue").includes('to="/pet?tab=book"')
-  && read("src/views/PetView.vue").includes('[\"care\", \"adv\", \"paint\", \"book\"].includes(qTab)'));
+  && read("src/views/PetView.vue").includes("activePet.value.sleeping")
+  && read("src/views/PetView.vue").includes("sleepWarn.value = true;")
+  && read("src/views/PetView.vue").includes('class="adopt-modal sleep-modal"')
+  && read("src/views/PetView.vue").includes('t("adventure.sleepingTitle"')
+  && read("src/views/PetView.vue").includes('t("common.gotIt")')
+  && pet.includes(".sleep-modal {"));
+ok("T29 共有6 我的食谱回原版卡片（菜格 + ♥用心度 + 可删）+ 标题行「去厨房 →」跳 /pet?tab=book",
+  read("src/views/ProfileView.vue").includes('class="my-posts-link" to="/pet?tab=book"')
+  && read("src/views/ProfileView.vue").includes("const HEART =")
+  && read("src/views/ProfileView.vue").includes("{{ HEART }} {{ d.effort }}%")
+  && read("src/views/ProfileView.vue").includes('@click="removeDish(d.id)"')
+  && !read("src/views/ProfileView.vue").includes('class="card book-card"')
+  && pet.includes('["care", "adv", "paint", "book"].includes(qTab)'));
 ok("T30 手机端9 Tab 纯文字（无图标）+ 选中放大（小红书式）",
   !read("src/components/TabBar.vue").includes("tab-ico")
   && css.includes(".tab-item.active .tab-label { transform: scale(1.18); }"));
@@ -147,6 +161,43 @@ ok("T34 冻结过渡自愈（后台/遮挡时路由过渡停在 opacity:0 → �
   && app.includes("setTimeout(scrubStuckFade, 120)")
   && app.includes("scrubTimer = setTimeout(scrubStuckFade, 700)")
   && app.includes('querySelectorAll(".fade-enter-active, .fade-leave-active, .fade-enter-from, .fade-leave-to")'));
+
+/* ─── 用户反馈返工（2026-09-20 第二批） ─── */
+const cv = read("src/views/ComposeView.vue");
+/* ─── ⑨ T10 · 手机端「＋ 发帖」独立页：整屏编辑器（不能再是默认款 textarea） ─── */
+ok("T35 /compose 归到 shell--chat 形态（TabBar + 页脚让位，自己吃满 100dvh）",
+  /const inChat = computed\(\(\) => isMobileNav\.value[\s\S]{0,160}route\.name === "compose"\)/.test(app)
+  && app.includes('<TabBar v-if="isMobileNav && !inChat"')
+  && css.includes(".shell--mobile-nav.shell--chat .footer { display: none; }"));
+ok("T36 发帖页有真正的排版样式（顶栏 / 卡片 / 大输入框 / 动作条，不再是光秃 textarea）",
+  cv.includes(".compose-head {")
+  && cv.includes(".compose-area {")
+  && cv.includes(".compose-bar {")
+  && cv.includes(".compose-tool {")
+  && cv.includes(".compose-page {")
+  && cv.includes(".compose-back")
+  && cv.includes("min-height: 100dvh;")
+  && cv.includes("env(safe-area-inset-bottom")
+  && /\.compose-area \{[\s\S]*?flex: 1 1 auto/.test(cv)
+  && cv.includes("html[data-theme=\"night\"] .compose-card"));
+ok("T37 发帖输入框硬限制 + 字数（与 wall.js 的 1000 字同口径）",
+  cv.includes("const POST_MAX = 1000;")
+  && cv.includes(':maxlength="POST_MAX"')
+  && cv.includes("{{ draft.length }}/{{ POST_MAX }}"));
+ok("T38 回应按钮涟漪关掉（连续点击不再留一圈颜色阴影）+ 按钮不停在 :focus 态",
+  css.includes(".react-row .n-button .n-button-base-wave { display: none !important; }")
+  && css.includes(".react-row .n-button,")
+  && cmt.includes(':focusable="false"'));
+ok("T39 共有5 二级评论回复框就地渲染（replyRp + 只在被回复那条下面开框 + 一级框让位）",
+  cmt.includes("const replyRp = ref({});")
+  && cmt.includes("function openReplyTo(p, cm, rp)")
+  && cmt.includes("replyRp.value = { ...replyRp.value, [repKey(p, cm)]: rp.id };")
+  && cmt.includes("v-if=\"replyRpOf(p, cm) === rp.id")
+  && cmt.includes(":id=\"'repbox-' + repKey(p, cm) + ':' + rp.id\"")
+  && cmt.includes("function repInputSel(p, cm, rp = null)")
+  && cmt.includes("delete nextTo[k];")
+  && cmt.includes("class=\"cmt-input cmt-input-rep-in\"")
+  && css.includes(".cmt-input-rep-in"));
 
 out.push("");
 out.push(`TOTAL ${pass + fail}  PASS ${pass}  FAIL ${fail}`);

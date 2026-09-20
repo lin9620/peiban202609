@@ -32,6 +32,7 @@ export const messages = {
         "Local mode: your data stays in this browser. Sign in to sync to the cloud later.",
       oops: "Something went a little sideways",
       reload: "Reload the page",
+      gotIt: "Got it",
     },
 
     home: {
@@ -166,6 +167,8 @@ export const messages = {
       depart: "See it off",
       departed: "See you soon! {n} set off with your blessing.",
       sleepingBlock: "{n} is fast asleep — wake them up before the trip 🌙",
+      /* 用户反馈：睡着了送出门必须「弹窗」说清楚（角落小字没人看） */
+      sleepingTitle: "Shhh… {n} is asleep",
       awayTitle: "{n} is traveling…",
       awayNote: "Out there somewhere. Come back later for postcards.",
       backIn: "Back in {t}",
@@ -635,8 +638,8 @@ export const messages = {
       home: "首页", community: "暖心墙", messages: "消息", profile: "我的",
       composeBottle: "投漂流瓶", composeBottleSub: "把心事写进海里",
       composePost: "发暖心墙帖", composePostSub: "和温柔的人分享心情",
-      /* App 轨道 T7：消息 Tab 内分栏（会话 | 漂流瓶 | 通知，小红书同款），zh/en 成对 */
-      segDm: "私信", segBottle: "漂流瓶", segNotif: "通知",
+      /* App 轨道 T7：消息 Tab 内分栏（漂流瓶 | 会话中心 | 通知，小红书同款），zh/en 成对 */
+      segDm: "会话中心", segBottle: "漂流瓶", segNotif: "通知",
     },
     langBtn: "English",
     footerNote: "用心制作 · 你做得比你以为的更好。",
@@ -648,6 +651,7 @@ export const messages = {
       localMode: "本地模式：数据保存在当前浏览器。连接云端后登录即可同步。",
       oops: "这里好像有点小状况",
       reload: "刷新页面",
+      gotIt: "知道啦",
     },
 
     home: {
@@ -782,6 +786,8 @@ export const messages = {
       depart: "送它出门",
       departed: "路上小心！{n} 带着你的祝福出发了。",
       sleepingBlock: "{n} 睡着啦——先叫醒它再送出门吧 🌙",
+      /* 用户反馈：睡着了送出门必须「弹窗」说清楚（角落小字没人看） */
+      sleepingTitle: "嘘……{n} 睡着了",
       awayTitle: "{n} 正在旅行……",
       awayNote: "它在外面看世界，回来收明信片吧。",
       backIn: "{t} 后回来",

@@ -241,29 +241,60 @@ export async function cloudDeleteComment(dbCommentId) {
   }
 }
 
-/** 切换回应：已点 → 取消；未点 → 加上。返回最新计数或 null */
-export async function cloudToggleReaction(dbPostId, kind) {
+/** 重复键（23505）= 这条回应其实已经存在，属于「并发/重放」，按成功处理 */
+function isDuplicateRow(e) {
+  const code = e && (e.code || e.status || "");
+  return String(code).includes("23505") || /duplicate key|already exists/i.test(String((e && e.message) || ""));
+}
+
+/**
+ * 把某帖某回应「设置成想要的状态」（幂等）。
+ * @param {string} dbPostId
+ * @param {"hug"|"warm"|"relate"} kind
+ * @param {boolean} on  true=点上，false=取消
+ * @returns {Promise<Object|null>} 最新计数 {hug,warm,relate,mine} 或 null（失败）
+ *
+ * 为什么要有「设置」而不是「切换」：用户连点两下时，两次请求会并发跑
+ * `findReaction → insert/delete`。第二次的查询往往在第一次 insert 落库前返回
+ * 「没点过」→ 再插一次 → 撞唯一键报错 → 界面回滚成「点了没反应」。
+ * 现在改成幂等写入：想点就确保存在（重复键当成功）、想取消就确保删掉，
+ * 连点多少次都不会因为竞态而失败。
+ */
+export async function cloudSetReaction(dbPostId, kind, on) {
   if (!canUseWall()) return null;
   try {
     const uid = cloud.user.id;
     /* 先看我点过没：查询失败就当「没点过」（与原有行为一致，不因一次抖动中断这次操作） */
     let existing = null;
     try { existing = await db.findReaction({ postId: dbPostId, userId: uid, kind }); } catch (e) { /* 视为未点过 */ }
-    if (existing) {
-      await db.deleteReaction({ postId: dbPostId, userId: uid, kind });
-    } else {
-      await db.insertReaction({ post_id: dbPostId, user_id: uid, kind });
+    if (on) {
+      if (!existing) {
+        try { await db.insertReaction({ post_id: dbPostId, user_id: uid, kind }); }
+        catch (e) { if (!isDuplicateRow(e)) throw e; }   /* 已经存在 = 目标状态已达成 */
+      }
+    } else if (existing) {
+      try { await db.deleteReaction({ postId: dbPostId, userId: uid, kind }); }
+      catch (e) { /* 已经不在了 = 目标状态已达成；其它错误交给重拉/上抛判断 */ }
     }
-    /* 重拉该帖回应，返回权威计数；重拉失败不影响「本次切换已生效」 */
+    /* 重拉该帖回应，返回权威计数；重拉失败不影响「本次写入已生效」 */
     let rk = [];
     try { rk = (await db.listReactionsByPost(dbPostId)) || []; } catch (e) { /* 退化成默认计数 */ }
     const ag = aggregateReactions(rk, uid);
     return ag[dbPostId] || { hug: 0, warm: 0, relate: 0, mine: { hug: false, warm: false, relate: false } };
   } catch (e) {
-    console.warn("[cloud] toggleReaction:", e);
+    console.warn("[cloud] setReaction:", e);
     cloud.error = e && e.message ? e.message : String(e);
     return null;
   }
+}
+
+/** 切换回应：已点 → 取消；未点 → 加上。返回最新计数或 null
+ *  （保留旧入口；内部按幂等「设置」实现，调用方一般直接用 cloudSetReaction） */
+export async function cloudToggleReaction(dbPostId, kind) {
+  if (!canUseWall()) return null;
+  let existing = null;
+  try { existing = await db.findReaction({ postId: dbPostId, userId: cloud.user.id, kind }); } catch (e) { /* 视为未点过 */ }
+  return cloudSetReaction(dbPostId, kind, !existing);
 }
 
 /** 上传图片（前端已压缩成 dataURL）→ Storage，返回路径或 null */

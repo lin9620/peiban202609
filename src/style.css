@@ -417,11 +417,16 @@ button, input, textarea { font-family: inherit; }
 .post .pic { max-width: 100%; border-radius: 14px; margin-top: 10px; border: 2px solid rgba(255, 255, 255, .95); }
 .react-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
 /* #18 反应按钮「颜色变化跟不上手」：把 naive-ui 按钮的默认 ~.3s 过渡压到 60ms */
+/* 用户反馈「连续点击回应按钮：点完还留一圈颜色阴影」：
+   naive-ui 的按钮每点一次会播 1s 的 wave 涟漪（box-shadow 扩散的色圈，且第二次点击会重播），
+   所以视觉上「没干净过」。回应按钮要「点了就变、松手就干净」→ 只在这个按钮组里关掉涟漪。
+   （按钮模板上还有 :focusable="false"：点完不再停在 :focus 态，也就没有残留的描边/深一档底色） */
 .react-row .n-button,
 .react-row .n-button .n-button__border,
 .react-row .n-button .n-button__state-border {
   transition: background-color .06s ease, color .06s ease, border-color .06s ease, box-shadow .06s ease;
 }
+.react-row .n-button .n-button-base-wave { display: none !important; }
 .react {
   border: 2px solid rgba(255, 159, 90, .3); background: rgba(255, 255, 255, .85);
   border-radius: 999px; padding: 5px 14px; font-size: 12.5px;
@@ -966,6 +971,8 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 .cmt-head .cmt-at { color: var(--accent-deep); font-weight: 800; font-size: 11.5px; margin-left: 4px; }
 /* 就地回复框：跟二级内容一起缩进 */
 .cmt-input-rep { margin-top: 8px; padding-left: 10px; }
+/* 二级评论的「就地」回复框：就在被回复那条下面，不再需要额外缩进 */
+.cmt-input-rep-in { margin-top: 8px; }
 
 /* ═══════════ 暖心墙 · 排序条 / 浏览数 / 厌恶 ═══════════ */
 .sort-row {
@@ -1643,6 +1650,9 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 .shell--mobile-nav.shell--chat { padding-bottom: 0; }
 .shell--mobile-nav.shell--chat main { padding-bottom: 0; }
 .shell--mobile-nav.shell--chat .footer { display: none; }
+/* 整屏页（聊天 / 发帖）：页面自身的 min-height:100dvh 与「宠物通知浮层」那 14px 外边距叠加
+   会多出一条 14px 的滚动 —— 整屏形态下把浮层外边距归零，页面才真的刚好一屏。 */
+.shell--mobile-nav.shell--chat .pet-notice-stack { margin-bottom: 0; }
 .shell--mobile-nav.shell--chat .dm-page { height: 100dvh; gap: 0; }
 
 /* ═══ T6 · 首页三联容器（仅手机形态渲染；桌面零规则零变化）═══

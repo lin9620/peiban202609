@@ -118,7 +118,8 @@ node tools/online-check.mjs   # 旧版线上检查（已被 live-check 替代，
 node tools/mood-test.mjs      # 心情打卡纯逻辑单测（12 项：连续天数/死循环回归）
 node tools/make-og.mjs        # 重新生成分享图与图标到 public/（改了品牌色或文案后可跑）
 node tools/uifix-test.mjs     # 修复项回归（24 项：评论字数上限/立绘上传校验/大厅文案/状态同步提示/安全头/浏览眼睛摘除/我的页帖子/角色名额口径）
-node tools/app-shell-test.mjs # App 外壳与手机形态回归（28 项：T5 顶栏/TabBar/页脚让位 · T7 私信↔通知分栏与红点 · 聊天整屏(align-items:stretch) · 桌面提示隐藏 · 系统返回键逐级返回/根视图最小化 · 我的页钱包 · 桌面零变化）
+node tools/app-shell-test.mjs # App 外壳与手机形态回归（40 项：T5 顶栏/TabBar/页脚让位 · T7 私信↔通知分栏与红点 · 聊天整屏(align-items:stretch) · 桌面提示隐藏 · 系统返回键逐级返回/根视图最小化 · 我的页钱包 · 睡着了送行弹窗 · 我的食谱回原版 · 二级评论就地回复框 · 发帖页整屏样式 · 桌面零变化）
+node tools/react-queue-test.mjs # 回应按钮连点收敛器单测（12 项：同键串行不并发 · 前一个失败不卡后一个 · 过期响应不回写 · 连点三下奇偶正确 · 单次点击照常回写；纯逻辑无网络）
 node tools/back-stack-test.mjs # 系统返回键拦截栈单测（9 项：空栈不吞键 / true 才算已处理 / 后进先出 / 顶层 false 下层接手 / 拦截器异常不吞键 / 卸载弹栈 / 陌生函数不误删）
 node tools/web-probe.mjs      # 无头浏览器 + CDP 取真机等价实证（`--serve=dist --url=/messages --w=393 --h=852 --file=./expr.js`：真实构建产物 + 精确视口，量盒模型/命中规则；不依赖手机）
 node tools/cdp-eval.mjs       # 真机 WebView CDP 求值（`adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>` 后 `--file=./expr.js`；页面自动进入焦点模拟，息屏也能取数）

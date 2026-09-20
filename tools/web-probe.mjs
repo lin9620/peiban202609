@@ -1,8 +1,9 @@
 /* 网页版实测工装（独立于真机）：无头 Edge + CDP 精确设备模拟 + 真实站点/构建产物
  *   用法：node tools/web-probe.mjs --file=./tools/_expr_x.js [--url=https://dale.de5.net/]
- *                                    [--w=393] [--h=852] [--wait=1500] [--dpr=2.75]
+ *                                    [--w=393] [--h=852] [--wait=1500] [--dpr=2.75] [--shot=out.png]
  *   行为：起无头 Edge（远程调试）→ Emulation.setDeviceMetricsOverride 精确模拟手机视口
  *         → 导航 → 等 load + wait ms → 在页面里求值 --file（awaitPromise/returnByValue）→ 打印 JSON
+ *         → 传了 --shot 再截一张 PNG（肉眼验收排版，省得靠猜）
  *   附：--trace=1 时同时订阅 Console/异常，便于排查（默认关，只回值）
  *   退出：打印结果后关浏览器（临时 profile 一并删除）。 */
 import { spawn } from "node:child_process";
@@ -25,6 +26,8 @@ const trace = arg("trace", "0") === "1";
 const PORT = Number(arg("port", "9333"));
 const serve = arg("serve", "");          /* 传目录（如 dist）→ 起本地静态服务器 + SPA 回退，--url 可写相对路径 */
 const servePort = Number(arg("servePort", "0")); /* 0 = 系统分配（避免并发/残留占用 8791） */
+const shot = arg("shot", "");            /* 传路径 → 求值后再截一张 PNG（肉眼验收排版） */
+let child = null;                        /* 提到模块作用域：退出时才能真正杀掉无头 Edge */
 
 const EDGE = [
   "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
@@ -61,7 +64,7 @@ async function main() {
     srv = await startServer(serve);
     target = "http://127.0.0.1:" + srv.address().port + (url.startsWith("http") ? "/" : url);
   }
-  const child = spawn(EDGE, [
+  child = spawn(EDGE, [
     "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
     "--remote-debugging-port=" + PORT, "--user-data-dir=" + profile,
     "--window-size=" + W + "," + H, "about:blank",
@@ -115,6 +118,20 @@ async function main() {
   });
   console.log(JSON.stringify(r.result && r.result.value !== undefined ? r.result.value : r, null, 1));
   if (trace && logs.length) console.log("--- console ---\n" + logs.slice(-25).join("\n"));
+
+  /* 截图（--shot=out.png）：求值后整屏一张，肉眼验收排版。
+   * 用 Page.captureScreenshot（captureBeyondViewport=false 只取当前视口），
+   * 失败只提示不影响返回值（截图是辅助手段，不是验收依据）。 */
+  if (shot) {
+    try {
+      const cap = await send("Page.captureScreenshot", { format: "png", fromSurface: true });
+      const out = path.resolve(shot);
+      fs.writeFileSync(out, Buffer.from(cap.data, "base64"));
+      console.log("SHOT " + out + " (" + Math.round(fs.statSync(out).size / 1024) + " KB)");
+    } catch (e) {
+      console.log("SHOT_FAIL " + (e && e.message ? e.message : e));
+    }
+  }
   ws.close();
   if (srv) srv.close();
   try { child.kill(); } catch (e) {}
