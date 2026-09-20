@@ -40,7 +40,10 @@ async function detectConfig() {
   try {
     const r = await fetch("/supabase.json", { cache: "no-store" });
     if (r.ok) {
-      const j = await r.json();
+      /* 404 会被 SPA 回退成 index.html（不是 JSON）——r.json() 会抛 SyntaxError，
+       * 必须当「没有配置文件」处理，绝不能让这个探测把 initCloud 打进 catch
+       * （踩过：supabase.json 未部署 + 环境变量正常时，登录卡整个消失）。 */
+      const j = await r.json().catch(() => null);
       if (j && j.url && j.anonKey) return { url: j.url, key: j.anonKey };
     }
   } catch (e) { /* 没有配置文件，正常 */ }

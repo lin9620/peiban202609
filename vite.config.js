@@ -217,8 +217,40 @@ function seoRoutes() {
   };
 }
 
+/* —— 构建产物 env 硬校验 ——
+ * 踩过：偶发一次 npm run build 时 VITE_SUPABASE_URL 没进产物（同命令重跑即正常），
+ * 那份坏包被部署后登录卡整个消失（cloud.ready=false 退化本地模式）。
+ * 这里在 closeBundle 里直接断言：env 在 .env 里存在 → 产物里必须能找到。
+ * 找不到直接让构建失败，坏包根本出不了门。 */
+function envGuard() {
+  return {
+    name: "env-guard",
+    apply: "build",
+    closeBundle() {
+      /* 从 .env 读 URL（只校验 URL 的项目 slug，不把密钥写进日志） */
+      let slug = "";
+      try {
+        const env = fs.readFileSync(path.join(rootDir, ".env"), "utf8");
+        const m = env.match(/^VITE_SUPABASE_URL=https:\/\/([a-z0-9]+)\.supabase\.co/m);
+        if (m) slug = m[1];
+      } catch (e) { /* 没有 .env 就不校验 */ }
+      if (!slug) return;
+      const idx = fs.readdirSync(path.join(rootDir, "dist", "assets"))
+        .filter((f) => /^index-.*\.js$/.test(f));
+      const bad = idx.filter((f) =>
+        !fs.readFileSync(path.join(rootDir, "dist", "assets", f), "utf8").includes(slug));
+      if (bad.length) {
+        throw new Error(
+          `[env-guard] VITE_SUPABASE_URL 没进构建产物（${bad.join(", ")}）——
+           登录会整个失效。重跑一次 npm run build；若复现，检查 .env 是否被进程环境覆盖。`);
+      }
+      console.log(`\n  env-guard  VITE_SUPABASE_URL ✓ 已进产物（${idx.length} 个入口包）\n`);
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [vue(), seoSitemap(), seoRoutes()],
+  plugins: [vue(), seoSitemap(), seoRoutes(), envGuard()],
   server: {
     port: 5173,
     open: true,
