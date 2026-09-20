@@ -134,6 +134,13 @@ ok("T32 手机端4 捞到的瓶子居中弹出（bottle-tray fixed 居中 + 压�
   css.includes(".shell--mobile-nav .bottle-tray {")
   && css.includes("translate(-50%, -50%)")
   && css.includes("@keyframes bottle-pop"));
+ok("T33 长词断行护栏（乱码长词不再撑爆 grid 轨道：minmax(0,1fr)+min-width:0+anywhere+shell clip）",
+  css.includes(".dm-wrap { grid-template-columns: minmax(0, 1fr); }")
+  && css.includes(".dm-wrap > * { min-width: 0; max-width: 100%; }")
+  && css.includes(".bottle-record-text { overflow-wrap: anywhere; }")
+  && /\.shell \{[^}]*overflow-x: clip/.test(css)
+  && /\.dm-text \{[^}]*overflow-wrap: anywhere/.test(css)
+  && /\.notif-quote \{[\s\S]*?overflow-wrap: anywhere/.test(css));
 
 out.push("");
 out.push(`TOTAL ${pass + fail}  PASS ${pass}  FAIL ${fail}`);

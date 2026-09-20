@@ -36,7 +36,7 @@ button, input, textarea { font-family: inherit; }
 
 ::selection { background: var(--accent-soft); }
 
-.shell { max-width: 780px; margin: 0 auto; padding: 0 18px 48px; position: relative; z-index: 1; }
+.shell { max-width: 780px; margin: 0 auto; padding: 0 18px 48px; position: relative; z-index: 1; overflow-x: clip; }
 
 /* 漂浮光斑装饰 */
 .orb {
@@ -1385,10 +1385,11 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 .notif-item.unread { border: 1.5px solid rgba(255, 159, 90, .5); background: var(--glass-strong); }
 .notif-icon { font-size: 17px; line-height: 1.2; }
 .notif-body { flex: 1; min-width: 0; }
-.notif-line { font-size: 13.5px; font-weight: 700; color: var(--ink); margin: 0; }
+.notif-line { font-size: 13.5px; font-weight: 700; color: var(--ink); margin: 0; overflow-wrap: anywhere; }
 .notif-quote {
   margin: 4px 0 0; font-size: 12.5px; color: var(--ink-soft);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .notif-time { margin: 3px 0 0; font-size: 11.5px; }
 .notif-dot {
@@ -1445,6 +1446,7 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 .dm-preview {
   margin: 3px 0 0; font-size: 12.5px; color: var(--ink-soft);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .dm-muted { opacity: .8; margin-right: 4px; }
 .dm-badge {
@@ -1512,7 +1514,7 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 }
 .dm-bubble.recalled { opacity: .68; font-style: italic; }
 .dm-bubble.failed { border-color: #e08b86; }
-.dm-text { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--ink); white-space: pre-wrap; word-break: break-word; }
+.dm-text { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--ink); white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
 .dm-recalled { margin: 0; font-size: 12.5px; color: var(--ink-soft); }
 .dm-stamp { display: block; margin-top: 3px; font-size: 10.5px; color: var(--ink-soft); text-align: right; }
 .dm-recall {
@@ -1536,9 +1538,19 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 /* 墙上主页的发私信按钮（与摸摸头/投喂同一排的视觉语言） */
 .waller-dm { display: flex; flex-direction: column; align-items: flex-start; margin-top: 10px; }
 
-/* 窄屏：会话列表在上、对话在下（单列） */
+/* ═══ T9 · 长词断行护栏（真机截图实证：无空格乱码把 grid 轨道撑爆、整页横向溢出）═══
+   overflow-wrap: anywhere 参与 min-content 计算（break-word 不参与）→ 结构层 minmax(0,1fr)
+   + min-width:0 之外，再让正文容器可断任意长词。 */
+.bottle-record-text { overflow-wrap: anywhere; }
+.sub, .notice { overflow-wrap: anywhere; }
+.post .text { overflow-wrap: anywhere; }
+
+/* 窄屏：会话列表在上、对话在下（单列）。
+   T9 修复：1fr 的最小轨道 = 内容 min-content → 不可断行的长词（如无空格乱码）会把整条
+   轨道撑到几百 px、整页横向溢出（真机截图实证）。minmax(0,1fr) + 项 min-width:0 锁死。 */
 @media (max-width: 780px) {
-  .dm-wrap { grid-template-columns: 1fr; }
+  .dm-wrap { grid-template-columns: minmax(0, 1fr); }
+  .dm-wrap > * { min-width: 0; max-width: 100%; }
   .dm-list { max-height: 46vh; }
   .dm-scroll { max-height: 46vh; }
 }
