@@ -55,10 +55,11 @@ t("#25 英文口径 → 也含 时:分", () => {
 
 /* ══════════ 排序 ══════════ */
 
-t("T1 排序方式共 4 种，默认最新，key 与 i18n 键齐备", () => {
-  assert.equal(SORTS.length, 4);
-  assert.equal(DEFAULT_SORT, "new");
-  assert.deepEqual(SORT_MODES, ["new", "relate", "hug", "warm"]);
+t("T1 排序方式共 5 种，默认「推荐」（最近 7 天随机），key 与 i18n 键齐备", () => {
+  assert.equal(SORTS.length, 5);
+  assert.equal(DEFAULT_SORT, "recommend");
+  assert.equal(SORTS[0].key, "recommend");
+  assert.deepEqual(SORT_MODES, ["recommend", "new", "relate", "hug", "warm"]);
   for (const s of SORTS) assert.ok(s.tk.startsWith("community.sort"), s.key);
 });
 

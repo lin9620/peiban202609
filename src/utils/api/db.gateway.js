@@ -83,9 +83,10 @@ export const db = {
     return call(`/posts?limit=${enc(limit)}`);
   },
 
-  /** 某用户的帖子（新→旧） */
-  async listPostsByUser(userId, limit) {
-    return call(`/users/${enc(userId)}/posts?limit=${enc(limit)}`);
+  /** 某用户的帖子（新→旧）；offset = 分页偏移（0/缺省 = 旧行为） */
+  async listPostsByUser(userId, limit, offset = 0) {
+    const off = Number(offset) > 0 ? `&offset=${enc(Number(offset))}` : "";
+    return call(`/users/${enc(userId)}/posts?limit=${enc(limit)}${off}`);
   },
 
   /** 发帖：返回插入后的整行 */

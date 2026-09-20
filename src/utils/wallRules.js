@@ -33,15 +33,22 @@ export function fmtWhen(ts, locale = "zh", now = Date.now()) {
 
 /* ══════════ 排序 ══════════ */
 
-/** 排序方式（顺序 = UI 上的按钮顺序），tk 为 i18n key */
+/**
+ * 排序方式（顺序 = UI 上的按钮顺序），tk 为 i18n key。
+ * 默认 = 推荐：最近 7 天内的内容按天随机排（用户多了之后把 RECOMMEND_DAYS 调小即可）。
+ */
 export const SORTS = [
+  { key: "recommend", tk: "community.sortRec" },
   { key: "new", tk: "community.sortNew" },
   { key: "relate", tk: "community.sortRelate" },
   { key: "hug", tk: "community.sortHug" },
   { key: "warm", tk: "community.sortWarm" },
 ];
 export const SORT_MODES = SORTS.map((s) => s.key);
-export const DEFAULT_SORT = "new";
+export const DEFAULT_SORT = "recommend";
+
+/** 推荐模式的时间窗口（天）：先 7 天，用户多了调小（5/3/2）即可，纯常数 */
+export const RECOMMEND_DAYS = 7;
 
 /** 帖子某个回应的计数（缺字段/脏数据一律当 0） */
 export function reactCount(post, kind) {
@@ -216,8 +223,8 @@ export const DEFAULT_RANGE = "2d";
 /** 「不筛时间」：内部档位，不出现在按钮里（按钮由 RANGES 生成，天然不含它） */
 export const RANGE_ALL = "all";
 
-/** 需要时间范围的排序：「最新」之外的三种 */
-export const RANGE_SORTS = SORT_MODES.filter((k) => k !== DEFAULT_SORT);
+/** 需要时间范围的排序：同感 / 抱抱 / 暖暖最多（「推荐」有自己固定的 7 天窗口、「最新」不筛时间） */
+export const RANGE_SORTS = ["relate", "hug", "warm"];
 
 /**
  * 该排序方式下是否显示 / 使用时间范围。
@@ -272,6 +279,63 @@ export function inRange(post, range = DEFAULT_RANGE, now = Date.now()) {
   const r = RANGE_KEYS.includes(range) ? range : DEFAULT_RANGE;
   if (r === "month") return utcDay(post.ts).slice(0, 7) === utcDay(now).slice(0, 7);
   return post.ts >= rangeStartTs(r, now);
+}
+
+/* ══════════ 推荐（默认模式）：最近 N 天内按天随机 ══════════ */
+
+/** 字符串 → 32 位种子（FNV-1a，短且分布均匀，足够洗牌用） */
+export function hashSeed(str) {
+  let h = 0x811c9dc5;
+  const s = String(str || "");
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+/** mulberry32 伪随机（可复现：同种子同序列 → 同一天推荐顺序稳定） */
+export function mulberry32(seed) {
+  let a = Number(seed) >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Fisher-Yates 洗牌（不改入参；rand 可注入便于单测） */
+export function shuffleSeeded(list, seed, rand = null) {
+  const arr = (Array.isArray(list) ? list.slice() : []);
+  const next = typeof rand === "function" ? rand : mulberry32(hashSeed(seed));
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(next() * (i + 1));
+    const t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+  }
+  return arr;
+}
+
+/**
+ * 推荐流：最近 RECOMMEND_DAYS（默认 7）天内的帖子随机排序。
+ *   - 示例帖永远在（与 inRange 同口径：新用户一进来不能空无一物）
+ *   - 同一天内顺序稳定（种子 = UTC 日），第二天自然换一批顺序
+ *   - 未来帖（客户端时钟不准）不进推荐，宁可少一条
+ * @param {Array} list
+ * @param {{days?:number, now?:number, seed?:string}} [opts]
+ * @returns {Array} 新数组
+ */
+export function recommendPosts(list, opts = {}) {
+  const days = Number(opts.days) > 0 ? Number(opts.days) : RECOMMEND_DAYS;
+  const now = Number(opts.now) || Date.now();
+  const seed = opts.seed != null ? opts.seed : utcDay(now);
+  const since = now - days * DAY_MS;
+  const pool = (Array.isArray(list) ? list : []).filter((p) => {
+    if (!p) return false;
+    if (p.sample) return true;
+    return !!p.ts && p.ts <= now && p.ts >= since;
+  });
+  return shuffleSeeded(pool, seed);
 }
 
 /* ══════════ 云操作失败原因 ══════════ */

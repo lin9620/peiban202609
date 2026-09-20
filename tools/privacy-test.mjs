@@ -65,9 +65,12 @@ t_("P3 通配兜底在 /privacy 之后（否则会被重定向回首页）", () 
   const iCatch = router.indexOf(":pathMatch");
   assert.ok(iPrivacy > 0 && iCatch > iPrivacy, "通配路由出现在 /privacy 之前");
 });
-t_("P4 页脚有常驻入口", () => {
-  assert.ok(app.includes('<router-link to="/privacy"'), "页脚缺少 /privacy 链接");
-  assert.ok(app.includes('t("privacy.title")'), "页脚链接文案未走 i18n");
+t_("P4 隐私政策常驻入口（手机端 7：页脚挪到「设置」页；/privacy 路由与预渲染保留）", () => {
+  assert.ok(!app.includes('<router-link to="/privacy"'), "页脚不应再有隐私链接（已挪到设置页）");
+  const settings = read("src/views/SettingsView.vue");
+  assert.ok(settings.includes('to="/privacy"'), "设置页缺少隐私政策入口");
+  assert.ok(settings.includes('t("privacy.title")'), "设置页链接文案未走 i18n");
+  assert.ok(read("src/router.js").includes('"./views/PrivacyView.vue"'), "/privacy 路由必须保留");
 });
 t_("P5 sitemap 登记 /privacy", () => {
   assert.ok(sm.includes("<loc>https://dale.de5.net/privacy</loc>"), "sitemap 未登记");

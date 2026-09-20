@@ -112,12 +112,15 @@ export async function initCloud() {
     sb = createClient(cfg.url, cfg.key, {
       auth: { persistSession: true, autoRefreshToken: true },
     });
-    cloud.ready = true;
     /* 网关模式：/api/* 请求带上当前用户 JWT（Worker 只透传，RLS 仍由数据库执行） */
     setAuthTokenProvider(() => accessToken);
     const { data, error } = await sb.auth.getSession();
     if (error) throw error;
     await refreshSession(data ? data.session : null);
+    /* ready 放在会话恢复之后：组件们以 cloud.ready 触发首拉，
+       这样登录用户的帖子/私信/通知首拉就带着本人身份（回应 mine 标记、未读数都正确），
+       不会出现「先以游客身份拉一遍 → 已点过的回应显示成没点」的竞态（用户实测点不掉回应的根因）。 */
+    cloud.ready = true;
     sb.auth.onAuthStateChange((evt, session) => {
       /* PKCE 流程的地址栏里没有 type=recovery，靠这个事件识别重置链接落地 */
       if (isRecoveryEvent(evt)) cloud.recovery = true;

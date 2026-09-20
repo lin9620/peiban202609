@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from "vue";
+import { useRoute } from "vue-router";
 import { t, i18n } from "../i18n.js";
 import { stories } from "../data/stories.js";
 import { dayIndex } from "../utils/daily.js";
@@ -32,6 +33,10 @@ import {
 } from "../utils/imaging.js";
 
 const tab = ref("care");
+/* 外部直达某 Tab：「我的」页食谱 → /pet?tab=book（手绘厨房画板 → /pet?tab=paint） */
+const routeQ = useRoute().query;
+const qTab = typeof routeQ.tab === "string" ? routeQ.tab : "";
+if (["care", "adv", "paint", "book"].includes(qTab)) tab.value = qTab;
 
 /* —— 零食雨小游戏 —— */
 const snackOn = ref(false);
@@ -311,6 +316,11 @@ function offerFood() {
   spawnFx(["\u{1F9FA}", "\u{1F497}", "\u2728"], 4);
 }
 function depart() {
+  /* 睡着了：给明确提示（以前静默 return，用户以为按钮坏了） */
+  if (activePet.value && activePet.value.sleeping) {
+    say(t("adventure.sleepingBlock", { n: activePet.value.name }), 4200);
+    return;
+  }
   if (departAdventure(advDish.value)) spawnFx(["\u{1F392}", "\u2728", "\u{1F43E}"], 5);
 }
 function dismissWelcome() { adventure.welcome = null; }

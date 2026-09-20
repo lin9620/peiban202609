@@ -3,7 +3,7 @@ import { ref, computed, watch } from "vue";
 import { NButton, NInput, NAvatar, NTag, NProgress } from "naive-ui";
 import { t } from "../i18n.js";
 import { getItem, setItem, removeItem } from "../utils/storage.js";
-import { cookbook, removeDish, moodLog, moodStreak, wallet } from "../stores/petStore.js";
+import { cookbook, moodLog, moodStreak, wallet } from "../stores/petStore.js";
 import { isMobileNav } from "../stores/uiStore.js";
 import { todayKey } from "../utils/daily.js";
 import {
@@ -19,7 +19,6 @@ import { cloudFetchUserPosts } from "../utils/wall.js";
 /* 心情图标：一律用 Unicode 转义，避免源码中的 emoji 编码损坏 */
 const MOOD = ["\u{1F929}", "\u{1F642}", "\u{1F60C}", "\u{1F327}\uFE0F", "\u{1F614}"];
 const PAW = "\u{1F43E}";
-const HEART = "\u{1F497}";
 
 const NICK_KEY = "wp-nickname";
 
@@ -50,7 +49,7 @@ watch(
   { immediate: true },
 );
 
-/* #9 我在暖心墙的帖子（「我的」页也展示；登录后跟随登录态拉取，点一条跳到墙上那条帖子） */
+/* #9 我在暖心墙的帖子：默认只展示最新 3 条（共有 5），「更多」进 /my-posts 分页看全部 */
 const myPosts = ref([]);
 const myPostsBusy = ref(false);
 watch(
@@ -58,7 +57,7 @@ watch(
   async ([ready, uid]) => {
     if (!ready || !uid) { myPosts.value = []; return; }
     myPostsBusy.value = true;
-    try { myPosts.value = (await cloudFetchUserPosts(uid, 20)) || []; }
+    try { myPosts.value = (await cloudFetchUserPosts(uid, 3)) || []; }
     catch (e) { myPosts.value = []; }
     myPostsBusy.value = false;
   },
@@ -366,11 +365,11 @@ const brightRatio = computed(() => {
       <p v-if="nickMsg" class="streak-note">{{ nickMsg }}</p>
     </section>
 
-    <!-- #9 我在暖心墙的帖子（登录后展示；点一条就跳到墙上那条帖子） -->
+    <!-- #9 我在暖心墙的帖子（共有 5：默认最新 3 条 + 「更多」→ /my-posts 分页看全部） -->
     <section v-if="cloudSigned" class="card">
       <div class="row-between">
         <h2>{{ t("profile.myPosts") }}</h2>
-        <router-link class="my-posts-link" to="/community">{{ t("nav.community") }} →</router-link>
+        <router-link class="my-posts-link" to="/my-posts">{{ t("profile.more") }} →</router-link>
       </div>
       <p v-if="myPostsBusy" class="sub">…</p>
       <p v-else-if="!myPosts.length" class="sub">{{ t("profile.myPostsEmpty") }}</p>
@@ -527,23 +526,20 @@ const brightRatio = computed(() => {
       <p class="cal-legend">{{ t("profile.moodEmpty") }}</p>
     </section>
 
-    <!-- 我的食谱 -->
-    <section class="card">
-      <h2>{{ t("profile.myBook") }}</h2>
+    <!-- 我的食谱（共有 6：整卡可点 → 宠物页的食谱 Tab（/pet?tab=book） -->
+    <router-link class="card book-card" to="/pet?tab=book">
+      <div class="row-between">
+        <h2>{{ t("profile.myBook") }}</h2>
+        <span class="my-posts-link">{{ t("profile.bookOpen") }} →</span>
+      </div>
       <p v-if="!cookbook.length" class="sub">{{ t("profile.bookEmpty") }}</p>
       <div v-else class="book-grid">
-        <div v-for="d in cookbook" :key="d.id" class="dish">
+        <div v-for="d in cookbook.slice(0, 6)" :key="d.id" class="dish">
           <img :src="d.img" :alt="d.name" />
           <div class="name">{{ d.name }}</div>
-          <div class="row">
-            <span class="notice" style="margin: 0">{{ HEART }} {{ d.effort }}%</span>
-            <n-button quaternary size="tiny" @click="removeDish(d.id)">
-              {{ t("common.delete") }}
-            </n-button>
-          </div>
         </div>
       </div>
-    </section>
+    </router-link>
   </div>
 </template>
 

@@ -24,7 +24,6 @@ const NAV = [
   { to: "/community", key: "nav.community" },
   { to: "/profile", key: "nav.profile" },
 ];
-
 const route = useRoute();
 const router = useRouter();
 
@@ -173,8 +172,7 @@ function reload() {
 
           <footer class="footer">
             <span>{{ t("footerNote") }}</span>
-            <!-- 隐私政策入口：常驻页脚，让访客与外部审核都能直接找到（Google 发布要求） -->
-            <router-link to="/privacy" class="footer-link">{{ t("privacy.title") }}</router-link>
+            <!-- 隐私政策入口已挪到「设置」页（手机端 7：页脚只留一句签名）；/privacy 路由保留（Google 审核用） -->
           </footer>
         </div>
 

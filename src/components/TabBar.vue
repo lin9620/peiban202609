@@ -35,8 +35,8 @@ function composeBottle() {
 }
 function composePost() {
   close();
-  /* CommunityView 的发帖框常驻页顶；query 供后续聚焦/滚动使用（T10 细化） */
-  router.push({ path: "/community", query: { compose: "1" } }).catch(() => {});
+  /* 手机端 3：发布统一走独立发布页（大输入框，一次写完） */
+  router.push("/compose").catch(() => {});
 }
 </script>
 
@@ -45,7 +45,6 @@ function composePost() {
     <router-link
       v-for="item in TABS.slice(0, 2)" :key="item.path"
       :to="item.path" class="tab-item" :class="{ active: isActive(item) }">
-      <span class="tab-ico">{{ item.icon }}</span>
       <span class="tab-label">{{ t(item.key) }}</span>
     </router-link>
 
@@ -56,7 +55,6 @@ function composePost() {
     <router-link
       v-for="item in TABS.slice(2)" :key="item.path"
       :to="item.path" class="tab-item" :class="{ active: isActive(item) }">
-      <span class="tab-ico">{{ item.icon }}</span>
       <span class="tab-label">{{ t(item.key) }}</span>
       <span v-if="item.badge && dmBadge" class="tab-badge">{{ dmBadge > 99 ? "99+" : dmBadge }}</span>
     </router-link>

@@ -5,7 +5,7 @@
  *   TabBar ＋ 钮「投漂流瓶」跳 /?tab=bottle → 这里消费成初始联；宠物联禁滑动穿透（画板/零食雨手势优先）。
 -->
 <script setup>
-import { ref, computed, watch, defineAsyncComponent } from "vue";
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick, defineAsyncComponent } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { t } from "../i18n.js";
 import { isMobileNav } from "../stores/uiStore.js";
@@ -42,13 +42,19 @@ function goPet() {
   else router.push("/pet");
 }
 
-/* 横滑手势：先辨轴（纵向让位页面滚动），横向达阈值才切联；
- * 宠物联整段禁用滑动穿透 —— 画板 / 零食雨的手势优先（D3），切联走频道条。 */
-let sx = 0, sy = 0, swiping = false, axis = "";
+/* 横滑手势：先辨轴（纵向让位页面滚动），横向达阈值才切联。
+ * 宠物联（手机端 10）：画板 / 零食雨 / 按钮上的触摸不抢（手势优先），
+ * 其余区域允许**左滑回漂流瓶**（宠物是最后一联，不需要右滑）。 */
+let sx = 0, sy = 0, swiping = false, axis = "", petGuard = false;
+const PET_GUARD_SEL = "canvas, button, a, input, textarea, select, .sr-overlay, .painter-bar, .swatch";
 function onTouchStart(e) {
-  if (pane.value === "pet") return;
   const t0 = e.touches[0];
   sx = t0.clientX; sy = t0.clientY; swiping = true; axis = "";
+  petGuard = false;
+  if (pane.value === "pet") {
+    const el = e.target;
+    petGuard = !!(el && el.closest && el.closest(PET_GUARD_SEL));
+  }
 }
 function onTouchMove(e) {
   if (!swiping) return;
@@ -62,12 +68,35 @@ function onTouchMove(e) {
 function onTouchEnd(e) {
   if (!swiping) return;
   swiping = false;
-  if (axis !== "x") return;
+  if (petGuard || axis !== "x") return;
   const t0 = e.changedTouches[0];
   const dir = swipeDir(t0.clientX - sx, 0);
+  if (pane.value === "pet") {            /* 手机端 10：宠物联 → 左滑回漂流瓶 */
+    if (dir === -1) setPane("bottle");
+    return;
+  }
   if (dir === 1 && idx.value < HOME_PANES.length - 1) setPane(HOME_PANES[idx.value + 1].k);
   else if (dir === -1 && idx.value > 0) setPane(HOME_PANES[idx.value - 1].k);
 }
+
+/* 轨道高度跟随当前联（手机端 5）：原来 track 高 = 最高联，矮联下方一大片空白。
+ * 用 ResizeObserver 量当前联的实际高度 → 钉在 track 上，切联/内容变化都跟手。 */
+const paneEls = ref([]);
+const trackH = ref("");
+let ro = null;
+function measure() {
+  const el = paneEls.value[idx.value];
+  if (el) trackH.value = Math.max(120, Math.round(el.offsetHeight)) + "px";
+}
+watch(idx, async () => { await nextTick(); measure(); });
+onMounted(() => {
+  measure();
+  if (typeof ResizeObserver !== "undefined") {
+    ro = new ResizeObserver(measure);
+    paneEls.value.forEach((el) => el && ro.observe(el));
+  }
+});
+onBeforeUnmount(() => { if (ro) ro.disconnect(); });
 </script>
 
 <template>
@@ -91,13 +120,13 @@ function onTouchEnd(e) {
 
     <div
       class="home-track"
-      :style="{ transform: 'translateX(' + idx * -100 + '%)' }"
+      :style="{ transform: 'translateX(' + idx * -100 + '%)', height: trackH }"
       @touchstart.passive="onTouchStart"
       @touchmove.passive="onTouchMove"
       @touchend.passive="onTouchEnd">
-      <div class="home-pane"><TodayPane @go-pet="goPet" /></div>
-      <div class="home-pane"><BottleView /></div>
-      <div class="home-pane home-pane--pet">
+      <div class="home-pane" :ref="(el) => (paneEls[0] = el)"><TodayPane @go-pet="goPet" /></div>
+      <div class="home-pane" :ref="(el) => (paneEls[1] = el)"><BottleView /></div>
+      <div class="home-pane home-pane--pet" :ref="(el) => (paneEls[2] = el)">
         <PetView v-if="petMounted" />
         <div v-else class="home-pane-lazy"><span>🐾</span></div>
       </div>

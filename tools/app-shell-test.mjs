@@ -88,12 +88,15 @@ ok("T23 分栏条仅手机形态渲染，桌面零变化（桌面 template 恒�
   && mv.includes('v-if="!isMobileNav || seg === \'dm\'"')
   && mv.includes("v-else-if=\"seg === 'notif'\"")
   && mv.includes("seg.value = \"dm\";"));
-ok("T24 通知段复用 NotificationsView（懒加载 chunk）+ 红点挂分栏（私信=dm+requests / 通知=badge.notif）",
+ok("T24 消息Tab三段（手机端 1：会话|漂流瓶|通知）+ 红点挂分段 + 通知复用 NotificationsView",
   mv.includes("defineAsyncComponent(() => import(\"./NotificationsView.vue\"))")
   && mv.includes("const dmBadge = computed(() => badge.dm + badge.requests);")
   && mv.includes('v-if="badge.notif" class="notif-count"')
-  && messages.en.tab.segDm === "Chats" && messages.en.tab.segNotif === "Alerts"
-  && messages.zh.tab.segDm === "私信" && messages.zh.tab.segNotif === "通知");
+  && mv.includes("seg === 'bottle'")
+  && mv.includes('<BottleRecords v-else-if="seg === \'bottle\'" @open="openBottleChat" />')
+  && mv.includes('<BottleRecords v-if="!isMobileNav" @open="openBottleChat" />')
+  && messages.en.tab.segDm === "Chats" && messages.en.tab.segBottle === "Bottle" && messages.en.tab.segNotif === "Alerts"
+  && messages.zh.tab.segDm === "私信" && messages.zh.tab.segBottle === "漂流瓶" && messages.zh.tab.segNotif === "通知");
 ok("T25 通知段避「卡中卡」（只去装饰、保留内缩，仅手机形态 + 仅通知段）",
   mv.includes("'dm-list--seg': isMobileNav && seg === 'notif'")
   && css.includes(".shell--mobile-nav .dm-list--seg {")
@@ -107,11 +110,30 @@ ok("T26 系统返回键先退内部层级（拦截栈：通知段 → 私信段�
   && read("src/stores/uiStore.js").includes("export function popBack(")
   && app.includes("if (runBack()) return;")
   && mv.includes("function segBack()") && mv.includes("pushBack(segBack);")
-  && mv.includes("popBack(segBack);") && mv.includes('if (seg.value !== "notif") return false;'));
+  && mv.includes("popBack(segBack);") && mv.includes('if (seg.value === "dm") return false;'));
 ok("T27 我的 Tab 整合（手机形态补钱包金币 = 桌面顶栏口径；桌面零变化）",
   read("src/views/ProfileView.vue").includes('v-if="isMobileNav" round :bordered="false" class="soft-tag"')
   && read("src/views/ProfileView.vue").includes("{{ wallet.coins }}")
   && read("src/views/ProfileView.vue").includes('import { isMobileNav } from "../stores/uiStore.js"'));
+ok("T28 共有1 宠物睡着了送行给提示（adventure.sleepingBlock，不再静默）",
+  read("src/views/PetView.vue").includes('t("adventure.sleepingBlock"')
+  && read("src/views/PetView.vue").includes("activePet.value.sleeping"));
+ok("T29 共有6 我的食谱整卡可点 → /pet?tab=book（PetView 消费 ?tab= 直达 Tab）",
+  read("src/views/ProfileView.vue").includes('to="/pet?tab=book"')
+  && read("src/views/PetView.vue").includes('[\"care\", \"adv\", \"paint\", \"book\"].includes(qTab)'));
+ok("T30 手机端9 Tab 纯文字（无图标）+ 选中放大（小红书式）",
+  !read("src/components/TabBar.vue").includes("tab-ico")
+  && css.includes(".tab-item.active .tab-label { transform: scale(1.18); }"));
+ok("T31 手机端5 今日联去宠物卡 + 毛玻璃退场 + 轨道高度跟当前联（下拉无空白）",
+  read("src/components/TodayPane.vue").includes('<section v-if="!isMobileNav" class="hero">')
+  && css.includes(".shell--mobile-nav .card,")
+  && css.includes(".shell--mobile-nav .home-chips {")
+  && read("src/views/HomeView.vue").includes("trackH")
+  && read("src/views/HomeView.vue").includes('if (dir === -1) setPane("bottle")'));
+ok("T32 手机端4 捞到的瓶子居中弹出（bottle-tray fixed 居中 + 压暗背景）",
+  css.includes(".shell--mobile-nav .bottle-tray {")
+  && css.includes("translate(-50%, -50%)")
+  && css.includes("@keyframes bottle-pop"));
 
 out.push("");
 out.push(`TOTAL ${pass + fail}  PASS ${pass}  FAIL ${fail}`);

@@ -13,6 +13,7 @@ import { cloud } from "../utils/supabase.js";
 import { cloudSetStatus, cloudFetchStatusCounts, cloudFetchProfile } from "../utils/wall.js";
 import { errorKind } from "../utils/wallRules.js";
 import { STATUS_KEYS, statusFresh } from "../utils/statuses.js";
+import { isMobileNav } from "../stores/uiStore.js";
 import SeasonFx from "./SeasonFx.vue";
 import PetMotion from "./PetMotion.vue";
 import ShareCard from "./ShareCard.vue";
@@ -116,8 +117,8 @@ const seasonName = computed(() => season.name[i18n.locale] || season.name.en);
 
 <template>
   <div>
-    <!-- ═══ 主视觉：宠物在你身边 ═══ -->
-    <section class="hero">
+    <!-- ═══ 主视觉：宠物在你身边（手机端 5：今日联不再放宠物卡 —— 宠物有自己的联，去掉这屏的空白与毛玻璃） ═══ -->
+    <section v-if="!isMobileNav" class="hero">
       <div class="hero-copy">
         <span class="sec-label">{{ greeting }}</span>
         <h1 class="hero-title">{{ t("home.heroTitle") }}</h1>
@@ -182,14 +183,18 @@ const seasonName = computed(() => season.name[i18n.locale] || season.name.en);
       </p>
       <p v-else-if="!isMember" class="streak-note">{{ t("home.companions.loginHint") }}</p>
 
-      <!-- 大厅仅展示分类人数，个人状态在用户主页查看。 -->
+      <!-- 大厅仅展示分类人数；手机端 8：人数胶囊可点 —— 点了就把自己也设成同款状态（跟手反馈） -->
       <div v-if="statusCounts" class="hall-others">
         <span class="sec-label">{{ t("home.companions.othersTitle") }}</span>
         <div class="hall-pill-row">
-          <span v-for="row in statusCounts" :key="row.status" class="hall-pill">
+          <button
+            v-for="row in statusCounts" :key="row.status" type="button"
+            class="hall-pill hall-pill--tap" :class="{ on: myStatus === row.status }"
+            :disabled="statusBusy"
+            @click="setStatus(row.status)">
             <span>{{ statusLabel(row.status) }}</span>
             <b>{{ t("home.companions.peopleCount", { n: row.count }) }}</b>
-          </span>
+          </button>
         </div>
       </div>
     </section>

@@ -72,10 +72,12 @@ t("T6 HomeView 接线：频道条 + 横滑轨道 + PetView 懒挂载（重件不
   assert.ok(home.includes("paneFromQuery(route.query.tab)"), "未消费 /?tab=");
 });
 
-t("T7 宠物联禁滑动穿透（画板/零食雨手势优先，D3）", () => {
-  assert.ok(/onTouchStart\(e\) \{\s*\n\s*if \(pane\.value === "pet"\) return;/.test(home),
-    "onTouchStart 必须先拦宠物联");
-  assert.ok(home.includes('touch-action: pan-y') === false || true);
+t("T7 宠物联手势守卫（画板/零食雨/按钮不抢；其余区域左滑回漂流瓶）", () => {
+  assert.ok(home.includes('PET_GUARD_SEL = "canvas, button, a, input, textarea, select, .sr-overlay, .painter-bar, .swatch"'),
+    "缺画板/零食雨手势守卫选择器");
+  assert.ok(/if \(pane\.value === "pet"\) \{[\s\S]*?petGuard/.test(home), "宠物联必须先判定手势守卫");
+  assert.ok(/if \(pane\.value === "pet"\) \{[\s\S]*?if \(dir === -1\) setPane\("bottle"\)/.test(home),
+    "宠物联必须只允许左滑回漂流瓶（手机端 10）");
   const css = read("src/style.css");
   assert.ok(css.includes(".home-track"), "style.css 缺三联样式");
   assert.ok(css.includes("touch-action: pan-y"), "样式缺 touch-action: pan-y");

@@ -129,6 +129,8 @@
       <p v-else class="notice">{{ t("notif.needSignIn") }}</p>
     </section>
 
+    <!-- 隐私政策（手机端 7：从页脚挪进来；/privacy 路由保留供外部审核直接访问） -->
+    <router-link class="notif-back" to="/privacy">{{ t("privacy.title") }}</router-link>
     <router-link class="notif-back" to="/profile">{{ "← " + t("nav.profile") }}</router-link>
   </div>
 </template>

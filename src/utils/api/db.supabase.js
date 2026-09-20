@@ -67,11 +67,20 @@ export const db = {
     return unwrap(Promise.resolve(res));
   },
 
-  /** 某用户的帖子（新→旧）；同样带 removed 兼容 */
-  async listPostsByUser(userId, limit) {
-    let res = await sb().from(T.posts).select("*").eq("user_id", userId).eq("removed", false).order("created_at", { ascending: false }).limit(limit);
+  /** 某用户的帖子（新→旧）；同样带 removed 兼容。offset = 分页偏移（0/缺省 = 旧行为） */
+  async listPostsByUser(userId, limit, offset = 0) {
+    const off = Number(offset) > 0 ? Number(offset) : 0;
+    const q = () => {
+      let res = sb().from(T.posts).select("*").eq("user_id", userId).eq("removed", false)
+        .order("created_at", { ascending: false });
+      res = off > 0 ? res.range(off, off + Number(limit) - 1) : res.limit(limit);
+      return res;
+    };
+    let res = await q();
     if (res && res.error) {
-      res = await sb().from(T.posts).select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(limit);
+      let res2 = sb().from(T.posts).select("*").eq("user_id", userId).order("created_at", { ascending: false });
+      res2 = off > 0 ? res2.range(off, off + Number(limit) - 1) : res2.limit(limit);
+      res = await Promise.resolve(res2);
     }
     return unwrap(Promise.resolve(res));
   },

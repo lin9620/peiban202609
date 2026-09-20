@@ -117,13 +117,15 @@ async function main() {
   if (trace && logs.length) console.log("--- console ---\n" + logs.slice(-25).join("\n"));
   ws.close();
   if (srv) srv.close();
+  try { child.kill(); } catch (e) {}
   return r.exceptionDetails ? 1 : 0;
 }
 
 main()
-  .then((code) => { try { fs.rmSync(profile, { recursive: true, force: true }); } catch (e) {} process.exit(code); })
+  .then((code) => { try { fs.rmSync(profile, { recursive: true, force: true }); } catch (e) {} try { child && child.kill(); } catch (e) {} process.exit(code); })
   .catch((e) => {
     console.error("WEB_FAIL:", e.message);
     try { fs.rmSync(profile, { recursive: true, force: true }); } catch (e2) {}
+    try { child && child.kill(); } catch (e3) {}
     process.exit(1);
   });

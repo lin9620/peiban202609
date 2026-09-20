@@ -176,12 +176,16 @@ t("T22 浏览眼睛已摘除（#8）：视图不再渲染 👁，浏览数文案
   }
   assert.ok(communityView.includes('t("community.views"'), "浏览数文案被误删（应只去图标）");
 });
-t("T23 「我的」页展示我在暖心墙的帖子（#9）：登录拉取 + 深链用 dbId", () => {
-  assert.ok(profileView.includes("cloudFetchUserPosts(uid, 20)"), "ProfileView 未拉取我的帖子");
+t("T23 「我的」页展示我的帖子（共有 5：默认最新 3 条 + 「更多」→ /my-posts）", () => {
+  assert.ok(profileView.includes("cloudFetchUserPosts(uid, 3)"), "ProfileView 应只拉最新 3 条");
+  assert.ok(profileView.includes('to="/my-posts"') && profileView.includes("profile.more"), "缺「更多」入口");
   assert.ok(profileView.includes("profile.myPosts") && profileView.includes("profile.myPostsEmpty"), "缺少帖子区块文案键");
   assert.ok(profileView.includes("query: { post: p.dbId }"), "深链必须用 dbId（CommunityView 用 dbId 匹配）");
   const i18n = read("src/i18n.js");
   assert.ok(i18n.split("myPosts:").length >= 3, "myPosts 未做到双语（en/zh 各一份）");
+  assert.ok(read("src/views/MyPostsView.vue").includes("cloudFetchUserPosts(uid.value, PAGE, append ? offset : 0)"),
+    "MyPostsView 应用 offset 分页");
+  assert.ok(read("src/router.js").includes('"./views/MyPostsView.vue"'), "路由未挂 /my-posts");
 });
 t("T24 角色名额只数上传的「我的角色」（#12）：初始/物种伙伴不占名额", () => {
   assert.ok(petStoreSrc.includes("MAX_CUSTOM_PETS = 3"), "常量未改为 MAX_CUSTOM_PETS");

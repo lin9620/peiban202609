@@ -808,6 +808,25 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
     ⑥ **真机调试基建现象定位（无代码改动）**：Vue 路由过渡依赖 `requestAnimationFrame`，WebView 息屏/被遮挡时 rAF 冻结 → `mode="out-in"` 停在「旧视图离场」、新视图不挂载 —— **仅调试取数环境现象**（前台用户回到 App 时 rAF 恢复、过渡自动完成，无感知）；`tools/cdp-eval.mjs` 补 `Emulation.setFocusEmulationEnabled` 后息屏也能取数。
     **验收**：`app-shell-test` 23→**28 项**（新增 T23–T27：分栏仅手机渲染 · 通知段复用与红点 · 免卡中卡（含「不得再设 padding:0」反向断言）· 返回拦截栈 · 我的页钱包）+ **28 套离线测试全绿** + undef 0 + build 0 + `cap sync` ✓ + gradle 出包 + `adb install` Success + 部署 LIVE 14/14；**实证**：新工具 `tools/web-probe.mjs`（无头 Edge + CDP + `--serve=dist --url=/messages --w=393`，精确 393px **真机等价**量真实构建产物：分栏 flex/选中态 `rgb(240,132,47)` / 通知段 `notif-back:none` + `head 14px` / `.dm-list--seg` 背景 `rgba(0,0,0,0)` 而对照背景 `rgba(255,255,255,.62)`、内缩仍 14px）；`tools/cdp-eval.mjs` 补 `Emulation.setFocusEmulationEnabled`（息屏也能取真机数据）。
   - **本地优先缓存（SWR）✅（2026-09-20，用户痛点「每次点击都重新刷新」）**：新 `src/utils/cache.js` —— 进页**先渲染 localStorage 快照**（不闪「载入中」），后台照常拉取，回来无缝覆盖并回写（`wp-cache:v1:` 命名空间，box `{t,s,d}`）；key 一律带 uid（换号不串）；登出 App.vue 按前缀清 `dm:/notif:/bottle:` 个人域；7 天 TTL 安全网 + 60 条容量护栏按写入时间淘汰；隐私模式经 storage.js 自动降级内存（storage.js 新增 `keys(prefix)` 枚举）。**接入五处**：消息会话列表 `dm:convs`、聊天首屏 `dm:msgs|<conv>`（**乐观消息在屏时不被旧响应覆盖**，交 5s 轮询/send 后重载纠正）、首页漂流瓶 `bottle:rec|<tab>`/`bottle:held`、通知首屏 `notif:p0|<tab>|<未读开关>`、暖心墙 `wall:posts`（**帖+评论数整包**，命中时评论数也是真的）；翻页/key=null 不缓存只走网络。**单测抓到并修掉一个真 bug**：swr 在 key=null 时提前 return，fresh 钩子不执行 → 翻页拿不到数据。新 `tools/cache-test.mjs` **12 项**（命中先渲染/回写/相同数据去抖/无缓存 onError/有缓存断网静默保留/fetcher null 不覆盖/换号隔离/前缀清理/容量淘汰/null 不写缓存/key=null 走网络）+ `tools/cdp-eval.mjs` 转正常驻真机调试基建。验收：**27 套离线测试全绿**、undef 0、build exit 0、cap sync ✓、gradle 出包、adb install Success、部署 `1cc4691d`、LIVE 14/14；**真机实证**：用户正常使用 27s 后五域缓存全部落盘（convs 2 行 / msgs 8 条 / bottle 3+1 / wallPosts 整包）——下次点击即秒开。
+  - **T8 用户反馈批量修 ✅（2026-09-20，用户 17 条意见一次落地；网页端+手机端全改）**：
+    ① **共有-回应 toggle（根因级修复）**：抱抱/暖暖/同感点第二次不取消的真因是 `cloud.ready` 在**会话恢复完成前置位** → `reactions/mine` 拿到空会话 → 前端以为没点过。`supabase.js` 改为**会话恢复后再置位 ready**；`toggleReaction` 支持取消（worker 增 `/api/wall/reactions/mine`，supabase/gateway 双适配器）；桌面+手机行为一致；
+    ② **共有-不喜欢**：按钮调大、**点击后不再显示比例**（只显示次数不带百分之比）、点了这条帖子**立即从列表消失**（本地移除 + 云端下架计数）；
+    ③ **共有-默认推荐**：暖心墙默认 `recommend` 排序（`wallRules.DEFAULT_SORT`，**近 7 天内容按稳定哈希随机推荐**，参数化天数后续可调 5/3/2）；
+    ④ **共有-我的帖子**：我的页默认显示**最新 3 条**，「暖心墙」入口改「**更多**」→ 新页面 `/my-posts`（**默认 10 条 + 下拉每次再载 10 条**，数据层补 `offset` 分页，worker `parseOffset` 支持）；
+    ⑤ **共有-食谱入口**：我的页「我的食谱」点击**跳 `/pet?tab=book`**；
+    ⑥ **共有-回复聚焦**：点「回复」或评论内容**一次点击直接出输入框且光标已聚焦**（`nextTick` focus 锚点，不用二次点击）；
+    ⑦ **手机-消息 Tab 三栏**：分段条改 **漂流瓶 | 会话（居中）| 通知**（原文案「会话中心」改「会话」）；
+    ⑧ **手机-加号面板**：点击上方**遮罩空白即关闭**（`tabbar-mask`）；
+    ⑨ **手机-发布收拢**：暖心墙顶部发布框手机端隐藏，发布只走 ➕ → **新页面 `/compose` 独立发帖页**（大输入框；ComposeView 重建，之前文件是截断的坏文件）；
+    ⑩ **手机-捞瓶结果居中**：捞到的瓶子**居中弹出**（`bottle-tray` fixed 居中 + 背景压暗），不再沉在页面下方被忽略；
+    ⑪ **手机-首页三联**：空白联**不渲染**（无内容联不出现空白页）；「今日」联**去掉宠物项**；**去掉三联区毛玻璃**；
+    ⑫ **手机-暖心墙触底加载**：默认 10 条，**滑到底自动再载 10 条**（IntersectionObserver 哨兵，手机常用模式）；
+    ⑬ **手机-页脚隐私**：页脚「隐私政策」去掉，**入口挪到设置页**；
+    ⑭ **手机-陪你大厅可点**：「这里不止你一个人」卡**可点击**（之前整卡无事件）；
+    ⑮ **手机-TabBar 纯文字**：去图标只留文字、字号调大、**选中项文字放大**（小红书式）；
+    ⑯ **手机-首页三联手势补漏**：宠物联内**左滑可回到漂流瓶**（之前宠物联禁滑穿透后回不去）；
+    ⑰ **共有-旅行睡着提示**：宠物睡觉时点「送宠物旅行」**给提示**（不再无反应）。
+    **验收**：`app-shell-test` 28→**33 项**（本批 5 个新行为断言）+ **28 套离线测试全绿** + undef 0 + build 0 + LIVE 14/14；`web-probe`（393px 真机等价）实测 home/messages/compose/my-posts/pet?tab=book 五页全过。APK 已出包；真机未连接，待装机复验。
 
 ## G. 开发任务拆解（动工路线图，逐批交付）
 

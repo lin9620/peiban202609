@@ -21,7 +21,9 @@ import {
   SORTS, sortPosts, collectViews, visibleOnly, utcDay, ratioPct,
   canPostToday, errorKind, VIEW_KEY, ANON_KEY, POST_DAY_KEY,
   RANGES, inRange, usesRange, rangeFor, fmtWhen,
+  recommendPosts, RECOMMEND_DAYS,
 } from "../utils/wallRules.js";
+import { isMobileNav } from "../stores/uiStore.js";
 import {
   validateImageFile, isSaneShape, isUsableDataUrl, shrinkToDataUrl,
 } from "../utils/imaging.js";
@@ -84,6 +86,11 @@ onMounted(() => {
 /* 云端就绪晚于挂载（异步探测）→ 就绪后补拉一次；未登录也拉（RLS 匿名只读） */
 watch(() => cloud.ready, (v) => {
   if (v && !cloudPosts.value.length) loadCloud();
+});
+/* 会话从无到有（登录完成）→ 用本人身份重拉一次：帖子的 mine（我点过谁）才准确，
+   否则「我点过的抱抱」显示成没点，再点一次会把旧的取消掉（用户实测「取消不了」的根因）。 */
+watch(() => cloud.user && cloud.user.id, (uid) => {
+  if (cloud.ready && uid && cloudPosts.value.length) loadCloud();
 });
 
 async function loadCloud() {
@@ -178,7 +185,8 @@ async function dislike(p) {
   p.views = r.views;
   p.reacts = { ...p.reacts, dislike: r.dislikes };
   p.mine = { ...p.mine, dislike: r.on };
-  if (r.removed) {
+  /* 我点了厌恶 → 这条帖立即从我的流里消失（服务端双档下架线仍管全局可见性） */
+  if (r.on || r.removed) {
     p.removed = true;
     showWallMsg("community.removed");
   }
@@ -386,6 +394,7 @@ function openReply(p, cm) {
   replyTo.value = { ...replyTo.value, [k]: cm.id };
   atName.value = { ...atName.value, [k]: "" };
   if (p.cloud && canReadWall()) loadThread(p); /* 顺手刷新，边看边回 */
+  focusSelector(repInputSel(p, cm));
 }
 /* 回复某条回复：仍挂在同一个一级评论下（两级封顶），并 @ 这位回复者 */
 function openReplyTo(p, cm, rp) {
@@ -395,6 +404,7 @@ function openReplyTo(p, cm, rp) {
   replyTo.value = { ...replyTo.value, [k]: cm.id };
   atName.value = { ...atName.value, [k]: rp.name || "" };
   openRep.value = { ...openRep.value, [repOpenKey(p, cm)]: true };
+  focusSelector(repInputSel(p, cm));
 }
 function cancelReply(p) {
   const k = cmtKey(p);
@@ -431,6 +441,20 @@ const CMT_TTL = 30000;
 const cmtFetchedAt = ref({});
 /* 拉取（或按 TTL 重拉）某帖评论明细；pending 防重入，失败时按 TTL 重试 */
 const cmtLoading = ref({});
+/* —— 点「回复」/点评论内容 → 输入框就地出现并聚焦（一次点击直接开打，不用再点输入框） —— */
+async function focusSelector(sel) {
+  await nextTick();
+  const el = document.querySelector(sel);
+  if (el && el.focus) el.focus();
+}
+function cmtInputSel(p) {
+  const k = CSS.escape(String(cmtKey(p)));
+  return `#cmtbox-${k} input, #cmtbox-${k} textarea`;
+}
+function repInputSel(p, cm) {
+  const k = CSS.escape(String(repKey(p, cm)));
+  return `#repbox-${k} input, #repbox-${k} textarea`;
+}
 function loadThread(p, force = false) {
   if (!p.cloud || !canReadWall()) return;
   const k = cmtKey(p);
@@ -454,7 +478,10 @@ function loadThread(p, force = false) {
 function toggleCmt(p) {
   const k = cmtKey(p);
   openCmt.value = { ...openCmt.value, [k]: !openCmt.value[k] };
-  if (openCmt.value[k]) loadThread(p);
+  if (openCmt.value[k]) {
+    loadThread(p);
+    focusSelector(cmtInputSel(p));   /* 展开即聚焦：一次点击直接开打 */
+  }
 }
 /**
  * 发表评论。
@@ -533,15 +560,39 @@ const all = computed(() => [
   ...(cloud.ready && cloudPosts.value.length ? cloudPosts.value : posts.value),
   ...SAMPLES,
 ]);
-/* 展示用：先剔掉已下架（假删除）的帖子，再按当前排序实际生效的时间范围筛
- * （「最新」= 全部，其余按用户选的档位），最后按当前排序方式排 */
-const shown = computed(() =>
-  sortPosts(
-    visibleOnly(all.value).filter((p) => inRange(p, rangeFor(sortMode.value, rangeMode.value))),
+/* 展示用：推荐 = 最近 7 天按天随机（默认）；其余 = 按时间范围筛 + 排序 */
+const shown = computed(() => {
+  const visible = visibleOnly(all.value);
+  if (sortMode.value === "recommend") return recommendPosts(visible, { days: RECOMMEND_DAYS });
+  return sortPosts(
+    visible.filter((p) => inRange(p, rangeFor(sortMode.value, rangeMode.value))),
     sortMode.value
-  ));
-/* 下架线提示用：厌恶 ÷ 浏览（#26 双档，看得到比例就知道离下架多远） */
+  );
+});
+/* 下架线提示用：厌恶 ÷ 浏览（#26 双档；只给数据层/管理侧用，用户界面不再显示比例） */
 function disPct(p) { return ratioPct(p.views, (p.reacts && p.reacts.dislike) || 0); }
+
+/* —— 分页展示：默认 10 条，滑到底部自动续 10 条（手机常用惯性；桌面同样生效） —— */
+const PAGE_SIZE = 10;
+const reveal = ref(PAGE_SIZE);
+watch([sortMode, rangeMode], () => { reveal.value = PAGE_SIZE; });
+const shownPage = computed(() => shown.value.slice(0, reveal.value));
+const hasMore = computed(() => shown.value.length > reveal.value);
+const sentEl = ref(null);
+let feedIO = null;
+onMounted(() => {
+  if (typeof IntersectionObserver === "undefined") return;
+  feedIO = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting && hasMore.value) reveal.value += PAGE_SIZE;
+    }
+  }, { rootMargin: "420px 0px" });
+  if (sentEl.value) feedIO.observe(sentEl.value);
+});
+watch(hasMore, async () => {
+  await nextTick();
+  if (feedIO && sentEl.value) { feedIO.unobserve(sentEl.value); feedIO.observe(sentEl.value); }
+});
 
 /* 头像/昵称 → TA 的墙上的主页（/u/:id）；示例帖与本地帖没有云身份，不响应点击 */
 const router = useRouter();
@@ -579,13 +630,13 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
 
 <template>
   <div>
-    <!-- 头部 + 发布框 -->
+    <!-- 头部 + 发布框（手机端收起：发布统一走底部 ＋ → 独立发布页，页顶不再占一屏） -->
     <section class="card">
       <span class="sec-label">{{ t("nav.community") }}</span>
       <h2 style="margin-bottom: 4px">{{ t("community.title") }}</h2>
       <p class="sub">{{ t("community.subtitle") }}</p>
 
-      <div class="composer">
+      <div v-if="!isMobileNav" class="composer">
         <n-input
           v-model:value="draft"
           type="textarea"
@@ -646,8 +697,8 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
       </button>
     </div>
 
-    <!-- 动态流 -->
-    <article v-for="p in shown" :key="p.id" class="post-card card"
+    <!-- 动态流（默认 10 条，滑到底自动续 10 条） -->
+    <article v-for="p in shownPage" :key="p.id" class="post-card card"
       :id="p.dbId != null ? 'post-' + p.dbId : undefined"
       :class="{ 'post-focus': focusId && String(p.dbId) === focusId }">
       <div class="post-head">
@@ -694,7 +745,6 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
           @click="dislike(p)">
           &#128078; {{ p.reacts.dislike || 0 }}
         </button>
-        <span v-if="p.reacts.dislike" class="post-ratio">{{ disPct(p) }}</span>
         <span class="post-ratio-hint">{{ t("community.dislikeRule") }}</span>
       </div>
 
@@ -702,7 +752,7 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
         <span class="cmt-ico">&#128172;</span> {{ t("comment.count", { n: countFor(p) }) }}
         <span class="cmt-caret" :class="{ open: isOpen(p) }">&#9662;</span>
       </div>
-      <div v-if="isOpen(p)" class="cmt-box">
+      <div :id="'cmtbox-' + cmtKey(p)" v-if="isOpen(p)" class="cmt-box">
         <p v-if="cmtErr" class="cmt-empty" style="color: var(--low); font-weight: 700">{{ cmtErr }}</p>
         <p v-if="cmtLoading[cmtKey(p)] && !listed(p)" class="cmt-empty">
           {{ t("community.loading") }}
@@ -719,7 +769,7 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
               class="cmt-del" :title="t('common.delete')"
               @click="delCmt(p, cm)">×</button>
           </div>
-          <p class="cmt-text">{{ cm.text }}</p>
+          <p class="cmt-text cmt-text-open" :title="t('comment.reply')" @click="openReply(p, cm)">{{ cm.text }}</p>
 
           <div class="cmt-acts">
             <button class="cmt-act" @click="openReply(p, cm)">{{ t("comment.reply") }}</button>
@@ -755,7 +805,9 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
           </div>
 
           <!-- 二级：就地回复框（云端帖未登录不给开，openReply 已拦截；这里再守一道） -->
-          <div v-if="isReplyOpen(p, cm) && !(p.cloud && !signedIn)" class="cmt-input cmt-input-rep">
+          <div
+            :id="'repbox-' + repKey(p, cm)"
+            v-if="isReplyOpen(p, cm) && !(p.cloud && !signedIn)" class="cmt-input cmt-input-rep">
             <n-input
               v-model:value="repDraft[repKey(p, cm)]"
               round size="small"
@@ -803,5 +855,10 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
     </article>
 
     <p class="notice" style="text-align: center">{{ t("community.sampleNotice") }}</p>
+    <!-- 触底续载哨兵：滚近底部自动再放 10 条（IntersectionObserver，手机/桌面同款） -->
+    <div ref="sentEl" class="feed-sentinel" aria-hidden="true"></div>
+    <p v-if="shownPage.length && !hasMore" class="notice" style="text-align: center">
+      {{ t("community.noMore") }}
+    </p>
   </div>
 </template>

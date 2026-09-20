@@ -412,12 +412,14 @@ export async function cloudFetchProfile(userId) {
  * 已跑迁移时数据库直接过滤 removed，未跑迁移时由调用方 visibleOnly 兜底）。
  * @param {string} userId
  * @param {number} [limit] 默认 50
+ * @param {number} [offset] 分页偏移（「我的帖子」10 条/页续拉用；0/缺省 = 旧行为）
  */
-export async function cloudFetchUserPosts(userId, limit = 50) {
+export async function cloudFetchUserPosts(userId, limit = 50, offset = 0) {
   if (!canReadWall() || !userId) return null;
   try {
     const n = Number(limit) > 0 ? Number(limit) : 50;
-    const posts = await db.listPostsByUser(userId, n);
+    const off = Number(offset) > 0 ? Number(offset) : 0;
+    const posts = await db.listPostsByUser(userId, n, off);
     let reactions = {};
     try {
       const ids = (posts || []).map((x) => x.id);

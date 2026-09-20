@@ -51,15 +51,16 @@ const fromList = ref(false); // 手机形态：本会话是从会话列表点进
 
 const REQ = "requests";      // 伪会话分组键（消息请求）
 
-/* T7 分栏：私信 | 通知（仅手机形态渲染分段条）；进聊天/回列表强制回私信段 */
+/* T8 分栏（手机端 1）：会话 | 漂流瓶 | 通知 三段（仅手机形态渲染分段条）；
+ * 进聊天/回列表强制回「会话」段。漂流瓶段 = BottleRecords（原在会话列表底部的记录区，现在独立成段）。 */
 const seg = ref("dm");
 const dmBadge = computed(() => badge.dm + badge.requests);
 
-/* T7 系统返回键：通知段是消息 Tab 的**内部层级** → 先回私信段（App 惯例），
+/* T7 系统返回键：漂流瓶/通知段是消息 Tab 的**内部层级** → 先回会话段（App 惯例），
  * 已被接管则不再回退路由/最小化 App；离开本页弹栈。
  * 说明：聊天页共用「消息」Tab，但那时 seg 恒为 dm，这里返回 false 交回默认策略。 */
 function segBack() {
-  if (seg.value !== "notif") return false;
+  if (seg.value === "dm") return false;
   seg.value = "dm";
   return true;
 }
@@ -387,11 +388,14 @@ const dayLabel = (ts) => new Date(ts).toLocaleDateString(
         v-show="!isMobileNav || !activeId"
         class="card dm-list"
         :class="{ 'dm-list--seg': isMobileNav && seg === 'notif' }">
-        <!-- T7 分栏（仅手机形态）：私信 | 通知（红点 = badgeStore 实时未读，与桌面顶栏同口径） -->
+        <!-- T8 分栏（仅手机形态）：会话 | 漂流瓶 | 通知（红点与桌面顶栏同口径） -->
         <div v-if="isMobileNav" class="dm-seg" role="tablist">
           <button type="button" class="dm-seg-btn" :class="{ on: seg === 'dm' }" role="tab" :aria-selected="seg === 'dm'" @click="seg = 'dm'">
             {{ t("tab.segDm") }}
             <span v-if="dmBadge" class="notif-count">{{ dmBadge > 99 ? "99+" : dmBadge }}</span>
+          </button>
+          <button type="button" class="dm-seg-btn" :class="{ on: seg === 'bottle' }" role="tab" :aria-selected="seg === 'bottle'" @click="seg = 'bottle'">
+            {{ t("tab.segBottle") }}
           </button>
           <button type="button" class="dm-seg-btn" :class="{ on: seg === 'notif' }" role="tab" :aria-selected="seg === 'notif'" @click="seg = 'notif'">
             {{ t("tab.segNotif") }}
@@ -475,8 +479,10 @@ const dayLabel = (ts) => new Date(ts).toLocaleDateString(
         </template>
 
         <p v-if="!normal.length && !requests.length && !loadingConvs" class="sub dm-empty">{{ t("dm.empty") }}</p>
-        <BottleRecords @open="openBottleChat" />
+        <!-- 漂流瓶记录：桌面仍在会话列表底部（原位）；手机端 1 独立成「漂流瓶」段 -->
+        <BottleRecords v-if="!isMobileNav" @open="openBottleChat" />
         </template>
+        <BottleRecords v-else-if="seg === 'bottle'" @open="openBottleChat" />
         <NotificationsView v-else-if="seg === 'notif'" class="dm-seg-notif" />
       </aside>
 

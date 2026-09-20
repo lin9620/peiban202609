@@ -169,16 +169,19 @@ async function objectOrPassthrough(res) {
   return new Response(text, { status: 406, headers: { "content-type": "application/json" } });
 }
 
-/** 帖子列表：先带 removed 过滤；任何非 2xx 都退回不带过滤的查询（老库没有这一列；与直连模式对齐） */
-async function listPosts(env, request, uid, limit) {
+/** 帖子列表：先带 removed 过滤；任何非 2xx 都退回不带过滤的查询（老库没有这一列；与直连模式对齐）
+ *  offset：分页偏移（「我的帖子」10 条/页续拉用；0/缺省 = 与旧行为一致） */
+async function listPosts(env, request, uid, limit, offset) {
   const base = ["select=*"];
   if (uid) base.push(`user_id=eq.${encodeURIComponent(uid)}`);
   const order = "order=created_at.desc";
   const lim = `limit=${limit}`;
-  let res = await upstream(env, request, restUrl(env, TABLE.posts, [...base, "removed=eq.false", order, lim].join("&")));
+  const off = Number(offset) > 0 ? `offset=${Number(offset)}` : "";
+  const qs = (extra) => [...base, ...[extra].filter(Boolean), order, lim, off].filter(Boolean).join("&");
+  let res = await upstream(env, request, restUrl(env, TABLE.posts, qs("removed=eq.false")));
   if (!res) return fail(502, "upstream-unreachable");
   if (!res.ok) {
-    res = await upstream(env, request, restUrl(env, TABLE.posts, [...base, order, lim].join("&")));
+    res = await upstream(env, request, restUrl(env, TABLE.posts, qs("")));
     if (!res) return fail(502, "upstream-unreachable");
   }
   return res;
@@ -458,7 +461,7 @@ export default {
       /* —— 帖子 —— */
       if (seg[0] === "posts") {
         if (seg.length === 1) {
-          if (m === "GET") return listPosts(env, request, "", parseLimit(q.get("limit"), 200));
+          if (m === "GET") return listPosts(env, request, "", parseLimit(q.get("limit"), 200), parseOffset(q.get("offset")));
           if (m === "POST") return insertSingle(env, request, TABLE.posts);
         } else if (seg.length === 3) {
           const id = decodeSeg(seg[1]);
@@ -521,7 +524,7 @@ export default {
         const uid = decodeSeg(seg[1]);
         if (!uid) return fail(400, "bad-id");
         if (seg[2] === "posts" && m === "GET") {
-          return listPosts(env, request, uid, parseLimit(q.get("limit"), 50));
+          return listPosts(env, request, uid, parseLimit(q.get("limit"), 50), parseOffset(q.get("offset")));
         }
         if (seg[2] === "profile" && m === "GET") {
           /* 先带状态列；列不存在（老库未跑迁移）时退回两列查询（与直连模式对齐） */
