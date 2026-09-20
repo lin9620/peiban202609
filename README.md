@@ -41,9 +41,9 @@
 留言 + 发图（自动压缩），用 **抱抱🫂 / 暖暖☀️ / 同感🤝** 代替点赞（每种回应每人限一次）
 - **每条帖子都有评论区**：可回复 / 删除自己的评论，示范评论只在首次访问注入一次（删了就不会复活）
 - 评论逻辑抽成纯函数模块 `src/utils/comments.js`（注入幂等 / 200 字截断 / 权限校验 / 脏数据兜底）
-- **排序**：默认「最新」，另有「同感最多 / 抱抱最多 / 暖暖最多」（票数相同按时间倒序，选择持久化）→ `src/utils/wallRules.js`
-- **时间范围**：只在「最新」之外的排序下出现——「最新」= 按时间看全部最新内容，没有时间窗口，那一排按钮自动隐藏、也不拿范围筛帖；「同感最多 / 抱抱最多 / 暖暖最多」是在某个窗口里挑最多的，才显示「近两天（默认）/ 近 7 天 / 这个月」（按 UTC 判，选择持久化，切回「最新」不丢；示例帖不参与筛选，示范内容永远在）；显隐与筛选共用 `usesRange` / `rangeFor` 单一入口，避免「按钮藏了但筛选还偷偷生效」
-- **每人每天最多一条**：前端即时提示 + 数据库触发器兜底（`wall_daily_limit`，UTC 日）；删掉今天那条可以重发
+- **排序**：默认「最新」（按时间倒序；**按钮已按要求去掉**，只作默认行为），可切换「同感最多 / 抱抱最多 / 暖暖最多」（票数相同按时间倒序，选择持久化）→ `src/utils/wallRules.js`
+- **时间范围**：只在热度排序（同感/抱抱/暖暖）下出现——默认「最新」视图按时间看全部、没有时间窗口、不显示范围按钮也不拿范围筛帖；「同感最多 / 抱抱最多 / 暖暖最多」是在某个窗口里挑最多的，才显示「近两天（默认）/ 近 7 天 / 这个月」（按 UTC 判，选择持久化，切回默认不丢；示例帖不参与筛选，示范内容永远在）；显隐与筛选共用 `usesRange` / `rangeFor` 单一入口，避免「按钮藏了但筛选还偷偷生效」
+- **每人每天最多 7 条**（原一天一条，2026-09-20 放宽）：前端即时提示 + 数据库触发器兜底（`wall_daily_limit`，UTC 日，第 8 条拒绝）；每条帖子只能带 1 张图；删掉今天的帖可以重发
 - **浏览次数**：同一访客对同一条帖一天只算一次（登录用户按 uid、游客按本机匿名 id），服务端 `wall_post_views` 再去重一次，刷新页面刷不高
 - **厌恶 🙁 与自动下架**：登录后可点「不喜欢」；当 **浏览 < 100 时厌恶超过 3 个**（即 ≥ 4 人）或 **浏览 ≥ 100 时厌恶 ÷ 浏览 > 0.5%** 时帖子自动**下架**（数据库**假删除**：`removed = true`，数据仍在库里，前台不再展示，不再自动恢复以免忽隐忽现）
 - **可选云端模式**：连接 Supabase 后帖子 / 评论 / 回应真·多人共享，图片上传 Storage，邮箱注册登录；未配置时自动降级本地模式（见下方配置章节）
@@ -80,7 +80,7 @@
 ```bash
 node tools/comment-test.mjs   # 评论系统纯函数单测（26 项：二级回复/parentId 封顶/级联删除/评论数兜底）
 node tools/wall-test.mjs      # 暖心墙云端数据层纯函数单测（34 项：行映射/二级字段/评论数聚合/浏览与厌恶字段）
-node tools/wall-rules-test.mjs # 暖心墙进阶规则纯函数单测（38 项：排序/时间范围显隐与筛选/浏览去重/双档下架阈值/每日一条/错误归类/帖子时间到分钟）
+node tools/wall-rules-test.mjs # 暖心墙进阶规则纯函数单测（39 项：排序/时间范围显隐与筛选/浏览去重/双档下架阈值/每日 7 条/错误归类/帖子时间到分钟）
 node tools/pet-home-test.mjs   # 宠物主页云层纯函数单测（19 项：宠物快照 / 手绘厨房清洗 / 互动计数独立列 / 图片引用外置与行体积安全阀 / 镜像队列安全性）
 node tools/pet-visual-test.mjs # 宠物形象与互动表情单测（163 项：五物种×六变体生成合法 Lottie / 表情随 mood 切换（弯弯眼·张嘴·星星·双心·Zzz）/ 贴纸描边·胡须·眉毛·曲线尾 / petMood 信号与缓存守卫）
 node tools/food-painter-test.mjs # 手绘食物画板单测（20 项：保存后清空画板与撤销栈 / 画笔与橡皮模式复位 / 异步撤销不回流旧画 / 食谱 7 份上限 / 48 小时过期边界）
@@ -105,10 +105,12 @@ node tools/image-fit.mjs       # 图片纯函数单测（20 项：尺寸缩放/�
 node tools/undef-check.mjs    # 静态检查「用了项目内导出符号但没导入」（白屏元凶），报告写 undef-report.txt
 node tools/arity-test.mjs     # 静态检查「模板/同文件自调用 参数个数 < 函数签名必填参数」（undefined 崩溃元凶）
 node tools/cloud-verify.mjs   # Supabase 连通性：Auth/四张表/Storage桶/RLS（需先配好 .env）
-node tools/cloud-e2e.mjs      # 云端全链路实测（38 项：注册→建档→发帖→评论→二级回复(层级/级联/计数)→回应→权限→浏览去重→厌恶下架→每日一条→宠物主页(计数列/图外置)→清理；会造测试数据并清理）
+node tools/cloud-e2e.mjs      # 云端全链路实测（38 项：注册→建档→发帖→评论→二级回复(层级/级联/计数)→回应→权限→浏览去重→厌恶下架→每日 7 条(第 8 条被拒)→宠物主页(计数列/图外置)→清理；会造测试数据并清理）
 node tools/dm-e2e.mjs         # 私信+通知线上实测（47 项：双账号开会话/互发/未读水位/撤回/免打扰/隐藏/拉黑/消息请求/通知触发器/偏好开关/匿名 RLS；需先跑 MIGRATION_dm_notifications.sql）
 node tools/status-e2e.mjs     # 大厅状态线上实测（走 Worker，与浏览器同链路）：注册→写状态(服务端盖章)→状态流读回→非法 key 被拒→匿名/他人改不动→24h 过期隐去→清除（需先跑 MIGRATION_profile_status.sql）
 node tools/nick-e2e.mjs       # 改昵称署名同步线上实测（注册→发帖评论→改名）：迁移未跑时应走退化路径(旧帖留旧名)，跑完 MIGRATION_nickname_sync.sql 后旧署名一起改（会建测试帖/评论并清理）
+node tools/build-until-good.mjs # 构建保险（构建→自验产物含 Supabase slug→不合格自动重试）；build 失败后严禁继续 deploy（踩坑 #25/#26）
+node tools/live-bundle-check.mjs # 部署后必跑：线上入口包 SHA 与本地 dist 逐字节比对 + slug 检查
 node tools/img-cache-e2e.mjs  # 图片边缘缓存线上实测（11 项）：经 Worker 上传真实 PNG → 连打 /api/img/* 两次，验证 MISS→HIT 跨用户共享（另一访客不再打 Supabase）/ 字节一致 / 图不存在退回 302 / 路径穿越 400（会建测试对象并删除）
 node tools/bottle-e2e.mjs     # 漂流瓶线上实测（走 Worker，双账号）：A 投信→B 捞→回信→A 收到回信→放回海里→每日限额→空海提示（需先跑 MIGRATION_bottle.sql）
 node tools/dislike-e2e.mjs    # 下架阈值线上判别（**唯一解**：低浏览档 + 高浏览档双验）：5 个账号；低浏览档(views≈2) 第 1 个厌恶该**不下架**、第 4 个才下架；高浏览档(views≥100) 1 个厌恶(≈0.83% > 0.5%)该**下架** —— 两档合起来可唯一区分历史三版规则（①纯比例 1% / ②≥5 且 ≥1% / ③#26 双档）；removed 一律取 RPC 返回值（下架后普通用户读不到行，直接 select 会误判）；会建两条测试帖并清理
@@ -140,12 +142,12 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 
 **① 建库**：注册 [supabase.com](https://supabase.com) → New Project（免费）→ 左侧 **SQL Editor** → 粘贴 `SUPABASE_SETUP.sql` 全部内容 → Run。这会创建：
 - `profiles`（注册自动建档）· `wall_posts`（含 `views` 浏览数 / `dislikes` 厌恶数 / `removed` 假删除 / `created_day` 每日限额）· `wall_comments`（二级评论：`parent_id` 自关联 + `reply_to_name`）· `wall_reactions`（回应，`kind` 含 `dislike`）· `wall_post_views`（浏览去重，全套 RLS 策略）· `pet_profiles`（宠物主页镜像：`data` 只放展示快照 + `pats`/`feeds` 互动计数**独立列**）· `pet_interactions`（互动去重，每人每天每种一次）· `admin_users`（管理员白名单，无公开读策略）
-- 函数与触发器：`wall_daily_limit()`（每人每天一条）· `wall_add_view()` · `wall_toggle_dislike()`（含双档自动下架）· `pet_interact()`（摸头/投喂）· `is_admin()` / `admin_overview()` / `admin_users_page()`（管理中心；非管理员调用只拿 `{admin:false}`；用户名单的邮箱只由 `admin_users_page` 在库内 join `auth.users` 提供，REST 永远读不到）
+- 函数与触发器：`wall_daily_limit()`（每人每天 7 条）· `wall_add_view()` · `wall_toggle_dislike()`（含双档自动下架）· `pet_interact()`（摸头/投喂）· `is_admin()` / `admin_overview()` / `admin_users_page()`（管理中心；非管理员调用只拿 `{admin:false}`；用户名单的邮箱只由 `admin_users_page` 在库内 join `auth.users` 提供，REST 永远读不到）
 - Storage 桶 `wall-images`（公开读、登录上传、只能改删自己路径；**帖子配图与宠物立绘 / 手绘菜图共用此桶**——宠物图放 `<uid>/pet-<hash>.<ext>`，云端快照里只留路径、不留 dataURL，一行只有几百字节）
 
 > **已经建过库的老用户**：按顺序跑以下增量迁移（都在 SQL Editor 里粘贴全部内容 → Run，幂等、可重复跑）：
 > 1. `MIGRATION_two_level_comments.sql` —— 评论改成二级结构（旧评论不用回填，会当一级评论正常显示）
-> 2. `MIGRATION_wall_daily_view_dislike.sql` —— 每日一条 + 浏览数 + 厌恶与双档自动下架（<100 看「超 3 个」/ ≥100 看「> 0.5%」）。**改过上架阈值后必须重跑这个文件里 `wall_toggle_dislike` 那一段**（函数是 create or replace，整体粘最稳），否则线上仍是旧规则；跑完可 `node tools/dislike-e2e.mjs` 判别线上到底哪一档生效（4 人各投 1 次，出新规=第 4 个即下架）。
+> 2. `MIGRATION_wall_daily_view_dislike.sql` —— 每日上限（**后放宽为 7 条，老库升级请接着跑 `MIGRATION_wall_daily_7.sql`**）+ 浏览数 + 厌恶与双档自动下架（<100 看「超 3 个」/ ≥100 看「> 0.5%」）。**改过上架阈值后必须重跑这个文件里 `wall_toggle_dislike` 那一段**（函数是 create or replace，整体粘最稳），否则线上仍是旧规则；跑完可 `node tools/dislike-e2e.mjs` 判别线上到底哪一档生效（4 人各投 1 次，出新规=第 4 个即下架）。
 >
 > 没跑第 2 个时：查看看板、发帖、评论一切照旧（浏览数不显示、点厌恶会出现「这个功能还没开启」提示），不会报错白屏。
 >
@@ -168,6 +170,10 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 > 10. `MIGRATION_notifications_drop_dm.sql` —— **私信退出通知中心**（#23，老库升级用；新装库无需单独跑）：私信有自己的聊天页与导航角标，不再进通知中心。迁移做两件事：清掉历史 `kind='dm'` 的通知行；加一个 BEFORE INSERT 触发器把 `kind='dm'` 的插入**静默丢弃**（`dm_send` / 漂流瓶触发器不用改，通知行从此不再生成）。没跑它时：通知中心「全部」里可能还残留老私信条目（前端已不显示「私信」分栏）。设置页的「私信」通知偏好开关随之移除（开关已无效果）。
 >
 > 11. `MIGRATION_delete_account.sql` —— **应用内自助删号**（App 轨道 T3 · Google Play 2024 政策硬门槛）：security definer RPC `delete_my_account()` —— 先按 `wall-images/<uid>/` 前缀删除 Storage 里的全部图片（失败不阻塞），再删 `auth.users` 一行级联清理全部业务数据（外键已全部 cascade；漂流瓶 `holder/reply_by` 置空、信件保留）。设置页新增「删除我的账号」危险区（两步确认，删除后立即退出登录）；隐私政策删号表述同步改为「自助、立即生效」。执行权只给 `authenticated`（显式 revoke anon）。**未跑它时**：设置页按钮会报英文错误（RPC 不存在，PGRST202），其余功能照旧。跑完后可写 `tools/account-e2e.mjs` 验证（自造测试账号 → 删号 → 确认清干净，兼作测试账号的彻底清理器）。
+>
+> 12. `MIGRATION_notif_dedupe.sql` —— **通知降噪**（轮 15，老库升级用；新装库跑 `SUPABASE_SETUP.sql` 已含同款）：回应（抱抱/暖暖/同感）同人同帖同类**未读只留最新一条**；**删除回应 = 撤销对应未读通知**（取消就当没发生过，不再留「谁抱了你」的假消息）；宠物互动同人同动作 24 小时内只留一条未读；末尾自动清理历史重复未读。没跑它时：反复点/取消回应会把收件人未读刷高（本轮用户抱怨的核心）。
+>
+> 13. `MIGRATION_wall_daily_7.sql` —— **发帖每日上限 1 → 7**（轮 15，老库升级用；新装库跑 SETUP 已含同款）：`wall_daily_limit()` 改为按 7 条计数（第 8 条抛 `wall_daily_limit`），并拆掉旧版「一天一条」唯一索引 `wall_posts_one_per_day_idx`。没跑它时：前端已放开 7 条，但第 2 条帖会被数据库打回。跑完后 `node tools/cloud-e2e.mjs` 的 T23/T24 即验证线上口径。
 
 **② 配置密钥**（二选一，anon key 是公开密钥，安全由 RLS 保证）：
 - 左侧 **Settings → API** 复制 `Project URL` 和 `anon public key`，然后：
@@ -295,7 +301,7 @@ src/
     lottiePet.js       Lottie 动画工厂（运行时生成 5 种宠物的矢量动画）
     snackGame.js       零食雨游戏纯逻辑（坐标系 0~1、随机源可注入 → Node 可单测）
     wall.js            暖心墙云端数据层（行映射 / 上传 / 浏览 / 厌恶 / 评论计数 / 宠物主页镜像与互动）
-    wallRules.js       暖心墙进阶规则纯逻辑（排序 / 时间范围显隐与筛选 / 浏览去重 / 双档下架阈值 / 每日一条）
+    wallRules.js       暖心墙进阶规则纯逻辑（排序（「最新」为默认、无按钮）/ 时间范围显隐与筛选 / 浏览去重 / 双档下架阈值 / 每日 7 条）
   stores/petStore.js   宠物状态机（多宠物 / 养成 / 食谱 / 任务 / 心情打卡；登录后自动把宠物+菜谱镜像到云端，主页可见）
   components/
     LottiePet.vue      Lottie 渲染器（预设宠物动画）
@@ -333,7 +339,7 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 - ✅ **已完成**：Supabase 云端暖心墙（邮箱注册登录 + 多人发帖 / 评论 / 回应 + 图片上传 Storage）+ 上线 Cloudflare Pages
 - ✅ **已完成**： 零食雨小游戏（手绘料理掉落 + 分数结算成养成资源 + 本地最高分）
 - ✅ **已完成**： SEO 收录优化（robots / 站点地图 + 搜索框收录 + 分享卡与图标 + 结构化数据）
-- ✅ **已完成**：暖心墙进阶——每人每天一条、排序（最新 / 同感 / 抱抱 / 暖暖）、时间范围（只在热度排序下出现：近两天 / 近7天 / 这个月；「最新」看全部不分窗口）、浏览计数、厌恶达双档阈值自动下架（假删除：浏览 < 100 超 3 个 / 浏览 ≥ 100 超 0.5%）
+- ✅ **已完成**：暖心墙进阶——每人每天 7 条（原一天一条，2026-09-20 放宽；「最新」按钮已按要求去掉，仅作默认排序）、排序（同感 / 抱抱 / 暖暖）、时间范围（只在热度排序下出现：近两天 / 近7天 / 这个月）、浏览计数、厌恶达双档阈值自动下架（假删除：浏览 < 100 超 3 个 / 浏览 ≥ 100 超 0.5%）
 - ✅ **已完成**：用户主页 `/u/:id`——点帖子头像/昵称进入；展示宠物（云端镜像，访客可摸摸头/投喂，互动计入 TA 的亲密度/饱食度）、TA 的手绘厨房（点菜投喂）、TA 的帖子与收到的回应
 - ✅ **已完成**：宠物图外置 + 互动计数独立列——立绘 / 手绘菜图进 Storage（`wall-images/<uid>/pet-<hash>.<ext>`，按内容哈希命名、重复上传即覆盖），`pet_profiles` 的互动计数改用独立列 `pats`/`feeds`：修掉「主人同步把访客计数清零」，并把单行数据从 MB 级降到几百字节（解掉将来迁库时单行 2MB 的硬限制）
 - ✅ **已完成**：数据访问适配层——`wall.js` 里所有云端调用（查询 / RPC / Storage）收口到 `src/utils/api/db.js` 一个文件（行为不变），附 `api-contract-test.mjs` 契约测试锁定调用形状；将来换库 / 换托管（Cloudflare Hyperdrive、D1 或自建 API）只改适配层，页面与业务逻辑零改动

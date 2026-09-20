@@ -237,25 +237,50 @@ if (hasAdvanced) {
     }
   }
 
-  /* T23~T25 每个用户每天最多一条 */
+  /* T23~T25 每个用户每天最多 7 条（MIGRATION_wall_daily_7.sql；线上若还是 1 条旧规则会假红并提示重跑） */
   {
-    const { error: e1 } = await sb.from("wall_posts")
-      .insert({ user_id: uid, author_name: NICK, body: "同一天的第二条应该被拒" });
-    ok("T23 同日第二条被触发器拒绝（wall_daily_limit）",
-      !!e1 && String(e1.message).includes("wall_daily_limit"), e1 ? e1.message : "竟然插进去了?!");
+    /* 新口径：同日第二条能正常发出 */
+    const { data: p2, error: e1 } = await sb.from("wall_posts")
+      .insert({ user_id: uid, author_name: NICK, body: "同一天的第二条（新口径每天 7 条）" })
+      .select("*").single();
+    const staleDaily = !!e1 && String(e1.message).includes("wall_daily_limit");
+    ok("T23 同日第二条能发出（每天 7 条，MIGRATION_wall_daily_7.sql）",
+      !e1 && !!p2,
+      e1 ? (staleDaily ? e1.message + "  ← 线上还是「每天一条」旧规则，请重跑 MIGRATION_wall_daily_7.sql" : e1.message) : "");
 
-    /* 限额是「每天一条」而不是「终身一条」：删掉今天的帖后可以再发 */
-    await sb.from("wall_posts").delete().eq("id", postId);
+    /* 发满 7 条 → 第 8 条应被触发器拒绝 */
+    let rejected = null;
+    if (p2) {
+      try {
+        const todayUtc = new Date().toISOString().slice(0, 10);
+        const { data: mine } = await sb.from("wall_posts").select("id,created_day").eq("user_id", uid);
+        const today = (mine || []).filter((r) => r.created_day === todayUtc);
+        for (let n = today.length; n < 7; n++) {
+          const { error: fe } = await sb.from("wall_posts")
+            .insert({ user_id: uid, author_name: NICK, body: "e2e 凑满每日 7 条 #" + (n + 1) });
+          if (fe) break;   /* 意外被拒（说明线上口径不对），交给 T24 报出来 */
+        }
+        const { error: e8 } = await sb.from("wall_posts")
+          .insert({ user_id: uid, author_name: NICK, body: "同日第 8 条应该被拒" });
+        rejected = e8;
+      } catch (e) { rejected = e; }
+    }
+    ok("T24 发满 7 条后同日第 8 条被拒（wall_daily_limit）",
+      !!rejected && String(rejected.message).includes("wall_daily_limit"),
+      rejected ? rejected.message : (p2 ? "竟然插进去了?!" : "（前置 T23 未过：先重跑迁移）"));
+
+    /* 限额按天算不按终身算：删掉今天的帖后能重新发 */
+    await sb.from("wall_posts").delete().eq("user_id", uid);   /* 测试账号名下全是本轮测试帖 */
     const { data: again, error: e2 } = await sb.from("wall_posts")
       .insert({ user_id: uid, author_name: NICK, body: "删掉旧帖后重新发" })
       .select("*").single();
-    ok("T24 删掉今天的帖后可以重新发（限额按天算，历史帖数清了就放开）",
+    ok("T25 删掉今天的帖后可以重新发（限额按天算，不发帖数清了就放开）",
       !e2 && !!again, e2 ? e2.message : "");
     if (again) postId = again.id;
 
     /* created_day 由数据库自动填（UTC 日） */
     const { data: day } = await sb.from("wall_posts").select("created_day").eq("id", postId).maybeSingle();
-    ok("T25 created_day 自动填 UTC 日（前端与库判「今天」口径一致）",
+    ok("T25b created_day 自动填 UTC 日（前端与库判「今天」口径一致）",
       !!day && typeof day.created_day === "string" && day.created_day.length === 10,
       day ? "created_day=" + day.created_day : "");
   }
@@ -370,9 +395,9 @@ if (hasAdvanced) {
   }
 }
 
-/* 清理：删帖（cascade 带走回应/浏览记录），删除宠物主页与档案 */
+/* 清理：删测试账号名下的全部测试帖（cascade 带走回应/浏览/评论），删除宠物主页与档案 */
 {
-  await sb.from("wall_posts").delete().eq("id", postId);
+  await sb.from("wall_posts").delete().eq("user_id", uid);
   await sb.from("pet_profiles").delete().eq("user_id", uid);
   await sb.from("profiles").delete().eq("id", uid);
   console.log("清理完成（测试帖/宠物主页/档案已删）");

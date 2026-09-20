@@ -40,7 +40,9 @@ npx wrangler deploy    # 部署 Worker + 静态资产
 git -c http.proxy= -c https.proxy= -c http.version=HTTP/1.1 push   # push（本机网络需要这些参数）
 node tools/<x>-test.mjs # 24 套离线测试（提交前全跑）
 node tools/undef-check.mjs  # 未导入符号检查（白屏元凶，必跑）
-node tools/live-check.mjs   # 部署后线上验证，应输出 LIVE ALL PASS (13)
+node tools/live-check.mjs   # 部署后线上验证，应输出 LIVE ALL PASS (14)
+node tools/live-bundle-check.mjs  # 部署后必跑：线上入口包 SHA 与本地 dist 逐字节比对 + Supabase slug 检查（踩坑 #25/#26）
+node tools/build-until-good.mjs   # 构建保险：构建→自验产物含 slug→不合格自动重试（会清掉环境里空的 VITE_SUPABASE_*）
 node tools/cloud-e2e.mjs / dm-e2e.mjs / status-e2e.mjs / nick-e2e.mjs / bottle-e2e.mjs / img-cache-e2e.mjs  # 线上端到端（自造 wp-* 测试账号并清理）
 ```
 
@@ -258,21 +260,22 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
 ---
 
-# 一、当前状态速览（2026-09-19 更新）
+# 一、当前状态速览（2026-09-20 更新）
 
 | 项 | 值 |
 |---|---|
 | 项目 | peiban（陪伴 / warm-paws），路径 `D:\05ruanjian\peiban` |
 | 技术栈 | Vue 3 + Vite + Naive UI；数据层双模式：直连 Supabase（`db.supabase.js`）/ Worker 网关（`db.gateway.js` + `worker/api.js`，**线上走网关**）；Cloudflare 部署 https://dale.de5.net；Supabase Postgres + RLS + security definer RPC |
-| 代码 | `HEAD = 52adfa1` + 本轮 #23–#29 改动（见轮 13） |
-| 部署 | 前端新包 `index-CV4U24yC.js` 已上线；`live-check` 13/13 |
-| 数据库 | **新增 `MIGRATION_notifications_drop_dm.sql`（#23）待用户执行**；其余 11 个迁移全部已执行（含 `MIGRATION_nickname_sync.sql`，`nick-e2e` 12/12 确认） |
-| 测试 | 25 套离线测试全绿（auth 84 / notify 149 / wall-rules 37 为本轮新计数）+ `undef-check` 0 问题 + 五套线上 e2e（cloud 38 / dm 47 / status 17 / nick 12 / img-cache 11 全 PASS） |
+| 代码 | `HEAD = 9559e20`（轮 15：用户反馈 12 条全部落地，见轮 15） |
+| 部署 | 前端 `index-CyI8O0Hy.js` 已上线；线上 SHA 与本地 dist 逐字节一致（`live-bundle-check`）；`live-check` 14/14 |
+| 数据库 | 本轮 `MIGRATION_notif_dedupe.sql`、`MIGRATION_wall_daily_7.sql` **已由用户执行并探针确认**（通知去重 5/5；cloud-e2e T23/T24）；其余 11 个迁移此前已执行；**轮 13 的 `MIGRATION_notifications_drop_dm.sql` 执行状态未确认** |
+| App | Capacitor 8：强制竖屏（`screenOrientation="portrait"`）+ 原生分享插件 `WpSharePlugin`（MainActivity 注册）；用户已重新打包（android assets 与 dist 同哈希 `index-CyI8O0Hy.js`） |
+| 测试 | 离线全绿（i18n 19 / wall-rules 39 / cache 12 / undef 0 等）+ 线上：`cloud-e2e` 38/38（含每日 7 条新断言）、通知去重探针 5/5、`live-check` 14/14 |
 
 ## 二、现在在做什么
 
-- **当前任务**：轮 13（清单 #23–#29 共 7 条）已完成并部署前端；**等用户在 Supabase 跑 `MIGRATION_notifications_drop_dm.sql`**（私信退出通知中心）+ 实机验收。
-- **等待用户输入**：① 实机验收结果（见「八、下一步」清单）；② 第 10 条的浏览器型号/版本；③ 第 7 条暖心故事、#12 宠物年龄衰老的开工通知。
+- **当前任务**：轮 15（用户反馈 12 条：网页/App 共有 7 + 手机端 5）**全部完成**——SQL 迁移已由用户执行（探针确认生效）、前端已部署（线上 SHA 与本地一致）、App 已重新打包。**等实机验收。**
+- **待用户确认**：① 本轮 12 条逐条实机验收（清单见轮 15 表格）；② `MIGRATION_notifications_drop_dm.sql`（轮 13 #23）是否已执行——未执行的话通知中心会残留老私信条目。
 - **可选加码（等有量再做）**：图片搬 Cloudflare R2（出口永久免费，见「十、容量评估」方案 B）。
 
 ## 三、已完成（按轮次，均含验证证据）
@@ -407,14 +410,37 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
 **#26 至此真正闭环**：用户最初的投诉（"一个用户点一下就下架"）根因是旧版「纯比例 1%」在小分母下极易触发；现规则为**低浏览按人数（>3）、高浏览按比例（>0.5%）**，且这条迁移**今后每次改阈值都必须重跑整份文件**（已写进 README 同一条目）。
 
+### 轮 15：用户反馈 12 条（网页/App 共有 7 + 手机端 5；提交 9559e20，已部署 + App 已打包）
+
+| # | 反馈 | 落地 |
+|---|---|---|
+| 1 | 私信请求同意/拒绝后按钮不消失 | `acceptReq` 之前改的是 rowView 展示拷贝 → 列表纹丝不动；改为改 `convs.value` 原始行 + `meta`（拒绝=hide 本就会移除） |
+| 2 | 抱抱点了又取消又点、通知太多 | `MIGRATION_notif_dedupe.sql`：① 同人同帖同类回应未读只留最新一条 ② **删除回应 = 撤销对应未读通知（undo 触发器）** ③ 宠物互动同人同动作 24h 只留一条 ④ 历史重复未读清理。探针 5/5（P3 取消 → 未读归零） |
+| 3 | 一进去十几条通知实际只显示 3 条 | 聚合组带 **×N 徽标**；**点一条 = 整组标已读**（`notifyRules.idsOf`）；markAll/清空后 `cacheDrop("notif:")` 防未读「复活」 |
+| 4 | 「我的帖子」显示完整 | ProfileView 卡片改暖心墙同款（完整正文 + 配图 + 作者行）；`/my-posts` 本就完整 |
+| 5 | 发帖每天 1 → 7 条、每帖 1 图 | `wallRules.WALL_POST_DAILY_LIMIT=7` + 发帖页剩余条数 + 单图；`MIGRATION_wall_daily_7.sql`（触发器 ≥7 拒 + 拆 `one_per_day` 唯一索引）+ SETUP 同步；cloud-e2e T23/T24 线上确认 |
+| 6 | 暖心墙「最新」按钮去掉 | `SORT_BTNS = SORTS.filter(key !== "new")`：new 仍是默认排序逻辑，按钮不再出现 |
+| 7 | 一堆英文乱码 | `index.html` 启动看门狗：`preloadError` 自动重载一次 + 6s 未挂载把 SEO 英文占位换成中文提示；404 页双语 |
+| 8 | App 生成分享图片没用 | 根因：Capacitor WebView 无 DownloadListener，`<a download>` 无效。新增原生 `WpSharePlugin`（cacheDir + FileProvider + ACTION_SEND 系统分享面板，MainActivity 注册）；ShareCard 分层：App 走原生 → 网页走 `navigator.share(files)` → 桌面下载兜底；跨域图 `crossOrigin="anonymous"` 防画布污染 |
+| 9 | 金币只能领一次 | `dailyTasks.claimed` 布尔 → `claimedMap` 按任务记账：领过后再完成的新任务随时可领；旧存档自动迁移；按钮显示待领数 `{c}` |
+| 10 | 手机横屏 | `AndroidManifest` 加 `screenOrientation="portrait"` |
+| 11 | 换账号漂流瓶次数还是上个人的 | 次数记账键按 uid 分域（`warm-paws-bottle-quota-v1:<uid>`），`watch(myId)` 换号立即换账本 |
+| 12 | 已捞到有回信的不能点 | 记录列表对「收到回信待决定」的条目直接给「同意/拒绝」按钮，同意即进聊天；新文案 `bottle.stDecide`（zh/en 成对） |
+| 13 | 评论数点击弹输入框（手机） | 手机形态展开评论默认只读，点「✎ 写评论」才出输入框（`cmtCompose`，桌面不变） |
+
+- **工具沉淀**：`tools/build-until-good.mjs`（构建 + 自验产物含 slug + 不合格自动重试，防坏包出门）、`tools/live-bundle-check.mjs`（线上入口包与本地 dist 逐字节比对 + hasSlug 检查）。
+- **本轮事故（已修复，教训见踩坑 #25/#26）**：一次 `npm run build; npm run deploy` 链式执行，build 被 env-guard 拦下后 deploy 照跑 → 坏包上线（线上无 Supabase 配置、登录失效）。复部署后线上 `hasSlug=true`、SHA 与本地一致。
+- **验证**：i18n 19 / wall-rules 39 / cache 12 / undef 0；线上 `cloud-e2e` 38/38、通知去重探针 5/5、`live-check` 14/14；README（排序/每日 7 条/迁移 12·13/工具清单）已同步。
+
 
 ## 四、还没做的
 
 | 项 | 说明 | 依赖 |
 |---|---|---|
 | #26 线上 SQL 未生效 | ✅ **已闭环（2026-09-19）**：用户重跑整段迁移后，判别器 **8/8 全绿** + `cloud-e2e` **37/37**（T19b/T20/T21 全部转绿） | 无需再动 |
-| #23 迁移待执行 | `MIGRATION_notifications_drop_dm.sql`（清历史 dm 通知 + 拦新生成） | **用户在 Supabase SQL Editor 执行** |
-| #1/#3/#11/#17/#22/#23/#27/#28/#29 实机验收 | 代码已上线，但真实浏览器/手机交互未验收（本地无浏览器自动化） | 用户实机点一遍 |
+| #23 迁移执行状态未确认 | `MIGRATION_notifications_drop_dm.sql`（清历史 dm 通知 + 拦新生成）；轮 13 报的待执行，用户尚未明确反馈已跑 | **未跑则通知中心残留老私信条目**（其余不受影响） |
+| 轮 15 实机验收 | 12 条反馈已上线 / App 已打包，需真机逐条验收（重点：App 分享面板、竖屏、金币重复领取、漂流瓶换号记账、通知 ×N 与取消撤销、每日 7 条） | 用户实机 |
+| #1/#3/#11/#17/#22/#27/#28/#29 实机验收 | 代码已上线，但真实浏览器/手机交互未验收（本地无浏览器自动化） | 用户实机点一遍 |
 | #7 暖心故事 | 今日一问位置的替换品：标题+正文、每日一篇、点赞、7 天点赞榜新页面 | **等用户通知开工** |
 | #12 宠物年龄与衰老 | 用户明确"以后再改" | **等用户通知开工** |
 | #10 评论数跨浏览器 | 有预取逻辑，但问题未在故障浏览器复现定位，不能算解决 | 需用户提供浏览器与版本 |
@@ -454,11 +480,11 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
 ## 八、下一步
 
-1. **等用户实机反馈** #13–#22（尤其设置页、通知分页、漂流瓶记录、拉黑管理、管理员上下架）。
-2. 收到 #10 的浏览器信息后：复现 → 定位 → 修复 → 验收。
-3. 用户通知后开工 **#7 暖心故事**（标题+正文/每日一篇/点赞/7 天榜页面）与 **#12 宠物年龄衰老**。
+1. **等用户实机验收轮 15 的 12 条**（App 端重点：分享面板、竖屏、金币重复领取、漂流瓶换号记账；网页端重点：通知 ×N 与取消撤销、每日 7 条、私信请求按钮消失）。
+2. 确认 `MIGRATION_notifications_drop_dm.sql`（轮 13 #23）是否已执行；未执行就跑。
+3. 用户通知后开工 **#7 暖心故事** 与 **#12 宠物年龄衰老**。
 4. 有量之后（不急）：图片搬 **Cloudflare R2**（方案 B，出口永久免费）。
-5. 下一轮任务完成时：**先更新本文件再结束回复**（含 README 两处项数校准，见踩坑 #19）。
+5. 下一轮收尾：**先更新本文件再结束回复**（含 README 两处项数校准，见踩坑 #19）。
 
 ## 九、踩坑录（勿重复）
 
@@ -491,6 +517,12 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 23. **探针用错账号会自己造假象**：「取消一次厌恶」那步用了**从未投过厌恶的发帖账号**，结果不是取消而是又投一次 → 观察到 `dislikes=5`（预期 3），一度让人怀疑服务端计数坏了。**教训（强制）**：e2e 里操作「某人的数据」必须用**那个人的账号**；断言失败先怀疑夹具与前置状态，再怀疑实现。
 
 24. **`git diff --check` 恒报「trailing whitespace / ^M」是既有噪声，不是本次引入**：仓库 .sql/.js/.vue 源文件全部是 **CRLF 行尾且没有 `.gitattributes`** → 任何改动那一行都会被 diff-check 标成行尾空白。**教训**：判定「有没有弄坏行尾」的正确方法不是看 diff-check 退出码，而是**统计 CRLF 与 LF-only 计数**（混合行尾时 LF_only > 0）——本项目八个高频文件实测 LF_only 全为 0，属健康。要彻底消除噪声需加 `.gitattributes` 并做一次全仓 renormalize，属独立事项，别顺手混在功能提交里。
+
+25. **build 失败后 deploy 照跑，坏包上线（轮 15 真凶）**：`npm run build; npm run deploy` 用 `;` 链接，PowerShell 不看退出码——build 被 env-guard 拦下（产物没 Supabase slug）后，deploy 仍把坏 dist 发上线，线上登录整个失效（`cloud.ready=false` 退化本地模式）。**教训（强制）**：构建与部署永远分两步，deploy 前必须看到构建成功；链式命令用 `&&`（失败即停）或分开执行；部署前跑 `node tools/build-until-good.mjs`，部署后跑 `node tools/live-bundle-check.mjs`，两头都不靠运气。
+
+26. **运行环境里空的 `VITE_SUPABASE_*` 会覆盖 .env**：agent 会话进程环境带着 `VITE_SUPABASE_URL=""`（0 字符），而 **Vite 中进程环境优先于 .env** → 产物丢 slug，env-guard 次次红（用户自己的终端没有这两个变量所以构建正常，一度误判为「偶发 flake」）。**教训（强制）**：构建脚本给子进程显式 `delete env.VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY`（`build-until-good.mjs` 已内置）；guard 连续红时先查 `Get-ChildItem Env: | ? Name -like 'VITE*'` 有没有空串，别急着怪 vite。
+
+27. **Capacitor WebView 里 `<a download>` 完全无效**：安卓 WebView 没配 DownloadListener（grep `@capacitor/android` 全部 Java 零命中），网页端「下载卡片」在 App 里点了没有任何反应（用户报「生成分享图片功能没有用」）。**教训（强制）**：App 内凡「保存/下载/分享」类浏览器惯用手法都必须有原生兜底（本项目 = `WpSharePlugin`：cacheDir + FileProvider + ACTION_SEND 系统分享面板，MainActivity `registerPlugin` 注册，JS 侧 `registerPlugin("WpShare")` + `Capacitor.isNativePlatform()` 分层降级）；另外跨域图进 canvas 前必须 `img.crossOrigin="anonymous"`，否则 `toDataURL/toBlob` 直接抛 SecurityError。
 
 ---
 
