@@ -33,6 +33,7 @@ const sbAdapter = read("src/utils/api/db.supabase.js");
 const gwAdapter = read("src/utils/api/db.gateway.js");
 const bottleJs = read("src/utils/bottle.js");
 const home = read("src/views/HomeView.vue");
+const bottleView = read("src/components/BottleView.vue");   /* T6 抽件：漂流瓶逻辑在这里 */
 const petStore = read("src/stores/petStore.js");
 
 /* ───────── 常量 ───────── */
@@ -66,13 +67,13 @@ ok("每日一问已摘除（en/zh 都没有 dailyQ，首页也不再引用）",
   !messages.en.home.dailyQ && !messages.zh.home.dailyQ && !home.includes("home.dailyQ"),
   home.includes("home.dailyQ") ? "HomeView 仍有引用" : "");
 
-/* HomeView 里写的 bottle.* 字面 key 必须真存在（防「线上直接显示原始 key」） */
+/* BottleView（T6 抽件）里写的 bottle.* 字面 key 必须真存在（防「线上直接显示原始 key」） */
 {
   const at = (o, p) => p.split(".").reduce((a, k) => (a == null ? a : a[k]), o);
-  const used = [...home.matchAll(/["'](bottle\.[A-Za-z0-9_]+)["']/g)].map((m) => m[1]);
+  const used = [...bottleView.matchAll(/["'](bottle\.[A-Za-z0-9_]+)["']/g)].map((m) => m[1]);
   const bad = [...new Set(used)].filter((k) =>
     typeof at(messages.zh, k) !== "string" || typeof at(messages.en, k) !== "string");
-  ok("HomeView 引用的 bottle.* 字面 key 全部存在（zh+en）", used.length >= 16 && bad.length === 0,
+  ok("BottleView 引用的 bottle.* 字面 key 全部存在（zh+en）", used.length >= 16 && bad.length === 0,
     bad.join(",") || `${used.length} 处引用全命中`);
 }
 
@@ -141,22 +142,24 @@ ok("bottle.js：登录才可用（cloud.ready + cloud.user），发信/回信先
     && has(bottleJs, "if (!text) throw new Error(\"bottle-empty-body\")")
     && has(bottleJs, 'if (text.length > BOTTLE_BODY_MAX) throw new Error("bottle-too-long")'));
 
-/* ───────── HomeView 接线 ───────── */
-ok("HomeView：导入漂流瓶工具并接上四个动作（投/捞/回/放回）",
-  has(home, 'from "../utils/bottle.js"')
-    && has(home, "async function doSend()") && has(home, "async function doFish()")
-    && has(home, "async function doReply()") && has(home, "async function doRelease()"));
-ok("HomeView：字数上限用 BOTTLE_BODY_MAX、次数展示用 BOTTLE_SEND_MAX/BOTTLE_FISH_MAX",
-  has(home, ":maxlength=\"BOTTLE_BODY_MAX\"") && has(home, "BOTTLE_SEND_MAX - quota.value.sent")
-    && has(home, "BOTTLE_FISH_MAX - quota.value.fished"));
-ok("HomeView：捞到的信在托盘里回信或放回（tray 兜住刚捞的与上次没处理完的）",
-  has(home, "fished.value || held.value[0] || null"));
-ok("HomeView：失败按 bottleErrKey 归类展示（不吞错误）",
-  has(home, "t(bottleErrKey(e))"));
-ok("HomeView：每日次数用本机日键记账（跨天自动归零）",
-  has(home, "q.day === todayKey()"));
-ok("HomeView：未登录给登录提示（不再有本地宠物回信）",
-  has(home, 't("bottle.signInHint")') && !home.includes("sendLetter"));
+/* ───────── BottleView 接线（T6 抽件：逻辑在组件里，HomeView 只负责挂载） ───────── */
+ok("BottleView：导入漂流瓶工具并接上四个动作（投/捞/回/放回）",
+  has(bottleView, 'from "../utils/bottle.js"')
+    && has(bottleView, "async function doSend()") && has(bottleView, "async function doFish()")
+    && has(bottleView, "async function doReply()") && has(bottleView, "async function doRelease()"));
+ok("BottleView：字数上限用 BOTTLE_BODY_MAX、次数展示用 BOTTLE_SEND_MAX/BOTTLE_FISH_MAX",
+  has(bottleView, ":maxlength=\"BOTTLE_BODY_MAX\"") && has(bottleView, "BOTTLE_SEND_MAX - quota.value.sent")
+    && has(bottleView, "BOTTLE_FISH_MAX - quota.value.fished"));
+ok("BottleView：捞到的信在托盘里回信或放回（tray 兜住刚捞的与上次没处理完的）",
+  has(bottleView, "fished.value || held.value[0] || null"));
+ok("BottleView：失败按 bottleErrKey 归类展示（不吞错误）",
+  has(bottleView, "t(bottleErrKey(e))"));
+ok("BottleView：每日次数用本机日键记账（跨天自动归零）",
+  has(bottleView, "q.day === todayKey()"));
+ok("BottleView：未登录给登录提示（不再有本地宠物回信）",
+  has(bottleView, 't("bottle.signInHint")') && !bottleView.includes("sendLetter"));
+ok("HomeView：抽件接线（桌面拼回 + 手机三联都挂同一 BottleView）",
+  (home.match(/<BottleView/g) || []).length === 2);
 
 /* ───────── 旧信箱清理（宠物回信 → 漂流瓶，不能留半套） ───────── */
 ok("petStore：旧信箱全部移除（mailbox/sendLetter/tickMailbox/initMailbox/MAIL_KEY）",

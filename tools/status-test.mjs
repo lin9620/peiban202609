@@ -24,6 +24,7 @@ function ok(name, cond, extra = "") {
 const read = (p) => fs.readFileSync(p, "utf8");
 const has = (src, ...parts) => parts.every((p) => src.includes(p));
 const home = read("src/views/HomeView.vue");
+const todayPane = read("src/components/TodayPane.vue");   /* T6 抽件：大厅/打卡/主视觉在这里 */
 const wallerView = read("src/views/WallerView.vue");
 const wall = read("src/utils/wall.js");
 const api = read("worker/api.js");
@@ -64,22 +65,23 @@ for (const lang of ["zh", "en"]) {
   ok(`${lang}: 未跑迁移的提示与同步失败是两句话（不能混用一句）`,
     !!c && c.syncNeedSetup !== c.syncFail);
 }
-/* 视图里写的字面 key 必须真存在 —— 防「模板写错键名、线上直接显示原始 key」 */
+/* 视图里写的字面 key 必须真存在 —— 防「模板写错键名、线上直接显示原始 key」
+ * （T6 抽件：home.companions.* 的引用在 TodayPane + WallerView 两个视图） */
 {
   const at = (o, p) => p.split(".").reduce((a, k) => (a == null ? a : a[k]), o);
-  const used = [...(home + wallerView).matchAll(/["'](home\.companions\.[A-Za-z0-9_]+)["']/g)].map((m) => m[1]);
+  const used = [...(todayPane + wallerView).matchAll(/["'](home\.companions\.[A-Za-z0-9_]+)["']/g)].map((m) => m[1]);
   const bad = [...new Set(used)].filter((k) =>
     typeof at(messages.zh, k) !== "string" || typeof at(messages.en, k) !== "string");
   ok("两个视图引用的 home.companions.* 字面 key 全部存在（zh+en）", used.length >= 9 && bad.length === 0,
     bad.join(",") || `${used.length} 处引用全命中`);
 }
 
-/* ───────── 模板：不再重复 emoji，按钮/药丸直接用文案 ───────── */
-ok("HomeView 模板不再引用 emoji 映射/硬拼 emoji",
-  !home.includes("STATUS_EMOJI") && has(home, '{{ t("home.companions." + k) }}'));
+/* ───────── 模板：不再重复 emoji，按钮/药丸直接用文案（T6 抽件后扫 TodayPane） ───────── */
+ok("TodayPane 模板不再引用 emoji 映射/硬拼 emoji",
+  !todayPane.includes("STATUS_EMOJI") && has(todayPane, '{{ t("home.companions." + k) }}'));
 ok("大厅只渲染状态人数，不渲染个人昵称或个人列表",
-  has(home, "{{ statusLabel(row.status) }}", 't("home.companions.peopleCount", { n: row.count })')
-    && !home.includes("o.nickname") && !home.includes("cloudFetchStatuses"));
+  has(todayPane, "{{ statusLabel(row.status) }}", 't("home.companions.peopleCount", { n: row.count })')
+    && !todayPane.includes("o.nickname") && !todayPane.includes("cloudFetchStatuses"));
 ok("主页徽章同样只输出 statusLabel",
   has(wallerView, "{{ statusLabel(profStatus) }}") && !wallerView.includes("STATUS_EMOJI"));
 
@@ -143,17 +145,19 @@ ok("SUPABASE_SETUP.sql 同步了两列与索引（新装库不用另跑迁移）
 ok("README 登记迁移文件并写清未跑时的降级行为",
   readme.includes("MIGRATION_profile_status.sql") && readme.includes("只存本机") && readme.includes("此刻大厅里"));
 
-/* ───────── 视图接线 ───────── */
-ok("HomeView：登录才上云，写失败按 errorKind 区分「未开启」与「同步失败」",
-  has(home, "if (isMember.value && !(await cloudSetStatus(next || null)))")
-    && has(home, 'errorKind(cloud.error) === "not-migrated" ? "setup" : "sync"'));
-ok("HomeView：再点一次同一状态即清除（本地与云端一起清）",
-  has(home, 'const next = myStatus.value === k ? "" : k')
-    && has(home, 'if (next) setItem("wp-status", next);') && has(home, "removeItem(\"wp-status\")"));
-ok("HomeView：单独读取自己的档案，状态更新后刷新人数",
-  has(home, "await cloudFetchProfile(uid)", "await refreshStatusCounts()", "revision !== statusRevision"));
-ok("HomeView：云端不可用时不伪造人数，也不覆盖本机状态",
-  has(home, 'v-if="statusCounts"', "if (!profile ||", "if (!uid || !cloud.ready) return;"));
+/* ───────── 视图接线（T6 抽件：大厅/状态逻辑在 TodayPane，HomeView 只负责挂载） ───────── */
+ok("TodayPane：登录才上云，写失败按 errorKind 区分「未开启」与「同步失败」",
+  has(todayPane, "if (isMember.value && !(await cloudSetStatus(next || null)))")
+    && has(todayPane, 'errorKind(cloud.error) === "not-migrated" ? "setup" : "sync"'));
+ok("TodayPane：再点一次同一状态即清除（本地与云端一起清）",
+  has(todayPane, 'const next = myStatus.value === k ? "" : k')
+    && has(todayPane, 'if (next) setItem("wp-status", next);') && has(todayPane, "removeItem(\"wp-status\")"));
+ok("TodayPane：单独读取自己的档案，状态更新后刷新人数",
+  has(todayPane, "await cloudFetchProfile(uid)", "await refreshStatusCounts()", "revision !== statusRevision"));
+ok("TodayPane：云端不可用时不伪造人数，也不覆盖本机状态",
+  has(todayPane, 'v-if="statusCounts"', "if (!profile ||", "if (!uid || !cloud.ready) return;"));
+ok("HomeView：抽件接线（桌面拼回 + 手机三联都挂同一 TodayPane）",
+  (home.match(/<TodayPane/g) || []).length === 2);
 ok("WallerView：徽章只在 24h 内新鲜时显示（与大厅同一规则）",
   has(wallerView, "statusFresh(p.status_at)") && has(wallerView, "return p && p.status && statusFresh(p.status_at) ? p.status : \"\";"));
 

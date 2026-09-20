@@ -95,6 +95,7 @@ node tools/bottle-test.mjs    # 温暖漂流瓶规则层单测（36 项：每日
 node tools/bottle-chat-test.mjs # 漂流瓶续聊离线回归（80 项：规则与状态机 / 通知文案与跳转落点 / 双适配器与 Worker 转发 / SQL 与 SUPABASE_SETUP 同源检查；不执行数据库迁移）
 node tools/i18n-test.mjs      # 文案完整性与插值回归（19 项：en/zh 键集合对称、修复过的 key、$ 特殊字符）
 node tools/cache-test.mjs     # 本地优先缓存单测（12 项：SWR 命中先渲染/后台刷新回写/相同数据去抖/无缓存 onError/有缓存断网静默保留/换用户隔离/前缀清理/容量淘汰）
+node tools/home-panes-test.mjs # T6 首页三联单测（9 项：联顺序与默认漂流瓶 / /?tab= 消费与兜底 / 横滑判定(阈值+纵向让位) / i18n 频道键成对 / 频道条与懒挂载接线 / 宠物联禁滑 / 桌面零变化 / 抽件自包含）
 node tools/admin-test.mjs     # 管理中心纯函数单测（39 项：admin:false 兜底 / 字段缺省 / 趋势图 14 天补零 / 行规整 / 北京时间口径）
 node tools/auth-test.mjs      # 登录规则单测（94 项：邮箱密码校验 / 昵称校验 / Google 昵称兜底与首登改昵提示 / 设置页改密码(旧密码验证·谷歌直设) / 重置邮件链接解析与失效识别 / 回跳地址 / 没跑迁移的判定 / 页面接线 / 自助删号全链路契约(迁移·双模式·Worker·设置页·隐私表述)）
 node tools/privacy-test.mjs   # 隐私政策页回归（34 项：路由与页脚入口 / sitemap 与预渲染产物 / 合规表述逐条核对 —— 权限范围、不转售、不投放广告、Limited Use、撤销授权 / 中英键对称 / 不执行 JS 也能读到完整正文）

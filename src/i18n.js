@@ -39,6 +39,8 @@ export const messages = {
       heroTitle: "A soft place to land",
       heroSub: "Take a breath. {n} is right here with you.",
       goPet: "Visit your companion",
+      /* App 轨道 T6：首页三联频道条（今日 / 漂流瓶 / 宠物），zh/en 成对 */
+      paneToday: "Today", paneBottle: "Bottles", panePet: "Pet",
       quoteLabel: "Today's little warmth",
       storyLabel: "Today's heartwarming story",
       storyTitle: "Today's heartwarming story",
@@ -646,6 +648,8 @@ export const messages = {
       heroTitle: "一个可以安心落脚的地方",
       heroSub: "深呼吸。{n} 就在这里陪着你。",
       goPet: "去看看你的伙伴",
+      /* App 轨道 T6：首页三联频道条（今日 / 漂流瓶 / 宠物），zh/en 成对 */
+      paneToday: "今日", paneBottle: "漂流瓶", panePet: "宠物",
       quoteLabel: "今日份的小温暖",
       storyLabel: "今日暖心故事",
       storyTitle: "今日暖心故事",

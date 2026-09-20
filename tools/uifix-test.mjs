@@ -120,14 +120,16 @@ t("T17 旧的 4 个安全头仍在（不回归）", () => {
 
 /* ══════════ ④ 陪你大厅：不再展示虚构在线人数 ══════════ */
 const home = read("src/views/HomeView.vue");
-t("T18 HomeView 不再计算/展示在线人数", () => {
+const todayPane = read("src/components/TodayPane.vue");   /* T6 抽件：大厅文案在这里 */
+t("T18 首页不再计算/展示在线人数（HomeView + TodayPane）", () => {
   assert.ok(!home.includes("const online = computed"), "仍有 online 计算");
   assert.ok(!home.includes("{{ online }}"), "模板仍渲染 online");
   assert.ok(!home.includes("dayOfYear"), "dayOfYear 已成死导入");
+  assert.ok(!todayPane.includes("const online = computed") && !todayPane.includes("{{ online }}"), "抽件后仍残留 online");
 });
 t("T19 大厅文案改为如实描述（tag + hall）", () => {
-  assert.ok(home.includes('t("home.companions.tag")'), "缺少 tag 文案");
-  assert.ok(home.includes('t("home.companions.hall")'), "缺少 hall 文案");
+  assert.ok(todayPane.includes('t("home.companions.tag")'), "缺少 tag 文案");
+  assert.ok(todayPane.includes('t("home.companions.hall")'), "缺少 hall 文案");
   const i18n = read("src/i18n.js");
   assert.ok(i18n.includes('tag: "always on"') && i18n.includes('tag: "一直亮着"'), "tag 文案缺失");
   assert.ok(!i18n.includes('online: "{n} kind souls'), "残留 online 文案（en）");
@@ -136,10 +138,10 @@ t("T19 大厅文案改为如实描述（tag + hall）", () => {
 
 /* ══════════ ⑤ 陪你大厅状态上云：未跑迁移时给一句人话 ══════════ */
 t("T20 状态同步失败区分「未开启」与「同步失败」", () => {
-  assert.ok(home.includes('t("home.companions.syncNeedSetup")'), "缺少未迁移提示");
-  assert.ok(home.includes('t("home.companions.syncFail")'), "缺少同步失败提示");
-  assert.ok(home.includes('errorKind(cloud.error) === "not-migrated"'), "未用 errorKind 归类失败原因");
-  assert.ok(!home.includes("myStatusFail"), "残留旧的布尔失败标记");
+  assert.ok(todayPane.includes('t("home.companions.syncNeedSetup")'), "缺少未迁移提示");
+  assert.ok(todayPane.includes('t("home.companions.syncFail")'), "缺少同步失败提示");
+  assert.ok(todayPane.includes('errorKind(cloud.error) === "not-migrated"'), "未用 errorKind 归类失败原因");
+  assert.ok(!todayPane.includes("myStatusFail"), "残留旧的布尔失败标记");
   const i18n = read("src/i18n.js");
   assert.ok(i18n.includes("syncNeedSetup:"), "词典缺 syncNeedSetup");
   assert.ok(

@@ -1619,6 +1619,32 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 .shell--mobile-nav.shell--chat main { padding-bottom: 0; }
 .shell--mobile-nav.shell--chat .footer { display: none; }
 .shell--mobile-nav.shell--chat .dm-page { height: 100dvh; gap: 0; }
+
+/* ═══ T6 · 首页三联容器（仅手机形态渲染；桌面零规则零变化）═══
+ * .home3 用 overflow: clip（不创建滚动容器）→ 频道条 sticky 仍相对视口生效；
+ * 老内核回退 overflow: hidden（频道条不吸附，功能不受影响）。 */
+.home3 { overflow: hidden; overflow: clip; }
+.home-chips {
+  position: sticky; top: 0; z-index: 6;
+  display: flex; gap: 6px; justify-content: center; align-items: center;
+  padding: 10px 4px;
+  background: var(--glass-strong);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+.home-chip {
+  appearance: none; cursor: pointer; font: inherit;
+  min-height: 40px; padding: 6px 18px; border-radius: 999px; font-size: 14px; font-weight: 800;
+  color: var(--ink-soft); background: transparent; border: 1.5px solid transparent;
+  transition: background-color .12s ease, color .12s ease, border-color .12s ease;
+}
+.home-chip.on { color: var(--accent-deep); background: var(--accent-soft); border-color: var(--accent); }
+.home-track {
+  display: flex; align-items: flex-start;
+  transition: transform .28s cubic-bezier(.22, .61, .36, 1);
+  touch-action: pan-y;   /* 纵向滚动手势交还页面，横向归 JS（宠物联整段禁滑，见 HomeView） */
+}
+.home-pane { flex: 0 0 100%; min-width: 100%; }
+.home-pane-lazy { display: grid; place-items: center; padding: 90px 0; font-size: 42px; }
 /* ⚠️ 必须重置 align-items：基础栅格 .dm-wrap 带 align-items:start，
    改 flex column 后交叉轴变横向，start 会让聊天卡按内容宽度收缩（曾表现为「只占左侧一条」）。 */
 .shell--mobile-nav.shell--chat .dm-wrap {
