@@ -9,7 +9,7 @@ import {
   petStore, activePet, petUi, say, MAX_CUSTOM_PETS,
   doPlay, doPetting, doClean, toggleSleep, savePet, talkByStatus,
   cookbook, feedDish, removeDish, wallet,
-  dailyTasks, claimTasks, TASK_LIST,
+  dailyTasks, claimTasks, claimableCoins, TASK_LIST,
 } from "../stores/petStore.js";
 import PetMotion from "../components/PetMotion.vue";
 import FoodPainter from "../components/FoodPainter.vue";
@@ -209,16 +209,15 @@ const taskRows = computed(() =>
 );
 const doneCount = computed(() => TASK_LIST.filter((x) => dailyTasks[x.key]).length);
 const donePct = computed(() => Math.round((doneCount.value / TASK_LIST.length) * 100));
-const totalCoins = computed(() =>
-  TASK_LIST.reduce((s, x) => s + (dailyTasks[x.key] ? x.coin : 0), 0)
-);
-const canClaim = computed(() => !dailyTasks.claimed && doneCount.value > 0);
+/* 待领金币 = 已完成且还没领过的任务之和（用户反馈：领过一次之后，继续完成任务却没法再领） */
+const claimable = computed(() => claimableCoins());
+const canClaim = computed(() => claimable.value > 0);
 const claimMsg = ref("");
 
 function claim() {
   const n = claimTasks();
   if (n <= 0) return;
-  claimMsg.value = t("tasks.claimed");
+  claimMsg.value = t("tasks.claimed", { c: n });
   spawnFx(["🪙", "✨", "💰"], 4);
   setTimeout(() => { claimMsg.value = ""; }, 2800);
 }
@@ -604,7 +603,7 @@ function onToggleFramed(d) {
       <div class="t-state">{{ dailyTasks[task.key] ? "\u2705" : "" }}</div>
     </div>
     <button class="btn" style="margin-top: 6px" :disabled="!canClaim" @click="claim">
-      {{ claimMsg || t("tasks.claim", { c: totalCoins }) }}
+      {{ claimMsg || t("tasks.claim", { c: claimable }) }}
     </button>
   </div>
 

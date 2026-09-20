@@ -8,6 +8,8 @@
  * 视图层（App.vue 角标、MessagesView、NotificationsView）都读这一个 store。
  */
 import { reactive } from "vue";
+import { getItem, setItem, removeItem } from "../utils/storage.js";
+import { cloud } from "../utils/supabase.js";
 import { unreadTotalSafe } from "../utils/dm.js";
 import { unreadSafe } from "../utils/notify.js";
 
@@ -22,6 +24,34 @@ export const badge = reactive({
   loading: false,
 });
 
+/* 角标本地缓存（修「通知那里太慢了」）：上次拉到的未读数先上屏，
+ * 网络回来再校正 —— 打开 App 那一刻就有正确的角标，不用等第一轮 RPC。
+ * 缓存键按用户域（uid）分开（修「换账号登录还是上个人的角标」）：A 的未读数
+ * 只存在 wp-badge-v1:<A 的 uid> 下，B 登录读的是 B 自己的那份。 */
+const BADGE_CACHE_KEY = "wp-badge-v1";
+let cacheUid = "";        /* 当前缓存归属的 uid（未登录为空 → 不缓存不读取） */
+
+function badgeCacheKey(uid) {
+  return uid ? `${BADGE_CACHE_KEY}:${uid}` : "";
+}
+
+/** 登录（或换账号）时把该用户上次的角标先上屏；没有缓存就清零 */
+function hydrateBadge(uid) {
+  cacheUid = uid || "";
+  const key = badgeCacheKey(cacheUid);
+  const zero = { dm: 0, requests: 0, notif: 0, comments: 0, reactions: 0, pets: 0, system: 0 };
+  let raw = null;
+  try { raw = key ? JSON.parse(getItem(key)) : null; } catch (e) { raw = null; }
+  const src = raw && typeof raw === "object" ? raw : zero;
+  badge.dm = Math.max(0, src.dm || 0);
+  badge.requests = Math.max(0, src.requests || 0);
+  badge.notif = Math.max(0, src.notif || 0);
+  badge.comments = Math.max(0, src.comments || 0);
+  badge.reactions = Math.max(0, src.reactions || 0);
+  badge.pets = Math.max(0, src.pets || 0);
+  badge.system = Math.max(0, src.system || 0);
+}
+
 let timer = null;
 let backoff = 1;        // 失败退避倍数
 const BASE_MS = 30000;
@@ -35,6 +65,17 @@ function apply(dm, notif) {
   badge.reactions = Math.max(0, (notif && notif.reactions) || 0);
   badge.pets = Math.max(0, (notif && notif.pets) || 0);
   badge.system = Math.max(0, (notif && notif.system) || 0);
+  /* 写入缓存：只是几个数字（无隐私内容），下次冷启动当首屏兜底；
+   * 按 uid 分开存，换账号不会把上一个人的角标带出来；登出时 stopBadge 会清掉。 */
+  const key = badgeCacheKey(cacheUid);
+  if (!key) return;
+  try {
+    setItem(key, JSON.stringify({
+      dm: badge.dm, requests: badge.requests, notif: badge.notif,
+      comments: badge.comments, reactions: badge.reactions,
+      pets: badge.pets, system: badge.system,
+    }));
+  } catch (e) { /* 写不进就算了 */ }
 }
 
 /** 刷一次（页面回前台 / 发消息后 / 读通知后都可手动触发）。返回是否成功（供退避用） */
@@ -72,6 +113,10 @@ function schedule() {
 
 /** 登录后调用一次即可；登出时 stopBadge() */
 export function startBadge() {
+  /* 进 App 的第一件事：把「这个 uid 上次的角标」先上屏（本地缓存，0ms 就有数字），
+   * 再让 refreshBadge() 去云端校正。换账号后 uid 变了 → 读的是新账号自己那份。 */
+  const uid = (cloud.user && cloud.user.id) || "";
+  if (uid !== cacheUid) hydrateBadge(uid);
   if (timer) return;
   refreshBadge();
   schedule();
@@ -88,6 +133,11 @@ export function stopBadge() {
   }
   badge.dm = 0; badge.requests = 0; badge.notif = 0;
   badge.comments = 0; badge.reactions = 0; badge.pets = 0; badge.system = 0;
+  /* 登出：只清掉这位用户的角标缓存 —— 换账号登录时，新 uid 读的是它自己的那份，
+   * 不会把上一个人的未读数带出来，同时也不会误删同设备其它账号的缓存。 */
+  const key = badgeCacheKey(cacheUid);
+  cacheUid = "";
+  if (key) { try { removeItem(key); } catch (e) { /* 忽略 */ } }
 }
 
 function onVisible() {

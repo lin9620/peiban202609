@@ -20,6 +20,12 @@ app.config.errorHandler = (err, instance, info) => {
 
 app.use(router).mount("#app");
 
+/* 挂载成功：通知启动看门狗（index.html）清除英文 SEO 占位兜底，并放行后续自动重载 */
+try {
+  window.__WP_MOUNTED__ = true;
+  sessionStorage.removeItem("wp-boot-reload");
+} catch (e) { /* 无 sessionStorage 环境忽略 */ }
+
 /* 全局心跳：每秒结算状态，每 30 秒自动存档，关闭页面前再存一次 */
 setInterval(() => {
   try { tickPet(); } catch (e) { console.error("[Warm Paws] tickPet 出错：", e); }

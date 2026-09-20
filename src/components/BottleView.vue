@@ -1,7 +1,7 @@
 <!-- 温暖漂流瓶（T6 抽件）：写信投海 / 捞信回信放回 / 记录两栏分页（本地优先缓存）。
      桌面首页收尾与手机「漂流瓶」联（默认联）共用同一组件。 -->
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, watch, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { NButton, NInput } from "naive-ui";
 import { t } from "../i18n.js";
@@ -11,7 +11,7 @@ import {
   BOTTLE_BODY_MAX, BOTTLE_SEND_MAX, BOTTLE_FISH_MAX,
   canBottle, bottleErrKey,
   bottleSend, bottleFish, bottleReply, bottleRelease, bottleHeld,
-  bottleRecords, bottleChatState,
+  bottleRecords, bottleChatState, bottleChatDecide,
 } from "../utils/bottle.js";
 import { relativeTime } from "../utils/dmRules.js";
 import { cloud } from "../utils/supabase.js";
@@ -27,22 +27,28 @@ const fishing = ref(false);
 const fished = ref(null);       /* 刚捞起、还没处理的这封 */
 const held = ref([]);           /* 我之前捞起、还没回的信（换页/刷新后找回来） */
 
-/* 每日次数用本机日键记账（展示用）；超不超由服务端说了算 */
-const QUOTA_KEY = "warm-paws-bottle-quota-v1";
+/* 每日次数用本机日键记账（展示用）；超不超由服务端说了算。
+ * 键按账号分（修「换账号登录，可捞次数还是上个人的」）：uid 进键名，
+ * A/B 两个账号各记各的账，登出换号立刻换账本。 */
+const myId = computed(() => (cloud.user && cloud.user.id) || "");
+const QUOTA_BASE = "warm-paws-bottle-quota-v1";
+const quotaKey = computed(() => `${QUOTA_BASE}:${myId.value || "guest"}`);
+function freshQuota() { return { day: todayKey(), sent: 0, fished: 0 }; }
 function loadQuota() {
   try {
-    const q = JSON.parse(getItem(QUOTA_KEY));
-    return q && q.day === todayKey() ? q : { day: todayKey(), sent: 0, fished: 0 };
-  } catch (e) { return { day: todayKey(), sent: 0, fished: 0 }; }
+    const q = JSON.parse(getItem(quotaKey.value));
+    return q && q.day === todayKey() ? q : freshQuota();
+  } catch (e) { return freshQuota(); }
 }
 const quota = ref(loadQuota());
 const sendLeft = computed(() => Math.max(0, BOTTLE_SEND_MAX - quota.value.sent));
 const fishLeft = computed(() => Math.max(0, BOTTLE_FISH_MAX - quota.value.fished));
 function bumpQuota(k) {
-  if (quota.value.day !== todayKey()) quota.value = { day: todayKey(), sent: 0, fished: 0 };
+  if (quota.value.day !== todayKey()) quota.value = freshQuota();
   quota.value[k] += 1;
-  setItem(QUOTA_KEY, JSON.stringify(quota.value));
+  setItem(quotaKey.value, JSON.stringify(quota.value));
 }
+watch(myId, () => { quota.value = loadQuota(); fished.value = null; });
 
 const tray = computed(() => fished.value || held.value[0] || null);
 
@@ -124,7 +130,6 @@ const recRows = ref([]);
 const recPage = ref(0);
 const recDone = ref(false);
 const recLoading = ref(false);
-const myId = computed(() => (cloud.user && cloud.user.id) || "");
 
 async function loadRecords(reset = false) {
   if (!cloudSigned.value || recLoading.value) return;
@@ -164,6 +169,8 @@ const whenRec = (ts) => relativeTime(ts, Date.now(), t);
 /* 我发布的一封的当前状态：被捞走 / 已有回信 / 还在海里；我捞到的：已回信 / 在我手里 / 已放回 */
 function recState(l) {
   if (recTab.value === "mine") {
+    /* 收到回信还没决定 → 直接在这条记录上给「同意 / 拒绝」按钮（用户反馈：点不了=没用） */
+    if (bottleChatState(l, myId.value) === "choose") return "bottle.stDecide";
     if (l.status === "answered") return "bottle.stReplied";
     if (l.status === "held") return "bottle.stPicked";
     return "bottle.stSea";
@@ -178,6 +185,25 @@ function canChat(l) {
 }
 function openRec(l) {
   if (canChat(l)) router.push({ name: "messages", params: { id: String(l.conv_id) } });
+}
+/* 在记录列表里直接决定要不要和 TA 聊（不必再跑去消息页找那张卡片） */
+const recBusy = ref("");
+const recErr = ref("");
+async function decideRec(l, accept) {
+  if (recBusy.value) return;
+  recBusy.value = l.id;
+  recErr.value = "";
+  try {
+    const r = await bottleChatDecide(l.id, accept);
+    if (!r || !["accepted", "declined"].includes(r.decision)) throw new Error("bottle-invalid-result");
+    l.chat_decision = r.decision;
+    if (r.conv_id) l.conv_id = r.conv_id;
+    if (r.decision === "accepted" && r.conv_id) {
+      router.push({ name: "messages", params: { id: String(r.conv_id) } });
+    }
+  } catch (e) {
+    recErr.value = t(bottleErrKey(e));
+  } finally { recBusy.value = ""; }
 }
 </script>
 
@@ -251,8 +277,18 @@ function openRec(l) {
             <span class="m-who">{{ t("bottle.replyFrom") }}</span>
             <span class="m-body">{{ l.reply }}</span>
           </div>
+          <!-- 收到回信还没决定：就在这条记录上直接同意 / 拒绝（同意后进聊天） -->
+          <div v-if="bottleChatState(l, myId) === 'choose'" class="mail-send" @click.stop>
+            <n-button type="primary" size="small" round :disabled="recBusy === l.id" @click="decideRec(l, true)">
+              {{ t("bottle.chatAccept") }}
+            </n-button>
+            <n-button quaternary size="small" round :disabled="recBusy === l.id" @click="decideRec(l, false)">
+              {{ t("bottle.chatDecline") }}
+            </n-button>
+          </div>
           <span v-if="canChat(l)" class="bottle-chat">{{ t("bottle.openChat") }} →</span>
         </div>
+        <p v-if="recErr" class="notice">{{ t(recErr) }}</p>
         <div class="bottle-pager">
           <n-button size="tiny" round :disabled="recPage <= 0 || recLoading" @click="recPageGo(-1)">
             ← {{ t("notif.prev") }}

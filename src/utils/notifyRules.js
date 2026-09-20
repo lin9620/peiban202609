@@ -50,7 +50,9 @@ export function aggKey(n) {
 }
 
 /** 时间倒序聚合：连续同键的通知合并为一条带 count 的展示项
- *  返回 [{ ...first, count, extra Actors:[names] }]；输入须新→旧 */
+ *  返回 [{ ...first, count, actor 列表, ids:[组内所有通知 id] }]；输入须新→旧。
+ *  `ids` 是给「点一条 = 整组一起标已读」用的（用户反馈：列表只显示 3 条，
+ *  角标却还挂着十几条 —— 正是因为一次点击只标了组里第一条）。 */
 export function aggregate(list) {
   const arr = Array.isArray(list) ? list : [];
   const out = [];
@@ -62,18 +64,34 @@ export function aggregate(list) {
       if (i !== undefined) {
         const cur = out[i];
         cur.count += 1;
+        if (n.id != null) cur.ids.push(n.id);
         if (n.actor_name && !cur.actors.includes(n.actor_name)) cur.actors.push(n.actor_name);
         if (n.read_at == null) cur.read_at = null; // 任一未读即整组未读
         continue;
       }
-      const item = { ...n, count: 1, actors: n.actor_name ? [n.actor_name] : [] };
+      const item = {
+        ...n, count: 1,
+        ids: n.id != null ? [n.id] : [],
+        actors: n.actor_name ? [n.actor_name] : [],
+      };
       index.set(k, out.length);
       out.push(item);
     } else {
-      out.push({ ...n, count: 1, actors: n.actor_name ? [n.actor_name] : [] });
+      out.push({
+        ...n, count: 1,
+        ids: n.id != null ? [n.id] : [],
+        actors: n.actor_name ? [n.actor_name] : [],
+      });
     }
   }
   return out;
+}
+
+/** 一条展示项（可能是聚合组）涉及的全部通知 id —— 标已读用；空/异常一律给空数组 */
+export function idsOf(n) {
+  if (!n) return [];
+  if (Array.isArray(n.ids) && n.ids.length) return n.ids.filter((x) => x != null);
+  return n.id != null ? [n.id] : [];
 }
 
 /** 展示文案装配的原料：{ key, params } —— i18n 键 + 插值参数（视图层只管 t()） */

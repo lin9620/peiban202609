@@ -374,12 +374,17 @@ const brightRatio = computed(() => {
       </div>
       <p v-if="myPostsBusy" class="sub">…</p>
       <p v-else-if="!myPosts.length" class="sub">{{ t("profile.myPostsEmpty") }}</p>
+      <!-- 与暖心墙同款：正文完整显示（不截断）+ 配图原样铺开，整卡点击进墙里那条 -->
       <div v-else class="my-posts">
         <router-link
           v-for="p in myPosts" :key="p.id"
           class="my-post" :to="{ path: '/community', query: { post: p.dbId } }">
-          <span class="mp-text">{{ p.text ? (p.text.length > 60 ? p.text.slice(0, 60) + "…" : p.text) : "🖼️" }}</span>
-          <span class="mp-meta">{{ new Date(p.ts).toLocaleDateString() }}</span>
+          <div class="mp-head">
+            <b class="mp-name">{{ p.name }}</b>
+            <span class="mp-meta">{{ new Date(p.ts).toLocaleDateString() }}</span>
+          </div>
+          <p class="mp-text">{{ p.text || "🖼️" }}</p>
+          <img v-if="p.img" :src="p.img" class="pic" alt="" />
         </router-link>
       </div>
     </section>
@@ -552,13 +557,19 @@ const brightRatio = computed(() => {
 
 <style scoped>
 .my-posts-link { text-decoration: none; }
-.my-posts { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.my-posts { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
 .my-post {
-  display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
-  padding: 10px 12px; border-radius: 14px; text-decoration: none; color: inherit;
+  display: block;
+  padding: 12px 14px; border-radius: 14px; text-decoration: none; color: inherit;
   background: var(--glass);
 }
 .my-post:hover { background: var(--accent-soft); }
-.mp-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mp-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.mp-name { font-size: 13px; }
+/* 与暖心墙一致：正文完整换行显示（原先单行省略号，手机上只剩半句话） */
+.mp-text {
+  margin: 6px 0 0; font-size: 14.5px; line-height: 1.8; font-weight: 500;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
 .mp-meta { flex: none; font-size: 12px; color: var(--ink-soft); }
 </style>

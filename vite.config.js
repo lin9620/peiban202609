@@ -202,9 +202,10 @@ function seoRoutes() {
 <body>
   <main>
     <p style="font-size: 44px; margin: 0;">🐾</p>
-    <h1>This page wandered off.</h1>
-    <p>The address doesn't exist — the gentle rooms are still where they always were.</p>
-    <p><a href="/">Back to Warm Paws</a></p>
+    <h1>This page wandered off. · 走丢啦</h1>
+    <p>The address doesn't exist — the gentle rooms are still where they always were.<br />
+       这个地址不存在——温柔的房间还在老地方。</p>
+    <p><a href="/">Back to Warm Paws · 回首页</a></p>
   </main>
 </body>
 </html>

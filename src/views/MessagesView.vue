@@ -257,7 +257,11 @@ async function recall(m) {
 
 async function acceptReq(c) {
   try { await dmApi.accept(c.conv_id); } catch (e) { /* 静默 */ }
-  c.accepted = true;
+  /* 关键：改的是 convs.value 里的原始行（computed requests/normal 都从它过滤）。
+   * 之前改的是 rowView 生成的展示拷贝 → 列表纹丝不动，按钮一直挂在原地（用户实测）。 */
+  const row = convs.value.find((x) => String(x.conv_id) === String(c.conv_id));
+  if (row) row.accepted = true;
+  if (meta.value && String(meta.value.conv_id) === String(c.conv_id)) meta.value.accepted = true;
   refreshBadge();
 }
 

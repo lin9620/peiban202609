@@ -564,9 +564,20 @@ export const dailyTasks = reactive(loadTasks());
 function loadTasks() {
   try {
     const raw = JSON.parse(getItem(TASK_KEY));
-    if (raw && raw.date === todayKey()) return raw;
+    if (raw && raw.date === todayKey()) {
+      /* 旧存档迁移：旧版 claimed=true 是「一键全领」语义 → 把当时已完成的部分记为已领 */
+      const claimedMap = raw.claimedMap && typeof raw.claimedMap === "object" ? { ...raw.claimedMap } : {};
+      if (raw.claimed === true) {
+        for (const t of TASK_DEFS) if (raw[t.key]) claimedMap[t.key] = true;
+      }
+      return {
+        date: raw.date,
+        feed: !!raw.feed, mood: !!raw.mood, draw: !!raw.draw, play: !!raw.play, adv: !!raw.adv,
+        claimedMap,
+      };
+    }
   } catch (e) {}
-  return { date: todayKey(), feed: false, mood: false, draw: false, play: false, adv: false, claimed: false };
+  return { date: todayKey(), feed: false, mood: false, draw: false, play: false, adv: false, claimedMap: {} };
 }
 
 function saveTasks() {
@@ -578,22 +589,35 @@ function markTask(key) {
   if (!dailyTasks[key]) { dailyTasks[key] = true; saveTasks(); }
 }
 
-export function claimTasks() {
-  if (dailyTasks.claimed || dailyTasks.date !== todayKey()) return 0;
+/* 还能再领多少金币：已完成但还没领过的任务之和（用户反馈：领过一次后，后续完成的任务也应当能领） */
+export function claimableCoins() {
+  if (dailyTasks.date !== todayKey()) return 0;
   let coins = 0;
   TASK_DEFS.forEach((t) => {
-    if (dailyTasks[t.key]) {
+    if (dailyTasks[t.key] && !dailyTasks.claimedMap[t.key]) coins += t.coin;
+  });
+  return coins;
+}
+
+/* 领取：只领「已完成且未领过」的任务，返回到手的金币数；领完若又完成新任务，可以接着领 */
+export function claimTasks() {
+  if (dailyTasks.date !== todayKey()) return 0;
+  let coins = 0;
+  TASK_DEFS.forEach((t) => {
+    if (dailyTasks[t.key] && !dailyTasks.claimedMap[t.key]) {
       coins += t.coin;
       if (t.expPet) {
         const pet = cur();
         if (pet) gainExp(pet, t.expPet);
       }
+      dailyTasks.claimedMap[t.key] = true;
     }
   });
-  wallet.coins += coins;
-  dailyTasks.claimed = true;
-  saveTasks();
-  petStore.save();
+  if (coins > 0) {
+    wallet.coins += coins;
+    saveTasks();
+    petStore.save();
+  }
   return coins;
 }
 

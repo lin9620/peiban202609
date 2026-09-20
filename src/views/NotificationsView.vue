@@ -15,8 +15,8 @@ import { NButton } from "naive-ui";
 import { t } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
 import * as notifyApi from "../utils/notify.js";
-import { cacheKey, swr } from "../utils/cache.js";
-import { aggregate, kindsFor, itemView, targetOf } from "../utils/notifyRules.js";
+import { cacheKey, swr, cacheDrop } from "../utils/cache.js";
+import { aggregate, kindsFor, itemView, targetOf, idsOf } from "../utils/notifyRules.js";
 import { relativeTime } from "../utils/dmRules.js";
 import { badge, refreshBadge } from "../stores/badgeStore.js";
 
@@ -117,8 +117,16 @@ function line(n) {
 }
 
 async function openItem(n) {
-  notifyApi.mark({ ids: [n.id] }).catch(() => {});
-  n.read_at = n.read_at || new Date().toISOString();
+  /* 点一条 = 把这一整组（聚合里的所有原始通知）一起标已读。
+   * 用户反馈：「一进去十几条通知，列表只显示 3 条」—— 旧版只标了组里第一条，
+   * 剩下的十几条未读还挂在角标上，看着就是「读了也不消」。 */
+  const ids = idsOf(n);
+  notifyApi.mark(ids.length ? { ids } : { ids: [n.id] }).catch(() => {});
+  const now = new Date().toISOString();
+  n.read_at = n.read_at || now;
+  const touched = new Set(ids);
+  rows.value = rows.value.map((r) => (touched.has(r.id) ? { ...r, read_at: r.read_at || now } : r));
+  cacheDrop("notif:");     /* 首屏缓存里的未读标记一并作废，下次进来不会又「复活」 */
   refreshBadge();
   const tg = targetOf(n);
   if (!tg) return;
@@ -132,11 +140,13 @@ async function markAll() {
   try { await notifyApi.mark({ all: true }); } catch (e) { /* 静默 */ }
   const now = new Date().toISOString();
   rows.value = rows.value.map((r) => ({ ...r, read_at: r.read_at || now }));
+  cacheDrop("notif:");      /* 首屏缓存里还存着未读标记，一并作废 */
   refreshBadge();
 }
 
 async function clearAll() {
   try { await notifyApi.clearAll(); } catch (e) { /* 静默 */ }
+  cacheDrop("notif:");
   load(true);
   refreshBadge();
 }
@@ -194,6 +204,8 @@ onMounted(async () => {
             <p v-if="n.post_body" class="sub notif-quote">{{ n.post_body }}</p>
             <p class="sub notif-time">{{ when(n.created_at) }}</p>
           </div>
+          <!-- 这一行是几条通知合并的（用户反馈：一进去十几条，列表只见 3 条 —— 把数亮出来） -->
+          <span v-if="n.count > 1" class="notif-times">×{{ n.count }}</span>
           <span v-if="n.read_at == null" class="notif-dot" :title="t('notif.unread')"></span>
         </li>
       </ul>
@@ -214,3 +226,12 @@ onMounted(async () => {
     <router-link class="notif-back" to="/">{{ "← " + t("nav.home") }}</router-link>
   </div>
 </template>
+
+<style scoped>
+/* 聚合徽标：这行代表同键的 N 条原始通知；点一下整组一起消未读 */
+.notif-times {
+  flex: none; align-self: center; margin-left: 6px;
+  font-size: 11.5px; font-weight: 800; color: var(--ink-soft);
+  background: rgba(160, 110, 60, .1); border-radius: 999px; padding: 3px 9px;
+}
+</style>

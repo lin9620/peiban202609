@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted } from "vue";
+import { Capacitor, registerPlugin } from "@capacitor/core";
 import { t, i18n } from "../i18n.js";
 import { SPECIES } from "../data/pets.js";
 
@@ -88,6 +89,8 @@ function draw() {
   const customImg = props.pet && props.pet.custom && props.pet.custom.img;
   if (customImg) {
     const img = new Image();
+    /* Storage 公网图必须带 CORS 再画，否则画布被「污染」，导出时 toDataURL/toBlob 直接抛错 */
+    img.crossOrigin = "anonymous";
     img.onload = () => {
       const maxW = 320, maxH = 280;
       const scale = Math.min(maxW / img.width, maxH / img.height, 1);
@@ -107,13 +110,59 @@ onMounted(() => {
   try { draw(); } catch (e) { console.error("[Warm Paws] 分享卡片绘制失败：", e); }
 });
 
-function download() {
-  const a = document.createElement("a");
-  a.href = cardBox.value.toDataURL("image/png");
-  a.download = "warm-paws-card.png";
-  a.click();
-  done.value = true;
-  setTimeout(() => { done.value = false; }, 2500);
+/* 导出画布 → App 内走原生分享面板 / 网页走系统分享或下载。
+ * 为什么不能只靠 <a download>：Capacitor 的安卓 WebView 没有配置 DownloadListener，
+ * 点了下载按钮什么都不会发生（用户实测「生成分享图片功能没有用」）。
+ * App 里走 WpShare 原生插件（MainActivity 注册）调系统分享面板，
+ * 用户选「保存到相册 / 微信 / QQ」都行；旧版 APK 没有该插件时再退回网页兜底。 */
+const WpShare = registerPlugin("WpShare");
+const busy = ref(false);
+const errMsg = ref("");
+
+function canvasBlob() {
+  return new Promise((resolve, reject) => {
+    try { cardBox.value.toBlob((b) => (b ? resolve(b) : reject(new Error("blob-empty"))), "image/png"); }
+    catch (e) { reject(e); }
+  });
+}
+
+async function shareSave() {
+  if (busy.value) return;
+  busy.value = true;
+  errMsg.value = "";
+  try {
+    const blob = await canvasBlob();
+    /* App 内：原生分享面板（可存相册 / 发聊天软件）；安卓 WebView 不认 <a download> */
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await WpShare.shareImage({ data: cardBox.value.toDataURL("image/png"), fileName: "warm-paws-card.png" });
+        done.value = true;
+        busy.value = false;
+        setTimeout(() => { done.value = false; }, 2600);
+        return;
+      } catch (e) { /* 旧 APK 没装这个插件 → 落到下面的网页兜底 */ }
+    }
+    const file = new File([blob], "warm-paws-card.png", { type: "image/png" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: t("home.share"), text: props.quote });
+      done.value = true;
+    } else {
+      /* 桌面浏览器：走传统下载 */
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "warm-paws-card.png";
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      done.value = true;
+    }
+  } catch (e) {
+    /* 用户在分享面板点了取消（AbortError）不算失败 */
+    if (!(e && e.name === "AbortError")) errMsg.value = t("home.shareFail");
+  } finally {
+    busy.value = false;
+    setTimeout(() => { done.value = false; errMsg.value = ""; }, 3000);
+  }
 }
 </script>
 
@@ -126,10 +175,11 @@ function download() {
       </div>
       <div class="modal-row" style="margin-top: 16px">
         <button class="modal-btn ghost" @click="emit('close')">{{ t("common.close") }}</button>
-        <button class="modal-btn" @click="download">
-          {{ done ? t("home.downloading") : t("home.download") }}
+        <button class="modal-btn" :disabled="busy" @click="shareSave">
+          {{ busy ? t("home.saving") : done ? t("home.shared") : t("home.saveShare") }}
         </button>
       </div>
+      <p v-if="errMsg" class="notice" style="margin-top: 10px">{{ errMsg }}</p>
     </div>
   </div>
 </template>

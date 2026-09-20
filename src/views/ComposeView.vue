@@ -7,7 +7,7 @@ import { NButton } from "naive-ui";
 import { t } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
 import { cloudInsertPost, canUseWall } from "../utils/wall.js";
-import { errorKind, utcDay, POST_DAY_KEY } from "../utils/wallRules.js";
+import { errorKind, utcDay, POST_DAY_KEY, dayCountFromStorage, canPostToday, postsLeftToday } from "../utils/wallRules.js";
 import { getItem, setItem } from "../utils/storage.js";
 import {
   validateImageFile, isSaneShape, isUsableDataUrl, shrinkToDataUrl,
@@ -27,8 +27,11 @@ const signedIn = computed(() => !!(cloud.ready && cloud.user));
 /* 帖子上限 1000 字：与数据层同口径（wall.js cloudInsertPost 内部 slice(0, 1000)），
    输入框硬限制 + 右下角字数，避免写超了被静默截断 */
 const POST_MAX = 1000;
-/* 本地也守每日一条：本机记的「今天已发」优先（云端还有触发器兜一层） */
-const postedToday = computed(() => getItem(POST_DAY_KEY) === utcDay());
+/* 本地也守每天 7 条（WALL_POST_DAILY_LIMIT，库触发器兜底）：本机记账 { day, n }，
+ * 旧格式（日期串）兼容 —— 旧记账视为当天已发 1 条 */
+const localCount = computed(() => dayCountFromStorage(getItem(POST_DAY_KEY), utcDay()));
+const postedToday = computed(() => !canPostToday({ localCount: localCount.value }));
+const postsLeft = computed(() => postsLeftToday({ localCount: localCount.value }));
 
 function showMsg(tk) {
   wallMsg.value = tk;
@@ -84,7 +87,7 @@ async function submit() {
     return showMsg(kind === "daily-limit" ? "community.dailyLimit"
       : kind === "not-migrated" ? "community.needSetup" : "community.postFail");
   }
-  setItem(POST_DAY_KEY, utcDay());
+  setItem(POST_DAY_KEY, JSON.stringify({ day: utcDay(), n: localCount.value + 1 }));
   draft.value = "";
   imgData.value = "";
   posted.value = true;
@@ -143,6 +146,7 @@ async function submit() {
 
       <p v-if="postedToday" class="compose-hint">{{ t("community.dailyLimit") }}</p>
       <p v-else-if="posted" class="compose-hint good">{{ t("community.postedThanks") }}</p>
+      <p v-else class="compose-hint">{{ t("community.postLeft", { n: postsLeft }) }}</p>
       <p v-if="wallMsg" class="compose-hint bad">{{ t(wallMsg) }}</p>
       <p v-else-if="needText" class="compose-hint bad">{{ t("community.needText") }}</p>
     </section>

@@ -14,8 +14,38 @@
   <link rel="icon" type="image/png" sizes="192x192" href="/favicon.png" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="manifest" href="/manifest.json" />
+  <script>
+  /* ── 启动看门狗（修「有时候页面一堆英文乱码」）──────────────────────
+   * 那段英文是构建期写进 #app 的 SEO 静态占位（给搜索引擎看的）。正常情况下
+   * Vue 一挂载就会整体替换掉它；但一旦 JS 资源加载失败（版本更新后旧缓存指向
+   * 已删除的 chunk、弱网超时等），占位就会一直裸露在用户面前。
+   * 两道保险：
+   *  1) vite:preloadError（chunk 404 等）→ 自动整页重载一次（sessionStorage 防循环）；
+   *  2) 6 秒后仍未挂载成功 → 把英文占位换成中文提示 + 重试按钮，不再显示英文。 */
+  (function () {
+    var FLAG = "wp-boot-reload";
+    try {
+      window.addEventListener("vite:preloadError", function () {
+        if (sessionStorage.getItem(FLAG)) return;   /* 已重载过一次：不再循环 */
+        sessionStorage.setItem(FLAG, "1");
+        location.reload();
+      });
+    } catch (e) { /* 隐私模式等拿不到 sessionStorage 就跳过自动重载 */ }
+    setTimeout(function () {
+      if (window.__WP_MOUNTED__) return;
+      var app = document.getElementById("app");
+      if (!app || !app.querySelector(".seo-hero")) return;
+      app.innerHTML =
+        '<section class="card seo-hero" style="text-align:center">' +
+        '<h2 class="seo-title">\u{1F43E} 温暖的爪印</h2>' +
+        "<p>页面加载遇到了一点小麻烦，内容没有起来。</p>" +
+        '<p><a href="javascript:location.reload()" style="color:#e07a3f;font-weight:700">' +
+        "\u70b9\u8fd9\u91cc\u91cd\u8bd5</a></p></section>";
+    }, 6000);
+  })();
+  </script>
 
-  <!-- Open Graph（微信 / QQ / Facebook / Discord 等分享卡片） -->
+  <!-- Open Graph（微信 / QQ / Discord 等分享卡片） -->
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Warm Paws" />
   <meta property="og:title" content="Warm Paws · A gentle place to be" />

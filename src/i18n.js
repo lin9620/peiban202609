@@ -48,6 +48,9 @@ export const messages = {
       storyLabel: "Today's heartwarming story",
       storyTitle: "Today's heartwarming story",
       share: "Share as card", download: "Download card", downloading: "Saved! Check your downloads.",
+      saveShare: "Save / share card", saving: "Preparing…",
+      shared: "Opened! Pick an app to save it or send it along.",
+      shareFail: "Couldn't share the card. Please try again.",
       companions: {
         title: "You're not alone here",
         tag: "always on",
@@ -148,7 +151,7 @@ export const messages = {
       play: "Play together",
       adv: "Go on a trip",
       claim: "Claim 💰{c}",
-      claimed: "Claimed! See you tomorrow 🌙",
+      claimed: "Claimed {c} coins ✨ Keep going — more tasks can be claimed too!",
       progress: "{done}/{total} done",
     },
 
@@ -231,6 +234,7 @@ export const messages = {
       /* #17 记录分类与时间 */
       mineTab: "Sent by me", heldTab: "Fished by me",
       stReplied: "Reply received", stPicked: "Picked up, waiting", stSea: "Still at sea",
+      stDecide: "Reply received — accept or decline the chat.",
       stAnswered: "You replied", stInHand: "In your hands", stReleased: "Thrown back",
       openChat: "Open chat",
       pageInfo: "Page {p}",
@@ -274,7 +278,8 @@ export const messages = {
       noMore: "That's the latest for now — come back later for more 🐾",
       composeTitle: "Share on the wall",
       composeBack: "Back to the wall",
-      dailyLimit: "One note a day is plenty — you already posted today 💛",
+      dailyLimit: "Seven notes a day is plenty — you've used them up. See you tomorrow 💛",
+      postLeft: "{n} of 7 posts left today · one image per note",
       postFail: "That didn't go through — please try again 🙏",
       needSetup: "This part isn't switched on yet — the wall owner needs to run the latest database update 🔧",
       viewHome: "View profile",
@@ -301,6 +306,7 @@ export const messages = {
 
     comment: {
       count: "{n} comments",
+      write: "Write a comment",
       placeholder: "Say something gentle…",
       empty: "No comments yet — be the first to warm this thread.",
       left: "{n} characters left",
@@ -667,6 +673,9 @@ export const messages = {
       storyLabel: "今日暖心故事",
       storyTitle: "今日暖心故事",
       share: "生成分享卡片", download: "下载卡片", downloading: "已保存！去下载列表看看吧。",
+      saveShare: "保存 / 分享卡片", saving: "准备中…",
+      shared: "已打开分享面板，选个应用保存或发送吧。",
+      shareFail: "分享没有成功，请再试一次。",
       companions: {
         title: "这里不止你一个人",
         tag: "一直亮着",
@@ -767,7 +776,7 @@ export const messages = {
       play: "陪它玩一次",
       adv: "出门旅行一次",
       claim: "领取 💰{c}",
-      claimed: "已领取！明天见 🌙",
+      claimed: "已领取 {c} 金币 ✨ 继续完成任务还能再领！",
       progress: "{done}/{total}",
     },
 
@@ -850,6 +859,7 @@ export const messages = {
       /* #17 记录分类与时间 */
       mineTab: "我发布的", heldTab: "我捞到的",
       stReplied: "已有回信", stPicked: "被捞走了", stSea: "还在海里",
+      stDecide: "收到回信 · 同意或拒绝聊天",
       stAnswered: "你已回信", stInHand: "在你手里", stReleased: "已放回海里",
       openChat: "去聊天",
       pageInfo: "第 {p} 页",
@@ -893,7 +903,8 @@ export const messages = {
       noMore: "就到这里啦——晚点再来看新的吧 🐾",
       composeTitle: "发暖心帖",
       composeBack: "回到暖心墙",
-      dailyLimit: "每天一条就够温柔啦——今天已经发过了 💛",
+      dailyLimit: "每天最多 7 条——今天已经发满啦，明天再来吧 💛",
+      postLeft: "今天还能发 {n} 条 · 每条配一张图",
       postFail: "没能发出去——再试一次吧 🙏",
       needSetup: "这个功能还没开启——墙的主人需要先执行一次数据库更新 🔧",
       viewHome: "看 TA 的主页",
@@ -920,6 +931,7 @@ export const messages = {
 
     comment: {
       count: "{n} 条评论",
+      write: "写评论",
       placeholder: "说点温柔的话…",
       empty: "还没有评论——来温暖 TA 吧。",
       left: "还可写 {n} 字",

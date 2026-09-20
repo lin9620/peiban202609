@@ -180,29 +180,57 @@ export function visibleOnly(list) {
   return (Array.isArray(list) ? list : []).filter(isVisible);
 }
 
-/* ══════════ 每日限额（每用户每天最多一条） ══════════ */
+/* ══════════ 每日限额（每用户每天最多 7 条） ══════════ */
 
-export const POST_DAY_KEY = "warm-paws-posted-day-v1";  // 本地模式：今天发过没有
+export const POST_DAY_KEY = "warm-paws-posted-day-v1";  // 本机记账：{ day, n }（旧格式是日期串）
+export const WALL_POST_DAILY_LIMIT = 7;                 // 每天上限（与数据库触发器口径一致）
 
 /**
- * 该用户在这一天（UTC）是否已经发过云端帖。
- * 用「列表里找」而不是额外查库：自己刚发的帖必然在最新一批里，
+ * 该用户在这一天（UTC）发过几条云端帖。
+ * 用「列表里数」而不是额外查库：自己刚发的帖必然在最新一批里，
  * 且帖子列表已在手上 —— 少一次网络往返，没跑迁移也能用。
  */
 export function postedOnDay(list, userId, day = utcDay()) {
-  if (!userId) return false;
+  return countPostedOnDay(list, userId, day) > 0;
+}
+
+/** 同上，返回条数（7 条/天 限额用） */
+export function countPostedOnDay(list, userId, day = utcDay()) {
+  if (!userId) return 0;
+  let n = 0;
   for (const p of Array.isArray(list) ? list : []) {
     if (!p || !p.cloud || p.sample) continue;
     if (p.userId !== userId) continue;
-    if (utcDay(p.ts) === day) return true;
+    if (utcDay(p.ts) === day) n += 1;
   }
-  return false;
+  return n;
 }
 
-/** 今天还能不能发（云端：看列表；本地：看本机记录） */
-export function canPostToday({ list = [], userId = "", day = utcDay(), localDay = "" } = {}) {
-  if (localDay === day) return false;
-  return !postedOnDay(list, userId, day);
+/**
+ * 解析 POST_DAY_KEY 里的本机记账：兼容两种格式 ——
+ *   旧：日期串 "2026-03-06"（当时一天一条，计 1）
+ *   新：JSON {"day":"2026-03-06","n":3}
+ * 换了一天 → 0。
+ */
+export function dayCountFromStorage(raw, day = utcDay()) {
+  let v = raw;
+  try { if (typeof v === "string") v = JSON.parse(v); } catch (e) { /* 旧格式日期串 */ }
+  if (v && typeof v === "object") {
+    return v.day === day ? Math.max(0, Math.floor(Number(v.n) || 0)) : 0;
+  }
+  return raw === day ? 1 : 0;   // 旧格式
+}
+
+/** 今天还能不能发（云端：数列表；本机：数记账）—— 每天上限 WALL_POST_DAILY_LIMIT */
+export function canPostToday({ list = [], userId = "", day = utcDay(), localCount = 0 } = {}) {
+  const done = countPostedOnDay(list, userId, day) + Math.max(0, Math.floor(Number(localCount) || 0));
+  return done < WALL_POST_DAILY_LIMIT;
+}
+
+/** 今天还能发几条（供界面显示「还能发 n 条」） */
+export function postsLeftToday({ list = [], userId = "", day = utcDay(), localCount = 0 } = {}) {
+  const done = countPostedOnDay(list, userId, day) + Math.max(0, Math.floor(Number(localCount) || 0));
+  return Math.max(0, WALL_POST_DAILY_LIMIT - done);
 }
 
 /* ══════════ 时间范围（只属于「最新」之外的排序） ══════════

@@ -21,7 +21,8 @@ import {
 /* 进阶规则（纯函数，Node 单测覆盖）：排序 / 浏览去重 / 厌恶比例下架 / 每日一条 */
 import {
   SORTS, sortPosts, collectViews, visibleOnly, utcDay, ratioPct,
-  canPostToday, errorKind, VIEW_KEY, ANON_KEY, POST_DAY_KEY,
+  canPostToday, postsLeftToday, dayCountFromStorage, WALL_POST_DAILY_LIMIT,
+  errorKind, VIEW_KEY, ANON_KEY, POST_DAY_KEY,
   RANGES, inRange, usesRange, rangeFor, fmtWhen,
   recommendPosts, RECOMMEND_DAYS,
 } from "../utils/wallRules.js";
@@ -124,8 +125,12 @@ async function loadCloud() {
   loadingCloud.value = false;
 }
 
-/* ═════════ 排序（默认最新；另有 同感/抱抱/暖暖 最多） ═════════ */
-const sortMode = ref(SORTS.some((s) => s.key === getItem(SORT_KEY)) ? getItem(SORT_KEY) : SORTS[0].key);
+/* ═════════ 排序（推荐 / 同感 / 抱抱 / 暖暖 最多） ═════════
+ * 用户反馈：把「最新」从按钮排里去掉（推荐流本身按新鲜度混排，看最新内容点推荐即可）。
+ * 存档里存了老值 "new" → 静默迁回默认「推荐」，不让一个已消失的按钮悬空高亮。 */
+const SORT_BTNS = SORTS.filter((s) => s.key !== "new");
+const sortMode = ref(SORT_BTNS.some((s) => s.key === getItem(SORT_KEY)) ? getItem(SORT_KEY) : SORT_BTNS[0].key);
+if (getItem(SORT_KEY) === "new") setItem(SORT_KEY, SORT_BTNS[0].key);
 function pickSort(key) {
   sortMode.value = key;
   setItem(SORT_KEY, key);
@@ -200,15 +205,31 @@ function showWallMsg(tk) {
   setTimeout(() => { wallMsg.value = ""; }, 3600);
 }
 
-/* ════════ 每日限额：每个用户每天最多一条 ═════════ */
-const postedDay = ref(getItem(POST_DAY_KEY) || "");
-/* 本地模式也守同样的规矩（云端帖看「今天有没有我发的」；本机模式看本机记录） */
+/* ════════ 每日限额：每个用户每天最多 7 条（WALL_POST_DAILY_LIMIT，库触发器同口径） ═════════ */
+const postedCount = ref(dayCountFromStorage(getItem(POST_DAY_KEY)));   /* 本机今天已发几条（旧格式日期串兼容） */
+const myUid = computed(() => (cloud.user && cloud.user.id) || "");
+/* 本地模式也守同样的规矩（云端帖数「今天我发了几条」；本机模式看本机记账）。
+ * 两者不叠加：云端已登录时刚发的帖既被 unshift 进列表又记了本机账，会少算一倍余量
+ * —— 所以登录态以云端列表为准，纯本地模式才用本机记账。 */
 const postedToday = computed(() => !canPostToday({
   list: cloudPosts.value,
-  userId: (cloud.user && cloud.user.id) || "",
+  userId: myUid.value,
   day: utcDay(),
-  localDay: postedDay.value,
+  localCount: cloud.ready && myUid.value ? 0 : postedCount.value,
 }));
+const postsLeft = computed(() => postsLeftToday({
+  list: cloudPosts.value,
+  userId: myUid.value,
+  day: utcDay(),
+  localCount: cloud.ready && myUid.value ? 0 : postedCount.value,
+}));
+
+/* 发帖成功后本机记账 +1（{ day, n } 格式；旧日期串/跨天由 dayCountFromStorage 兜住） */
+function bumpPostedCount() {
+  const day = utcDay();
+  postedCount.value = dayCountFromStorage(getItem(POST_DAY_KEY), day) + 1;
+  setItem(POST_DAY_KEY, JSON.stringify({ day, n: postedCount.value }));
+}
 
 function persist() {
   setItem(POSTS_KEY, JSON.stringify(posts.value.slice(0, 30)));
@@ -256,7 +277,7 @@ async function submit() {
   /* 每个用户每天最多一条（库里还有触发器兜底，这里是给用户的即时反馈） */
   if (postedToday.value) return showWallMsg("community.dailyLimit");
 
-  /* 云模式：写入 Supabase，成功后把返回的视图帖子插到最前 */
+  /* 云模式：写入 Supabase，成功后把返回的视图帖子插到最前（余量以这份列表为准，无需本机记账） */
   if (canUseWall()) {
     const created = await cloudInsertPost({ text, imageDataUrl: imgData.value, name: wallName.value });
     if (created) {
@@ -269,7 +290,7 @@ async function submit() {
       return;
     }
   } else {
-    /* 本地模式：行为与第一批完全一致 */
+    /* 本地模式：行为与第一批完全一致；余量只有本机记账兜着 */
     posts.value.unshift({
       id: Date.now(),
       name: nickname.value,
@@ -279,9 +300,8 @@ async function submit() {
       reacts: { hug: 0, warm: 0, relate: 0 },
     });
     persist();
+    bumpPostedCount();
   }
-  postedDay.value = utcDay();      /* 记下「今天已发」 */
-  setItem(POST_DAY_KEY, postedDay.value);
   draft.value = "";
   imgData.value = "";
   posted.value = true;
@@ -533,8 +553,21 @@ function toggleCmt(p) {
   openCmt.value = { ...openCmt.value, [k]: !openCmt.value[k] };
   if (openCmt.value[k]) {
     loadThread(p);
-    focusSelector(cmtInputSel(p));   /* 展开即聚焦：一次点击直接开打 */
+    /* 手机端反馈：点「N 条评论」多半只是想看评论，不该自动弹键盘 → 只有桌面保持聚焦 */
+    if (!isMobileNav.value) focusSelector(cmtInputSel(p));
   }
+}
+
+/* —— 评论输入框的出现时机（手机端反馈：点评论数不该直接出现输入框）——
+ * 手机形态：展开评论先只读；点「写评论」按钮才出现输入框（各条「回复」不受影响）。
+ * 桌面形态：保持原样（输入框常驻，展开即聚焦）。 */
+const cmtCompose = ref({});
+function cmtComposeOpen(p) {
+  return !isMobileNav.value || !!cmtCompose.value[cmtKey(p)];
+}
+function openComposer(p) {
+  cmtCompose.value = { ...cmtCompose.value, [cmtKey(p)]: true };
+  focusSelector(cmtInputSel(p));
 }
 /**
  * 发表评论。
@@ -710,6 +743,9 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
             {{ t("community.post") }}
           </n-button>
         </div>
+        <p v-if="signedIn" class="sub" style="margin: 4px 0 0">
+          {{ t("community.postLeft", { n: postsLeft }) }}
+        </p>
         <p v-if="loadingCloud" class="notice">{{ t("community.loading") }}</p>
         <p v-if="posted" class="streak-note" style="color: var(--good); font-weight: 700">
           {{ t("community.postedThanks") }}
@@ -732,7 +768,7 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
     <div class="sort-row">
       <span class="sort-label">{{ t("community.sortLabel") }}</span>
       <button
-        v-for="s in SORTS" :key="s.key"
+        v-for="s in SORT_BTNS" :key="s.key"
         class="sort-btn" :class="{ on: sortMode === s.key }"
         @click="pickSort(s.key)">
         {{ t(s.tk) }}
@@ -911,6 +947,12 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
             {{ t("community.commentSignIn") }}
             <router-link class="cmt-login" to="/profile">{{ t("common.signIn") }}</router-link>
           </p>
+        </div>
+        <!-- 手机端：默认只读；点「写评论」才出现输入框（桌面端输入框常驻，走 v-else） -->
+        <div v-else-if="!cmtComposeOpen(p)" class="cmt-input">
+          <button class="cmt-toggle" @click="openComposer(p)">
+            <span class="cmt-ico">&#9998;</span> {{ t("comment.write") }}
+          </button>
         </div>
         <div v-else class="cmt-input">
           <n-input

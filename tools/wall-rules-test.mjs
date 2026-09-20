@@ -12,7 +12,8 @@ import {
   rangeStartTs, inRange,
   VIEW_KEY, ANON_KEY, POST_DAY_KEY, postRef, utcDay, pruneStamps, collectViews,
   DISLIKE_RATIO, REMOVAL_LOW_VIEWS, DISLIKE_MIN_COUNT, dislikeRatio, ratioPct, shouldRemove,
-  isVisible, visibleOnly, postedOnDay, canPostToday, errorKind, fmtWhen,
+  isVisible, visibleOnly, postedOnDay, countPostedOnDay, dayCountFromStorage,
+  canPostToday, postsLeftToday, WALL_POST_DAILY_LIMIT, errorKind, fmtWhen,
 } from "../src/utils/wallRules.js";
 import { messages } from "../src/i18n.js";
 
@@ -241,14 +242,38 @@ t("T20 postedOnDay：只认「本人 + 云端帖 + 同一天」，示例帖与�
   assert.equal(postedOnDay(null, "u1", day), false, "空列表安全");
 });
 
-t("T21 canPostToday：云上已发 / 本机今天发过 → 都不给发；换一天恢复", () => {
+t("T21 canPostToday：每天最多 7 条；数到第 7 条才拦；换一天恢复", () => {
   const day = "2026-03-06";
-  const mine = [{ ...post(1, Date.parse("2026-03-06T10:00:00Z")), cloud: true, userId: "u1" }];
-  assert.equal(canPostToday({ list: mine, userId: "u1", day }), false);
-  assert.equal(canPostToday({ list: [], userId: "u1", day, localDay: day }), false, "本机记录也算");
+  const one = [{ ...post(1, Date.parse("2026-03-06T10:00:00Z")), cloud: true, userId: "u1" }];
+  assert.equal(canPostToday({ list: one, userId: "u1", day }), true, "发过 1 条还能接着发");
+  assert.equal(canPostToday({ list: [], userId: "u1", day, localCount: 1 }), true, "本机记账算一条但不封顶");
   assert.equal(canPostToday({ list: [], userId: "u1", day }), true, "云端没发过、本机没记录");
-  assert.equal(canPostToday({ list: mine, userId: "u1", day: "2026-03-07" }), true, "换一天可以发");
+  assert.equal(canPostToday({ list: one, userId: "u1", day: "2026-03-07" }), true, "换一天可以发");
   assert.equal(canPostToday({}), true, "默认不拦（本地模式首次进入）");
+
+  /* 七条满额：第 8 条被拦（列表 7 条 / 本机记账 7 条 / 两处相加到 7） */
+  const seven = Array.from({ length: 7 }, (_, i) => ({
+    ...post(10 + i, Date.parse("2026-03-06T10:00:00Z")), cloud: true, userId: "u1",
+  }));
+  assert.equal(countPostedOnDay(seven, "u1", day), 7);
+  assert.equal(canPostToday({ list: seven, userId: "u1", day }), false, "7 条 → 今天封顶");
+  assert.equal(canPostToday({ list: [], userId: "u1", day, localCount: 7 }), false, "本机记账满 7 条也封顶");
+  assert.equal(canPostToday({ list: seven.slice(0, 4), userId: "u1", day, localCount: 3 }), false, "云端 4 + 本机 3 = 7");
+  assert.equal(postsLeftToday({ list: seven.slice(0, 3), userId: "u1", day, localCount: 2 }), 2, "7 - 5 = 还剩 2 条");
+  assert.equal(postsLeftToday({ list: seven, userId: "u1", day }), 0, "满额余量 0（不出现负数）");
+  assert.equal(WALL_POST_DAILY_LIMIT, 7);
+});
+
+t("T21b dayCountFromStorage：新格式 {day,n} / 旧日期串 / 换一天 / 坏数据", () => {
+  const day = "2026-03-06";
+  assert.equal(dayCountFromStorage(JSON.stringify({ day, n: 3 }), day), 3, "新格式");
+  assert.equal(dayCountFromStorage(JSON.stringify({ day: "2026-03-05", n: 3 }), day), 0, "隔天归零");
+  assert.equal(dayCountFromStorage(day, day), 1, "旧格式（日期串）视为当天 1 条");
+  assert.equal(dayCountFromStorage("2026-03-05", day), 0, "旧格式隔天归零");
+  assert.equal(dayCountFromStorage(null, day), 0);
+  assert.equal(dayCountFromStorage("", day), 0);
+  assert.equal(dayCountFromStorage(JSON.stringify({ day, n: -2 }), day), 0, "负数截 0");
+  assert.equal(dayCountFromStorage("{oops", day), 0, "坏 JSON 不抛错（与旧日期串同样安全）");
 });
 
 /* ════════ 云错误归类 ══════════ */

@@ -173,16 +173,17 @@ alter table public.wall_posts add column if not exists created_day date        n
 create index if not exists wall_posts_visible_idx on public.wall_posts (created_at desc)
   where removed = false;
 
--- 每个用户每天最多一条（触发器只拦新插入；老库里的历史数据不受影响）
+-- 每个用户每天最多 7 条（触发器只拦新插入；老库里的历史数据不受影响）
+-- 与 MIGRATION_wall_daily_7.sql / 前端 wallRules.WALL_POST_DAILY_LIMIT = 7 同口径
 create or replace function public.wall_daily_limit()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
-  if exists (
-    select 1 from public.wall_posts p
+  if (
+    select count(*) from public.wall_posts p
     where p.user_id = new.user_id and p.created_day = new.created_day
-  ) then
+  ) >= 7 then
     raise exception 'wall_daily_limit' using errcode = 'P0001',
-      hint = '每个用户每天最多发一条暖心墙内容';
+      hint = '每个用户每天最多发 7 条暖心墙内容';
   end if;
   return new;
 end $$;
@@ -192,15 +193,8 @@ create trigger wall_posts_daily_limit
   before insert on public.wall_posts
   for each row execute function public.wall_daily_limit();
 
-do $$
-begin
-  begin
-    create unique index if not exists wall_posts_one_per_day_idx
-      on public.wall_posts (user_id, created_day);
-  exception when others then
-    raise notice '跳过唯一索引（历史数据存在同日多条）：%', sqlerrm;
-  end;
-end $$;
+-- 每日上限 7 条由上面的触发器负责；不再建「一天一条」唯一索引
+-- （历史版本曾建 wall_posts_one_per_day_idx，升级请跑 MIGRATION_wall_daily_7.sql 拆掉）
 
 -- 回应种类增加「厌恶」（每人每帖一次，RPC 里切换）
 do $$
