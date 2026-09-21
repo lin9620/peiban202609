@@ -269,12 +269,12 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 | 代码 | 轮 18 已改未提交（库内停在轮 17 提交）；工作区 23 文件改动 + 新增 `MIGRATION_bottle_quota_fishfix.sql` 与 `tools/cap-strip-hero.mjs` |
 | 部署 | 前端 SHA16 `4d1696d95b15f74e` 已上线（Version `b0c514e9`）；线上与本地 dist 逐字节一致（`live-bundle-check`）；`live-check` 14/14 |
 | 数据库 | **轮 18 `MIGRATION_bottle_quota_fishfix.sql` 待执行**（探针实测 `bottle_quota` 线上 404 = 未执行；未执行时前端自动退本地账，跑完自动恢复服务端权威）；`MIGRATION_notifications_drop_dm.sql`（轮 13 #23）执行状态仍未确认 |
-| App | Capacitor 8：强制竖屏 + 原生分享插件；android assets 已随轮 18 `cap sync`（SHA16 `4d1696d9` = 线上 bundle）；**APK 重打包待用户执行** |
+| App | Capacitor 8：强制竖屏 + 原生分享插件；**APK 已打包**（2026-09-21 19:42，4.85MB，`apk\warm-paws-debug.apk`；包内验证=index-Bi6MEQbO.js 与线上同哈希 + hero 已剥 + 中文兜底在）。CLI 打包环境：`JAVA_HOME=D:\00ruanjiananzhuang\android-studio-quail4-windows\jbr`（JDK 25）+ `android\gradlew.bat -p android assembleDebug`（Gradle 8.14.3，39s） |
 | 测试 | 离线 **29 套全部退出码 0**（bottle-test 扩到 46 断言）+ undef 0 + `npm run build` 0 + seo 42/42 |
 
 ## 二、现在在做什么
 
-- **当前任务**：轮 18（用户反馈 7 条）**完成并已部署**（F 区轮 18）。**等用户三件事**：① Supabase 执行 `MIGRATION_bottle_quota_fishfix.sql`（不跑也能用——前端自动退本地账；跑了次数口径自动切服务端权威，网页/App 彻底不打架）；② 重打 APK（cap sync 已同步好 android assets）；③ 真机验收 7 条（重点：手机端能连捞多封、空捞不扣次数、首页记录自动出现、暖心墙下拉刷新）。
+- **当前任务**：轮 18（用户反馈 7 条）**完成并已部署，APK 也已打好**（F 区轮 18）。**等用户两件事**：① Supabase 执行 `MIGRATION_bottle_quota_fishfix.sql`（不跑也能用——前端自动退本地账；跑了次数口径自动切服务端权威，网页/App 彻底不打架）；② 安装 `apk\warm-paws-debug.apk`（2026-09-21 19:42 版）真机验收 7 条（重点：手机端能连捞多封、空捞不扣次数、首页记录自动出现、暖心墙下拉刷新、进 App 不闪英文）。
 - **待用户确认**：① `MIGRATION_bottle_quota_fishfix.sql`（本轮，探针已确认线上未执行）；② `MIGRATION_notifications_drop_dm.sql`（轮 13 #23，仍未确认）；③ 轮 17 四页入口与轮 18 七条逐条实机验收。
 - **可选加码（等有量再做）**：图片搬 Cloudflare R2（出口永久免费，见「十、容量评估」方案 B）。
 
@@ -884,7 +884,7 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
     ⑥ **首次进主页漂流瓶记录空白（共有）**：旧版只在 onMounted 拉一次，那一刻会话往往还没就绪、拉了个空就再也不拉；改 `watch([cloudSigned, myId])` 自动（重）拉托盘+记录+次数，登录就绪/换号都刷新，不再依赖手动点刷新。
     ⑦ **暖心墙下拉刷新（手机端）**：轮 14 写了 ts/tm/te 三个函数却**从未绑到模板**（死代码，用户看到「完全没做」）——现在绑上（CommunityView + MyPostsView 两处）：顶部下拉 60px 松手重拉，指示条跟手回弹。
     **交付物**：`MIGRATION_bottle_quota_fishfix.sql`（**需用户在 Supabase SQL Editor 执行**——未执行时前端自动退本地账，跑完自动恢复服务端权威；探针实测 `bottle_quota` 线上 404 = 尚未执行）；`SUPABASE_SETUP.sql` 已同步 quota+抢占式捞信（新装库免跑迁移）；测试 bottle-test 扩到 **46 断言**（空捞不扣次/迁移契约/SETUP 同步/Worker quota 路由/自动加载/多封托盘），全量 **29 套 ALL GREEN** + undef 0 + build 0。
-    **验收**：已部署（live-bundle-check SHA16 `4d1696d95b15f74e` 本地=线上）+ live-check 14/14 + cap sync 完成（android assets 同哈希）。**待用户**：① Supabase 执行迁移；② 重打 APK；③ 真机验收 7 条。
+    **验收**：已部署（live-bundle-check SHA16 `4d1696d95b15f74e` 本地=线上）+ live-check 14/14 + cap sync 完成（android assets 同哈希）。**APK 已由本轮 CLI 打包完成**（JAVA_HOME=Studio JBR + `gradlew assembleDebug`，包内 assets 三项验证通过：轮 18 bundle/无 SEO 占位/中文兜底在），产物 `apk\warm-paws-debug.apk`（4.85MB）。**待用户**：① Supabase 执行迁移；② 安装 APK 后真机验收 7 条。
 
 ## G. 开发任务拆解（动工路线图，逐批交付）
 ## G. 开发任务拆解（动工路线图，逐批交付）
