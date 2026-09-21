@@ -125,8 +125,10 @@ export async function initCloud() {
        不会出现「先以游客身份拉一遍 → 已点过的回应显示成没点」的竞态（用户实测点不掉回应的根因）。 */
     cloud.ready = true;
     sb.auth.onAuthStateChange((evt, session) => {
-      /* PKCE 流程的地址栏里没有 type=recovery，靠这个事件识别重置链接落地 */
-      if (isRecoveryEvent(evt)) cloud.recovery = true;
+      /* PKCE 流程的地址栏里没有 type=recovery，靠这个事件识别重置链接落地。
+         轮 19：必须携带会话才算——supabase-js 的已知怪癖是 signOut() 也会发一次
+         PASSWORD_RECOVERY 事件（session=null），曾导致「退出登录却落到重置密码页」 */
+      if (isRecoveryEvent(evt) && session) cloud.recovery = true;
       /* 会话建立完成后 supabase-js 已消费并清掉地址栏令牌；若 URL 仍残留
          （个别 implicit 边界情况），这里兜底抹一次 —— 只在会话在手时才安全 */
       if (session && typeof window !== "undefined" && hasAuthParams(window.location.hash, window.location.search)) {
@@ -183,6 +185,10 @@ export async function cloudSignOut() {
   try { await sb.auth.signOut(); } catch (e) { /* 忽略 */ }
   cloud.user = null;
   cloud.nickname = "";
+  /* 轮 19：登出顺手清掉恢复态（双保险——就算上面兜住了 signOut 触发的
+     PASSWORD_RECOVERY 事件，也不能让登录页残留「设置新密码」卡） */
+  cloud.recovery = false;
+  cloud.recoveryErr = "";
 }
 
 /* —— 忘记密码：发重置邮件（链接回到 /profile，落地后显示「设置新密码」） —— */

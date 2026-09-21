@@ -43,8 +43,8 @@ function goPet() {
 }
 
 /* 横滑手势：先辨轴（纵向让位页面滚动），横向达阈值才切联。
- * 宠物联（手机端 10）：画板 / 零食雨 / 按钮上的触摸不抢（手势优先），
- * 其余区域允许**左滑回漂流瓶**（宠物是最后一联，不需要右滑）。 */
+ * 宠物联（轮 19 起在第 0 位）：画板 / 零食雨 / 按钮上的触摸不抢（手势优先），
+ * 滑动边界由通用逻辑按 HOME_PANES 顺序处理（右滑→今日、到头不动）。 */
 let sx = 0, sy = 0, swiping = false, axis = "", petGuard = false;
 const PET_GUARD_SEL = "canvas, button, a, input, textarea, select, .sr-overlay, .painter-bar, .swatch";
 function onTouchStart(e) {
@@ -71,10 +71,6 @@ function onTouchEnd(e) {
   if (petGuard || axis !== "x") return;
   const t0 = e.changedTouches[0];
   const dir = swipeDir(t0.clientX - sx, 0);
-  if (pane.value === "pet") {            /* 手机端 10：宠物联 → 左滑回漂流瓶 */
-    if (dir === -1) setPane("bottle");
-    return;
-  }
   if (dir === 1 && idx.value < HOME_PANES.length - 1) setPane(HOME_PANES[idx.value + 1].k);
   else if (dir === -1 && idx.value > 0) setPane(HOME_PANES[idx.value - 1].k);
 }
@@ -124,12 +120,13 @@ onBeforeUnmount(() => { if (ro) ro.disconnect(); });
       @touchstart.passive="onTouchStart"
       @touchmove.passive="onTouchMove"
       @touchend.passive="onTouchEnd">
-      <div class="home-pane" :ref="(el) => (paneEls[0] = el)"><TodayPane @go-pet="goPet" /></div>
-      <div class="home-pane" :ref="(el) => (paneEls[1] = el)"><BottleView /></div>
-      <div class="home-pane home-pane--pet" :ref="(el) => (paneEls[2] = el)">
+      <!-- 轮 19 联序：宠物 | 今日 | 漂流瓶（默认停今日：纯本地秒开，漂流瓶不吃开局延迟） -->
+      <div class="home-pane home-pane--pet" :ref="(el) => (paneEls[0] = el)">
         <PetView v-if="petMounted" />
         <div v-else class="home-pane-lazy"><span>🐾</span></div>
       </div>
+      <div class="home-pane" :ref="(el) => (paneEls[1] = el)"><TodayPane @go-pet="goPet" /></div>
+      <div class="home-pane" :ref="(el) => (paneEls[2] = el)"><BottleView /></div>
     </div>
   </div>
 </template>

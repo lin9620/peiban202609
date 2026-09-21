@@ -89,7 +89,8 @@ async function te() {
 
 function whenPost(ts) { return new Date(ts).toLocaleDateString(); }
 function openWall(p) {
-  if (p.dbId != null) router.push({ path: "/community", query: { post: p.dbId } });
+  /* 轮 19：独立详情页（完整帖子 + 评论展开），不再跳回暖心墙信息流 */
+  if (p.dbId != null) router.push({ path: `/post/${p.dbId}` });
 }
 </script>
 

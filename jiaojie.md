@@ -260,22 +260,22 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
 ---
 
-# 一、当前状态速览（2026-09-21 更新）
+# 一、当前状态速览（2026-09-22 更新）
 
 | 项 | 值 |
 |---|---|
 | 项目 | peiban（陪伴 / warm-paws），路径 `D:\05ruanjian\peiban` |
 | 技术栈 | Vue 3 + Vite + Naive UI；数据层双模式：直连 Supabase（`db.supabase.js`）/ Worker 网关（`db.gateway.js` + `worker/api.js`，**线上走网关**）；Cloudflare 部署 https://dale.de5.net；Supabase Postgres + RLS + security definer RPC |
-| 代码 | 轮 18 已改未提交（库内停在轮 17 提交）；工作区 23 文件改动 + 新增 `MIGRATION_bottle_quota_fishfix.sql` 与 `tools/cap-strip-hero.mjs` |
-| 部署 | 前端 SHA16 `4d1696d95b15f74e` 已上线（Version `b0c514e9`）；线上与本地 dist 逐字节一致（`live-bundle-check`）；`live-check` 14/14 |
-| 数据库 | **轮 18 `MIGRATION_bottle_quota_fishfix.sql` 待执行**（探针实测 `bottle_quota` 线上 404 = 未执行；未执行时前端自动退本地账，跑完自动恢复服务端权威）；`MIGRATION_notifications_drop_dm.sql`（轮 13 #23）执行状态仍未确认 |
-| App | Capacitor 8：强制竖屏 + 原生分享插件；**APK 已打包**（2026-09-21 19:42，4.85MB，`apk\warm-paws-debug.apk`；包内验证=index-Bi6MEQbO.js 与线上同哈希 + hero 已剥 + 中文兜底在）。CLI 打包环境：`JAVA_HOME=D:\00ruanjiananzhuang\android-studio-quail4-windows\jbr`（JDK 25）+ `android\gradlew.bat -p android assembleDebug`（Gradle 8.14.3，39s） |
-| 测试 | 离线 **29 套全部退出码 0**（bottle-test 扩到 46 断言）+ undef 0 + `npm run build` 0 + seo 42/42 |
+| 代码 | 轮 19 已改（库内待提交，本轮末提交）；核心新增：`PostDetailView.vue`（/post/:id 独立详情页）+ 单帖数据链（wall.cloudFetchPost → db.getPost 两适配器 → Worker GET /posts/:id） |
+| 部署 | 前端 Version `c063b684` 已上线（轮 19）；`live-check` 14/14 |
+| 数据库 | **`MIGRATION_bottle_quota_fishfix.sql`（轮 18）仍待用户执行**（探针实测 `bottle_quota` 线上 404；未执行时前端自动退本地账）；`MIGRATION_notifications_drop_dm.sql`（轮 13 #23）执行状态仍未确认 |
+| App | 轮 19 APK 已打包装机：SHA16 `32c0061efd5dab77`，`adb install -r` Success 并已启动（包名 `net.de5.dale`）；CLI 打包环境 `JAVA_HOME=D:\00ruanjiananzhuang\android-studio-quail4-windows\jbr` + `android\gradlew.bat -p android assembleDebug` |
+| 测试 | 离线 **30 套 ALL GREEN**（app-shell 40/40 修 T31 过时断言；新增 post-detail-test 14 断言）+ home-panes 9/9 + api-contract 83/83 + gateway-contract 66/66 + build 0 |
 
 ## 二、现在在做什么
 
-- **当前任务**：轮 18（用户反馈 7 条）**完成并已部署，APK 也已打好**（F 区轮 18）。**等用户两件事**：① Supabase 执行 `MIGRATION_bottle_quota_fishfix.sql`（不跑也能用——前端自动退本地账；跑了次数口径自动切服务端权威，网页/App 彻底不打架）；② 安装 `apk\warm-paws-debug.apk`（2026-09-21 19:42 版）真机验收 7 条（重点：手机端能连捞多封、空捞不扣次数、首页记录自动出现、暖心墙下拉刷新、进 App 不闪英文）。
-- **待用户确认**：① `MIGRATION_bottle_quota_fishfix.sql`（本轮，探针已确认线上未执行）；② `MIGRATION_notifications_drop_dm.sql`（轮 13 #23，仍未确认）；③ 轮 17 四页入口与轮 18 七条逐条实机验收。
+- **当前任务**：轮 19（用户反馈 4 条）**全部完成：已部署 + 已装手机并启动**（F 区轮 19）——①退出登录误跳重置密码页（恢复标记只在带 session 的恢复事件置位 + 登出清态）②「我的帖子」点进独立详情页 `/post/:id`（完整帖子卡 + 暖心墙同款两级评论展开）③首页三联改「宠物｜今日｜漂流瓶」④消息页分栏支持左右滑动。**等用户真机验收 4 条 + Supabase 执行轮 18 迁移**。
+- **待用户确认**：① 轮 19 四条真机验收（退出登录去向 / 我的帖子详情页评论 / 首页三联顺序 / 消息页左右滑）；② `MIGRATION_bottle_quota_fishfix.sql`（轮 18，跨端次数口径收口）；③ `MIGRATION_notifications_drop_dm.sql`（轮 13 #23，仍未确认）；④ 轮 17/18 遗留项实机复验。
 - **可选加码（等有量再做）**：图片搬 Cloudflare R2（出口永久免费，见「十、容量评估」方案 B）。
 
 ## 三、已完成（按轮次，均含验证证据）
@@ -886,7 +886,14 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
     **交付物**：`MIGRATION_bottle_quota_fishfix.sql`（**需用户在 Supabase SQL Editor 执行**——未执行时前端自动退本地账，跑完自动恢复服务端权威；探针实测 `bottle_quota` 线上 404 = 尚未执行）；`SUPABASE_SETUP.sql` 已同步 quota+抢占式捞信（新装库免跑迁移）；测试 bottle-test 扩到 **46 断言**（空捞不扣次/迁移契约/SETUP 同步/Worker quota 路由/自动加载/多封托盘），全量 **29 套 ALL GREEN** + undef 0 + build 0。
     **验收**：已部署（live-bundle-check SHA16 `4d1696d95b15f74e` 本地=线上）+ live-check 14/14 + cap sync 完成（android assets 同哈希）。**APK 已由本轮 CLI 打包完成**（JAVA_HOME=Studio JBR + `gradlew assembleDebug`，包内 assets 三项验证通过：轮 18 bundle/无 SEO 占位/中文兜底在），产物 `apk\warm-paws-debug.apk`（4.85MB）。**待用户**：① Supabase 执行迁移；② 安装 APK 后真机验收 7 条。
 
-## G. 开发任务拆解（动工路线图，逐批交付）
+  - **轮 19 · 用户反馈 4 条（2026-09-22，已部署 Version c063b684，已装手机并启动）**：
+    ① **退出登录误跳重置密码页**：根因——恢复密码的标记（isRecoveryEvent）把恢复完成后的会话事件也误判成恢复，登出后 token 刷新又触发，直接渲染重置卡。修：仅当事件本身是 `PASSWORD_RECOVERY` **且带 session** 才置恢复标记；`SIGNED_OUT` 时清掉恢复标记与表单态。
+    ② **我的帖子独立详情页**：新增路由 `/post/:id`（postDetail）+ `PostDetailView.vue`（377 行）——完整帖子卡（全文不截断 + 配图 + 回应行 + 浏览/厌恶）+ **与暖心墙同款的评论**：点「N 条评论」展开、两级回复（回复「回复」仍挂一级下并 @对方）、就地回复框、删自己的评论、未登录给登录提示。数据链新增**单帖读取**：`wall.js cloudFetchPost` + `db.getPost`（直连/网关两适配器）+ Worker `GET /posts/:id`（objectOrPassthrough 翻译行不存在；老库无 removed 列自动降级）。零新迁移、零新 i18n 键（复用 comment.*/community.*/common.*）。「我的帖子」点卡片从「跳回暖心墙」改为进详情页。
+    ③ **首页三联改「宠物｜今日｜漂流瓶」**：开局不再直接是漂流瓶（首拉慢、延迟感重）——今日内容秒开，默认联=今日；滑动边界改为顺序无关写法 `HOME_PANES[idx±1]`。
+    ④ **消息页左右滑动**：分栏（会话|漂流瓶|通知）支持与首页同款手势左右滑动切换。
+    **验收**：全量 30 套 ALL GREEN（app-shell-test 修 T31 过时断言→40/40）+ 新增 post-detail-test 14 断言 + home-panes 9/9 + api-contract 83/83 + gateway-contract 66/66 + build 0 + live-check 14/14 + cap sync + APK SHA16 `32c0061efd5dab77` 已 `adb install -r` Success 并启动（包名 `net.de5.dale`）。
+    **待用户**：真机验收 4 条（①退出登录后回登录页而非重置页 ②我的帖子点进独立详情页、评论可展开 ③首页左右滑=宠物|今日|漂流瓶 ④消息页左右滑切换分栏）；Supabase 迁移 `MIGRATION_bottle_quota_fishfix.sql` 仍待执行（轮 18 遗留）。
+
 ## G. 开发任务拆解（动工路线图，逐批交付）
 
 ### 批 1 · 地基与合规（先行，无 UI 风险）

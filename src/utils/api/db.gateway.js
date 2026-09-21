@@ -89,6 +89,11 @@ export const db = {
     return call(`/users/${enc(userId)}/posts?limit=${enc(limit)}${off}`);
   },
 
+  /** 单帖（轮 19 帖子详情页）：Worker GET /posts/:id（行不存在返回 null） */
+  async getPost(postId) {
+    return call(`/posts/${enc(postId)}`);
+  },
+
   /** 发帖：返回插入后的整行 */
   async insertPost(row) {
     return call("/posts", { method: "POST", body: row });

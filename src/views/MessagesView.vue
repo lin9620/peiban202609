@@ -365,6 +365,28 @@ watch(() => route.params.id, (v) => {
 });
 
 const when = (ts) => relativeTime(ts, Date.now(), t);
+/* ── 轮 19④：分栏左右滑（像首页三联那样：左滑去右边的栏，右滑去左边的栏）──
+ * 顺序与顶部按钮一致：漂流瓶 | 会话 | 通知；只认横向主轴，纵向滚动不受影响；
+ * 会话打开时列表整页隐藏（v-show=false），天然不触发，不会把聊天页滑走。 */
+const SEG_ORDER = ["bottle", "dm", "notif"];
+let segX = 0, segY = 0, segArmed = false;
+function segTouchStart(e) {
+  const t0 = e.touches[0];
+  segX = t0.clientX; segY = t0.clientY; segArmed = true;
+}
+function segTouchMove(e) {
+  if (!segArmed) return;
+  const t0 = e.touches[0];
+  const dx = t0.clientX - segX, dy = t0.clientY - segY;
+  if (Math.abs(dx) < 56) return;                  /* 不够长不触发 */
+  if (Math.abs(dx) < Math.abs(dy) * 1.4) return;  /* 斜着走＝想滚动，不触发 */
+  segArmed = false;                               /* 一次手势只切一栏 */
+  if (e.target && e.target.closest && e.target.closest("input, textarea, select")) return;
+  const i = SEG_ORDER.indexOf(seg.value);
+  const next = dx < 0 ? i + 1 : i - 1;
+  if (next >= 0 && next < SEG_ORDER.length) seg.value = SEG_ORDER[next];
+}
+function segTouchEnd() { segArmed = false; }
 const clock = (ts) => {
   const d = new Date(ts);
   if (Number.isNaN(d.getTime())) return "";
@@ -397,7 +419,10 @@ function goSignIn() {
       <aside
         v-show="!isMobileNav || !activeId"
         class="card dm-list"
-        :class="{ 'dm-list--seg': isMobileNav && seg === 'notif' }">
+        :class="{ 'dm-list--seg': isMobileNav && seg === 'notif' }"
+        @touchstart.passive="segTouchStart"
+        @touchmove.passive="segTouchMove"
+        @touchend.passive="segTouchEnd">
         <!-- T8 分栏（仅手机形态）：漂流瓶 | 会话中心 | 通知（红点与桌面顶栏同口径） -->
         <div v-if="isMobileNav" class="dm-seg" role="tablist">
           <button type="button" class="dm-seg-btn" :class="{ on: seg === 'bottle' }" role="tab" :aria-selected="seg === 'bottle'" @click="seg = 'bottle'">

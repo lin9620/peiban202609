@@ -143,7 +143,8 @@ ok("T31 手机端5 今日联去宠物卡 + 毛玻璃退场 + 轨道高度跟当�
   && css.includes(".shell--mobile-nav .card,")
   && css.includes(".shell--mobile-nav .home-chips {")
   && read("src/views/HomeView.vue").includes("trackH")
-  && read("src/views/HomeView.vue").includes('if (dir === -1) setPane("bottle")'));
+  && read("src/views/HomeView.vue").includes("setPane(HOME_PANES[idx.value - 1].k)")
+  && read("src/views/HomeView.vue").includes("setPane(HOME_PANES[idx.value + 1"));
 ok("T32 手机端4 捞到的瓶子居中弹出（bottle-tray fixed 居中 + 压暗背景）",
   css.includes(".shell--mobile-nav .bottle-tray {")
   && css.includes("translate(-50%, -50%)")

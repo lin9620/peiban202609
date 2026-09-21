@@ -12,6 +12,9 @@ export const router = createRouter({
     { path: "/compose", name: "compose", component: () => import("./views/ComposeView.vue") },
     /* 我的帖子：暖心墙「我的」区点「更多」进来，10 条一页 + 下拉续载 */
     { path: "/my-posts", name: "myPosts", component: () => import("./views/MyPostsView.vue") },
+    /* 帖子详情（轮 19）：/post/:id 独立页 —— 完整帖子 + 评论展开（与暖心墙同款交互）。
+     * 我的帖子 / 资料页点卡片进来，不再把用户甩回暖心墙信息流里找帖子。 */
+    { path: "/post/:id", name: "postDetail", component: () => import("./views/PostDetailView.vue") },
     { path: "/profile", name: "profile", component: () => import("./views/ProfileView.vue") },
     /* 登录页：手机 + 网页共用；?redirect=/x 登录后回跳（Google 往返用 sessionStorage 兜底） */
     { path: "/login", name: "login", component: () => import("./views/LoginView.vue") },

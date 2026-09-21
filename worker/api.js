@@ -487,6 +487,24 @@ export default {
           if (seg[2] === "dislike" && m === "POST") {
             return rpc(env, request, "wall_toggle_dislike", { p_post: id });
           }
+        } else if (seg.length === 2 && m === "GET") {
+          /* 单帖（轮 19 帖子详情页）：objectOrPassthrough 把「行不存在」翻成 200 null；
+           * 老库无 removed 列（PostgREST 400）时去掉过滤重试一次 */
+          const id = decodeSeg(seg[1]);
+          if (!id) return fail(400, "bad-id");
+          const attempt = (withRemoved) =>
+            upstream(
+              env, request,
+              restUrl(env, TABLE.posts, `select=${encodeURIComponent("*")}&id=eq.${encodeURIComponent(id)}${withRemoved ? "&removed=eq.false" : ""}`),
+              { headers: { accept: OBJECT_ACCEPT } },
+            );
+          let res = await attempt(true);
+          if (!res) return fail(502, "upstream-unreachable");
+          if (!res.ok && res.status === 400) {
+            res = await attempt(false);
+            if (!res) return fail(502, "upstream-unreachable");
+          }
+          return objectOrPassthrough(res);
         }
       }
 

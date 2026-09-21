@@ -85,6 +85,16 @@ export const db = {
     return unwrap(Promise.resolve(res));
   },
 
+  /** 单帖（轮 19 帖子详情页）：按 id 取一行；removed 过滤失败（老库无列）退回不过滤 */
+  async getPost(postId) {
+    let res = await sb().from(T.posts).select("*").eq("id", postId).eq("removed", false).limit(1);
+    if (res && res.error) {
+      res = await sb().from(T.posts).select("*").eq("id", postId).limit(1);
+    }
+    const rows = await unwrap(Promise.resolve(res));
+    return (Array.isArray(rows) && rows[0]) || null;
+  },
+
   /** 发帖：返回插入后的整行 */
   insertPost(row) {
     return unwrap(sb().from(T.posts).insert(row).select("*").single());

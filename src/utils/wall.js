@@ -464,6 +464,28 @@ export async function cloudFetchUserPosts(userId, limit = 50, offset = 0) {
   }
 }
 
+/**
+ * 单帖（轮 19 帖子详情页）：按 id 取一帖（含回应聚合），失败/不存在/已下架返回 null。
+ * 「我的帖子」点进独立详情页 /post/:id 用；评论、回应、浏览计数都在详情页里直接操作。
+ * @param {string} dbPostId 云端帖的 DB 主键
+ */
+export async function cloudFetchPost(dbPostId) {
+  if (!canReadWall() || !dbPostId) return null;
+  try {
+    const post = await db.getPost(dbPostId);
+    if (!post) return null;
+    let reactions = {};
+    try {
+      const rk = await db.listReactionsByPosts([dbPostId]);
+      reactions = aggregateReactions(rk || [], cloud.user ? cloud.user.id : "");
+    } catch (e) { /* 回应拉取失败不阻塞帖子 */ }
+    return rowsToPosts([post], reactions, publicUrl)[0] || null;
+  } catch (e) {
+    console.warn("[cloud] fetchPost:", e);
+    return null;
+  }
+}
+
 /* ═════════ 主页的伙伴：宠物 + 手绘厨房（镜像同步 + 访客互动） ══════════ */
 
 /** 主页展示的手绘料理上限（菜图是 320×240 JPEG dataURL，12 道已够一屏，也控住快照体积） */

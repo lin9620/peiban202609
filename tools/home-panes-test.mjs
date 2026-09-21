@@ -20,18 +20,18 @@ function t(name, fn) {
   catch (e) { fail++; console.log("FAIL  " + name + "  → " + (e && e.message)); }
 }
 
-t("T1 联顺序固定：今日 → 漂流瓶 → 宠物；默认联 = 漂流瓶（D3）", () => {
-  assert.deepEqual(HOME_PANES.map((p) => p.k), ["today", "bottle", "pet"]);
-  assert.equal(DEFAULT_PANE, "bottle");
+t("T1 联顺序（轮 19）：宠物 → 今日 → 漂流瓶；默认联 = 今日（开局秒开不吃云端延迟）", () => {
+  assert.deepEqual(HOME_PANES.map((p) => p.k), ["pet", "today", "bottle"]);
+  assert.equal(DEFAULT_PANE, "today");
 });
 
 t("T2 paneFromQuery：合法联直通，未知/缺省兜底默认", () => {
   assert.equal(paneFromQuery("bottle"), "bottle");
   assert.equal(paneFromQuery("pet"), "pet");
   assert.equal(paneFromQuery("today"), "today");
-  assert.equal(paneFromQuery(undefined), "bottle");
-  assert.equal(paneFromQuery(""), "bottle");
-  assert.equal(paneFromQuery("hacker"), "bottle");
+  assert.equal(paneFromQuery(undefined), "today");
+  assert.equal(paneFromQuery(""), "today");
+  assert.equal(paneFromQuery("hacker"), "today");
   assert.equal(paneFromQuery(["bottle"]), "bottle");   /* route.query 可能是数组 */
 });
 
@@ -72,12 +72,12 @@ t("T6 HomeView 接线：频道条 + 横滑轨道 + PetView 懒挂载（重件不
   assert.ok(home.includes("paneFromQuery(route.query.tab)"), "未消费 /?tab=");
 });
 
-t("T7 宠物联手势守卫（画板/零食雨/按钮不抢；其余区域左滑回漂流瓶）", () => {
+t("T7 宠物联手势守卫（画板/零食雨/按钮不抢；滑动边界按 HOME_PANES 通用处理）", () => {
   assert.ok(home.includes('PET_GUARD_SEL = "canvas, button, a, input, textarea, select, .sr-overlay, .painter-bar, .swatch"'),
     "缺画板/零食雨手势守卫选择器");
   assert.ok(/if \(pane\.value === "pet"\) \{[\s\S]*?petGuard/.test(home), "宠物联必须先判定手势守卫");
-  assert.ok(/if \(pane\.value === "pet"\) \{[\s\S]*?if \(dir === -1\) setPane\("bottle"\)/.test(home),
-    "宠物联必须只允许左滑回漂流瓶（手机端 10）");
+  assert.ok(!/if \(pane\.value === "pet"\) \{[\s\S]*?if \(dir === -1\) setPane\("bottle"\)/.test(home),
+    "宠物联已在第 0 位，不应再有「左滑回漂流瓶」特判");
   const css = read("src/style.css");
   assert.ok(css.includes(".home-track"), "style.css 缺三联样式");
   assert.ok(css.includes("touch-action: pan-y"), "样式缺 touch-action: pan-y");
@@ -92,6 +92,10 @@ t("T8 桌面零变化：今日联+漂流瓶联顺序拼回；频道条只在手�
   const desktopBlock = home.slice(desktop, mobile);
   const tPos = desktopBlock.indexOf("<TodayPane"), bPos = desktopBlock.indexOf("<BottleView");
   assert.ok(tPos >= 0 && bPos > tPos, "桌面应为 TodayPane 在前、BottleView 在后");
+  /* 轮 19：手机轨道联序 = 宠物 | 今日 | 漂流瓶 */
+  const track = home.slice(home.indexOf('class="home-track"'));
+  const pPos = track.indexOf("home-pane--pet"), tPos2 = track.indexOf("<TodayPane"), bPos2 = track.indexOf("<BottleView");
+  assert.ok(pPos >= 0 && pPos < tPos2 && tPos2 < bPos2, "手机轨道应为 宠物|今日|漂流瓶");
 });
 
 t("T9 TodayPane / BottleView 抽件自包含，HomeView 不再内联业务", () => {
