@@ -10,7 +10,7 @@ import { getItem, setItem } from "../utils/storage.js";
 import {
   BOTTLE_BODY_MAX, BOTTLE_SEND_MAX, BOTTLE_FISH_MAX,
   canBottle, bottleErrKey,
-  bottleSend, bottleFish, bottleReply, bottleRelease, bottleHeld,
+  bottleSend, bottleFish, bottleReply, bottleRelease, bottleHeld, bottleQuota,
   bottleRecords, bottleChatState, bottleChatDecide,
 } from "../utils/bottle.js";
 import { relativeTime } from "../utils/dmRules.js";
@@ -27,9 +27,20 @@ const fishing = ref(false);
 const fished = ref(null);       /* 刚捞起、还没处理的这封 */
 const held = ref([]);           /* 我之前捞起、还没回的信（换页/刷新后找回来） */
 
-/* 每日次数用本机日键记账（展示用）；超不超由服务端说了算。
- * 键按账号分（修「换账号登录，可捞次数还是上个人的」）：uid 进键名，
- * A/B 两个账号各记各的账，登出换号立刻换账本。 */
+/* 待处理信箱（轮 18）：新捞的 + 之前捞起没回的，合并去重逐封处理。
+ * 旧版只显示一封、且手里压着一封就禁捞新信——「每天能捞 7 次」被做成了
+ * 「捞 1 次就被锁」。现在多封并存互不阻塞，捞瓶按钮只看剩余次数。 */
+const pending = ref([]);
+function mergePending() {
+  const map = new Map();
+  for (const l of held.value) map.set(l.id, l);
+  if (fished.value && fished.value.id) map.set(fished.value.id, fished.value);
+  pending.value = [...map.values()];
+}
+
+/* 每日次数：本地账本只做乐观显示，服务端 bottle_quota() 才是权威（轮 18 修
+ * 「下面显示还能捞 2 瓶、上面却说次数用完」——次数原来记在本机 localStorage，
+ * 网页和 App 各记各的账，跨端必然打架；现在以 RPC 为准，未跑新迁移时退回本地账） */
 const myId = computed(() => (cloud.user && cloud.user.id) || "");
 const QUOTA_BASE = "warm-paws-bottle-quota-v1";
 const quotaKey = computed(() => `${QUOTA_BASE}:${myId.value || "guest"}`);
@@ -41,20 +52,47 @@ function loadQuota() {
   } catch (e) { return freshQuota(); }
 }
 const quota = ref(loadQuota());
-const sendLeft = computed(() => Math.max(0, BOTTLE_SEND_MAX - quota.value.sent));
-const fishLeft = computed(() => Math.max(0, BOTTLE_FISH_MAX - quota.value.fished));
+const quotaRemote = ref(null);
+async function syncQuota() {
+  try {
+    const q = await bottleQuota();
+    if (q && typeof q.fished === "number" && typeof q.sent === "number") quotaRemote.value = q;
+  } catch (e) { /* 未跑 MIGRATION_bottle_quota_fishfix.sql → 静默退回本地账本 */ }
+}
+const sendLeft = computed(() => {
+  const q = quotaRemote.value;
+  return Math.max(0, BOTTLE_SEND_MAX - (q ? q.sent : quota.value.sent));
+});
+const fishLeft = computed(() => {
+  const q = quotaRemote.value;
+  return Math.max(0, BOTTLE_FISH_MAX - (q ? q.fished : quota.value.fished));
+});
 function bumpQuota(k) {
   if (quota.value.day !== todayKey()) quota.value = freshQuota();
   quota.value[k] += 1;
   setItem(quotaKey.value, JSON.stringify(quota.value));
+  /* 远端账本乐观 +1，随后 syncQuota 用服务端值校正 */
+  if (quotaRemote.value && typeof quotaRemote.value[k] === "number") {
+    quotaRemote.value = { ...quotaRemote.value, [k]: quotaRemote.value[k] + 1 };
+  }
 }
-watch(myId, () => { quota.value = loadQuota(); fished.value = null; });
-
-const tray = computed(() => fished.value || held.value[0] || null);
+/* 登录就绪/换号 → 账本重置 + 自动加载（修「首次进主页漂流瓶记录空白，必须手动点刷新」：
+ * 旧版只在 onMounted 拉一次，那时会话往往还没就绪，拉了个空就再也不拉了） */
+watch([cloudSigned, myId], () => {
+  quota.value = loadQuota();
+  quotaRemote.value = null;
+  fished.value = null;
+  recPage.value = 0;
+  if (cloudSigned.value) {
+    refreshBottle();
+    loadRecords(true);
+    syncQuota();
+  }
+});
 
 async function refreshBottle() {
   if (!cloudSigned.value) return;
-  /* #17 记录区改走 bottleRecords 分类分页；这里只管「捞起的信」找回（tray） */
+  /* #17 记录区改走 bottleRecords 分类分页；这里只管「捞起未回的信」找回（待处理信箱） */
   await swr(
     cacheKey("bottle:held", myId.value),
     {
@@ -64,6 +102,7 @@ async function refreshBottle() {
     () => bottleHeld(),
   );
   fished.value = null;
+  mergePending();
 }
 
 async function doSend() {
@@ -75,6 +114,7 @@ async function doSend() {
     await bottleSend(body);
     mailDraft.value = "";
     bumpQuota("sent");
+    syncQuota();
     await refreshBottle();
   } catch (e) {
     mailHint.value = t(bottleErrKey(e));
@@ -87,38 +127,52 @@ async function doFish() {
   mailHint.value = "";
   try {
     const l = await bottleFish();
+    if (!l || !l.id) {
+      /* 竞态兜底（轮 18）：服务端抢占落空返回空 → 明示「海里暂时没信」，绝不扣次数 */
+      mailHint.value = t("bottle.errEmpty");
+      return;
+    }
     fished.value = l;
     bumpQuota("fished");
+    mergePending();
+    syncQuota();
   } catch (e) {
     mailHint.value = t(bottleErrKey(e));
   } finally { fishing.value = false; }
 }
 
-async function doReply() {
-  const l = tray.value;
-  if (!l || !replyDraft.value.trim()) return;
-  mailBusy.value = true;
+/* 回信/放回按信独立操作：待处理信箱可同时有多封，互不阻塞 */
+const replyDrafts = ref({});
+const busyId = ref("");
+async function doReply(l) {
+  const body = String(replyDrafts.value[l.id] || "").trim();
+  if (!l || !body || busyId.value) return;
+  busyId.value = l.id;
   mailHint.value = "";
   try {
-    await bottleReply(l.id, replyDraft.value.trim());
-    replyDraft.value = "";
+    await bottleReply(l.id, body);
+    replyDrafts.value = { ...replyDrafts.value, [l.id]: "" };
     fished.value = null;
+    held.value = held.value.filter((x) => x.id !== l.id);
+    mergePending();
     await refreshBottle();
   } catch (e) {
     mailHint.value = t(bottleErrKey(e));
-  } finally { mailBusy.value = false; }
+  } finally { busyId.value = ""; }
 }
 
-async function doRelease() {
-  const l = tray.value;
-  if (!l) return;
+async function doRelease(l) {
+  if (!l || busyId.value) return;
+  busyId.value = l.id;
   try {
     await bottleRelease(l.id);
     fished.value = null;
+    held.value = held.value.filter((x) => x.id !== l.id);
+    mergePending();
     await refreshBottle();
   } catch (e) {
     mailHint.value = t(bottleErrKey(e));
-  }
+  } finally { busyId.value = ""; }
 }
 
 onMounted(() => { refreshBottle(); loadRecords(true); });
@@ -227,26 +281,28 @@ async function decideRec(l, accept) {
 
       <div class="bottle-sea">
         <span class="sec-label">{{ t("bottle.seaTitle") }}</span>
-        <n-button round :loading="fishing" :disabled="fishLeft <= 0 || !!tray" @click="doFish">
+        <n-button round :loading="fishing" :disabled="fishLeft <= 0" @click="doFish">
           {{ "\u{1F9CA}" }} {{ t("bottle.fish") }}
         </n-button>
         <span class="m-count">{{ t("bottle.leftFish", { n: fishLeft }) }}</span>
       </div>
       <p class="notice">{{ t("bottle.rules", { w: BOTTLE_SEND_MAX, f: BOTTLE_FISH_MAX }) }}</p>
 
-      <!-- 捞到的信：回信，或放回海里 -->
-      <div v-if="tray" class="bottle-tray">
-        <div class="m-q">{{ tray.body }}</div>
+      <!-- 捞到的信（可同时持有几封，逐封回信或放回；捞新信不需要先处理手里的） -->
+      <div v-for="l in pending" :key="l.id" class="bottle-tray">
+        <div class="m-q">{{ l.body }}</div>
         <span class="m-who">{{ t("bottle.fromSea") }}</span>
         <n-input
-          v-model:value="replyDraft"
+          v-model:value="replyDrafts[l.id]"
           type="textarea" :rows="2" :maxlength="BOTTLE_BODY_MAX"
           :placeholder="t('bottle.replyPlaceholder')" />
         <div class="mail-send">
-          <n-button type="primary" size="small" round :disabled="mailBusy || !replyDraft.trim()" @click="doReply">
+          <n-button type="primary" size="small" round
+            :disabled="busyId === l.id || !String(replyDrafts[l.id] || '').trim()"
+            @click="doReply(l)">
             {{ t("bottle.reply") }}
           </n-button>
-          <n-button quaternary size="small" round :disabled="mailBusy" @click="doRelease">
+          <n-button quaternary size="small" round :disabled="busyId === l.id" @click="doRelease(l)">
             {{ t("bottle.release") }}
           </n-button>
         </div>

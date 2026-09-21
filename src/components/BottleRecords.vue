@@ -22,6 +22,11 @@ let timer;
 const displayed = computed(() => focused.value
   ? [focused.value, ...rows.value.filter((r) => r.id !== focused.value.id)] : rows.value);
 const state = (row) => bottleChatState(row, userId.value);
+/* 状态 → 文案 key（轮 18：picked/inhand 两态补上——此前信被捞起一律显示「漂流中」，无指引） */
+const stateTk = (row) => ({
+  picked: "bottle.stPicked", inhand: "bottle.stInHand", drifting: "bottle.pending",
+  waiting: "bottle.chatWaiting", declined: "bottle.chatDeclined",
+}[state(row)] || "bottle.pending");
 
 async function load(append = false) {
   if (!userId.value || loading.value) return;
@@ -116,7 +121,7 @@ onBeforeUnmount(() => {
         <button class="dm-act" :disabled="!!busy" @click="decide(row, false)">{{ t("bottle.chatDecline") }}</button>
       </template>
       <button v-else-if="state(row) === 'accepted'" class="dm-act primary" @click="emit('open', row.conv_id)">{{ t("bottle.chatOpen") }}</button>
-      <p v-else class="sub">{{ t(state(row) === 'waiting' ? 'bottle.chatWaiting' : state(row) === 'declined' ? 'bottle.chatDeclined' : 'bottle.pending') }}</p>
+      <p v-else class="sub">{{ t(stateTk(row)) }}</p>
     </article>
     <button v-if="more" class="dm-act" :disabled="loading" @click="load(true)">{{ t("bottle.recordsMore") }}</button>
   </section>

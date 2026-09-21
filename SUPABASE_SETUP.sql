@@ -1407,30 +1407,57 @@ begin
   return v_row;
 end $$;
 
+-- 漂流瓶次数探针（轮 18）：今天已写几封 / 已捞几封（UTC 日，服务端权威）
+create or replace function public.bottle_quota()
+returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'sent',   (select count(*) from public.bottle_letters
+                where user_id = auth.uid()
+                  and created_day = (now() at time zone 'utc')::date),
+    'fished', (select count(*) from public.bottle_fishes
+                where user_id = auth.uid()
+                  and day = (now() at time zone 'utc')::date)
+  )
+$$;
+revoke all on function public.bottle_quota() from public, anon;
+grant execute on function public.bottle_quota() to authenticated;
+
 create or replace function public.bottle_fish()
 returns public.bottle_letters
 language plpgsql security definer set search_path = public as $$
 declare
   v_count int;
-  v_id    uuid;
   v_row   public.bottle_letters;
+  i       int;
 begin
   if auth.uid() is null then raise exception 'bottle-auth'; end if;
+  /* 捞起超 48h 未处理的信先放回海里（不让信卡死在谁手里） */
   update public.bottle_letters set status = 'sea', holder = null, held_at = null
     where status = 'held' and held_at < now() - interval '48 hours';
   select count(*) into v_count from public.bottle_fishes
     where user_id = auth.uid() and day = (now() at time zone 'utc')::date;
   if v_count >= 7 then raise exception 'bottle-limit-fish'; end if;
-  select id into v_id from public.bottle_letters
-    where status = 'sea' and user_id <> auth.uid()
-    order by random() limit 1;
-  if v_id is null then raise exception 'bottle-empty-sea'; end if;
-  insert into public.bottle_fishes (user_id, day, letter_id)
-    values (auth.uid(), (now() at time zone 'utc')::date, v_id);
-  update public.bottle_letters set status = 'held', holder = auth.uid(), held_at = now()
-    where id = v_id and status = 'sea'
-    returning * into v_row;
-  return v_row;
+  /* 随机挑一封 → 条件更新抢占（只在仍是 sea 时成立）。别人同一瞬间捞走
+     同一封 → 命中 0 行 → 换一封重试；重试 3 次仍落空或海里已空 →
+     明确抛 bottle-empty-sea（绝不返回 null：客户端只在拿到信时才计数） */
+  for i in 1..3 loop
+    select * into v_row from public.bottle_letters
+      where status = 'sea' and user_id <> auth.uid()
+      order by random() limit 1;
+    if not found then raise exception 'bottle-empty-sea'; end if;
+    update public.bottle_letters set status = 'held', holder = auth.uid(), held_at = now()
+      where id = v_row.id and status = 'sea'
+      returning * into v_row;
+    if found then
+      /* 同一封当天放回再捞不重复计数、不报错（老版在这里撞唯一键炸 23505） */
+      insert into public.bottle_fishes (user_id, day, letter_id)
+        values (auth.uid(), (now() at time zone 'utc')::date, v_row.id)
+        on conflict (user_id, day, letter_id) do nothing;
+      return v_row;
+    end if;
+  end loop;
+  raise exception 'bottle-empty-sea';
 end $$;
 
 create or replace function public.bottle_reply(p_id uuid, p_reply text)

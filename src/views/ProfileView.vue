@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, watch } from "vue";
+import { useRouter, useRoute } from "vue-router";
 import { NButton, NInput, NAvatar, NTag, NProgress } from "naive-ui";
 import { t } from "../i18n.js";
 import { getItem, setItem, removeItem } from "../utils/storage.js";
@@ -7,12 +8,12 @@ import { cookbook, removeDish, moodLog, moodStreak, wallet } from "../stores/pet
 import { isMobileNav } from "../stores/uiStore.js";
 import { todayKey } from "../utils/daily.js";
 import {
-  cloud, cloudSignUp, cloudSignIn, cloudSignOut,
-  cloudResetPassword, cloudUpdatePassword, cloudSignInWithGoogle, cloudClearRecovery,
+  cloud, cloudSignOut,
+  cloudUpdatePassword, cloudClearRecovery,
   cloudUpdateNickname, cloudNicknameIsAuto,
 } from "../utils/supabase.js";
 /* 登录规则（纯函数，Node 单测覆盖）：本地校验 / 昵称兜底 / 邮件链接解析 / 回跳地址 */
-import { MIN_PASSWORD, NICK_MAX, emailProblem, passwordProblem } from "../utils/authRules.js";
+import { MIN_PASSWORD, NICK_MAX, passwordProblem } from "../utils/authRules.js";
 import { db } from "../utils/api/db.js";
 import { cloudFetchUserPosts } from "../utils/wall.js";
 
@@ -27,6 +28,13 @@ const nickname = ref(getItem(NICK_KEY) || "");
 const draftNick = ref("");
 /* 云登录优先；否则退回本地访客昵称 */
 const cloudSigned = computed(() => !!(cloud.ready && cloud.user));
+
+/* 与暖心墙同款的三种回应（计数只读展示；点卡片回墙里互动） */
+const REACTIONS = [
+  { key: "hug", tk: "community.reactHug" },
+  { key: "warm", tk: "community.reactWarm" },
+  { key: "relate", tk: "community.reactRelate" },
+];
 const signedIn = computed(() => cloudSigned.value || !!nickname.value.trim());
 const displayName = computed(() => (cloudSigned.value ? (cloud.nickname || nickname.value) : nickname.value));
 const streak = computed(() => moodStreak());
@@ -65,22 +73,9 @@ watch(
   { immediate: true },
 );
 
-/* —— 邮箱登录 / 注册 / 忘记密码（云端就绪且未登录时显示） —— */
-const authMode = ref("signin");           // signin | signup
-const authEmail = ref("");
-const authPass = ref("");
-const authNick = ref("");
-const authBusy = ref(false);
-const authMsg = ref("");
-const authOk = ref(false);
-
-/* 忘记密码：只把重置链接发到邮箱，本地状态一律不动 */
-const forgot = ref(false);
-const forgotBusy = ref(false);
-const forgotMsg = ref("");
-const forgotOk = ref(false);
-
-/* 重置链接落地后：设置新密码（保存成功时当前会话即已登录） */
+/* —— 登录 / 注册 / 忘记密码已独立成页（/login，手机与网页共用）——
+ * 本页未登录时只放一张入口卡；老的重置邮件可能回落到 /profile，
+ * 所以「重置链接落地 → 设置新密码」的收尾逻辑仍留在这里。 */
 const newPass = ref("");
 const passBusy = ref(false);
 const passMsg = ref("");
@@ -144,81 +139,25 @@ watch(
 function syncNickname() {
   if (cloud.nickname) { nickname.value = cloud.nickname; setItem(NICK_KEY, cloud.nickname); }
 }
-function clearAuthMsg() {
-  authMsg.value = "";
-  authOk.value = false;
+/* —— 登录 / 注册已独立成页（/login，手机与网页共用）——
+ * 本页未登录时只放一张入口卡；重置密码落地（cloud.recovery）的收尾仍在这里处理，
+ * 因为老的重置邮件可能回落到 /profile。 */
+const router = useRouter();
+const route = useRoute();
+
+function goSignIn(withForgot = false) {
+  /* 把当前位置带过去：登录成功后回到原来的页面（默认 /profile）；
+   * withForgot = 重置链接失效场景 → 直达「忘记密码」表单 */
+  const here = route.fullPath || "/profile";
+  const query = withForgot ? { redirect: here, forgot: "1" } : { redirect: here };
+  router.push({ path: "/login", query });
 }
 
-function switchAuthMode() {
-  authMode.value = authMode.value === "signin" ? "signup" : "signin";
-  forgot.value = false;
-  clearAuthMsg();
-}
-
-/* 本地校验只为提前给一句人话；权威判断始终在服务端 */
-function emailHint(email) {
-  const p = emailProblem(email);
-  if (!p) return "";
-  return p === "missing" ? t("profile.needEmail") : t("profile.badEmail");
-}
+/* 密码本地校验（与 /login 同一套规则；权威判断始终在服务端） */
 function passHint(pass) {
   const p = passwordProblem(pass);
   if (!p) return "";
   return p === "missing" ? t("profile.needPass") : t("profile.shortPass", { n: MIN_PASSWORD });
-}
-
-async function doAuth() {
-  if (authBusy.value) return;
-  const email = authEmail.value.trim();
-  const bad = emailHint(email) || passHint(authPass.value);
-  if (bad) { authOk.value = false; authMsg.value = bad; return; }
-  authBusy.value = true;
-  clearAuthMsg();
-  const r = authMode.value === "signup"
-    ? await cloudSignUp(email, authPass.value, authNick.value.trim())
-    : await cloudSignIn(email, authPass.value);
-  authBusy.value = false;
-  if (!r.ok) {
-    authOk.value = false;
-    authMsg.value = t("profile.authFail", { r: r.reason || "unknown" });
-    return;
-  }
-  if (r.needVerify) {
-    authOk.value = true;
-    authMsg.value = t("profile.verifySent");
-    return;
-  }
-  /* 登录成功：云端昵称同步到本地键，暖心墙署名保持一致 */
-  syncNickname();
-  authOk.value = true;
-  authMsg.value = t("profile.cloudSignedIn");
-}
-
-/* —— 忘记密码：把重置链接发到邮箱 —— */
-function startForgot() {
-  forgot.value = true;
-  forgotMsg.value = "";
-  forgotOk.value = false;
-  clearAuthMsg();
-}
-function cancelForgot() {
-  forgot.value = false;
-  forgotMsg.value = "";
-  forgotOk.value = false;
-  clearAuthMsg();
-}
-async function doForgot() {
-  if (forgotBusy.value) return;
-  const bad = emailHint(authEmail.value);
-  if (bad) { forgotOk.value = false; forgotMsg.value = bad; return; }
-  forgotBusy.value = true;
-  forgotMsg.value = "";
-  forgotOk.value = false;
-  const r = await cloudResetPassword(authEmail.value.trim());
-  forgotBusy.value = false;
-  if (!r.ok) { forgotMsg.value = t("profile.authFail", { r: r.reason || "unknown" }); return; }
-  forgotOk.value = true;
-  forgotMsg.value = t("profile.forgotSent");
 }
 
 /* —— 重置链接已生效：设置新密码 —— */
@@ -242,18 +181,6 @@ function leaveRecovery() {
   cloudClearRecovery();
 }
 
-/* —— Google 一键登录：整页跳去 Google；失败才回一句话 —— */
-const googleBusy = ref(false);
-const googleMsg = ref("");
-async function doGoogle() {
-  if (googleBusy.value) return;
-  googleBusy.value = true;
-  googleMsg.value = "";
-  const r = await cloudSignInWithGoogle();
-  googleBusy.value = false;
-  if (!r.ok) googleMsg.value = t("profile.authFail", { r: r.reason || "unknown" });
-}
-
 function continueAsGuest() {
   const n = draftNick.value.trim();
   if (!n) return;
@@ -266,7 +193,6 @@ async function signOut() {
   removeItem(NICK_KEY);
   nickname.value = "";
   /* 退出时把残留的提示与「设置新密码」界面一起收掉 */
-  clearAuthMsg();
   flash.value = "";
   leaveRecovery();
 }
@@ -374,17 +300,31 @@ const brightRatio = computed(() => {
       </div>
       <p v-if="myPostsBusy" class="sub">…</p>
       <p v-else-if="!myPosts.length" class="sub">{{ t("profile.myPostsEmpty") }}</p>
-      <!-- 与暖心墙同款：正文完整显示（不截断）+ 配图原样铺开，整卡点击进墙里那条 -->
+      <!-- 轮 18：与暖心墙完全同款的帖子卡（头像/署名/时间/全文/配图/回应数/浏览数），
+           不再是只剩文字的缩略行；整卡点击进墙里那条互动 -->
       <div v-else class="my-posts">
         <router-link
           v-for="p in myPosts" :key="p.id"
-          class="my-post" :to="{ path: '/community', query: { post: p.dbId } }">
-          <div class="mp-head">
-            <b class="mp-name">{{ p.name }}</b>
-            <span class="mp-meta">{{ new Date(p.ts).toLocaleDateString() }}</span>
+          class="post-card card my-post" :to="{ path: '/community', query: { post: p.dbId } }">
+          <div class="post-head">
+            <n-avatar round :size="42" class="post-avatar">🙂</n-avatar>
+            <div class="post-meta">
+              <div class="post-name">{{ p.name }}</div>
+              <div class="post-time">{{ new Date(p.ts).toLocaleDateString() }}</div>
+            </div>
           </div>
-          <p class="mp-text">{{ p.text || "🖼️" }}</p>
+          <p class="post-text">{{ p.text || "🖼️" }}</p>
           <img v-if="p.img" :src="p.img" class="pic" alt="" />
+          <div class="react-row">
+            <n-button
+              v-for="r in REACTIONS" :key="r.key"
+              round size="small" quaternary :focusable="false">
+              {{ t(r.tk) }} · {{ (p.reacts && p.reacts[r.key]) || 0 }}
+            </n-button>
+          </div>
+          <div v-if="p.stats" class="post-foot">
+            <span class="post-views">{{ t("community.views", { n: p.views || 0 }) }}</span>
+          </div>
         </router-link>
       </div>
     </section>
@@ -397,7 +337,7 @@ const brightRatio = computed(() => {
       <h2>{{ t("profile.resetLinkBad") }}</h2>
       <p class="notice">{{ t("profile.resetLinkBadWhy", { r: cloud.recoveryErr }) }}</p>
       <div style="margin-top: 12px">
-        <n-button type="primary" round @click="startForgot">{{ t("profile.forgotTitle") }}</n-button>
+        <n-button type="primary" round @click="goSignIn(true)">{{ t("profile.forgotTitle") }}</n-button>
       </div>
     </section>
 
@@ -418,71 +358,15 @@ const brightRatio = computed(() => {
       <p v-if="passMsg" class="notice bad">{{ passMsg }}</p>
     </section>
 
-    <!-- 云端登录 / 注册（Supabase 已连接且未登录时显示） -->
+    <!-- 未登录：登录 / 注册已独立成页（/login，手机与网页共用）；这里只留一张入口卡 -->
     <section v-else-if="cloud.ready && !cloudSigned" class="card auth-card">
-      <div class="row-between">
-        <h2>{{ t("profile.authTitle") }}</h2>
-        <n-button v-if="!forgot" quaternary size="small" @click="switchAuthMode">
-          {{ authMode === "signin" ? t("profile.toSignUp") : t("profile.toSignIn") }}
+      <h2>{{ t("profile.authTitle") }}</h2>
+      <p class="sub" style="margin-top: 6px">{{ t("settings.tapToLogin") }}</p>
+      <div class="auth-actions">
+        <n-button type="primary" round size="large" @click="goSignIn">
+          {{ t("profile.goSignIn") }}
         </n-button>
       </div>
-
-      <!-- Google 一键登录（忘记密码时先不需要它，避免歧义） -->
-      <template v-if="!forgot">
-        <button type="button" class="oauth-google" :disabled="googleBusy" @click="doGoogle">
-          <span class="oauth-g" aria-hidden="true">G</span>
-          <span>{{ googleBusy ? t("profile.googleBusy") : t("profile.googleSignIn") }}</span>
-        </button>
-        <p class="or-line"><span>{{ t("profile.orEmail") }}</span></p>
-      </template>
-
-      <!-- 忘记密码：只发链接，别让人以为密码已经改了 -->
-      <template v-if="forgot">
-        <h2 class="auth-sub">{{ t("profile.forgotTitle") }}</h2>
-        <p class="notice" style="margin-top: 4px">{{ t("profile.forgotHint") }}</p>
-      </template>
-
-      <div class="q-input" :style="forgot ? 'margin-top: 12px' : ''">
-        <n-input v-model:value="authEmail" round size="large"
-          :placeholder="t('profile.authEmail')" @keyup.enter="forgot ? doForgot() : doAuth()" />
-      </div>
-
-      <template v-if="!forgot">
-        <div class="q-input" style="margin-top: 8px">
-          <n-input v-model:value="authPass" type="password" round size="large" show-password-on="click"
-            :placeholder="t('profile.authPass')" @keyup.enter="doAuth" />
-        </div>
-        <div v-if="authMode === 'signup'" class="q-input" style="margin-top: 8px">
-          <n-input v-model:value="authNick" round size="large"
-            :placeholder="t('common.nickname')" @keyup.enter="doAuth" />
-        </div>
-        <div class="auth-actions">
-          <n-button type="primary" round size="large" :loading="authBusy" @click="doAuth">
-            {{ authMode === "signin" ? t("common.signIn") : t("common.signUp") }}
-          </n-button>
-          <n-button v-if="authMode === 'signin'" quaternary round @click="startForgot">
-            {{ t("profile.forgot") }}
-          </n-button>
-        </div>
-        <p class="notice" :class="{ bad: authMsg && !authOk, good: authOk }">
-          {{ authMsg || t("common.localMode") }}
-        </p>
-        <p class="hint-min">{{ t("profile.passRule", { n: MIN_PASSWORD }) }}</p>
-      </template>
-
-      <template v-else>
-        <div class="auth-actions">
-          <n-button type="primary" round size="large" :loading="forgotBusy" @click="doForgot">
-            {{ t("profile.forgotSend") }}
-          </n-button>
-          <n-button quaternary round @click="cancelForgot">{{ t("common.cancel") }}</n-button>
-        </div>
-        <p class="notice" :class="{ bad: forgotMsg && !forgotOk, good: forgotOk }">
-          {{ forgotMsg || t("profile.forgotHint2") }}
-        </p>
-      </template>
-
-      <p v-if="googleMsg" class="notice bad">{{ googleMsg }}</p>
     </section>
 
     <!-- 起昵称（本地模式，或登录前的访客身份） -->
@@ -559,17 +443,9 @@ const brightRatio = computed(() => {
 .my-posts-link { text-decoration: none; }
 .my-posts { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
 .my-post {
-  display: block;
-  padding: 12px 14px; border-radius: 14px; text-decoration: none; color: inherit;
-  background: var(--glass);
+  display: block; text-decoration: none; color: inherit;
 }
 .my-post:hover { background: var(--accent-soft); }
-.mp-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
-.mp-name { font-size: 13px; }
-/* 与暖心墙一致：正文完整换行显示（原先单行省略号，手机上只剩半句话） */
-.mp-text {
-  margin: 6px 0 0; font-size: 14.5px; line-height: 1.8; font-weight: 500;
-  white-space: pre-wrap; overflow-wrap: anywhere;
-}
-.mp-meta { flex: none; font-size: 12px; color: var(--ink-soft); }
+/* 轮 18：卡片结构与暖心墙完全同款（.post-card/.post-head/.post-text/.pic/.react-row 全局类），
+   这里只保留链接化外观；旧的 mp-* 缩略样式随结构一起退役 */
 </style>

@@ -2,15 +2,28 @@
      数据层复用 cloudFetchUserPosts(offset 分页)；下拉刷新 = 重新拉第 0 页。 -->
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
-import { useRouter } from "vue-router";
-import { NButton } from "naive-ui";
+import { useRoute, useRouter } from "vue-router";
+import { NButton, NAvatar } from "naive-ui";
 import { t } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
 import { cloudFetchUserPosts } from "../utils/wall.js";
 
+/* 与暖心墙同款的三种回应（计数只读展示；点卡片回墙里互动） */
+const REACTIONS = [
+  { key: "hug", tk: "community.reactHug" },
+  { key: "warm", tk: "community.reactWarm" },
+  { key: "relate", tk: "community.reactRelate" },
+];
+
 const router = useRouter();
+const route = useRoute();
 const uid = computed(() => (cloud.user && cloud.user.id) || "");
 const signedIn = computed(() => !!(cloud.ready && cloud.user));
+
+/* 未登录 → 登录页（轮 17 统一口径）：登录成功按 ?redirect= 回到本页，不再只给一行文字 */
+function goSignIn() {
+  router.push({ path: "/login", query: { redirect: route.fullPath || "/my-posts" } });
+}
 
 const rows = ref([]);
 const loading = ref(false);
@@ -81,14 +94,20 @@ function openWall(p) {
 </script>
 
 <template>
-  <div class="mypage">
+  <!-- 轮 18：下拉刷新此前写了 ts/tm/te 却从未绑到模板（死代码）＝用户看到「完全没做」。
+       现在绑上：顶部下拉 → 松手重拉第 0 页。 -->
+  <div class="mypage" @touchstart.passive="ts" @touchmove.passive="tm" @touchend.passive="te">
     <header class="mypage-head">
       <button class="mypage-back" @click="router.back()">←</button>
       <h1>{{ t("profile.myPosts") }}</h1>
       <button class="mypage-refresh" :disabled="loading" @click="refresh">↻</button>
     </header>
 
-    <p v-if="!signedIn" class="card sub">{{ t("notif.needSignIn") }}</p>
+    <!-- 未登录：给入口（与其他页同口径，登录后按 ?redirect= 回到本页） -->
+    <section v-if="!signedIn" class="card mypage-signin">
+      <p class="sub">{{ t("notif.needSignIn") }}</p>
+      <n-button type="primary" round @click="goSignIn">{{ t("profile.goSignIn") }}</n-button>
+    </section>
 
     <template v-else>
       <!-- 下拉刷新指示条（手机端 6） -->
@@ -97,10 +116,12 @@ function openWall(p) {
       <p v-if="loading && !rows.length" class="card sub">…</p>
       <p v-else-if="!rows.length" class="card sub">{{ t("profile.myPostsEmpty") }}</p>
 
+      <!-- 轮 18：与暖心墙完全同款的帖子卡（头像/署名/时间/全文/配图/回应数/浏览数） -->
       <article
         v-for="p in rows" :key="p.id"
         class="post-card card mypage-post" @click="openWall(p)">
         <div class="post-head">
+          <n-avatar round :size="42" class="post-avatar">🙂</n-avatar>
           <div class="post-meta">
             <div class="post-name">{{ p.name }}</div>
             <div class="post-time">{{ whenPost(p.ts) }}</div>
@@ -109,6 +130,16 @@ function openWall(p) {
         </div>
         <p class="post-text">{{ p.text || "🖼️" }}</p>
         <img v-if="p.img" :src="p.img" class="pic" alt="" />
+        <div class="react-row">
+          <n-button
+            v-for="r in REACTIONS" :key="r.key"
+            round size="small" quaternary :focusable="false">
+            {{ t(r.tk) }} · {{ (p.reacts && p.reacts[r.key]) || 0 }}
+          </n-button>
+        </div>
+        <div v-if="p.stats" class="post-foot">
+          <span class="post-views">{{ t("community.views", { n: p.views || 0 }) }}</span>
+        </div>
       </article>
 
       <div ref="sentEl" class="mypage-sentinel"></div>
@@ -133,6 +164,7 @@ function openWall(p) {
   font-weight: 800; font-size: 16px;
 }
 .mypage-pull { display: flex; align-items: center; justify-content: center; overflow: hidden; color: var(--ink-soft); transition: height .15s ease; }
+.mypage-signin { text-align: center; display: grid; gap: 10px; justify-items: center; padding: 18px 14px; }
 .mypage-post { cursor: pointer; }
 .mypage-go { font-size: 12px; font-weight: 700; color: var(--ink-faint); white-space: nowrap; }
 .mypage-sentinel { height: 4px; }

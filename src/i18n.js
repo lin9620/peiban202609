@@ -233,7 +233,7 @@ export const messages = {
       chatSetup: "Bottle chat needs a database update by the site owner.",
       /* #17 记录分类与时间 */
       mineTab: "Sent by me", heldTab: "Fished by me",
-      stReplied: "Reply received", stPicked: "Picked up, waiting", stSea: "Still at sea",
+      stReplied: "Reply received", stPicked: "Picked up — chat opens once they reply", stSea: "Still at sea",
       stDecide: "Reply received — accept or decline the chat.",
       stAnswered: "You replied", stInHand: "In your hands", stReleased: "Thrown back",
       openChat: "Open chat",
@@ -479,10 +479,24 @@ export const messages = {
       hourAgo: "{n}h ago",
       yesterday: "yesterday",
     },
+    /* 登录页（/login）：手机与网页共用；成功后按 redirect 回跳 */
+    login: {
+      title: "Welcome back to Warm Paws",
+      sub: "Sign in and your posts, comments and pet stay in step on every device.",
+      guestTitle: "Continue as a guest",
+    },
     /* 设置页（/settings，#13）：皮肤 / 语言 / 总通知开关 / 通知四类偏好 */
     settings: {
       title: "Settings",
       sub: "Skin, language and notifications — all in one gentle place.",
+      appearance: "Appearance",
+      account: "Account",
+      about: "About",
+      dangerZone: "Danger zone",
+      tapToLogin: "Tap to sign in — posts, comments and your pet will sync.",
+      nickRow: "Nickname",
+      pwRow: "Change password",
+      notifRow: "Notifications",
       theme: "Skin",
       language: "Language",
       entry: "Settings",
@@ -587,6 +601,7 @@ export const messages = {
     profile: {
       title: "Me",
       hello: "Hi, {n} 👋", notSigned: "Not signed in",
+      goSignIn: "Sign in / Sign up",
       authEmail: "Email", authPass: "Password",
       authTitle: "Sign in / Sign up",
       authLocal: "Cloud sign-in activates once Supabase is connected. Meanwhile, pick a nickname to continue in local mode.",
@@ -858,7 +873,7 @@ export const messages = {
       chatSetup: "漂流瓶续聊尚需站点主人执行数据库更新。",
       /* #17 记录分类与时间 */
       mineTab: "我发布的", heldTab: "我捞到的",
-      stReplied: "已有回信", stPicked: "被捞走了", stSea: "还在海里",
+      stReplied: "已有回信", stPicked: "被捞走了 · 等对方回信后可开始聊天", stSea: "还在海里",
       stDecide: "收到回信 · 同意或拒绝聊天",
       stAnswered: "你已回信", stInHand: "在你手里", stReleased: "已放回海里",
       openChat: "去聊天",
@@ -1102,10 +1117,24 @@ export const messages = {
       hourAgo: "{n} 小时前",
       yesterday: "昨天",
     },
+    /* 登录页（/login）：手机与网页共用；成功后按 redirect 回跳 —— 与 en 键一一对应 */
+    login: {
+      title: "欢迎回到暖爪",
+      sub: "登录之后，帖子、评论和宠物都会在各个设备间保持一致。",
+      guestTitle: "以访客身份继续",
+    },
     /* 设置页（/settings，#13）：皮肤 / 语言 / 总通知开关 / 通知四类偏好 —— 与 en 键一一对应 */
     settings: {
       title: "设置",
       sub: "皮肤、语言和通知——都收在这个温柔的小角落。",
+      appearance: "外观",
+      account: "账号",
+      about: "关于",
+      dangerZone: "危险区",
+      tapToLogin: "点这里登录——帖子、评论和宠物都会同步。",
+      nickRow: "昵称",
+      pwRow: "修改密码",
+      notifRow: "通知",
       theme: "皮肤",
       language: "语言",
       entry: "设置",
@@ -1211,6 +1240,7 @@ export const messages = {
     profile: {
       title: "我的",
       hello: "你好，{n} 👋", notSigned: "未登录",
+      goSignIn: "去登录 / 注册",
       authEmail: "邮箱", authPass: "密码",
       authTitle: "登录 / 注册",
       authLocal: "连接 Supabase 后即可云端登录。现在先起个昵称，用本地模式继续。",
@@ -1261,7 +1291,10 @@ export const messages = {
 };
 
 export const i18n = reactive({
-  locale: getItem("wp-lang") || "en",
+  /* 轮 18（#3 闪英文最后一环）：首次使用（无存档）跟随系统语言——
+     中文手机/中文系统首启 App 直接是中文，不再先闪英文；
+     存档优先：用户在设置页手动选过语言就永远尊重那个选择。 */
+  locale: getItem("wp-lang") || normLocale((typeof navigator !== "undefined" && navigator.language) || ""),
 });
 
 export function normLocale(l) {
@@ -1273,6 +1306,11 @@ export function normLocale(l) {
 }
 
 i18n.locale = normLocale(i18n.locale);
+
+/* 首屏 <html lang> 就与语言一致（无障碍/字体挑选都看它），后续 setLocale 继续维护 */
+if (typeof document !== "undefined") {
+  document.documentElement.lang = i18n.locale === "zh" ? "zh-CN" : "en";
+}
 
 function lookup(key, locale) {
   return key.split(".").reduce((o, k) => (o != null ? o[k] : undefined), messages[locale]);

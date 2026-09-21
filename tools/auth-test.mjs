@@ -124,36 +124,66 @@ ok("A33 cloud 暴露 recovery / recoveryErr 两个状态位",
 ok("A34 未配置云端时不抛错（no-cloud 兜底至少 4 处）",
   (sb.match(/return \{ ok: false, reason: "no-cloud" \};/g) || []).length >= 4);
 
-/* ═════════ ⑥ 接线：「我的」页 ═════════ */
+/* ═════════ ⑥ 接线：登录页 /login（轮 16：登录表单从「我的」页独立成页） ═════════ */
 const pv = read("src/views/ProfileView.vue");
-ok("A35 ProfileView 引入四个新能力 + 三个纯函数",
-  pv.includes("cloudResetPassword") && pv.includes("cloudUpdatePassword")
-  && pv.includes("cloudSignInWithGoogle") && pv.includes("cloudClearRecovery")
-  && pv.includes("MIN_PASSWORD") && pv.includes("emailProblem") && pv.includes("passwordProblem"));
-ok("A36 Google 登录按钮存在并绑定 doGoogle",
-  pv.includes('class="oauth-google"') && pv.includes("@click=\"doGoogle\""));
+const lv = read("src/views/LoginView.vue");
+ok("A35 登录能力收进 /login：LoginView 引入全部入口 + 三个纯函数",
+  lv.includes("cloudResetPassword") && lv.includes("cloudUpdatePassword")
+  && lv.includes("cloudSignInWithGoogle") && lv.includes("cloudClearRecovery")
+  && lv.includes("cloudSignUp") && lv.includes("cloudSignIn")
+  && lv.includes("MIN_PASSWORD") && lv.includes("emailProblem") && lv.includes("passwordProblem"));
+ok("A35b ProfileView 只保留 recovery 收尾（重置邮件可能回落 /profile），其余入口已移出",
+  pv.includes("cloudUpdatePassword") && pv.includes("cloudClearRecovery")
+  && pv.includes("passwordProblem") && !pv.includes("cloudSignInWithGoogle"));
+ok("A35c 「我的」页未登录时给 /login 入口并带上当前页回跳",
+  pv.includes('router.push({ path: "/login", query })') && pv.includes("route.fullPath"));
+ok("A36 Google 登录按钮存在并绑定 doGoogle（登录页）",
+  lv.includes('class="oauth-google"') && lv.includes('@click="doGoogle"'));
 ok("A37 忘记密码入口在登录表单上（仅登录模式）",
-  /v-if="authMode === 'signin'"[\s\S]{0,120}startForgot/.test(pv));
+  /v-if="authMode === 'signin'"[\s\S]{0,120}startForgot/.test(lv));
 ok("A38 重置落地卡片由 cloud.recovery 驱动，并显示「保存新密码」",
-  pv.includes("cloud.ready && cloud.recovery") && pv.includes("doSetPassword") && pv.includes('t("profile.savePass")'));
+  pv.includes("cloud.ready && cloud.recovery") && pv.includes("doSetPassword") && pv.includes('t("profile.savePass")')
+  && lv.includes("cloud.ready && cloud.recovery") && lv.includes("doSetPassword"));
 ok("A39 链接失效时如实说明并可重发（resetLinkBadWhy + 重新发链接）",
   pv.includes('t("profile.resetLinkBad")') && pv.includes('t("profile.resetLinkBadWhy"')
-  && /resetLinkBad[\s\S]{0,400}startForgot/.test(pv));
-ok("A40 保存成功后清掉 recovery 并给页面级提示（卡片此时已隐藏）",
-  /cloudClearRecovery\(\);\s*\n\s*flash\.value = t\("profile\.resetDone"\)/.test(pv) && pv.includes("auth-flash"));
-ok("A41 本地校验在提交前拦下并给人话（emailHint / passHint）",
-  pv.includes("emailHint(email) || passHint(authPass.value)")
-  && pv.includes("passHint(newPass.value)")
-  && pv.includes("emailHint(authEmail.value)"));
+  && /resetLinkBad[\s\S]{0,400}goSignIn\(true\)/.test(pv)
+  && lv.includes('t("profile.resetLinkBadWhy"') && /resetLinkBad[\s\S]{0,400}startForgot/.test(lv));
+ok("A40 保存成功后清掉 recovery（两页一致），ProfileView 给页面级提示",
+  /cloudClearRecovery\(\);\s*\n\s*flash\.value = t\("profile\.resetDone"\)/.test(pv) && pv.includes("auth-flash")
+  && lv.includes("cloudClearRecovery();"));
+ok("A41 本地校验在提交前拦下并给人话（emailHint / passHint，两页一致）",
+  lv.includes("emailHint(email) || passHint(authPass.value)")
+  && lv.includes("passHint(newPass.value)")
+  && lv.includes("emailHint(authEmail.value)")
+  && pv.includes("passHint(newPass.value)"));
 ok("A42 退出登录时把提示与重置界面一起收掉",
   /async function signOut[\s\S]{0,300}leaveRecovery\(\)/.test(pv));
 ok("A43 忘记密码模式下不显示 Google 按钮与密码框（避免歧义）",
-  /<template v-if="!forgot">[\s\S]{0,700}oauth-google/.test(pv));
+  /<template v-if="!forgot">[\s\S]{0,700}oauth-google/.test(lv));
+ok("A43b 回跳只认站内路径（防开放跳转），Google 往返用 sessionStorage 兜底",
+  lv.includes('q.startsWith("/") && !q.startsWith("//")') && lv.includes("wp-auth-redirect"));
+ok("A43c recovery 落地时不自动回跳（否则「设置新密码」表单会被吞掉）",
+  /\[ready, uid, recovering\][\s\S]{0,120}!recovering\)? goTarget/.test(lv)
+  || (lv.includes("cloud.recovery") && /ready && uid && !recovering/.test(lv)));
 ok("A44 样式齐备（按钮 / 分隔线 / 提示配色 / 页面级提示）", (() => {
   const css = read("src/style.css");
   return [".auth-actions", ".oauth-google", ".oauth-g", ".or-line", ".notice.good", ".notice.bad", ".auth-flash"]
     .every((s) => css.includes(s));
 })());
+
+/* ─── ⑥b 未登录入口统一（轮 17）：Compose/Messages/Notifications/MyPosts 四页
+ *      都跳 /login?redirect=当前页，不再绕道「我的」页（与 D4/D5 口径一致） ─── */
+const entryViews = [
+  read("src/views/ComposeView.vue"),
+  read("src/views/MessagesView.vue"),
+  read("src/views/NotificationsView.vue"),
+  read("src/views/MyPostsView.vue"),
+];
+ok("A44b 四页未登录入口统一跳 /login 并带当前页回跳（不再 push('/profile')）",
+  entryViews.every((s) => s.includes('path: "/login", query: { redirect: route.fullPath')
+    && !s.includes("router.push('/profile')")));
+ok("A44c 四页入口按钮用「去登录」文案（profile.goSignIn），不再借「我的」页签名义",
+  entryViews.every((s) => s.includes('t("profile.goSignIn")')));
 
 /* ═════════ ⑧ 改昵称（Google 首登自动昵称 → 提示可改；设置页常驻可改） ═════════ */
 const sbSrc = read("src/utils/supabase.js");
@@ -293,7 +323,7 @@ ok("A48b nickLong 的 {n} 真会被替换（昵称上限提示不留占位符）
   ok("A51 谷歌用户跳过旧密码直接设新密码（provider 判定）",
     sb.includes('provider === "google"'));
   ok("A52 设置页有密码区（旧/新/确认 + isGoogle 分支 + 保存按钮）",
-    sv.includes('t("settings.password")') && sv.includes("v-model:value=\"pwOld\"")
+    sv.includes('t("settings.pwRow")') && sv.includes("v-model:value=\"pwOld\"")
       && sv.includes("v-model:value=\"pwConfirm\"") && sv.includes("isGoogle") && sv.includes("savePw"));
   ok("A53 两次不一致与缺旧密码在本地就拦下（不惊动服务器）",
     sv.includes("pwNew.value !== pwConfirm.value") && sv.includes("t(\"settings.pwNeedOld\")"));

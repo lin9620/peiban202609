@@ -79,16 +79,18 @@ try {
   const rm = t.match(/<meta[^>]+name=["']robots["'][^>]*>/i);
   ok("meta robots 允许索引", !!rm && /index/i.test(rm[0]), rm ? rm[0] : "缺失");
 } catch (e) { ok("Googlebot 索引体检", false, e.message); }
-/* SPA 回退：这是有意设计（wrangler.jsonc 的 not_found_handling = single-page-application），
-   未知路径返回应用外壳 200，深链（如 /wall/u/:id）才不会 404；
-   已知路由另有各自预渲染的独立 HTML（见 tools/seo-test.mjs）。
-   注意：这里不能断言「真 404」—— 那与 SPA 回退互相矛盾。 */
+/* 路由兜底语义（轮 11 起的真行为，轮 18 把 online-check 的旧断言对齐）：
+   - 乱路径 → 真 404（not_found_handling=404-page，防软 404 拖累收录）；
+   - /u/:id、/messages/:id 动态直链没有预渲染文件 → Worker 兜底分支改写成 SPA 壳（200）。
+   已知路由另有各自预渲染的独立 HTML（见 tools/seo-test.mjs）。 */
 try {
   const r = await get("/no-such-page-xyz");
-  const t = await r.text();
-  ok("未知路径由 SPA 回退兜住（200 + 应用外壳，深链不 404）",
-    r.status === 200 && t.includes('id="app"'), "HTTP " + r.status);
-} catch (e) { ok("SPA 回退检查", false, e.message); }
+  ok("未知路径返回真 404（防软 404，not_found_handling=404-page）", r.status === 404, "HTTP " + r.status);
+  const ru = await get("/u/00000000-0000-0000-0000-000000000000");
+  ok("/u/:id 动态直链由 Worker 兜底成应用壳（200）", ru.status === 200, "HTTP " + ru.status);
+  const rm2 = await get("/messages/00000000-0000-0000-0000-000000000000");
+  ok("/messages/:id 会话直链由 Worker 兜底成应用壳（200）", rm2.status === 200, "HTTP " + rm2.status);
+} catch (e) { ok("路由兜底检查", false, e.message); }
 
 console.log("\nTOTAL " + (pass + fail) + "  PASS " + pass + "  FAIL " + fail);
 process.exit(fail ? 1 : 0);

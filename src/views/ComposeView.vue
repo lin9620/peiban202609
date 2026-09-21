@@ -2,7 +2,7 @@
      与暖心墙页顶发布框共用同一套数据层（cloudInsertPost / 每日一条 / 图片预检），只是形态不同。 -->
 <script setup>
 import { ref, computed } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { NButton } from "naive-ui";
 import { t } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
@@ -14,6 +14,7 @@ import {
 } from "../utils/imaging.js";
 
 const router = useRouter();
+const route = useRoute();
 const draft = ref("");
 const imgData = ref("");
 const imgErr = ref("");
@@ -70,6 +71,12 @@ function goBack() {
   else router.replace("/community");
 }
 
+/* 未登录 → 登录页（轮 17 统一口径）：登录成功按 ?redirect= 回到本页继续写，
+ * 不再绕道「我的」页（旧路径只给账号卡，登录完还得手动走回来） */
+function goSignIn() {
+  router.push({ path: "/login", query: { redirect: route.fullPath || "/compose" } });
+}
+
 async function submit() {
   const text = draft.value.trim();
   if (!text && !imgData.value) {
@@ -103,11 +110,11 @@ async function submit() {
       <h1 class="compose-title">🧱 {{ t("community.composeTitle") }}</h1>
     </header>
 
-    <!-- 未登录：先去登录（发帖要身份） -->
+    <!-- 未登录：先去登录（发帖要身份）；登录后按 ?redirect= 回到本页继续写 -->
     <section v-if="cloud.ready && !signedIn" class="compose-card compose-card--signin">
       <p class="compose-sub">{{ t("community.commentSignIn") }}</p>
-      <n-button type="primary" round class="compose-send" @click="router.push('/profile')">
-        {{ t("nav.profile") }}
+      <n-button type="primary" round class="compose-send" @click="goSignIn">
+        {{ t("profile.goSignIn") }}
       </n-button>
     </section>
 

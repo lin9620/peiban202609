@@ -205,6 +205,25 @@ function showWallMsg(tk) {
   setTimeout(() => { wallMsg.value = ""; }, 3600);
 }
 
+/* ════════ 原生下拉刷新（轮 18 补做：用户点名「完全没做」）════════
+ * touchstart 在页面顶部下拉 → 松手重拉云端。走 SWR（loadCloud）：
+ * 先渲染缓存再后台刷新，不闪白屏；60px 阈值，指示条跟手。 */
+let pullStart = 0, pulling = false;
+const pullDist = ref(0);
+function ts(e) { if (window.scrollY <= 0) { pullStart = e.touches[0].clientY; pulling = true; } }
+function tm(e) {
+  if (!pulling) return;
+  const d = e.touches[0].clientY - pullStart;
+  if (d > 0 && window.scrollY <= 0) pullDist.value = Math.min(90, d);
+  else pulling = false;
+}
+async function te() {
+  if (!pulling) return;
+  pulling = false;
+  if (pullDist.value >= 62) await loadCloud();
+  pullDist.value = 0;
+}
+
 /* ════════ 每日限额：每个用户每天最多 7 条（WALL_POST_DAILY_LIMIT，库触发器同口径） ═════════ */
 const postedCount = ref(dayCountFromStorage(getItem(POST_DAY_KEY)));   /* 本机今天已发几条（旧格式日期串兼容） */
 const myUid = computed(() => (cloud.user && cloud.user.id) || "");
@@ -715,7 +734,9 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
 </script>
 
 <template>
-  <div>
+  <!-- 轮 18：原生下拉刷新（顶部下拉 → 松手重拉；此前函数未绑定，用户看到「完全没做」） -->
+  <div @touchstart.passive="ts" @touchmove.passive="tm" @touchend.passive="te">
+    <div class="wall-pull" :style="{ height: pullDist + 'px', opacity: pullDist / 62 }">↓</div>
     <!-- 头部 + 发布框（手机端收起：发布统一走底部 ＋ → 独立发布页，页顶不再占一屏） -->
     <section class="card">
       <span class="sec-label">{{ t("nav.community") }}</span>
@@ -979,3 +1000,8 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
     </p>
   </div>
 </template>
+
+<style scoped>
+/* 下拉刷新指示条（轮 18）：跟手拉伸，松手回弹 */
+.wall-pull { display: flex; align-items: center; justify-content: center; overflow: hidden; color: var(--ink-soft); transition: height .15s ease; }
+</style>

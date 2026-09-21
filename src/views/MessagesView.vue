@@ -372,6 +372,12 @@ const clock = (ts) => {
 };
 const dayLabel = (ts) => new Date(ts).toLocaleDateString(
   i18n.locale === "zh" ? "zh-CN" : "en-US", { year: "numeric", month: "short", day: "numeric" });
+
+/* 未登录 → 登录页（轮 17 统一口径）：带当前 fullPath（含会话 id），登录后按 ?redirect=
+ * 直接回到原处，不再绕道「我的」页 */
+function goSignIn() {
+  router.push({ path: "/login", query: { redirect: route.fullPath || "/messages" } });
+}
 </script>
 
 <template>
@@ -383,7 +389,7 @@ const dayLabel = (ts) => new Date(ts).toLocaleDateString(
 
     <section v-if="!signedIn" class="card dm-empty">
       <p class="sub">{{ t("dm.needSignIn") }}</p>
-      <n-button type="primary" round @click="router.push('/profile')">{{ t("nav.profile") }}</n-button>
+      <n-button type="primary" round @click="goSignIn">{{ t("profile.goSignIn") }}</n-button>
     </section>
 
     <div v-else class="dm-wrap">

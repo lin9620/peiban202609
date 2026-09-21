@@ -27,6 +27,7 @@ const read = (p) => fs.readFileSync(p, "utf8");
 const has = (src, ...parts) => parts.every((p) => src.includes(p));
 
 const migration = read("MIGRATION_bottle.sql");
+const migrationFish = read("MIGRATION_bottle_quota_fishfix.sql");
 const setupSql = read("SUPABASE_SETUP.sql");
 const worker = read("worker/api.js");
 const sbAdapter = read("src/utils/api/db.supabase.js");
@@ -99,6 +100,19 @@ ok("每日一问已摘除（en/zh 都没有 dailyQ，首页也不再引用）",
   ok("SETUP：建库脚本同步了漂流瓶（表 + RPC，新装库不用另跑迁移）",
     setupSql.includes("public.bottle_letters") && setupSql.includes("function public.bottle_fish")
       && setupSql.includes("function public.bottle_held"));
+  ok("轮 18：SETUP 同步了次数探针与抢占式捞信（quota + 重试循环，与迁移同源）",
+    setupSql.includes("function public.bottle_quota()")
+      && setupSql.includes("for i in 1..3 loop")
+      && setupSql.includes("if found then"));
+  ok("轮 18 迁移：bottle_quota 探针（UTC 日计数，服务端权威）",
+    migrationFish.includes("function public.bottle_quota()")
+      && migrationFish.includes("created_day = (now() at time zone 'utc')::date")
+      && migrationFish.includes("day = (now() at time zone 'utc')::date"));
+  ok("轮 18 迁移：捞信先抢占再记账、绝不返回 null（空捞不扣次数的根基）",
+    migrationFish.includes("for i in 1..3 loop")
+      && migrationFish.includes("where id = v_row.id and status = 'sea'")
+      && migrationFish.indexOf("if found then") < migrationFish.indexOf("insert into public.bottle_fishes")
+      && migrationFish.includes("raise exception 'bottle-empty-sea'"));
 }
 {
   /* 错误码闭环：migration 里 raise 的每个业务码，bottleErrKey 都要接得住
@@ -121,6 +135,9 @@ ok("Worker：入参体检（空信拒收 / 超 1000 拒收 / id 必须是 UUID�
   has(worker, "if (!body) return fail(400, \"empty-body\")")
     && has(worker, 'body.length > 1000) return fail(400, "bottle-too-long")')
     && has(worker, "if (!UUID_RE.test(id)) return fail(400, \"bad-id\")"));
+ok("轮 18：Worker 开放 GET /bottle/quota（次数探针与发信/捞信同一收口）",
+  has(worker, 'seg[1] === "quota" && seg.length === 2 && m === "GET"')
+    && has(worker, 'rpc(env, request, "bottle_quota", {})'));
 ok("Worker：错误原样透传（不吞码，前端才归类得出来）",
   has(worker, 'return fail(400, "bad-status")') || true); /* rpc() 直接透传上游响应 */
 ok("supabase 适配器：六个方法走同名 RPC（参数名 p_body / p_id / p_reply）",
@@ -146,12 +163,34 @@ ok("bottle.js：登录才可用（cloud.ready + cloud.user），发信/回信先
 ok("BottleView：导入漂流瓶工具并接上四个动作（投/捞/回/放回）",
   has(bottleView, 'from "../utils/bottle.js"')
     && has(bottleView, "async function doSend()") && has(bottleView, "async function doFish()")
-    && has(bottleView, "async function doReply()") && has(bottleView, "async function doRelease()"));
-ok("BottleView：字数上限用 BOTTLE_BODY_MAX、次数展示用 BOTTLE_SEND_MAX/BOTTLE_FISH_MAX",
-  has(bottleView, ":maxlength=\"BOTTLE_BODY_MAX\"") && has(bottleView, "BOTTLE_SEND_MAX - quota.value.sent")
-    && has(bottleView, "BOTTLE_FISH_MAX - quota.value.fished"));
-ok("BottleView：捞到的信在托盘里回信或放回（tray 兜住刚捞的与上次没处理完的）",
-  has(bottleView, "fished.value || held.value[0] || null"));
+    && has(bottleView, "async function doReply(l)") && has(bottleView, "async function doRelease(l)"));
+ok("BottleView：字数上限用 BOTTLE_BODY_MAX、次数=MAX−已用（服务端权威，本地账兜底）",
+  has(bottleView, ':maxlength="BOTTLE_BODY_MAX"')
+    && has(bottleView, "Math.max(0, BOTTLE_SEND_MAX - (q ? q.sent : quota.value.sent))")
+    && has(bottleView, "Math.max(0, BOTTLE_FISH_MAX - (q ? q.fished : quota.value.fished))"));
+ok("BottleView：待处理信箱多封并存（pending 合并 fished+held；捞新信不被手里那封锁死）",
+  has(bottleView, "const pending = ref([])")
+    && has(bottleView, "function mergePending()")
+    && has(bottleView, 'v-for="l in pending"'));
+ok("BottleView：次数服务端权威（bottle_quota 同步 + 乐观本地账；未跑新迁移静默退回）",
+  has(bottleView, "async function syncQuota()") && has(bottleView, "await bottleQuota()")
+    && has(bottleView, "quotaRemote.value"));
+ok("BottleView：空捞绝不扣次数（服务端返回空 → 明示没信，bumpQuota 只在真捞到后）",
+  has(bottleView, "if (!l || !l.id)")
+    && bottleView.indexOf("if (!l || !l.id)") < bottleView.indexOf('bumpQuota("fished")'));
+ok("BottleView：登录就绪/换号自动加载（修「首次进主页记录空白要手动刷新」）",
+  has(bottleView, "watch([cloudSigned, myId]") && has(bottleView, "refreshBottle();")
+    && has(bottleView, "loadRecords(true);"));
+ok("BottleView：收了回信还没决定 → 记录上直接给「同意/拒绝」（不再让用户去消息页找卡）",
+  has(bottleView, '"bottle.stDecide"') && has(bottleView, "async function decideRec(l, accept)")
+    && has(bottleView, "bottleChatDecide(l.id, accept)"));
+ok("BottleView：被捞走/在我手里两态文案不再一律「漂流中」，放回也能按信操作",
+  has(bottleView, '"bottle.stPicked"') && has(bottleView, '"bottle.stInHand"')
+    && has(bottleView, '"bottle.stReleased"'));
+
+
+
+
 ok("BottleView：失败按 bottleErrKey 归类展示（不吞错误）",
   has(bottleView, "t(bottleErrKey(e))"));
 ok("BottleView：每日次数用本机日键记账（跨天自动归零）",

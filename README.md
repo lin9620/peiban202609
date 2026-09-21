@@ -237,7 +237,7 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 3. **填完整地址更保险**：`https://dale.de5.net/sitemap.xml`（只填 `sitemap.xml` 也可以，前提是资源为域名属性）
 4. **提交后显示「待处理」是正常的**：首次抓取可能几小时；若显示「无法获取」，等几分钟再点一次提交（部署刚生效/CDN 缓存滞后时常见）
 5. **别期待立刻收录**：站点地图只是「告知有这些页面」，不等于收录。新域名通常要几天到几周，最有效的加速是 **「网址检查」→ 请求编入索引** + 让别处链接到你的站
-6. **一键体检**：`node tools/online-check.mjs` 会**模拟 Googlebot 抓取**，确认没被 Cloudflare 拦截、没有 `noindex` 头、robots 与 sitemap 都能取到、未知路径由 SPA 回退兜住（深链不 404）（共 21 项）
+6. **一键体检**：`node tools/online-check.mjs` 会**模拟 Googlebot 抓取**，确认没被 Cloudflare 拦截、没有 `noindex` 头、robots 与 sitemap 都能取到、未知路径返回真 404（防软 404）、/u/:id 与 /messages/:id 动态直链由 Worker 兜底成应用壳（共 23 项）
 
 > 注意 Cloudflare 会在 `robots.txt` 顶部自动注入一段「AI 内容信号」声明（`Content-Signal: search=yes,ai-train=no`，并屏蔽 GPTBot / ClaudeBot / Google-Extended 等）。**这不影响 Google 搜索收录**（Google-Extended 只管 AI 训练），你自己的 `Allow: /` 与 `Sitemap:` 行会被完整保留。
 

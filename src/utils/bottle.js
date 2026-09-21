@@ -75,20 +75,30 @@ export async function bottleHeld() {
   return db.bottleHeld();
 }
 
+/** 今日已用次数（服务端权威，UTC 日）：{ sent, fished }（轮 18：跨端不再打架） */
+export function bottleQuota() {
+  return db.bottleQuota();
+}
+
 /** 漂流瓶记录：p_mine=true 我发布的 / false 我捞到的 / null 原行为；limit 每页条数（#17） */
 export function bottleRecords(id = null, offset = 0, { mine = null, limit = 0 } = {}) {
   return db.bottleRecords(id, offset, { mine, limit });
 }
+
 export function bottleChatDecide(id, accept) {
   if (typeof accept !== "boolean") throw new Error("bottle-bad-decision");
   return db.bottleChatDecide(id, accept);
 }
 
-/** 仅作者能决定，双方都能进入已建立的会话；最终权限由数据库裁定。 */
+/** 仅作者能决定，双方都能进入已建立的会话；最终权限由数据库裁定。
+ *  轮 18 拆出两个中间态（此前一律显示「漂流中」，用户看到信被捞走却毫无指引）：
+ *    picked = 我发布的信被 TA 捞起、还没回信（等回信，回信后我决定开不开聊）
+ *    inhand = 我捞起、还没回的信（在我手里，快回） */
 export function bottleChatState(row, userId) {
   if (!row || !userId || (row.user_id !== userId && row.reply_by !== userId)) return "unavailable";
   if (row.chat_decision === "accepted" && row.conv_id) return "accepted";
   if (row.chat_decision === "declined") return "declined";
+  if (row.status === "held") return row.user_id === userId ? "picked" : "inhand";
   if (row.status !== "answered") return "drifting";
   return row.user_id === userId ? "choose" : "waiting";
 }

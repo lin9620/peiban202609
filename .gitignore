@@ -33,6 +33,9 @@ android/build/
 android/app/src/main/assets/public/
 android/app/src/main/assets/capacitor.config.json
 
+# 本地产物 APK（调试包体积大且每次构建都变；发版包走 Play 后台，不入库）
+apk/
+
 # 编辑器与系统文件
 .DS_Store
 Thumbs.db

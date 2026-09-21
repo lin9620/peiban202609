@@ -80,8 +80,13 @@ if (exists("dist/index.html")) {
   const missing = files.filter((f) => !exists(f));
   ok("T24 dist 内 SEO 文件齐全", missing.length === 0, missing.join(","));
   if (exists("dist/sitemap.xml")) {
-    const today = new Date().toISOString().slice(0, 10);
-    ok("T25 构建产物 lastmod 已刷新为今天", read("dist/sitemap.xml").includes(`<lastmod>${today}</lastmod>`), today);
+    /* lastmod 是「构建那一刻」的 UTC 日期（vite.config.js seoSitemap 用 toISOString），
+     * 所以判定基准用 dist/sitemap.xml 自身 mtime 的 UTC 日期（= 本次构建的时间证据），
+     * 不用测试运行时刻 —— 本地 00:00~08:00（UTC 仍是昨天）跑测试不再假红，
+     * 而陈旧产物（构建后没重新生成）依旧会被抓出来 */
+    const builtUtcDay = new Date(fs.statSync(path.join(root, "dist/sitemap.xml")).mtimeMs).toISOString().slice(0, 10);
+    const lastmod = (read("dist/sitemap.xml").match(/<lastmod>([^<]+)<\/lastmod>/) || [])[1] || "";
+    ok("T25 构建产物 lastmod 已随本次构建刷新", lastmod === builtUtcDay, `lastmod=${lastmod} 构建日=${builtUtcDay}`);
   } else {
     ok("T25 构建产物 lastmod 已刷新为今天", false, "dist/sitemap.xml 缺失");
   }

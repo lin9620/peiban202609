@@ -137,6 +137,45 @@ function seoRoutes() {
           desc: "Your pets, coins, badges and gentle daily records — all in one cozy place.",
           html: hero(E.home.heroTitle, [E.profile.cloudReady, "Your pets, coins, badges and gentle daily records — all in one cozy place."]),
         },
+        /* ── 其余前端路由也要有静态文件：wrangler 是 not_found_handling=404-page，
+              没有预渲染文件的路径（/messages、/settings、/login…）深链/刷新会真 404
+              （线上实测过：/messages=404）。这些是应用页，抓取方只需 title/desc，
+              正文留给 Vue（html 留空 = 不注入 hero，挂载即整页渲染）。 ── */
+        {
+          dir: "login",
+          title: "Warm Paws · Sign in",
+          desc: "Sign in to Warm Paws — your posts, comments and pet stay in step on every device.",
+        },
+        {
+          dir: "settings",
+          title: "Warm Paws · Settings",
+          desc: "Skin, language and notifications — all in one gentle place.",
+        },
+        {
+          dir: "messages",
+          title: "Warm Paws · Messages",
+          desc: "Gentle direct messages, kind notes and drift-bottle replies.",
+        },
+        {
+          dir: "my-posts",
+          title: "Warm Paws · My Posts",
+          desc: "All of your kindness-wall posts in one gentle list.",
+        },
+        {
+          dir: "compose",
+          title: "Warm Paws · Share a Post",
+          desc: "Share a warm thought (and a picture) on the kindness wall.",
+        },
+        {
+          dir: "notifications",
+          title: "Warm Paws · Notifications",
+          desc: "Replies, reactions and gentle news from the wall.",
+        },
+        {
+          dir: "admin",
+          title: "Warm Paws · Admin",
+          desc: "Members-only care console for the kindness wall.",
+        },
         {
           /* 隐私政策：Google OAuth 发布要求一个可公开访问的政策页。
              除独立 title/canonical 外，还把正文预渲染进静态 HTML —— 不执行 JS

@@ -12,7 +12,9 @@
     // 当首页 200 返回（软 404 原料，拖累 Google 收录）。真实路由全部有静态文件，
     // 前端路由不依赖回退（history 模式的每条路由都有独立 HTML）。
     "not_found_handling": "404-page",
-    // 保险：即使 dist 里意外出现 api/ 目录，/api/* 也一定先进 Worker
-    "run_worker_first": ["/api/*"]
+    // 保险：即使 dist 里意外出现 api/ 目录，/api/* 也一定先进 Worker；
+    // /u/*（他人主页）与 /messages/*（会话直链）带动态 id、没有预渲染文件，
+    // 必须让请求先到 Worker 才能把 404 改写成 SPA 壳（见 worker/api.js 的回退分支）。
+    "run_worker_first": ["/api/*", "/u/*", "/messages/*"]
   }
 }

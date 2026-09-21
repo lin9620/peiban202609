@@ -10,7 +10,7 @@
  */
 <script setup>
 import { ref, computed, onMounted } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { NButton } from "naive-ui";
 import { t } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
@@ -21,6 +21,12 @@ import { relativeTime } from "../utils/dmRules.js";
 import { badge, refreshBadge } from "../stores/badgeStore.js";
 
 const router = useRouter();
+const route = useRoute();
+
+/* 未登录 → 登录页（轮 17 统一口径）：登录成功按 ?redirect= 回到本页，不再绕道「我的」页 */
+function goSignIn() {
+  router.push({ path: "/login", query: { redirect: route.fullPath || "/notifications" } });
+}
 
 const TABS = [
   { key: "all", tk: "notif.tabAll" },
@@ -183,10 +189,10 @@ onMounted(async () => {
       </div>
     </section>
 
-    <!-- 未登录：不报错，给入口 -->
+    <!-- 未登录：不报错，给入口（登录后按 ?redirect= 回到本页） -->
     <section v-if="!signedIn" class="card notif-empty">
       <p class="sub">{{ t("notif.needSignIn") }}</p>
-      <n-button type="primary" round @click="router.push('/profile')">{{ t("nav.profile") }}</n-button>
+      <n-button type="primary" round @click="goSignIn">{{ t("profile.goSignIn") }}</n-button>
     </section>
 
     <template v-else>

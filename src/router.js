@@ -13,6 +13,8 @@ export const router = createRouter({
     /* 我的帖子：暖心墙「我的」区点「更多」进来，10 条一页 + 下拉续载 */
     { path: "/my-posts", name: "myPosts", component: () => import("./views/MyPostsView.vue") },
     { path: "/profile", name: "profile", component: () => import("./views/ProfileView.vue") },
+    /* 登录页：手机 + 网页共用；?redirect=/x 登录后回跳（Google 往返用 sessionStorage 兜底） */
+    { path: "/login", name: "login", component: () => import("./views/LoginView.vue") },
     { path: "/u/:id", name: "waller", component: () => import("./views/WallerView.vue") },
     /* 私信：列表与具体会话同页（/messages/:id 可直链，通知点击跳这里） */
     { path: "/messages", name: "messagesList", component: () => import("./views/MessagesView.vue") },

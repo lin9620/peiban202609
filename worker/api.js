@@ -431,9 +431,17 @@ export default {
 
     if (request.method === "OPTIONS") return corsPreflight();
 
-    /* 非 /api/*：静态资源（含 SPA 兜底），Worker 不掺手 */
+    /* 非 /api/*：静态资源优先；**动态路由回退**（/u/:id 他人主页、/messages/:id 直链会话
+     * 没有预渲染文件，assets 会给真 404）→ 404 时改发 SPA 壳（根 index.html，200），
+     * 前端路由接管渲染。未知乱路径仍维持真 404（防软 404，SEO 口径不变）。 */
     if (path !== "/api" && !path.startsWith("/api/")) {
-      return env.ASSETS ? env.ASSETS.fetch(request) : fail(404, "not-found");
+      if (!env.ASSETS) return fail(404, "not-found");
+      const res = await env.ASSETS.fetch(request);
+      if (res.status === 404 && (path.startsWith("/u/") || path.startsWith("/messages/"))) {
+        const shell = await env.ASSETS.fetch(new URL("/", url.origin));
+        if (shell && shell.ok) return shell;
+      }
+      return res;
     }
     if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) return fail(503, "worker-not-configured");
 
@@ -642,6 +650,8 @@ export default {
         }
         if (seg[1] === "mine" && seg.length === 2 && m === "GET") return rpc(env, request, "bottle_mine", {});
         if (seg[1] === "held" && seg.length === 2 && m === "GET") return rpc(env, request, "bottle_held", {});
+        /* 轮 18：今日次数探针（服务端权威）——前端「还能捞 N 瓶」以它为准，跨端一致 */
+        if (seg[1] === "quota" && seg.length === 2 && m === "GET") return rpc(env, request, "bottle_quota", {});
       }
 
       /* —— 管理员（RLS is_admin 兜底；Worker 只翻译） —— */

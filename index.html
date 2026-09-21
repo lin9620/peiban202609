@@ -34,7 +34,9 @@
     setTimeout(function () {
       if (window.__WP_MOUNTED__) return;
       var app = document.getElementById("app");
-      if (!app || !app.querySelector(".seo-hero")) return;
+      /* 轮 18：不再要求「有英文占位才兜底」——App 里占位已被剥离（cap-strip-hero），
+       * JS 起不来时同样给出中文提示，而不是白屏/裸英文 */
+      if (!app) return;
       app.innerHTML =
         '<section class="card seo-hero" style="text-align:center">' +
         '<h2 class="seo-title">\u{1F43E} 温暖的爪印</h2>' +

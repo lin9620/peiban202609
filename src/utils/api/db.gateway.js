@@ -222,6 +222,11 @@ export const db = {
     return call("/bottle/held");
   },
 
+  /** 今日已用次数（服务端权威，UTC 日）：{ sent, fished }（轮 18：跨端不再打架） */
+  bottleQuota() {
+    return call("/bottle/quota");
+  },
+
   /* ══════════ 宠物主页（展示镜像 + 计数独立列） ══════════ */
 
   /** 取宠物主页行（行不存在返回 null）；pats/feeds 列缺失的兼容由 Worker 内部处理 */

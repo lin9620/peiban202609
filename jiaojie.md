@@ -20,7 +20,7 @@
 
 ### 0.1 技术栈与环境
 - **框架**：Vue 3（Composition API）+ Vite 5 + Vue Router（history 模式）+ Naive UI 2 + @iconify/vue + lottie-web + @supabase/supabase-js。
-- **部署**：Cloudflare Pages（前端，`dist/`）+ Cloudflare Worker（API 网关，`worker/api.js`，wrangler 部署）；站点 https://dale.de5.net；Worker 项目名 `warm-paws`；SPA 回退 `not_found_handling: "single-page-application"`（所以未知路径返回 200 是**有意设计**，别当 bug 修）。
+- **部署**：Cloudflare Worker（静态资产 + API 网关一体，`worker/api.js`，`npm run deploy` 部署）；站点 https://dale.de5.net；Worker 项目名 `warm-paws`；路由兜底（轮 11 定案）：`not_found_handling: "404-page"`——未知乱路径返回**真 404**（防软 404，这是有意设计，别当 bug 修），仅 `/u/:id`、`/messages/:id` 两个动态直链前缀由 Worker 兜底分支改写成 SPA 壳（200）。
 - **数据库**：Supabase（Postgres）——RLS 行级安全 + `security definer` RPC 做服务端权威逻辑；**anon key 是公开密钥，安全全靠 RLS，前端不得存敏感判断**。
 - **`.env` 键**：只有 `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` 两个；`.env`、`supabase.json`、`.dev.vars` 绝不提交（已在 .gitignore）。
 
@@ -260,22 +260,22 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
 ---
 
-# 一、当前状态速览（2026-09-20 更新）
+# 一、当前状态速览（2026-09-21 更新）
 
 | 项 | 值 |
 |---|---|
 | 项目 | peiban（陪伴 / warm-paws），路径 `D:\05ruanjian\peiban` |
 | 技术栈 | Vue 3 + Vite + Naive UI；数据层双模式：直连 Supabase（`db.supabase.js`）/ Worker 网关（`db.gateway.js` + `worker/api.js`，**线上走网关**）；Cloudflare 部署 https://dale.de5.net；Supabase Postgres + RLS + security definer RPC |
-| 代码 | `HEAD = 9559e20`（轮 15：用户反馈 12 条全部落地，见轮 15） |
-| 部署 | 前端 `index-CyI8O0Hy.js` 已上线；线上 SHA 与本地 dist 逐字节一致（`live-bundle-check`）；`live-check` 14/14 |
-| 数据库 | 本轮 `MIGRATION_notif_dedupe.sql`、`MIGRATION_wall_daily_7.sql` **已由用户执行并探针确认**（通知去重 5/5；cloud-e2e T23/T24）；其余 11 个迁移此前已执行；**轮 13 的 `MIGRATION_notifications_drop_dm.sql` 执行状态未确认** |
-| App | Capacitor 8：强制竖屏（`screenOrientation="portrait"`）+ 原生分享插件 `WpSharePlugin`（MainActivity 注册）；用户已重新打包（android assets 与 dist 同哈希 `index-CyI8O0Hy.js`） |
-| 测试 | 离线全绿（i18n 19 / wall-rules 39 / cache 12 / undef 0 等）+ 线上：`cloud-e2e` 38/38（含每日 7 条新断言）、通知去重探针 5/5、`live-check` 14/14 |
+| 代码 | 轮 18 已改未提交（库内停在轮 17 提交）；工作区 23 文件改动 + 新增 `MIGRATION_bottle_quota_fishfix.sql` 与 `tools/cap-strip-hero.mjs` |
+| 部署 | 前端 SHA16 `4d1696d95b15f74e` 已上线（Version `b0c514e9`）；线上与本地 dist 逐字节一致（`live-bundle-check`）；`live-check` 14/14 |
+| 数据库 | **轮 18 `MIGRATION_bottle_quota_fishfix.sql` 待执行**（探针实测 `bottle_quota` 线上 404 = 未执行；未执行时前端自动退本地账，跑完自动恢复服务端权威）；`MIGRATION_notifications_drop_dm.sql`（轮 13 #23）执行状态仍未确认 |
+| App | Capacitor 8：强制竖屏 + 原生分享插件；android assets 已随轮 18 `cap sync`（SHA16 `4d1696d9` = 线上 bundle）；**APK 重打包待用户执行** |
+| 测试 | 离线 **29 套全部退出码 0**（bottle-test 扩到 46 断言）+ undef 0 + `npm run build` 0 + seo 42/42 |
 
 ## 二、现在在做什么
 
-- **当前任务**：轮 15（用户反馈 12 条：网页/App 共有 7 + 手机端 5）**全部完成**——SQL 迁移已由用户执行（探针确认生效）、前端已部署（线上 SHA 与本地一致）、App 已重新打包。**等实机验收。**
-- **待用户确认**：① 本轮 12 条逐条实机验收（清单见轮 15 表格）；② `MIGRATION_notifications_drop_dm.sql`（轮 13 #23）是否已执行——未执行的话通知中心会残留老私信条目。
+- **当前任务**：轮 18（用户反馈 7 条）**完成并已部署**（F 区轮 18）。**等用户三件事**：① Supabase 执行 `MIGRATION_bottle_quota_fishfix.sql`（不跑也能用——前端自动退本地账；跑了次数口径自动切服务端权威，网页/App 彻底不打架）；② 重打 APK（cap sync 已同步好 android assets）；③ 真机验收 7 条（重点：手机端能连捞多封、空捞不扣次数、首页记录自动出现、暖心墙下拉刷新）。
+- **待用户确认**：① `MIGRATION_bottle_quota_fishfix.sql`（本轮，探针已确认线上未执行）；② `MIGRATION_notifications_drop_dm.sql`（轮 13 #23，仍未确认）；③ 轮 17 四页入口与轮 18 七条逐条实机验收。
 - **可选加码（等有量再做）**：图片搬 Cloudflare R2（出口永久免费，见「十、容量评估」方案 B）。
 
 ## 三、已完成（按轮次，均含验证证据）
@@ -859,7 +859,34 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
     ⑯ **手机-首页三联手势补漏**：宠物联内**左滑可回到漂流瓶**（之前宠物联禁滑穿透后回不去）；
     ⑰ **共有-旅行睡着提示**：宠物睡觉时点「送宠物旅行」**给提示**（不再无反应）。
     **验收**：`app-shell-test` 28→**33 项**（本批 5 个新行为断言）+ **28 套离线测试全绿** + undef 0 + build 0 + LIVE 14/14；`web-probe`（393px 真机等价）实测 home/messages/compose/my-posts/pet?tab=book 五页全过。APK 已出包；真机未连接，待装机复验。
+  - **轮 16 · 登录页独立 + 设置页 Soul 风格重构（2026-09-21，已部署：线上入口 bundle 与 dist 逐字节一致 `live-bundle-check` SHA16=7ea6b17445be0748，LIVE 14/14，/login /settings /messages 及 /u、/messages 深链线上全 200）**：
+    ① **新登录页 `/login`**：把「我的」页里的登录/注册/忘记密码/Google/重置密码整体搬出独立成页（手机+网页共用同一组件）—— `src/views/LoginView.vue`（路由懒加载）。登录成功按 `?redirect=` 回跳，只认站内 `/` 开头路径（防开放跳转）；**Google OAuth 往返会丢 query** → 跳转前把目标存 `sessionStorage(wp-auth-redirect)`，回来取回并清掉；已登录再进 /login 自动回跳；**例外**：重置密码落地（`cloud.recovery`）时虽已是登录会话也不跳走，先显示「设置新密码」表单；`?forgot=1` 直达忘记密码表单（「我的」页重置链接失效卡用它）；
+    ② **「我的」页瘦身**：未登录时原登录大卡换成一张入口卡（按钮 → `/login?redirect=当前页`，带当前 fullPath）；recovery / recoveryErr 卡保留（老的重置邮件可能回落 /profile）；登录表单相关 ~90 行逻辑与四个 supabase 导出删除；
+    ③ **设置页 Soul 风格重构**：顶部身份卡（渐变圆头像 + 昵称 + 邮箱；游客显示 🐾 + 「去登录」按钮）+ 分组行式条目（**外观 / 账号 / 通知 / 危险区 / 关于**），行点击展开（皮肤/语言胶囊组、昵称/改密码表单、删号两步确认），通知总开关 + 三类偏好改 Soul 式 toggle；功能与旧版一一对应（皮肤/语言/昵称/改密/通知偏好/删号/隐私政策/回「我的」），`set-opt/set-opts` 复用全局类；手机形态带 ← 返回（有历史 back、深链 replace /profile）；
+    ④ **i18n**：新增 `login.title/sub/guestTitle`（en/zh）与 `settings.appearance/account/about/dangerZone/tapToLogin/nickRow/pwRow/notifRow`、`profile.goSignIn` 成对键；
+    ⑤ **踩坑**：editor 分段写入 SFC 时 insert_line 定位漂移造成 script/template 交错 —— 大文件改用 PowerShell here-string（`Set-Content`/`Add-Content` 逐块追加）一次性重排，块边界用 `^<script|^</script>…` 断言验证后再继续。
+    **验收**：i18n 19/19 + undef 0 + smoke 35/35 + dev 编译 `/login`、`/settings`、`/profile` 全 200 + `npm run build` ✓（13.8s）；部署 ✓（2026-09-21 bundle 校验一致）；真机验收待做。
 
+  - **轮 17 · 收尾修复 5 项（2026-09-21，已部署 Version 4d7f1911）**：
+    ① **未登录入口统一**：Compose/Messages/Notifications/MyPosts 四页的「去登录」改跳 `/login?redirect=当前页`（登录后原路回来），不再绕道「我的」页；MyPosts 未登录从一行文字升级为入口卡 + 按钮（与全站同口径）；测试补 `A44b/A44c`；
+    ② **文档实证回填**：轮 16 标「已部署」（live-bundle-check SHA16 一致 + LIVE 14/14 + /login /settings /messages 及深链线上 200）——此前「未部署」是过时记录；
+    ③ 删临时探针 `tools/_probe_routes.mjs`（`tools/_*` 用完即删约定）；
+    ④ `apk/` 进 `.gitignore`（调试包二进制不入库，发版走 Play 后台）；
+    ⑤ **seo-test T25 时区假红修复**：lastmod 判定基准从「测试运行时刻」改为「dist/sitemap.xml 自身 mtime 的 UTC 日」（= 构建时刻证据）——本地 00:00–08:00（UTC 还是昨天）跑测试不再假红，陈旧产物仍会被抓出。
+    **验收**：离线 30 套全部退出码 0（含 auth 新增 A44b/c）+ undef 0 + `npm run build` 0 + seo 42/42 + `live-check` 14/14 + `live-bundle-check` 本地=线上（SHA16 `07ba42e50b687db9`）+ cap sync android 完成；APK 重打包待用户真机验收。
+
+  - **轮 18 · 用户反馈 7 条（2026-09-21，已部署 Version b0c514e9）**：
+    ① **次数显示打架（网页+App 共有）**：根因——每日次数记在**本机 localStorage**，网页/App 各记各的账，跨端必然打架。修法：新 RPC `bottle_quota()`（UTC 日服务端权威计数）+ Worker `GET /api/bottle/quota` + 前端 `bottleQuota()`；显示一律「服务端值优先，本地账只做乐观显示与迁移未跑时兜底」。
+    ② **帖子卡完整渲染（共有）**：「我的」页区块 + /my-posts 全量页的帖子卡与暖心墙**同款结构**（头像/署名/时间/全文不截断/配图/三类回应数/浏览数），点卡片回墙互动。
+    ③ **启动闪英文（共有）**：三层修——(a) 启动看门狗 6s 未挂载 → 英文 SEO 占位换成**中文**提示+重试按钮（App 内占位被剥离的场景也覆盖）；(b) `vite:preloadError` 自动整页重载一次（sessionStorage 防循环）；(c) i18n 首启默认语言**跟随系统**（中文手机首启即中文，用户手动选过的存档优先）。
+    ④ **捞 1 次被锁死 + 空捞也扣次数（手机端）**：根因一——旧版「手里压着一封信就禁捞」+ 托盘只显示一封；改**多封托盘**（新捞 + 未回的合并、逐封回/放，捞新信互不阻塞）。根因二——旧 `bottle_fish()` 先 insert 计数、再条件更新，竞态落空返回 null 被客户端误当「捞到了」；迁移把捞信重写为**抢占式重试（最多 3 次）**：`found` 才记次数，**绝不返回 null**；前端空捞明示「海里暂时没信」且不扣次数。
+    ⑤ **显示被捞走了却不能聊天（手机端）**：这是产品规则（写信人要等对方**回信**后才决定是否聊天），问题在状态不可见 + 入口藏太深。修法：记录卡状态机补齐「被捞走了 · 等对方回信后可开始聊天 / 在你手里 / 已放回」；收到回信后**记录上直接给「同意/拒绝」按钮**（BottleView 与 BottleRecords 双处），同意即建会话并跳进聊天。
+    ⑥ **首次进主页漂流瓶记录空白（共有）**：旧版只在 onMounted 拉一次，那一刻会话往往还没就绪、拉了个空就再也不拉；改 `watch([cloudSigned, myId])` 自动（重）拉托盘+记录+次数，登录就绪/换号都刷新，不再依赖手动点刷新。
+    ⑦ **暖心墙下拉刷新（手机端）**：轮 14 写了 ts/tm/te 三个函数却**从未绑到模板**（死代码，用户看到「完全没做」）——现在绑上（CommunityView + MyPostsView 两处）：顶部下拉 60px 松手重拉，指示条跟手回弹。
+    **交付物**：`MIGRATION_bottle_quota_fishfix.sql`（**需用户在 Supabase SQL Editor 执行**——未执行时前端自动退本地账，跑完自动恢复服务端权威；探针实测 `bottle_quota` 线上 404 = 尚未执行）；`SUPABASE_SETUP.sql` 已同步 quota+抢占式捞信（新装库免跑迁移）；测试 bottle-test 扩到 **46 断言**（空捞不扣次/迁移契约/SETUP 同步/Worker quota 路由/自动加载/多封托盘），全量 **29 套 ALL GREEN** + undef 0 + build 0。
+    **验收**：已部署（live-bundle-check SHA16 `4d1696d95b15f74e` 本地=线上）+ live-check 14/14 + cap sync 完成（android assets 同哈希）。**待用户**：① Supabase 执行迁移；② 重打 APK；③ 真机验收 7 条。
+
+## G. 开发任务拆解（动工路线图，逐批交付）
 ## G. 开发任务拆解（动工路线图，逐批交付）
 
 ### 批 1 · 地基与合规（先行，无 UI 风险）
