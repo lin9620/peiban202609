@@ -925,6 +925,17 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
     **修法**：`corsPreflight(request)` 改为**回显**客户端 `access-control-request-headers`（一劳永逸，客户端带任何新头都不会再被卡）+ 显式兜底名单补 `cache-control`。
     **验证**：PC curl 线上预检回显 ✓；**CDP 在手机 App 内重放当时失败的上传 → 200 成功**（修的是服务端，**无需重打 APK**，用户手机直接重试即生效）。worker-test **195/0**（+2 守护：回显/兜底含 cache-control）+ 全量 **32 套 0 fail**。
 
+   - **轮 30 · 登录失败锁定 + 网页去启动页（`e583ca2`）**：①**连错 5 次锁 12 小时**（两端一致）：`cloudSignIn` 内记账（`LOCK_MAX=5` / `LOCK_MS=12h`，按邮箱在本地记账，锁定期直接拒 `reason:"locked"`，成功即清零），登录页显示「先休息 {h} 小时」；②**网页端去掉启动页**（`index.html` 只在 App 壳里保留 splash，正式站点直接进首屏），splash-test 与 auth-test 同步锁形。
+
+   - **轮 31 · App 端谷歌登录改「全程不出 App」（2026-09-22，已部署 Version `dec3cfb3`）**：
+     **用户问题**：App 里点「用谷歌登录」整页跳去系统浏览器，在浏览器里登完回不到 App —— 等于登录不进 App。
+     **为什么不能直接在 App 的 WebView 里登**：Google OAuth 明文禁止内嵌 WebView（`disallowed_useragent`），只能走系统浏览器组件；所以 App 内的正解是 **Chrome Custom Tabs（`@capacitor/browser`）**：视觉上仍是 App 的授权窗口、任务栈不出 App。
+     **线上差分实测（钉死 redirect 白名单口径，`POST /auth/v1/authorize` + `GET /auth/v1/verify`）**：`https://dale.de5.net/**` 原样放行；**`net.de5.dale://login` 被悄悄换成站点首页**（白名单只认站内 https）——所以 `redirectTo` 绝不能写自定义 scheme。
+     **方案（三段）**：①App 端 `redirectTo = https://dale.de5.net/app-auth`（站内中转页）+ `skipBrowserRedirect` 拿到授权 URL → `Browser.open` 在 App 内开授权窗口；②中转页 `public/app-auth.html` 把 `?code=` / `#access_token=` **原样**转交 `net.de5.dale://login`（先自动跳，2.5s 没走就把按钮做成「点我回 App」——按钮是用户手势，必定能拉起）；③Android `AndroidManifest` 加 `net.de5.dale://login` 的 `intent-filter`（配 `singleTask`）→ App 回前台，`App.vue` 用 `appUrlOpen` + **冷启动 `getLaunchUrl`** 取回，`cloudHandleAppRedirect()` 建会话（implicit 走 `setSession`、PKCE 走 `exchangeCodeForSession`），失败原因写 `cloud.appAuthErr` 由登录页显示。
+     **同时修的基建坑**：①`env-guard` 旧口径「所有 `index-*.js` 都必须含 supabase slug」被 `@capacitor/browser` 的动态 import 懒块误报（好包被挡在门外）→ 改成**只校验 `index.html` 真正加载的入口脚本**；②`undef-check` 揪出**轮 30 的真 bug**：登录失败锁记账用了 `getItem/setItem` 却没从 `storage.js` 导入 → `ReferenceError` 被 catch 吞掉 → **「连错 5 次锁 12 小时」实际静默失效**（纯源码断言 A52 没抓住）。修法：补导入 + 记账函数导出为 `loginLockLoad/loginLockSave` 并让 auth-test **真跑 round-trip**（A101-A104）+ 失败时 `console.warn` 留痕；`undef-check` 由 2 问题 → **0 问题**。
+     **验收**：auth-test **129/0**（+A80-A100 谷歌回跳、+A101-A104 登录锁真跑）+ 全量 **31 套 0 fail** + `undef-check 0` + build 0 + 部署（Version `0b94d432`，`live-bundle-check` 本地=线上 `f4a1e982049b3b8e`）+ **aapt2 校验 APK 内已注册 `net.de5.dale://login`（`singleTask`）** + APK 与 dist 逐文件同哈希 + APK 重打（`apk\warm-paws-debug.apk` SHA16 `6eee6efb481b1ba6`）。
+     **无需改 Supabase 配置**（Web 与 App 用的都是站内 https 白名单地址）；**无需再改 `Redirect URLs`**。
+
 ## G. 开发任务拆解（动工路线图，逐批交付）
 
 ### 批 1 · 地基与合规（先行，无 UI 风险）

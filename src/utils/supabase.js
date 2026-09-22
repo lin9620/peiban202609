@@ -13,6 +13,9 @@
 import { reactive } from "vue";
 import { createClient } from "@supabase/supabase-js";
 import { setAuthTokenProvider } from "./api/authToken.js";
+import { isApp } from "../stores/uiStore.js";
+/* 登录失败锁的记账读写（localStorage，隐私模式自动降级内存 —— 见 storage.js） */
+import { getItem, setItem } from "./storage.js";
 import {
   bestNickname, hasAuthParams, isRecoveryEvent, parseAuthRedirect, redirectUrl, NICK_MAX,
   isMissingFnError, passwordProblem,
@@ -26,6 +29,7 @@ export const cloud = reactive({
   error: "",        // 最近一次云端错误（展示用，不打断界面）
   recovery: false,  // 从「重置密码」邮件链接回来 —— 我的页要显示「设置新密码」
   recoveryErr: "",  // 那封邮件链接已失效/被用过的原因（展示用）
+  appAuthErr: "",   // 轮 31：App 端谷歌登录从授权窗口回来后建会话失败的原因（登录页展示）
 });
 
 let sb = null; // supabase client 单例；未配置时保持 null
@@ -134,6 +138,107 @@ function redirectOptions() {
   return u ? { redirectTo: u } : {};
 }
 
+/* —— 轮 31：App 端谷歌登录 = App 内授权窗口 + 站内中转页 + 自定义 scheme 拉回 ——
+ * 用户实测的问题：App 里点谷歌会整页跳去系统浏览器，登完回不到 App。
+ * 修法（分三段，任一段失败都有兜底）：
+ *   ① @capacitor/browser 在 App 内开授权窗口（不出到系统浏览器、不丢当前页面状态）；
+ *   ② redirectTo 用【站内中转页】https://dale.de5.net/app-auth —— 不能直接写自定义
+ *      scheme：Supabase 的 Redirect URLs 白名单只放行站内 https 地址（线上差分实测：
+ *      https://dale.de5.net/** 原样放行，net.de5.dale://login 被换成站点首页）；
+ *   ③ 中转页（public/app-auth.html）把 query/hash 里的令牌原样转交给
+ *      net.de5.dale://login → Android 命中 AndroidManifest 里的 intent-filter 把 App
+ *      拉回前台（appUrlOpen / getLaunchUrl，见 App.vue）→ 这里解析令牌建会话。 */
+const APP_SCHEME = "net.de5.dale";
+const APP_AUTH_PAGE = "/app-auth";   /* 构建产物里的 dist/app-auth.html */
+/* 中转页所在站点：网页构建里 API_BASE 就是生产站点域名；没有就用线上写死的兜底 */
+function siteOrigin() {
+  const o = API_BASE || (typeof window !== "undefined" && window.location ? window.location.origin : "");
+  if (!/^https:\/\//i.test(o)) return "https://dale.de5.net";
+  if (/localhost|127\.0\.0\.1/i.test(o)) return "https://dale.de5.net";   /* 本地调试也用线上中转页 */
+  return o.replace(/\/+$/, "");
+}
+async function openAuthBrowser(url) {
+  try {
+    const { Browser } = await import("@capacitor/browser");
+    await Browser.open({ url, presentationStyle: "fullscreen" });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+/* 授权窗口使命已尽：主动关掉（用户点「返回」时若已关，这里静默忽略） */
+async function closeAuthBrowser() {
+  try {
+    const { Browser } = await import("@capacitor/browser");
+    await Browser.close();
+  } catch (e) { /* 没开过 / 插件缺失 —— 正常 */ }
+}
+export function isAppAuthRedirect(rawUrl) {
+  return typeof rawUrl === "string" && rawUrl.startsWith(APP_SCHEME + "://");
+}
+/* net.de5.dale://login#access_token=…&refresh_token=…  (implicit，本项目客户端默认流程)
+ * net.de5.dale://login?code=…                          (PKCE 兜底)
+ * net.de5.dale://login#error=access_denied&error_code=… (用户取消 / 被拒)
+ * 纯函数：Node 单测直接喂字符串。 */
+export function parseAppAuthRedirect(rawUrl) {
+  const out = { code: "", accessToken: "", refreshToken: "", error: "", reason: "" };
+  const s = typeof rawUrl === "string" ? rawUrl : "";
+  if (!s) return out;
+  const hi = s.indexOf("#");
+  const hash = hi >= 0 ? s.slice(hi + 1) : "";
+  const head = hi >= 0 ? s.slice(0, hi) : s;
+  const qi = head.indexOf("?");
+  const query = qi >= 0 ? head.slice(qi + 1) : "";
+  const pick = (key) => {
+    for (const part of [query, hash]) {
+      try {
+        const v = new URLSearchParams(part).get(key);
+        if (v) return v;
+      } catch (e) { /* 脏参数忽略 */ }
+    }
+    return "";
+  };
+  out.code = pick("code");
+  out.accessToken = pick("access_token");
+  out.refreshToken = pick("refresh_token");
+  out.error = pick("error");
+  out.reason = pick("error_description") || pick("error_code") || out.error;
+  return out;
+}
+/* App 从授权窗口回来：解析 scheme URL → 建会话（成功后 cloud.user 变化，登录页自动回跳） */
+export async function cloudHandleAppRedirect(rawUrl) {
+  if (!sb) return { ok: false, reason: "no-cloud" };
+  const p = parseAppAuthRedirect(rawUrl);
+  cloud.appAuthErr = "";
+  try {
+    if (p.error) {
+      cloud.appAuthErr = p.reason;
+      return { ok: false, reason: p.reason };
+    }
+    if (p.code) {
+      const { data, error } = await sb.auth.exchangeCodeForSession(p.code);
+      if (error) { cloud.appAuthErr = error.message; return { ok: false, reason: error.message }; }
+      await refreshSession(data ? data.session : null);
+    } else if (p.accessToken && p.refreshToken) {
+      const { data, error } = await sb.auth.setSession({
+        access_token: p.accessToken, refresh_token: p.refreshToken,
+      });
+      if (error) { cloud.appAuthErr = error.message; return { ok: false, reason: error.message }; }
+      await refreshSession(data ? data.session : null);
+    } else {
+      cloud.appAuthErr = "no-token";
+      return { ok: false, reason: "no-token" };
+    }
+    return { ok: true };
+  } catch (e) {
+    const msg = e && e.message ? e.message : String(e);
+    cloud.appAuthErr = msg;
+    return { ok: false, reason: msg };
+  } finally {
+    await closeAuthBrowser();
+  }
+}
+
 /* 应用启动时调用一次（App.vue onMounted）。任何失败都只是关闭云端，不抛出 */
 export async function initCloud() {
   cloud.checking = true;
@@ -210,15 +315,24 @@ const LOCK_MS = 12 * 60 * 60 * 1000; /* 锁 12 小时 */
  * 连续密码错误 5 次 → 该邮箱在本设备锁 12 小时，期间不再打登录接口。
  * 记账存本机 localStorage（按邮箱分开计数），登录成功即清零。 */
 const LOCK_BASE = "wp-login-guard:v1:";
-function lockLoad(email) {
+/* 导出这两个只读/写记账函数：auth-test 要真跑一遍 round-trip
+ * （轮 30 曾漏导入 getItem/setItem → 记账静默失效、锁定形同虚设，纯源码断言没抓住） */
+export function loginLockLoad(email) {
   try {
     const r = JSON.parse(getItem(LOCK_BASE + (email || "").toLowerCase()));
     return r && typeof r === "object" ? r : null;
-  } catch (e) { return null; }
+  } catch (e) {
+    /* 记账坏了不能让登录整个挂掉，但也别静默 —— 控制台留痕好排查 */
+    console.warn("[Warm Paws] 登录失败锁记账读取失败：", e && e.message ? e.message : e);
+    return null;
+  }
 }
-function lockSave(email, rec) {
-  try { setItem(LOCK_BASE + (email || "").toLowerCase(), JSON.stringify(rec)); } catch (e) { /* 忽略 */ }
+export function loginLockSave(email, rec) {
+  try { setItem(LOCK_BASE + (email || "").toLowerCase(), JSON.stringify(rec)); }
+  catch (e) { console.warn("[Warm Paws] 登录失败锁记账写入失败：", e && e.message ? e.message : e); }
 }
+const lockLoad = loginLockLoad;
+const lockSave = loginLockSave;
 
 export async function cloudSignIn(email, password) {
   if (!sb) return { ok: false, reason: "no-cloud" };
@@ -316,12 +430,31 @@ export async function cloudChangePassword(oldPw, newPw) {
   }
 }
 
-/* —— Google 一键登录：整页跳到 Google，回来时 supabase-js 自动建会话 ——
- * 前提：Supabase → Authentication → Providers → Google 已开启（填好 Client ID / Secret），
- * 且 Google 侧的 Authorized redirect URI 填 https://<项目>.supabase.co/auth/v1/callback。 */
+/* —— Google 一键登录（双轨）：
+ * App：App 内授权窗口 + 站内中转页拉回（见上方 APP_AUTH_PAGE 注释），全程不出 App；
+ * 网页：与原来一致，整页跳 Google，回来时 supabase-js 自动建会话。
+ * 前提：Supabase → Providers → Google 已开启；Redirect URLs 白名单含 https://dale.de5.net/**
+ *       （Web 与 App 都只用到站内 https 地址，不需要加自定义 scheme）。 */
 export async function cloudSignInWithGoogle() {
   if (!sb) return { ok: false, reason: "no-cloud" };
   try {
+    if (isApp) {
+      cloud.appAuthErr = "";
+      const redirectTo = siteOrigin() + APP_AUTH_PAGE;
+      const { data, error } = await sb.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo, skipBrowserRedirect: true },
+      });
+      if (error) return { ok: false, reason: error.message };
+      const url = data && data.url;
+      if (!url) return { ok: false, reason: "no-oauth-url" };
+      const opened = await openAuthBrowser(url);
+      if (!opened) {
+        /* 插件异常兜底：退回系统浏览器整页跳（老路径仍可用） */
+        window.location.href = url;
+      }
+      return { ok: true, redirecting: true };
+    }
     const { error } = await sb.auth.signInWithOAuth({ provider: "google", options: redirectOptions() });
     if (error) return { ok: false, reason: error.message };
     return { ok: true, redirecting: true };

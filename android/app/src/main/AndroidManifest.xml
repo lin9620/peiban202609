@@ -23,6 +23,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- 轮 31：谷歌登录 / 邮件链接的 App 回跳（站内中转页 /app-auth 转交 net.de5.dale://login）。
+                 singleTask + 这个 intent-filter = Android 把已开的 App 拉回前台（appUrlOpen），
+                 冷启动时用 getLaunchUrl 取启动 intent，见 src/App.vue。 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="net.de5.dale" android:host="login" />
+            </intent-filter>
+
         </activity>
 
         <provider

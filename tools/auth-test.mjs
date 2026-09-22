@@ -13,13 +13,14 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 import {
   MIN_PASSWORD, NICK_MAX, isEmail, emailProblem, passwordProblem, bestNickname,
   parseAuthRedirect, hasAuthParams, isRecoveryEvent, redirectUrl, isMissingFnError,
 } from "../src/utils/authRules.js";
 import { messages, t, i18n } from "../src/i18n.js";
-import { cloud, cloudNicknameIsAuto, cloudUpdateNickname } from "../src/utils/supabase.js";
+import { cloud, cloudNicknameIsAuto, cloudUpdateNickname, parseAppAuthRedirect, isAppAuthRedirect, loginLockLoad, loginLockSave } from "../src/utils/supabase.js";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (rel) => fs.readFileSync(path.join(root, rel), "utf8");
@@ -339,6 +340,23 @@ ok("A48b nickLong 的 {n} 真会被替换（昵称上限提示不留占位符）
   ok("A52 轮30 登录失败锁：连错5次锁12小时（cloudSignIn 内记账 + 锁定期直接拒 + 成功清零）",
     sb.includes("const LOCK_MAX = 5;") && sb.includes("const LOCK_MS = 12 * 60 * 60 * 1000;")
       && sb.includes('reason: "locked"') && sb.includes("LOCK_BASE"));
+  /* 轮 31 补：轮 30 漏了 getItem/setItem 的 import → 记账静默失效（锁定形同虚设），
+   * 这里既查导入（undef-check 抓过的那类坑），也真跑一次 round-trip。 */
+  ok("A101 登录失败锁记账真的能落盘（supabase.js 导入 getItem/setItem，undef-check 0 问题）",
+    sb.includes('import { getItem, setItem } from "./storage.js";'));
+  {
+    const mail = "Lock.Probe@Example.com";
+    loginLockSave(mail, { n: 3, until: 0 });
+    const back = loginLockLoad(mail);
+    ok("A102 记账 round-trip：写进去读得回、邮箱大小写归一（同一封邮件同一本账）",
+      !!back && back.n === 3 && back.until === 0 && !!loginLockLoad("lock.probe@example.com"));
+    ok("A103 没记过的邮箱读回 null（不误锁新用户）", loginLockLoad("nobody-" + Date.now() + "@x.com") === null);
+    const bad = loginLockLoad("lock.probe@example.com");
+    loginLockSave(mail, { n: 0, until: Date.now() + 9999999 });
+    const locked = loginLockLoad(mail);
+    ok("A104 锁定记录（until 在未来）数据结构稳定，cloudSignIn 能据此直接拒登录",
+      locked.until > Date.now() && locked.n === 0 && !!bad);
+  }
   ok("A51 谷歌用户跳过旧密码直接设新密码（provider 判定）",
     sb.includes('provider === "google"'));
   ok("A52 设置页有密码区（旧/新/确认 + isGoogle 分支 + 保存按钮）",
@@ -400,6 +418,115 @@ ok("A48b nickLong 的 {n} 真会被替换（昵称上限提示不留占位符）
     messages.en.privacy.s9l.join("").includes("Settings page")
     && messages.zh.privacy.s9l.join("").includes("「设置」页删除账号")
     && !JSON.stringify(messages).includes("7 天内处理"));
+}
+
+/* ───────── 轮31 App 端谷歌登录：App 内授权窗口 + 站内中转页 + 自定义 scheme 拉回 ─────────
+ * 用户问题：App 里点谷歌整页跳去系统浏览器，登完回不到 App。
+ * 线上差分实测（POST /auth/v1/authorize + GET /auth/v1/verify）：
+ *   https://dale.de5.net/** 被原样放行；net.de5.dale://login 被换成站点首页
+ *   → 所以 redirectTo 必须是站内 https 地址（/app-auth 中转页），再由中转页转交 scheme。 */
+{
+  const sbj = read("src/utils/supabase.js");
+  const app = read("src/App.vue");
+  const login = read("src/views/LoginView.vue");
+  const bridge = read("public/app-auth.html");
+  const manifest = read("android/app/src/main/AndroidManifest.xml");
+
+  /* ① 纯函数：解析回跳 URL */
+  const imp = parseAppAuthRedirect(
+    "net.de5.dale://login#access_token=eyJhbGci&expires_in=3600&refresh_token=rt-123&token_type=bearer");
+  ok("A80 implicit 回跳（# 里的 access_token / refresh_token）被解析出来",
+    imp.accessToken === "eyJhbGci" && imp.refreshToken === "rt-123" && !imp.error && !imp.code);
+  const pkce = parseAppAuthRedirect("net.de5.dale://login?code=abc-123&state=xyz");
+  ok("A81 PKCE 回跳（?code=）也认，不会当成没令牌", pkce.code === "abc-123" && !pkce.accessToken);
+  const denied = parseAppAuthRedirect(
+    "net.de5.dale://login#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid");
+  ok("A82 用户取消 / 链接失效：reason 取 error_description（没 description 时退 error_code）",
+    denied.error === "access_denied" && denied.reason === "Email link is invalid"
+    && parseAppAuthRedirect("net.de5.dale://login?error=access_denied&error_code=otp_expired").reason === "otp_expired");
+  ok("A83 脏输入不抛错：空串 / 只有 scheme / null 都返回空结果",
+    parseAppAuthRedirect("").accessToken === "" && parseAppAuthRedirect("net.de5.dale://login").accessToken === ""
+    && parseAppAuthRedirect(null).accessToken === "" && parseAppAuthRedirect(undefined).reason === "");
+  ok("A84 isAppAuthRedirect 只认自家 scheme（别人的深链不处理）",
+    isAppAuthRedirect("net.de5.dale://login#x=1") && !isAppAuthRedirect("https://dale.de5.net/login")
+    && !isAppAuthRedirect("net.de5.dale.evil://login") && !isAppAuthRedirect(null));
+
+  /* ② App 分支：redirectTo 走站内中转页（不是自定义 scheme），且不出 App */
+  ok("A85 App 端 redirectTo = 站点域名 + /app-auth（白名单内的 https 地址）",
+    sbj.includes('if (isApp) {') && sbj.includes("const redirectTo = siteOrigin() + APP_AUTH_PAGE;")
+    && sbj.includes('const APP_AUTH_PAGE = "/app-auth";')
+    && !sbj.includes('const redirectTo = APP_SCHEME + "://login";'));
+  ok("A86 授权窗口：skipBrowserRedirect 拿 URL → @capacitor/browser 在 App 内打开，插件缺失才退回整页跳",
+    sbj.includes("skipBrowserRedirect: true") && sbj.includes("openAuthBrowser(url)")
+    && sbj.includes('import("@capacitor/browser")') && sbj.includes("window.location.href = url;"));
+  ok("A87 回来后建会话：implicit 用 setSession、PKCE 用 exchangeCodeForSession，并关掉授权窗口",
+    sbj.includes("access_token: p.accessToken, refresh_token: p.refreshToken")
+    && sbj.includes("exchangeCodeForSession(p.code)")
+    && /cloudHandleAppRedirect[\s\S]{0,1600}finally \{[\s\S]{0,80}await closeAuthBrowser\(\)/.test(sbj));
+  ok("A88 失败原因写进 cloud.appAuthErr（登录页可展示，不再静默）",
+    sbj.includes("appAuthErr") && sbj.includes('cloud.appAuthErr = "no-token"'));
+
+  /* ③ App.vue 接线：appUrlOpen + 冷启动 getLaunchUrl */
+  ok("A89 App.vue 监听 appUrlOpen 且冷启动用 getLaunchUrl（App 被杀掉后事件不会重放）",
+    app.includes('CapApp.addListener("appUrlOpen"') && app.includes("CapApp.getLaunchUrl()")
+    && app.includes("cloudHandleAppRedirect(u)") && app.includes("if (!isAppAuthRedirect(u)) return;")
+    && app.includes("authUrlHandle = await"));
+  ok("A90 监听在 onBeforeUnmount 里摘掉（热更新 / 单测环境不残留）",
+    /onBeforeUnmount\(\(\) => \{[\s\S]{0,120}authUrlHandle\.remove\(\)/.test(app));
+  ok("A91 登录页把回跳失败显示成人话（cloud.appAuthErr → appGoogleFail）",
+    login.includes("watch(() => cloud.appAuthErr") && login.includes('t("profile.appGoogleFail"'));
+  ok("A92 中转页文案双语（zh/en 都有 appGoogleFail）",
+    typeof messages.zh.profile.appGoogleFail === "string" && typeof messages.en.profile.appGoogleFail === "string");
+
+  /* ④ 中转页本体：把 query/hash 原样转交给自定义 scheme；给按钮兜底（无手势的自动跳转可能被浏览器拦） */
+  ok("A93 中转页把令牌转交给 net.de5.dale://login（query + hash 都不能丢）",
+    bridge.includes('var SCHEME = "net.de5.dale";')
+    && bridge.includes('SCHEME + "://login" + (location.search || "") + (location.hash || "")')
+    && bridge.includes("location.replace(deep)"));
+  ok("A94 中转页有按钮兜底 + 不被搜索引擎收录（内部页，站点不链接）",
+    bridge.includes('id="go"') && bridge.includes("setTimeout") && bridge.includes("noindex, nofollow"));
+
+  /* ⑤ Android 侧：intent-filter 缺了的话上面全白搭 */
+  ok("A95 AndroidManifest 注册 net.de5.dale://login（BROWSABLE + DEFAULT，配合 singleTask 拉回前台）",
+    /<intent-filter>[\s\S]*?BROWSABLE[\s\S]*?<data android:scheme="net.de5\.dale" android:host="login" \/>[\s\S]*?<\/intent-filter>/.test(manifest)
+    && manifest.includes('android:launchMode="singleTask"'));
+
+  /* ⑥ 真跑中转页脚本（vm + 假 location/document）—— 字符串断言看不出拼接有没有写错 */
+  function runBridge(search, hash) {
+    const src = bridge.match(/<script>([\s\S]*?)<\/script>/)[1];
+    const state = { navigated: "", href: "", timers: [] };
+    const el = {
+      textContent: "",
+      setAttribute: (k, v) => { if (k === "href") state.href = v; },
+    };
+    const sandbox = {
+      location: { search, hash, replace: (u) => { state.navigated = u; } },
+      document: { getElementById: () => el },
+      setTimeout: (fn, ms) => { state.timers.push({ fn, ms }); },
+      console,
+    };
+    vm.createContext(sandbox);
+    vm.runInContext(src, sandbox);
+    state.el = el;
+    return state;
+  }
+  const b1 = runBridge("", "#access_token=T1&refresh_token=R1&token_type=bearer");
+  const want = "net.de5.dale://login#access_token=T1&refresh_token=R1&token_type=bearer";
+  ok("A96 中转页：按钮 href 与自动跳转都指向同一个深链（hash 令牌一字不差）",
+    b1.href === want && b1.timers.some((t) => t.ms === 50));
+  b1.timers.filter((t) => t.ms === 50).forEach((t) => t.fn());
+  ok("A97 中转页：自动跳转真的调了 location.replace(深链)（不是只设了 href）", b1.navigated === want);
+  const b2 = runBridge("?code=abc-123&state=s1", "");
+  ok("A98 中转页：PKCE 的 ?code= 也照样转交（search 与 hash 拼接顺序不串位）",
+    b2.href === "net.de5.dale://login?code=abc-123&state=s1");
+  const b3 = runBridge("", "#error=access_denied&error_code=otp_expired");
+  ok("A99 中转页：带错误回来的链接同样能拉回 App（App 侧再报错，不白屏）",
+    b3.href === "net.de5.dale://login#error=access_denied&error_code=otp_expired");
+  const late = b1.timers.filter((t) => t.ms >= 2000);
+  late.forEach((t) => t.fn());
+  ok("A100 中转页：自动跳转被拦时 2.5 秒后把文案改成「点按钮」（用户手势必定能拉起）",
+    late.length > 0 && /One tap|点/.test(b1.el.textContent));
+
 }
 
 console.log(`\nTOTAL ${pass + fail}  PASS ${pass}  FAIL ${fail}`);

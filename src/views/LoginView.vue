@@ -157,6 +157,11 @@ async function doGoogle() {
   googleBusy.value = false;
   if (!r.ok) googleMsg.value = t("profile.authFail", { r: r.reason || "unknown" });
 }
+/* 轮 31：App 端走「App 内授权窗口 → 回跳 App」——点按钮那一刻不算失败，
+ * 失败发生在回来之后（用户取消 / 令牌缺失 / 建会话报错），由 supabase.js 写进 cloud.appAuthErr。 */
+watch(() => cloud.appAuthErr, (v) => {
+  if (v) googleMsg.value = t("profile.appGoogleFail", { r: v });
+});
 
 /* —— 本地模式（云端未就绪）：起个访客昵称 —— */
 const draftNick = ref("");

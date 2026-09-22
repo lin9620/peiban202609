@@ -12,7 +12,7 @@ import { isApp, isMobileNav, runBack } from "./stores/uiStore.js";
 import {
   wallet, moodStreak, petNotices, dismissPetNotice,
 } from "./stores/petStore.js";
-import { cloud, initCloud } from "./utils/supabase.js";
+import { cloud, initCloud, cloudHandleAppRedirect, isAppAuthRedirect } from "./utils/supabase.js";
 import { cacheDrop, cacheKey, swr } from "./utils/cache.js";
 import * as dmApi from "./utils/dm.js";
 import { badge, startBadge, stopBadge } from "./stores/badgeStore.js";
@@ -58,6 +58,7 @@ const cloudSigned = computed(() => !!(cloud.ready && cloud.user));
  *   四个 Tab 根视图 → 最小化到桌面（Android 惯例；不误退出、后台保留） */
 const ROOT_VIEWS = ["home", "community", "messagesList", "profile"];
 let backHandle = null;
+let authUrlHandle = null;   /* 轮 31：谷歌登录回跳监听（App 端） */
 
 /* —— 启动页预热（轮 24）：与 MessagesView.loadConvs 同款 key + fetcher ——
  * 启动页期间把会话列表缓存刷新好，用户点进消息 Tab 时 cached 直接命中（秒开最新列表）。 */
@@ -96,8 +97,27 @@ onMounted(async () => {
       CapApp.minimizeApp();
     });
   } catch (e) { /* 插件缺失（网页调试）时静默 */ }
+
+  /* —— 轮 31：谷歌登录从 App 内授权窗口回到 App ——
+   * 中转页（站内 /app-auth）把令牌转交给 net.de5.dale://login，Android 据此拉起本 App：
+   *   · App 还活着 → onNewIntent → appUrlOpen 事件；
+   *   · App 被杀掉后的冷启动 → 事件不会重放，必须用 getLaunchUrl 把启动 intent 取回来。
+   * 两条路都交给 handleAuthUrl：解析令牌 → 建会话（cloud.user 一变，登录页 watch 自动回跳）。 */
+  async function handleAuthUrl(u) {
+    if (!isAppAuthRedirect(u)) return;
+    const r = await cloudHandleAppRedirect(u);
+    if (!r.ok) console.warn("[Warm Paws] App 端谷歌登录回跳失败：", r.reason);
+  }
+  try {
+    authUrlHandle = await CapApp.addListener("appUrlOpen", (ev) => { handleAuthUrl(ev && ev.url); });
+    const launch = await CapApp.getLaunchUrl();
+    if (launch && launch.url) await handleAuthUrl(launch.url);
+  } catch (e) { /* 插件缺失（网页调试）时静默 */ }
 });
-onBeforeUnmount(() => { if (backHandle) backHandle.remove(); });
+onBeforeUnmount(() => {
+  if (backHandle) backHandle.remove();
+  if (authUrlHandle) authUrlHandle.remove();
+});
 
 /* 登录态变化 → 起停角标轮询（未登录不轮询，省流量）；
  * 登出 → 清掉个人域缓存（私信 / 通知 / 漂流瓶是个人数据，不留在设备上） */

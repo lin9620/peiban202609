@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>正在返回 Warm Paws… · Back to the app</title>
+  <link rel="icon" type="image/png" sizes="192x192" href="/favicon.png" />
+  <style>
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #fff7ee; color: #5b4a3f; margin: 0;
+      display: grid; place-items: center; min-height: 100vh; text-align: center; padding: 24px;
+    }
+    main { max-width: 340px; }
+    .paw { font-size: 44px; margin: 0 0 6px; }
+    h1 { font-size: 19px; margin: 0 0 10px; }
+    .sub { font-size: 14px; line-height: 1.7; color: #8b7566; margin: 0 0 20px; }
+    .btn {
+      display: inline-block; padding: 13px 26px; border-radius: 999px;
+      background: linear-gradient(135deg, #f7a35c, #ef8a4d); color: #fff;
+      font-size: 15px; font-weight: 600; text-decoration: none;
+      box-shadow: 0 8px 20px rgba(239, 138, 77, 0.32);
+    }
+    .tip { font-size: 12px; color: #a89484; margin: 18px 0 0; line-height: 1.7; }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="paw">🐾</p>
+    <h1 id="ttl">正在回到 Warm Paws…</h1>
+    <p class="sub" id="sub">Sending you back to the app.</p>
+    <a id="go" class="btn" href="#">回到 App 继续登录 · Back to app</a>
+    <p class="tip" id="tip">若一直没有自动回到 App，请点上面的按钮。<br />If it doesn't return automatically, tap the button above.</p>
+  </main>
+  <script>
+    /* 谷歌登录 / 邮件链接的 App 端中转页（只给内置授权窗口用，正式站点不链接到它）。
+     *
+     * 为什么需要这一页：Supabase 的 Redirect URLs 白名单只放行站内 https 地址
+     * （实测：https://dale.de5.net/** 原样放行，net.de5.dale://login 会被悄悄换成
+     * 站点首页）。所以 App 端把 redirectTo 指向本页，授权完成后由本页把
+     * query / hash 里的令牌原样转交给 net.de5.dale://login —— Android 命中
+     * AndroidManifest 里的 intent-filter，就会把 App 拉回前台，App 再用
+     * cloudHandleAppRedirect() 解析令牌建会话（见 src/utils/supabase.js）。 */
+    (function () {
+      var SCHEME = "net.de5.dale";
+      var deep = SCHEME + "://login" + (location.search || "") + (location.hash || "");
+      var btn = document.getElementById("go");
+      btn.setAttribute("href", deep);
+
+      function go() {
+        try { location.replace(deep); } catch (e) { /* 交给按钮（用户点击一定带手势） */ }
+      }
+
+      /* 自定义标签（Chrome）里通常直接拉起 App；少数情况下无手势的跳转会被浏览器拦截，
+         2.5 秒还停在本页就把文案改成「点按钮」——按钮是用户手势，必定能拉起。 */
+      setTimeout(go, 50);
+      setTimeout(function () {
+        document.getElementById("ttl").textContent = "差一步就回到 App 了 · One tap to go back";
+        document.getElementById("sub").textContent = "请点下面的按钮完成登录 · Tap the button below to finish signing in.";
+      }, 2500);
+    })();
+  </script>
+</body>
+</html>

@@ -275,16 +275,21 @@ function envGuard() {
         if (m) slug = m[1];
       } catch (e) { /* 没有 .env 就不校验 */ }
       if (!slug) return;
-      const idx = fs.readdirSync(path.join(rootDir, "dist", "assets"))
-        .filter((f) => /^index-.*\.js$/.test(f));
-      const bad = idx.filter((f) =>
-        !fs.readFileSync(path.join(rootDir, "dist", "assets", f), "utf8").includes(slug));
-      if (bad.length) {
+      /* 只校验 index.html 真正加载的入口脚本（= 首屏 JS）：
+       * 踩过：`@capacitor/browser` 这类动态 import 会额外产出一个 index-<hash>.js 懒块
+       * （它只含插件代码、不含 env，属正常），旧口径「所有 index-*.js 都要含 slug」
+       * 会误报成「env 没进产物」，把好包挡在门外。 */
+      const distDir = path.join(rootDir, "dist");
+      const html = fs.readFileSync(path.join(distDir, "index.html"), "utf8");
+      const entries = [...html.matchAll(/src="\/assets\/([^"]+\.js)"/g)].map((m) => m[1]);
+      const hasSlug = (f) => fs.readFileSync(path.join(distDir, "assets", f), "utf8").includes(slug);
+      const bad = entries.filter((f) => !hasSlug(f));
+      if (!entries.length || bad.length) {
         throw new Error(
-          `[env-guard] VITE_SUPABASE_URL 没进构建产物（${bad.join(", ")}）——
+          `[env-guard] VITE_SUPABASE_URL 没进首屏入口包（${bad.length ? bad.join(", ") : "入口脚本一个都没找到"}）——
            登录会整个失效。重跑一次 npm run build；若复现，检查 .env 是否被进程环境覆盖。`);
       }
-      console.log(`\n  env-guard  VITE_SUPABASE_URL ✓ 已进产物（${idx.length} 个入口包）\n`);
+      console.log(`\n  env-guard  VITE_SUPABASE_URL ✓ 已进产物（入口 ${entries.length} 个）\n`);
     },
   };
 }
