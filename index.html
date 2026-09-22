@@ -34,6 +34,9 @@
     setTimeout(function () {
       if (window.__WP_MOUNTED__) return;
       var app = document.getElementById("app");
+      /* 轮 24：看门狗触发时先摘掉启动页，否则中文提示会被启动页挡住 */
+      var sp = document.getElementById("app-splash");
+      if (sp && sp.parentNode) sp.parentNode.removeChild(sp);
       /* 轮 18：不再要求「有英文占位才兜底」——App 里占位已被剥离（cap-strip-hero），
        * JS 起不来时同样给出中文提示，而不是白屏/裸英文 */
       if (!app) return;
@@ -92,6 +95,36 @@
 </head>
 <body>
   <div id="app"></div>
+
+  <!-- 轮 24：启动页（静态层，不依赖 Vue）——覆盖「原生 splash 结束 → Vue 挂载 + 云端会话就绪」的白屏窗口。
+       App.vue 在云端就绪（或 2.5s 兜底）并预热完会话缓存后加 .out 淡出移除；
+       启动看门狗触发时会先摘掉它再放中文提示，避免提示被挡。 -->
+  <div id="app-splash" aria-hidden="true">
+    <style>
+      #app-splash { position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 12px; background: #fff7ee;
+        transition: opacity .4s ease; }
+      #app-splash.out { opacity: 0; pointer-events: none; }
+      #app-splash .sp-paw { font-size: 56px; animation: sp-breathe 1.6s ease-in-out infinite; }
+      #app-splash .sp-name { font-size: 20px; font-weight: 800; color: #6b4a32; }
+      #app-splash .sp-sub { font-size: 12px; color: #a98d74; letter-spacing: 2px; }
+      #app-splash .sp-dots { display: flex; gap: 6px; margin-top: 8px; }
+      #app-splash .sp-dots i { width: 7px; height: 7px; border-radius: 50%; background: #e0a274;
+        animation: sp-dot 1.2s ease-in-out infinite; }
+      #app-splash .sp-dots i:nth-child(2) { animation-delay: .15s; }
+      #app-splash .sp-dots i:nth-child(3) { animation-delay: .3s; }
+      @keyframes sp-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.12); } }
+      @keyframes sp-dot { 0%, 100% { opacity: .25; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-4px); } }
+      @media (prefers-reduced-motion: reduce) {
+        #app-splash .sp-paw, #app-splash .sp-dots i { animation: none; }
+      }
+    </style>
+    <div class="sp-paw">🐾</div>
+    <div class="sp-name">温暖的爪印</div>
+    <div class="sp-sub">Warm Paws</div>
+    <div class="sp-dots"><i></i><i></i><i></i></div>
+  </div>
+
   <noscript>
     <h1>Warm Paws · 温暖的爪印</h1>
     <p>

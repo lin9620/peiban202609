@@ -13,7 +13,8 @@ import {
   wallet, moodStreak, petNotices, dismissPetNotice,
 } from "./stores/petStore.js";
 import { cloud, initCloud } from "./utils/supabase.js";
-import { cacheDrop } from "./utils/cache.js";
+import { cacheDrop, cacheKey, swr } from "./utils/cache.js";
+import * as dmApi from "./utils/dm.js";
 import { badge, startBadge, stopBadge } from "./stores/badgeStore.js";
 /* 皮肤/语言：状态在 uiStore（与「设置」页共用）；App 只消费主题 */
 import { naiveTheme, naiveOverrides } from "./stores/uiStore.js";
@@ -58,8 +59,31 @@ const cloudSigned = computed(() => !!(cloud.ready && cloud.user));
 const ROOT_VIEWS = ["home", "community", "messagesList", "profile"];
 let backHandle = null;
 
+/* —— 启动页预热（轮 24）：与 MessagesView.loadConvs 同款 key + fetcher ——
+ * 启动页期间把会话列表缓存刷新好，用户点进消息 Tab 时 cached 直接命中（秒开最新列表）。 */
+async function prefetchConvs() {
+  if (!(cloud.ready && cloud.user)) return;
+  try {
+    await swr(cacheKey("dm:convs", cloud.user.id), {}, () => dmApi.listConvs(200, 0));
+  } catch (e) { /* 预热失败不影响启动 */ }
+}
+
+/* 关闭启动页：淡出后从 DOM 摘掉（静态层在 #app 外，Vue 挂载不影响它） */
+function removeSplash() {
+  const el = document.getElementById("app-splash");
+  if (!el) return;
+  el.classList.add("out");
+  setTimeout(() => { try { el.remove(); } catch (e) { /* 已被移除 */ } }, 400);
+}
+
 onMounted(async () => {
-  initCloud();
+  /* 轮 24：启动页（index.html 静态层）在「云端会话就绪 + 会话缓存预热」后淡出；
+   * 最多等 2.5 秒兜底放行——云端挂了也不能把用户挡在启动页里。 */
+  const boot = initCloud()
+    .then(() => prefetchConvs())
+    .catch(() => { /* 预热失败不挡启动 */ });
+  await Promise.race([boot, new Promise((r) => setTimeout(r, 2500))]);
+  removeSplash();
   if (!isApp) return; /* 浏览器里没有系统返回键 */
   try {
     backHandle = await CapApp.addListener("backButton", () => {
