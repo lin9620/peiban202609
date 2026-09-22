@@ -3,7 +3,7 @@
 <script setup>
 import { ref, computed, watch, onMounted } from "vue";
 import { useRouter } from "vue-router";
-import { NButton, NInput } from "naive-ui";
+import { NButton, NInput, NModal } from "naive-ui";
 import { t } from "../i18n.js";
 import { todayKey } from "../utils/daily.js";
 import { getItem, setItem } from "../utils/storage.js";
@@ -37,6 +37,9 @@ function mergePending() {
   if (fished.value && fished.value.id) map.set(fished.value.id, fished.value);
   pending.value = [...map.values()];
 }
+
+/* 轮 22：捞信结果一律居中弹窗——捞到（就地回信/放回/先收着）、没捞到、限额，全部有明确反馈 */
+const fishPop = ref({ show: false, mode: "msg", letter: null, msg: "" });
 
 /* 每日次数：本地账本只做乐观显示，服务端 bottle_quota() 才是权威（轮 18 修
  * 「下面显示还能捞 2 瓶、上面却说次数用完」——次数原来记在本机 localStorage，
@@ -133,6 +136,7 @@ async function doFish() {
     if (!l || !l.id) {
       /* 竞态兜底（轮 18）：服务端抢占落空返回空 → 明示「海里暂时没信」，绝不扣次数 */
       mailHint.value = t("bottle.errEmpty");
+      fishPop.value = { show: true, mode: "msg", letter: null, msg: t("bottle.errEmpty") };
       return;
     }
     fished.value = l;
@@ -141,9 +145,13 @@ async function doFish() {
      * MIGRATION_bottle_reply_quota.sql）；这里只同步一次服务端权威值。 */
     mergePending();
     syncQuota();
+    /* 轮 22：捞到了 → 居中弹窗直接展示这封信（可就地回信/放回，不再让人猜捞没捞到） */
+    fishPop.value = { show: true, mode: "got", letter: l, msg: "" };
   } catch (e) {
     const k = bottleErrKey(e);
     mailHint.value = t(k);
+    /* 轮 22：点了捞却没动静的几类原因（海里空/今天用完/囤太多）也弹窗说清 */
+    fishPop.value = { show: true, mode: "msg", letter: null, msg: t(k) };
     /* 轮 20：限额报错 → 立即同步服务端次数（一次点击内对齐，不再「显示还能捞但说用完」） */
     if (k === "bottle.errFishLimit") syncQuota();
   } finally { fishing.value = false; }
@@ -165,6 +173,7 @@ async function doReply(l) {
     bumpQuota("fished");        /* 轮 21：回信成功才记一次（服务端 bottle_reply 同口径） */
     mergePending();
     syncQuota();
+    fishPop.value.show = false;   /* 轮 22：在弹窗里回的信 → 弹窗关闭 */
     await refreshBottle();
   } catch (e) {
     mailHint.value = t(bottleErrKey(e));
@@ -179,6 +188,7 @@ async function doRelease(l) {
     fished.value = null;
     held.value = held.value.filter((x) => x.id !== l.id);
     mergePending();
+    fishPop.value.show = false;   /* 轮 22：在弹窗里放回的信 → 弹窗关闭 */
     await refreshBottle();
   } catch (e) {
     mailHint.value = t(bottleErrKey(e));
@@ -367,5 +377,35 @@ async function decideRec(l, accept) {
       </div>
     </template>
     <p v-else class="notice">{{ t("bottle.signInHint") }}</p>
+
+    <!-- 轮 22：捞信结果居中弹窗（手机端核心反馈）——捞到可就地回信 / 放回海里 / 先收着 -->
+    <n-modal v-model:show="fishPop.show" preset="card" style="max-width: 88vw"
+      :title="fishPop.mode === 'got' ? t('bottle.gotTitle') : t('bottle.popNotice')">
+      <template v-if="fishPop.mode === 'got' && fishPop.letter">
+        <div class="m-q" style="font-size: 16px; line-height: 1.6">{{ fishPop.letter.body }}</div>
+        <span class="m-who">{{ t("bottle.fromSea") }}</span>
+        <n-input
+          v-model:value="replyDrafts[fishPop.letter.id]"
+          type="textarea" :rows="3" :maxlength="BOTTLE_BODY_MAX"
+          :placeholder="t('bottle.replyPlaceholder')" style="margin-top: 10px" />
+        <div class="mail-send" style="margin-top: 8px">
+          <n-button type="primary" round
+            :disabled="busyId === fishPop.letter.id || !String(replyDrafts[fishPop.letter.id] || '').trim()"
+            @click="doReply(fishPop.letter)">
+            {{ t("bottle.reply") }}
+          </n-button>
+          <n-button quaternary round :disabled="busyId === fishPop.letter.id" @click="doRelease(fishPop.letter)">
+            {{ t("bottle.release") }}
+          </n-button>
+          <n-button quaternary round @click="fishPop.show = false">
+            {{ t("bottle.popKeep") }}
+          </n-button>
+        </div>
+      </template>
+      <template v-else>
+        <p style="margin: 2px 0 14px; white-space: pre-wrap">{{ fishPop.msg }}</p>
+        <n-button type="primary" round @click="fishPop.show = false">{{ t("common.gotIt") }}</n-button>
+      </template>
+    </n-modal>
   </section>
 </template>

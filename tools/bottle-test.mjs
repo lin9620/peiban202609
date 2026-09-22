@@ -222,6 +222,22 @@ ok("ProfileView：goSignIn 显式传参（修「退出→登录→直落忘记�
     return pv.includes('@click="goSignIn(false)"') && pv.includes("withForgot === true");
   })());
 
+/* ───────── 轮 22：捞信结果一律居中弹窗（不再让人猜捞没捞到） ───────── */
+ok("BottleView：捞信结果走居中弹窗（NModal；捞到=got 模式，空捞/限额=msg 模式说清原因）",
+  has(bottleView, 'import { NButton, NInput, NModal } from "naive-ui"')
+    && has(bottleView, "const fishPop = ref(")
+    && has(bottleView, 'v-model:show="fishPop.show"')
+    && has(bottleView, 'fishPop.value = { show: true, mode: "got", letter: l, msg: "" }')
+    && has(bottleView, 'mode: "msg"'));
+ok("BottleView：弹窗里回信/放回海里直接可用（doReply/doRelease 绑在弹窗按钮上，成功自动关弹窗）",
+  has(bottleView, '@click="doRelease(fishPop.letter)"')
+    && has(bottleView, '@click="doReply(fishPop.letter)"')
+    && has(bottleView, 't("bottle.popKeep")')
+    && (bottleView.match(/fishPop\.value\.show = false/g) || []).length >= 2
+    && has(bottleView, '@click="fishPop.show = false"'));
+ok("i18n：弹窗文案双语齐（gotTitle/popNotice/popKeep）",
+  ["gotTitle", "popNotice", "popKeep"].every((k) => k in messages.en.bottle && k in messages.zh.bottle));
+
 
 
 
