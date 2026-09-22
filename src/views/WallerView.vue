@@ -8,7 +8,7 @@ import {
   cloudFetchProfile, cloudFetchUserPosts, cloudGetPetHome, cloudPetInteract,
 } from "../utils/wall.js";
 import { visibleOnly, ANON_KEY, fmtWhen } from "../utils/wallRules.js";
-import { getItem } from "../utils/storage.js";
+import { scopeGetRaw } from "../utils/userScope.js";
 import { cloud } from "../utils/supabase.js";
 import { openConv } from "../utils/dm.js";
 import { sendErrKey } from "../utils/dmRules.js";
@@ -75,12 +75,11 @@ const when = (ts) => fmtWhen(ts, i18n.locale);   /* #25 帖子时间显示到分
 const sumOf = (kind) =>
   posts.value.reduce((n, p) => n + ((p.reacts && p.reacts[kind]) || 0), 0);
 
-/* 访客标识：登录用户交给服务端认 uid；游客用本机匿名 id（互动每天每类一次的键） */
+/* 访客标识：登录用户交给服务端认 uid；游客用本机匿名 id（互动每天每类一次的键）。
+ * 匿名 id 按账号域存（轮 32）——只有游客态会走到这行，实际恒落 guest 域。 */
 function viewerKey() {
   if (cloud.user && cloud.user.id) return cloud.user.id;
-  let k = "";
-  try { k = getItem(ANON_KEY) || ""; } catch (e) { /* localStorage 不可用就交给服务端兜底 */ }
-  return k;
+  return scopeGetRaw(ANON_KEY) || "";   /* localStorage 不可用时 scopeGetRaw 自行兜底为空 */
 }
 
 /* 摸摸头 / 投喂：动画每次都放；计数由服务端按「访客+日+类型」去重后累加 */

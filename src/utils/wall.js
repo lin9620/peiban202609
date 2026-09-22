@@ -6,11 +6,19 @@
  */
 
 import { cloud } from "./supabase.js";
-import { normalizeText } from "./comments.js";
+import { normalizeText, CMT_KEY } from "./comments.js";
 import { isUsableDataUrl } from "./imaging.js";
 import { STATUS_WINDOW_MS } from "./statuses.js";
+import { VIEW_KEY, ANON_KEY, POST_DAY_KEY, POSTS_KEY, REACTS_KEY } from "./wallRules.js";
+import { registerScopeBases } from "./userScope.js";
 /* 所有云端数据访问都走适配层：换库 / 换托管时只改 utils/api/db.js（见那里的文件头说明） */
 import { db } from "./api/db.js";
+
+/* 轮 32：暖心墙的本地个人键（浏览去重/匿名 id/当日发帖记账/本地帖/回应/本地评论）
+ * 按账号分域，这里统一登记。登记必须趁早：wall.js 被 petStore 急加载，注册一定跑在
+ * main.js 的 initUserScope() 之前；懒加载视图（CommunityView 等）来不及，键常量
+ * 收在 wallRules.js / comments.js、注册收在这里，改键名时两边一起看。 */
+registerScopeBases([VIEW_KEY, ANON_KEY, POST_DAY_KEY, POSTS_KEY, REACTS_KEY, CMT_KEY]);
 
 /* ══════════ 纯函数：DB 行 → 视图模型（与本地帖子结构对齐） ══════════ */
 
@@ -811,6 +819,17 @@ export async function cloudPetInteract(ownerId, kind, viewer = "") {
 let petSyncTimer = null;
 let petSyncGet = null;
 let petSyncBusy = false;
+
+/**
+ * 取消尚未发出的宠物主页推送。
+ * 换账号时必调：否则上一秒在 A 账号登记的「快照工厂」会在 4 秒后以 A 的宠物去写
+ * B 账号的主页（串档），轮 32 换域时先撤销。
+ */
+export function cancelPetHomeSync() {
+  if (petSyncTimer) clearTimeout(petSyncTimer);
+  petSyncTimer = null;
+  petSyncGet = null;
+}
 
 /**
  * 登记一个快照工厂并在 delay 毫秒后推送到云端（连续保存只推最后一次）。

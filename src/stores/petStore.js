@@ -5,13 +5,65 @@ import { LINES } from "../data/pets.js";
 import { DESTS, SOUVENIRS, VISITORS, destByKey } from "../data/adventure.js";
 import { ACCESSORIES } from "../data/extras.js";
 import { getItem, setItem } from "../utils/storage.js";
+import { onScopeSwitch, registerScopeBases, scopeId } from "../utils/userScope.js";
 import { finalReward as snackReward } from "../utils/snackGame.js";
-import { petHomeSnapshot, queuePetHomeSync } from "../utils/wall.js";
+import { petHomeSnapshot, queuePetHomeSync, cancelPetHomeSync } from "../utils/wall.js";
 
-const SAVE_KEY = "warm-paws-multi-pet-v2";
-const LEGACY_KEY = "warm-paws-pet-v1";
-const BOOK_KEY = "warm-paws-cookbook-v1";
-const MOOD_KEY = "warm-paws-mood-v1";
+const LEGACY_KEY = "warm-paws-pet-v1";   // 最老的 v1 单宠存档（只读迁移源；不分域）
+
+/* ═══════════ 轮 32 · 账号域（用户报障：新注册的号一进宠物就是 3 级） ═══════════
+ * 根因：下面这些键以前都是「全局单键」——同一台设备/浏览器换账号，直接读到上一个人的档
+ * （宠物等级/金币/装扮/手绘厨房/冒险全串），所以新注册的号继承了别人的 3 级宠物。
+ * 修法：全部按账号域分键，域 = 当前登录 uid；未登录 = guest（机制见 utils/userScope.js）。
+ *   · 键名 = BASE + ":" + 域；下面 k() 是唯一取键入口，别再写裸键名；
+ *   · 换号由 App.vue 的 watch(uid) 调 setUserScope(uid) → 本模块 flush 旧档 + reload 新档；
+ *   · 升级前的老存档由 initUserScope() 搬进 guest 域并在首次登录时认领给该账号（不丢档）。 */
+const SAVE_BASE = "warm-paws-multi-pet-v2";
+const BOOK_BASE = "warm-paws-cookbook-v1";
+const MOOD_BASE = "warm-paws-mood-v1";
+const RAIN_BASE = "warm-paws-rain-v1";
+const TASK_BASE = "warm-paws-tasks-v1";
+const ADV_BASE = "warm-paws-adventure-v1";
+const WARDROBE_BASE = "warm-paws-wardrobe-v1";
+registerScopeBases([SAVE_BASE, BOOK_BASE, MOOD_BASE, RAIN_BASE, TASK_BASE, ADV_BASE, WARDROBE_BASE]);
+
+/** 当前域（uid 或 guest）—— 测试与排查用 */
+export function petScopeId() { return scopeId(); }
+/** 当前域下的存盘键（调试/测试用） */
+export function petSaveKey(id) { return SAVE_BASE + ":" + (id || scopeId()); }
+const k = (base) => base + ":" + scopeId();
+
+/* ═══ 轮 32：换号 = 换域。flush 把内存态全部落盘进「旧域」，reload 按新域整体重读。 ═══
+ * 必须在模块体注册（import 即注册）：main.js 的 initUserScope() 迁移老档后会触发 reload，
+ * 晚注册就接不住首次升级加载。闭包里的函数/常量都在换域真正发生时才执行。 */
+onScopeSwitch({
+  flush() {
+    petStore.save();
+    saveCookbook();
+    saveRain();
+    saveMoodLog();
+    saveTasks();
+    saveAdventure();
+    saveWardrobe();
+  },
+  reload() {
+    wallet.load();
+    petStore.load();
+    /* 就地替换（splice/delete+assign），保持响应式引用不变——组件手里还是同一个对象 */
+    cookbook.splice(0, cookbook.length, ...loadCookbook());
+    Object.assign(rainLog, loadRain());
+    replaceObj(moodLog, loadMood());
+    replaceObj(dailyTasks, loadTasks());
+    Object.assign(adventure, buildAdventure(loadAdventure()), { welcome: null });
+    wardrobe.owned = loadWardrobe();
+  },
+});
+
+/* 就地替换普通对象（删掉旧键再赋新值；直接 Object.assign 会留下上一个人的多余键） */
+function replaceObj(target, next) {
+  for (const key of Object.keys(target)) delete target[key];
+  Object.assign(target, next);
+}
 
 const RATE = {
   hunger: 0.55, mood: 0.40, clean: 0.25, energy: 0.30,
@@ -32,7 +84,7 @@ export const RAIN_REWARD_MAX = 3;              // #3 每天最多奖励 3 次，
 export const wallet = reactive({ coins: 50 });
 
 function readSave() {
-  try { return JSON.parse(getItem(SAVE_KEY)) || {}; }
+  try { return JSON.parse(getItem(k(SAVE_BASE))) || {}; }
   catch (e) { return {}; }
 }
 
@@ -43,7 +95,7 @@ wallet.load = function () {
 wallet.save = function () {
   const raw = readSave();
   raw.coins = wallet.coins;
-  setItem(SAVE_KEY, JSON.stringify(raw));
+  setItem(k(SAVE_BASE), JSON.stringify(raw));
 };
 
 /* ---------- 宠物工厂 ---------- */
@@ -113,7 +165,7 @@ export const petStore = reactive({
   },
 
   save() {
-    setItem(SAVE_KEY, JSON.stringify({
+    setItem(k(SAVE_BASE), JSON.stringify({
       coins: wallet.coins,
       pets: this.pets,
       activeId: this.activeId,
@@ -399,7 +451,7 @@ export function toggleSleep() {
 /* ---------- 手绘食谱（#1：最多 7 份、48 小时保质期） ---------- */
 function loadCookbook() {
   try {
-    const list = JSON.parse(getItem(BOOK_KEY));
+    const list = JSON.parse(getItem(k(BOOK_BASE)));
     const now = Date.now();
     return Array.isArray(list) ? list.filter((d) => d && (!d.expiresAt || d.expiresAt > now)) : [];
   } catch (e) { return []; }
@@ -408,7 +460,7 @@ function loadCookbook() {
 export const cookbook = reactive(loadCookbook());
 
 export function saveCookbook() {
-  try { setItem(BOOK_KEY, JSON.stringify(cookbook)); } catch (e) { console.warn(e); }
+  try { setItem(k(BOOK_BASE), JSON.stringify(cookbook)); } catch (e) { console.warn(e); }
   syncPetHome();
 }
 
@@ -458,11 +510,9 @@ export function feedDish(dish) {
 }
 
 /* ---------- 零食雨结算：分数 → 四维/经验；金币走每日上限（#3：一局 2 金币、每天 3 次） ---------- */
-const RAIN_KEY = "warm-paws-rain-v1";
-
 function loadRain() {
   try {
-    const r = JSON.parse(getItem(RAIN_KEY));
+    const r = JSON.parse(getItem(k(RAIN_BASE)));
     if (r && r.date === todayKey()) return r;
   } catch (e) {}
   return { date: todayKey(), games: 0 };
@@ -471,7 +521,7 @@ function loadRain() {
 export const rainLog = reactive(loadRain());
 
 function saveRain() {
-  try { setItem(RAIN_KEY, JSON.stringify(rainLog)); } catch (e) {}
+  try { setItem(k(RAIN_BASE), JSON.stringify(rainLog)); } catch (e) {}
 }
 
 /* 今天还剩几次有奖励的游戏次数（跨天自动重置） */
@@ -505,14 +555,14 @@ export function applySnackRain(score) {
 
 /* ---------- 心情打卡 ---------- */
 function loadMood() {
-  try { return JSON.parse(getItem(MOOD_KEY)) || {}; }
+  try { return JSON.parse(getItem(k(MOOD_BASE))) || {}; }
   catch (e) { return {}; }
 }
 
 export const moodLog = reactive(loadMood());
 
 export function saveMoodLog() {
-  try { setItem(MOOD_KEY, JSON.stringify(moodLog)); } catch (e) { console.warn(e); }
+  try { setItem(k(MOOD_BASE), JSON.stringify(moodLog)); } catch (e) { console.warn(e); }
 }
 
 export function checkInMood(index) {
@@ -548,7 +598,6 @@ export function moodStreak() {
 }
 
 /* ---------- 每日任务 ---------- */
-const TASK_KEY = "warm-paws-tasks-v1";
 const TASK_DEFS = [
   { key: "feed", coin: 10, expPet: 10 },
   { key: "mood", coin: 8 },
@@ -563,7 +612,7 @@ export const dailyTasks = reactive(loadTasks());
 
 function loadTasks() {
   try {
-    const raw = JSON.parse(getItem(TASK_KEY));
+    const raw = JSON.parse(getItem(k(TASK_BASE)));
     if (raw && raw.date === todayKey()) {
       /* 旧存档迁移：旧版 claimed=true 是「一键全领」语义 → 把当时已完成的部分记为已领 */
       const claimedMap = raw.claimedMap && typeof raw.claimedMap === "object" ? { ...raw.claimedMap } : {};
@@ -581,7 +630,7 @@ function loadTasks() {
 }
 
 function saveTasks() {
-  try { setItem(TASK_KEY, JSON.stringify(dailyTasks)); } catch (e) {}
+  try { setItem(k(TASK_BASE), JSON.stringify(dailyTasks)); } catch (e) {}
 }
 
 function markTask(key) {
@@ -622,14 +671,13 @@ export function claimTasks() {
 }
 
 /* ═══════════ 旅行青蛙式冒险系统 ═══════════ */
-const ADV_KEY = "warm-paws-adventure-v1";
-
 function loadAdventure() {
-  try { return JSON.parse(getItem(ADV_KEY)) || {}; } catch (e) { return {}; }
+  try { return JSON.parse(getItem(k(ADV_BASE))) || {}; } catch (e) { return {}; }
 }
 
-export const adventure = reactive((() => {
-  const raw = loadAdventure();
+/* 读档归一化：模块初始化与换域 reload 共用一份（形状与缺省值同源，不会各写各的） */
+function buildAdventure(raw) {
+  raw = raw || {};
   return {
     status: raw.status || "home",       // home | away
     petId: raw.petId || null,
@@ -645,13 +693,14 @@ export const adventure = reactive((() => {
     lastVisitorAt: raw.lastVisitorAt || Date.now(),
     friendship: raw.friendship || 0,    // 招待访客次数（下次旅行带回额外特产）
     trips: raw.trips || 0,
-    welcome: null,                       // 会话内回乡通知 { coins, souvenirs, destKey }
   };
-})());
+}
+
+export const adventure = reactive((() => ({ ...buildAdventure(loadAdventure()), welcome: null }))());
 
 export function saveAdventure() {
   try {
-    setItem(ADV_KEY, JSON.stringify({
+    setItem(k(ADV_BASE), JSON.stringify({
       status: adventure.status, petId: adventure.petId,
       departedAt: adventure.departedAt, returnsAt: adventure.returnsAt,
       destKey: adventure.destKey, dishName: adventure.dishName,
@@ -788,11 +837,9 @@ export function feedVisitor() {
 }
 
 /* ═══════════ 装扮系统 ═══════════ */
-const WARDROBE_KEY = "warm-paws-wardrobe-v1";
-
 function loadWardrobe() {
   try {
-    const r = JSON.parse(getItem(WARDROBE_KEY));
+    const r = JSON.parse(getItem(k(WARDROBE_BASE)));
     return Array.isArray(r) ? r : ["daisy"];  // 新玩家送小雏菊
   } catch (e) { return ["daisy"]; }
 }
@@ -800,7 +847,7 @@ function loadWardrobe() {
 export const wardrobe = reactive({ owned: loadWardrobe() });
 
 function saveWardrobe() {
-  try { setItem(WARDROBE_KEY, JSON.stringify(wardrobe.owned)); } catch (e) {}
+  try { setItem(k(WARDROBE_BASE), JSON.stringify(wardrobe.owned)); } catch (e) {}
 }
 
 export const accByKey = (key) => ACCESSORIES.find((x) => x.key === key) || null;

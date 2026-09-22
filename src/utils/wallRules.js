@@ -81,6 +81,11 @@ export function sortPosts(list, mode = DEFAULT_SORT) {
 
 export const VIEW_KEY = "warm-paws-views-v1";   // 浏览去重记录（按 UTC 日）
 export const ANON_KEY = "warm-paws-anon-v1";    // 未登录访客的匿名标识（云端浏览去重用）
+/* 轮 32：下面这些暖心墙本地个人键统一按账号分域（域 = 登录 uid / guest，机制见
+ * utils/userScope.js）。键常量集中放在这里，由急加载的 wall.js 统一注册进 userScope
+ * —— 懒加载视图组件里注册来不及（main.js 的 initUserScope 跑在路由组件加载之前）。 */
+export const POSTS_KEY = "warm-paws-posts-v1";    // 本地帖镜像（游客/离线兜底）
+export const REACTS_KEY = "warm-paws-reacts-v1";  // 我的回应本机账（游客/示例帖）
 
 /** 帖子的唯一身份：云端帖用 dbId，本地帖用 id */
 export function postRef(post) {

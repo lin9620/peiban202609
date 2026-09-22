@@ -85,19 +85,19 @@ node tools/pet-home-test.mjs   # 宠物主页云层纯函数单测（19 项：�
 node tools/pet-visual-test.mjs # 宠物形象与互动表情单测（163 项：五物种×六变体生成合法 Lottie / 表情随 mood 切换（弯弯眼·张嘴·星星·双心·Zzz）/ 贴纸描边·胡须·眉毛·曲线尾 / petMood 信号与缓存守卫）
 node tools/food-painter-test.mjs # 手绘食物画板单测（20 项：保存后清空画板与撤销栈 / 画笔与橡皮模式复位 / 异步撤销不回流旧画 / 食谱 7 份上限 / 48 小时过期边界）
 node tools/api-contract-test.mjs # 云端数据访问适配层契约测试（83 项：表名 / 过滤 / 排序 / RPC 参数 / Storage 桶与路径 / 降级查询形状 / upsert 只写 user_id+data+updated_at 的计数红线）
-node tools/gateway-contract-test.mjs # 网关模式前端侧契约测试（65 项：/api/* 端点形状 / 鉴权头 / 计数红线 / 错误上抛）
-node tools/worker-test.mjs    # API 网关 Worker 契约测试（193 项：/api/* → Supabase REST 翻译形状 / JWT 透传 / PGRST116→null / 路径穿越防护 / 图片边缘缓存 MISS→HIT 与降级 / 自助删号透传）
-node tools/dm-test.mjs        # 私信规则层单测（280 项：撤回窗口 / 未读计数 / 日期分隔 / 错误码→i18n 映射 / 迁移覆盖）
+node tools/gateway-contract-test.mjs # 网关模式前端侧契约测试（66 项：/api/* 端点形状 / 鉴权头 / 计数红线 / 错误上抛）
+node tools/worker-test.mjs    # API 网关 Worker 契约测试（195 项：/api/* → Supabase REST 翻译形状 / JWT 透传 / PGRST116→null / 路径穿越防护 / 图片边缘缓存 MISS→HIT 与降级 / 自助删号透传）
+node tools/dm-test.mjs        # 私信规则层单测（286 项：撤回窗口 / 未读计数 / 日期分隔 / 错误码→i18n 映射 / 迁移覆盖）
 node tools/notify-test.mjs    # 通知规则层单测（149 项：分栏白名单(私信已退出) / 聚合语义 / 点击落点 / 未读兜底）
-node tools/status-test.mjs    # 陪你大厅状态规则层单测（48 项：四键前后端一致 / 24h 窗口纯函数 / emoji 归文案不重复 / 两条链路契约 / 降级分支 / 迁移与文档覆盖）
+node tools/status-test.mjs    # 陪你大厅状态规则层单测（49 项：四键前后端一致 / 24h 窗口纯函数 / emoji 归文案不重复 / 两条链路契约 / 降级分支 / 迁移与文档覆盖）
 node tools/status-counts-test.mjs # 大厅人数接口单测（11 项：只取四类人数不下载资料 / 零人 / 不显示昵称 / 非法日期 / 计数失败降级）
-node tools/bottle-test.mjs    # 温暖漂流瓶规则层单测（36 项：每日 3 封 7 瓶 / 48h 回海 / 1000 字上限 / 错误码↔i18n 闭环 / 六 RPC 与 Worker 路由契约 / RLS 可见性 / 旧信箱清理）
-node tools/bottle-chat-test.mjs # 漂流瓶续聊离线回归（80 项：规则与状态机 / 通知文案与跳转落点 / 双适配器与 Worker 转发 / SQL 与 SUPABASE_SETUP 同源检查；不执行数据库迁移）
+node tools/bottle-test.mjs    # 温暖漂流瓶规则层单测（60 项：每日 3 封 7 瓶 / 48h 回海 / 1000 字上限 / 错误码↔i18n 闭环 / 六 RPC 与 Worker 路由契约 / RLS 可见性 / 旧信箱清理）
+node tools/bottle-chat-test.mjs # 漂流瓶续聊离线回归（86 项：规则与状态机 / 通知文案与跳转落点 / 双适配器与 Worker 转发 / SQL 与 SUPABASE_SETUP 同源检查；不执行数据库迁移）
 node tools/i18n-test.mjs      # 文案完整性与插值回归（19 项：en/zh 键集合对称、修复过的 key、$ 特殊字符）
 node tools/cache-test.mjs     # 本地优先缓存单测（12 项：SWR 命中先渲染/后台刷新回写/相同数据去抖/无缓存 onError/有缓存断网静默保留/换用户隔离/前缀清理/容量淘汰）
 node tools/home-panes-test.mjs # T6 首页三联单测（9 项：联顺序与默认漂流瓶 / /?tab= 消费与兜底 / 横滑判定(阈值+纵向让位) / i18n 频道键成对 / 频道条与懒挂载接线 / 宠物联禁滑 / 桌面零变化 / 抽件自包含）
 node tools/admin-test.mjs     # 管理中心纯函数单测（39 项：admin:false 兜底 / 字段缺省 / 趋势图 14 天补零 / 行规整 / 北京时间口径）
-node tools/auth-test.mjs      # 登录规则单测（94 项：邮箱密码校验 / 昵称校验 / Google 昵称兜底与首登改昵提示 / 设置页改密码(旧密码验证·谷歌直设) / 重置邮件链接解析与失效识别 / 回跳地址 / 没跑迁移的判定 / 页面接线 / 自助删号全链路契约(迁移·双模式·Worker·设置页·隐私表述)）
+node tools/auth-test.mjs      # 登录规则单测（130 项：邮箱密码校验 / 昵称校验 / Google 昵称兜底与首登改昵提示 / 设置页改密码(旧密码验证·谷歌直设) / 重置邮件链接解析与失效识别 / 回跳地址 / 没跑迁移的判定 / 页面接线 / 自助删号全链路契约(迁移·双模式·Worker·设置页·隐私表述)）
 node tools/privacy-test.mjs   # 隐私政策页回归（34 项：路由与页脚入口 / sitemap 与预渲染产物 / 合规表述逐条核对 —— 权限范围、不转售、不投放广告、Limited Use、撤销授权 / 中英键对称 / 不执行 JS 也能读到完整正文）
 node tools/snack-test.mjs     # 零食雨游戏纯逻辑单测（24 项：难度曲线/生成/碰撞/结算上限）
 node tools/seo-test.mjs       # SEO 资产检查（42 项：robots/sitemap/5 条路由/OG 标签/PNG 尺寸/安全头/预渲染产物）
@@ -123,6 +123,9 @@ node tools/uifix-test.mjs     # 修复项回归（24 项：评论字数上限/�
 node tools/app-shell-test.mjs # App 外壳与手机形态回归（40 项：T5 顶栏/TabBar/页脚让位 · T7 私信↔通知分栏与红点 · 聊天整屏(align-items:stretch) · 桌面提示隐藏 · 系统返回键逐级返回/根视图最小化 · 我的页钱包 · 睡着了送行弹窗 · 我的食谱回原版 · 二级评论就地回复框 · 发帖页整屏样式 · 桌面零变化）
 node tools/react-queue-test.mjs # 回应按钮连点收敛器单测（12 项：同键串行不并发 · 前一个失败不卡后一个 · 过期响应不回写 · 连点三下奇偶正确 · 单次点击照常回写；纯逻辑无网络）
 node tools/back-stack-test.mjs # 系统返回键拦截栈单测（9 项：空栈不吞键 / true 才算已处理 / 后进先出 / 顶层 false 下层接手 / 拦截器异常不吞键 / 卸载弹栈 / 陌生函数不误删）
+node tools/post-detail-test.mjs # 帖子详情页回归（15 项：/post/:id 路由与数据链单帖读取 / 评论两级展开与就地回复 / 与暖心墙同款结构）
+node tools/splash-test.mjs    # 启动页回归（8 项：静态层结构与加厚内容 / 2.5s 兜底放行 / 看门狗摘除 / 只在 App 壳保留）
+node tools/userScope-test.mjs # 账号域单测（8 项：分域读写往返 / 老档迁移进 guest(幂等+触发reload) / 首次登录认领(不覆盖已有档·只认一次) / 换域 flush→reload 顺序 / 新注册账号必为全新档）
 node tools/web-probe.mjs      # 无头浏览器 + CDP 取真机等价实证（`--serve=dist --url=/messages --w=393 --h=852 --file=./expr.js`：真实构建产物 + 精确视口，量盒模型/命中规则；不依赖手机）
 node tools/cdp-eval.mjs       # 真机 WebView CDP 求值（`adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>` 后 `--file=./expr.js`；页面自动进入焦点模拟，息屏也能取数）
 node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite 只在启动时读环境变量）
@@ -332,7 +335,7 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 | 体验 | `#/` 路由直接访问 `/pet` 会 404 | 迁移到 history 模式 + 每条路由独立静态 HTML + SPA 回退 | `router.js` / `vite.config.js` / `wrangler.jsonc` |
 | 体验 | 「在线陪伴数」是本地随机数，易误导 | 去掉虚构人数，改如实文案（路线图保留"等有真实统计再接"） | `views/HomeView.vue` / `i18n.js` |
 
-回归验证（全部本地可跑）：`wall-rules-test` 38 项 · `comment-test` 26 项 · `wall-test` 34 项 · `pet-home-test` 19 项 · `pet-visual-test` 163 项 · `food-painter-test` 20 项 · `uifix-test` 24 项 · `image-fit` 20 项 · `snack-test` 24 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 94 项 · `privacy-test` 34 项 · `arity-test` 8 项 · `seo-test` 42 项 · `dm-test` 286 项 · `notify-test` 149 项 · `status-test` 48 项 · `status-counts-test` 11 项 · `bottle-test` 36 项 · `bottle-chat-test` 80 项 · `api-contract-test` 83 项 · `gateway-contract-test` 66 项 · `worker-test` 193 项 · `cache-test` 12 项 · `home-panes-test` 9 项 · `app-shell-test` 28 项 · `undef-check`。
+回归验证（全部本地可跑）：`wall-rules-test` 39 项 · `comment-test` 26 项 · `wall-test` 34 项 · `pet-home-test` 19 项 · `pet-visual-test` 163 项 · `food-painter-test` 20 项 · `uifix-test` 24 项 · `image-fit` 20 项 · `snack-test` 24 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 130 项 · `privacy-test` 34 项 · `arity-test` 8 项 · `seo-test` 42 项 · `dm-test` 286 项 · `notify-test` 149 项 · `status-test` 49 项 · `status-counts-test` 11 项 · `bottle-test` 60 项 · `bottle-chat-test` 86 项 · `api-contract-test` 83 项 · `gateway-contract-test` 66 项 · `worker-test` 195 项 · `cache-test` 12 项 · `home-panes-test` 9 项 · `app-shell-test` 40 项 · `react-queue-test` 12 项 · `back-stack-test` 9 项 · `post-detail-test` 15 项 · `splash-test` 8 项 · `userScope-test` 8 项 · `undef-check`。
 
 ## 🗺️ 路线图
 

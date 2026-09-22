@@ -20,13 +20,17 @@ for (let i = 1; i <= 5; i++) {
     { stdio: "inherit", cwd: new URL("..", import.meta.url).pathname.replace(/^\/(\w:)/, "$1"), env });
   if (r.status !== 0) { console.log(`[try ${i}] vite build 退出码 ${r.status}，重试`); continue; }
 
-  /* 不信 guard 一面之词：自己再读产物验一遍 slug */
-  const dir = new URL("../dist/assets/", import.meta.url).pathname.replace(/^\/(\w:)/, "$1");
-  const entries = readdirSync(dir).filter((f) => /^index-.*\.js$/.test(f));
-  const good = entries.filter((f) => readFileSync(dir + f, "utf8").includes(slug));
-  console.log(`[try ${i}] entries=${entries.join(",")} good=${good.join(",") || "无"}`);
-  if (good.length === entries.length && entries.length > 0) {
-    console.log(`BUILD_GOOD ${good.join(",")}`);
+  /* 不信 guard 一面之词：自己再读产物验一遍 slug。
+   * 口径与 vite.config.js 的 env-guard 一致（轮 31）：只验 index.html 真正加载的入口脚本
+   * —— `@capacitor/browser` 动态 import 会额外产出一个不含 env 的 index-<hash>.js 懒块，
+   * 旧口径「所有 index-*.js 都要含 slug」会把好包误判成坏包（BUILD_ALWAYS_BAD）。 */
+  const distDir = new URL("../dist/", import.meta.url).pathname.replace(/^\/(\w:)/, "$1");
+  const html = readFileSync(distDir + "index.html", "utf8");
+  const entries = [...html.matchAll(/src="\/assets\/([^"]+\.js)"/g)].map((m) => m[1]);
+  const bad = entries.filter((f) => !readFileSync(distDir + "assets/" + f, "utf8").includes(slug));
+  console.log(`[try ${i}] 入口=${entries.join(",")} 缺slug=${bad.join(",") || "无"}`);
+  if (entries.length > 0 && bad.length === 0) {
+    console.log(`BUILD_GOOD ${entries.join(",")}`);
     process.exit(0);
   }
 }

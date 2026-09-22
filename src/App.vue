@@ -13,6 +13,7 @@ import {
   wallet, moodStreak, petNotices, dismissPetNotice,
 } from "./stores/petStore.js";
 import { cloud, initCloud, cloudHandleAppRedirect, isAppAuthRedirect } from "./utils/supabase.js";
+import { setUserScope } from "./utils/userScope.js";
 import { cacheDrop, cacheKey, swr } from "./utils/cache.js";
 import * as dmApi from "./utils/dm.js";
 import { badge, startBadge, stopBadge } from "./stores/badgeStore.js";
@@ -129,6 +130,11 @@ watch(cloudSigned, (v) => {
   cacheDrop("bottle:");
 }, { immediate: true });
 onBeforeUnmount(() => { stopBadge(); });
+
+/* 轮 32：登录态变化 = 换数据域。宠物/金币/手绘厨房/冒险 + 暖心墙本地账全部按 uid 分键
+ * （utils/userScope.js），未登录 = guest 域；setUserScope 内部先 flush 旧域再 reload 新域，
+ * 同设备换号不再串档（用户报障：新注册的号一进宠物就是 3 级）。 */
+watch(() => (cloud.user && cloud.user.id) || "", (uid) => { setUserScope(uid); }, { immediate: true });
 
 /* —— 错误边界：某个页面渲染出错时显示提示，而不是整页白屏 —— */
 const crashed = ref("");

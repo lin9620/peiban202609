@@ -2,7 +2,12 @@ import { createApp } from "vue";
 import App from "./App.vue";
 import { router } from "./router.js";
 import { initPet, tickPet, savePet, tickAdventure } from "./stores/petStore.js";
+import { initUserScope } from "./utils/userScope.js";
 import "./style.css";
+
+/* 轮 32：先把「升级前的无域老存档」搬进 guest 域（各模块已在本文件 import 时注册好
+ * 个人键与 reload 钩子，搬完会就地重读），再读档 —— 顺序不能反，否则首次升级加载丢档 */
+initUserScope();
 
 /* 读档 + 离线结算（必须在挂载前执行，否则宠物栏为空） */
 try {

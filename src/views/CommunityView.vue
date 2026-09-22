@@ -4,6 +4,8 @@ import { useRouter, useRoute } from "vue-router";
 import { NButton, NInput, NAvatar, NTag } from "naive-ui";
 import { t, i18n } from "../i18n.js";
 import { getItem, setItem } from "../utils/storage.js";
+/* 轮 32：个人数据键按账号分域（游客账/各登录账号互不串），读写走 scopeGet/scopeSet */
+import { scopeGet, scopeSet, scopeGetRaw, scopeSetRaw } from "../utils/userScope.js";
 import { cacheKey, swr } from "../utils/cache.js";
 import {
   CMT_KEY, seedComments, addComment, removeComment, displayCount,
@@ -22,7 +24,7 @@ import {
 import {
   SORTS, sortPosts, collectViews, visibleOnly, utcDay, ratioPct,
   canPostToday, postsLeftToday, dayCountFromStorage, WALL_POST_DAILY_LIMIT,
-  errorKind, VIEW_KEY, ANON_KEY, POST_DAY_KEY,
+  errorKind, VIEW_KEY, ANON_KEY, POST_DAY_KEY, POSTS_KEY, REACTS_KEY,
   RANGES, inRange, usesRange, rangeFor, fmtWhen,
   recommendPosts, RECOMMEND_DAYS,
 } from "../utils/wallRules.js";
@@ -31,8 +33,8 @@ import {
   validateImageFile, isSaneShape, isUsableDataUrl, shrinkToDataUrl,
 } from "../utils/imaging.js";
 
-const POSTS_KEY = "warm-paws-posts-v1";
-const REACTS_KEY = "warm-paws-reacts-v1";
+/* POSTS_KEY/REACTS_KEY 已上移 wallRules.js 并按账号分域（轮 32）；
+ * SORT_KEY 是设备级偏好（换号保留同一台机器的使用习惯），故意不进账号域。 */
 const SORT_KEY = "warm-paws-sort-v1";   /* 记住用户选的排序方式 */
 
 const REACTIONS = [
@@ -82,8 +84,8 @@ const wallName = computed(() => cloud.nickname || getItem("wp-nickname") || "Gue
 const signedIn = computed(() => !!(cloud.ready && cloud.user));
 
 onMounted(() => {
-  try { posts.value = JSON.parse(getItem(POSTS_KEY)) || []; } catch (e) {}
-  try { myReacts.value = JSON.parse(getItem(REACTS_KEY)) || {}; } catch (e) {}
+  posts.value = scopeGet(POSTS_KEY, []) || [];
+  myReacts.value = scopeGet(REACTS_KEY, {}) || {};
   if (cloud.ready) loadCloud();
 });
 /* 云端就绪晚于挂载（异步探测）→ 就绪后补拉一次；未登录也拉（RLS 匿名只读） */
@@ -147,23 +149,24 @@ function pickRange(key) {
 }
 
 /* ═════════ 浏览数：同一访客对同一条帖，一天只 +1 ═════════ */
-/* 未登录访客用本机匿名 id 当身份（服务器按这个去重，刷新页面不会刷高浏览量） */
+/* 未登录访客用本机匿名 id 当身份（服务器按这个去重，刷新页面不会刷高浏览量）；
+ * 匿名 id 也按账号域存（轮 32）——只在游客态读写，实际恒落 guest 域，升级时老 id 会迁移过去 */
 function anonKey() {
-  let v = getItem(ANON_KEY);
+  let v = scopeGetRaw(ANON_KEY);
   if (!v) {
     v = "a-" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
-    setItem(ANON_KEY, v);
+    scopeSetRaw(ANON_KEY, v);
   }
   return v;
 }
 const viewerKey = computed(() => (cloud.user && cloud.user.id) || anonKey());
 let viewStamps = {};
-try { viewStamps = JSON.parse(getItem(VIEW_KEY)) || {}; } catch (e) { viewStamps = {}; }
+viewStamps = scopeGet(VIEW_KEY, {}) || {};
 /* 把「今天还没看过的帖」告诉服务端 +1（服务端 wall_post_views 再兜一层去重） */
 async function countViews(list) {
   const { stamps, pending } = collectViews(viewStamps, list, viewerKey.value);
   viewStamps = stamps;
-  setItem(VIEW_KEY, JSON.stringify(stamps));
+  scopeSetRaw(VIEW_KEY, JSON.stringify(stamps));
   for (const p of pending) {
     const r = await cloudAddView(p.dbId, viewerKey.value);
     if (!r) continue;
@@ -225,7 +228,7 @@ async function te() {
 }
 
 /* ════════ 每日限额：每个用户每天最多 7 条（WALL_POST_DAILY_LIMIT，库触发器同口径） ═════════ */
-const postedCount = ref(dayCountFromStorage(getItem(POST_DAY_KEY)));   /* 本机今天已发几条（旧格式日期串兼容） */
+const postedCount = ref(dayCountFromStorage(scopeGetRaw(POST_DAY_KEY)));   /* 本机今天已发几条（旧格式日期串兼容） */
 const myUid = computed(() => (cloud.user && cloud.user.id) || "");
 /* 本地模式也守同样的规矩（云端帖数「今天我发了几条」；本机模式看本机记账）。
  * 两者不叠加：云端已登录时刚发的帖既被 unshift 进列表又记了本机账，会少算一倍余量
@@ -243,16 +246,17 @@ const postsLeft = computed(() => postsLeftToday({
   localCount: cloud.ready && myUid.value ? 0 : postedCount.value,
 }));
 
-/* 发帖成功后本机记账 +1（{ day, n } 格式；旧日期串/跨天由 dayCountFromStorage 兜住） */
+/* 发帖成功后本机记账 +1（{ day, n } 格式；旧日期串/跨天由 dayCountFromStorage 兜住）。
+ * 记账按账号域分键（轮 32）：A 发满 7 条不会把 B 也锁在墙外。 */
 function bumpPostedCount() {
   const day = utcDay();
-  postedCount.value = dayCountFromStorage(getItem(POST_DAY_KEY), day) + 1;
-  setItem(POST_DAY_KEY, JSON.stringify({ day, n: postedCount.value }));
+  postedCount.value = dayCountFromStorage(scopeGetRaw(POST_DAY_KEY), day) + 1;
+  scopeSetRaw(POST_DAY_KEY, JSON.stringify({ day, n: postedCount.value }));
 }
 
 function persist() {
-  setItem(POSTS_KEY, JSON.stringify(posts.value.slice(0, 30)));
-  setItem(REACTS_KEY, JSON.stringify(myReacts.value));
+  scopeSet(POSTS_KEY, posts.value.slice(0, 30));
+  scopeSet(REACTS_KEY, myReacts.value);
 }
 
 /* —— 图片选择：预检(类型/体积) → 解码 → 体检(比例/像素) → 压缩 → 可用性校验 —— */
@@ -387,11 +391,10 @@ function hasReacted(post, kind) {
 /* —— 评论系统 ——
    逻辑全部在 src/utils/comments.js（纯函数，已通过 15 项 Node 单元测试） */
 function loadComments() {
-  let raw = {};
-  try { raw = JSON.parse(getItem(CMT_KEY)) || {}; } catch (e) { raw = {}; }
+  const raw = scopeGet(CMT_KEY, {}) || {};
   const seeded = seedComments(raw, i18n.locale);
   // 首次注入示范评论后立刻落盘：否则用户删掉它、刷新后又会冒出来
-  if (seeded.__seeded && !raw.__seeded) setItem(CMT_KEY, JSON.stringify(seeded));
+  if (seeded.__seeded && !raw.__seeded) scopeSetRaw(CMT_KEY, JSON.stringify(seeded));
   return seeded;
 }
 
@@ -400,7 +403,7 @@ const openCmt = ref({});
 const cmtDraft = ref({});
 
 function persistCmt() {
-  setItem(CMT_KEY, JSON.stringify(comments.value));
+  scopeSetRaw(CMT_KEY, JSON.stringify(comments.value));
 }
 function cmtKey(p) { return postKey(p); }
 /* 该帖评论是否已拉到本地：是数组 → 本地列表为准；undefined → 用云端聚合数（见 displayCount） */
