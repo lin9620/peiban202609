@@ -43,6 +43,12 @@ async function load() {
   usersLoaded.value = false;
   usersOffset.value = 0;
   usersTotal.value = 0;
+  reports.value = [];
+  repLoaded.value = false;
+  repLoadedFor.value = "";
+  repOffset.value = 0;
+  repTotal.value = 0;
+  repTab.value = "pending";
   tab.value = "overview";
   if (!signedIn.value) {
     state.value = "denied";
@@ -98,6 +104,62 @@ function switchTab(name) {
   if (name === "posts" && !postsLoaded.value) loadPosts();
   if (name === "comments" && !commentsLoaded.value) loadComments();
   if (name === "users" && !usersLoaded.value) loadUsers(0);
+  if (name === "reports" && !repLoaded.value) loadReports(0);
+}
+
+/* ═══ 举报/复核页签（轮 33）：待处理 / 已处理 两档；帖子厌恶下架复核也进待处理队列 ═══ */
+const REP_PAGE = 20;
+const repTab = ref("pending");     /* pending | handled */
+const reports = ref([]);
+const repLoaded = ref(false);
+const repLoadedFor = ref("");      /* 当前列表对应哪一档（切档重拉，防止两档串页） */
+const repOffset = ref(0);
+const repTotal = ref(0);
+const pendingReports = computed(() => (ov.value && ov.value.reports_pending) || 0);
+
+async function loadReports(offset = 0) {
+  try {
+    const r = await db.adminReportPage(repTab.value, offset, REP_PAGE);
+    if (!r || r.admin === false) { fail(new Error("admin=false")); return; }
+    reports.value = (r.items || []).map((x) => ({ ...x, _note: "" }));
+    repTotal.value = r.total || 0;
+    repOffset.value = offset;
+    repLoaded.value = true;
+    repLoadedFor.value = repTab.value;
+  } catch (e) {
+    fail(e);
+  }
+}
+function switchRepTab(name) {
+  if (repTab.value === name && repLoadedFor.value === name) return;
+  repTab.value = name;
+  loadReports(0);
+}
+async function handleReport(item, action) {
+  if (busy.value !== "") return;
+  busy.value = "rep" + item.id;
+  actionMsg.value = "";
+  try {
+    const r = await db.adminReportHandle(item.id, action, (item._note || "").trim());
+    if (!r || r.admin === false || r.ok === false) {
+      actionMsg.value = t("admin.fail", { r: (r && r.reason) || "" });
+    } else {
+      actionMsg.value = t("admin.reports.done");
+      if (repTab.value === "pending") {
+        /* 本地移除 + 红点计数同步扣减，不再整页重拉 */
+        reports.value = reports.value.filter((x) => x.id !== item.id);
+        repTotal.value = Math.max(0, repTotal.value - 1);
+        if (ov.value && typeof ov.value.reports_pending === "number") {
+          ov.value = { ...ov.value, reports_pending: Math.max(0, ov.value.reports_pending - 1) };
+        }
+      } else {
+        loadReports(repOffset.value);   /* 已处理档：重拉拿最新处理记录 */
+      }
+    }
+  } catch (e) {
+    fail(e);
+  }
+  busy.value = "";
 }
 
 /* —— 全员公告：走 db.adminBroadcast（RPC 内再查一次 is_admin，前端只是壳） —— */
@@ -233,10 +295,11 @@ const recentUsers = computed(() => (Array.isArray(ov.value && ov.value.recent_us
         </div>
         <div class="admin-tabs">
           <button
-            v-for="x in ['overview', 'posts', 'comments']" :key="x"
+            v-for="x in ['overview', 'posts', 'comments', 'reports']" :key="x"
             class="admin-tab" :class="{ on: tab === x }"
             @click="switchTab(x)">
             {{ t(`admin.tabs.${x}`) }}
+            <span v-if="x === 'reports' && pendingReports > 0" class="admin-tab-dot"></span>
           </button>
         </div>
         <p v-if="actionMsg" class="notice" style="margin: 12px 0 0">{{ actionMsg }}</p>
@@ -392,6 +455,86 @@ const recentUsers = computed(() => (Array.isArray(ov.value && ov.value.recent_us
           </div>
           <n-button size="tiny" quaternary type="error" :disabled="busy !== ''" @click="delComment(c)">
             {{ t("admin.actions.del") }}
+          </n-button>
+        </div>
+      </section>
+
+      <!-- ── 页签：举报处理（轮 33：待处理/已处理；帖子厌恶下架的复核也在待处理里，source=auto） ── -->
+      <section v-else-if="tab === 'reports'" class="card">
+        <div class="row-between">
+          <div class="admin-tabs" style="margin: 0">
+            <button class="admin-tab" :class="{ on: repTab === 'pending' }" @click="switchRepTab('pending')">
+              {{ t("admin.reports.pending") }}<template v-if="pendingReports > 0"> · {{ pendingReports }}</template>
+            </button>
+            <button class="admin-tab" :class="{ on: repTab === 'handled' }" @click="switchRepTab('handled')">
+              {{ t("admin.reports.handled") }}
+            </button>
+          </div>
+          <n-button quaternary size="small" :disabled="busy !== ''" @click="loadReports(repOffset)">
+            {{ t("admin.refresh") }}
+          </n-button>
+        </div>
+        <p v-if="!reports.length" class="sub" style="margin-top: 12px">
+          {{ repLoaded ? t("admin.reports.empty") : t("admin.loading") }}
+        </p>
+        <div v-for="r in reports" :key="r.id" class="admin-row">
+          <div class="admin-grow">
+            <div class="admin-clip">
+              <template v-if="r.content_gone">🫥 {{ t("admin.reports.contentGone") }}</template>
+              <template v-else>{{ clip(r.body, 90) || "…" }}</template>
+            </div>
+            <span class="admin-meta">
+              <template v-if="r.source === 'auto'">🐾 {{ t("admin.reports.autoEntry") }}</template>
+              <template v-else>{{ t("admin.reports.by") }} {{ r.reporter_name || "?" }} · {{ t("report.reason." + (r.reason || "other")) }}</template>
+              · {{ t("admin.reports.reporters", { n: r.reporters || 1 }) }}<template v-if="dayOf(r.created_at)"> · {{ dayOf(r.created_at) }}</template>
+            </span>
+            <span v-if="r.detail" class="admin-meta">「{{ r.detail }}」</span>
+            <span class="admin-meta">
+              {{ r.target_type === "post" ? t("admin.tabs.posts") : t("admin.tabs.comments") }}
+              · {{ r.author_name || "?" }}<template v-if="r.post_id">
+              · <a class="admin-open" @click="router.push('/post/' + r.post_id)">{{ t("admin.reports.viewPost") }}</a></template>
+            </span>
+            <span v-if="r.status === 'handled'" class="admin-meta">
+              {{ dayTimeOf(r.handled_at) }} · {{ t("admin.reports.act." + (r.action || "dismiss")) }}<template v-if="r.note"> · {{ r.note }}</template>
+            </span>
+          </div>
+          <template v-if="r.status === 'pending'">
+            <n-input v-model:value="r._note" size="tiny" style="max-width: 150px"
+              :placeholder="t('admin.reports.notePh')" />
+            <div class="admin-actions">
+              <n-button v-if="r.target_type === 'post' && !r.removed" size="tiny" quaternary type="error"
+                :disabled="busy !== ''" @click="handleReport(r, 'remove_post')">
+                {{ t("admin.reports.act.removePost") }}
+              </n-button>
+              <n-button v-if="r.target_type === 'post' && r.removed" size="tiny" quaternary
+                :disabled="busy !== ''" @click="handleReport(r, 'restore_post')">
+                {{ t("admin.reports.act.restorePost") }}
+              </n-button>
+              <n-button v-if="r.target_type === 'comment' && !r.hidden" size="tiny" quaternary type="error"
+                :disabled="busy !== ''" @click="handleReport(r, 'delete_comment')">
+                {{ t("admin.reports.act.deleteComment") }}
+              </n-button>
+              <n-button v-if="r.target_type === 'comment' && r.hidden" size="tiny" quaternary
+                :disabled="busy !== ''" @click="handleReport(r, 'unhide_comment')">
+                {{ t("admin.reports.act.unhideComment") }}
+              </n-button>
+              <n-button size="tiny" quaternary :disabled="busy !== ''" @click="handleReport(r, 'dismiss')">
+                {{ t("admin.reports.act.dismiss") }}
+              </n-button>
+            </div>
+          </template>
+        </div>
+        <div v-if="repTotal > REP_PAGE" class="admin-page-bar">
+          <n-button size="tiny" quaternary :disabled="repOffset <= 0"
+            @click="loadReports(Math.max(0, repOffset - REP_PAGE))">
+            {{ t("admin.page.prev") }}
+          </n-button>
+          <span class="admin-page-info">
+            {{ t("admin.page.info", { a: repOffset + 1, b: repOffset + reports.length, n: fmtNum(repTotal) }) }}
+          </span>
+          <n-button size="tiny" quaternary :disabled="repOffset + reports.length >= repTotal"
+            @click="loadReports(repOffset + REP_PAGE)">
+            {{ t("admin.page.next") }}
           </n-button>
         </div>
       </section>

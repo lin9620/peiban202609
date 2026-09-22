@@ -289,6 +289,23 @@ export const db = {
     await call(`/admin/comments/${enc(id)}`, { method: "DELETE" });
   },
 
+  /* ══════════ 举报 / 复核（轮 33；Worker 白名单 /api/reports、/api/admin/reports*） ══════════ */
+
+  /** 提交举报（target_type: post|comment；防刷/去重/评论阈值在 RPC 里） */
+  reportCreate(targetType, targetId, reason, detail) {
+    return call("/reports", { method: "POST", body: { target_type: targetType, target_id: targetId, reason, detail } });
+  },
+
+  /** 举报/复核队列（status: pending|handled；items 带正文与聚合人数） */
+  adminReportPage(status, offset, limit) {
+    return call(`/admin/reports?status=${enc(status)}&offset=${enc(offset)}&limit=${enc(limit)}`);
+  },
+
+  /** 处理一条举报/复核（action: dismiss|remove_post|restore_post|delete_comment|unhide_comment） */
+  adminReportHandle(reportId, action, note) {
+    return call(`/admin/reports/${enc(reportId)}/handle`, { method: "POST", body: { action, note } });
+  },
+
   /* ══════════ 私信（阶段 4） ══════════ */
 
   /** 找或建会话 → {conv_id} */

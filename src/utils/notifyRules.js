@@ -112,7 +112,8 @@ export function itemView(n, myName = "") {
     case "reaction": return { ...base, key: "notif.reaction", unread: n.read_at == null };
     case "pet":      return { ...base, key: "notif.pet",      unread: n.read_at == null };
     case "dm":       return { ...base, key: n.meta?.event === "bottle_reply" ? "bottle.notifyReply" : n.meta?.event === "bottle_chat" ? "bottle.notifyChat" : "notif.dm", unread: n.read_at == null };
-    case "system":   return { ...base, key: "notif.system",   unread: n.read_at == null };
+    /* 轮 33：举报处理结果通知（meta.event = report_handled）—— 独立文案，与公告类 system 区分 */
+    case "system":   return { ...base, key: n.meta && n.meta.event === "report_handled" ? "notif.reportDone" : "notif.system", unread: n.read_at == null };
     default:         return { ...base, key: "notif.fallback", unread: n.read_at == null };
   }
 }

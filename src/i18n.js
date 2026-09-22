@@ -292,6 +292,32 @@ export const messages = {
       viewHome: "View profile",
     },
 
+    /* 轮 33：举报（弹窗文案 + 原因枚举；管理端复用 reason 标签）+ 全站拉黑 */
+    report: {
+      title: "Report this content",
+      act: "Report",
+      reason: {
+        spam: "Spam or ads", abuse: "Harassment or abuse", porn: "Sexual content",
+        illegal: "Illegal", false: "Misinformation", other: "Other",
+      },
+      detailPh: "Anything the moderators should know (optional)…",
+      submit: "Send report",
+      signIn: "Please sign in to report.",
+      done: "Got it — our moderators will take a look soon. Thank you 💛",
+      errLimit: "You've reported quite a few today — please come back tomorrow.",
+      errGone: "This content is gone or already taken down.",
+      errNotOpen: "Reporting isn't enabled yet — please update or try later.",
+      errFail: "Couldn't submit right now — please try again later.",
+    },
+
+    wall: {
+      block: "Block",
+      blockConfirm: "Tap again to confirm",
+      unblock: "Unblock",
+      blockedTip: "Blocked — their content is now hidden from you.",
+      blockedPost: "This content is hidden because you blocked its author.",
+    },
+
     waller: {
       title: "Wall profile",
       posts: "Posts", hugs: "Hugs", warms: "Warmths", relates: "Relates",
@@ -343,7 +369,21 @@ export const messages = {
       denied: "Not authorized — admins only.",
       loading: "Loading…",
       refresh: "Refresh",
-      tabs: { overview: "Overview", posts: "Posts", comments: "Comments", users: "Users" },
+      tabs: { overview: "Overview", posts: "Posts", comments: "Comments", reports: "Reports", users: "Users" },
+      /* 轮 33：举报/复核处理队列 */
+      reports: {
+        pending: "Pending", handled: "Handled", empty: "Nothing here — all calm ✨",
+        by: "Reported by", reporters: "{n} report(s)",
+        autoEntry: "Auto-taken-down by dislikes — needs review",
+        contentGone: "Content already deleted",
+        viewPost: "Open post",
+        notePh: "Note (optional)",
+        done: "Handled. The reporter has been thanked 💛",
+        act: {
+          dismiss: "Dismiss", removePost: "Take down", restorePost: "Restore post",
+          deleteComment: "Delete comment", unhideComment: "Restore comment",
+        },
+      },
       cards: {
         users: "Users", usersToday: "New today",
         posts: "Posts", postsToday: "Posts today", removed: "Removed posts",
@@ -472,6 +512,8 @@ export const messages = {
       pet: "{who} patted your pet",
       dm: "{who} sent you a message",
       system: "Announcement",
+      /* 轮 33：举报处理结果（meta.event = report_handled） */
+      reportDone: "Your report has been handled — thank you for keeping this place kind 💛",
       fallback: "{who} shared something new with you",
       react: { hug: "hug", warm: "bit of warmth", relate: "me too" },
       petKind: { pat: "pat", feed: "treat" },
@@ -941,6 +983,32 @@ export const messages = {
       viewHome: "看 TA 的主页",
     },
 
+    /* 轮 33：举报（弹窗文案 + 原因枚举；管理端复用 reason 标签）+ 全站拉黑 */
+    report: {
+      title: "举报这条内容",
+      act: "举报",
+      reason: {
+        spam: "垃圾营销", abuse: "辱骂攻击", porn: "色情低俗",
+        illegal: "违法违规", false: "不实信息", other: "其他",
+      },
+      detailPh: "有什么想让管理员知道的（可选）…",
+      submit: "提交举报",
+      signIn: "先登录再来举报哦。",
+      done: "已收到，管理员会尽快处理。谢谢你守护这里 💛",
+      errLimit: "今天举报的次数有点多了，明天再来吧。",
+      errGone: "内容已删除或已下架。",
+      errNotOpen: "举报功能还没开启，请稍后再试。",
+      errFail: "没能提交，稍后再试试。",
+    },
+
+    wall: {
+      block: "拉黑",
+      blockConfirm: "再点一次确认拉黑",
+      unblock: "取消拉黑",
+      blockedTip: "已拉黑——TA 的内容不会再出现在你面前。",
+      blockedPost: "这条内容已隐藏（你拉黑了作者）。",
+    },
+
     waller: {
       title: "墙上的主页",
       posts: "帖子", hugs: "收到的抱抱", warms: "收到的暖暖", relates: "收到的同感",
@@ -992,7 +1060,21 @@ export const messages = {
       denied: "没有权限——仅管理员可访问。",
       loading: "加载中……",
       refresh: "刷新",
-      tabs: { overview: "总览", posts: "帖子", comments: "评论", users: "用户" },
+      tabs: { overview: "总览", posts: "帖子", comments: "评论", reports: "举报", users: "用户" },
+      /* 轮 33：举报/复核处理队列 */
+      reports: {
+        pending: "待处理", handled: "已处理", empty: "这里静悄悄的，没有要处理的内容 ✨",
+        by: "举报人", reporters: "{n} 人举报",
+        autoEntry: "厌恶达标自动下架 · 待复核",
+        contentGone: "内容已删除",
+        viewPost: "看原帖",
+        notePh: "备注（可选）",
+        done: "已处理，举报人会收到一条感谢通知 💛",
+        act: {
+          dismiss: "驳回", removePost: "下架帖子", restorePost: "恢复帖子",
+          deleteComment: "删除评论", unhideComment: "恢复评论",
+        },
+      },
       cards: {
         users: "用户", usersToday: "今日新增",
         posts: "帖子", postsToday: "今日发帖", removed: "已下架",
@@ -1119,6 +1201,8 @@ export const messages = {
       pet: "{who} 摸了摸你的宠物",
       dm: "{who} 给你发了一条私信",
       system: "管理员公告",
+      /* 轮 33：举报处理结果（meta.event = report_handled） */
+      reportDone: "你举报的内容已处理，谢谢你守护这里 💛",
       fallback: "{who} 和你有了新的互动",
       react: { hug: "抱抱", warm: "暖暖", relate: "同感" },
       petKind: { pat: "摸摸头", feed: "投喂" },

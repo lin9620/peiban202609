@@ -9,6 +9,8 @@ import {
 } from "../utils/wall.js";
 import { visibleOnly, ANON_KEY, fmtWhen } from "../utils/wallRules.js";
 import { scopeGetRaw } from "../utils/userScope.js";
+/* 轮 33：全站拉黑（复用 dm_blocks；拉黑后 TA 的内容在我这边隐藏） */
+import { blockUser, unblockUser, isBlocked, refreshBlocks } from "../utils/userBlocks.js";
 import { cloud } from "../utils/supabase.js";
 import { openConv } from "../utils/dm.js";
 import { sendErrKey } from "../utils/dmRules.js";
@@ -38,6 +40,27 @@ async function startDm() {
     dmMsg.value = t(sendErrKey(e));
   }
   dmBusy.value = false;
+}
+
+/* —— 拉黑（轮 33）：一个「拉黑」全站生效 —— 私信拦截（dm RPC）+ 暖心墙内容对我隐藏
+ *   （userBlocks 过滤层）；两步确认防手滑；对方不知情、无任何通知。 —— */
+const blockArm = ref(false);      /* 两步确认：第一次点进入待确认态，再点才真拉黑 */
+const blockBusy = ref(false);
+const isBlockedHere = computed(() => isBlocked(uid));
+async function toggleBlock() {
+  if (blockBusy.value || !canDm.value) return;
+  if (!isBlockedHere.value && !blockArm.value) {
+    blockArm.value = true;
+    setTimeout(() => { blockArm.value = false; }, 4000);   /* 4s 不确认就自动复位 */
+    return;
+  }
+  blockBusy.value = true;
+  blockArm.value = false;
+  try {
+    if (isBlockedHere.value) await unblockUser(uid);
+    else await blockUser(uid);
+  } catch (e) { dmMsg.value = t("dm.errNetwork"); }
+  blockBusy.value = false;
 }
 
 const prof = ref(null);        // profiles 行：{ nickname, created_at, status, status_at }
@@ -104,6 +127,7 @@ async function interact(kind, dishName = "") {
 
 onMounted(async () => {
   if (!uid) { failed.value = true; loading.value = false; return; }
+  refreshBlocks();   /* 轮 33：名单就绪（拉黑按钮的「已拉黑」态靠它） */
   const [pf, ps, ph] = await Promise.all([
     cloudFetchProfile(uid), cloudFetchUserPosts(uid), cloudGetPetHome(uid),
   ]);
@@ -136,7 +160,13 @@ onMounted(async () => {
         <!-- 发私信：登录且非本人主页才有；失败原因按 dmRules.sendErrKey 映射 -->
         <div v-if="!failed && !loading && canDm" class="waller-dm">
           <button class="waller-act" :disabled="dmBusy" @click="startDm">✉️ {{ t("dm.sendTo") }}</button>
+          <button
+            class="waller-act waller-block" :class="{ armed: blockArm, blocked: isBlockedHere }"
+            :disabled="blockBusy" @click="toggleBlock">
+            {{ isBlockedHere ? t("wall.unblock") : (blockArm ? t("wall.blockConfirm") : t("wall.block")) }}
+          </button>
           <span v-if="dmMsg" class="sub" style="margin: 6px 0 0">{{ dmMsg }}</span>
+          <span v-else-if="isBlockedHere" class="sub" style="margin: 6px 0 0">{{ t("wall.blockedTip") }}</span>
         </div>
       </div>
     </section>
@@ -214,3 +244,10 @@ onMounted(async () => {
     <router-link class="waller-back" to="/community">&#8592; {{ t("nav.community") }}</router-link>
   </div>
 </template>
+
+<style scoped>
+/* 拉黑按钮（轮 33）：平时低调；待确认态变警示色；已拉黑态常显可撤销 */
+.waller-block { color: var(--ink-faint); }
+.waller-block.armed { color: var(--low); font-weight: 700; }
+.waller-block.blocked { color: var(--low); }
+</style>

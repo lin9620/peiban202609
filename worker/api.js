@@ -706,6 +706,19 @@ export default {
         if (seg[1] === "quota" && seg.length === 2 && m === "GET") return rpc(env, request, "bottle_quota", {});
       }
 
+      /* —— 举报（轮 33：帖子/评论；防刷限频与评论 ≥3 人自动隐藏都在 RPC 里） —— */
+      if (seg[0] === "reports" && seg.length === 1 && m === "POST") {
+        const b = await readJson(request);
+        if (b.err) return b.err;
+        const t = b.body || {};
+        return rpc(env, request, "report_create", {
+          p_target_type: typeof t.target_type === "string" ? t.target_type : "",
+          p_target_id: Number(t.target_id) || 0,
+          p_reason: typeof t.reason === "string" ? t.reason : "other",
+          p_detail: typeof t.detail === "string" ? t.detail : "",
+        });
+      }
+
       /* —— 管理员（RLS is_admin 兜底；Worker 只翻译） —— */
       if (seg[0] === "admin") {
         if (seg[1] === "me" && seg.length === 2 && m === "GET") return rpc(env, request, "is_admin", {});
@@ -715,6 +728,26 @@ export default {
           return rpc(env, request, "admin_users_page", {
             p_offset: parseOffset(q.get("offset")),
             p_limit: parseLimit(q.get("limit"), 100),
+          });
+        }
+        /* 轮 33：举报/复核队列（待处理 pending / 已处理 handled） */
+        if (seg[1] === "reports" && seg.length === 2 && m === "GET") {
+          return rpc(env, request, "admin_report_page", {
+            p_status: q.get("status") || "pending",
+            p_offset: parseOffset(q.get("offset")),
+            p_limit: parseLimit(q.get("limit"), 20),
+          });
+        }
+        if (seg[1] === "reports" && seg.length === 4 && seg[3] === "handle" && m === "POST") {
+          const id = decodeSeg(seg[2]);
+          if (!id) return fail(400, "bad-id");
+          const b = await readJson(request);
+          if (b.err) return b.err;
+          const t = b.body || {};
+          return rpc(env, request, "admin_report_handle", {
+            p_report: Number(id) || 0,
+            p_action: typeof t.action === "string" ? t.action : "dismiss",
+            p_note: typeof t.note === "string" ? t.note : "",
           });
         }
         if (seg[1] === "posts") {

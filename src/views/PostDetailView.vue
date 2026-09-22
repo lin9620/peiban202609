@@ -14,6 +14,9 @@ import {
 } from "../utils/wall.js";
 import { normalizeText, MAX_LEN } from "../utils/comments.js";
 import { fmtWhen } from "../utils/wallRules.js";
+/* 轮 33：举报弹窗 + 全站拉黑过滤（我拉黑的人，TA 的帖子/评论在我这里不显示） */
+import ReportDialog from "../components/ReportDialog.vue";
+import { filterBlocked, isBlocked } from "../utils/userBlocks.js";
 
 const route = useRoute();
 const router = useRouter();
@@ -126,7 +129,7 @@ function loadComments() {
   cmtLoading.value = true;
   cloudFetchComments(post.value.dbId).then((rows) => {
     cmtLoading.value = false;
-    if (Array.isArray(rows)) comments.value = rows;
+    if (Array.isArray(rows)) comments.value = filterBlocked(rows);
   });
 }
 function toggleCmt() {
@@ -187,6 +190,28 @@ async function delCmt(cm) {
   );
   if (repActive.value.split(":")[0] === cm.id) cancelReply();
 }
+
+/* ═════════ 举报（轮 33）+ 拉黑隐藏 ═════════ */
+const reportShow = ref(false);
+const reportTarget = ref(null);
+function openReportPost() {
+  const p = post.value;
+  if (!p || p.dbId == null) return;
+  reportTarget.value = { type: "post", id: p.dbId, label: p.text || "" };
+  reportShow.value = true;
+}
+function openReportCmt(cm) {
+  /* 云端评论的数字主键在 dbId（id 是带 c 前缀的本地渲染键） */
+  if (!cm || !cm.cloud || cm.dbId == null) return;
+  reportTarget.value = { type: "comment", id: cm.dbId, label: cm.text || "" };
+  reportShow.value = true;
+}
+const canReportPost = () => !!(post.value && post.value.dbId != null && signedIn.value
+  && post.value.userId && post.value.userId !== myId.value);
+const canReportCmt = (cm) => !!(cm && cm.cloud && cm.dbId != null && signedIn.value
+  && cm.userId && cm.userId !== myId.value);
+/* 帖子作者被我拉黑：正文以「已隐藏」呈现（数据还在，取消拉黑即恢复） */
+const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userId)));
 </script>
 
 <template>
@@ -204,8 +229,9 @@ async function delCmt(cm) {
 
     <template v-else-if="post">
       <p v-if="gone" class="notice">{{ t("community.removed") }}</p>
+      <p v-else-if="authorBlocked" class="notice">{{ t("wall.blockedPost") }}</p>
 
-      <article class="post-card card">
+      <article v-if="!authorBlocked" class="post-card card">
         <div class="post-head">
           <n-avatar round :size="42" class="post-avatar">🙂</n-avatar>
           <div class="post-meta">
@@ -234,6 +260,9 @@ async function delCmt(cm) {
             @click="dislike">
             &#128078; {{ post.reacts.dislike || 0 }}
           </button>
+          <button v-if="canReportPost()" class="cmt-act" @click="openReportPost">
+            {{ t("report.act") }}
+          </button>
         </div>
 
         <div class="cmt-toggle" @click="toggleCmt">
@@ -253,6 +282,7 @@ async function delCmt(cm) {
             <p class="cmt-text" :title="signedIn ? t('comment.reply') : ''" @click="startReply(cm)">{{ cm.text }}</p>
             <div class="cmt-acts">
               <button v-if="signedIn" class="cmt-act" @click="startReply(cm)">{{ t("comment.reply") }}</button>
+              <button v-if="canReportCmt(cm)" class="cmt-act" @click="openReportCmt(cm)">{{ t("report.act") }}</button>
               <button v-if="repsOf(cm).length" class="cmt-act" @click="toggleReplies(cm)">
                 {{ t("comment.replies", { n: repsOf(cm).length }) }}
                 <i :class="{ open: repOpen[cm.id] }">&#9662;</i>
@@ -269,6 +299,7 @@ async function delCmt(cm) {
                 <p class="cmt-text" @click="startReply(cm, rp)">{{ rp.text }}</p>
                 <div class="cmt-acts">
                   <button v-if="signedIn" class="cmt-act" @click="startReply(cm, rp)">{{ t("comment.reply") }}</button>
+                  <button v-if="canReportCmt(rp)" class="cmt-act" @click="openReportCmt(rp)">{{ t("report.act") }}</button>
                 </div>
                 <div v-if="repActive === cm.id + ':' + rp.id" class="cmt-input cmt-input-in">
                   <n-input v-model:value="repDraft[cm.id]" round size="small"
@@ -315,6 +346,9 @@ async function delCmt(cm) {
         <p v-if="hint" class="sub" style="color: var(--low); font-weight: 700">{{ hint }}</p>
       </article>
     </template>
+
+    <!-- 举报弹窗（帖子/评论共用一个实例） -->
+    <ReportDialog v-model:show="reportShow" :target="reportTarget" />
   </div>
 </template>
 

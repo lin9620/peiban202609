@@ -1231,6 +1231,11 @@ html[data-theme="night"] .dish-feed { color: #dce4ff; background: rgba(120, 136,
   background: linear-gradient(135deg, #ffb877, #ff9257);
   box-shadow: 0 4px 12px rgba(255, 146, 87, .35);
 }
+/* 轮 33：举报页签红点（有待处理举报/复核时提示管理员） */
+.admin-tab-dot {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--low); margin-left: 5px; vertical-align: middle;
+}
 
 .admin-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-bottom: 18px; }
 .admin-card { margin-bottom: 0; display: flex; flex-direction: column; gap: 3px; padding: 16px 18px; }

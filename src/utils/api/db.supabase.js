@@ -319,7 +319,30 @@ export const db = {
   /** 删除评论（二级回复靠 parent_id FK 级联；RLS 管理员 delete 策略兜底） */
   adminDeleteComment(id) {
     return unwrap(sb().from(T.comments).delete().eq("id", id));
-  },
+  },
+
+  /* ══════════ 举报 / 复核（轮 33；写路径全在 RPC，读靠 admin_report_page 聚合） ══════════ */
+
+  /** 提交举报（target_type: post|comment；防刷/去重/评论阈值在 RPC 里） */
+  reportCreate(targetType, targetId, reason, detail) {
+    return unwrap(sb().rpc("report_create", {
+      p_target_type: targetType, p_target_id: targetId, p_reason: reason, p_detail: detail,
+    }));
+  },
+
+  /** 举报/复核队列（status: pending|handled；items 带正文与聚合人数） */
+  adminReportPage(status, offset, limit) {
+    return unwrap(sb().rpc("admin_report_page", {
+      p_status: status, p_offset: offset, p_limit: limit,
+    }));
+  },
+
+  /** 处理一条举报/复核（action: dismiss|remove_post|restore_post|delete_comment|unhide_comment） */
+  adminReportHandle(reportId, action, note) {
+    return unwrap(sb().rpc("admin_report_handle", {
+      p_report: reportId, p_action: action, p_note: note,
+    }));
+  },
   /* ══════════ 私信（阶段 4：写路径全部走 RPC，表直写被 RLS 拒绝） ══════════ */
 
   /** 找或建与某用户的会话 → {conv_id} */

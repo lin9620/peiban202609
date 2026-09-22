@@ -29,6 +29,9 @@ import {
   recommendPosts, RECOMMEND_DAYS,
 } from "../utils/wallRules.js";
 import { isMobileNav } from "../stores/uiStore.js";
+/* 轮 33：举报弹窗 + 全站拉黑过滤（我拉黑的人，TA 的帖子/评论在我这里渲染前剔除） */
+import ReportDialog from "../components/ReportDialog.vue";
+import { filterBlocked, refreshBlocks } from "../utils/userBlocks.js";
 import {
   validateImageFile, isSaneShape, isUsableDataUrl, shrinkToDataUrl,
 } from "../utils/imaging.js";
@@ -87,6 +90,7 @@ onMounted(() => {
   posts.value = scopeGet(POSTS_KEY, []) || [];
   myReacts.value = scopeGet(REACTS_KEY, {}) || {};
   if (cloud.ready) loadCloud();
+  refreshBlocks();   /* 轮 33：拉黑名单就绪（快照先撑着，云端校准） */
 });
 /* 云端就绪晚于挂载（异步探测）→ 就绪后补拉一次；未登录也拉（RLS 匿名只读） */
 watch(() => cloud.ready, (v) => {
@@ -95,14 +99,18 @@ watch(() => cloud.ready, (v) => {
 /* 会话从无到有（登录完成）→ 用本人身份重拉一次：帖子的 mine（我点过谁）才准确，
    否则「我点过的抱抱」显示成没点，再点一次会把旧的取消掉（用户实测「取消不了」的根因）。 */
 watch(() => cloud.user && cloud.user.id, (uid) => {
-  if (cloud.ready && uid && cloudPosts.value.length) loadCloud();
+  if (cloud.ready && uid) {
+    refreshBlocks();   /* 轮 33：登录后同步我的拉黑名单（过滤靠它） */
+    if (cloudPosts.value.length) loadCloud();
+  }
 });
 
 async function loadCloud() {
   loadingCloud.value = true;
   /* 本地优先（SWR）：缓存「帖 + 每帖评论数」整包 → 二次进页不闪「载入中」，评论数也是真的 */
   const consume = (box) => {
-    cloudPosts.value = box.rows;
+    /* 轮 33：全站拉黑 —— 我拉黑的人的帖子在渲染前剔除（对方不知情） */
+    cloudPosts.value = filterBlocked(box.rows);
     /* 传响应式数组（cloudPosts.value）而不是 rows：浏览数要靠「写代理」才会即时刷新到界面，
        直接改原始对象（raw）不会触发 Vue 的更新 */
     countViews(cloudPosts.value);
@@ -175,6 +183,24 @@ async function countViews(list) {
     if (r.removed) p.removed = true;   /* 已被下架：前台不再展示 */
   }
 }
+
+/* ═════════ 举报（轮 33）：帖子/评论入口 → ReportDialog（防刷/去重/评论阈值在服务端） ═════════ */
+const reportShow = ref(false);
+const reportTarget = ref(null);
+function openReportPost(p) {
+  if (!p || p.dbId == null) return;
+  reportTarget.value = { type: "post", id: p.dbId, label: p.text || p.en || "" };
+  reportShow.value = true;
+}
+function openReportCmt(cm) {
+  /* 云端评论的数字主键在 dbId（id 是带 c 前缀的本地渲染键） */
+  if (!cm || !cm.cloud || cm.dbId == null) return;
+  reportTarget.value = { type: "comment", id: cm.dbId, label: cm.text || "" };
+  reportShow.value = true;
+}
+/* 自己的东西不需要举报；游客不能举报（弹窗里也会再提示登录） */
+const canReportPost = (p) => !!(p && p.cloud && p.dbId != null && signedIn.value && p.userId && p.userId !== myUid.value);
+const canReportCmt = (cm) => !!(cm && cm.cloud && cm.dbId != null && signedIn.value && cm.userId && cm.userId !== myUid.value);
 
 /* ════════ 厌恶：#26 双档下架线由服务端假删除（浏览<100 时 >3 个；≥100 时 >0.5%） ═════════ */
 async function dislike(p) {
@@ -566,7 +592,7 @@ function loadThread(p, force = false) {
       cmtFetchedAt.value = { ...cmtFetchedAt.value, [k]: 0 };
       return;
     }
-    comments.value = { ...comments.value, [k]: rows };
+    comments.value = { ...comments.value, [k]: filterBlocked(rows) };
     cloudCmtTotal.value = { ...cloudCmtTotal.value, [k]: rows.length };
   });
 }
@@ -859,6 +885,9 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
           &#128078; {{ p.reacts.dislike || 0 }}
         </button>
         <span class="post-ratio-hint">{{ t("community.dislikeRule") }}</span>
+        <button
+          v-if="canReportPost(p)" class="cmt-act post-report"
+          @click="openReportPost(p)">{{ t("report.act") }}</button>
       </div>
 
       <div class="cmt-toggle" @click="toggleCmt(p)">
@@ -887,6 +916,9 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
           <div class="cmt-acts">
             <button class="cmt-act" @click="openReply(p, cm)">{{ t("comment.reply") }}</button>
             <button
+              v-if="canReportCmt(cm)" class="cmt-act"
+              @click="openReportCmt(cm)">{{ t("report.act") }}</button>
+            <button
               v-if="repliesN(p, cm)"
               class="cmt-act cmt-act-rep"
               @click="toggleReplies(p, cm)">
@@ -913,6 +945,9 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
                 <button class="cmt-act" @click="openReplyTo(p, cm, rp)">
                   {{ t("comment.reply") }}
                 </button>
+                <button
+                  v-if="canReportCmt(rp)" class="cmt-act"
+                  @click="openReportCmt(rp)">{{ t("report.act") }}</button>
               </div>
 
               <!-- 二级评论的回复框就地在它下面出现（用户反馈：以前甩到整块评论底部，像点了没反应） -->
@@ -1001,6 +1036,9 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
     <p v-if="shownPage.length && !hasMore" class="notice" style="text-align: center">
       {{ t("community.noMore") }}
     </p>
+
+    <!-- 举报弹窗（帖子/评论共用一个实例） -->
+    <ReportDialog v-model:show="reportShow" :target="reportTarget" />
   </div>
 </template>
 
