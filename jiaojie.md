@@ -917,6 +917,14 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
     ③ **启动页内容加厚**：slogan「一个温柔的角落」+ 三条特性胶囊（🐱 亲手照顾一只小宠物 / 🌊 把心事装进漂流瓶 / ❤️ 在暖心墙遇见温柔的人）+ 温柔话「你已经做得比想象中好了」，逐条浮现动画（sp-in staggered），prefers-reduced-motion 降动画保留。
     **验收**：bottle-test **60/0**（+2 断言：禁闭三属性/撒网即时弹+超时出口）+ splash-test **7/0**（+1 断言：加厚内容）+ 全量 **31 套 0 fail** + build 0 + 部署 + cap sync + APK 重打**已装机启动**（adb Success）。
 
+  - **轮 27/28 · 图标与 FAB（`404eae4`，APK 21:43 已发测试者）**：①App 启动图标换品牌款（橙渐变圆底 + 奶油白三趾爪印，5 密度 × 方/圆/自适应 15 张重生成）；②FAB 爪印 → 温柔 ＋ 号（弹层展开旋转 45° 成 ×）；③英文 tab "Warm Wall" → "Wall" 不再折行；④APK 位置 `apk\warm-paws-debug.apk` 交测试者。
+
+  - **轮 29 · 手机端传图失败真根因（2026-09-22，已部署 Version 9b1e7216）**：
+    **根因（logcat 实锤用户 21:58 在 /compose 的真实报错）**：supabase-js Storage 上传请求带 `cache-control` 头，Worker CORS 预检白名单没放行 → 预检失败 → `StorageUnknownError: Failed to fetch`。**网页同源不发预检所以一直正常、只有 App（origin https://localhost）挂**——「传图只有手机端坏」由此完全解释。
+    **取证过程（CDP 远程调试手机 WebView）**：先实测排除三项——/sb 代理 Storage 上传 200 通、直连 supabase 当时也通、4000×3000 大图 canvas 压缩 OK；再用 logcat grep CONSOLE 拿到用户真实报错，钉死预检白名单。
+    **修法**：`corsPreflight(request)` 改为**回显**客户端 `access-control-request-headers`（一劳永逸，客户端带任何新头都不会再被卡）+ 显式兜底名单补 `cache-control`。
+    **验证**：PC curl 线上预检回显 ✓；**CDP 在手机 App 内重放当时失败的上传 → 200 成功**（修的是服务端，**无需重打 APK**，用户手机直接重试即生效）。worker-test **195/0**（+2 守护：回显/兜底含 cache-control）+ 全量 **32 套 0 fail**。
+
 ## G. 开发任务拆解（动工路线图，逐批交付）
 
 ### 批 1 · 地基与合规（先行，无 UI 风险）

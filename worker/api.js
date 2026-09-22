@@ -54,16 +54,20 @@ const json = (data, status = 200, extra = {}) =>
   });
 const fail = (status, code) => json({ error: code }, status);
 
-function corsPreflight() {
+function corsPreflight(request) {
+  /* 轮 29：预检直接回显客户端申请的头（access-control-request-headers）——
+   * 显式白名单漏一个就全挂（轮 23 漏了 supabase storage 上传的 cache-control，
+   * 手机端暖心墙传图预检失败 → Failed to fetch；网页同源不预检所以一直正常）。
+   * 回显 + 显式兜底，以后客户端带任何新头都不会再被卡。 */
+  const asked = request && request.headers ? request.headers.get("access-control-request-headers") : "";
   return new Response(null, {
     status: 204,
     headers: {
       "access-control-allow-origin": "*",
       "access-control-allow-methods": "GET,POST,PUT,DELETE,PATCH,OPTIONS",
-      /* 轮 23：/sb 代理后 App（origin https://localhost）跨域预检要覆盖 supabase-js
-       * 的全部自定义头（x-client-info / x-supabase-api-version），缺一个预检就挂 */
       "access-control-allow-headers":
-        "authorization,content-type,apikey,x-upsert,x-client-info,x-supabase-api-version,x-application-name,range,prefer,accept-profile,content-profile",
+        asked ||
+        "authorization,content-type,apikey,x-upsert,cache-control,x-client-info,x-supabase-api-version,x-application-name,range,prefer,accept-profile,content-profile",
       "access-control-max-age": "86400",
     },
   });
@@ -432,7 +436,7 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    if (request.method === "OPTIONS") return corsPreflight();
+    if (request.method === "OPTIONS") return corsPreflight(request);
 
     /* ══════════ 轮 23：/sb/* 透明代理到 Supabase ══════════
      * 为什么：国内网络直连 *.supabase.co 间歇被 TLS 重置（手机 App logcat 实锤

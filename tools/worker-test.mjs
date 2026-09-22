@@ -78,6 +78,16 @@ async function hit(script, path, init) {
     ok("静态路径不出站", c.outbound.length === 0);
     const res3 = await worker.fetch(req("/api/posts", { method: "OPTIONS" }), makeEnv(), {});
     ok("CORS 预检 204 + 允许 authorization", res3.status === 204 && (res3.headers.get("access-control-allow-headers") || "").includes("authorization"));
+    const res3b = await worker.fetch(req("/sb/storage/v1/object/wall-images/u1/x.jpg", {
+      method: "OPTIONS",
+      headers: { "access-control-request-headers": "cache-control,content-type,authorization,x-upsert" },
+    }), makeEnv(), {});
+    ok("轮29 预检回显客户端申请的头（storage 的 cache-control 不再被卡）",
+      res3b.status === 204
+        && (res3b.headers.get("access-control-allow-headers") || "") === "cache-control,content-type,authorization,x-upsert");
+    const res3c = await worker.fetch(req("/api/posts", { method: "OPTIONS" }), makeEnv(), {});
+    ok("无申请头时回退显式白名单（含 cache-control）",
+      (res3c.headers.get("access-control-allow-headers") || "").includes("cache-control"));
     const res4 = await worker.fetch(req("/api/typo"), makeEnv(), {});
     ok("未知 api → 404 JSON", res4.status === 404);
     const res5 = await worker.fetch(req("/api/health"), {}, {});
