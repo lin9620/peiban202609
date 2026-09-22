@@ -465,6 +465,9 @@ ok("A48b nickLong 的 {n} 真会被替换（昵称上限提示不留占位符）
     && /cloudHandleAppRedirect[\s\S]{0,1600}finally \{[\s\S]{0,80}await closeAuthBrowser\(\)/.test(sbj));
   ok("A88 失败原因写进 cloud.appAuthErr（登录页可展示，不再静默）",
     sbj.includes("appAuthErr") && sbj.includes('cloud.appAuthErr = "no-token"'));
+  ok("A88b 冷启动从深链拉起时先等云端就绪（否则会在 sb 未建好时白丢令牌）",
+    sbj.includes("async function waitCloudReady(") && sbj.includes("await waitCloudReady()")
+    && /cloudHandleAppRedirect[\s\S]{0,400}waitCloudReady\(\)/.test(sbj));
 
   /* ③ App.vue 接线：appUrlOpen + 冷启动 getLaunchUrl */
   ok("A89 App.vue 监听 appUrlOpen 且冷启动用 getLaunchUrl（App 被杀掉后事件不会重放）",

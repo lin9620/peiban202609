@@ -205,9 +205,19 @@ export function parseAppAuthRedirect(rawUrl) {
   out.reason = pick("error_description") || pick("error_code") || out.error;
   return out;
 }
-/* App 从授权窗口回来：解析 scheme URL → 建会话（成功后 cloud.user 变化，登录页自动回跳） */
+/* App 从授权窗口回来：解析 scheme URL → 建会话（成功后 cloud.user 变化，登录页自动回跳）
+ * 冷启动时可能比 initCloud 先到（App 被系统杀掉后再从深链拉起）→ 先等云端就绪（最多 6s），
+ * 否则会在 sb 还没建好时白丢令牌（用户看到的就是「登完回来还是没登录」）。 */
+async function waitCloudReady(ms = 6000) {
+  const t0 = Date.now();
+  while (!sb && cloud.checking !== false && Date.now() - t0 < ms) {
+    await new Promise((r) => setTimeout(r, 120));
+  }
+  return !!sb;
+}
 export async function cloudHandleAppRedirect(rawUrl) {
-  if (!sb) return { ok: false, reason: "no-cloud" };
+  const ready = sb ? true : await waitCloudReady();
+  if (!ready) return { ok: false, reason: "no-cloud" };
   const p = parseAppAuthRedirect(rawUrl);
   cloud.appAuthErr = "";
   try {
