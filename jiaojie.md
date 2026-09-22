@@ -260,21 +260,21 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
 ---
 
-# 一、当前状态速览（2026-09-23 更新 · 轮 33）
+# 一、当前状态速览（2026-09-23 更新 · 轮 34）
 
 | 项 | 值 |
 |---|---|
 | 项目 | peiban（陪伴 / warm-paws），路径 `D:\05ruanjian\peiban` |
 | 技术栈 | Vue 3 + Vite + Naive UI；数据层双模式：直连 Supabase（`db.supabase.js`）/ Worker 网关（`db.gateway.js` + `worker/api.js`，**线上走网关**）；Cloudflare 部署 https://dale.de5.net；Supabase Postgres + RLS + security definer RPC |
-| 代码 | 轮 33 已提交（`a9e5b16`）；核心：**举报/审核/拉黑体系**——帖子+评论举报弹窗（`ReportDialog.vue`）+ 评论 ≥3 人举报自动隐藏 + 帖子厌恶下架进待复核队列 + 管理中心「举报」页签（待处理/已处理 + 红点 + 五动作处置 + 备注）+ 处理结果通知举报人（`event=report_handled` → `notif.reportDone`）+ 全站拉黑（复用 dm_blocks + `userBlocks.js` 前端过滤 + 主页拉黑按钮两步确认） |
-| 部署 | Version `2c918771` 已上线；`live-check` 14/14；线上 SHA16 `9d9dfc7e1cd32d69` 与本地 dist 一致 |
-| 数据库 | **`MIGRATION_reports.sql` 已就绪、待用户在 SQL Editor 执行**（执行前举报按钮会提示「功能还没开启」，其余零影响）；`MIGRATION_notifications_drop_dm.sql`（轮 13 #23）执行状态仍未确认 |
-| App | 轮 33 APK 已重打：SHA16 `9aa11fce669cdf13`（4.77MB，`apk\warm-paws-debug.apk`）；**装机待做**（手机未连 USB）；轮 32 APK（`d73e84248242747b`）被本轮覆盖，装机以最新包为准 |
-| 测试 | 离线 **33 套 ALL GREEN**（新增 report-test 58 项）+ undef 0 + build 0 |
+| 代码 | 轮 34 已提交（`6f95cec`）；核心：**拉黑收尾**——消息页拉黑/解除改走 userBlocks 包装（内容过滤缓存与私信名单同一份，解除后墙内容立即恢复显示）+ 进消息页同步名单 + 拉黑提示文案升级全站口径（私信 + 暖心墙）。轮 33 举报/审核体系已全部上线 |
+| 部署 | Version `62722c5d` 已上线；`live-check` 14/14；线上 SHA16 `f19813f10e2a8e61` 与本地 dist 一致 |
+| 数据库 | **`MIGRATION_reports.sql` 已就绪、仍未执行**（2026-09-23 探针实锤：report_create / admin_report_page 均报 PGRST202=函数不存在）；执行前举报按钮提示「功能还没开启」，其余零影响；`MIGRATION_notifications_drop_dm.sql`（轮 13 #23）也未确认 |
+| App | 轮 34 APK 已重打：SHA16 `ce86e7c3e60f557d`（4.77MB，`apk\warm-paws-debug.apk`）；**装机待做**（手机未连 USB） |
+| 测试 | 离线 **33 套 ALL GREEN**（report-test 扩到 60 项）+ undef 0 + build 0 |
 
 ## 二、现在在做什么
 
-- **当前任务**：轮 33（举报/审核/拉黑）**代码全部完成：已部署、已验证、APK 已重打**（F 区轮 33）。**待用户**：①**在 Supabase SQL Editor 整段执行 `MIGRATION_reports.sql`**（执行前举报按钮提示「功能还没开启」，其余零影响；执行后 report_create 从 PGRST202 变 401/权限类报错=生效实锤）②重连手机装机 + 真机验收（举报弹窗、管理端举报页签、拉黑后内容隐藏、轮 31/32 遗留项）。
+- **当前任务**：轮 34（拉黑收尾）**已完成：已部署、已验证、APK 已重打**（F 区轮 34）。**待用户**：①**在 Supabase SQL Editor 整段执行 `MIGRATION_reports.sql`**（探针实锤还没跑——report_create 报 PGRST202；执行后通知我，我做线上探针闭环）②重连手机装机 + 真机验收（举报弹窗、管理端举报页签、拉黑后内容隐藏、轮 31/32 遗留项）。
 - **待用户确认**：①`MIGRATION_reports.sql` 执行 ②`MIGRATION_notifications_drop_dm.sql`（轮 13 #23，仍未确认）。
 - **可选加码（等有量再做）**：图片搬 Cloudflare R2（出口永久免费，见「十、容量评估」方案 B）。
 
@@ -953,6 +953,12 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **前端**：`ReportDialog.vue`（原因六选一+补充说明+成功先示「已收到」再收起；PGRST202→「功能还没开启」按坑 #14 判 code）；CommunityView/PostDetailView 帖子卡与两级评论「举报」入口（自己的内容不显示）+ 拉黑内容过滤（consume/loadThread/loadComments 出口 filterBlocked）；`userBlocks.js`（复用 dm_blocks，按账号域快照 + 换域重置，blockUser/unblockUser 即时改缓存）；WallerView 拉黑按钮（两步确认 4s 复位 + 已拉黑态可撤销）；AdminView「举报」页签（待处理/已处理子档 + 页签红点 `reports_pending` + 处理后本地移除并同步扣红点 + 已处理档可查处理记录；评论条目给「看原帖」跳 /post/:id）；notifyRules `report_handled` 分支；i18n zh/en 各约 30 键。
      **验收**：report-test **58/0**（迁移/SETUP 同源 + Worker 白名单 + 双模式成对 + 错误码↔i18n + itemView 真跑 + userBlocks 过滤/换域真跑 + 四视图接线）+ 全量 **33 套 0 fail** + undef 0 + build 0 + 部署 live-check 14/14 + SHA `9d9dfc7e1cd32d69` 本地=线上 + APK 重打 `9aa11fce669cdf13`。**数据库行为（阈值/防刷）离线锁形 + 上线探针闭环，迁移未执行前功能不生效（优雅降级）**。
      **待用户**：执行 `MIGRATION_reports.sql` → 探针验证 → 真机走查（举报→待处理→处置→通知→已处理闭环 + 拉黑隐藏）。
+
+  - **轮 34 · 拉黑收尾（2026-09-23，已部署 Version `62722c5d`，提交 `6f95cec`）**：
+     **背景**：拉黑主体功能轮 33 已上线（复用 dm_blocks + userBlocks 前端过滤）；本轮补「消息页侧」的一致性——原来聊天页菜单拉黑与拉黑列表解除都直调 `dmApi.block/unblock`，**绕过了 userBlocks 的内容过滤缓存**：解除拉黑后，TA 的帖子/评论在暖心墙要等刷新页面才恢复显示。
+     **改动**：①MessagesView 两处拉黑调用点（聊天页菜单 `toggleBlock`、拉黑列表 `unblockOne`）改走 `userBlocks.blockUser/unblockUser`（RPC + 缓存 + 快照同步更新）②进消息页 onMounted 同步一次名单 ③拉黑列表提示文案升级全站口径：「被你拉黑的人无法给你发消息，TA 在暖心墙的帖子/评论也会对你隐藏。对方不会收到任何通知。」（zh/en 成对）。
+     **验收**：report-test **60/0**（+2：消息页不再直调 dmApi.block/unblock、文案双语全站口径）+ 全量 **33 套 0 fail** + undef 0 + build 0 + 部署 live-check 14/14 + SHA `f19813f10e2a8e61` 本地=线上 + APK `ce86e7c3e60f557d`（装机待做）。
+     **顺带探针**：确认 `MIGRATION_reports.sql` 尚未执行（report_create/admin_report_page 均 PGRST202，坑 #7 判据）。
 
 ## G. 开发任务拆解（动工路线图，逐批交付）
 
