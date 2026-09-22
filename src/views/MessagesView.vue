@@ -21,6 +21,9 @@ import {
   validateSend, sendErrKey, canRecall, relativeTime, rowView,
 } from "../utils/dmRules.js";
 import { badge, refreshBadge } from "../stores/badgeStore.js";
+/* 轮 34：拉黑已全站生效（私信拦截 + 暖心墙内容隐藏）——这里走 userBlocks 的包装，
+ * 让「拉黑名单」的内容过滤缓存与私信名单始终是同一份 */
+import { blockUser, unblockUser, refreshBlocks } from "../utils/userBlocks.js";
 import BottleRecords from "../components/BottleRecords.vue";
 import { isMobileNav, pushBack, popBack } from "../stores/uiStore.js";
 /* T7 消息 Tab 内分栏（私信 | 通知）：通知段直接复用 NotificationsView
@@ -104,7 +107,9 @@ async function loadBlocked() {
 async function unblockOne(b) {
   blockedBusy.value = b.user_id;
   try {
-    await dmApi.unblock(b.user_id);
+    /* 轮 34：走 userBlocks 包装 —— 私信名单与暖心墙内容过滤缓存同步更新，
+     * 解除后 TA 的帖子/评论在墙里立刻恢复显示，不用刷新页面 */
+    await unblockUser(b.user_id);
     blockedRows.value = blockedRows.value.filter((x) => x.user_id !== b.user_id);
     await loadConvsImplicit();   /* 解除后会话恢复可见 */
   } catch (e) { /* 静默，行保留 */ }
@@ -292,8 +297,9 @@ async function hideConv(c) {
 async function toggleBlock(c) {
   const blocked = (activeConv.value || meta.value || {}).blocked;
   try {
-    if (blocked) await dmApi.unblock(c.other_id);
-    else await dmApi.block(c.other_id);
+    /* 轮 34：拉黑=全站生效（私信 + 暖心墙内容过滤），缓存同步走 userBlocks */
+    if (blocked) await unblockUser(c.other_id);
+    else await blockUser(c.other_id);
   } catch (e) { /* 静默 */ }
   menuFor.value = "";
   await loadConvs();
@@ -337,6 +343,7 @@ function onVisible() {
 onMounted(async () => {
   pushBack(segBack);
   if (!signedIn.value) return;
+  refreshBlocks();   /* 轮 34：进消息页同步拉黑名单（内容过滤与私信名单同源） */
   await loadConvs();
   if (activeId.value) await openConv(activeId.value);
   timer = setInterval(tick, 5000);

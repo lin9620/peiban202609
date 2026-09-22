@@ -442,7 +442,8 @@ export const messages = {
       unblock: "Unblock",
       /* #19 已拉黑列表：集中查看 / 逐个解除 */
       blockedTitle: "Blocked users",
-      blockedHint: "They can't message you, and the chat disappears from your list. They are NOT notified.",
+      /* 轮 34：拉黑全站生效口径（私信 + 暖心墙内容过滤） */
+      blockedHint: "They can't message you, and their posts & comments on the wall are hidden from you too. They are NOT notified.",
       blockedEmpty: "No one is blocked.",
       blockedGo: "Unblock",
       someone: "Someone",
@@ -1131,7 +1132,7 @@ export const messages = {
       unblock: "解除拉黑",
       /* #19 已拉黑列表：集中查看 / 逐个解除 */
       blockedTitle: "已拉黑",
-      blockedHint: "被你拉黑的人无法给你发消息，会话会从你的列表消失。对方不会收到任何通知。",
+      blockedHint: "被你拉黑的人无法给你发消息，TA 在暖心墙的帖子/评论也会对你隐藏。对方不会收到任何通知。",
       blockedEmpty: "没有拉黑任何人。",
       blockedGo: "解除拉黑",
       someone: "这位伙伴",

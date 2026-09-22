@@ -151,6 +151,16 @@ ok("AdminView：举报页签（待处理/已处理）+ 红点 + 处理动作",
 ok("管理端待处理计数来自 admin_overview 的 reports_pending",
   has(admin, "ov.value && ov.value.reports_pending"));
 
+/* ───────── 8b) 消息页拉黑管理走 userBlocks（轮 34：名单与内容过滤同一份缓存） ───────── */
+const messages = read("src/views/MessagesView.vue");
+ok("MessagesView：拉黑/解除走 userBlocks 包装（不再直调 dmApi.block/unblock）",
+  has(messages, "blockUser(c.other_id)", "unblockUser(c.other_id)", "unblockUser(b.user_id)")
+  && !/dmApi\.(block|unblock)\(/.test(messages));
+ok("MessagesView：进页同步拉黑名单 + 拉黑提示升级为全站口径（文案在 i18n）",
+  has(messages, "refreshBlocks()")
+  && i18n.includes("TA 在暖心墙的帖子/评论也会对你隐藏")
+  && i18n.includes("their posts & comments on the wall are hidden from you"));
+
 /* ───────── 9) T7 场景真跑（userScope 换域 → userBlocks reload） ───────── */
 {
   const { setUserScope } = await import("../src/utils/userScope.js");
