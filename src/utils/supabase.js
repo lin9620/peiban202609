@@ -31,6 +31,24 @@ export const cloud = reactive({
 let sb = null; // supabase client 单例；未配置时保持 null
 let accessToken = ""; // 当前会话 JWT；网关模式下给 /api/* 请求附带 Authorization 用
 
+/* —— 轮 23：supabase-js 全部流量改走本域网关 /sb/*（Worker 透明代理） ——
+ * 为什么：国内网络直连 *.supabase.co 间歇被 TLS 重置（手机 App logcat 实锤
+ * SSL handshake failed → 全账号登录失败、请求 fail to fetch）。
+ * 网页同源直接打 /sb；App（origin https://localhost）需要绝对地址，
+ * 构建期由 VITE_API_BASE 注入（.env；两端同一份 dist，网页上同源绝对地址等价）。 */
+const envVite = (import.meta.env || {});   /* Node 单测里 import.meta.env 是 undefined → 兜底空对象 */
+const SB_URL = String(envVite.VITE_SUPABASE_URL || "").replace(/\/$/, "");
+const API_BASE = String(envVite.VITE_API_BASE || "").replace(/\/$/, "");
+const sbFetch = SB_URL
+  ? (input, init) => {
+      const u = typeof input === "string" ? input : (input && input.url) || String(input);
+      if (u.startsWith(SB_URL + "/")) {
+        return fetch((API_BASE || "") + "/sb" + u.slice(SB_URL.length), init);
+      }
+      return fetch(input, init);
+    }
+  : undefined;
+
 /* —— 配置探测：环境变量优先，其次站点根的 supabase.json —— */
 async function detectConfig() {
   const url = import.meta.env.VITE_SUPABASE_URL;
@@ -126,6 +144,8 @@ export async function initCloud() {
     if (!cfg) { cloud.ready = false; return cloud; }
     sb = createClient(cfg.url, cfg.key, {
       auth: { persistSession: true, autoRefreshToken: true },
+      /* 轮 23：所有请求经本域 /sb 代理（治「直连 supabase 被 TLS 重置 → 登录不上」） */
+      ...(sbFetch ? { global: { fetch: sbFetch } } : {}),
     });
     /* 网关模式：/api/* 请求带上当前用户 JWT（Worker 只透传，RLS 仍由数据库执行） */
     setAuthTokenProvider(() => accessToken);

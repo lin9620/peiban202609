@@ -29,6 +29,14 @@ const T = {
 /** 图片桶（帖子配图与宠物图共用；路径前缀 <uid>/ 由 storage 策略授权） */
 export const IMAGE_BUCKET = "wall-images";
 
+/* 轮 23：直连 *.supabase.co 在国内网络间歇被 TLS 重置 → 公开图片 URL 改走
+ * 本域 /sb 代理（<img> 不经过 supabase-js 的 fetch 拦截，必须在这里改写）。 */
+const envVite = (import.meta.env || {});   /* Node 单测里 import.meta.env 是 undefined → 兜底空对象 */
+const SB_URL = String(envVite.VITE_SUPABASE_URL || "").replace(/\/$/, "");
+const API_BASE = String(envVite.VITE_API_BASE || "").replace(/\/$/, "");
+const rewriteSbUrl = (u) =>
+  SB_URL && u.startsWith(SB_URL) ? (API_BASE || "") + "/sb" + u.slice(SB_URL.length) : u;
+
 /* ──────── 基础设施 ──────── */
 
 let injected = null; // 单测注入口（tools/api-contract-test.mjs）
@@ -452,7 +460,7 @@ export const db = {
     if (!c || !path) return "";
     try {
       const { data } = c.storage.from(IMAGE_BUCKET).getPublicUrl(path);
-      return (data && data.publicUrl) || "";
+      return data && data.publicUrl ? rewriteSbUrl(data.publicUrl) : "";
     } catch (e) {
       return "";
     }

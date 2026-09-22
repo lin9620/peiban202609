@@ -59,8 +59,11 @@ function corsPreflight() {
     status: 204,
     headers: {
       "access-control-allow-origin": "*",
-      "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS",
-      "access-control-allow-headers": "authorization,content-type,apikey,x-upsert",
+      "access-control-allow-methods": "GET,POST,PUT,DELETE,PATCH,OPTIONS",
+      /* 轮 23：/sb 代理后 App（origin https://localhost）跨域预检要覆盖 supabase-js
+       * 的全部自定义头（x-client-info / x-supabase-api-version），缺一个预检就挂 */
+      "access-control-allow-headers":
+        "authorization,content-type,apikey,x-upsert,x-client-info,x-supabase-api-version,x-application-name,range,prefer,accept-profile,content-profile",
       "access-control-max-age": "86400",
     },
   });
@@ -430,6 +433,33 @@ export default {
     const path = url.pathname;
 
     if (request.method === "OPTIONS") return corsPreflight();
+
+    /* ══════════ 轮 23：/sb/* 透明代理到 Supabase ══════════
+     * 为什么：国内网络直连 *.supabase.co 间歇被 TLS 重置（手机 App logcat 实锤
+     * SSL handshake failed / net_error -101 → 所有账号都登录不上、请求 fail to fetch）。
+     * supabase-js 的全部流量（auth / REST / Storage）统一改走本域 /sb/*，由 Worker
+     * 原样转发（路径 / query / 头 / body 全透传，响应流式回传）。
+     * 安全口径不变：apikey / Authorization 由客户端携带，RLS 仍在数据库执行。 */
+    if (path === "/sb" || path.startsWith("/sb/")) {
+      if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) return fail(503, "worker-not-configured");
+      const target = env.SUPABASE_URL.replace(/\/$/, "") + path.slice(3) + url.search;
+      const headers = new Headers(request.headers);
+      if (!headers.has("apikey")) headers.set("apikey", env.SUPABASE_ANON_KEY);
+      headers.delete("host");
+      let body = null;
+      if (request.method !== "GET" && request.method !== "HEAD") body = await request.arrayBuffer();
+      let resp;
+      try {
+        resp = await fetch(target, { method: request.method, headers, body, redirect: "manual" });
+      } catch (e) {
+        return fail(502, "upstream-unreachable");
+      }
+      const out = new Headers(resp.headers);
+      out.set("access-control-allow-origin", "*");
+      out.set("access-control-expose-headers", "*");
+      /* body 原样流式透传（不动 content-encoding/length，浏览器自己解压） */
+      return new Response(resp.body, { status: resp.status, headers: out });
+    }
 
     /* 非 /api/*：静态资源优先；**动态路由回退**（/u/:id 他人主页、/messages/:id 直链会话
      * 没有预渲染文件，assets 会给真 404）→ 404 时改发 SPA 壳（根 index.html，200），
