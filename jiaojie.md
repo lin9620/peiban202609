@@ -260,16 +260,16 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
 ---
 
-# 一、当前状态速览（2026-09-23 更新 · 轮 34）
+# 一、当前状态速览（2026-09-23 更新 · 轮 36）
 
 | 项 | 值 |
 |---|---|
 | 项目 | peiban（陪伴 / warm-paws），路径 `D:\05ruanjian\peiban` |
 | 技术栈 | Vue 3 + Vite + Naive UI；数据层双模式：直连 Supabase（`db.supabase.js`）/ Worker 网关（`db.gateway.js` + `worker/api.js`，**线上走网关**）；Cloudflare 部署 https://dale.de5.net；Supabase Postgres + RLS + security definer RPC |
-| 代码 | 轮 34 已提交（`6f95cec`）；核心：**拉黑收尾**——消息页拉黑/解除改走 userBlocks 包装（内容过滤缓存与私信名单同一份，解除后墙内容立即恢复显示）+ 进消息页同步名单 + 拉黑提示文案升级全站口径（私信 + 暖心墙）。轮 33 举报/审核体系已全部上线 |
+| 代码 | 轮 36 已提交（`bacb559`）；核心：**响应速度专项**——`cloud.ready` 提前到本地会话后（昵称网络请求摘出启动链，原卡 0.5~2s）、路由过渡 0.45s→0.26s、我的帖子首屏接 SWR 缓存。此前轮 33–35：举报/审核/拉黑体系 + UI 优化一轮 |
 | 部署 | Version `12b1547a` 已上线（轮 36 响应速度）；`live-check` 14/14；线上 SHA16 `7ce958d6a4e44c78` 与本地 dist 一致 |
-| 数据库 | **`MIGRATION_reports.sql` 已由用户执行（2026-09-23）**：三 RPC 匿名探针全 42501（存在无权，坑 #7 判据）；线上 e2e 6/6（真实举报落库/重复幂等/target-gone 拒绝/RLS 自查/删帖留存）；管理端待处理队列留 1 条测试举报等用户点「驳回」完成管理端闭环。`MIGRATION_notifications_drop_dm.sql`（轮 13 #23）仍未确认 |
-| App | 轮 34 APK 已重打：SHA16 `ce86e7c3e60f557d`（4.77MB，`apk\warm-paws-debug.apk`）；**装机待做**（手机未连 USB） |
+| 数据库 | `MIGRATION_reports.sql` 已执行（线上 e2e 6/6 闭环）；`MIGRATION_notifications_drop_dm.sql`（轮 13 #23）仍未确认 |
+| App | **轮 36 APK 已装机并启动冒烟通过（2026-09-23，adb Success，无崩溃）**：SHA16 `3e1e62db9a14a490` |
 | 测试 | 离线 **33 套 ALL GREEN**（report-test 61 项）+ **page-smoke 8/8** + undef 0 + build 0 |
 
 ## 二、现在在做什么
