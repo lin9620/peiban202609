@@ -203,11 +203,44 @@ export async function cloudSignUp(email, password, nickname) {
   }
 }
 
+const LOCK_MAX = 5;            /* 连续错 5 次 */
+const LOCK_MS = 12 * 60 * 60 * 1000; /* 锁 12 小时 */
+
+/* 登录失败锁（轮 30，网页/App 共用本函数 → 两端同口径）：
+ * 连续密码错误 5 次 → 该邮箱在本设备锁 12 小时，期间不再打登录接口。
+ * 记账存本机 localStorage（按邮箱分开计数），登录成功即清零。 */
+const LOCK_BASE = "wp-login-guard:v1:";
+function lockLoad(email) {
+  try {
+    const r = JSON.parse(getItem(LOCK_BASE + (email || "").toLowerCase()));
+    return r && typeof r === "object" ? r : null;
+  } catch (e) { return null; }
+}
+function lockSave(email, rec) {
+  try { setItem(LOCK_BASE + (email || "").toLowerCase(), JSON.stringify(rec)); } catch (e) { /* 忽略 */ }
+}
+
 export async function cloudSignIn(email, password) {
   if (!sb) return { ok: false, reason: "no-cloud" };
+  const mail = String(email || "").trim().toLowerCase();
+  const rec = lockLoad(mail);
+  const now = Date.now();
+  /* 锁定中：直接拒，不打接口（剩余小时数给文案用） */
+  if (rec && rec.until && now < rec.until) {
+    return { ok: false, reason: "locked", until: rec.until, hours: Math.max(1, Math.ceil((rec.until - now) / 3600000)) };
+  }
   try {
     const { data, error } = await sb.auth.signInWithPassword({ email, password });
-    if (error) return { ok: false, reason: error.message };
+    if (error) {
+      /* 密码错误才计数（网络错/接口挂不往用户身上记） */
+      if (/invalid login credentials|invalid credentials|password/i.test(error.message || "")) {
+        const n = (rec && rec.until && now >= rec.until ? 0 : (rec && rec.n) || 0) + 1;
+        if (n >= LOCK_MAX) lockSave(mail, { n: 0, until: now + LOCK_MS });
+        else lockSave(mail, { n, until: 0 });
+      }
+      return { ok: false, reason: error.message };
+    }
+    lockSave(mail, { n: 0, until: 0 });   /* 成功清零 */
     await refreshSession(data ? data.session : null);
     return { ok: true };
   } catch (e) {

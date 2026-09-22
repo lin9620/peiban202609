@@ -85,7 +85,10 @@ async function doAuth() {
   authBusy.value = false;
   if (!r.ok) {
     authOk.value = false;
-    authMsg.value = t("profile.authFail", { r: r.reason || "unknown" });
+    /* 轮 30：连续错 5 次锁 12 小时——专属文案（剩余小时数），不再透传原始错误 */
+    authMsg.value = r.reason === "locked"
+      ? t("profile.lockedOut", { h: r.hours || 12 })
+      : t("profile.authFail", { r: r.reason || "unknown" });
     return;
   }
   if (r.needVerify) {

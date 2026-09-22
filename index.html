@@ -23,6 +23,12 @@
    *  1) vite:preloadError（chunk 404 等）→ 自动整页重载一次（sessionStorage 防循环）；
    *  2) 6 秒后仍未挂载成功 → 把英文占位换成中文提示 + 重试按钮，不再显示英文。 */
   (function () {
+    /* 轮 30：启动页只在 App 里显示（UA 带 Capacitor）——网页端 display:none 保持隐藏 */
+    try {
+      if (/capacitor/i.test(navigator.userAgent || "")) {
+        document.documentElement.classList.add("cap-app");
+      }
+    } catch (e) { /* 拿不到 UA 就当网页 */ }
     var FLAG = "wp-boot-reload";
     try {
       window.addEventListener("vite:preloadError", function () {
@@ -101,9 +107,17 @@
        启动看门狗触发时会先摘掉它再放中文提示，避免提示被挡。 -->
   <div id="app-splash" aria-hidden="true">
     <style>
+      /* 轮 30：启动页只给 App 用（WebView 的 UA 带 Capacitor）——网页端直接 display:none，
+       * 不闪启动页；App 端由 App.vue 在云端就绪后淡出。 */
+      @media all { #app-splash { display: none; } }
+    </style>
       #app-splash { position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column;
         align-items: center; justify-content: center; gap: 10px; background: #fff7ee;
         transition: opacity .4s ease; padding: 24px; text-align: center; }
+      /* 轮 30：App（UA 含 Capacitor）覆盖 display:none 恢复启动页；网页保持隐藏 */
+      @supports (background: #fff7ee) {
+        html.cap-app #app-splash { display: flex; }
+      }
       #app-splash.out { opacity: 0; pointer-events: none; }
       #app-splash .sp-paw { font-size: 56px; animation: sp-breathe 1.6s ease-in-out infinite; }
       #app-splash .sp-name { font-size: 22px; font-weight: 800; color: #6b4a32; }

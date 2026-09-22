@@ -336,6 +336,9 @@ ok("A48b nickLong 的 {n} 真会被替换（昵称上限提示不留占位符）
   ok("A50 邮箱用户先用旧密码重登验证（signInWithPassword；失败=old-password-wrong）",
     sb.includes('signInWithPassword({ email: cloud.user.email || "", password: String(oldPw) })')
       && sb.includes('return { ok: false, reason: "old-password-wrong" }'));
+  ok("A52 轮30 登录失败锁：连错5次锁12小时（cloudSignIn 内记账 + 锁定期直接拒 + 成功清零）",
+    sb.includes("const LOCK_MAX = 5;") && sb.includes("const LOCK_MS = 12 * 60 * 60 * 1000;")
+      && sb.includes('reason: "locked"') && sb.includes("LOCK_BASE"));
   ok("A51 谷歌用户跳过旧密码直接设新密码（provider 判定）",
     sb.includes('provider === "google"'));
   ok("A52 设置页有密码区（旧/新/确认 + isGoogle 分支 + 保存按钮）",

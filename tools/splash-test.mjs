@@ -31,6 +31,10 @@ ok("轮 26：启动页内容加厚（slogan+三条特性+温柔话，逐条浮�
   has(html, "sp-feats", "sp-quote", "一个温柔的角落", "漂流瓶", "暖心墙",
     "你已经做得比想象中好了", "sp-in", "animation-delay"));
 
+ok("轮 30：启动页只给 App（UA 含 Capacitor → html.cap-app 恢复显示；网页默认 display:none）",
+  has(html, "cap-app", "capacitor", "#app-splash { display: none; }")
+    && html.indexOf("capacitor/i.test(navigator.userAgent") < html.indexOf('id="app-splash"'));
+
 console.log(`splash-test: ${pass} pass, ${fails.length} fail`);
 for (const f of fails) console.log("FAIL  " + f);
 if (fails.length) process.exit(1);
