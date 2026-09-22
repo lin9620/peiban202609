@@ -903,6 +903,14 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
     **APK**：SHA16 `33f42a2a5d66d71e` 已打包（`apk\warm-paws-debug.apk` + 桌面备份）；装机因手机断连**待做**。
     **待用户**：①重连手机→我装机 ②真机验收四条（我的页帖子进详情页/退出登录不再见重置卡/浏览器强刷后次数一致/手机重测空捞不扣） ③口径确认（捞到即扣 vs 回复才扣，回复才扣需再跑一次迁移）。
 
+  - **轮 21–25 · 漂流瓶口径重构 + App 登录链路 + 启动页（2026-09-22，最新部署 Version 877c016f）**：
+    - **轮 21（`235c71b`）**：①**次数口径改为「回信才扣」**（用户拍板）——迁移 `MIGRATION_bottle_reply_quota.sql`：捞信不记账、`bottle_reply` 成功那一刻盖章计次、quota 只数「今日已回信」；顺带修「跨天捞→放→捞一次回信扣 N 次」（只盖最新一行）与「囤 ≥7 封未回拦截新捞」（`bottle-stock-full` 专属文案）；SUPABASE_SETUP.sql 三函数同步。②**退出→登录又见重置卡真根因**：ProfileView `@click="goSignIn"`（无括号）把 MouseEvent 当 `withForgot` 传参 → 跳 `/login?forgot=1`——修 `goSignIn(false)` + 函数内 `=== true` 双保险。
+    - **轮 22（`315f257`）**：捞信结果一律**居中弹窗**（捞到=弹窗展示全文+就地回信/放回；没捞到/限额/囤满=弹窗说清原因），「点捞没动静」不再存在。
+    - **轮 23（`8057127`）**：**手机端全挂 fail-to-fetch 根因**=国内网络对 supabase.co 的 TLS 重置（logcat `net_error -101` 实锤）。治本：Worker 新增 `/sb/*` 透明代理（auth/REST/Storage 全透传，带 apikey/JWT，CORS 预检补齐 supabase-js 自定义头）+ 前端 `sbFetch` 重写与图片 URL 改写——网页/App 统一走 `dale.de5.net/sb`，线上实测注册/登录真返回 token。
+    - **轮 24（`f02c039`/`c1a94fd`）**：**启动页**（index.html 静态层盖白屏窗口；云端就绪+会话列表缓存预热后淡出，2.5s 兜底放行；看门狗触发先摘启动页）+ **黑边第一层**（capacitor `android.backgroundColor` + `html` 兜底底色）。
+    - **轮 25（本次）**：①弹窗「先收着，稍后回」**按用户要求移除**（捞到当场回信或放回，popKeep 键双语清干净，bottle-test 加不许回归守护）；②记录卡补齐押信按钮（轮 24c：「我捞到的」里 held 信**卡上直接回信/放回**，回复框卡内展开，`bottle.replySend` 双语键补齐）；③**黑边原生层根因**：styles.xml `AppTheme.NoActionBar` 的 `android:background=@null`（窗口底渲染成黑）→ `android:windowBackground=#FFF7EE`。
+    **验收**：bottle-test **59/0**（新增「弹窗只有回信/放回」不许回归断言）+ 全量 **31 套 0 fail** + build 0 + 部署 Version `877c016f` + APK 重打（styles.xml 原生层改动，BUILD SUCCESSFUL 15s）。**待办**：手机断连未装机——重连后 `adb install -r apk\warm-paws-debug.apk`。
+
 ## G. 开发任务拆解（动工路线图，逐批交付）
 
 ### 批 1 · 地基与合规（先行，无 UI 风险）

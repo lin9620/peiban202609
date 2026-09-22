@@ -12,7 +12,9 @@
     <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
-        <item name="android:background">@null</item>
+        <!-- 轮 25：窗口底色改米色——WebView 没铺满的缝隙（右侧黑边）露的是原生窗口底，
+             @null 时渲染成黑；与 capacitor android.backgroundColor / html 背景三重保险 -->
+        <item name="android:windowBackground">#FFF7EE</item>
     </style>
 
 

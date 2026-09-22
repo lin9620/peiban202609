@@ -232,11 +232,13 @@ ok("BottleView：捞信结果走居中弹窗（NModal；捞到=got 模式，空�
 ok("BottleView：弹窗里回信/放回海里直接可用（doReply/doRelease 绑在弹窗按钮上，成功自动关弹窗）",
   has(bottleView, '@click="doRelease(fishPop.letter)"')
     && has(bottleView, '@click="doReply(fishPop.letter)"')
-    && has(bottleView, 't("bottle.popKeep")')
     && (bottleView.match(/fishPop\.value\.show = false/g) || []).length >= 2
     && has(bottleView, '@click="fishPop.show = false"'));
-ok("i18n：弹窗文案双语齐（gotTitle/popNotice/popKeep）",
-  ["gotTitle", "popNotice", "popKeep"].every((k) => k in messages.en.bottle && k in messages.zh.bottle));
+ok("BottleView：弹窗只有「回信/放回」两个决定（popKeep「先收着稍后回」按用户要求移除，不许回归）",
+  !has(bottleView, "popKeep"));
+ok("i18n：弹窗文案双语齐（gotTitle/popNotice），popKeep 键已清",
+  ["gotTitle", "popNotice"].every((k) => k in messages.en.bottle && k in messages.zh.bottle)
+    && !("popKeep" in messages.en.bottle) && !("popKeep" in messages.zh.bottle));
 
 
 

@@ -38,7 +38,8 @@ function mergePending() {
   pending.value = [...map.values()];
 }
 
-/* 轮 22：捞信结果一律居中弹窗——捞到（就地回信/放回/先收着）、没捞到、限额，全部有明确反馈 */
+/* 轮 22/25：捞信结果一律居中弹窗——捞到（就地回信/放回）、没捞到、限额，全部有明确反馈；
+ * 「先收着，稍后回」按用户要求移除（捞到就当场回信或放回，不许囤） */
 const fishPop = ref({ show: false, mode: "msg", letter: null, msg: "" });
 
 /* 每日次数：本地账本只做乐观显示，服务端 bottle_quota() 才是权威（轮 18 修
@@ -160,6 +161,13 @@ async function doFish() {
 /* 回信/放回按信独立操作：待处理信箱可同时有多封，互不阻塞 */
 const replyDrafts = ref({});
 const busyId = ref("");
+/* 轮 24c：记录卡上「回信」→ 卡内展开输入框（replyOpen = 该信 id） */
+const replyOpen = ref("");
+function openReply(l) {
+  if (!l) return;
+  fishPop.value.show = false;
+  replyOpen.value = replyOpen.value === l.id ? "" : l.id;
+}
 async function doReply(l) {
   const body = String(replyDrafts.value[l.id] || "").trim();
   if (!l || !body || busyId.value) return;
@@ -169,6 +177,7 @@ async function doReply(l) {
     await bottleReply(l.id, body);
     replyDrafts.value = { ...replyDrafts.value, [l.id]: "" };
     fished.value = null;
+    replyOpen.value = "";
     held.value = held.value.filter((x) => x.id !== l.id);
     bumpQuota("fished");        /* 轮 21：回信成功才记一次（服务端 bottle_reply 同口径） */
     mergePending();
@@ -349,6 +358,30 @@ async function decideRec(l, accept) {
             <span class="m-when">{{ whenRec(recTab === "mine" ? l.created_at : (l.held_at || l.created_at)) }}</span>
             <span class="m-state">{{ t(recState(l)) }}</span>
           </div>
+          <!-- 轮 24c：押在手里的信，操作按钮直接放在记录卡上（此前只在顶部托盘/弹窗里，用户找不到） -->
+          <div v-if="recTab === 'held' && l.status === 'held'" class="mail-send" @click.stop>
+            <n-button type="primary" size="small" round
+              :disabled="busyId === l.id"
+              @click="openReply(l)">
+              {{ t("bottle.reply") }}
+            </n-button>
+            <n-button quaternary size="small" round
+              :disabled="busyId === l.id"
+              @click="doRelease(l)">
+              {{ t("bottle.release") }}
+            </n-button>
+          </div>
+          <div v-if="replyOpen === l.id && recTab === 'held' && l.status === 'held'" class="mail-send" style="flex-direction: column; align-items: stretch; gap: 6px" @click.stop>
+            <n-input
+              v-model:value="replyDrafts[l.id]"
+              type="textarea" :rows="3" :maxlength="BOTTLE_BODY_MAX"
+              :placeholder="t('bottle.replyPlaceholder')" />
+            <n-button type="primary" size="small" round
+              :disabled="busyId === l.id || !String(replyDrafts[l.id] || '').trim()"
+              @click="doReply(l)">
+              {{ t("bottle.replySend") }}
+            </n-button>
+          </div>
           <div v-if="l.reply" class="m-a">
             <span class="m-who">{{ t("bottle.replyFrom") }}</span>
             <span class="m-body">{{ l.reply }}</span>
@@ -378,7 +411,7 @@ async function decideRec(l, accept) {
     </template>
     <p v-else class="notice">{{ t("bottle.signInHint") }}</p>
 
-    <!-- 轮 22：捞信结果居中弹窗（手机端核心反馈）——捞到可就地回信 / 放回海里 / 先收着 -->
+    <!-- 轮 22：捞信结果居中弹窗（手机端核心反馈）——捞到可就地回信 / 放回海里（「先收着」已按用户要求移除） -->
     <n-modal v-model:show="fishPop.show" preset="card" style="max-width: 88vw"
       :title="fishPop.mode === 'got' ? t('bottle.gotTitle') : t('bottle.popNotice')">
       <template v-if="fishPop.mode === 'got' && fishPop.letter">
@@ -396,9 +429,6 @@ async function decideRec(l, accept) {
           </n-button>
           <n-button quaternary round :disabled="busyId === fishPop.letter.id" @click="doRelease(fishPop.letter)">
             {{ t("bottle.release") }}
-          </n-button>
-          <n-button quaternary round @click="fishPop.show = false">
-            {{ t("bottle.popKeep") }}
           </n-button>
         </div>
       </template>
