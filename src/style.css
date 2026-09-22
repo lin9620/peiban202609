@@ -498,7 +498,11 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 
 @media (max-width: 560px) {
   .pet-stats { grid-template-columns: 1fr; }
-  .mood-cal { grid-template-columns: repeat(6, 1fr); }
+  /* 轮 35：手机端改 10 列小格（6 列大方格空态占屏太多），像真正的日历热力图 */
+  .mood-cal { grid-template-columns: repeat(10, 1fr); gap: 4px; }
+  .mood-cell { border-radius: 7px; font-size: 11px; }
+  /* 轮 35：排序行的「排序/时间」前缀标签在手机上藏掉（占位不传信息） */
+  .sort-label { display: none; }
   .pet-actions { grid-template-columns: repeat(2, 1fr); }
   .act.wide { grid-column: span 2; }
 }
@@ -593,6 +597,10 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 }
 .hall-pill-status { color: var(--ink); }
 .hall-ago { font-size: 11px; color: var(--ink-faint); }
+/* 轮 35：手机端大厅人数胶囊更紧凑（须放在 .hall-pill 定义之后，同特异性按顺序覆盖） */
+@media (max-width: 560px) {
+  .hall-pill { padding: 4px 10px; font-size: 12px; }
+}
 /* 手机端 8：大厅人数胶囊可点（点了 = 把自己也设成同款状态） */
 .hall-pill--tap { appearance: none; font: inherit; cursor: pointer; transition: all .15s ease; }
 .hall-pill--tap:active { transform: scale(.95); }

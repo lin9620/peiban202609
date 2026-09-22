@@ -162,11 +162,11 @@ const seasonName = computed(() => season.name[i18n.locale] || season.name.en);
       </div>
       <p class="hall-line">{{ t("home.companions.hall") }}</p>
       <div class="chip-row">
+        <!-- 轮 35：改 secondary（有底色）——原来 quaternary 近乎纯文本，看不出能点 -->
         <n-button
           v-for="k in STATUS_KEYS" :key="k"
-          round size="small"
+          round size="small" secondary
           :type="myStatus === k ? 'primary' : 'default'"
-          :quaternary="myStatus !== k"
           :disabled="statusBusy"
           @click="setStatus(k)">
           {{ t("home.companions." + k) }}
@@ -209,10 +209,11 @@ const seasonName = computed(() => season.name[i18n.locale] || season.name.en);
       </div>
       <p class="sub">{{ t("home.mood.subtitle") }}</p>
       <div class="chip-row">
+        <!-- 轮 35：改 secondary（有底色）；打卡完成后整排变淡并禁用 -->
         <n-button
           v-for="(m, i) in t('home.mood.options')" :key="i"
           round size="medium" :disabled="checkedToday"
-          :quaternary="!checkedToday"
+          :secondary="!checkedToday"
           @click="moodPick(i)">
           {{ m }}
         </n-button>

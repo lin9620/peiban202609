@@ -767,11 +767,11 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
   <!-- 轮 18：原生下拉刷新（顶部下拉 → 松手重拉；此前函数未绑定，用户看到「完全没做」） -->
   <div @touchstart.passive="ts" @touchmove.passive="tm" @touchend.passive="te">
     <div class="wall-pull" :style="{ height: pullDist + 'px', opacity: pullDist / 62 }">↓</div>
-    <!-- 头部 + 发布框（手机端收起：发布统一走底部 ＋ → 独立发布页，页顶不再占一屏） -->
+    <!-- 头部 + 发布框（手机端收起：发布统一走底部 ＋ → 独立发布页，页顶不再占一屏）
+         轮 35：去掉与 h2 重复的小标签；副标题只在桌面显示（手机端两行文案太占首屏） -->
     <section class="card">
-      <span class="sec-label">{{ t("nav.community") }}</span>
       <h2 style="margin-bottom: 4px">{{ t("community.title") }}</h2>
-      <p class="sub">{{ t("community.subtitle") }}</p>
+      <p v-if="!isMobileNav" class="sub">{{ t("community.subtitle") }}</p>
 
       <div v-if="!isMobileNav" class="composer">
         <n-input

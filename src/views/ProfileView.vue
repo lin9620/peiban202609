@@ -445,7 +445,9 @@ const brightRatio = computed(() => {
 </template>
 
 <style scoped>
-.my-posts-link { text-decoration: none; }
+/* 轮 35：入口链接统一主题色（此前无 color，落到浏览器默认蓝紫，跳出暖色调） */
+.my-posts-link { text-decoration: none; color: var(--accent-deep); font-weight: 700; }
+.my-posts-link:hover { color: var(--accent); }
 .my-posts { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
 .my-post {
   display: block; text-decoration: none; color: inherit;
