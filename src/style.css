@@ -20,7 +20,9 @@
   --good: #7fc86e; --warn: #f2b24a; --low: #ef7d6a;
 }
 
-html { scroll-behavior: smooth; }
+/* 轮 24：html 兜底底色——body 渐变之外任何渲染间隙/缝隙露底时，露米色而不是 WebView 黑底
+ * （手机实锤：html/body backgroundColor 全透明 → 右侧缝隙露出 WebView 黑底 = 「首页有黑色」） */
+html { scroll-behavior: smooth; background: #fff7ee; }
 
 body {
   font-family: "Quicksand", "LXGW WenKai", "PingFang SC", "Microsoft YaHei", sans-serif;

@@ -3,7 +3,8 @@
   "appName": "Warm Paws",
   "webDir": "dist",
   "android": {
-    "allowMixedContent": false
+    "allowMixedContent": false,
+    "backgroundColor": "#fff7ee"
   },
   "server": {
     "androidScheme": "https"
