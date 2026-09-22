@@ -29,6 +29,64 @@ const busy = ref(""); /* 正在操作的行 id（防连点） */
 const actionMsg = ref("");
 const router = useRouter(); /* #20 帖子行点入：跳到暖心墙原帖 */
 
+/* ═══ 举报/复核页签（轮 33）：待处理 / 已处理 两档；帖子厌恶下架复核也进待处理队列 ═══
+ * 位置硬约束：必须声明在下方 watch(signedIn, ..., { immediate: true }) 之前 ——
+ * immediate 回调在 setup 期间同步跑 load()，而 load() 会重置这里的 reports 状态；
+ * 曾因声明在 switchTab 之后踩过 TDZ（Cannot access before initialization），管理中心白屏。 */
+const REP_PAGE = 20;
+const repTab = ref("pending");     /* pending | handled */
+const reports = ref([]);
+const repLoaded = ref(false);
+const repLoadedFor = ref("");      /* 当前列表对应哪一档（切档重拉，防止两档串页） */
+const repOffset = ref(0);
+const repTotal = ref(0);
+const pendingReports = computed(() => (ov.value && ov.value.reports_pending) || 0);
+
+async function loadReports(offset = 0) {
+  try {
+    const r = await db.adminReportPage(repTab.value, offset, REP_PAGE);
+    if (!r || r.admin === false) { fail(new Error("admin=false")); return; }
+    reports.value = (r.items || []).map((x) => ({ ...x, _note: "" }));
+    repTotal.value = r.total || 0;
+    repOffset.value = offset;
+    repLoaded.value = true;
+    repLoadedFor.value = repTab.value;
+  } catch (e) {
+    fail(e);
+  }
+}
+function switchRepTab(name) {
+  if (repTab.value === name && repLoadedFor.value === name) return;
+  repTab.value = name;
+  loadReports(0);
+}
+async function handleReport(item, action) {
+  if (busy.value !== "") return;
+  busy.value = "rep" + item.id;
+  actionMsg.value = "";
+  try {
+    const r = await db.adminReportHandle(item.id, action, (item._note || "").trim());
+    if (!r || r.admin === false || r.ok === false) {
+      actionMsg.value = t("admin.fail", { r: (r && r.reason) || "" });
+    } else {
+      actionMsg.value = t("admin.reports.done");
+      if (repTab.value === "pending") {
+        /* 本地移除 + 红点计数同步扣减，不再整页重拉 */
+        reports.value = reports.value.filter((x) => x.id !== item.id);
+        repTotal.value = Math.max(0, repTotal.value - 1);
+        if (ov.value && typeof ov.value.reports_pending === "number") {
+          ov.value = { ...ov.value, reports_pending: Math.max(0, ov.value.reports_pending - 1) };
+        }
+      } else {
+        loadReports(repOffset.value);   /* 已处理档：重拉拿最新处理记录 */
+      }
+    }
+  } catch (e) {
+    fail(e);
+  }
+  busy.value = "";
+}
+
 const signedIn = computed(() => !!(cloud.ready && cloud.user));
 
 async function load() {
@@ -107,60 +165,6 @@ function switchTab(name) {
   if (name === "reports" && !repLoaded.value) loadReports(0);
 }
 
-/* ═══ 举报/复核页签（轮 33）：待处理 / 已处理 两档；帖子厌恶下架复核也进待处理队列 ═══ */
-const REP_PAGE = 20;
-const repTab = ref("pending");     /* pending | handled */
-const reports = ref([]);
-const repLoaded = ref(false);
-const repLoadedFor = ref("");      /* 当前列表对应哪一档（切档重拉，防止两档串页） */
-const repOffset = ref(0);
-const repTotal = ref(0);
-const pendingReports = computed(() => (ov.value && ov.value.reports_pending) || 0);
-
-async function loadReports(offset = 0) {
-  try {
-    const r = await db.adminReportPage(repTab.value, offset, REP_PAGE);
-    if (!r || r.admin === false) { fail(new Error("admin=false")); return; }
-    reports.value = (r.items || []).map((x) => ({ ...x, _note: "" }));
-    repTotal.value = r.total || 0;
-    repOffset.value = offset;
-    repLoaded.value = true;
-    repLoadedFor.value = repTab.value;
-  } catch (e) {
-    fail(e);
-  }
-}
-function switchRepTab(name) {
-  if (repTab.value === name && repLoadedFor.value === name) return;
-  repTab.value = name;
-  loadReports(0);
-}
-async function handleReport(item, action) {
-  if (busy.value !== "") return;
-  busy.value = "rep" + item.id;
-  actionMsg.value = "";
-  try {
-    const r = await db.adminReportHandle(item.id, action, (item._note || "").trim());
-    if (!r || r.admin === false || r.ok === false) {
-      actionMsg.value = t("admin.fail", { r: (r && r.reason) || "" });
-    } else {
-      actionMsg.value = t("admin.reports.done");
-      if (repTab.value === "pending") {
-        /* 本地移除 + 红点计数同步扣减，不再整页重拉 */
-        reports.value = reports.value.filter((x) => x.id !== item.id);
-        repTotal.value = Math.max(0, repTotal.value - 1);
-        if (ov.value && typeof ov.value.reports_pending === "number") {
-          ov.value = { ...ov.value, reports_pending: Math.max(0, ov.value.reports_pending - 1) };
-        }
-      } else {
-        loadReports(repOffset.value);   /* 已处理档：重拉拿最新处理记录 */
-      }
-    }
-  } catch (e) {
-    fail(e);
-  }
-  busy.value = "";
-}
 
 /* —— 全员公告：走 db.adminBroadcast（RPC 内再查一次 is_admin，前端只是壳） —— */
 const announce = ref("");
