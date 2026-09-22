@@ -267,10 +267,10 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 | 项目 | peiban（陪伴 / warm-paws），路径 `D:\05ruanjian\peiban` |
 | 技术栈 | Vue 3 + Vite + Naive UI；数据层双模式：直连 Supabase（`db.supabase.js`）/ Worker 网关（`db.gateway.js` + `worker/api.js`，**线上走网关**）；Cloudflare 部署 https://dale.de5.net；Supabase Postgres + RLS + security definer RPC |
 | 代码 | 轮 34 已提交（`6f95cec`）；核心：**拉黑收尾**——消息页拉黑/解除改走 userBlocks 包装（内容过滤缓存与私信名单同一份，解除后墙内容立即恢复显示）+ 进消息页同步名单 + 拉黑提示文案升级全站口径（私信 + 暖心墙）。轮 33 举报/审核体系已全部上线 |
-| 部署 | Version `62722c5d` 已上线；`live-check` 14/14；线上 SHA16 `f19813f10e2a8e61` 与本地 dist 一致 |
+| 部署 | Version `da1d2b4b` 已上线（轮 34b 修 AdminView TDZ）；`live-check` 14/14；线上 SHA16 `e32eb8db823af0ee` 与本地 dist 一致 |
 | 数据库 | **`MIGRATION_reports.sql` 已由用户执行（2026-09-23）**：三 RPC 匿名探针全 42501（存在无权，坑 #7 判据）；线上 e2e 6/6（真实举报落库/重复幂等/target-gone 拒绝/RLS 自查/删帖留存）；管理端待处理队列留 1 条测试举报等用户点「驳回」完成管理端闭环。`MIGRATION_notifications_drop_dm.sql`（轮 13 #23）仍未确认 |
 | App | 轮 34 APK 已重打：SHA16 `ce86e7c3e60f557d`（4.77MB，`apk\warm-paws-debug.apk`）；**装机待做**（手机未连 USB） |
-| 测试 | 离线 **33 套 ALL GREEN**（report-test 扩到 60 项）+ undef 0 + build 0 |
+| 测试 | 离线 **33 套 ALL GREEN**（report-test 60 项）+ **page-smoke 8/8**（新增页面挂载冒烟）+ undef 0 + build 0 |
 
 ## 二、现在在做什么
 
@@ -525,6 +525,8 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 27. **Capacitor WebView 里 `<a download>` 完全无效**：安卓 WebView 没配 DownloadListener（grep `@capacitor/android` 全部 Java 零命中），网页端「下载卡片」在 App 里点了没有任何反应（用户报「生成分享图片功能没有用」）。**教训（强制）**：App 内凡「保存/下载/分享」类浏览器惯用手法都必须有原生兜底（本项目 = `WpSharePlugin`：cacheDir + FileProvider + ACTION_SEND 系统分享面板，MainActivity `registerPlugin` 注册，JS 侧 `registerPlugin("WpShare")` + `Capacitor.isNativePlatform()` 分层降级）；另外跨域图进 canvas 前必须 `img.crossOrigin="anonymous"`，否则 `toDataURL/toBlob` 直接抛 SecurityError。
 
 28. **同一个口径改了两处只记得一处（轮 32 真凶）**：轮 31 因 `@capacitor/browser` 懒块把 env-guard 的「所有 `index-*.js` 都必须含 slug」改成「只验 index.html 真正加载的入口」，但 `tools/build-until-good.mjs` 里**同一段判定逻辑还留着旧口径**（两处是复制粘贴的兄弟代码）→ 构建明明成功、guard 明明放行，保险脚本却恒报 BUILD_ALWAYS_BAD 重试 5 次失败。**教训（强制）**：修「误报口径」时要先全仓 grep 同类判定（`index-`、`slug`、`entry`），兄弟脚本一起改；判定逻辑尽量抽成单一实现（本次因一个在 vite.config 插件、一个在独立 node 脚本，暂以注释互相指向）。
+
+29. **「immediate watch 在 setup 期间同步执行」会把后面才声明的 const 变成 TDZ（轮 34b 真凶，/admin 白屏）**：轮 33 在 AdminView 里把举报页签的状态 const 声明放在 switchTab 之后，而文件更前面的 `watch(signedIn, …, { immediate: true })` 同步调 load() 重置这些状态 → `Cannot access before initialization`。构建、undef-check、33 套源码扫描测试**全都不执行组件代码**，所以全绿照样白屏。**教训（强制）**：①immediate watch / setup 期同步执行的代码路径，其引用的响应式状态必须声明在它**之前**（AdminView 举报块已加「位置硬约束」注释）；②新增 `tools/page-smoke.mjs`（8 条关键路由无头真实挂载 + 无崩溃盒断言）作为运行时防线，改 .vue 构建完必跑；③Git Bash 跑 web-probe/page-smoke 记得 `MSYS2_ARG_CONV_EXCL="--url"`（MSYS 会把 /admin 转成 Windows 路径）。
 
 ---
 
@@ -959,6 +961,10 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **改动**：①MessagesView 两处拉黑调用点（聊天页菜单 `toggleBlock`、拉黑列表 `unblockOne`）改走 `userBlocks.blockUser/unblockUser`（RPC + 缓存 + 快照同步更新）②进消息页 onMounted 同步一次名单 ③拉黑列表提示文案升级全站口径：「被你拉黑的人无法给你发消息，TA 在暖心墙的帖子/评论也会对你隐藏。对方不会收到任何通知。」（zh/en 成对）。
      **验收**：report-test **60/0**（+2：消息页不再直调 dmApi.block/unblock、文案双语全站口径）+ 全量 **33 套 0 fail** + undef 0 + build 0 + 部署 live-check 14/14 + SHA `f19813f10e2a8e61` 本地=线上 + APK `ce86e7c3e60f557d`（装机待做）。
      **顺带探针**：确认 `MIGRATION_reports.sql` 尚未执行（report_create/admin_report_page 均 PGRST202，坑 #7 判据）。
+
+  - **轮 34b · 修 AdminView 白屏（TDZ）+ 页面挂载冒烟上线（2026-09-23，部署 Version `da1d2b4b`，提交 `931324e`）**：
+     **用户实测 /admin 白屏**：Uncaught ReferenceError: Cannot access before initialization（AdminView setup 阶段）。**根因**：轮 33 把举报页签的状态声明（reports/repLoaded 等 const）放在了 switchTab 之后，而 `watch(signedIn, …, { immediate: true })` 在 setup 期间**同步**执行 load()，load() 里重置这些状态 → 暂时性死区（TDZ）。构建/undef-check 都不执行代码所以没拦住（踩坑 #9 家族）。**修法**：举报状态块整体移到 watch 之前（加「位置硬约束」注释）。**全仓排查**：其余 8 处 immediate watch 逐一核对，均安全（声明在前或回调短路不触达）。**新防线**：`tools/page-smoke.mjs`——8 条关键路由无头 Edge 真实挂载，断言「挂载成功 + 无崩溃盒」（App.vue onErrorCaptured 兜住的 .crash-box），TDZ/运行时崩溃类只有真挂载才抓得到；改 .vue 构建后必跑。**验收**：page-smoke **8/8**（含此前必崩的 /admin）+ 全量 33 套全绿 + undef 0 + 部署 live-check 14/14（首轮 FAILED=1 为部署后瞬时网络抖动，复测全绿）+ SHA `e32eb8db823af0ee` 本地=线上 + APK `5db36b38ca3b2939`。
+     **顺带踩坑**：Git Bash 下跑 web-probe/page-smoke 必须 `MSYS2_ARG_CONV_EXCL="--url"`，否则 `--url=/admin` 被 MSYS 路径转换改写成 `D:/…/Git/admin` → 导航失败（page-smoke 已内置处理）。
 
   - **轮 34 续 · 迁移执行 + 线上闭环（2026-09-23，用户执行迁移后当日）**：
      **探针（坑 #7 判据）**：report_create / admin_report_page / admin_report_handle 匿名全 **42501**（存在无权）= 迁移生效实锤；wall_toggle_dislike 42501（新版权限收紧在位）；admin_overview 匿名 admin=false 提前返回（reports_pending 仅管理员可见，符合设计）。
