@@ -1609,9 +1609,11 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
   border: 3px solid rgba(255, 255, 255, .85);
   transition: transform .22s cubic-bezier(.34, 1.56, .64, 1), box-shadow .2s ease;
 }
-.tab-compose.open .tab-compose-x { transform: rotate(135deg); }
+/* 轮 27：爪印替代 ＋ —— 展开时不旋转（爪印无 × 语义），改为轻缩放呼吸 */
+.tab-compose.open .tab-compose-x { transform: scale(.94); box-shadow: 0 5px 14px rgba(245, 140, 80, .4); }
+.tab-compose-x svg { display: block; }
 .tab-compose-x:active { transform: scale(.92); }
-.tab-compose.open .tab-compose-x:active { transform: rotate(135deg) scale(.92); }
+.tab-compose.open .tab-compose-x:active { transform: scale(.9); }
 
 /* ＋ 弹层：遮罩 + 两瓣创作入口 */
 .tabbar-mask { position: fixed; inset: 0; z-index: 130; background: rgba(38, 30, 22, .38); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }

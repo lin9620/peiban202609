@@ -49,7 +49,16 @@ function composePost() {
     </router-link>
 
     <button class="tab-compose" :class="{ open }" aria-label="+" @click="toggle">
-      <span class="tab-compose-x">＋</span>
+      <span class="tab-compose-x">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+          <!-- 爪印：主掌 + 三趾（与品牌 🐾 呼应，替代生硬的 ＋） -->
+          <ellipse cx="12" cy="14.6" rx="4.6" ry="3.9" fill="currentColor" />
+          <circle cx="6.6" cy="9.4" r="1.9" fill="currentColor" />
+          <circle cx="10.4" cy="6.8" r="2.0" fill="currentColor" />
+          <circle cx="14.8" cy="6.9" r="1.9" fill="currentColor" />
+          <circle cx="18.2" cy="9.8" r="1.7" fill="currentColor" />
+        </svg>
+      </span>
     </button>
 
     <router-link
@@ -63,14 +72,14 @@ function composePost() {
     <div v-if="open" class="tabbar-mask" @click="close"></div>
     <div v-if="open" class="tabbar-sheet">
       <button class="tabbar-opt" @click="composeBottle">
-        <span class="tabbar-opt-ico">✉️</span>
+        <span class="tabbar-opt-ico">🌊</span>
         <span class="tabbar-opt-txt">
           <b>{{ t("tab.composeBottle") }}</b>
           <small>{{ t("tab.composeBottleSub") }}</small>
         </span>
       </button>
       <button class="tabbar-opt" @click="composePost">
-        <span class="tabbar-opt-ico">🧱</span>
+        <span class="tabbar-opt-ico">✍️</span>
         <span class="tabbar-opt-txt">
           <b>{{ t("tab.composePost") }}</b>
           <small>{{ t("tab.composePostSub") }}</small>
