@@ -107,7 +107,7 @@ async function submit() {
   <div class="compose-page">
     <header class="compose-head">
       <button class="compose-back" :aria-label="t('community.composeBack')" @click="goBack">←</button>
-      <h1 class="compose-title">🧱 {{ t("community.composeTitle") }}</h1>
+      <h1 class="compose-title">❤️ {{ t("community.composeTitle") }}</h1>
     </header>
 
     <!-- 未登录：先去登录（发帖要身份）；登录后按 ?redirect= 回到本页继续写 -->

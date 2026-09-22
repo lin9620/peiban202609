@@ -2,6 +2,11 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 :root {
+/* 轮 27：WebView 滚动条在页面右缘留一条深色竖条（用户当成「黑边」）。
+   App 不需要可见滚动条：隐藏 html/body 滚动条（内容照常滚动）。 */
+html { scrollbar-width: none; -ms-overflow-style: none; }
+html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
   --ink: #4a3b2f;
   --ink-soft: #96826f;
   --ink-faint: #c4ad97;
@@ -1611,7 +1616,10 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 }
 /* 轮 27：爪印替代 ＋ —— 展开时不旋转（爪印无 × 语义），改为轻缩放呼吸 */
 .tab-compose.open .tab-compose-x { transform: scale(.94); box-shadow: 0 5px 14px rgba(245, 140, 80, .4); }
-.tab-compose-x svg { display: block; }
+.tab-compose-x svg { display: block; transition: transform .25s ease; }
+.tab-compose.open .tab-compose-x svg { transform: rotate(45deg); }
+/* 轮 28：tab 文案不折行（英文 "Wall" 等短词也保险） */
+.tab-label { white-space: nowrap; }
 .tab-compose-x:active { transform: scale(.92); }
 .tab-compose.open .tab-compose-x:active { transform: scale(.9); }
 

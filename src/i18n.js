@@ -16,7 +16,7 @@ export const messages = {
     nav: { home: "Home", pet: "My Pet", community: "Warm Wall", profile: "Me" },
     /* App 轨道 T5：底部 Tab Bar（与顶部 nav 独立成组，zh/en 成对） */
     tab: {
-      home: "Home", community: "Warm Wall", messages: "Messages", profile: "Me",
+      home: "Home", community: "Wall", messages: "Messages", profile: "Me",
       composeBottle: "Send a Bottle", composeBottleSub: "A letter into the sea",
       composePost: "Post to Wall", composePostSub: "Share a feeling with gentle people",
       /* App 轨道 T7：消息 Tab 内分栏（会话 | 漂流瓶 | 通知，小红书同款），zh/en 成对 */
