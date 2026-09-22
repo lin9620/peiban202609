@@ -38,7 +38,7 @@ npm run dev:api        # 本地 Worker
 node node_modules/vite/bin/vite.js build   # 生产构建（比 npm run build 更容易拿到明确退出码）
 npx wrangler deploy    # 部署 Worker + 静态资产
 git -c http.proxy= -c https.proxy= -c http.version=HTTP/1.1 push   # push（本机网络需要这些参数）
-node tools/<x>-test.mjs # 24 套离线测试（提交前全跑）
+node tools/<x>-test.mjs # 32 套离线测试（提交前全跑）
 node tools/undef-check.mjs  # 未导入符号检查（白屏元凶，必跑）
 node tools/live-check.mjs   # 部署后线上验证，应输出 LIVE ALL PASS (14)
 node tools/live-bundle-check.mjs  # 部署后必跑：线上入口包 SHA 与本地 dist 逐字节比对 + Supabase slug 检查（踩坑 #25/#26）
@@ -260,22 +260,22 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
 ---
 
-# 一、当前状态速览（2026-09-22 更新）
+# 一、当前状态速览（2026-09-23 更新）
 
 | 项 | 值 |
 |---|---|
 | 项目 | peiban（陪伴 / warm-paws），路径 `D:\05ruanjian\peiban` |
 | 技术栈 | Vue 3 + Vite + Naive UI；数据层双模式：直连 Supabase（`db.supabase.js`）/ Worker 网关（`db.gateway.js` + `worker/api.js`，**线上走网关**）；Cloudflare 部署 https://dale.de5.net；Supabase Postgres + RLS + security definer RPC |
-| 代码 | 轮 20 已改（本轮末提交）；核心：ProfileView 帖子卡跳 /post/:id（轮 19 漏改补上）+ 恢复态死循环三层修复（SIGNED_IN 清态/12s 自愈/登录兜底）+ 限额报错同步服务端次数 + `_headers` 加 HTML no-cache |
-| 部署 | 前端 Version `03376511` 已上线（轮 20）；`live-check` 14/14；**线上 index 已返回 Cache-Control: no-cache（实测）** |
-| 数据库 | **`MIGRATION_bottle_quota_fishfix.sql` 已由用户执行**（探针 401=函数存在实锤）；服务端行为已全矩阵实测：捞到记账/放回不返还/失败不记账/限额 7 生效；`MIGRATION_notifications_drop_dm.sql`（轮 13 #23）执行状态仍未确认 |
-| App | 轮 20 APK 已打包：SHA16 `33f42a2a5d66d71e`（`apk\warm-paws-debug.apk`+桌面备份）；**装机待做**（手机断连）；CLI 打包环境 `JAVA_HOME=D:\00ruanjiananzhuang\android-studio-quail4-windows\jbr` + `android\gradlew.bat -p android assembleDebug` |
-| 测试 | 离线 **30 套 ALL GREEN**（auth-test 103/103：A30 适配自愈+新增 A44d/e/f；uifix T23 更新；post-detail 15/15）+ build 0 |
+| 代码 | 轮 32 已提交（`5dc9181`）；核心：**本地个人数据按账号分域**（新 `utils/userScope.js`：宠物/金币/手绘厨房/冒险/装扮 + 暖心墙浏览去重/匿名id/当日记账/本地帖/回应/评论，键 = base:uid，未登录 = guest）+ 老档迁移 guest 域 + 首次登录认领 + App.vue `watch(uid)→setUserScope` + petStore flush/reload 注册；顺带修 `build-until-good.mjs` 轮 31 漏改的入口口径 |
+| 部署 | Version `b19875c3` 已上线（轮 32）；`live-check` 14/14；线上 SHA16 `888112a83f9d7747` 与本地 dist 一致 |
+| 数据库 | 本轮**零迁移**（纯前端分域，localStorage 键名变化，云端数据不动）；`MIGRATION_notifications_drop_dm.sql`（轮 13 #23）执行状态仍未确认 |
+| App | 轮 32 APK 已重打：SHA16 `d73e84248242747b`（4.77MB，`apk\warm-paws-debug.apk`）；**装机待做**（手机未连 USB）；`cap sync` 完成（android assets 入口 = dist 同哈希 `index-BKKbu7ta.js`） |
+| 测试 | 离线 **32 套 ALL GREEN**（新增 userScope-test 8 项：分域读写/老档迁移幂等+触发reload/认领不覆盖只认一次/换域 flush→reload 顺序/端到端复现原报障）+ undef 0 + build 0 |
 
 ## 二、现在在做什么
 
-- **当前任务**：轮 20（「先找根因」四条）**代码全部完成：已部署、已验证、APK 已打包**（F 区轮 20，含两个动态探针的取证结论）。**待三件事**：①手机重连后装机 ②真机验收（我的页帖子进详情页/退出登录不再见重置卡/浏览器强刷后次数两端一致/手机重测空捞不扣） ③口径确认：现行「捞到即扣、放回不返还、失败不扣」vs 用户轮 18 要的「回复了才扣」（后者需再跑一次迁移，回复才扣有防刷权衡）。
-- **待用户确认**：①轮 20 四条真机验收 ②口径确认（见上） ③`MIGRATION_notifications_drop_dm.sql`（轮 13 #23，仍未确认） ④轮 18/19 遗留项复验。
+- **当前任务**：轮 32（账号域分域，修「新注册的号一进宠物就是 3 级」）**已完成：已提交（`5dc9181`）、已部署（Version `b19875c3`）、线上验证过、APK 已重打**（十二 F 区轮 32）。网页端刷新即生效；**App 端要装新 APK 才生效**。**待用户**：①重连手机装机 ②真机验收：A 登录玩一会→退出→注册全新 B 号，B 的宠物必须是 1 级 50 金币；A 再登录档还在；登出回到游客档还是原来那只 ③轮 31 谷歌登录真机验收（APK 重打后一并验）。
+- **待用户确认**：①上述真机验收 ②`MIGRATION_notifications_drop_dm.sql`（轮 13 #23，仍未确认）。
 - **可选加码（等有量再做）**：图片搬 Cloudflare R2（出口永久免费，见「十、容量评估」方案 B）。
 
 ## 三、已完成（按轮次，均含验证证据）
@@ -480,7 +480,7 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
 ## 八、下一步
 
-1. **等用户实机验收轮 15 的 12 条**（App 端重点：分享面板、竖屏、金币重复领取、漂流瓶换号记账；网页端重点：通知 ×N 与取消撤销、每日 7 条、私信请求按钮消失）。
+1. **等用户真机验收轮 31/32**（轮 31：App 内谷歌登录全程不出 App；轮 32：换号不串档——A 登录玩→退出→注册全新 B 号，B 必是 1 级 50 金币，A 再登录档还在；APK 装机待做）。
 2. 确认 `MIGRATION_notifications_drop_dm.sql`（轮 13 #23）是否已执行；未执行就跑。
 3. 用户通知后开工 **#7 暖心故事** 与 **#12 宠物年龄衰老**。
 4. 有量之后（不急）：图片搬 **Cloudflare R2**（方案 B，出口永久免费）。
@@ -523,6 +523,8 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 26. **运行环境里空的 `VITE_SUPABASE_*` 会覆盖 .env**：agent 会话进程环境带着 `VITE_SUPABASE_URL=""`（0 字符），而 **Vite 中进程环境优先于 .env** → 产物丢 slug，env-guard 次次红（用户自己的终端没有这两个变量所以构建正常，一度误判为「偶发 flake」）。**教训（强制）**：构建脚本给子进程显式 `delete env.VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY`（`build-until-good.mjs` 已内置）；guard 连续红时先查 `Get-ChildItem Env: | ? Name -like 'VITE*'` 有没有空串，别急着怪 vite。
 
 27. **Capacitor WebView 里 `<a download>` 完全无效**：安卓 WebView 没配 DownloadListener（grep `@capacitor/android` 全部 Java 零命中），网页端「下载卡片」在 App 里点了没有任何反应（用户报「生成分享图片功能没有用」）。**教训（强制）**：App 内凡「保存/下载/分享」类浏览器惯用手法都必须有原生兜底（本项目 = `WpSharePlugin`：cacheDir + FileProvider + ACTION_SEND 系统分享面板，MainActivity `registerPlugin` 注册，JS 侧 `registerPlugin("WpShare")` + `Capacitor.isNativePlatform()` 分层降级）；另外跨域图进 canvas 前必须 `img.crossOrigin="anonymous"`，否则 `toDataURL/toBlob` 直接抛 SecurityError。
+
+28. **同一个口径改了两处只记得一处（轮 32 真凶）**：轮 31 因 `@capacitor/browser` 懒块把 env-guard 的「所有 `index-*.js` 都必须含 slug」改成「只验 index.html 真正加载的入口」，但 `tools/build-until-good.mjs` 里**同一段判定逻辑还留着旧口径**（两处是复制粘贴的兄弟代码）→ 构建明明成功、guard 明明放行，保险脚本却恒报 BUILD_ALWAYS_BAD 重试 5 次失败。**教训（强制）**：修「误报口径」时要先全仓 grep 同类判定（`index-`、`slug`、`entry`），兄弟脚本一起改；判定逻辑尽量抽成单一实现（本次因一个在 vite.config 插件、一个在独立 node 脚本，暂以注释互相指向）。
 
 ---
 
@@ -935,6 +937,14 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **同时修的基建坑**：①`env-guard` 旧口径「所有 `index-*.js` 都必须含 supabase slug」被 `@capacitor/browser` 的动态 import 懒块误报（好包被挡在门外）→ 改成**只校验 `index.html` 真正加载的入口脚本**；②`undef-check` 揪出**轮 30 的真 bug**：登录失败锁记账用了 `getItem/setItem` 却没从 `storage.js` 导入 → `ReferenceError` 被 catch 吞掉 → **「连错 5 次锁 12 小时」实际静默失效**（纯源码断言 A52 没抓住）。修法：补导入 + 记账函数导出为 `loginLockLoad/loginLockSave` 并让 auth-test **真跑 round-trip**（A101-A104）+ 失败时 `console.warn` 留痕；`undef-check` 由 2 问题 → **0 问题**。
      **验收**：auth-test **130/0**（+A80-A95 谷歌回跳接线、**A96-A100 在 `vm` 里真跑中转页脚本**（断言深链一字不差 / 自动跳转真的调了 `location.replace` / 2.5s 兜底改文案）、A88b 冷启动等云端就绪、+A101-A104 登录锁真跑 round-trip）+ 全量 **31 套 0 fail** + `undef-check 0` + build 0 + 部署（Version `69f936cb`，`live-bundle-check` 本地=线上 `c534a74a83e6f61d`）+ **aapt2 校验 APK 内已注册 `net.de5.dale://login`（`launchMode=singleTask`）** + APK 与 dist 逐文件同哈希 + APK 重打（`apk\warm-paws-debug.apk` 4.99MB SHA16 `1e47501c686d62b9`；本次手机未插 USB 故未装机，包已就绪待装）。
      **无需改 Supabase 配置**（Web 与 App 用的都是站内 https 白名单地址）；**无需再改 `Redirect URLs`**。
+
+  - **轮 32 · 本地个人数据按账号分域（2026-09-23，已部署 Version `b19875c3`，提交 `5dc9181`）**：
+     **用户报障**：「宠物我一个新注册的号怎么就 3 级了，你这缓存怎么写的」。
+     **根因**：宠物档/金币/手绘厨房/心情/每日任务/冒险/装扮这些 localStorage 键全是**全局单键**——同一台设备换账号直接读到上一个人的档（新注册的号「继承」别人的 3 级宠物）。同类串档键还有暖心墙的浏览去重/匿名 id/当日发帖记账/本地帖/回应/本地评论。
+     **修法（新 `src/utils/userScope.js` = 唯一机制）**：个人数据键统一 `base:<域>`，域 = 登录 uid；未登录 = guest。四件套：①各模块 `registerScopeBases([...])` 声明个人键（petStore 的 7 个 base 自注册；暖心墙 6 个键收在 wallRules/comments、由**急加载的 wall.js** 代注册——懒加载视图组件注册来不及，main.js 的 initUserScope 跑在路由组件加载之前）；②`initUserScope()` 启动时把「升级前的无域老档」搬进 guest 域 + 登记待认领（幂等；**搬完触发一次 reload**——模块级初始读档跑在迁移之前，首次升级加载不补这次就丢档）；③`claimForUser(uid)` 升级后第一次登录把 guest 老档认领给该账号（**只认一次**、不覆盖账号已有档 → 认领过之后新注册的号必然是全新 1 级 50 金币）；④`setUserScope(uid)` 换号唯一入口：先 flush（旧域落盘）→ 切域+认领 → reload（新域重读），App.vue `watch(cloud.user.id)` 接线，登出传空回 guest。petStore 注册 flush/reload 就地重读（splice/delete+assign 保响应式引用）；wall.js 加 `cancelPetHomeSync()` 换域时撤销 4s 延迟的宠物主页推送（防 A 的宠物推到 B 的主页）。**漂流瓶配额账本轮 18 起已按 uid 分键，无需动**；SORT/RANGE 是设备级偏好故意不进域。
+     **口径**：纯前端键名变化，**零迁移**、云端数据不动；网页端刷新即生效，**App 端要装新 APK 才生效**；v1 时代老档（`warm-paws-pet-v1`）不经此机制（petStore 自身的 v1→v2 迁移路径处理，量级可忽略）。
+     **验收**：userScope-test **8/0**（T7 端到端复现原报障：A 认领老档后新注册 B 必无档）+ 全量 **32 套 0 fail** + `undef-check 0` + build 0 + 部署 + live-check 14/14 + 线上 SHA16 `888112a83f9d7747` 本地=线上 + cap sync + APK 重打（4.77MB SHA16 `d73e84248242747b`，手机未连未装机）。
+     **顺带修的基建坑**：`build-until-good.mjs` 还在用「所有 index-*.js 都要含 slug」旧口径 → 轮 31 引入 `@capacitor/browser` 懒块后恒报 BUILD_ALWAYS_BAD（env-guard 当轮改了、这脚本漏改）→ 对齐成「只验 index.html 真正加载的入口」（见踩坑 #28）。
 
 ## G. 开发任务拆解（动工路线图，逐批交付）
 
