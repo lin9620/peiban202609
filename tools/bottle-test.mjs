@@ -234,10 +234,16 @@ ok("BottleView：弹窗里回信/放回海里直接可用（doReply/doRelease �
     && has(bottleView, '@click="doReply(fishPop.letter)"')
     && (bottleView.match(/fishPop\.value\.show = false/g) || []).length >= 2
     && has(bottleView, '@click="fishPop.show = false"'));
-ok("BottleView：弹窗只有「回信/放回」两个决定（popKeep「先收着稍后回」按用户要求移除，不许回归）",
-  !has(bottleView, "popKeep"));
-ok("i18n：弹窗文案双语齐（gotTitle/popNotice），popKeep 键已清",
-  ["gotTitle", "popNotice"].every((k) => k in messages.en.bottle && k in messages.zh.bottle)
+ok("BottleView：弹窗无右上角 X、不可点遮罩/Esc 关——捞到信只有「回信/放回」两条路（轮 26）",
+  !has(bottleView, "popKeep")
+    && has(bottleView, ':closable="false"') && has(bottleView, ':mask-closable="false"')
+    && has(bottleView, ':close-on-esc="false"'));
+ok("BottleView：按下瞬间出「撒网中」弹窗 + 8s 悬死给出口（轮 26：反馈 <100ms）",
+  has(bottleView, 'fishPop.value = { show: true, mode: "fishing", letter: null, msg: "" }')
+    && has(bottleView, "const FISH_TIMEOUT") && has(bottleView, '"bottle-slow"')
+    && has(bottleView, "fishPop.mode === 'fishing'"));
+ok("i18n：弹窗文案双语齐（gotTitle/popNotice/fishing/fishingSub/errSlow），popKeep 键已清",
+  ["gotTitle", "popNotice", "fishing", "fishingSub", "errSlow"].every((k) => k in messages.en.bottle && k in messages.zh.bottle)
     && !("popKeep" in messages.en.bottle) && !("popKeep" in messages.zh.bottle));
 
 

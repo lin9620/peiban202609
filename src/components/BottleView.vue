@@ -41,6 +41,8 @@ function mergePending() {
 /* 轮 22/25：捞信结果一律居中弹窗——捞到（就地回信/放回）、没捞到、限额，全部有明确反馈；
  * 「先收着，稍后回」按用户要求移除（捞到就当场回信或放回，不许囤） */
 const fishPop = ref({ show: false, mode: "msg", letter: null, msg: "" });
+/* 轮 26：捞信悬死兜底（毫秒）——正常一网 1-3s；超时只是给出口，不给「永远转圈」死局 */
+const FISH_TIMEOUT = 8000;
 
 /* 每日次数：本地账本只做乐观显示，服务端 bottle_quota() 才是权威（轮 18 修
  * 「下面显示还能捞 2 瓶、上面却说次数用完」——次数原来记在本机 localStorage，
@@ -132,8 +134,14 @@ async function doFish() {
   if (fishLeft.value <= 0) return;
   fishing.value = true;
   mailHint.value = "";
+  /* 轮 26：按下**瞬间**就弹「撒网中」——不再等网络回来才有反应（反馈 <100ms，
+   * 出信快慢交给网络，正常一网 1-3s，用户要求 3s 内有结果）。 */
+  fishPop.value = { show: true, mode: "fishing", letter: null, msg: "" };
   try {
-    const l = await bottleFish();
+    const l = await Promise.race([
+      bottleFish(),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("bottle-slow")), FISH_TIMEOUT)),
+    ]);
     if (!l || !l.id) {
       /* 竞态兜底（轮 18）：服务端抢占落空返回空 → 明示「海里暂时没信」，绝不扣次数 */
       mailHint.value = t("bottle.errEmpty");
@@ -149,7 +157,7 @@ async function doFish() {
     /* 轮 22：捞到了 → 居中弹窗直接展示这封信（可就地回信/放回，不再让人猜捞没捞到） */
     fishPop.value = { show: true, mode: "got", letter: l, msg: "" };
   } catch (e) {
-    const k = bottleErrKey(e);
+    const k = String(e && e.message) === "bottle-slow" ? "bottle.errSlow" : bottleErrKey(e);
     mailHint.value = t(k);
     /* 轮 22：点了捞却没动静的几类原因（海里空/今天用完/囤太多）也弹窗说清 */
     fishPop.value = { show: true, mode: "msg", letter: null, msg: t(k) };
@@ -413,8 +421,15 @@ async function decideRec(l, accept) {
 
     <!-- 轮 22：捞信结果居中弹窗（手机端核心反馈）——捞到可就地回信 / 放回海里（「先收着」已按用户要求移除） -->
     <n-modal v-model:show="fishPop.show" preset="card" style="max-width: 88vw"
-      :title="fishPop.mode === 'got' ? t('bottle.gotTitle') : t('bottle.popNotice')">
-      <template v-if="fishPop.mode === 'got' && fishPop.letter">
+      :closable="false" :mask-closable="false" :close-on-esc="false"
+      :title="fishPop.mode === 'got' ? t('bottle.gotTitle') : (fishPop.mode === 'fishing' ? t('bottle.fishing') : t('bottle.popNotice'))">
+      <template v-if="fishPop.mode === 'fishing'">
+        <div class="fish-wait">
+          <span class="fw-rod">🎣</span>
+          <p class="fw-sub">{{ t("bottle.fishingSub") }}</p>
+        </div>
+      </template>
+      <template v-else-if="fishPop.mode === 'got' && fishPop.letter">
         <div class="m-q" style="font-size: 16px; line-height: 1.6">{{ fishPop.letter.body }}</div>
         <span class="m-who">{{ t("bottle.fromSea") }}</span>
         <n-input

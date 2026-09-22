@@ -102,26 +102,43 @@
   <div id="app-splash" aria-hidden="true">
     <style>
       #app-splash { position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column;
-        align-items: center; justify-content: center; gap: 12px; background: #fff7ee;
-        transition: opacity .4s ease; }
+        align-items: center; justify-content: center; gap: 10px; background: #fff7ee;
+        transition: opacity .4s ease; padding: 24px; text-align: center; }
       #app-splash.out { opacity: 0; pointer-events: none; }
       #app-splash .sp-paw { font-size: 56px; animation: sp-breathe 1.6s ease-in-out infinite; }
-      #app-splash .sp-name { font-size: 20px; font-weight: 800; color: #6b4a32; }
+      #app-splash .sp-name { font-size: 22px; font-weight: 800; color: #6b4a32; }
       #app-splash .sp-sub { font-size: 12px; color: #a98d74; letter-spacing: 2px; }
+      #app-splash .sp-tag { font-size: 13px; color: #8a6a4f; }
+      #app-splash .sp-feats { display: grid; gap: 7px; margin-top: 12px; }
+      #app-splash .sp-feat { font-size: 13px; color: #7d5f45; background: rgba(255,255,255,.55);
+        border: 1px solid #eadbc8; border-radius: 999px; padding: 6px 16px; }
+      #app-splash .sp-feats .sp-feat:nth-child(2) { animation-delay: .12s; }
+      #app-splash .sp-feats .sp-feat:nth-child(3) { animation-delay: .24s; }
+      #app-splash .sp-quote { font-size: 12px; color: #a98d74; font-style: italic; margin-top: 10px; }
       #app-splash .sp-dots { display: flex; gap: 6px; margin-top: 8px; }
       #app-splash .sp-dots i { width: 7px; height: 7px; border-radius: 50%; background: #e0a274;
         animation: sp-dot 1.2s ease-in-out infinite; }
       #app-splash .sp-dots i:nth-child(2) { animation-delay: .15s; }
       #app-splash .sp-dots i:nth-child(3) { animation-delay: .3s; }
+      #app-splash .sp-in { animation: sp-in .5s ease both; }
+      #app-splash .sp-quote { animation-delay: .34s; }
       @keyframes sp-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.12); } }
       @keyframes sp-dot { 0%, 100% { opacity: .25; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-4px); } }
+      @keyframes sp-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
       @media (prefers-reduced-motion: reduce) {
-        #app-splash .sp-paw, #app-splash .sp-dots i { animation: none; }
+        #app-splash .sp-paw, #app-splash .sp-dots i, #app-splash .sp-in { animation: none; }
       }
     </style>
     <div class="sp-paw">🐾</div>
-    <div class="sp-name">温暖的爪印</div>
-    <div class="sp-sub">Warm Paws</div>
+    <div class="sp-name sp-in">温暖的爪印</div>
+    <div class="sp-sub sp-in">Warm Paws</div>
+    <div class="sp-tag sp-in">一个温柔的角落</div>
+    <div class="sp-feats">
+      <div class="sp-feat sp-in">🐱 亲手照顾一只小宠物</div>
+      <div class="sp-feat sp-in">🌊 把心事装进漂流瓶</div>
+      <div class="sp-feat sp-in">❤️ 在暖心墙遇见温柔的人</div>
+    </div>
+    <div class="sp-quote sp-in">「你已经做得比想象中好了」</div>
     <div class="sp-dots"><i></i><i></i><i></i></div>
   </div>
 

@@ -1762,3 +1762,10 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 @keyframes bottle-pop { from { opacity: 0; transform: translate(-50%, -46%) scale(.92); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
 /* 共有 2：不喜欢按钮调大（好按、好看见） */
 .post-dis { padding: 10px 22px; font-size: 14px; }
+
+/* 轮 26：漂流瓶「撒网中」等待态（BottleView 弹窗内）——钓竿轻摆，替代干等 */
+.fish-wait { text-align: center; padding: 10px 0 6px; display: grid; gap: 6px; justify-items: center; }
+.fw-rod { font-size: 42px; display: inline-block; animation: fw-sway 1.1s ease-in-out infinite; }
+.fw-sub { font-size: 13px; color: var(--ink-soft); margin: 0; }
+@keyframes fw-sway { 0%, 100% { transform: rotate(-10deg) translateY(0); } 50% { transform: rotate(10deg) translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .fw-rod { animation: none; } }

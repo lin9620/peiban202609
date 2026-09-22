@@ -27,6 +27,10 @@ ok("App.vue：预热会话列表与 MessagesView 同款（key dm:convs + dmApi.l
 ok("MessagesView：会话键与预热完全一致（dm:convs + listConvs(200, 0)——对不上预热就白做）",
   has(read("src/views/MessagesView.vue"), 'cacheKey("dm:convs", meId.value)', "dmApi.listConvs(200, 0)"));
 
+ok("轮 26：启动页内容加厚（slogan+三条特性+温柔话，逐条浮现动画）",
+  has(html, "sp-feats", "sp-quote", "一个温柔的角落", "漂流瓶", "暖心墙",
+    "你已经做得比想象中好了", "sp-in", "animation-delay"));
+
 console.log(`splash-test: ${pass} pass, ${fails.length} fail`);
 for (const f of fails) console.log("FAIL  " + f);
 if (fails.length) process.exit(1);

@@ -911,6 +911,12 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
     - **轮 25（本次）**：①弹窗「先收着，稍后回」**按用户要求移除**（捞到当场回信或放回，popKeep 键双语清干净，bottle-test 加不许回归守护）；②记录卡补齐押信按钮（轮 24c：「我捞到的」里 held 信**卡上直接回信/放回**，回复框卡内展开，`bottle.replySend` 双语键补齐）；③**黑边原生层根因**：styles.xml `AppTheme.NoActionBar` 的 `android:background=@null`（窗口底渲染成黑）→ `android:windowBackground=#FFF7EE`。
     **验收**：bottle-test **59/0**（新增「弹窗只有回信/放回」不许回归断言）+ 全量 **31 套 0 fail** + build 0 + 部署 Version `877c016f` + APK 重打（styles.xml 原生层改动，BUILD SUCCESSFUL 15s）。**待办**：手机断连未装机——重连后 `adb install -r apk\warm-paws-debug.apk`。
 
+  - **轮 26 · 捞信提速 + 弹窗禁闭 + 启动页加厚（2026-09-22，已部署 Version dc1e6f67）**：
+    ① **捞信反馈 <100ms**：doFish 现在**按下瞬间**就弹「撒网中」弹窗（🎣 钓竿轻摆动画 + 「海风正把信往你这边送」），RPC 回来秒切信内容——不再网络空转 1-3s+ 毫无反应；同时加 **8s 悬死兜底**（Promise.race → `bottle-slow` → 弹窗给「再捞一次」出口；不能 3s 硬断，慢网真捞到的信会被押在海里）。
+    ② **弹窗禁闭（用户明确要求）**：捞信弹窗 `:closable="false" :mask-closable="false" :close-on-esc="false"` 三重关闭——**无右上角 X、点遮罩不关、Esc 不关**，捞到信只有「回信 / 放回海里」两条路（「先收着」轮 25 已删，不许回归断言继续在）。
+    ③ **启动页内容加厚**：slogan「一个温柔的角落」+ 三条特性胶囊（🐱 亲手照顾一只小宠物 / 🌊 把心事装进漂流瓶 / ❤️ 在暖心墙遇见温柔的人）+ 温柔话「你已经做得比想象中好了」，逐条浮现动画（sp-in staggered），prefers-reduced-motion 降动画保留。
+    **验收**：bottle-test **60/0**（+2 断言：禁闭三属性/撒网即时弹+超时出口）+ splash-test **7/0**（+1 断言：加厚内容）+ 全量 **31 套 0 fail** + build 0 + 部署 + cap sync + APK 重打**已装机启动**（adb Success）。
+
 ## G. 开发任务拆解（动工路线图，逐批交付）
 
 ### 批 1 · 地基与合规（先行，无 UI 风险）
