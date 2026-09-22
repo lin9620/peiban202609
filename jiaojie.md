@@ -268,13 +268,13 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 | 技术栈 | Vue 3 + Vite + Naive UI；数据层双模式：直连 Supabase（`db.supabase.js`）/ Worker 网关（`db.gateway.js` + `worker/api.js`，**线上走网关**）；Cloudflare 部署 https://dale.de5.net；Supabase Postgres + RLS + security definer RPC |
 | 代码 | 轮 34 已提交（`6f95cec`）；核心：**拉黑收尾**——消息页拉黑/解除改走 userBlocks 包装（内容过滤缓存与私信名单同一份，解除后墙内容立即恢复显示）+ 进消息页同步名单 + 拉黑提示文案升级全站口径（私信 + 暖心墙）。轮 33 举报/审核体系已全部上线 |
 | 部署 | Version `62722c5d` 已上线；`live-check` 14/14；线上 SHA16 `f19813f10e2a8e61` 与本地 dist 一致 |
-| 数据库 | **`MIGRATION_reports.sql` 已就绪、仍未执行**（2026-09-23 探针实锤：report_create / admin_report_page 均报 PGRST202=函数不存在）；执行前举报按钮提示「功能还没开启」，其余零影响；`MIGRATION_notifications_drop_dm.sql`（轮 13 #23）也未确认 |
+| 数据库 | **`MIGRATION_reports.sql` 已由用户执行（2026-09-23）**：三 RPC 匿名探针全 42501（存在无权，坑 #7 判据）；线上 e2e 6/6（真实举报落库/重复幂等/target-gone 拒绝/RLS 自查/删帖留存）；管理端待处理队列留 1 条测试举报等用户点「驳回」完成管理端闭环。`MIGRATION_notifications_drop_dm.sql`（轮 13 #23）仍未确认 |
 | App | 轮 34 APK 已重打：SHA16 `ce86e7c3e60f557d`（4.77MB，`apk\warm-paws-debug.apk`）；**装机待做**（手机未连 USB） |
 | 测试 | 离线 **33 套 ALL GREEN**（report-test 扩到 60 项）+ undef 0 + build 0 |
 
 ## 二、现在在做什么
 
-- **当前任务**：轮 34（拉黑收尾）**已完成：已部署、已验证、APK 已重打**（F 区轮 34）。**待用户**：①**在 Supabase SQL Editor 整段执行 `MIGRATION_reports.sql`**（探针实锤还没跑——report_create 报 PGRST202；执行后通知我，我做线上探针闭环）②重连手机装机 + 真机验收（举报弹窗、管理端举报页签、拉黑后内容隐藏、轮 31/32 遗留项）。
+- **当前任务**：轮 34（拉黑收尾）**已完成：已部署、已验证、APK 已重打**（F 区轮 34）。**待用户**：①真机验收举报闭环——管理端「举报」页签已有 1 条线上 e2e 留下的测试举报（显示「内容已删除」），点「驳回」即走完 处置→通知→已处理 全流程 ②重连手机装机 + 走查（举报弹窗、拉黑后内容隐藏、轮 31/32 遗留项）。✅ 迁移已执行（2026-09-23）：三 RPC 匿名 42501 + 线上 e2e 6/6（举报落库/幂等/target-gone/RLS 自查/删帖留存），举报功能线上已生效。
 - **待用户确认**：①`MIGRATION_reports.sql` 执行 ②`MIGRATION_notifications_drop_dm.sql`（轮 13 #23，仍未确认）。
 - **可选加码（等有量再做）**：图片搬 Cloudflare R2（出口永久免费，见「十、容量评估」方案 B）。
 
@@ -959,6 +959,10 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **改动**：①MessagesView 两处拉黑调用点（聊天页菜单 `toggleBlock`、拉黑列表 `unblockOne`）改走 `userBlocks.blockUser/unblockUser`（RPC + 缓存 + 快照同步更新）②进消息页 onMounted 同步一次名单 ③拉黑列表提示文案升级全站口径：「被你拉黑的人无法给你发消息，TA 在暖心墙的帖子/评论也会对你隐藏。对方不会收到任何通知。」（zh/en 成对）。
      **验收**：report-test **60/0**（+2：消息页不再直调 dmApi.block/unblock、文案双语全站口径）+ 全量 **33 套 0 fail** + undef 0 + build 0 + 部署 live-check 14/14 + SHA `f19813f10e2a8e61` 本地=线上 + APK `ce86e7c3e60f557d`（装机待做）。
      **顺带探针**：确认 `MIGRATION_reports.sql` 尚未执行（report_create/admin_report_page 均 PGRST202，坑 #7 判据）。
+
+  - **轮 34 续 · 迁移执行 + 线上闭环（2026-09-23，用户执行迁移后当日）**：
+     **探针（坑 #7 判据）**：report_create / admin_report_page / admin_report_handle 匿名全 **42501**（存在无权）= 迁移生效实锤；wall_toggle_dislike 42501（新版权限收紧在位）；admin_overview 匿名 admin=false 提前返回（reports_pending 仅管理员可见，符合设计）。
+     **线上 e2e（临时 _report-e2e.mjs，跑完已删）6/6**：注册 wp-report-* 账号 → 发测试帖(id=168) → report_create 真实举报 ✓ → 重复举报幂等（RLS 自查恰好 1 条 pending）✓ → 不存在目标报 target-gone（P0001）✓ → 删帖后举报条目留存（content_gone）✓。**管理端待处理队列现留 1 条测试举报**，等用户点「驳回」完成 处置→通知→已处理 闭环（通知发给 wp 测试账号，无真实用户影响）。
 
 ## G. 开发任务拆解（动工路线图，逐批交付）
 
