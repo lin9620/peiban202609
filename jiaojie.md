@@ -267,10 +267,10 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 | 项目 | peiban（陪伴 / warm-paws），路径 `D:\05ruanjian\peiban` |
 | 技术栈 | Vue 3 + Vite + Naive UI；数据层双模式：直连 Supabase（`db.supabase.js`）/ Worker 网关（`db.gateway.js` + `worker/api.js`，**线上走网关**）；Cloudflare 部署 https://dale.de5.net；Supabase Postgres + RLS + security definer RPC |
 | 代码 | 轮 34 已提交（`6f95cec`）；核心：**拉黑收尾**——消息页拉黑/解除改走 userBlocks 包装（内容过滤缓存与私信名单同一份，解除后墙内容立即恢复显示）+ 进消息页同步名单 + 拉黑提示文案升级全站口径（私信 + 暖心墙）。轮 33 举报/审核体系已全部上线 |
-| 部署 | Version `da1d2b4b` 已上线（轮 34b 修 AdminView TDZ）；`live-check` 14/14；线上 SHA16 `e32eb8db823af0ee` 与本地 dist 一致 |
+| 部署 | Version `c0be242f` 已上线；`live-check` 14/14；线上 SHA16 `4cc06541329f8a66` 与本地 dist 一致 |
 | 数据库 | **`MIGRATION_reports.sql` 已由用户执行（2026-09-23）**：三 RPC 匿名探针全 42501（存在无权，坑 #7 判据）；线上 e2e 6/6（真实举报落库/重复幂等/target-gone 拒绝/RLS 自查/删帖留存）；管理端待处理队列留 1 条测试举报等用户点「驳回」完成管理端闭环。`MIGRATION_notifications_drop_dm.sql`（轮 13 #23）仍未确认 |
 | App | 轮 34 APK 已重打：SHA16 `ce86e7c3e60f557d`（4.77MB，`apk\warm-paws-debug.apk`）；**装机待做**（手机未连 USB） |
-| 测试 | 离线 **33 套 ALL GREEN**（report-test 60 项）+ **page-smoke 8/8**（新增页面挂载冒烟）+ undef 0 + build 0 |
+| 测试 | 离线 **33 套 ALL GREEN**（report-test 61 项）+ **page-smoke 8/8** + undef 0 + build 0 |
 
 ## 二、现在在做什么
 
@@ -965,6 +965,9 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
   - **轮 34b · 修 AdminView 白屏（TDZ）+ 页面挂载冒烟上线（2026-09-23，部署 Version `da1d2b4b`，提交 `931324e`）**：
      **用户实测 /admin 白屏**：Uncaught ReferenceError: Cannot access before initialization（AdminView setup 阶段）。**根因**：轮 33 把举报页签的状态声明（reports/repLoaded 等 const）放在了 switchTab 之后，而 `watch(signedIn, …, { immediate: true })` 在 setup 期间**同步**执行 load()，load() 里重置这些状态 → 暂时性死区（TDZ）。构建/undef-check 都不执行代码所以没拦住（踩坑 #9 家族）。**修法**：举报状态块整体移到 watch 之前（加「位置硬约束」注释）。**全仓排查**：其余 8 处 immediate watch 逐一核对，均安全（声明在前或回调短路不触达）。**新防线**：`tools/page-smoke.mjs`——8 条关键路由无头 Edge 真实挂载，断言「挂载成功 + 无崩溃盒」（App.vue onErrorCaptured 兜住的 .crash-box），TDZ/运行时崩溃类只有真挂载才抓得到；改 .vue 构建后必跑。**验收**：page-smoke **8/8**（含此前必崩的 /admin）+ 全量 33 套全绿 + undef 0 + 部署 live-check 14/14（首轮 FAILED=1 为部署后瞬时网络抖动，复测全绿）+ SHA `e32eb8db823af0ee` 本地=线上 + APK `5db36b38ca3b2939`。
      **顺带踩坑**：Git Bash 下跑 web-probe/page-smoke 必须 `MSYS2_ARG_CONV_EXCL="--url"`，否则 `--url=/admin` 被 MSYS 路径转换改写成 `D:/…/Git/admin` → 导航失败（page-smoke 已内置处理）。
+
+  - **轮 34c · 「评论没有举报」澄清 + 游客入口（2026-09-23，部署 Version `c0be242f`，提交 `9c6d3cc`）**：
+     **用户反馈「评论的举报没有」**。数据侧查明：墙上 13 条云端评论全部来自用户自己的两个号（9632×8、linyi×5），举报按钮按设计**不显示在自己的内容上**（不能举报自己）→ 一条都看不到是口径所致，不是功能缺失。**改进**：4 处 canReport（CommunityView/PostDetailView × 帖/评）去掉 signedIn 依赖——**游客也能看到举报入口**，点击后弹窗内提示「先登录再来举报哦」；登录用户看别人的云端内容必有按钮。report-test 61 项（+1：游客可见断言）。**验收**：report-test 61/0 + page-smoke 8/8 + 全量 33 套全绿 + undef 0 + 部署 live-check 14/14 + SHA `4cc06541329f8a66` + APK `eafea3f5218e0753`。**给用户的验收口径**：用另一个号发一条评论，主号刷新后该评论下方就有「举报」。
 
   - **轮 34 续 · 迁移执行 + 线上闭环（2026-09-23，用户执行迁移后当日）**：
      **探针（坑 #7 判据）**：report_create / admin_report_page / admin_report_handle 匿名全 **42501**（存在无权）= 迁移生效实锤；wall_toggle_dislike 42501（新版权限收紧在位）；admin_overview 匿名 admin=false 提前返回（reports_pending 仅管理员可见，符合设计）。
