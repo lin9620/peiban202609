@@ -136,7 +136,9 @@ async function doFish() {
       return;
     }
     fished.value = l;
-    bumpQuota("fished");
+    /* 轮 21 口径修正：捞到**不扣**次数——「捞到且回信」才扣 1 次。
+     * 客户端记账搬到 doReply，服务端记账搬到 bottle_reply()（见
+     * MIGRATION_bottle_reply_quota.sql）；这里只同步一次服务端权威值。 */
     mergePending();
     syncQuota();
   } catch (e) {
@@ -160,7 +162,9 @@ async function doReply(l) {
     replyDrafts.value = { ...replyDrafts.value, [l.id]: "" };
     fished.value = null;
     held.value = held.value.filter((x) => x.id !== l.id);
+    bumpQuota("fished");        /* 轮 21：回信成功才记一次（服务端 bottle_reply 同口径） */
     mergePending();
+    syncQuota();
     await refreshBottle();
   } catch (e) {
     mailHint.value = t(bottleErrKey(e));

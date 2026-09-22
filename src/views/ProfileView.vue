@@ -147,9 +147,11 @@ const route = useRoute();
 
 function goSignIn(withForgot = false) {
   /* 把当前位置带过去：登录成功后回到原来的页面（默认 /profile）；
-   * withForgot = 重置链接失效场景 → 直达「忘记密码」表单 */
+   * withForgot = 重置链接失效场景 → 直达「忘记密码」表单
+   * 轮 21 加固：只有**显式 true** 才算忘记密码。此处用 === true 兜住
+   * 「模板 @click 不带括号 → MouseEvent 被当实参」这类误传（真根因见本函数调用处注释）。 */
   const here = route.fullPath || "/profile";
-  const query = withForgot ? { redirect: here, forgot: "1" } : { redirect: here };
+  const query = withForgot === true ? { redirect: here, forgot: "1" } : { redirect: here };
   router.push({ path: "/login", query });
 }
 
@@ -363,7 +365,10 @@ const brightRatio = computed(() => {
       <h2>{{ t("profile.authTitle") }}</h2>
       <p class="sub" style="margin-top: 6px">{{ t("settings.tapToLogin") }}</p>
       <div class="auth-actions">
-        <n-button type="primary" round size="large" @click="goSignIn">
+        <!-- 轮 21 根因修复：@click="goSignIn" 不带括号时 Vue 会把 MouseEvent 当第一实参传入，
+             withForgot 收到 truthy → 跳 /login?forgot=1 → 用户点「去登录」直接看到忘记密码页。
+             必须显式传 false（函数内也加了 === true 兜底，双保险）。 -->
+        <n-button type="primary" round size="large" @click="goSignIn(false)">
           {{ t("profile.goSignIn") }}
         </n-button>
       </div>

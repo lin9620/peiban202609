@@ -1379,6 +1379,12 @@ create table if not exists public.bottle_fishes (
   primary key (user_id, day, letter_id)
 );
 
+/* 轮 21：次数口径改为「捞到且回信才扣 1 次」——捞信日志上加回信时刻/回信日。
+   replied_day 才是 bottle_quota() 数的列；replied_at is null = 捞起后从未回信，不计次。 */
+alter table public.bottle_fishes add column if not exists replied_at  timestamptz;
+alter table public.bottle_fishes add column if not exists replied_day date;
+
+
 alter table public.bottle_letters enable row level security;
 alter table public.bottle_fishes  enable row level security;
 drop policy if exists "bottle readable by owner or replier" on public.bottle_letters;
@@ -1407,7 +1413,7 @@ begin
   return v_row;
 end $$;
 
--- 漂流瓶次数探针（轮 18）：今天已写几封 / 已捞几封（UTC 日，服务端权威）
+-- 漂流瓶次数探针（轮 18；轮 21 口径：sent=今天已写信数，fished=今天**已回信**数，捞信本身不计次）
 create or replace function public.bottle_quota()
 returns jsonb
 language sql stable security definer set search_path = public as $$
@@ -1417,7 +1423,7 @@ language sql stable security definer set search_path = public as $$
                   and created_day = (now() at time zone 'utc')::date),
     'fished', (select count(*) from public.bottle_fishes
                 where user_id = auth.uid()
-                  and day = (now() at time zone 'utc')::date)
+                  and replied_day = (now() at time zone 'utc')::date)
   )
 $$;
 revoke all on function public.bottle_quota() from public, anon;
@@ -1427,17 +1433,23 @@ create or replace function public.bottle_fish()
 returns public.bottle_letters
 language plpgsql security definer set search_path = public as $$
 declare
-  v_count int;
-  v_row   public.bottle_letters;
-  i       int;
+  v_replied int;
+  v_held    int;
+  v_row     public.bottle_letters;
+  i         int;
 begin
   if auth.uid() is null then raise exception 'bottle-auth'; end if;
   /* 捞起超 48h 未处理的信先放回海里（不让信卡死在谁手里） */
   update public.bottle_letters set status = 'sea', holder = null, held_at = null
     where status = 'held' and held_at < now() - interval '48 hours';
-  select count(*) into v_count from public.bottle_fishes
-    where user_id = auth.uid() and day = (now() at time zone 'utc')::date;
-  if v_count >= 7 then raise exception 'bottle-limit-fish'; end if;
+  /* 今日已回信数达到 7 → 今天不能再捞（捞了也回不了） */
+  select count(*) into v_replied from public.bottle_fishes
+    where user_id = auth.uid() and replied_day = (now() at time zone 'utc')::date;
+  if v_replied >= 7 then raise exception 'bottle-limit-fish'; end if;
+  /* 手里还压着 ≥7 封没处理 → 先回信或放回，别囤信（防无限捞） */
+  select count(*) into v_held from public.bottle_letters
+    where holder = auth.uid() and status = 'held';
+  if v_held >= 7 then raise exception 'bottle-limit-hold'; end if;
   /* 随机挑一封 → 条件更新抢占（只在仍是 sea 时成立）。别人同一瞬间捞走
      同一封 → 命中 0 行 → 换一封重试；重试 3 次仍落空或海里已空 →
      明确抛 bottle-empty-sea（绝不返回 null：客户端只在拿到信时才计数） */
@@ -1450,7 +1462,8 @@ begin
       where id = v_row.id and status = 'sea'
       returning * into v_row;
     if found then
-      /* 同一封当天放回再捞不重复计数、不报错（老版在这里撞唯一键炸 23505） */
+      /* 捞信日志（供「我捞到的」记录）：同一封当天放回再捞不重复、不报错。
+         这里不写 replied_*，所以捞信本身不计次（轮 21 口径）。 */
       insert into public.bottle_fishes (user_id, day, letter_id)
         values (auth.uid(), (now() at time zone 'utc')::date, v_row.id)
         on conflict (user_id, day, letter_id) do nothing;
@@ -1474,6 +1487,17 @@ begin
     where id = p_id and status = 'held' and holder = auth.uid()
     returning * into v_row;
   if v_row is null then raise exception 'bottle-not-holder'; end if;
+  /* 轮 21：记次时机 = 回信成功这一刻。只给这封信**最新一条**捞信日志盖章：
+     同一封信「捞起→放回→跨天再捞」会有多行日志（主键含 day），全量更新会把
+     N 行都盖成今天 → 一次回信扣 N 次；取 day 最大的一行即幂等一次。 */
+  update public.bottle_fishes f
+    set replied_at = now(), replied_day = (now() at time zone 'utc')::date
+    from (
+      select user_id, day, letter_id from public.bottle_fishes
+        where user_id = auth.uid() and letter_id = p_id and replied_at is null
+        order by day desc limit 1
+    ) t
+    where f.user_id = t.user_id and f.day = t.day and f.letter_id = t.letter_id;
   return v_row;
 end $$;
 
