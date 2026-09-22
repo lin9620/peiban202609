@@ -180,7 +180,7 @@ t("T23 「我的」页展示我的帖子（共有 5：默认最新 3 条 + 「�
   assert.ok(profileView.includes("cloudFetchUserPosts(uid, 3)"), "ProfileView 应只拉最新 3 条");
   assert.ok(profileView.includes('to="/my-posts"') && profileView.includes("profile.more"), "缺「更多」入口");
   assert.ok(profileView.includes("profile.myPosts") && profileView.includes("profile.myPostsEmpty"), "缺少帖子区块文案键");
-  assert.ok(profileView.includes("query: { post: p.dbId }"), "深链必须用 dbId（CommunityView 用 dbId 匹配）");
+  assert.ok(profileView.includes("'/post/' + p.dbId"), "深链进独立详情页 /post/:id（轮 20，不再跳回暖心墙列表）");
   const i18n = read("src/i18n.js");
   assert.ok(i18n.split("myPosts:").length >= 3, "myPosts 未做到双语（en/zh 各一份）");
   assert.ok(read("src/views/MyPostsView.vue").includes("cloudFetchUserPosts(uid.value, PAGE, append ? offset : 0)"),

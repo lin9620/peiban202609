@@ -117,7 +117,10 @@ async function doSend() {
     syncQuota();
     await refreshBottle();
   } catch (e) {
-    mailHint.value = t(bottleErrKey(e));
+    const k = bottleErrKey(e);
+    mailHint.value = t(k);
+    /* 轮 20：限额报错 = 服务端账本与显示错位的信号 → 立刻拉服务端次数对齐显示 */
+    if (k === "bottle.errSendLimit") syncQuota();
   } finally { mailBusy.value = false; }
 }
 
@@ -137,7 +140,10 @@ async function doFish() {
     mergePending();
     syncQuota();
   } catch (e) {
-    mailHint.value = t(bottleErrKey(e));
+    const k = bottleErrKey(e);
+    mailHint.value = t(k);
+    /* 轮 20：限额报错 → 立即同步服务端次数（一次点击内对齐，不再「显示还能捞但说用完」） */
+    if (k === "bottle.errFishLimit") syncQuota();
   } finally { fishing.value = false; }
 }
 

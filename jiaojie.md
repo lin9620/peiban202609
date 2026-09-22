@@ -266,16 +266,16 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 |---|---|
 | 项目 | peiban（陪伴 / warm-paws），路径 `D:\05ruanjian\peiban` |
 | 技术栈 | Vue 3 + Vite + Naive UI；数据层双模式：直连 Supabase（`db.supabase.js`）/ Worker 网关（`db.gateway.js` + `worker/api.js`，**线上走网关**）；Cloudflare 部署 https://dale.de5.net；Supabase Postgres + RLS + security definer RPC |
-| 代码 | 轮 19 已改（库内待提交，本轮末提交）；核心新增：`PostDetailView.vue`（/post/:id 独立详情页）+ 单帖数据链（wall.cloudFetchPost → db.getPost 两适配器 → Worker GET /posts/:id） |
-| 部署 | 前端 Version `c063b684` 已上线（轮 19）；`live-check` 14/14 |
-| 数据库 | **`MIGRATION_bottle_quota_fishfix.sql`（轮 18）仍待用户执行**（探针实测 `bottle_quota` 线上 404；未执行时前端自动退本地账）；`MIGRATION_notifications_drop_dm.sql`（轮 13 #23）执行状态仍未确认 |
-| App | 轮 19 APK 已打包装机：SHA16 `32c0061efd5dab77`，`adb install -r` Success 并已启动（包名 `net.de5.dale`）；CLI 打包环境 `JAVA_HOME=D:\00ruanjiananzhuang\android-studio-quail4-windows\jbr` + `android\gradlew.bat -p android assembleDebug` |
-| 测试 | 离线 **30 套 ALL GREEN**（app-shell 40/40 修 T31 过时断言；新增 post-detail-test 14 断言）+ home-panes 9/9 + api-contract 83/83 + gateway-contract 66/66 + build 0 |
+| 代码 | 轮 20 已改（本轮末提交）；核心：ProfileView 帖子卡跳 /post/:id（轮 19 漏改补上）+ 恢复态死循环三层修复（SIGNED_IN 清态/12s 自愈/登录兜底）+ 限额报错同步服务端次数 + `_headers` 加 HTML no-cache |
+| 部署 | 前端 Version `03376511` 已上线（轮 20）；`live-check` 14/14；**线上 index 已返回 Cache-Control: no-cache（实测）** |
+| 数据库 | **`MIGRATION_bottle_quota_fishfix.sql` 已由用户执行**（探针 401=函数存在实锤）；服务端行为已全矩阵实测：捞到记账/放回不返还/失败不记账/限额 7 生效；`MIGRATION_notifications_drop_dm.sql`（轮 13 #23）执行状态仍未确认 |
+| App | 轮 20 APK 已打包：SHA16 `33f42a2a5d66d71e`（`apk\warm-paws-debug.apk`+桌面备份）；**装机待做**（手机断连）；CLI 打包环境 `JAVA_HOME=D:\00ruanjiananzhuang\android-studio-quail4-windows\jbr` + `android\gradlew.bat -p android assembleDebug` |
+| 测试 | 离线 **30 套 ALL GREEN**（auth-test 103/103：A30 适配自愈+新增 A44d/e/f；uifix T23 更新；post-detail 15/15）+ build 0 |
 
 ## 二、现在在做什么
 
-- **当前任务**：轮 19（用户反馈 4 条）**全部完成：已部署 + 已装手机并启动**（F 区轮 19）——①退出登录误跳重置密码页（恢复标记只在带 session 的恢复事件置位 + 登出清态）②「我的帖子」点进独立详情页 `/post/:id`（完整帖子卡 + 暖心墙同款两级评论展开）③首页三联改「宠物｜今日｜漂流瓶」④消息页分栏支持左右滑动。**等用户真机验收 4 条 + Supabase 执行轮 18 迁移**。
-- **待用户确认**：① 轮 19 四条真机验收（退出登录去向 / 我的帖子详情页评论 / 首页三联顺序 / 消息页左右滑）；② `MIGRATION_bottle_quota_fishfix.sql`（轮 18，跨端次数口径收口）；③ `MIGRATION_notifications_drop_dm.sql`（轮 13 #23，仍未确认）；④ 轮 17/18 遗留项实机复验。
+- **当前任务**：轮 20（「先找根因」四条）**代码全部完成：已部署、已验证、APK 已打包**（F 区轮 20，含两个动态探针的取证结论）。**待三件事**：①手机重连后装机 ②真机验收（我的页帖子进详情页/退出登录不再见重置卡/浏览器强刷后次数两端一致/手机重测空捞不扣） ③口径确认：现行「捞到即扣、放回不返还、失败不扣」vs 用户轮 18 要的「回复了才扣」（后者需再跑一次迁移，回复才扣有防刷权衡）。
+- **待用户确认**：①轮 20 四条真机验收 ②口径确认（见上） ③`MIGRATION_notifications_drop_dm.sql`（轮 13 #23，仍未确认） ④轮 18/19 遗留项复验。
 - **可选加码（等有量再做）**：图片搬 Cloudflare R2（出口永久免费，见「十、容量评估」方案 B）。
 
 ## 三、已完成（按轮次，均含验证证据）
@@ -892,7 +892,16 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
     ③ **首页三联改「宠物｜今日｜漂流瓶」**：开局不再直接是漂流瓶（首拉慢、延迟感重）——今日内容秒开，默认联=今日；滑动边界改为顺序无关写法 `HOME_PANES[idx±1]`。
     ④ **消息页左右滑动**：分栏（会话|漂流瓶|通知）支持与首页同款手势左右滑动切换。
     **验收**：全量 30 套 ALL GREEN（app-shell-test 修 T31 过时断言→40/40）+ 新增 post-detail-test 14 断言 + home-panes 9/9 + api-contract 83/83 + gateway-contract 66/66 + build 0 + live-check 14/14 + cap sync + APK SHA16 `32c0061efd5dab77` 已 `adb install -r` Success 并启动（包名 `net.de5.dale`）。
-    **待用户**：真机验收 4 条（①退出登录后回登录页而非重置页 ②我的帖子点进独立详情页、评论可展开 ③首页左右滑=宠物|今日|漂流瓶 ④消息页左右滑切换分栏）；Supabase 迁移 `MIGRATION_bottle_quota_fishfix.sql` 仍待执行（轮 18 遗留）。
+    **待用户**：真机验收 4 条（①退出登录后回登录页而非重置页 ②我的帖子点进独立详情页、评论可展开 ③首页左右滑=宠物|今日|漂流瓶 ④消息页左右滑切换分栏）。
+
+  - **轮 20 · 「先找根因」四条（2026-09-22，已部署 Version 03376511）**：
+    **取证（按用户要求先诊断）**：写了两个动态探针（用完即删）+ 读 auth-js 源码，全部实锤后才动手。
+    ① **「我的」页帖子跳暖心墙**：轮 19 **改漏了文件**——只改了 /my-posts（MyPostsView:93），「我的」页帖子卡在 ProfileView.vue:308 还是老跳转。修：`:to="'/post/' + p.dbId"`。
+    ② **退出→登录→又见重置卡**：动态探针（注册真账号实测事件序列）——signOut 只发 SIGNED_OUT、密码登录只发 SIGNED_IN，**都不发 PASSWORD_RECOVERY**（轮 19 注释里的「signOut 怪癖」不存在，已更正）；auth-js 2.116.0 源码：PASSWORD_RECOVERY 全库仅 3 处发出点（427/1652/2070），全部是「URL 回调带 type=recovery 令牌」。⇒ **recovery 残留只来自地址栏失效恢复链接**：令牌失效消费失败 → supabase-js 不清 URL → 我们只在「有会话」时清 → **每次页面重载 captureRedirect 重新点亮重置卡（死循环）**。修三层：SIGNED_IN 一到强制清恢复态（auth-js 里与 PASSWORD_RECOVERY 二选一互斥）+ captureRedirect 失效落地 12s 自愈（清 URL 回登录卡，真链接 1-2s 完成消费不受影响）+ LoginView doAuth 成功 cloudClearRecovery 兜底。
+    ③④ **次数打架/空捞扣次**：**迁移已被用户执行**（探针 `bottle_quota` 从轮 18 的 404 变 401=函数存在实锤）。双账号全链路实测线上服务端行为矩阵：quota RPC 经网关通 ✓、捞到记账 ✓、放回不返还 ✓、**失败/空捞不记账 ✓**（C 连捞 7 次计数=7，第 8 次失败后仍=7）、限额生效 ✓ ——「没捞到也扣次数」在服务端已不存在；「显示还能捞2但用完」「手机3封/网页0封」是**迁移生效前的观测**（当时前端退回各端各记各的本地账）。前端自愈补丁：限额报错瞬间强制 syncQuota（BottleView doSend/doFish catch）。**缓存修复（「改了不见好」最大嫌疑）**：index.html 此前**无任何 Cache-Control** → 浏览器启发式缓存持旧 bundle → `_headers` 给 `/*` 加 `Cache-Control: no-cache`（assets 保持 immutable；线上已验证 index 返回 no-cache）。**口径说明（待用户确认）**：现行规则=「捞到即扣、放回不返还、失败不扣」（防无限刷信必需）；用户轮 18 曾要「回复了才扣」——改它需动服务端限制口径（bottle_reply 记账+limit 改数回复，再跑一次迁移），等确认。
+    **验收**：全量 30 套 ALL GREEN（auth-test A30 更新+新增 A44d/e/f → 103/103；uifix T23 深链断言更新；post-detail 15/15）+ build 0 + 部署 Version 03376511 + live-check 14/14 + 线上 index no-cache 实测 ✓ + cap sync。
+    **APK**：SHA16 `33f42a2a5d66d71e` 已打包（`apk\warm-paws-debug.apk` + 桌面备份）；装机因手机断连**待做**。
+    **待用户**：①重连手机→我装机 ②真机验收四条（我的页帖子进详情页/退出登录不再见重置卡/浏览器强刷后次数一致/手机重测空捞不扣） ③口径确认（捞到即扣 vs 回复才扣，回复才扣需再跑一次迁移）。
 
 ## G. 开发任务拆解（动工路线图，逐批交付）
 

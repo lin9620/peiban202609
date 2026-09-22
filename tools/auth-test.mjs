@@ -102,15 +102,17 @@ ok("A29 令牌在 createClient 之前读取（否则解析完就没了）", (() 
   const cc = sb.indexOf("createClient(");
   return cap > 0 && cc > 0 && cap < cc;
 })(), "captureRedirect 必须在 createClient 之前");
-ok("A30 恢复令牌【不】在 createClient 前被抹掉（auth-js 要用它建会话；只读不清）",
+ok("A30 恢复令牌在 createClient 前不被同步抹掉（auth-js 要用它建会话；12s 自愈定时器除外）",
   (() => {
     /* 只看 captureRedirect 函数体，避免误伤相邻分支 */
     const m = sb.match(/function captureRedirect\(\)[\s\S]*?\n}/);
     const body = m ? m[0] : "";
-    /* recovery 分支后面不允许跟 replaceState（error 分支可以） */
+    /* recovery 分支后面不允许跟【同步】replaceState（error 分支可以）；
+       轮 20：失效落地 12s 自愈里的 replaceState 允许（仅消费超时后清残留） */
     const recPart = body.split('kind === "error"')[0];
+    const syncPart = recPart.replace(/setTimeout\(\(\) => \{[\s\S]*?\}, 12000\)/, "");
     return /kind === "recovery"/.test(body)
-      && !/replaceState/.test(recPart)
+      && !/replaceState/.test(syncPart)
       && /kind === "error"[\s\S]*replaceState/.test(body);
   })());
 ok("A30b 会话在手时才兜底清地址栏残留（session 存在才 replaceState）",
@@ -184,6 +186,20 @@ ok("A44b 四页未登录入口统一跳 /login 并带当前页回跳（不再 pu
     && !s.includes("router.push('/profile')")));
 ok("A44c 四页入口按钮用「去登录」文案（profile.goSignIn），不再借「我的」页签名义",
   entryViews.every((s) => s.includes('t("profile.goSignIn")')));
+
+/* ─── ⑥c 轮 20 恢复态死循环修复（「退出→登录→又见重置卡」）：
+ *      动态探针实锤 signOut/密码登录都不发 PASSWORD_RECOVERY，recovery 残留只来自
+ *      地址栏失效恢复链接（消费失败永不清 URL）→ 三层兜底：SIGNED_IN 强制清 +
+ *      失效落地 12s 自愈 + 登录成功组件层清态 ─── */
+ok("A44d SIGNED_IN 一到就清恢复态（恢复落地与普通登录在 auth-js 里互斥；登录后永不落重置卡）",
+  /evt === "SIGNED_IN"\)\s*\{\s*cloud\.recovery = false;\s*cloud\.recoveryErr = "";/.test(sb));
+ok("A44e 失效恢复落地 12 秒自愈（清地址栏残留 + 回登录卡；真链接 1-2s 完成消费不受影响）",
+  /setTimeout\(\(\) => \{[\s\S]*?cloud\.recovery && !cloud\.user[\s\S]*?replaceState[\s\S]*?\}, 12000\)/.test(sb));
+{
+  const lv = read("src/views/LoginView.vue");
+  ok("A44f 登录成功清恢复态兜底（doAuth 成功 → cloudClearRecovery；全文件共 3 处调用）",
+    (lv.match(/cloudClearRecovery\(\)/g) || []).length >= 3 && /轮 20 兜底/.test(lv));
+}
 
 /* ═════════ ⑧ 改昵称（Google 首登自动昵称 → 提示可改；设置页常驻可改） ═════════ */
 const sbSrc = read("src/utils/supabase.js");

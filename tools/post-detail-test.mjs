@@ -30,6 +30,9 @@ ok("router：/post/:id → postDetail（懒加载 PostDetailView）",
     && has(router, './views/PostDetailView.vue'));
 ok("MyPostsView：点卡片进 /post/<dbId>（不再跳回暖心墙页面）",
   has(myPosts, "`/post/${p.dbId}`") && !myPosts.includes('query: { post: p.dbId }'));
+const profileView = read("src/views/ProfileView.vue");
+ok("ProfileView：「我的」页帖子卡同样进 /post/<dbId>（轮 20 修复跳暖心墙的漏改）",
+  has(profileView, "'/post/' + p.dbId") && !profileView.includes("query: { post: p.dbId }"));
 ok("i18n：详情页复用现有键，未新增缺失键（comment/community/nav/common 均已双语）",
   has(i18n, "postDetail:") === false
     && /comment: \{[\s\S]*?count: "/.test(i18n)

@@ -86,7 +86,19 @@ function captureRedirect() {
   if (typeof window === "undefined" || !window.location) return;
   const loc = window.location;
   const r = parseAuthRedirect(loc.hash, loc.search);
-  if (r.kind === "recovery") cloud.recovery = true;
+  if (r.kind === "recovery") {
+    cloud.recovery = true;
+    /* 轮 20：失效/被用过的恢复链接，supabase-js 消费失败时【不清 URL】——
+       每次页面重载 captureRedirect 都会重新点亮「设置新密码」卡（死循环，
+       「退出→登录→又见重置卡」的实锤根因）。12 秒内没建立会话就判为失效落地：
+       清掉地址栏残留 + 回登录卡。真链接 1-2 秒完成消费（会话在手 → 自愈不触发）。 */
+    setTimeout(() => {
+      if (cloud.recovery && !cloud.user) {
+        cloud.recovery = false;
+        try { window.history.replaceState(null, "", loc.pathname + loc.search); } catch (e) { /* 忽略 */ }
+      }
+    }, 12000);
+  }
   if (r.kind === "error") {
     cloud.recoveryErr = r.reason || r.code;
     /* error 分支没有可用令牌，直接清掉难看的错误参数（supabase-js 不会碰它） */
@@ -125,10 +137,13 @@ export async function initCloud() {
        不会出现「先以游客身份拉一遍 → 已点过的回应显示成没点」的竞态（用户实测点不掉回应的根因）。 */
     cloud.ready = true;
     sb.auth.onAuthStateChange((evt, session) => {
-      /* PKCE 流程的地址栏里没有 type=recovery，靠这个事件识别重置链接落地。
-         轮 19：必须携带会话才算——supabase-js 的已知怪癖是 signOut() 也会发一次
-         PASSWORD_RECOVERY 事件（session=null），曾导致「退出登录却落到重置密码页」 */
+      /* 恢复落地 = PASSWORD_RECOVERY（auth-js 2.116.0 只在 URL 回调 type=recovery 时发它；
+         动态探针实测：signOut / 密码登录都不会发——轮 19 注释里的「signOut 怪癖」不存在） */
       if (isRecoveryEvent(evt) && session) cloud.recovery = true;
+      /* 轮 20：普通登录（密码 / Google / 邮箱魔法链接）发的是 SIGNED_IN —— auth-js 源码里
+         与 PASSWORD_RECOVERY 二选一互斥。SIGNED_IN 一到，恢复态必属残留 → 强制清掉：
+         「退出 → 再登录」永远不会落到「设置新密码」卡（用户实测复现的根因兜底） */
+      if (evt === "SIGNED_IN") { cloud.recovery = false; cloud.recoveryErr = ""; }
       /* 会话建立完成后 supabase-js 已消费并清掉地址栏令牌；若 URL 仍残留
          （个别 implicit 边界情况），这里兜底抹一次 —— 只在会话在手时才安全 */
       if (session && typeof window !== "undefined" && hasAuthParams(window.location.hash, window.location.search)) {

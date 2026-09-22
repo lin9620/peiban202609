@@ -300,12 +300,12 @@ const brightRatio = computed(() => {
       </div>
       <p v-if="myPostsBusy" class="sub">…</p>
       <p v-else-if="!myPosts.length" class="sub">{{ t("profile.myPostsEmpty") }}</p>
-      <!-- 轮 18：与暖心墙完全同款的帖子卡（头像/署名/时间/全文/配图/回应数/浏览数），
-           不再是只剩文字的缩略行；整卡点击进墙里那条互动 -->
+      <!-- 轮 18：与暖心墙完全同款的帖子卡（头像/署名/时间/全文/配图/回应数/浏览数）；
+           轮 20：整卡点击进独立详情页 /post/:id（完整帖子+评论展开），不再跳回暖心墙列表 -->
       <div v-else class="my-posts">
         <router-link
           v-for="p in myPosts" :key="p.id"
-          class="post-card card my-post" :to="{ path: '/community', query: { post: p.dbId } }">
+          class="post-card card my-post" :to="'/post/' + p.dbId">
           <div class="post-head">
             <n-avatar round :size="42" class="post-avatar">🙂</n-avatar>
             <div class="post-meta">

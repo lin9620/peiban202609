@@ -93,6 +93,7 @@ async function doAuth() {
     authMsg.value = t("profile.verifySent");
     return;
   }
+  cloudClearRecovery();   /* 轮 20 兜底：密码登录成功 ⇒ 不可能是恢复流程，残留恢复态一并清掉 */
   goTarget();   /* 登录成功（watch 也会触发，这里显式走一遍保证顺滑） */
 }
 
