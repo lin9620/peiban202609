@@ -260,22 +260,22 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
 ---
 
-# 一、当前状态速览（2026-09-23 更新）
+# 一、当前状态速览（2026-09-23 更新 · 轮 33）
 
 | 项 | 值 |
 |---|---|
 | 项目 | peiban（陪伴 / warm-paws），路径 `D:\05ruanjian\peiban` |
 | 技术栈 | Vue 3 + Vite + Naive UI；数据层双模式：直连 Supabase（`db.supabase.js`）/ Worker 网关（`db.gateway.js` + `worker/api.js`，**线上走网关**）；Cloudflare 部署 https://dale.de5.net；Supabase Postgres + RLS + security definer RPC |
-| 代码 | 轮 32 已提交（`5dc9181`）；核心：**本地个人数据按账号分域**（新 `utils/userScope.js`：宠物/金币/手绘厨房/冒险/装扮 + 暖心墙浏览去重/匿名id/当日记账/本地帖/回应/评论，键 = base:uid，未登录 = guest）+ 老档迁移 guest 域 + 首次登录认领 + App.vue `watch(uid)→setUserScope` + petStore flush/reload 注册；顺带修 `build-until-good.mjs` 轮 31 漏改的入口口径 |
-| 部署 | Version `b19875c3` 已上线（轮 32）；`live-check` 14/14；线上 SHA16 `888112a83f9d7747` 与本地 dist 一致 |
-| 数据库 | 本轮**零迁移**（纯前端分域，localStorage 键名变化，云端数据不动）；`MIGRATION_notifications_drop_dm.sql`（轮 13 #23）执行状态仍未确认 |
-| App | 轮 32 APK 已重打：SHA16 `d73e84248242747b`（4.77MB，`apk\warm-paws-debug.apk`）；**装机待做**（手机未连 USB）；`cap sync` 完成（android assets 入口 = dist 同哈希 `index-BKKbu7ta.js`） |
-| 测试 | 离线 **32 套 ALL GREEN**（新增 userScope-test 8 项：分域读写/老档迁移幂等+触发reload/认领不覆盖只认一次/换域 flush→reload 顺序/端到端复现原报障）+ undef 0 + build 0 |
+| 代码 | 轮 33 已提交（`a9e5b16`）；核心：**举报/审核/拉黑体系**——帖子+评论举报弹窗（`ReportDialog.vue`）+ 评论 ≥3 人举报自动隐藏 + 帖子厌恶下架进待复核队列 + 管理中心「举报」页签（待处理/已处理 + 红点 + 五动作处置 + 备注）+ 处理结果通知举报人（`event=report_handled` → `notif.reportDone`）+ 全站拉黑（复用 dm_blocks + `userBlocks.js` 前端过滤 + 主页拉黑按钮两步确认） |
+| 部署 | Version `2c918771` 已上线；`live-check` 14/14；线上 SHA16 `9d9dfc7e1cd32d69` 与本地 dist 一致 |
+| 数据库 | **`MIGRATION_reports.sql` 已就绪、待用户在 SQL Editor 执行**（执行前举报按钮会提示「功能还没开启」，其余零影响）；`MIGRATION_notifications_drop_dm.sql`（轮 13 #23）执行状态仍未确认 |
+| App | 轮 33 APK 已重打：SHA16 `9aa11fce669cdf13`（4.77MB，`apk\warm-paws-debug.apk`）；**装机待做**（手机未连 USB）；轮 32 APK（`d73e84248242747b`）被本轮覆盖，装机以最新包为准 |
+| 测试 | 离线 **33 套 ALL GREEN**（新增 report-test 58 项）+ undef 0 + build 0 |
 
 ## 二、现在在做什么
 
-- **当前任务**：轮 32（账号域分域，修「新注册的号一进宠物就是 3 级」）**已完成：已提交（`5dc9181`）、已部署（Version `b19875c3`）、线上验证过、APK 已重打**（十二 F 区轮 32）。网页端刷新即生效；**App 端要装新 APK 才生效**。**待用户**：①重连手机装机 ②真机验收：A 登录玩一会→退出→注册全新 B 号，B 的宠物必须是 1 级 50 金币；A 再登录档还在；登出回到游客档还是原来那只 ③轮 31 谷歌登录真机验收（APK 重打后一并验）。
-- **待用户确认**：①上述真机验收 ②`MIGRATION_notifications_drop_dm.sql`（轮 13 #23，仍未确认）。
+- **当前任务**：轮 33（举报/审核/拉黑）**代码全部完成：已部署、已验证、APK 已重打**（F 区轮 33）。**待用户**：①**在 Supabase SQL Editor 整段执行 `MIGRATION_reports.sql`**（执行前举报按钮提示「功能还没开启」，其余零影响；执行后 report_create 从 PGRST202 变 401/权限类报错=生效实锤）②重连手机装机 + 真机验收（举报弹窗、管理端举报页签、拉黑后内容隐藏、轮 31/32 遗留项）。
+- **待用户确认**：①`MIGRATION_reports.sql` 执行 ②`MIGRATION_notifications_drop_dm.sql`（轮 13 #23，仍未确认）。
 - **可选加码（等有量再做）**：图片搬 Cloudflare R2（出口永久免费，见「十、容量评估」方案 B）。
 
 ## 三、已完成（按轮次，均含验证证据）
@@ -945,6 +945,14 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **口径**：纯前端键名变化，**零迁移**、云端数据不动；网页端刷新即生效，**App 端要装新 APK 才生效**；v1 时代老档（`warm-paws-pet-v1`）不经此机制（petStore 自身的 v1→v2 迁移路径处理，量级可忽略）。
      **验收**：userScope-test **8/0**（T7 端到端复现原报障：A 认领老档后新注册 B 必无档）+ 全量 **32 套 0 fail** + `undef-check 0` + build 0 + 部署 + live-check 14/14 + 线上 SHA16 `888112a83f9d7747` 本地=线上 + cap sync + APK 重打（4.77MB SHA16 `d73e84248242747b`，手机未连未装机）。
      **顺带修的基建坑**：`build-until-good.mjs` 还在用「所有 index-*.js 都要含 slug」旧口径 → 轮 31 引入 `@capacitor/browser` 懒块后恒报 BUILD_ALWAYS_BAD（env-guard 当轮改了、这脚本漏改）→ 对齐成「只验 index.html 真正加载的入口」（见踩坑 #28）。
+
+  - **轮 33 · 举报 / 审核 / 拉黑体系（2026-09-23，已部署 Version `2c918771`，提交 `a9e5b16`）**：
+     **需求（用户拍板）**：UGC（帖子/评论）配举报 + 管理员审核 + 拉黑；管理中心查举报并处理，分待处理/已处理。拍板结果：拉黑=全站生效（复用 dm_blocks）；帖子不因举报数自动下架（厌恶阈值已有），下架后进「待复核」；评论 ≥3 人举报自动隐藏；处理结果通知举报人；「举报用户本人」本期不做。
+     **数据库（`MIGRATION_reports.sql`，待用户执行）**：①`reports` 表（reporter 可空=系统条目 / target_type post|comment / reason 六枚举+auto / source report|auto / status pending|handled / handled_by+at+action+note；同人同目标 partial unique；待复核同目标只排一条 partial unique；RLS 本人或 admin 可读，写入全收口 RPC）②`wall_comments` 加 `hidden/hidden_at`，读策略升级为「hidden 对作者与管理员可见」③RPC `report_create`（防刷每日 10 条 + 同目标幂等 + 目标存活校验 + 评论 ≥3 人自动隐藏，`hidden_at is null` 保证恢复后不再自动隐藏）④RPC `admin_report_page`（两档分页，带正文/作者/聚合人数/内容丢失标记）⑤RPC `admin_report_handle`（dismiss/remove_post/restore_post/delete_comment/unhide_comment 五动作 + 幂等 + 给举报人发 `event=report_handled` 的 system 通知）⑥`wall_toggle_dislike` 下架时插待复核条目 ⑦`admin_overview` 加 `reports_pending`。SUPABASE_SETUP.sql 已同步（两个既有函数原地更新、其余追加，report-test 钉住「只保留一份定义」）。
+     **Worker**：`POST /api/reports`、`GET /api/admin/reports?status=&offset=&limit=`、`POST /api/admin/reports/:id/handle`（白名单翻译，参数透传 RPC）。
+     **前端**：`ReportDialog.vue`（原因六选一+补充说明+成功先示「已收到」再收起；PGRST202→「功能还没开启」按坑 #14 判 code）；CommunityView/PostDetailView 帖子卡与两级评论「举报」入口（自己的内容不显示）+ 拉黑内容过滤（consume/loadThread/loadComments 出口 filterBlocked）；`userBlocks.js`（复用 dm_blocks，按账号域快照 + 换域重置，blockUser/unblockUser 即时改缓存）；WallerView 拉黑按钮（两步确认 4s 复位 + 已拉黑态可撤销）；AdminView「举报」页签（待处理/已处理子档 + 页签红点 `reports_pending` + 处理后本地移除并同步扣红点 + 已处理档可查处理记录；评论条目给「看原帖」跳 /post/:id）；notifyRules `report_handled` 分支；i18n zh/en 各约 30 键。
+     **验收**：report-test **58/0**（迁移/SETUP 同源 + Worker 白名单 + 双模式成对 + 错误码↔i18n + itemView 真跑 + userBlocks 过滤/换域真跑 + 四视图接线）+ 全量 **33 套 0 fail** + undef 0 + build 0 + 部署 live-check 14/14 + SHA `9d9dfc7e1cd32d69` 本地=线上 + APK 重打 `9aa11fce669cdf13`。**数据库行为（阈值/防刷）离线锁形 + 上线探针闭环，迁移未执行前功能不生效（优雅降级）**。
+     **待用户**：执行 `MIGRATION_reports.sql` → 探针验证 → 真机走查（举报→待处理→处置→通知→已处理闭环 + 拉黑隐藏）。
 
 ## G. 开发任务拆解（动工路线图，逐批交付）
 
