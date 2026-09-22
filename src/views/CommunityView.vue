@@ -198,9 +198,10 @@ function openReportCmt(cm) {
   reportTarget.value = { type: "comment", id: cm.dbId, label: cm.text || "" };
   reportShow.value = true;
 }
-/* 自己的东西不需要举报；游客不能举报（弹窗里也会再提示登录） */
-const canReportPost = (p) => !!(p && p.cloud && p.dbId != null && signedIn.value && p.userId && p.userId !== myUid.value);
-const canReportCmt = (cm) => !!(cm && cm.cloud && cm.dbId != null && signedIn.value && cm.userId && cm.userId !== myUid.value);
+/* 自己的内容不显示举报（不能举报自己）；游客也显示入口——点了弹窗里会提示先登录。
+ * 注意：按钮只出现在「别人」的云端内容上，看自己的帖子/评论没有是设计如此。 */
+const canReportPost = (p) => !!(p && p.cloud && p.dbId != null && p.userId && p.userId !== myUid.value);
+const canReportCmt = (cm) => !!(cm && cm.cloud && cm.dbId != null && cm.userId && cm.userId !== myUid.value);
 
 /* ════════ 厌恶：#26 双档下架线由服务端假删除（浏览<100 时 >3 个；≥100 时 >0.5%） ═════════ */
 async function dislike(p) {

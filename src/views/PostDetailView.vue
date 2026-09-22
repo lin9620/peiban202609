@@ -206,9 +206,10 @@ function openReportCmt(cm) {
   reportTarget.value = { type: "comment", id: cm.dbId, label: cm.text || "" };
   reportShow.value = true;
 }
-const canReportPost = () => !!(post.value && post.value.dbId != null && signedIn.value
+/* 自己的内容不显示举报（不能举报自己）；游客也显示入口——点了弹窗里会提示先登录。 */
+const canReportPost = () => !!(post.value && post.value.dbId != null
   && post.value.userId && post.value.userId !== myId.value);
-const canReportCmt = (cm) => !!(cm && cm.cloud && cm.dbId != null && signedIn.value
+const canReportCmt = (cm) => !!(cm && cm.cloud && cm.dbId != null
   && cm.userId && cm.userId !== myId.value);
 /* 帖子作者被我拉黑：正文以「已隐藏」呈现（数据还在，取消拉黑即恢复） */
 const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userId)));

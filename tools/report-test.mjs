@@ -141,6 +141,10 @@ ok("userBlocks 注册了换域 reload（换号不把 A 的名单带到 B）",
 /* ───────── 8) 前端接线（三个视图 + 管理端） ───────── */
 ok("CommunityView：举报入口（帖/评）+ 弹窗挂载 + 拉黑过滤",
   has(community, "canReportPost(p)", "canReportCmt(cm)", "openReportCmt", "<ReportDialog", "filterBlocked(box.rows)", "filterBlocked(rows)"));
+ok("举报入口对游客可见（canReport 不依赖 signedIn；登录要求收进弹窗）",
+  !/canReportPost = \(p\) => .*signedIn/.test(community) && !/canReportCmt = \(cm\) => .*signedIn/.test(community)
+  && !/canReportPost = \(\) => .*signedIn/.test(postDetail) && !/canReportCmt = \(cm\) => .*signedIn/.test(postDetail)
+  && reportDialog.includes('t("report.signIn")'));
 ok("PostDetailView：帖子/评论举报 + 作者被拉黑隐藏正文",
   has(postDetail, "openReportPost", "canReportCmt(cm)", "authorBlocked", "<ReportDialog", "filterBlocked(rows)"));
 ok("WallerView：拉黑两步确认 + 撤销 + 名单刷新",
