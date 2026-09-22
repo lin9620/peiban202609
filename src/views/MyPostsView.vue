@@ -7,6 +7,7 @@ import { NButton, NAvatar } from "naive-ui";
 import { t } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
 import { cloudFetchUserPosts } from "../utils/wall.js";
+import { cacheKey, swr } from "../utils/cache.js";
 
 /* 与暖心墙同款的三种回应（计数只读展示；点卡片回墙里互动） */
 const REACTIONS = [
@@ -35,18 +36,43 @@ const PAGE = 10;
 async function load(append) {
   if (!uid.value || loading.value || (append && done.value)) return;
   const run = ++gen;
-  loading.value = true;
-  try {
-    const got = (await cloudFetchUserPosts(uid.value, PAGE, append ? offset : 0)) || [];
-    if (run !== gen) return;
-    rows.value = append ? [...rows.value, ...got] : got;
-    offset = append ? offset + got.length : got.length;
-    if (got.length < PAGE) done.value = true;
-  } catch (e) {
-    if (run === gen && !append) rows.value = [];
-  } finally {
-    if (run === gen) loading.value = false;
+
+  /* 翻页：直接走网络（与暖心墙同口径，翻页不缓存） */
+  if (append) {
+    loading.value = true;
+    try {
+      const got = (await cloudFetchUserPosts(uid.value, PAGE, offset)) || [];
+      if (run !== gen) return;
+      rows.value = [...rows.value, ...got];
+      offset += got.length;
+      if (got.length < PAGE) done.value = true;
+    } catch (e) {
+      /* 翻页失败静默保留已载内容 */
+    } finally {
+      if (run === gen) loading.value = false;
+    }
+    return;
   }
+
+  /* 轮 36：首屏本地优先（与暖心墙同款 SWR）——缓存快照先渲染（秒开），云端回来
+   * 覆盖并回写；失败/空不覆盖。此前每次进页都白屏等网络，「不跟手」清单之一。 */
+  loading.value = true;
+  const consume = (d) => {
+    if (run !== gen || !Array.isArray(d)) return;
+    rows.value = d;
+    offset = d.length;
+    done.value = d.length < PAGE;   /* 缓存不足一页 ≈ 没有更多 */
+    loading.value = false;
+  };
+  await swr(
+    cacheKey("myposts", uid.value),
+    { cached: consume, fresh: consume },
+    async () => {
+      const got = await cloudFetchUserPosts(uid.value, PAGE, 0);
+      return got && got.length ? got : null;
+    },
+  );
+  if (run === gen) loading.value = false;
 }
 async function refresh() { offset = 0; done.value = false; await load(false); }
 

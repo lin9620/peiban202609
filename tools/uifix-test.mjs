@@ -183,8 +183,10 @@ t("T23 「我的」页展示我的帖子（共有 5：默认最新 3 条 + 「�
   assert.ok(profileView.includes("'/post/' + p.dbId"), "深链进独立详情页 /post/:id（轮 20，不再跳回暖心墙列表）");
   const i18n = read("src/i18n.js");
   assert.ok(i18n.split("myPosts:").length >= 3, "myPosts 未做到双语（en/zh 各一份）");
-  assert.ok(read("src/views/MyPostsView.vue").includes("cloudFetchUserPosts(uid.value, PAGE, append ? offset : 0)"),
-    "MyPostsView 应用 offset 分页");
+  /* 轮 36：首屏走 SWR（PAGE, 0）+ 翻页走 offset——两条路径都要在 */
+  const myPostsSrc = read("src/views/MyPostsView.vue");
+  assert.ok(myPostsSrc.includes("cloudFetchUserPosts(uid.value, PAGE, offset)"), "MyPostsView 翻页应用 offset 分页");
+  assert.ok(myPostsSrc.includes("PAGE, 0") && myPostsSrc.includes("swr("), "MyPostsView 首屏应走 SWR 缓存（轮 36）");
   assert.ok(read("src/router.js").includes('"./views/MyPostsView.vue"'), "路由未挂 /my-posts");
 });
 t("T24 角色名额只数上传的「我的角色」（#12）：初始/物种伙伴不占名额", () => {

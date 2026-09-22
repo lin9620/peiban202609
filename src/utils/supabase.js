@@ -266,11 +266,23 @@ export async function initCloud() {
     setAuthTokenProvider(() => accessToken);
     const { data, error } = await sb.auth.getSession();
     if (error) throw error;
-    await refreshSession(data ? data.session : null);
-    /* ready 放在会话恢复之后：组件们以 cloud.ready 触发首拉，
-       这样登录用户的帖子/私信/通知首拉就带着本人身份（回应 mine 标记、未读数都正确），
-       不会出现「先以游客身份拉一遍 → 已点过的回应显示成没点」的竞态（用户实测点不掉回应的根因）。 */
+    /* 轮 36：ready 提前——会话本体（user/token）是【本地存储】恢复的，同步落位后立刻
+       置位，让暖心墙/私信/通知立刻用本地缓存快照渲染 + 带身份后台拉新。
+       原先 ready 压在 refreshSession 之后：昵称 loadProfile 是一次网络往返（App 里走
+       /sb 代理，国内链路 0.5~2s），整条启动链被它串行卡死——列表页干等、SWR 快照
+       也被押后，「进 App 不跟手」的主因。防游客竞态的原意图不受影响：user/token
+       在置位前就已恢复，首拉依然带本人身份（mine 标记/未读数都正确）。
+       昵称只影响署名显示，异步补（落位时校验 uid 未变，防登出竞态）。 */
+    const boot = data ? data.session : null;
+    accessToken = boot && boot.access_token ? boot.access_token : "";
+    cloud.user = boot ? boot.user : null;
     cloud.ready = true;
+    if (boot) {
+      const uidAtBoot = boot.user.id;
+      loadProfile(boot.user)
+        .then((nick) => { if (cloud.user && cloud.user.id === uidAtBoot) cloud.nickname = nick; })
+        .catch(() => { /* 昵称拿不到就走各处兜底名，不阻塞 */ });
+    }
     sb.auth.onAuthStateChange((evt, session) => {
       /* 恢复落地 = PASSWORD_RECOVERY（auth-js 2.116.0 只在 URL 回调 type=recovery 时发它；
          动态探针实测：signOut / 密码登录都不会发——轮 19 注释里的「signOut 怪癖」不存在） */
