@@ -267,10 +267,10 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 | 项目 | peiban（陪伴 / warm-paws），路径 `D:\05ruanjian\peiban` |
 | 技术栈 | Vue 3 + Vite + Naive UI；数据层双模式：直连 Supabase（`db.supabase.js`）/ Worker 网关（`db.gateway.js` + `worker/api.js`，**线上走网关**）；Cloudflare 部署 https://dale.de5.net；Supabase Postgres + RLS + security definer RPC |
 | 代码 | 轮 34 已提交（`6f95cec`）；核心：**拉黑收尾**——消息页拉黑/解除改走 userBlocks 包装（内容过滤缓存与私信名单同一份，解除后墙内容立即恢复显示）+ 进消息页同步名单 + 拉黑提示文案升级全站口径（私信 + 暖心墙）。轮 33 举报/审核体系已全部上线 |
-| 部署 | Version `854e7975` 已上线（轮 35 UI）；`live-check` 14/14；线上 SHA16 `b96f8168ac849fd2` 与本地 dist 一致 |
+| 部署 | Version `12b1547a` 已上线（轮 36 响应速度）；`live-check` 14/14；线上 SHA16 `7ce958d6a4e44c78` 与本地 dist 一致 |
 | 数据库 | **`MIGRATION_reports.sql` 已由用户执行（2026-09-23）**：三 RPC 匿名探针全 42501（存在无权，坑 #7 判据）；线上 e2e 6/6（真实举报落库/重复幂等/target-gone 拒绝/RLS 自查/删帖留存）；管理端待处理队列留 1 条测试举报等用户点「驳回」完成管理端闭环。`MIGRATION_notifications_drop_dm.sql`（轮 13 #23）仍未确认 |
 | App | 轮 34 APK 已重打：SHA16 `ce86e7c3e60f557d`（4.77MB，`apk\warm-paws-debug.apk`）；**装机待做**（手机未连 USB） |
-| 测试 | 离线 **33 套 ALL GREEN**（report-test 61 项）+ **page-smoke 8/8** + undef 0 + build 0；UI 改动用截屏前后对比验证 |
+| 测试 | 离线 **33 套 ALL GREEN**（report-test 61 项）+ **page-smoke 8/8** + undef 0 + build 0 |
 
 ## 二、现在在做什么
 
@@ -971,6 +971,9 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
 
   - **轮 35 · UI 优化一轮（2026-09-23，部署 Version `854e7975`，提交 `503855a`）**：
      **方法**：无头 Edge 对 9 个页面/双视口截屏逐页看，改完再截屏对比（不再凭感觉盲改）。**改动**：①首页大厅状态 4 键 + 心情打卡 5 键 quaternary → **secondary**（原来是近乎纯文字，看不出能点——真可用性问题）②手机端暖心墙头部压缩：去掉与 h2 重复的小标签、副标题只留桌面（首屏多露一帖）③心情日历手机端 6 列大方格 → **10 列小格**（空态不再占三屏）④大厅人数胶囊紧凑 ⑤排序行「排序/时间」前缀手机隐藏 ⑥「去厨房/更多」入口链接统一主题色（原浏览器默认蓝紫跳出暖调）。**验收**：page-smoke 8/8 + 全量 33 套全绿 + undef 0 + live-check 14/14 + SHA `b96f8168ac849fd2` + APK `5c8d64ba7d6a8019`。
+
+  - **轮 36 · 响应速度专项（2026-09-23，部署 Version `12b1547a`，提交 `bacb559`）**：
+     **用户报「进 App 后暖心墙帖子/会话消息/我的帖子都不跟手」**。诊断出三个根因：①**启动链被昵称网络请求串行卡死**——initCloud 里 ready 压在 refreshSession 之后，而 loadProfile 是一次 /sb 代理网络往返（国内 0.5~2s），所有以 cloud.ready 为首拉条件的列表页干等，SWR 缓存快照也被押后；②路由过渡 out-in 两段 0.15+0.3=0.45s；③「我的帖子」无缓存每次进页白屏。**修法**：①`cloud.ready` 提前到本地会话（user/token 同步恢复）后立即置位，昵称异步补（校验 uid 未变防登出竞态）——「防游客身份竞态」的原意图不受影响（user 在置位前已恢复，首拉仍带身份；昵称只影响署名显示）②过渡 0.3/0.15 → **0.18/0.08s**、位移 14→8px ③MyPostsView 首屏接 SWR（key=myposts:uid，快照秒开 + 云端覆盖，翻页仍走网络；uifix T23 断言同步更新）。**验收**：uifix 24/0（T23 更新）+ auth 130/0 + 全量 33 套全绿 + page-smoke 8/8 + undef 0 + live-check 14/14 + SHA `7ce958d6a4e44c78` + APK `3e1e62db9a14a490`。**待真机对比**：装机后体感验证冷启动列表出现速度与切 Tab 跟手度。
 
   - **轮 34 续 · 迁移执行 + 线上闭环（2026-09-23，用户执行迁移后当日）**：
      **探针（坑 #7 判据）**：report_create / admin_report_page / admin_report_handle 匿名全 **42501**（存在无权）= 迁移生效实锤；wall_toggle_dislike 42501（新版权限收紧在位）；admin_overview 匿名 admin=false 提前返回（reports_pending 仅管理员可见，符合设计）。
