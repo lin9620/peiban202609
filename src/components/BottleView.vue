@@ -1,21 +1,20 @@
-<!-- 温暖漂流瓶（T6 抽件）：写信投海 / 捞信回信放回 / 记录两栏分页（本地优先缓存）。
+<!-- 温暖漂流瓶（T6 抽件）：写信投海 / 捞信回信放回 / 记录两栏分页。
+     轮 37 起**全线上**：次数、托盘、记录一律现拉服务器（本机不再留次数账本、不再用
+     SWR 快照顶显示），页面里没有一份「本地缓存」决定行为。
      桌面首页收尾与手机「漂流瓶」联（默认联）共用同一组件。 -->
 <script setup>
 import { ref, computed, watch, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { NButton, NInput, NModal } from "naive-ui";
 import { t } from "../i18n.js";
-import { todayKey } from "../utils/daily.js";
-import { getItem, setItem } from "../utils/storage.js";
 import {
   BOTTLE_BODY_MAX, BOTTLE_SEND_MAX, BOTTLE_FISH_MAX,
-  canBottle, bottleErrKey,
+  bottleErrKey,
   bottleSend, bottleFish, bottleReply, bottleRelease, bottleHeld, bottleQuota,
-  bottleRecords, bottleChatState, bottleChatDecide,
+  bottleRecords, bottleChatState, bottleChatDecide, purgeLegacyBottleLocals,
 } from "../utils/bottle.js";
 import { relativeTime } from "../utils/dmRules.js";
 import { cloud } from "../utils/supabase.js";
-import { cacheKey, swr } from "../utils/cache.js";
 
 const router = useRouter();   /* #17 记录里「去聊天」直接进会话页 */
 const cloudSigned = computed(() => !!(cloud.ready && cloud.user));
@@ -26,6 +25,7 @@ const mailHint = ref("");
 const fishing = ref(false);
 const fished = ref(null);       /* 刚捞起、还没处理的这封 */
 const held = ref([]);           /* 我之前捞起、还没回的信（换页/刷新后找回来） */
+const trayErr = ref("");        /* 托盘读取失败提示（轮 37：直连服务器，失败如实说，不用旧快照顶） */
 
 /* 待处理信箱（轮 18）：新捞的 + 之前捞起没回的，合并去重逐封处理。
  * 旧版只显示一封、且手里压着一封就禁捞新信——「每天能捞 7 次」被做成了
@@ -44,49 +44,44 @@ const fishPop = ref({ show: false, mode: "msg", letter: null, msg: "" });
 /* 轮 26：捞信悬死兜底（毫秒）——正常一网 1-3s；超时只是给出口，不给「永远转圈」死局 */
 const FISH_TIMEOUT = 8000;
 
-/* 每日次数：本地账本只做乐观显示，服务端 bottle_quota() 才是权威（轮 18 修
- * 「下面显示还能捞 2 瓶、上面却说次数用完」——次数原来记在本机 localStorage，
- * 网页和 App 各记各的账，跨端必然打架；现在以 RPC 为准，未跑新迁移时退回本地账） */
+/* ════════ 每日次数：唯一真相是服务端 bottle_quota()（轮 37）════════
+ * 用户点名「什么每天捞 7 瓶、写 3 瓶，老老实实改成线上」。此前本机留着一本乐观
+ * 账（`warm-paws-bottle-quota-v1:<uid>`）：服务端值还没回来（或拉不到）时它顶上去
+ * 显示满额 3 封 / 7 瓶 —— 于是「明明用完了还显示还能捞 7 次」；账本本身也跨不了端
+ * （网页与 App 各记各的）。现在本机不再存任何次数：
+ *   · 显示只认服务端值：没拉到 = null = 界面写「次数同步中…」，绝不编数字；
+ *   · 发信/捞信/回信成功后一律重新拉服务端值，客户端不做 +1、不留账本；
+ *   · 拉不到（网络/未跑迁移）也不拦操作，如实提示「次数以服务器为准」，
+ *     真限额由 SQL RPC 的 bottle-limit-* 兜底 —— 前端永远不替服务端做减法。 */
 const myId = computed(() => (cloud.user && cloud.user.id) || "");
-const QUOTA_BASE = "warm-paws-bottle-quota-v1";
-const quotaKey = computed(() => `${QUOTA_BASE}:${myId.value || "guest"}`);
-function freshQuota() { return { day: todayKey(), sent: 0, fished: 0 }; }
-function loadQuota() {
-  try {
-    const q = JSON.parse(getItem(quotaKey.value));
-    return q && q.day === todayKey() ? q : freshQuota();
-  } catch (e) { return freshQuota(); }
-}
-const quota = ref(loadQuota());
-const quotaRemote = ref(null);
+const quota = ref(null);        /* { sent, fished } —— 只可能是服务端返回的值 */
+const quotaErr = ref("");       /* 拉不到时的 i18n key（提示用，不拦操作） */
 async function syncQuota() {
+  if (!cloudSigned.value) { quota.value = null; quotaErr.value = ""; return; }
   try {
     const q = await bottleQuota();
-    if (q && typeof q.fished === "number" && typeof q.sent === "number") quotaRemote.value = q;
-  } catch (e) { /* 未跑 MIGRATION_bottle_quota_fishfix.sql → 静默退回本地账本 */ }
-}
-const sendLeft = computed(() => {
-  const q = quotaRemote.value;
-  return Math.max(0, BOTTLE_SEND_MAX - (q ? q.sent : quota.value.sent));
-});
-const fishLeft = computed(() => {
-  const q = quotaRemote.value;
-  return Math.max(0, BOTTLE_FISH_MAX - (q ? q.fished : quota.value.fished));
-});
-function bumpQuota(k) {
-  if (quota.value.day !== todayKey()) quota.value = freshQuota();
-  quota.value[k] += 1;
-  setItem(quotaKey.value, JSON.stringify(quota.value));
-  /* 远端账本乐观 +1，随后 syncQuota 用服务端值校正 */
-  if (quotaRemote.value && typeof quotaRemote.value[k] === "number") {
-    quotaRemote.value = { ...quotaRemote.value, [k]: quotaRemote.value[k] + 1 };
+    if (!q || typeof q.sent !== "number" || typeof q.fished !== "number") {
+      quota.value = null;
+      quotaErr.value = "bottle.quotaUnavailable";
+      return;
+    }
+    quota.value = { sent: q.sent, fished: q.fished };
+    quotaErr.value = "";
+  } catch (e) {
+    quota.value = null;
+    quotaErr.value = "bottle.quotaUnavailable";
   }
 }
-/* 登录就绪/换号 → 账本重置 + 自动加载（修「首次进主页漂流瓶记录空白，必须手动点刷新」：
+const sendLeft = computed(() => (quota.value ? Math.max(0, BOTTLE_SEND_MAX - quota.value.sent) : null));
+const fishLeft = computed(() => (quota.value ? Math.max(0, BOTTLE_FISH_MAX - quota.value.fished) : null));
+/* 次数文案：拿到服务端值才显示数字；没拿到就说「同步中」（不编满额数字骗用户） */
+const sendText = (v) => (v === null ? t("bottle.quotaSyncing") : t("bottle.leftSend", { n: v }));
+const fishText = (v) => (v === null ? t("bottle.quotaSyncing") : t("bottle.leftFish", { n: v }));
+/* 登录就绪/换号 → 次数与托盘一律重读（修「首次进主页漂流瓶记录空白，必须手动点刷新」：
  * 旧版只在 onMounted 拉一次，那时会话往往还没就绪，拉了个空就再也不拉了） */
 watch([cloudSigned, myId], () => {
-  quota.value = loadQuota();
-  quotaRemote.value = null;
+  quota.value = null;      /* 换人就先清空：绝不拿上一个人的次数顶着显示 */
+  quotaErr.value = "";
   fished.value = null;
   recPage.value = 0;
   if (cloudSigned.value) {
@@ -98,29 +93,31 @@ watch([cloudSigned, myId], () => {
 
 async function refreshBottle() {
   if (!cloudSigned.value) return;
-  /* #17 记录区改走 bottleRecords 分类分页；这里只管「捞起未回的信」找回（待处理信箱） */
-  await swr(
-    cacheKey("bottle:held", myId.value),
-    {
-      cached: (rows) => { held.value = rows || []; },
-      fresh: (rows) => { held.value = rows || []; },
-    },
-    () => bottleHeld(),
-  );
+  /* #17 记录区改走 bottleRecords 分类分页；这里只管「捞起未回的信」找回（待处理信箱）。
+   * 轮 37：不再先渲染本机快照（原来 swr 会先闪一份旧托盘）——手里的信必须是服务器
+   * 此刻的真实持有，否则换号/换端会看到不属于自己的待回信。 */
+  try {
+    const rows = await bottleHeld();
+    held.value = Array.isArray(rows) ? rows : [];
+    trayErr.value = "";
+  } catch (e) {
+    held.value = [];
+    trayErr.value = bottleErrKey(e);
+  }
   fished.value = null;
   mergePending();
 }
 
 async function doSend() {
   const body = mailDraft.value.trim();
-  if (!body || sendLeft.value <= 0) return;
+  /* sendLeft === null（次数还没同步回来）不拦：交给服务端裁定，限额由 RPC 兜底 */
+  if (!body || sendLeft.value === 0) return;
   mailBusy.value = true;
   mailHint.value = "";
   try {
     await bottleSend(body);
     mailDraft.value = "";
-    bumpQuota("sent");
-    syncQuota();
+    await syncQuota();          /* 轮 37：次数只回读服务端值，本机不做 +1、不留账本 */
     await refreshBottle();
   } catch (e) {
     const k = bottleErrKey(e);
@@ -131,7 +128,7 @@ async function doSend() {
 }
 
 async function doFish() {
-  if (fishLeft.value <= 0) return;
+  if (fishLeft.value === 0) return;   /* 未知（null）不拦：真限额由服务端 bottle-limit-fish 兜底 */
   fishing.value = true;
   mailHint.value = "";
   /* 轮 26：按下**瞬间**就弹「撒网中」——不再等网络回来才有反应（反馈 <100ms，
@@ -149,9 +146,8 @@ async function doFish() {
       return;
     }
     fished.value = l;
-    /* 轮 21 口径修正：捞到**不扣**次数——「捞到且回信」才扣 1 次。
-     * 客户端记账搬到 doReply，服务端记账搬到 bottle_reply()（见
-     * MIGRATION_bottle_reply_quota.sql）；这里只同步一次服务端权威值。 */
+    /* 轮 21 口径：捞到**不扣**次数——「捞到且回信」才扣 1 次；轮 37 起客户端完全不记账
+     * （本机账本已删），这里只回读一次服务端权威值（服务端记账在 bottle_reply()）。 */
     mergePending();
     syncQuota();
     /* 轮 22：捞到了 → 居中弹窗直接展示这封信（可就地回信/放回，不再让人猜捞没捞到） */
@@ -187,7 +183,7 @@ async function doReply(l) {
     fished.value = null;
     replyOpen.value = "";
     held.value = held.value.filter((x) => x.id !== l.id);
-    bumpQuota("fished");        /* 轮 21：回信成功才记一次（服务端 bottle_reply 同口径） */
+    /* 轮 21：回信成功才计 1 次（服务端 bottle_reply 盖章）；轮 37 本机不再记账，只回读服务端值 */
     mergePending();
     syncQuota();
     fishPop.value.show = false;   /* 轮 22：在弹窗里回的信 → 弹窗关闭 */
@@ -212,7 +208,9 @@ async function doRelease(l) {
   } finally { busyId.value = ""; }
 }
 
-onMounted(() => { refreshBottle(); loadRecords(true); });
+/* 轮 37：进页面先清掉老版本留在家里的本地漂流瓶数据（次数账本 + SWR 快照），
+ * 再全部现拉服务器 —— 页面里不再有任何本地缓存参与显示。 */
+onMounted(() => { purgeLegacyBottleLocals(); refreshBottle(); loadRecords(true); });
 
 /* —— 漂流瓶记录（#17）：我发布的 / 我捞到的 两类，按发布时间新→旧，10 条一页 —— */
 const REC_PAGE = 10;
@@ -225,24 +223,25 @@ const recLoading = ref(false);
 async function loadRecords(reset = false) {
   if (!cloudSigned.value || recLoading.value) return;
   recLoading.value = true;
+  recErr.value = "";
   const target = reset ? 0 : recPage.value;
-  const applyRows = (got) => {
-    recRows.value = got;
-    recPage.value = target;
-    recDone.value = got.length < REC_PAGE;
-  };
-  await swr(
-    reset ? cacheKey("bottle:rec", myId.value, recTab.value) : null,  /* 只缓存每栏第 0 页 */
-    {
-      cached: (got) => { applyRows(got); recLoading.value = false; },
-      fresh: applyRows,
-      onError: () => { recRows.value = []; recDone.value = true; },
-    },
-    () => bottleRecords(null, target * REC_PAGE, {
+  /* 轮 37：记录列表也不再走本机快照（原来每栏第 0 页存一份 SWR 缓存，换号/换端会先闪
+   * 别人的或过期的记录）——拉到的就是服务器此刻的记录，失败如实报错，不用旧快照假装成功。 */
+  try {
+    const got = await bottleRecords(null, target * REC_PAGE, {
       mine: recTab.value === "mine", limit: REC_PAGE,
-    }),
-  );
-  recLoading.value = false;
+    });
+    const rows = Array.isArray(got) ? got : [];
+    recRows.value = rows;
+    recPage.value = target;
+    recDone.value = rows.length < REC_PAGE;
+  } catch (e) {
+    recRows.value = [];
+    recDone.value = true;
+    recErr.value = bottleErrKey(e);
+  } finally {
+    recLoading.value = false;
+  }
 }
 function switchRecTab(x) {
   if (recTab.value === x) return;
@@ -309,23 +308,25 @@ async function decideRec(l, accept) {
         type="textarea" :rows="3" :maxlength="BOTTLE_BODY_MAX"
         :placeholder="t('bottle.placeholder')" />
       <div class="mail-send">
-        <span class="m-count">{{ mailDraft.length }}/{{ BOTTLE_BODY_MAX }} · {{ t("bottle.leftSend", { n: sendLeft }) }}</span>
-        <n-button type="primary" round :disabled="mailBusy || !mailDraft.trim() || sendLeft <= 0" @click="doSend">
+        <span class="m-count">{{ mailDraft.length }}/{{ BOTTLE_BODY_MAX }} · {{ sendText(sendLeft) }}</span>
+        <n-button type="primary" round :disabled="mailBusy || !mailDraft.trim() || sendLeft === 0" @click="doSend">
           {{ t("bottle.send") }}
         </n-button>
       </div>
+      <p v-if="quotaErr" class="streak-note hall-warn">{{ t(quotaErr) }}</p>
       <p v-if="mailHint" class="streak-note hall-warn">{{ mailHint }}</p>
 
       <div class="bottle-sea">
         <span class="sec-label">{{ t("bottle.seaTitle") }}</span>
-        <n-button round :loading="fishing" :disabled="fishLeft <= 0" @click="doFish">
+        <n-button round :loading="fishing" :disabled="fishLeft === 0" @click="doFish">
           {{ "\u{1F9CA}" }} {{ t("bottle.fish") }}
         </n-button>
-        <span class="m-count">{{ t("bottle.leftFish", { n: fishLeft }) }}</span>
+        <span class="m-count">{{ fishText(fishLeft) }}</span>
       </div>
       <p class="notice">{{ t("bottle.rules", { w: BOTTLE_SEND_MAX, f: BOTTLE_FISH_MAX }) }}</p>
 
       <!-- 捞到的信（可同时持有几封，逐封回信或放回；捞新信不需要先处理手里的） -->
+      <p v-if="trayErr" class="notice">{{ t(trayErr) }}</p>
       <div v-for="l in pending" :key="l.id" class="bottle-tray">
         <div class="m-q">{{ l.body }}</div>
         <span class="m-who">{{ t("bottle.fromSea") }}</span>

@@ -13,11 +13,31 @@
  */
 import { cloud } from "./supabase.js";
 import { db } from "./api/db.js";
+import { keys, removeItem } from "./storage.js";
 
 export const BOTTLE_SEND_MAX = 3;                 /* 每天最多写几封 */
 export const BOTTLE_FISH_MAX = 7;                 /* 每天最多捞几封 */
 export const BOTTLE_BODY_MAX = 1000;              /* 字数放宽：信与回信同限 */
 export const BOTTLE_HOLD_TTL_MS = 48 * 3600 * 1000; /* 捞起后 48h 不处理自动回海 */
+
+/* 老版本的本地次数账本键（轮 37 起已废弃，只用于清理） */
+const QUOTA_LEGACY_KEY = "warm-paws-bottle-quota-v1";
+
+/**
+ * 轮 37：全线上 —— 清掉老版本留在家里的漂流瓶本地数据。
+ * 老版本有两份本机数据：次数账本 `warm-paws-bottle-quota-v1:<uid>` 与 SWR 快照
+ * `wp-cache:v1:bottle:…`。现在次数只认服务端 bottle_quota()、托盘与记录都现拉，
+ * 这两份已无人读取，但留在设备上会在排查时误导（「都改成线上了，怎么本机还有一本账」），
+ * 所以进页面时顺手清掉。只删漂流瓶前缀，不碰私信/通知等其它缓存。
+ * @returns {number} 清掉的键数（测试与排查用）
+ */
+export function purgeLegacyBottleLocals() {
+  let n = 0;
+  for (const prefix of [QUOTA_LEGACY_KEY, "wp-cache:v1:bottle:"]) {
+    for (const k of keys(prefix)) { removeItem(k); n++; }
+  }
+  return n;
+}
 
 /** 漂流瓶要登录（信要能找到作者、回信要能送到人） */
 export function canBottle() {

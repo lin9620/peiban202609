@@ -108,7 +108,9 @@ t("T9 TodayPane / BottleView 抽件自包含，HomeView 不再内联业务", () 
   assert.ok(!today.includes("$router.push('/pet')"), "去宠物应发事件而非直接跳路由");
   assert.ok(bottle.includes("bottleSend"), "BottleView 缺投瓶逻辑");
   assert.ok(bottle.includes("loadRecords"), "BottleView 缺记录分页");
-  assert.ok(bottle.includes('cacheKey("bottle:rec"'), "BottleView 缺本地优先缓存");
+  assert.ok(bottle.includes("await bottleRecords(null, target * REC_PAGE"), "BottleView 记录应现拉服务器");
+  assert.ok(!bottle.includes("cacheKey(") && !bottle.includes("swr("),
+    "BottleView 记录不应再用本机快照（轮 37：漂流瓶全线上）");
   assert.ok(!home.includes("bottleSend"), "HomeView 不应再内联漂流瓶逻辑");
   assert.ok(!home.includes("moodPick"), "HomeView 不应再内联今日逻辑");
 });

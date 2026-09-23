@@ -7,15 +7,18 @@
  *     （含 Worker 的 bottle-too-long），否则只会看到「海浪大了一点」；
  *  3. 回信可见性：只允许「写信人 + 写过回信的人」读（RLS），捞信一律走 RPC —— 直接 select 海里
  *     的信必须被默认拒绝（无 insert/update/delete 策略）；
- *  4. 旧的「宠物回信信箱」必须清干净（petStore/HomeView/i18n 三处），不能留半套。
+ *  4. 旧的「宠物回信信箱」必须清干净（petStore/HomeView/i18n 三处），不能留半套；
+ *  5. 轮 37「漂流瓶全线上」：次数/托盘/记录一律现拉服务器，本机不许再有次数账本、
+ *     SWR 快照或 localStorage 读写（用户原话：「老老实实改成线上」）。
  * 运行：node tools/bottle-test.mjs
  */
 import fs from "node:fs";
 import { messages } from "../src/i18n.js";
 import {
   BOTTLE_SEND_MAX, BOTTLE_FISH_MAX, BOTTLE_BODY_MAX, BOTTLE_HOLD_TTL_MS,
-  bottleErrKey,
+  bottleErrKey, purgeLegacyBottleLocals,
 } from "../src/utils/bottle.js";
+import { getItem, setItem } from "../src/utils/storage.js";
 
 let pass = 0;
 const fails = [];
@@ -165,25 +168,41 @@ ok("BottleView：导入漂流瓶工具并接上四个动作（投/捞/回/放回
   has(bottleView, 'from "../utils/bottle.js"')
     && has(bottleView, "async function doSend()") && has(bottleView, "async function doFish()")
     && has(bottleView, "async function doReply(l)") && has(bottleView, "async function doRelease(l)"));
-ok("BottleView：字数上限用 BOTTLE_BODY_MAX、次数=MAX−已用（服务端权威，本地账兜底）",
+ok("BottleView：字数上限用 BOTTLE_BODY_MAX；次数只由服务端值算（MAX − 已用）",
   has(bottleView, ':maxlength="BOTTLE_BODY_MAX"')
-    && has(bottleView, "Math.max(0, BOTTLE_SEND_MAX - (q ? q.sent : quota.value.sent))")
-    && has(bottleView, "Math.max(0, BOTTLE_FISH_MAX - (q ? q.fished : quota.value.fished))"));
+    && has(bottleView, "Math.max(0, BOTTLE_SEND_MAX - quota.value.sent)")
+    && has(bottleView, "Math.max(0, BOTTLE_FISH_MAX - quota.value.fished)"));
 ok("BottleView：待处理信箱多封并存（pending 合并 fished+held；捞新信不被手里那封锁死）",
   has(bottleView, "const pending = ref([])")
     && has(bottleView, "function mergePending()")
     && has(bottleView, 'v-for="l in pending"'));
-ok("BottleView：次数服务端权威（bottle_quota 同步 + 乐观本地账；未跑新迁移静默退回）",
+ok("BottleView：次数服务端权威（bottle_quota 同步；拉不到只提示、不拦操作）",
   has(bottleView, "async function syncQuota()") && has(bottleView, "await bottleQuota()")
-    && has(bottleView, "quotaRemote.value"));
-ok("BottleView：轮 21 口径——捞到不扣次数（doFish 全程无 bumpQuota），回信成功那一刻才扣",
+    && has(bottleView, 'quotaErr.value = "bottle.quotaUnavailable"')
+    && has(bottleView, ":disabled=\"fishLeft === 0\""));
+ok("BottleView 全线上（轮 37）：本机不许再有次数账本 / SWR 快照 / localStorage 读写",
+  !has(bottleView, "warm-paws-bottle-quota", "bumpQuota", "quotaRemote", "loadQuota", "freshQuota")
+    && !has(bottleView, "todayKey", "swr(", "cacheKey(")
+    && !has(bottleView, 'from "../utils/storage.js"') && !has(bottleView, 'from "../utils/cache.js"'));
+ok("BottleView 全线上：托盘与记录都现拉服务器，失败如实报错（trayErr / recErr）",
+  has(bottleView, "const rows = await bottleHeld()") && has(bottleView, "trayErr.value = bottleErrKey(e)")
+    && has(bottleView, "const got = await bottleRecords(null, target * REC_PAGE")
+    && has(bottleView, "recErr.value = bottleErrKey(e)"));
+ok("BottleView：发信/回信成功后只回读服务端次数（不做本地 +1）",
   (() => {
-    const fishBody = bottleView.slice(bottleView.indexOf("async function doFish()"), bottleView.indexOf("async function doReply"));
+    const sendBody = bottleView.slice(bottleView.indexOf("async function doSend()"), bottleView.indexOf("async function doFish"));
     const replyBody = bottleView.slice(bottleView.indexOf("async function doReply"), bottleView.indexOf("async function doRelease"));
-    return !fishBody.includes("bumpQuota")
+    return sendBody.indexOf("await bottleSend") >= 0
+      && sendBody.indexOf("await bottleSend") < sendBody.indexOf("await syncQuota()")
       && replyBody.indexOf("await bottleReply") >= 0
-      && replyBody.indexOf("await bottleReply") < replyBody.indexOf('bumpQuota("fished")');
+      && replyBody.indexOf("await bottleReply") < replyBody.indexOf("syncQuota()");
   })());
+ok("i18n：次数同步中 / 取不到 两条文案双语齐（BottleView 显示用）",
+  ["quotaSyncing", "quotaUnavailable"].every((k) => k in messages.en.bottle && k in messages.zh.bottle));
+ok("bottle.js：老版本本机数据有清理函数（次数账本 + SWR 快照），进页面自动清",
+  has(bottleJs, "export function purgeLegacyBottleLocals()")
+    && has(bottleJs, '"warm-paws-bottle-quota-v1"', '"wp-cache:v1:bottle:"')
+    && has(bottleView, "onMounted(() => { purgeLegacyBottleLocals();"));
 ok("BottleView：登录就绪/换号自动加载（修「首次进主页记录空白要手动刷新」）",
   has(bottleView, "watch([cloudSigned, myId]") && has(bottleView, "refreshBottle();")
     && has(bottleView, "loadRecords(true);"));
@@ -251,8 +270,8 @@ ok("i18n：弹窗文案双语齐（gotTitle/popNotice/fishing/fishingSub/errSlow
 
 ok("BottleView：失败按 bottleErrKey 归类展示（不吞错误）",
   has(bottleView, "t(bottleErrKey(e))"));
-ok("BottleView：每日次数用本机日键记账（跨天自动归零）",
-  has(bottleView, "q.day === todayKey()"));
+ok("BottleView：不再用本机日键记账（跨天归零由服务端 UTC 日负责，轮 37 全线上）",
+  !has(bottleView, "todayKey", "warm-paws-bottle-quota", "day: todayKey()"));
 ok("BottleView：未登录给登录提示（不再有本地宠物回信）",
   has(bottleView, 't("bottle.signInHint")') && !bottleView.includes("sendLetter"));
 ok("HomeView：抽件接线（桌面拼回 + 手机三联都挂同一 BottleView）",
@@ -265,6 +284,24 @@ ok("petStore：旧信箱全部移除（mailbox/sendLetter/tickMailbox/initMailbo
 ok("petStore：不再引用宠物 canned 回信（MAIL_REPLIES）", !petStore.includes("MAIL_REPLIES"));
 ok("i18n：宠物回信时代的话已清（sent/replyArrived 不复存在）",
   !messages.en.bottle.sent && !messages.en.bottle.replyArrived && !messages.zh.bottle.sent);
+
+/* ───────── 轮 37：真跑一遍「清掉本机老数据」（Node 下走 storage 的内存镜像，无窗口依赖） ───────── */
+{
+  setItem("warm-paws-bottle-quota-v1:9632aaaa", JSON.stringify({ day: "2026-01-01", sent: 3, fished: 7 }));
+  setItem("warm-paws-bottle-quota-v1:guest", JSON.stringify({ day: "2026-01-01", sent: 1, fished: 0 }));
+  setItem("wp-cache:v1:bottle:rec|9632aaaa|mine", "{\"t\":1}");
+  setItem("wp-cache:v1:dm:convs|9632aaaa", "{\"t\":1}");   /* 别人的缓存：不许动 */
+  setItem("warm-paws-pet-v2:9632aaaa", "{\"pets\":[]}");   /* 宠物档：不许动 */
+  const n = purgeLegacyBottleLocals();
+  ok("真跑：清理函数正好删掉 3 个老键，私信缓存与宠物档原样留下（只删漂流瓶前缀）",
+    n === 3
+      && getItem("warm-paws-bottle-quota-v1:9632aaaa") === null
+      && getItem("warm-paws-bottle-quota-v1:guest") === null
+      && getItem("wp-cache:v1:bottle:rec|9632aaaa|mine") === null
+      && getItem("wp-cache:v1:dm:convs|9632aaaa") !== null
+      && getItem("warm-paws-pet-v2:9632aaaa") !== null);
+  ok("真跑：清理幂等（再清一次没有可删的键，返回 0）", purgeLegacyBottleLocals() === 0);
+}
 
 console.log(`bottle-test: ${pass} pass, ${fails.length} fail`);
 for (const f of fails) console.log("FAIL  " + f);
