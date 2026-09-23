@@ -16,6 +16,7 @@ import { cloud, initCloud, cloudHandleAppRedirect, isAppAuthRedirect } from "./u
 import { setUserScope } from "./utils/userScope.js";
 import { cacheDrop, cacheKey, swr } from "./utils/cache.js";
 import * as dmApi from "./utils/dm.js";
+import { bottleQuota, bottleHeld } from "./utils/bottle.js";
 import { badge, startBadge, stopBadge } from "./stores/badgeStore.js";
 /* 皮肤/语言：状态在 uiStore（与「设置」页共用）；App 只消费主题 */
 import { naiveTheme, naiveOverrides } from "./stores/uiStore.js";
@@ -70,6 +71,16 @@ async function prefetchConvs() {
   } catch (e) { /* 预热失败不影响启动 */ }
 }
 
+/* —— 轮 41：漂流瓶预热 —— 启动期就把「今日次数 + 手里的信」查上（用户要求：
+ * 「点击首页的时候就把这数据提前查好，而不是点击漂流瓶之后一直出不来」）。
+ * 与首页三联**同源函数**（bottle.js 单飞合并）：BottleView 挂载时 join 的就是
+ * 这次在途请求，不发双份。只发请求、不写任何本机存储（轮 37 全线上口径不变），
+ * 失败静默（界面自己会如实报错）。fire-and-forget：不阻塞启动页放行。 */
+async function prefetchBottle() {
+  if (!(cloud.ready && cloud.user)) return;
+  try { await Promise.all([bottleQuota(), bottleHeld()]); } catch (e) { /* 预热失败不影响启动 */ }
+}
+
 /* 关闭启动页：淡出后从 DOM 摘掉（静态层在 #app 外，Vue 挂载不影响它） */
 function removeSplash() {
   const el = document.getElementById("app-splash");
@@ -82,7 +93,7 @@ onMounted(async () => {
   /* 轮 24：启动页（index.html 静态层）在「云端会话就绪 + 会话缓存预热」后淡出；
    * 最多等 2.5 秒兜底放行——云端挂了也不能把用户挡在启动页里。 */
   const boot = initCloud()
-    .then(() => prefetchConvs())
+    .then(() => { prefetchBottle(); return prefetchConvs(); })   /* 轮 41：漂流瓶预热不阻塞，私信照旧等待 */
     .catch(() => { /* 预热失败不挡启动 */ });
   await Promise.race([boot, new Promise((r) => setTimeout(r, 2500))]);
   removeSplash();

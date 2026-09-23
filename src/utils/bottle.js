@@ -39,6 +39,21 @@ export function purgeLegacyBottleLocals() {
   return n;
 }
 
+/* ═══════════ 轮 41 · 单飞合并（让「启动期预热」有意义）═════════════
+ * 启动页（App.vue prefetchBottle）与首页三联（BottleView 的 immediate watch）会对
+ * 同一批接口各发一次请求——不合并就是双份流量 + 竞态覆盖。这里把**正在进行**的
+ * 同 key 请求合并成同一个 Promise：预热发的那次就是界面等到的那次。
+ * 只合并在途请求：不缓存、不写存储、不复用**已完成**的结果（轮 37 口径不变：
+ * 一切以服务端此刻返回为准；回信/投递后的 syncQuota 一定是新请求，不会读到旧值）。 */
+const flights = new Map();
+export function singleFlight(key, fn) {
+  const hit = flights.get(key);
+  if (hit) return hit;
+  const p = Promise.resolve().then(fn).finally(() => { flights.delete(key); });
+  flights.set(key, p);
+  return p;
+}
+
 /** 漂流瓶要登录（信要能找到作者、回信要能送到人） */
 export function canBottle() {
   return !!(cloud.ready && cloud.user);
@@ -95,19 +110,21 @@ export async function bottleMine() {
   return db.bottleMine();
 }
 
-/** 我捞到、还没回的信（换页/刷新后找回来） */
-export async function bottleHeld() {
-  return db.bottleHeld();
+/** 我捞到、还没回的信（换页/刷新后找回来）；轮 41：与预热单飞合并 */
+export function bottleHeld() {
+  return singleFlight("held", () => db.bottleHeld());
 }
 
-/** 今日已用次数（服务端权威，UTC 日）：{ sent, fished }（轮 18：跨端不再打架） */
+/** 今日已用次数（服务端权威，UTC 日）：{ sent, fished }（轮 18：跨端不再打架；轮 41：与预热单飞合并） */
 export function bottleQuota() {
-  return db.bottleQuota();
+  return singleFlight("quota", () => db.bottleQuota());
 }
 
-/** 漂流瓶记录：p_mine=true 我发布的 / false 我捞到的 / null 原行为；limit 每页条数（#17） */
+/** 漂流瓶记录：p_mine=true 我发布的 / false 我捞到的 / null 原行为；limit 每页条数（#17）
+ *  轮 41：同参数在途请求单飞合并（分页参数不同 = 不同 key，互不影响） */
 export function bottleRecords(id = null, offset = 0, { mine = null, limit = 0 } = {}) {
-  return db.bottleRecords(id, offset, { mine, limit });
+  return singleFlight(`rec:${id}|${offset}|${mine}|${limit}`,
+    () => db.bottleRecords(id, offset, { mine, limit }));
 }
 
 export function bottleChatDecide(id, accept) {

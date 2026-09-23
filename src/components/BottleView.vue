@@ -78,7 +78,12 @@ const fishLeft = computed(() => (quota.value ? Math.max(0, BOTTLE_FISH_MAX - quo
 const sendText = (v) => (v === null ? t("bottle.quotaSyncing") : t("bottle.leftSend", { n: v }));
 const fishText = (v) => (v === null ? t("bottle.quotaSyncing") : t("bottle.leftFish", { n: v }));
 /* 登录就绪/换号 → 次数与托盘一律重读（修「首次进主页漂流瓶记录空白，必须手动点刷新」：
- * 旧版只在 onMounted 拉一次，那时会话往往还没就绪，拉了个空就再也不拉了） */
+ * 旧版只在 onMounted 拉一次，那时会话往往还没就绪，拉了个空就再也不拉了）。
+ * 轮 41（真根因）：这个 watch 原来**没开 immediate** —— App 启动路径是
+ * 「splash 等 initCloud 就绪 → 再挂 HomeView/BottleView」，会话先于组件就绪，
+ * watch 永不触发 → 次数/托盘/记录一次都不查，直到点「捞一瓶」才第一次发请求
+ * （用户报「进首页不提前查、点漂流瓶一直出不来」）。immediate: true = 组件一挂载
+ * 就按当前会话状态查一遍；BottleView 随首页常挂载，所以效果就是「进首页就查好」。 */
 watch([cloudSigned, myId], () => {
   quota.value = null;      /* 换人就先清空：绝不拿上一个人的次数顶着显示 */
   quotaErr.value = "";
@@ -89,7 +94,7 @@ watch([cloudSigned, myId], () => {
     loadRecords(true);
     syncQuota();
   }
-});
+}, { immediate: true });
 
 async function refreshBottle() {
   if (!cloudSigned.value) return;
