@@ -10,5 +10,9 @@
         <item name="android:windowSplashScreenBackground">#FFF7EE</item>
         <item name="android:windowSplashScreenAnimatedIcon">@drawable/launch_paw</item>
         <item name="android:background">@drawable/launch_bg</item>
+        <!-- 轮 39：Force Dark 退出写全（虽然 values/ 的 AppTheme.NoActionBar 已带，
+             继承链能拿到；这里再显式一份，防止将来改 parent 或拆继承时静默丢失——
+             本文件的同名 style 是整体替换，轮 38 的教训就是要写全。） -->
+        <item name="android:forceDarkAllowed">false</item>
     </style>
 </resources>

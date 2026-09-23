@@ -80,6 +80,28 @@ ok("轮 38 ⑤ Android 12+ 系统启动画面同样米色（不设就退回 ?col
   stylesV31.includes('<item name="android:windowSplashScreenBackground">#FFF7EE</item>')
     && stylesV31.includes('parent="AppTheme.NoActionBar"'));
 
+/* ─── 轮 39：深色模式「黑屏」的守护（用户夜测报「黑屏没改」）──────────────────
+ * App 恒为米色浅色主题，但 AppTheme.NoActionBar 用的是 DayNight parent、WebView
+ * 也没退出 Force Dark：深色模式下系统/MIUI 的「强制深色」会把米色页面整个反黑。
+ * 轮 38 是在下午浅色模式下抓帧实测的 → 测不出这一层。三道闸全部钉死。 */
+const styleBlock = (src, name) => (src.match(new RegExp('<style name="' + name + '"[\\s\\S]*?</style>')) || [""])[0];
+const blockAppTheme = styleBlock(styles, "AppTheme"); /* 引号闭合，不会误命中 AppTheme.NoActionBar */
+const blockNoActionBar = styleBlock(styles, "AppTheme.NoActionBar");
+const blockLaunchV31 = styleBlock(stylesV31, "AppTheme.NoActionBarLaunch");
+const mainActivity = read("android/app/src/main/java/net/de5/dale/MainActivity.java");
+
+ok("轮 39 ① 主题零 DayNight（恒浅色 App 用 Light parent；DayNight 在深色下只会把回落色翻黑）",
+  blockNoActionBar.includes('parent="Theme.AppCompat.Light.NoActionBar"')
+    && !styles.includes('parent="Theme.AppCompat.DayNight'));
+ok("轮 39 ② Force Dark 三处显式退出（AppTheme / AppTheme.NoActionBar / v31 Launch——继承链节点各自带齐，防整体替换丢属性）",
+  blockAppTheme.includes('<item name="android:forceDarkAllowed">false</item>')
+    && blockNoActionBar.includes('<item name="android:forceDarkAllowed">false</item>')
+    && blockLaunchV31.includes('<item name="android:forceDarkAllowed">false</item>'));
+ok("轮 39 ③ MainActivity 强制浅色配置在 super.onCreate 之前 + WebView 实例关 Force Dark（双保险）",
+  mainActivity.includes("AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO)")
+    && mainActivity.indexOf("AppCompatDelegate.setDefaultNightMode") < mainActivity.indexOf("super.onCreate(savedInstanceState)")
+    && mainActivity.includes("setForceDarkAllowed(false)"));
+
 /* 轮 30 埋的雷：它在启动页样式块中间插了 </style>，把唯一 style 提前闭合，
  * 后面 30 行 CSS 全成了裸文本 → 唯一生效的规则是 display:none，启动页从此
  * 在任何环境都不可能显示（App 端「启动页又没了」的真因）。这里连 HTML 结构一起守。 */

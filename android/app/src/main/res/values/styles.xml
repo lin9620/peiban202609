@@ -9,15 +9,25 @@
         <item name="colorAccent">@color/colorAccent</item>
         <!-- 轮 38：application 层也铺米色窗口底——任何窗口露底都不再是黑 -->
         <item name="android:windowBackground">#FFF7EE</item>
+        <!-- 轮 39：App 恒为米色浅色主题，显式退出 Force Dark（API 29+ 属性，老平台忽略）。
+             深色模式下系统/MIUI 的「强制深色」会把浅色界面整个反黑——用户夜间看到的
+             「黑屏」就是它；轮 38 实测在下午浅色模式下抓帧，测不出这一层。 -->
+        <item name="android:forceDarkAllowed">false</item>
     </style>
 
     <!-- 米色窗口底的唯一真源头：所有真正被使用的主题都继承自这里 -->
-    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
+    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.Light.NoActionBar">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
+        <!-- 轮 39：parent 从 DayNight 换成 Light——App 内 UI 恒为米色，DayNight 只会在
+             深色模式下把 ？colorBackground 一类回落色翻成黑，没有任何收益。 -->
         <!-- 轮 25 写的就是这句（WebView 没铺满的缝隙露的是原生窗口底，@null 时渲染成黑）。
              轮 38 才把「谁继承它」修对——见下面 NoActionBarLaunch 的注释。 -->
         <item name="android:windowBackground">#FFF7EE</item>
+        <!-- 轮 39：Force Dark 退出。注意 AppTheme.NoActionBar 显式声明了 parent，
+             不继承上面的 AppTheme，所以这里必须再写一份（继承链上每个节点都要
+             自己带齐属性——与「values-v31 同名 style 整体替换」是同一族坑）。 -->
+        <item name="android:forceDarkAllowed">false</item>
     </style>
 
 
