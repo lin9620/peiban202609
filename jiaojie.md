@@ -260,22 +260,24 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
 ---
 
-# 一、当前状态速览（2026-09-23 更新 · 轮 37）
+# 一、当前状态速览（2026-09-23 更新 · 轮 38）
 
 | 项 | 值 |
 |---|---|
 | 项目 | peiban（陪伴 / warm-paws），路径 `D:\05ruanjian\peiban` |
 | 技术栈 | Vue 3 + Vite + Naive UI；数据层双模式：直连 Supabase（`db.supabase.js`）/ Worker 网关（`db.gateway.js` + `worker/api.js`，**线上走网关**）；Cloudflare 部署 https://dale.de5.net；Supabase Postgres + RLS + security definer RPC |
-| 代码 | 轮 37 已提交（`1c5f112`）；核心：**漂流瓶全线上**——次数只认服务端 `bottle_quota()`（删本机账本 `warm-paws-bottle-quota-v1` / `bumpQuota` / 乐观 +1）、托盘与记录去掉 SWR 快照改现拉服务器、进页面自动清掉老版本本机数据。此前轮 36：响应速度专项（`cloud.ready` 提前、路由过渡 0.26s） |
-| 部署 | Version `3aa322a3` 已上线（轮 37 漂流瓶全线上）；`live-check` 14/14；线上 SHA16 `b6a5a99f39d0edb4` 与本地 dist 一致（`live-bundle-check`） |
-| 数据库 | `MIGRATION_reports.sql` 已执行（线上 e2e 6/6 闭环）；`MIGRATION_notifications_drop_dm.sql`（轮 13 #23）仍未确认。**本轮零迁移零 SQL 改动**（只动前端） |
-| App | 轮 37 APK 已重打**并装机启动冒烟通过**（2026-09-23：`adb install -r` Success + `Displayed net.de5.dale/.MainActivity: +672ms` + crash buffer 空）：`apk\warm-paws-debug.apk` 4.77MB SHA16 `221ffd65d054383b`（android assets 与 dist 逐文件同哈希） |
-| 测试 | 离线 **33 套 ALL GREEN**（bottle-test 66 项）+ **page-smoke 8/8** + undef 0 + build 0 + 线上 `bottle-e2e` **16/16** |
+| 代码 | 轮 38 已提交（`2d8c8a3`）；核心：**App 冷启动黑边 + 启动页双修**（用户原话：「为什么改了那么多次黑边还在，而且 app 端启动页又没了」）——① **黑边**：米色窗口底与品牌启动图写到 **Activity 真正使用的主题** `AppTheme.NoActionBarLaunch`（parent 由 `Theme.SplashScreen` 改回 `AppTheme.NoActionBar`；删 Capacitor 模板默认蓝色 X 的 `splash.png` ×11；新增 `launch_bg.xml`/`launch_paw.xml`/`values-v31/styles.xml` 管 Android 12+ 系统启动画面）；② **启动页消失**：修 `index.html` 里把 `<style>` 提前闭合的字面 `</style>`（轮 30 埋的雷）+ `cap-app` 判据改四路（Android WebView 的 UA 本就不含 "capacitor"）。此前轮 37：**漂流瓶全线上** |
+| 部署 | Version `59c5bd12` 已上线（轮 38 启动页/黑边前端改动）；`live-check` 14/14；线上入口 SHA16 `602036317f80c223` 与本地 dist 逐字节一致（`live-bundle-check`） |
+| 数据库 | `MIGRATION_reports.sql` 已执行（线上 e2e 6/6 闭环）；`MIGRATION_notifications_drop_dm.sql`（轮 13 #23）仍未确认。**本轮零迁移零 SQL 改动**（只动前端 + Android 原生资源） |
+| App | 轮 38 APK 已重打**并装机**（2026-09-23 14:49，`adb install -r` Success）：`apk\warm-paws-debug.apk` 4.76MB SHA16 `E7FA658BC1C27060`。**装机包可溯源**：`dist/index.html` 过 `cap-strip-hero` 后 SHA16 = `17CAE91F03B31989` = android assets = APK 内 assets（三者逐字节相同） |
+| App 冷启动实测 | **真机冷启动 14 帧像素扫描**：原生启动层米色+橙爪（四角 `#FFF7EE`、左右零暗像素）→ 网页启动页（可见「温暖的爪印 / Warm Paws / 一个温柔的角落」+ 三条特性 + 温柔话）→ 首页。**除桌面自身的「打开应用」转场帧外，App 自己的每一帧都没有黑边** |
+| 测试 | 离线 **40 套复跑 ALL GREEN**（splash-test **15/15** 含新增 style 标签守恒守护；bottle-test 66/66、auth 130/130、worker 195/195、pet-visual 163/163）+ **page-smoke 8/8** + undef 0 + build 0 + 线上 `live-check` 14/14 |
 
 ## 二、现在在做什么
 
-- **当前任务**：轮 37（漂流瓶全线上）**已完成：已部署、已验证、APK 已重打**（F 区轮 37）。用户原话：「你把漂流瓶功能全改成线上的，不要本地缓存了……什么每天捞 7 瓶、写 3 瓶，你老老实实的改成线上」。现在次数/托盘/记录**一律现拉服务器**，本机不再有任何漂流瓶缓存或账本 → 清缓存/换设备既不能把次数刷回来，也不会再显示错的剩余次数。
-- **待用户真机验收（轮 37）**：① 首页/App 漂流瓶：剩余次数显示与服务器一致（发 3 封后「今天还能投 0 封」、回 7 次后「还能捞 0 瓶」，不再出现「显示还剩 7 次却已被挡」）② 网页与 App 两端显示的次数**同源**（在网页用掉 1 次，App 里刷新即见同一本账）③ 捞到的信/记录列表不再出现**上一个人**的（换号或清缓存后重进为空/自己的）④ 超限只会被服务器挡住并给出明确文案。
+- **当前任务**：轮 38（**App 冷启动黑边 + 启动页**双修）**已完成：已改、已测、已部署、APK 已重打并装机、冷启动逐帧实测通过**（F 区轮 38）。用户原话：「为什么改了那么多次黑边还在，而且 app 端启动页又没了」。两条都是**改了多轮没改对**的老账，本轮把它们归到**两个真因**上收掉：黑边=「米色窗口底写在没人用的主题上 + 启动层还是 Capacitor 默认图 + Android 12+ 系统启动画面没配」，启动页消失=「轮 30 把字面 `</style>` 写进了 `<style>` 块（HTML 解析器见到就闭合元素，后 30 行 CSS 全成裸文本）+ `cap-app` 判据用了 Android WebView 根本没有的 UA 串」。
+- **待用户真机验收（轮 38，看启动这几秒）**：① 冷启动**不再有黑边**（原生启动层米色 + 橙爪铺满，四角无黑；我这边的真机逐帧已是如此）② **启动页回来了**（米色底 + 🐾 温暖的爪印 / Warm Paws / 一个温柔的角落 + 三条特性 + 「你已经做得比想象中好了」，然后淡出进首页）③ 网页端**仍然不显示启动页**（轮 30 的要求保持）。注意：桌面点图标那一瞬的**黑幕是桌面的「打开应用」转场背景**，不属于 App（我这边的帧里 App 窗口自己始终是米色圆角）。
+- **待用户真机验收（轮 37，漂流瓶）**：① 首页/App 漂流瓶：剩余次数显示与服务器一致（发 3 封后「今天还能投 0 封」、回 7 次后「还能捞 0 瓶」，不再出现「显示还剩 7 次却已被挡」）② 网页与 App 两端显示的次数**同源**（在网页用掉 1 次，App 里刷新即见同一本账）③ 捞到的信/记录列表不再出现**上一个人**的（换号或清缓存后重进为空/自己的）④ 超限只会被服务器挡住并给出明确文案。
 - **仍待用户（承轮 34）**：管理端「举报」页签里那条线上 e2e 留下的测试举报（显示「内容已删除」），点「驳回」即走完 处置→通知→已处理 全流程；重连手机后装机走查（举报弹窗、拉黑后内容隐藏、轮 31/32 遗留项）。
 - **待用户确认**：①`MIGRATION_reports.sql` 已执行（✅ 2026-09-23）②`MIGRATION_notifications_drop_dm.sql`（轮 13 #23，仍未确认）。
 - **可选加码（等有量再做）**：图片搬 Cloudflare R2（出口永久免费，见「十、容量评估」方案 B）。
@@ -431,6 +433,7 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 | 11 | 换账号漂流瓶次数还是上个人的 | 次数记账键按 uid 分域（`warm-paws-bottle-quota-v1:<uid>`），`watch(myId)` 换号立即换账本 → **轮 37 再收口**：本机账本整体删除，次数只认服务端 `bottle_quota()`（漂流瓶全线上，见 F 区轮 37） |
 | 12 | 已捞到有回信的不能点 | 记录列表对「收到回信待决定」的条目直接给「同意/拒绝」按钮，同意即进聊天；新文案 `bottle.stDecide`（zh/en 成对） |
 | 13 | 评论数点击弹输入框（手机） | 手机形态展开评论默认只读，点「✎ 写评论」才出输入框（`cmtCompose`，桌面不变） |
+| 14 | **App 冷启动黑边一直没修好 + 启动页又没了**（2026-09-23 用户原话：「为什么改了那么多次黑边还在，而且 app 端启动页又没了」） | **两个真因，都在"改了多轮没改对"的账上**：① 黑边：轮 25 的米色窗口底写在 `AppTheme.NoActionBar` 上，而 Activity 用的是 `AppTheme.NoActionBarLaunch`（parent=`Theme.SplashScreen`，与我们的主题**毫无继承**）→ 米色从未生效；该启动主题的 `android:background` 还是 Capacitor 模板自带蓝色 X 的 `splash.png`；Android 12+ 的系统启动画面（`windowSplashScreenBackground`）也没配 → 冷启动一圈黑。**修法**：窗口底/品牌启动图写进**真正被使用的主题**（parent 改 `AppTheme.NoActionBar`，`android:background=@drawable/launch_bg`）+ 删 11 张默认 `splash.png` + 新增 `values-v31/styles.xml`。② 启动页消失：轮 30 在 `<style>` 块中间插了一个**字面的 `</style>`**——HTML 解析器在 style 元素里见到它就立刻结束元素（注释也不豁免）→ 后面 30 行 CSS 全成裸文本，唯一活着的规则是 `display:none`（连 `html.cap-app #app-splash{display:flex}` 也死了）；且 `cap-app` 的判据是 UA 里有没有 "capacitor"，而 **Capacitor Android 的 WebView UA 默认不含这个串**。**修法**：合成一个合法样式块 + 判据四路（`window.androidBridge` / `window.Capacitor` / `appendUserAgent`("WarmPawsApp") / UA）+ `src/main.js` 用 `Capacitor.isNativePlatform()` 在挂载前兜底加类。见 F 区轮 38 |
 
 - **工具沉淀**：`tools/build-until-good.mjs`（构建 + 自验产物含 slug + 不合格自动重试，防坏包出门）、`tools/live-bundle-check.mjs`（线上入口包与本地 dist 逐字节比对 + hasSlug 检查）。
 - **本轮事故（已修复，教训见踩坑 #25/#26）**：一次 `npm run build; npm run deploy` 链式执行，build 被 env-guard 拦下后 deploy 照跑 → 坏包上线（线上无 Supabase 配置、登录失效）。复部署后线上 `hasSlug=true`、SHA 与本地一致。
@@ -531,6 +534,8 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 28. **同一个口径改了两处只记得一处（轮 32 真凶）**：轮 31 因 `@capacitor/browser` 懒块把 env-guard 的「所有 `index-*.js` 都必须含 slug」改成「只验 index.html 真正加载的入口」，但 `tools/build-until-good.mjs` 里**同一段判定逻辑还留着旧口径**（两处是复制粘贴的兄弟代码）→ 构建明明成功、guard 明明放行，保险脚本却恒报 BUILD_ALWAYS_BAD 重试 5 次失败。**教训（强制）**：修「误报口径」时要先全仓 grep 同类判定（`index-`、`slug`、`entry`），兄弟脚本一起改；判定逻辑尽量抽成单一实现（本次因一个在 vite.config 插件、一个在独立 node 脚本，暂以注释互相指向）。
 
 29. **「immediate watch 在 setup 期间同步执行」会把后面才声明的 const 变成 TDZ（轮 34b 真凶，/admin 白屏）**：轮 33 在 AdminView 里把举报页签的状态 const 声明放在 switchTab 之后，而文件更前面的 `watch(signedIn, …, { immediate: true })` 同步调 load() 重置这些状态 → `Cannot access before initialization`。构建、undef-check、33 套源码扫描测试**全都不执行组件代码**，所以全绿照样白屏。**教训（强制）**：①immediate watch / setup 期同步执行的代码路径，其引用的响应式状态必须声明在它**之前**（AdminView 举报块已加「位置硬约束」注释）；②新增 `tools/page-smoke.mjs`（8 条关键路由无头真实挂载 + 无崩溃盒断言）作为运行时防线，改 .vue 构建完必跑；③Git Bash 跑 web-probe/page-smoke 记得 `MSYS2_ARG_CONV_EXCL="--url"`（MSYS 会把 /admin 转成 Windows 路径）。
+
+30. **`<style>` 里不能出现字面 `</style>`；Android 主题必须看「Activity 用的是哪一个」（轮 38 双真因，各拖了 8 轮 / 13 轮）**：① **启动页消失**：轮 30 在启动页那个 `<style>` 块中间写了行注释，注释里带了**字面 `</style>`** —— HTML 解析器在 `<style>` 元素内遇到它就**立刻结束元素（注释也不豁免）**，后半段 CSS 全成了文档里的裸文本；恰好留在元素内的那半段是 `display:none`，于是「App 端启动页」静默消失，而网页端本来就要隐藏 → 症状只在 App，八轮没被发现。**教训（强制）**：写 `<style>`/`<script>` 内容时永不写出字面闭合标签（要举例就写「style 结束标签」文字），并让测试守标签守恒（`tools/splash-test.mjs` ⑥/⑦ 现断言 `<style` 与 `</style>` 计数相等 + 注释内不得含字面闭合标签）。② **黑边**：轮 25 把米色窗口底 `android:windowBackground` 写在 `AppTheme.NoActionBar` 上，而 `AndroidManifest.xml` 里 Activity 用的是 `AppTheme.NoActionBarLaunch`（当时 parent=`Theme.SplashScreen`，与我们的主题**毫无继承关系**）→ 米色从未生效，冷启动露的是启动主题默认底（黑）+ Capacitor 模板默认蓝色 X 的 `splash.png`。**教训（强制）**：改原生主题前**先打开 Manifest 确认 Activity 用哪个 style**，再确认它的 parent 链；`values-v31/` 里同名 style 是**整体替换不是合并**（要写全 parent+items），Android 12+ 系统启动画面走 `windowSplashScreenBackground`/`windowSplashScreenAnimatedIcon`，不设就退回 `?colorBackground`（深色下=黑）。③ **判定黑边不能用单张静态截图**：黑边只存在于「原生启动层结束 → WebView 铺满」的几百毫秒里，静态截图（甚至运行中截图）都扫不到；必须**连续抓帧**（本次 14 帧 / 约 100ms 间隔）再逐帧扫左右边缘列的暗像素，并且要能区分「桌面『打开应用』转场动画的黑幕」与「App 窗口自己的黑边」——前者是系统的，别当 bug 修。
 
 ---
 
@@ -986,6 +991,19 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **口径澄清（产品规则没变，变的是「谁说了算」）**：每天最多写 3 封、**回信**才计 1 次（每天 7 次）、捞到手 ≥7 封未回时拦新捞、48h 未处理自动回海 —— 这些**一直都在 SQL RPC 里**（`MIGRATION_bottle.sql` + `_quota_fishfix` + `_reply_quota`），本轮只是把本机那本假账删干净，让显示与执行都只剩服务端这一本账。
      **验收**：bottle-test **66/0**（旧「本机账兜底/乐观 +1」断言全部改写 + 新增 4 条回归守护：不许再出现 `bumpQuota`/`quotaRemote`/`swr(`/`cacheKey(`/`todayKey`/`storage`/`cache` 导入；**2 条真跑**：造 5 个键 → `purgeLegacyBottleLocals()` 正好删 3 个、私信缓存与宠物档原样留下、再清一次返回 0）+ home-panes 9/9（T9「本地优先缓存」断言反向更新）+ 全量 **33 套 0 fail** + undef 0 + build 0（`BUILD_GOOD index-CyOIbHUP.js`）+ page-smoke 8/8 + 部署 Version `3aa322a3` + live-check 14/14 + SHA16 `b6a5a99f39d0edb4` 本地=线上 + 线上 `bottle-e2e` **16/16**（T4 第 4 封被服务端 `bottle-limit-send` 挡下 / T12 A 捞不到自己的信 / T13–T16 权限与 RLS）+ cap sync（android assets 与 dist 逐文件同哈希）+ APK 重打 `apk\warm-paws-debug.apk` 4.77MB SHA16 `221ffd65d054383b`，**并已装机启动冒烟通过**（`adb install -r` Success；`ActivityTaskManager: Displayed net.de5.dale/.MainActivity: +672ms`；`logcat -b crash` 空；WebView 进程正常起）。**待用户真机验收**：投满 3 封后显示「还能投 0 封」并在**清缓存/重装/换设备后依然为 0**（老版本会回满）；回信 7 次后「还能捞 0 瓶」；网页与 App 显示同一本账。
      **顺带（两处假红校准，都不是本轮引入的功能问题）**：①`live-check`/`live-bundle-check` 首轮报 `ERR fetch failed`（本机到 Cloudflare 的连接超时抖动，同一分钟探针实测 5/5 200）→ 复测 14/14 且 SHA 一致；②`bottle-e2e` T12 老断言把「连捞 10 次都成功」当失败 —— A 能捞到的信在 RPC 里本就排除了自己的（`user_id <> auth.uid()`），海中真实信件一多必然假红，口径改为「连捞成功或撞空海/限额都合规」（`sawOwn` 仍必须为 false）→ 复测 **16/16**。
+
+  - **轮 38 · App 冷启动黑边 + 启动页双修（2026-09-23，部署 Version `59c5bd12`，提交 `2d8c8a3`）**：
+     **用户报障（原话）**：「来吧，告诉我，为什么改了那么多次黑边还在，而且 app 端启动页又没了，这次看你怎么狡辩哈」。两条都是**前几轮声称修好、实际没修对**的老账（黑边：轮 24/25；启动页：轮 24/26/30）。
+     **取证（先证据后动手，全部实锤）**：① 真机**冷启动连续抓帧**（14 帧 / 约 100ms 间隔，`adb exec-out screencap`）；② 逐帧**像素扫描**（左右边缘列暗像素 + 四角取样）；③ 读 `AndroidManifest.xml` / `values/styles.xml` / `values-night/styles.xml` / `MainActivity.java` / `capacitor.config.json` / `index.html` / `src/main.js`；④ `git show HEAD:…/styles.xml` 与轮 30 那笔 diff 对照原文；⑤ `git log -S` 追「米色窗口底是哪一轮加在哪个主题上」。
+     **根因（两条，一一对应用户骂的两件事）**：
+     ① **黑边（拖了 13 轮）**：轮 25 的 `android:windowBackground=#FFF7EE` 写在 `AppTheme.NoActionBar` 上，**而 Activity 真正用的是 `AppTheme.NoActionBarLaunch`**（当时 `parent="Theme.SplashScreen"`，`android:Theme` 系，与我们的主题**毫无继承关系**）→ 米色从未生效；该启动主题的 `android:background` 还是 **Capacitor 模板自带蓝色 X 的 `splash.png`**；Android 12+ 还有一层**系统启动画面**（读 `windowSplashScreenBackground`/`windowSplashScreenAnimatedIcon`），没配 → 背景退回 `?colorBackground`（深色下=黑）。三层叠起来就是冷启动那一圈黑。
+     ② **启动页消失（拖了 8 轮）**：轮 30 在那个 `<style>` 块中间插了一个**字面的 `</style>`** —— HTML 解析器在 `<style>` 元素内遇到它**立刻结束元素（注释也不豁免）**，后面 30 行 CSS 全成裸文本；恰好留在元素内的半段是 `display:none`，于是「App 端启动页」静默消失（网页端本来就要隐藏 → 症状只在 App）。另一层：`html.cap-app` 的判据是 `navigator.userAgent` 里有没有 "capacitor"，而 **Capacitor Android 的 WebView UA 默认不含这个串**（只有配了 `android.appendUserAgent` 才追加）→ 类永远加不上。
+     **修法**：① 主题链归位——`AppTheme.NoActionBarLaunch` 的 parent 改为 `AppTheme.NoActionBar`、`android:background=@drawable/launch_bg`（米色矢量底），新增 `launch_paw.xml`（橙爪）、删掉 11 张 Capacitor 默认 `splash.png`、新增 `values-v31/styles.xml`（`windowSplashScreenBackground=#FFF7EE` + `windowSplashScreenAnimatedIcon=@drawable/launch_paw`）；`AppTheme` 也补米色窗口底（任何窗口露底都不再是黑）。② 启动页——`index.html` 合成**一个合法样式块**（顺序有意：布局 = 默认隐藏 = `html.cap-app` 恢复显示），判据改**四路**（`window.androidBridge` / `window.Capacitor` / `capacitor.config.json` 里 `android.appendUserAgent:"WarmPawsApp"` / UA 含 "capacitor"），并在 `src/main.js` 用 `Capacitor.isNativePlatform()` 在挂载前兜底加类。
+     **验收（三层）**：离线 **40 套复跑 ALL GREEN**（`splash-test` 8→**15/15**：新增「`<style`/`</style>` 计数守恒 + 注释内不得含字面闭合标签 + `html.cap-app` 恢复显示规则在位」；bottle-test 66/66、auth 130/130、worker 195/195、pet-visual 163/163、app-shell 40/40、wall 34/34、dm 286/286、notify 149/149）+ `undef-check` 0 + build 0（`BUILD_GOOD index-B5lowAyf.js`）+ **page-smoke 8/8** + `npm run cap:sync` + 部署 **Version `59c5bd12`** + `live-check` **14/14** + `live-bundle-check` 线上入口 SHA16 `602036317f80c223` 本地=线上。
+     **装机包可溯源（防「装的不是这份代码」）**：`dist/index.html` 过 `cap-strip-hero`（轮 18 基建：App 侧剥掉只给爬虫看的英文 SEO 占位）后 SHA16 = `17CAE91F03B31989` = android assets = **APK 内 assets**（三者逐字节相同，`System.IO.Compression` 直读 apk 校验）。
+     **真机实测（本轮最硬的一条证据）**：APK `apk\warm-paws-debug.apk` 4.76MB SHA16 `E7FA658BC1C27060`，`adb install -r` **Success** → 冷启动抓 14 帧：**g1 = 原生启动层（米色 + 居中橙爪）四角 `#FFF7EE`、左右零暗像素**；**g4/g7 = 网页启动页真的出现**（🐾 温暖的爪印 / Warm Paws / 一个温柔的角落 / 三条特性胶囊 / 「你已经做得比想象中好了」）；g8+ = 首页。除 **g0**（桌面「打开应用」转场帧，其周围的黑色是**桌面的**遮罩，App 窗口本身已是米色圆角）外，**App 自己的每一帧都没有黑边**。
+     **顺带说明（不是 bug，先记下免得下次又当黑边修）**：g0 那帧的黑来自桌面启动转场动画的背景；`values-night/styles.xml` 沿用同款米色（本轮不动深色分支，因为 App 内 UI 恒为米色主题）。
+     **待用户真机验收**：① 冷启动无黑边 ② 启动页出现并淡出进首页 ③ 网页端仍不显示启动页（轮 30 的要求保持）。
 
   - **轮 34 续 · 迁移执行 + 线上闭环（2026-09-23，用户执行迁移后当日）**：
      **探针（坑 #7 判据）**：report_create / admin_report_page / admin_report_handle 匿名全 **42501**（存在无权）= 迁移生效实锤；wall_toggle_dislike 42501（新版权限收紧在位）；admin_overview 匿名 admin=false 提前返回（reports_pending 仅管理员可见，符合设计）。
