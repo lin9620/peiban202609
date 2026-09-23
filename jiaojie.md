@@ -260,23 +260,25 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
 ---
 
-# 一、当前状态速览（2026-09-24 更新 · 轮 39）
+# 一、当前状态速览（2026-09-24 更新 · 轮 40）
 
 | 项 | 值 |
 |---|---|
 | 项目 | peiban（陪伴 / warm-paws），路径 `D:\05ruanjian\peiban` |
 | 技术栈 | Vue 3 + Vite + Naive UI；数据层双模式：直连 Supabase（`db.supabase.js`）/ Worker 网关（`db.gateway.js` + `worker/api.js`，**线上走网关**）；Cloudflare 部署 https://dale.de5.net；Supabase Postgres + RLS + security definer RPC |
-| 代码 | 轮 39 已提交（`e1130fe`）；核心：**深色模式「黑屏」修**（用户原话：「黑屏没改，改一下」）——恒浅色 App 却用 DayNight 主题 + WebView 未退 Force Dark，深色模式下整个界面被「强制深色」反黑；修三道闸：主题 `DayNight`→`Light` + `android:forceDarkAllowed=false` 写全三个继承节点 + `MainActivity` 强制浅色（`super.onCreate` 之前）+ WebView 实例关 Force Dark。轮 38：**App 冷启动黑边 + 启动页双修**（米色窗口底与品牌启动图写进 **Activity 真正使用的主题** + 删默认 splash.png ×11 + `values-v31` 管 Android 12+ 系统启动画面；启动页消失 = 轮 30 字面 `</style>` 雷 + `cap-app` 判据改四路）。此前轮 37：**漂流瓶全线上** |
-| 部署 | Version `59c5bd12` 已上线（轮 38 启动页/黑边前端改动）；`live-check` 14/14；线上入口 SHA16 `602036317f80c223` 与本地 dist 逐字节一致（`live-bundle-check`） |
+| 代码 | 轮 40（`083c895`）：**桌面端弹窗宽度收敛**——`n-modal` 只给 `max-width` 时会被容器撑满，桌面 88vw/92vw 就等于满屏巨幕，改显式 `width: min(560px, calc(100vw - 32px))`（漂流瓶捞信弹窗）/ `min(520px, calc(100vw - 32px))`（举报弹窗），手机端仍是留 16px 边距的近全宽（视觉不变）。轮 39 已提交（`e1130fe`）；核心：**深色模式「黑屏」修**（用户原话：「黑屏没改，改一下」）——恒浅色 App 却用 DayNight 主题 + WebView 未退 Force Dark，深色模式下整个界面被「强制深色」反黑；修三道闸：主题 `DayNight`→`Light` + `android:forceDarkAllowed=false` 写全三个继承节点 + `MainActivity` 强制浅色（`super.onCreate` 之前）+ WebView 实例关 Force Dark。轮 38：**App 冷启动黑边 + 启动页双修**（米色窗口底与品牌启动图写进 **Activity 真正使用的主题** + 删默认 splash.png ×11 + `values-v31` 管 Android 12+ 系统启动画面；启动页消失 = 轮 30 字面 `</style>` 雷 + `cap-app` 判据改四路）。此前轮 37：**漂流瓶全线上** |
+| 部署 | Version `baa4367e` 已上线（轮 40 弹窗宽度）；`live-check` 14/14；线上入口 SHA16 `826d26a0bd695227` 与本地 dist 逐字节一致（`live-bundle-check`）。上一版 `59c5bd12`（轮 38） |
 | 数据库 | `MIGRATION_reports.sql` 已执行（线上 e2e 6/6 闭环）；`MIGRATION_notifications_drop_dm.sql`（轮 13 #23）仍未确认。**本轮零迁移零 SQL 改动**（只动前端 + Android 原生资源） |
-| App | **轮 39 APK 已重打、待装机**（2026-09-24 00:45，手机未连线）：`apk\warm-paws-debug.apk` 4.99MB SHA16 `63F5932ACDA5434A`。重连后 `adb install -r apk\warm-paws-debug.apk` 即完成装机（网页/dist 零改动，无需部署与 cap sync）。轮 38 装机包（SHA16 `E7FA658BC1C27060`，2026-09-23 14:49）的溯源记录见 F 区 |
+| App | **轮 40 APK 已装机**（2026-09-24 01:37）：`apk\warm-paws-debug.apk` **4.76MB SHA16 `D88A2E9C0496140A`**，`adb install -r` **Success** → 冷启动 `Displayed net.de5.dale/.MainActivity: +720ms`、`logcat -b crash` **空**。**本包首次包含轮 39 的深色模式三道闸**（上一版 `63F5932ACDA5434A` 那份始终没装机，已被本包覆盖、内容无损）。溯源：APK 内 `assets/public/index.html` 与 android assets **逐字节相同**，启动页样式块 `<style>`/`</style>` **1/1**、`html.cap-app #app-splash` 规则在位，入口 `index-DTHdcYlq.js` 与 dist 同名 |
 | App 冷启动实测 | 轮 38：**真机冷启动 14 帧像素扫描（浅色模式）**：原生启动层米色+橙爪（四角 `#FFF7EE`、左右零暗像素）→ 网页启动页 → 首页，App 自己的每一帧都没有黑边。**轮 39 补勘**：那次抓帧是下午**浅色模式**下做的——夜间深色模式的路径当时测不到，正是「白天验收全绿、夜里黑屏」的盲区（F 区轮 39）；深色模式验证须装机后补做 |
 | 测试 | 轮 39：splash-test 15→**18/18**（新增三道闸断言：主题零 DayNight / 三处 `forceDarkAllowed=false` / night-mode 调用先于 `super.onCreate`）；网页代码零改动，全量离线套件不重跑。轮 38 基线：离线 40 套 ALL GREEN + page-smoke 8/8 + live-check 14/14 |
 
 ## 二、现在在做什么
 
-- **当前任务**：轮 39（**深色模式「黑屏」修**）**已完成：已改、已测、APK 已重打，待装机验收**（F 区轮 39）。用户原话：「黑屏没改，改一下」。真因：恒浅色 App 却用 DayNight 主题 + WebView 未退 Force Dark——深色模式下（夜间）系统/MIUI 的「强制深色」把米色界面整个反黑；轮 38 的 14 帧实测是下午浅色模式抓的，恰好测不到这层。三道闸已全关（主题 Light+forceDarkAllowed=false ×3、MainActivity 强制浅色、WebView 实例关 Force Dark），splash-test 18/18，APK SHA16 `63F5932ACDA5434A` 待装机。
-- **待用户真机验收（轮 39，深色模式）**：① 手机开**深色模式**后冷启动 + 全程使用：界面始终米色**不变黑**；② 切回浅色模式：冷启动无黑边（轮 38 结论保持）、启动页照常。装机先做：手机连线后 `adb install -r apk\warm-paws-debug.apk`（SHA16 `63F5932ACDA5434A`）。若深色模式下仍发黑：MIUI「设置 → 显示 → 深色模式」里有按 App 的开关，把 Warm Paws 设为**不加深色/始终浅色**再试——那是系统侧最后一级开关，App 侧能做的三道闸本轮已全部关掉。
+- **当前任务**：轮 40（**桌面端弹窗宽度收敛**）**已完成并交付**——代码已提交（`083c895`）、已测（33 套离线 0 fail）、已部署（Version `baa4367e`）、APK 已装机（SHA16 `D88A2E9C0496140A`，见 F 区轮 40）。上一轮 39（**深色模式「黑屏」修**）已改、已测，并**随轮 40 的 APK 首次装机**，待你在深色模式下验收（F 区轮 39）。用户原话：「黑屏没改，改一下」。真因：恒浅色 App 却用 DayNight 主题 + WebView 未退 Force Dark——深色模式下（夜间）系统/MIUI 的「强制深色」把米色界面整个反黑；轮 38 的 14 帧实测是下午浅色模式抓的，恰好测不到这层。三道闸已全关（主题 Light+forceDarkAllowed=false ×3、MainActivity 强制浅色、WebView 实例关 Force Dark），splash-test 18/18；那份 APK（`63F5932ACDA5434A`）当时未装机，本轮轮 40 重新出包时**连同三道闸一起装机**（装机包 SHA16 `D88A2E9C0496140A`）。
+- **待用户真机验收（轮 39，深色模式 · 装机已完成）**：① 手机开**深色模式**后冷启动 + 全程使用：界面始终米色**不变黑**；② 切回浅色模式：冷启动无黑边（轮 38 结论保持）、启动页照常。**装机已完成**（2026-09-24 01:37，`D88A2E9C0496140A`，`Displayed +720ms`、crash 空）。若深色模式下仍发黑：MIUI「设置 → 显示 → 深色模式」里有按 App 的开关，把 Warm Paws 设为**不加深色/始终浅色**再试——那是系统侧最后一级开关，App 侧能做的三道闸本轮已全部关掉。
+- **待用户验收（轮 40，弹窗尺寸）**：① 桌面网页打开**漂流瓶捞信弹窗**/**举报弹窗**：窗宽收敛为 **560px / 520px**（原先铺满整屏）② 手机上这两个弹窗仍是留 16px 边距的近全宽，**视觉不应有变化**。
+
 - **待用户真机验收（轮 38，看启动这几秒）**：① 冷启动**不再有黑边**（原生启动层米色 + 橙爪铺满，四角无黑；我这边的真机逐帧已是如此）② **启动页回来了**（米色底 + 🐾 温暖的爪印 / Warm Paws / 一个温柔的角落 + 三条特性 + 「你已经做得比想象中好了」，然后淡出进首页）③ 网页端**仍然不显示启动页**（轮 30 的要求保持）。注意：桌面点图标那一瞬的**黑幕是桌面的「打开应用」转场背景**，不属于 App（我这边的帧里 App 窗口自己始终是米色圆角）。
 - **待用户真机验收（轮 37，漂流瓶）**：① 首页/App 漂流瓶：剩余次数显示与服务器一致（发 3 封后「今天还能投 0 封」、回 7 次后「还能捞 0 瓶」，不再出现「显示还剩 7 次却已被挡」）② 网页与 App 两端显示的次数**同源**（在网页用掉 1 次，App 里刷新即见同一本账）③ 捞到的信/记录列表不再出现**上一个人**的（换号或清缓存后重进为空/自己的）④ 超限只会被服务器挡住并给出明确文案。
 - **仍待用户（承轮 34）**：管理端「举报」页签里那条线上 e2e 留下的测试举报（显示「内容已删除」），点「驳回」即走完 处置→通知→已处理 全流程；重连手机后装机走查（举报弹窗、拉黑后内容隐藏、轮 31/32 遗留项）。
@@ -1016,6 +1018,15 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **验证**：splash-test **18/18**；APK 重打 `apk\warm-paws-debug.apk` 4.99MB SHA16 `63F5932ACDA5434A`（00:45）。**网页/dist 零改动**——不部署、不 cap sync（auth-test 读的 AndroidManifest、cap-strip-hero 比对的 assets 均未动）。
      **待用户真机验收（装机先行：连线后 `adb install -r apk\warm-paws-debug.apk`）**：① **深色模式下**冷启动 + 使用全程米色不变黑 ② 浅色模式冷启动无黑边（轮 38 结论保持）③ 启动页照常。若深色下仍发黑：MIUI「设置 → 显示 → 深色模式」按 App 开关把 Warm Paws 设为不加深色——系统侧最后一级，App 侧三道闸已全关。
      **顺带收编**：轮 38 黑边探针 `tools/_probe-black-edge.js`（WebView 内查启动页/边缘像素/视口的 CDP 探针）入库存档。
+
+  - **轮 40 · 桌面端弹窗宽度收敛（2026-09-24，提交 `083c895`，已部署 `baa4367e` + 已装机）**：
+     **用户报障**：桌面网页上弹窗太大（铺满整屏），手机端看不出问题。
+     **真因**：Naive UI 的 `n-modal`（`preset="card"`）**只给 `max-width` 不给 `width` 时，卡片会被容器撑满**——`max-width: 88vw`（漂流瓶捞信弹窗）/ `max-width: 92vw`（举报弹窗）在手机上≈343px 恰好合适，在桌面（1920 宽）就是 1670px 的巨幕。**手机端能过验收、桌面端炸**，属于「只按一端验收」的老毛病（承踩坑 #31 的「验收时段盲区」，这次是「验收设备盲区」）。
+     **修法**：两个弹窗都改显式 `style="width: min(560px, calc(100vw - 32px))"`（捞信）/ `min(520px, calc(100vw - 32px))`（举报）——桌面固定 560/520px 居中，手机仍留 16px 边距的近全宽（**手机视觉不变**）。
+     **验证**：离线 **33 套 0 fail**（含 auth 130、worker 195、dm 286、splash 18 等）+ `undef-check` 0 + `build-until-good` → `BUILD_GOOD index-DTHdcYlq.js` + `cap sync`（`cap-strip-hero` 剥 SEO 占位 ×4）+ `gradlew assembleDebug` **BUILD SUCCESSFUL** + 部署 **Version `baa4367e`** + `live-check` **14/14** + `live-bundle-check` 线上入口 SHA16 `826d26a0bd695227` 本地=线上。
+     **装机与溯源**：APK `apk\warm-paws-debug.apk` 4.76MB SHA16 `D88A2E9C0496140A`，`adb install -r` **Success** → `Displayed net.de5.dale/.MainActivity: +720ms`、`logcat -b crash` 空。APK 内 `assets/public/index.html` 与 `android/app/src/main/assets/public/index.html` **逐字节相同**、启动页 `<style>`/`</style>` **1/1**、`html.cap-app #app-splash` 规则在位、入口 `index-DTHdcYlq.js` 与 dist 同名（防「装的不是这份代码」）。
+     **顺带**：本包首次把**轮 39 的深色模式三道闸**送进真机（轮 39 那份 `63F5932ACDA5434A` 一直没装机）。
+     **待用户验收**：① 桌面网页两个弹窗宽度收敛（560/520px）② 手机端弹窗视觉不变。
 
   - **轮 34 续 · 迁移执行 + 线上闭环（2026-09-23，用户执行迁移后当日）**：
      **探针（坑 #7 判据）**：report_create / admin_report_page / admin_report_handle 匿名全 **42501**（存在无权）= 迁移生效实锤；wall_toggle_dislike 42501（新版权限收紧在位）；admin_overview 匿名 admin=false 提前返回（reports_pending 仅管理员可见，符合设计）。
