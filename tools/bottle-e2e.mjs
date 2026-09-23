@@ -139,10 +139,14 @@ let replyLetterId = "", releaseLetterId = "";
     } else { lastErr = r.text.slice(0, 60); break; }
     if (rounds > 10) break;
   }
-  ok("T12 A 捞不到自己的信（要么空海/限额，要么捞到的都是别人的）",
-    !sawOwn && (lastErr.includes("bottle-empty-sea") || lastErr.includes("bottle-limit-fish") || lastErr.includes("23505")),
-    "rounds=" + rounds + " last=" + lastErr + (lastErr.includes("23505")
-      ? "（老版捞信重复计数 bug：放回→再捞同一封撞唯一键；跑 MIGRATION_bottle_quota_fishfix.sql 后消失）" : ""));
+  /* 判定口径（轮 37 校准）：A 能捞到的信在 RPC 里就排除了自己的（user_id <> auth.uid()），
+     所以真正要守的是「海里有别人的信时不会被塞回自己的信」。循环只有两种退出：
+     ①撞到空海/限额（lastErr）②海里别人的信够多、连捞 10 次全部成功。
+     老断言把后者当失败 —— 库里信一多（真实用户活跃）必然假红，本轮实测就在这里假红。 */
+  ok("T12 A 捞不到自己的信（连捞成功或撞空海/限额都合规）",
+    !sawOwn
+      && (rounds > 10 || lastErr.includes("bottle-empty-sea") || lastErr.includes("bottle-limit-fish") || lastErr.includes("23505")),
+    "rounds=" + rounds + " last=" + (lastErr || "(连捞 10 次都成功：海里别人的信足够多)"));
 }
 
 /* 权限边界：非持有者不能回/放；超长被拒 */

@@ -188,7 +188,7 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 | 宠物疏忽 | 7 天死亡；前 3 天缓冲，第 4–7 天均摊降到 1 级 | `petStore.js NEGLECT_MS / NEGLECT_GRACE_DAYS / NEGLECT_DECAY_DAYS` |
 | 自定义角色配额 | ≤3 个（初始伙伴/物种伙伴不占名额） | `petStore.js MAX_CUSTOM_PETS`（判定 `customQuotaHit`） |
 | 零食雨奖励 | 2 金币/局，每日 3 次 | `petStore.js RAIN_REWARD_COINS / RAIN_REWARD_MAX` |
-| 漂流瓶限额 | 每日写 3 封、捞 7 封；信与回信各 ≤1000 字 | `MIGRATION_bottle.sql` RPC 内 + `bottle.js` |
+| 漂流瓶限额 | 每日写 3 封、**回信**计次 7 次/天（捞信不扣、捞到手 ≥7 封未回先处理）、信与回信各 ≤1000 字 | `MIGRATION_bottle.sql` + `_quota_fishfix` + `_reply_quota` RPC 内；**轮 37 起客户端零记账**（显示只读 `bottle_quota()`，`bottle.js` 只剩常量与错误归类） |
 | 首聊限制 | 对方回复前，发起方最多 3 条 | `MIGRATION_dm_first_contact.sql` 的 `dm_send`（错误码 `first-limit`） |
 | 厌恶下架 | 双档：浏览 <100 超 3 个 / ≥100 超 0.5%（假删除） | `wall_toggle_dislike` SQL + `wallRules.js`（`REMOVAL_LOW_VIEWS/DISLIKE_MIN_COUNT/DISLIKE_RATIO`） |
 | 私信正文 / 撤回窗口 | 2000 字 / 15 分钟 | `dmRules.js BODY_MAX / RECALL_WINDOW_MS` |
@@ -260,21 +260,25 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
 ---
 
-# 一、当前状态速览（2026-09-23 更新 · 轮 36）
+# 一、当前状态速览（2026-09-23 更新 · 轮 37）
 
 | 项 | 值 |
 |---|---|
 | 项目 | peiban（陪伴 / warm-paws），路径 `D:\05ruanjian\peiban` |
 | 技术栈 | Vue 3 + Vite + Naive UI；数据层双模式：直连 Supabase（`db.supabase.js`）/ Worker 网关（`db.gateway.js` + `worker/api.js`，**线上走网关**）；Cloudflare 部署 https://dale.de5.net；Supabase Postgres + RLS + security definer RPC |
-| 代码 | 轮 36 已提交（`bacb559`）；核心：**响应速度专项**——`cloud.ready` 提前到本地会话后（昵称网络请求摘出启动链，原卡 0.5~2s）、路由过渡 0.45s→0.26s、我的帖子首屏接 SWR 缓存。此前轮 33–35：举报/审核/拉黑体系 + UI 优化一轮 |
-| 部署 | Version `12b1547a` 已上线（轮 36 响应速度）；`live-check` 14/14；线上 SHA16 `7ce958d6a4e44c78` 与本地 dist 一致 |
-| 数据库 | `MIGRATION_reports.sql` 已执行（线上 e2e 6/6 闭环）；`MIGRATION_notifications_drop_dm.sql`（轮 13 #23）仍未确认 |
-| App | **轮 36 APK 已装机并启动冒烟通过（2026-09-23，adb Success，无崩溃）**：SHA16 `3e1e62db9a14a490` |
-| 测试 | 离线 **33 套 ALL GREEN**（report-test 61 项）+ **page-smoke 8/8** + undef 0 + build 0 |
+| 代码 | 轮 37 已提交（`1c5f112`）；核心：**漂流瓶全线上**——次数只认服务端 `bottle_quota()`（删本机账本 `warm-paws-bottle-quota-v1` / `bumpQuota` / 乐观 +1）、托盘与记录去掉 SWR 快照改现拉服务器、进页面自动清掉老版本本机数据。此前轮 36：响应速度专项（`cloud.ready` 提前、路由过渡 0.26s） |
+| 部署 | Version `3aa322a3` 已上线（轮 37 漂流瓶全线上）；`live-check` 14/14；线上 SHA16 `b6a5a99f39d0edb4` 与本地 dist 一致（`live-bundle-check`） |
+| 数据库 | `MIGRATION_reports.sql` 已执行（线上 e2e 6/6 闭环）；`MIGRATION_notifications_drop_dm.sql`（轮 13 #23）仍未确认。**本轮零迁移零 SQL 改动**（只动前端） |
+| App | 轮 37 APK 已重打：`apk\warm-paws-debug.apk` 4.77MB SHA16 `221ffd65d054383b`（android assets 与 dist 逐文件同哈希；手机未连未装机） |
+| 测试 | 离线 **33 套 ALL GREEN**（bottle-test 66 项）+ **page-smoke 8/8** + undef 0 + build 0 + 线上 `bottle-e2e` **16/16** |
 
 ## 二、现在在做什么
 
-- **当前任务**：轮 34（拉黑收尾）**已完成：已部署、已验证、APK 已重打**（F 区轮 34）。**待用户**：①真机验收举报闭环——管理端「举报」页签已有 1 条线上 e2e 留下的测试举报（显示「内容已删除」），点「驳回」即走完 处置→通知→已处理 全流程 ②重连手机装机 + 走查（举报弹窗、拉黑后内容隐藏、轮 31/32 遗留项）。✅ 迁移已执行（2026-09-23）：三 RPC 匿名 42501 + 线上 e2e 6/6（举报落库/幂等/target-gone/RLS 自查/删帖留存），举报功能线上已生效。
+- **当前任务**：轮 37（漂流瓶全线上）**已完成：已部署、已验证、APK 已重打**（F 区轮 37）。用户原话：「你把漂流瓶功能全改成线上的，不要本地缓存了……什么每天捞 7 瓶、写 3 瓶，你老老实实的改成线上」。现在次数/托盘/记录**一律现拉服务器**，本机不再有任何漂流瓶缓存或账本 → 清缓存/换设备既不能把次数刷回来，也不会再显示错的剩余次数。
+- **待用户真机验收（轮 37）**：① 首页/App 漂流瓶：剩余次数显示与服务器一致（发 3 封后「今天还能投 0 封」、回 7 次后「还能捞 0 瓶」，不再出现「显示还剩 7 次却已被挡」）② 网页与 App 两端显示的次数**同源**（在网页用掉 1 次，App 里刷新即见同一本账）③ 捞到的信/记录列表不再出现**上一个人**的（换号或清缓存后重进为空/自己的）④ 超限只会被服务器挡住并给出明确文案。
+- **仍待用户（承轮 34）**：管理端「举报」页签里那条线上 e2e 留下的测试举报（显示「内容已删除」），点「驳回」即走完 处置→通知→已处理 全流程；重连手机后装机走查（举报弹窗、拉黑后内容隐藏、轮 31/32 遗留项）。
+- **待用户确认**：①`MIGRATION_reports.sql` 已执行（✅ 2026-09-23）②`MIGRATION_notifications_drop_dm.sql`（轮 13 #23，仍未确认）。
+- **可选加码（等有量再做）**：图片搬 Cloudflare R2（出口永久免费，见「十、容量评估」方案 B）。
 - **待用户确认**：①`MIGRATION_reports.sql` 执行 ②`MIGRATION_notifications_drop_dm.sql`（轮 13 #23，仍未确认）。
 - **可选加码（等有量再做）**：图片搬 Cloudflare R2（出口永久免费，见「十、容量评估」方案 B）。
 
@@ -424,7 +428,7 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 | 8 | App 生成分享图片没用 | 根因：Capacitor WebView 无 DownloadListener，`<a download>` 无效。新增原生 `WpSharePlugin`（cacheDir + FileProvider + ACTION_SEND 系统分享面板，MainActivity 注册）；ShareCard 分层：App 走原生 → 网页走 `navigator.share(files)` → 桌面下载兜底；跨域图 `crossOrigin="anonymous"` 防画布污染 |
 | 9 | 金币只能领一次 | `dailyTasks.claimed` 布尔 → `claimedMap` 按任务记账：领过后再完成的新任务随时可领；旧存档自动迁移；按钮显示待领数 `{c}` |
 | 10 | 手机横屏 | `AndroidManifest` 加 `screenOrientation="portrait"` |
-| 11 | 换账号漂流瓶次数还是上个人的 | 次数记账键按 uid 分域（`warm-paws-bottle-quota-v1:<uid>`），`watch(myId)` 换号立即换账本 |
+| 11 | 换账号漂流瓶次数还是上个人的 | 次数记账键按 uid 分域（`warm-paws-bottle-quota-v1:<uid>`），`watch(myId)` 换号立即换账本 → **轮 37 再收口**：本机账本整体删除，次数只认服务端 `bottle_quota()`（漂流瓶全线上，见 F 区轮 37） |
 | 12 | 已捞到有回信的不能点 | 记录列表对「收到回信待决定」的条目直接给「同意/拒绝」按钮，同意即进聊天；新文案 `bottle.stDecide`（zh/en 成对） |
 | 13 | 评论数点击弹输入框（手机） | 手机形态展开评论默认只读，点「✎ 写评论」才出输入框（`cmtCompose`，桌面不变） |
 
@@ -439,7 +443,7 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 |---|---|---|
 | #26 线上 SQL 未生效 | ✅ **已闭环（2026-09-19）**：用户重跑整段迁移后，判别器 **8/8 全绿** + `cloud-e2e` **37/37**（T19b/T20/T21 全部转绿） | 无需再动 |
 | #23 迁移执行状态未确认 | `MIGRATION_notifications_drop_dm.sql`（清历史 dm 通知 + 拦新生成）；轮 13 报的待执行，用户尚未明确反馈已跑 | **未跑则通知中心残留老私信条目**（其余不受影响） |
-| 轮 15 实机验收 | 12 条反馈已上线 / App 已打包，需真机逐条验收（重点：App 分享面板、竖屏、金币重复领取、漂流瓶换号记账、通知 ×N 与取消撤销、每日 7 条） | 用户实机 |
+| 轮 15 实机验收 | 12 条反馈已上线 / App 已打包，需真机逐条验收（重点：App 分享面板、竖屏、金币重复领取、通知 ×N 与取消撤销、每日 7 条）。**「漂流瓶换号记账」已被轮 37 取代**：本机不再记漂流瓶次数（全线上），换号/清缓存都不可能串账或回满 | 用户实机 |
 | #1/#3/#11/#17/#22/#27/#28/#29 实机验收 | 代码已上线，但真实浏览器/手机交互未验收（本地无浏览器自动化） | 用户实机点一遍 |
 | #7 暖心故事 | 今日一问位置的替换品：标题+正文、每日一篇、点赞、7 天点赞榜新页面 | **等用户通知开工** |
 | #12 宠物年龄与衰老 | 用户明确"以后再改" | **等用户通知开工** |
@@ -974,6 +978,14 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
 
   - **轮 36 · 响应速度专项（2026-09-23，部署 Version `12b1547a`，提交 `bacb559`）**：
      **用户报「进 App 后暖心墙帖子/会话消息/我的帖子都不跟手」**。诊断出三个根因：①**启动链被昵称网络请求串行卡死**——initCloud 里 ready 压在 refreshSession 之后，而 loadProfile 是一次 /sb 代理网络往返（国内 0.5~2s），所有以 cloud.ready 为首拉条件的列表页干等，SWR 缓存快照也被押后；②路由过渡 out-in 两段 0.15+0.3=0.45s；③「我的帖子」无缓存每次进页白屏。**修法**：①`cloud.ready` 提前到本地会话（user/token 同步恢复）后立即置位，昵称异步补（校验 uid 未变防登出竞态）——「防游客身份竞态」的原意图不受影响（user 在置位前已恢复，首拉仍带身份；昵称只影响署名显示）②过渡 0.3/0.15 → **0.18/0.08s**、位移 14→8px ③MyPostsView 首屏接 SWR（key=myposts:uid，快照秒开 + 云端覆盖，翻页仍走网络；uifix T23 断言同步更新）。**验收**：uifix 24/0（T23 更新）+ auth 130/0 + 全量 33 套全绿 + page-smoke 8/8 + undef 0 + live-check 14/14 + SHA `7ce958d6a4e44c78` + APK `3e1e62db9a14a490`。**待真机对比**：装机后体感验证冷启动列表出现速度与切 Tab 跟手度。
+
+  - **轮 37 · 漂流瓶全线上（2026-09-23，部署 Version `3aa322a3`，提交 `1c5f112`）**：
+     **用户报障（原话）**：「你把漂流瓶功能全改成线上的，不要本地缓存了……什么每天捞 7 瓶、写 3 瓶，你老老实实的改成线上好吗，我是被你整怕了，改了十几轮」。此前轮 15/18/21/26 反复修的正是「次数显示打架」，每次都在**本机账本 + 服务端值两套真相**之间打补丁 —— 只要本机那份还在，问题就会换张脸再回来。
+     **根因（一次说清）**：`BottleView.vue` 里留着一本本机乐观账 `warm-paws-bottle-quota-v1:<uid>`：①服务端值还没回来（或拉不到）时它顶上去显示满额 3 封 / 7 瓶 → 「明明用完了还显示还能捞 7 次」；②清缓存/换设备 = 次数直接回满（可绕过的假限额）；③网页与 App 各记各的账，跨端必然对不上。此外托盘（`bottle:held`）与记录（`bottle:rec`）各有一份 SWR 本机快照，换号/换端会先闪一份别人的或过期的数据。
+     **修法（全线上 = 本机零真相）**：①**删掉整本本机次数账**（`QUOTA_BASE`/`loadQuota`/`freshQuota`/`bumpQuota`/乐观 +1 与 `todayKey` 依赖全部移除），`quota` 只存服务端 `bottle_quota()` 返回值；没拉到时是 `null` → 界面显示「次数同步中……」，**绝不编数字**；发信/捞信/回信成功后一律 `await syncQuota()` 回读，客户端不再做任何记账。②**拉不到也不拦操作**（不拿未知当满额、也不当 0）：如实提示「今天的次数由服务器为准，暂时没取到」，真限额由 SQL RPC 的 `bottle-limit-send/fish/hold` 挡住 —— 前端永远不替服务端做减法。③**托盘与记录去掉 SWR 快照**（`refreshBottle` / `loadRecords` 直接现拉，失败如实报错 `trayErr`/`recErr`，不用旧快照假装成功）。④新增 `bottle.js purgeLegacyBottleLocals()`：进页面清掉老版本留在设备上的 `warm-paws-bottle-quota-v1:*` 与 `wp-cache:v1:bottle:*`（只删漂流瓶前缀，不碰私信/通知缓存）；`App.vue` 登出时的 `cacheDrop("bottle:")` 保留作老设备快照兜底（已注释说明不许删）。⑤新文案 `bottle.quotaSyncing` / `bottle.quotaUnavailable`（zh/en 成对）。
+     **口径澄清（产品规则没变，变的是「谁说了算」）**：每天最多写 3 封、**回信**才计 1 次（每天 7 次）、捞到手 ≥7 封未回时拦新捞、48h 未处理自动回海 —— 这些**一直都在 SQL RPC 里**（`MIGRATION_bottle.sql` + `_quota_fishfix` + `_reply_quota`），本轮只是把本机那本假账删干净，让显示与执行都只剩服务端这一本账。
+     **验收**：bottle-test **66/0**（旧「本机账兜底/乐观 +1」断言全部改写 + 新增 4 条回归守护：不许再出现 `bumpQuota`/`quotaRemote`/`swr(`/`cacheKey(`/`todayKey`/`storage`/`cache` 导入；**2 条真跑**：造 5 个键 → `purgeLegacyBottleLocals()` 正好删 3 个、私信缓存与宠物档原样留下、再清一次返回 0）+ home-panes 9/9（T9「本地优先缓存」断言反向更新）+ 全量 **33 套 0 fail** + undef 0 + build 0（`BUILD_GOOD index-CyOIbHUP.js`）+ page-smoke 8/8 + 部署 Version `3aa322a3` + live-check 14/14 + SHA16 `b6a5a99f39d0edb4` 本地=线上 + 线上 `bottle-e2e` **16/16**（T4 第 4 封被服务端 `bottle-limit-send` 挡下 / T12 A 捞不到自己的信 / T13–T16 权限与 RLS）+ cap sync（android assets 与 dist 逐文件同哈希）+ APK 重打 `apk\warm-paws-debug.apk` 4.77MB SHA16 `221ffd65d054383b`（手机未连未装机）。
+     **顺带（两处假红校准，都不是本轮引入的功能问题）**：①`live-check`/`live-bundle-check` 首轮报 `ERR fetch failed`（本机到 Cloudflare 的连接超时抖动，同一分钟探针实测 5/5 200）→ 复测 14/14 且 SHA 一致；②`bottle-e2e` T12 老断言把「连捞 10 次都成功」当失败 —— A 能捞到的信在 RPC 里本就排除了自己的（`user_id <> auth.uid()`），海中真实信件一多必然假红，口径改为「连捞成功或撞空海/限额都合规」（`sawOwn` 仍必须为 false）→ 复测 **16/16**。
 
   - **轮 34 续 · 迁移执行 + 线上闭环（2026-09-23，用户执行迁移后当日）**：
      **探针（坑 #7 判据）**：report_create / admin_report_page / admin_report_handle 匿名全 **42501**（存在无权）= 迁移生效实锤；wall_toggle_dislike 42501（新版权限收紧在位）；admin_overview 匿名 admin=false 提前返回（reports_pending 仅管理员可见，符合设计）。
