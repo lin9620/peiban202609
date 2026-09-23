@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 轮 38：原生启动层的窗口底 = 米色 + 居中爪印。
+     米色与网页端 (#fff7ee)、capacitor.config.json 的 backgroundColor 三处同值，
+     所以 WebView 还没铺满时露出的也是米色，不再是一圈黑边。 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#FFF7EE" />
+        </shape>
+    </item>
+    <item
+        android:width="108dp"
+        android:height="108dp"
+        android:gravity="center"
+        android:drawable="@drawable/launch_paw" />
+</layer-list>

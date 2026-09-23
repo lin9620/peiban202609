@@ -1,9 +1,21 @@
 import { createApp } from "vue";
+import { Capacitor } from "@capacitor/core";
 import App from "./App.vue";
 import { router } from "./router.js";
 import { initPet, tickPet, savePet, tickAdventure } from "./stores/petStore.js";
 import { initUserScope } from "./utils/userScope.js";
 import "./style.css";
+
+/* 轮 38：启动页显示的权威判据。
+ * index.html 的 head 脚本只能靠 UA / 注入对象猜（轮 30 就是只看 UA 里的 "capacitor"，
+ * 而 Android 的 WebView UA 根本没这个串 → App 端启动页消失）。这里用 Capacitor 自己的
+ * isNativePlatform()（与 stores/uiStore.js 的 isApp 同源）兜住：是原生壳就确保
+ * html.cap-app 在挂载前加上（此时才可能显示启动页；底色同为米色，视觉无缝）。 */
+try {
+  if (Capacitor.isNativePlatform()) {
+    document.documentElement.classList.add("cap-app");
+  }
+} catch (e) { /* 非 Capacitor 环境忽略 */ }
 
 /* 轮 32：先把「升级前的无域老存档」搬进 guest 域（各模块已在本文件 import 时注册好
  * 个人键与 reload 钩子，搬完会就地重读），再读档 —— 顺序不能反，否则首次升级加载丢档 */

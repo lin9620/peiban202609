@@ -7,18 +7,26 @@
         <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
         <item name="colorAccent">@color/colorAccent</item>
+        <!-- 轮 38：application 层也铺米色窗口底——任何窗口露底都不再是黑 -->
+        <item name="android:windowBackground">#FFF7EE</item>
     </style>
 
+    <!-- 米色窗口底的唯一真源头：所有真正被使用的主题都继承自这里 -->
     <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
-        <!-- 轮 25：窗口底色改米色——WebView 没铺满的缝隙（右侧黑边）露的是原生窗口底，
-             @null 时渲染成黑；与 capacitor android.backgroundColor / html 背景三重保险 -->
+        <!-- 轮 25 写的就是这句（WebView 没铺满的缝隙露的是原生窗口底，@null 时渲染成黑）。
+             轮 38 才把「谁继承它」修对——见下面 NoActionBarLaunch 的注释。 -->
         <item name="android:windowBackground">#FFF7EE</item>
     </style>
 
 
-    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
-        <item name="android:background">@drawable/splash</item>
+    <!-- 轮 38：Activity 真正用的是这个主题（AndroidManifest:17）。轮 25 把米色窗口底
+         写在 AppTheme.NoActionBar 上，而这个主题当时 parent = Theme.SplashScreen
+         （android:Theme 系，与我们的主题毫无继承关系）→ 米色从没生效过，冷启动露的是
+         Theme.SplashScreen 的默认底（黑），启动层还是 Capacitor 模板默认的蓝色 X
+         splash.png。现在 parent 换成米色窗口底的真源头，启动层换成米色品牌图。 -->
+    <style name="AppTheme.NoActionBarLaunch" parent="AppTheme.NoActionBar">
+        <item name="android:background">@drawable/launch_bg</item>
     </style>
 </resources>

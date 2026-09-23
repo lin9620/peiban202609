@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 轮 38：Android 12+ 的冷启动有「系统启动画面」这一层，它读的是自己的属性
+         （windowSplashScreenBackground / windowSplashScreenAnimatedIcon）。不设它，
+         背景就退回 ?colorBackground（深色下=黑）→ 冷启动一圈黑，WebView 起来前
+         用户看到的就是「黑边」。这里米色底 + 同一枚爪印，三段同色同形。
+
+         注意：values-v31 里的同名 style 是整体替换（不是合并），所以要写全 parent + items。 -->
+    <style name="AppTheme.NoActionBarLaunch" parent="AppTheme.NoActionBar">
+        <item name="android:windowSplashScreenBackground">#FFF7EE</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/launch_paw</item>
+        <item name="android:background">@drawable/launch_bg</item>
+    </style>
+</resources>

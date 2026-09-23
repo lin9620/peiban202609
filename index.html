@@ -23,9 +23,21 @@
    *  1) vite:preloadError（chunk 404 等）→ 自动整页重载一次（sessionStorage 防循环）；
    *  2) 6 秒后仍未挂载成功 → 把英文占位换成中文提示 + 重试按钮，不再显示英文。 */
   (function () {
-    /* 轮 30：启动页只在 App 里显示（UA 带 Capacitor）——网页端 display:none 保持隐藏 */
+    /* 轮 30 / 轮 38：启动页只在 App 里显示（网页端 display:none 保持隐藏）。
+       轮 38 修正：轮 30 只看 UA 里有没有 "capacitor"，而 Capacitor Android 的 WebView
+       UA **默认不含这个串**（只有 capacitor.config.json 配了 android.appendUserAgent
+       才会被追加）→ html.cap-app 永远加不上 → App 端启动页凭空消失（网页端隐藏是轮 30
+       要的效果，App 端是它的副作用）。
+       现在解析期就尽量判（早一点显示，少闪一帧），四路任一命中即算 App：
+         ① window.androidBridge / window.Capacitor（电容壳注入，最硬）
+         ② capacitor.config.json 里 android.appendUserAgent 配的串（确定会被追加到 UA）
+         ③ UA 里的 "capacitor"（iOS 端带它）
+         ④ src/main.js 里 Capacitor.isNativePlatform()（权威兜底，挂载前补判） */
     try {
-      if (/capacitor/i.test(navigator.userAgent || "")) {
+      var ua = navigator.userAgent || "";
+      var looksApp = !!window.androidBridge || !!window.Capacitor ||
+        /capacitor|WarmPawsApp/i.test(ua);
+      if (looksApp) {
         document.documentElement.classList.add("cap-app");
       }
     } catch (e) { /* 拿不到 UA 就当网页 */ }
@@ -107,17 +119,20 @@
        启动看门狗触发时会先摘掉它再放中文提示，避免提示被挡。 -->
   <div id="app-splash" aria-hidden="true">
     <style>
-      /* 轮 30：启动页只给 App 用（WebView 的 UA 带 Capacitor）——网页端直接 display:none，
-       * 不闪启动页；App 端由 App.vue 在云端就绪后淡出。 */
-      @media all { #app-splash { display: none; } }
-    </style>
-      #app-splash { position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column;
+      /* 轮 38：这一块原来是坏的——轮 30 在样式块中间插入了一个 style 结束标签，把唯一的
+       * 样式块提前闭合，后面 30 行 CSS 全成了「裸文本」（根本不在 style 元素里）。于是唯一
+       * 生效的规则是 display:none → 启动页在 App 里也永远不显示，而 html.cap-app ...
+       * display:flex 那条也一起变成了死文本（这才是「App 端启动页又没了」的真因）。
+       * 现在合成一个合法样式块，顺序是有意的：
+       *   ① 布局（这里不写 display）→ ② 默认隐藏（网页端不闪）→ ③ App 壳恢复显示（优先级更高）
+       * 注意：注释里**不能出现**字面的 style 结束标签——HTML 解析器在 style 元素里见到它就
+       * 立刻结束元素（注释也不豁免），splash-test ⑥/⑦ 就是守这个的。 */
+      #app-splash { position: fixed; inset: 0; z-index: 9999; flex-direction: column;
         align-items: center; justify-content: center; gap: 10px; background: #fff7ee;
         transition: opacity .4s ease; padding: 24px; text-align: center; }
-      /* 轮 30：App（UA 含 Capacitor）覆盖 display:none 恢复启动页；网页保持隐藏 */
-      @supports (background: #fff7ee) {
-        html.cap-app #app-splash { display: flex; }
-      }
+      #app-splash { display: none; }
+      /* html.cap-app 由 index.html 内联脚本 + src/main.js 的 Capacitor.isNativePlatform() 加上 */
+      html.cap-app #app-splash { display: flex; }
       #app-splash.out { opacity: 0; pointer-events: none; }
       #app-splash .sp-paw { font-size: 56px; animation: sp-breathe 1.6s ease-in-out infinite; }
       #app-splash .sp-name { font-size: 22px; font-weight: 800; color: #6b4a32; }

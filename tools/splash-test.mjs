@@ -11,6 +11,20 @@ const has = (src, ...parts) => parts.every((p) => src.includes(p));
 const html = read("index.html");
 const appVue = read("src/App.vue");
 
+/* 递归列出 res 下的匹配文件（原生启动图回归守护用） */
+function filesUnder(dir, re) {
+  const out = [];
+  const walk = (d) => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = d + "/" + e.name;
+      if (e.isDirectory()) walk(p);
+      else if (re.test(e.name)) out.push(p);
+    }
+  };
+  if (fs.existsSync(dir)) walk(dir);
+  return out;
+}
+
 ok("index.html：启动页静态层（不依赖 Vue，#app 外的 DOM 层；logo/文案/呼吸动画/背景色与主题一致）",
   has(html, 'id="app-splash"', "sp-paw", "sp-breathe", "温暖的爪印", "#fff7ee"));
 ok("index.html：淡出类 .out（App.vue 关页用）+ aria-hidden + prefers-reduced-motion 降动画",
@@ -31,9 +45,53 @@ ok("轮 26：启动页内容加厚（slogan+三条特性+温柔话，逐条浮�
   has(html, "sp-feats", "sp-quote", "一个温柔的角落", "漂流瓶", "暖心墙",
     "你已经做得比想象中好了", "sp-in", "animation-delay"));
 
-ok("轮 30：启动页只给 App（UA 含 Capacitor → html.cap-app 恢复显示；网页默认 display:none）",
+ok("轮 30：启动页只给 App（html.cap-app 恢复显示；网页默认 display:none；判据在启动页之前生效）",
   has(html, "cap-app", "capacitor", "#app-splash { display: none; }")
-    && html.indexOf("capacitor/i.test(navigator.userAgent") < html.indexOf('id="app-splash"'));
+    && html.indexOf("looksApp") < html.indexOf('id="app-splash"'));
+
+/* ─── 轮 38：两条真实回归的守护（「App 里启动页消失」+「冷启动黑边」）───────────
+ * 这两条都在「原生层 + 显示判据」上，而轮 24-37 的 splash-test 只盯网页层，
+ * 原生这层一直裸奔 → 所以每轮都"改好了"、黑边和启动页却还在。这里钉死。 */
+const cfg = JSON.parse(read("capacitor.config.json"));
+const styles = read("android/app/src/main/res/values/styles.xml");
+const stylesV31 = read("android/app/src/main/res/values-v31/styles.xml");
+const manifest = read("android/app/src/main/AndroidManifest.xml");
+const mainJs = read("src/main.js");
+
+ok("轮 38 ① 启动页判据不再只靠 UA：capacitor.config.json 配了 appendUserAgent，且 index.html 认同一串（改一边就红）",
+  typeof cfg.android.appendUserAgent === "string" && cfg.android.appendUserAgent.length > 0
+    && html.includes(cfg.android.appendUserAgent));
+ok("轮 38 ② 判据多信号（androidBridge/Capacitor/UA）+ main.js 用 Capacitor.isNativePlatform() 在 mount 前权威补判",
+  html.includes("window.androidBridge") && html.includes("navigator.userAgent")
+    && mainJs.includes("Capacitor.isNativePlatform()")
+    && mainJs.includes('classList.add("cap-app")')
+    && mainJs.indexOf('classList.add("cap-app")') < mainJs.indexOf('mount("#app")'));
+ok("轮 38 ③ 米色窗口底挂在「Activity 真正使用」的主题上（轮 25 写在了没人用的 AppTheme.NoActionBar 上）",
+  manifest.includes('android:theme="@style/AppTheme.NoActionBarLaunch"')
+    && /<style name="AppTheme\.NoActionBarLaunch" parent="AppTheme\.NoActionBar">/.test(styles)
+    && /<style name="AppTheme\.NoActionBar"[\s\S]*?<item name="android:windowBackground">#FFF7EE<\/item>/.test(styles));
+ok("轮 38 ④ 原生启动层是米色品牌图，Capacitor 默认蓝色 X splash.png 已删净（主题零 @drawable/splash 引用）",
+  styles.includes("@drawable/launch_bg")
+    && !/@drawable\/splash\b/.test(styles)
+    && !/@drawable\/splash\b/.test(stylesV31)
+    && fs.existsSync("android/app/src/main/res/drawable/launch_paw.xml")
+    && filesUnder("android/app/src/main/res", /splash/i).length === 0);
+ok("轮 38 ⑤ Android 12+ 系统启动画面同样米色（不设就退回 ?colorBackground=黑 → 冷启动一圈黑）",
+  stylesV31.includes('<item name="android:windowSplashScreenBackground">#FFF7EE</item>')
+    && stylesV31.includes('parent="AppTheme.NoActionBar"'));
+
+/* 轮 30 埋的雷：它在启动页样式块中间插了 </style>，把唯一 style 提前闭合，
+ * 后面 30 行 CSS 全成了裸文本 → 唯一生效的规则是 display:none，启动页从此
+ * 在任何环境都不可能显示（App 端「启动页又没了」的真因）。这里连 HTML 结构一起守。 */
+const styleBlocks = [...html.matchAll(/<style>([\s\S]*?)<\/style>/g)].map((m) => m[1]).join("\n");
+ok("轮 38 ⑥ 启动页 CSS 真在 <style> 里 + 标签配对（裸文本回归守护）",
+  styleBlocks.includes("#app-splash { position: fixed")
+    && styleBlocks.includes("html.cap-app #app-splash { display: flex; }")
+    && styleBlocks.includes("#app-splash { display: none; }")
+    && (html.match(/<style>/g) || []).length === (html.match(/<\/style>/g) || []).length);
+/* 优先级：④ 恢复显示那条必须排在 ② 默认隐藏之后（同块内靠后 + 选择器多一个类） */
+ok("轮 38 ⑦ 显示规则优先级正确（默认 display:none 在前，html.cap-app 恢复显示在后）",
+  styleBlocks.indexOf("#app-splash { display: none; }") < styleBlocks.indexOf("html.cap-app #app-splash { display: flex; }"));
 
 console.log(`splash-test: ${pass} pass, ${fails.length} fail`);
 for (const f of fails) console.log("FAIL  " + f);

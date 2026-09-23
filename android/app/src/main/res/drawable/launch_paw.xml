@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 轮 38：原生启动层的品牌爪印，替掉 Capacitor 模板默认的蓝色 X splash.png。
+     与网页启动页同一形象（橙色爪印 #f58c50），画在米色窗口底上，所以
+     「系统启动画面 → 原生窗口底 → 网页启动页」三段同色同形，无缝无黑边。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 四趾（外侧两趾略低，中间两趾略高） -->
+    <path android:fillColor="#f58c50" android:pathData="M21,44 a9,9 0 1 0 18,0 a9,9 0 1 0 -18,0 Z" />
+    <path android:fillColor="#f58c50" android:pathData="M37,31 a9,9 0 1 0 18,0 a9,9 0 1 0 -18,0 Z" />
+    <path android:fillColor="#f58c50" android:pathData="M53,31 a9,9 0 1 0 18,0 a9,9 0 1 0 -18,0 Z" />
+    <path android:fillColor="#f58c50" android:pathData="M69,44 a9,9 0 1 0 18,0 a9,9 0 1 0 -18,0 Z" />
+    <!-- 掌 -->
+    <path android:fillColor="#f58c50" android:pathData="M30,72 a24,20 0 1 0 48,0 a24,20 0 1 0 -48,0 Z" />
+</vector>
