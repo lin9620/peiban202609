@@ -260,22 +260,23 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
 ---
 
-# 一、当前状态速览（2026-09-23 更新 · 轮 38）
+# 一、当前状态速览（2026-09-24 更新 · 轮 39）
 
 | 项 | 值 |
 |---|---|
 | 项目 | peiban（陪伴 / warm-paws），路径 `D:\05ruanjian\peiban` |
 | 技术栈 | Vue 3 + Vite + Naive UI；数据层双模式：直连 Supabase（`db.supabase.js`）/ Worker 网关（`db.gateway.js` + `worker/api.js`，**线上走网关**）；Cloudflare 部署 https://dale.de5.net；Supabase Postgres + RLS + security definer RPC |
-| 代码 | 轮 38 已提交（`2d8c8a3`）；核心：**App 冷启动黑边 + 启动页双修**（用户原话：「为什么改了那么多次黑边还在，而且 app 端启动页又没了」）——① **黑边**：米色窗口底与品牌启动图写到 **Activity 真正使用的主题** `AppTheme.NoActionBarLaunch`（parent 由 `Theme.SplashScreen` 改回 `AppTheme.NoActionBar`；删 Capacitor 模板默认蓝色 X 的 `splash.png` ×11；新增 `launch_bg.xml`/`launch_paw.xml`/`values-v31/styles.xml` 管 Android 12+ 系统启动画面）；② **启动页消失**：修 `index.html` 里把 `<style>` 提前闭合的字面 `</style>`（轮 30 埋的雷）+ `cap-app` 判据改四路（Android WebView 的 UA 本就不含 "capacitor"）。此前轮 37：**漂流瓶全线上** |
+| 代码 | 轮 39 已提交（`e1130fe`）；核心：**深色模式「黑屏」修**（用户原话：「黑屏没改，改一下」）——恒浅色 App 却用 DayNight 主题 + WebView 未退 Force Dark，深色模式下整个界面被「强制深色」反黑；修三道闸：主题 `DayNight`→`Light` + `android:forceDarkAllowed=false` 写全三个继承节点 + `MainActivity` 强制浅色（`super.onCreate` 之前）+ WebView 实例关 Force Dark。轮 38：**App 冷启动黑边 + 启动页双修**（米色窗口底与品牌启动图写进 **Activity 真正使用的主题** + 删默认 splash.png ×11 + `values-v31` 管 Android 12+ 系统启动画面；启动页消失 = 轮 30 字面 `</style>` 雷 + `cap-app` 判据改四路）。此前轮 37：**漂流瓶全线上** |
 | 部署 | Version `59c5bd12` 已上线（轮 38 启动页/黑边前端改动）；`live-check` 14/14；线上入口 SHA16 `602036317f80c223` 与本地 dist 逐字节一致（`live-bundle-check`） |
 | 数据库 | `MIGRATION_reports.sql` 已执行（线上 e2e 6/6 闭环）；`MIGRATION_notifications_drop_dm.sql`（轮 13 #23）仍未确认。**本轮零迁移零 SQL 改动**（只动前端 + Android 原生资源） |
-| App | 轮 38 APK 已重打**并装机**（2026-09-23 14:49，`adb install -r` Success）：`apk\warm-paws-debug.apk` 4.76MB SHA16 `E7FA658BC1C27060`。**装机包可溯源**：`dist/index.html` 过 `cap-strip-hero` 后 SHA16 = `17CAE91F03B31989` = android assets = APK 内 assets（三者逐字节相同） |
-| App 冷启动实测 | **真机冷启动 14 帧像素扫描**：原生启动层米色+橙爪（四角 `#FFF7EE`、左右零暗像素）→ 网页启动页（可见「温暖的爪印 / Warm Paws / 一个温柔的角落」+ 三条特性 + 温柔话）→ 首页。**除桌面自身的「打开应用」转场帧外，App 自己的每一帧都没有黑边** |
-| 测试 | 离线 **40 套复跑 ALL GREEN**（splash-test **15/15** 含新增 style 标签守恒守护；bottle-test 66/66、auth 130/130、worker 195/195、pet-visual 163/163）+ **page-smoke 8/8** + undef 0 + build 0 + 线上 `live-check` 14/14 |
+| App | **轮 39 APK 已重打、待装机**（2026-09-24 00:45，手机未连线）：`apk\warm-paws-debug.apk` 4.99MB SHA16 `63F5932ACDA5434A`。重连后 `adb install -r apk\warm-paws-debug.apk` 即完成装机（网页/dist 零改动，无需部署与 cap sync）。轮 38 装机包（SHA16 `E7FA658BC1C27060`，2026-09-23 14:49）的溯源记录见 F 区 |
+| App 冷启动实测 | 轮 38：**真机冷启动 14 帧像素扫描（浅色模式）**：原生启动层米色+橙爪（四角 `#FFF7EE`、左右零暗像素）→ 网页启动页 → 首页，App 自己的每一帧都没有黑边。**轮 39 补勘**：那次抓帧是下午**浅色模式**下做的——夜间深色模式的路径当时测不到，正是「白天验收全绿、夜里黑屏」的盲区（F 区轮 39）；深色模式验证须装机后补做 |
+| 测试 | 轮 39：splash-test 15→**18/18**（新增三道闸断言：主题零 DayNight / 三处 `forceDarkAllowed=false` / night-mode 调用先于 `super.onCreate`）；网页代码零改动，全量离线套件不重跑。轮 38 基线：离线 40 套 ALL GREEN + page-smoke 8/8 + live-check 14/14 |
 
 ## 二、现在在做什么
 
-- **当前任务**：轮 38（**App 冷启动黑边 + 启动页**双修）**已完成：已改、已测、已部署、APK 已重打并装机、冷启动逐帧实测通过**（F 区轮 38）。用户原话：「为什么改了那么多次黑边还在，而且 app 端启动页又没了」。两条都是**改了多轮没改对**的老账，本轮把它们归到**两个真因**上收掉：黑边=「米色窗口底写在没人用的主题上 + 启动层还是 Capacitor 默认图 + Android 12+ 系统启动画面没配」，启动页消失=「轮 30 把字面 `</style>` 写进了 `<style>` 块（HTML 解析器见到就闭合元素，后 30 行 CSS 全成裸文本）+ `cap-app` 判据用了 Android WebView 根本没有的 UA 串」。
+- **当前任务**：轮 39（**深色模式「黑屏」修**）**已完成：已改、已测、APK 已重打，待装机验收**（F 区轮 39）。用户原话：「黑屏没改，改一下」。真因：恒浅色 App 却用 DayNight 主题 + WebView 未退 Force Dark——深色模式下（夜间）系统/MIUI 的「强制深色」把米色界面整个反黑；轮 38 的 14 帧实测是下午浅色模式抓的，恰好测不到这层。三道闸已全关（主题 Light+forceDarkAllowed=false ×3、MainActivity 强制浅色、WebView 实例关 Force Dark），splash-test 18/18，APK SHA16 `63F5932ACDA5434A` 待装机。
+- **待用户真机验收（轮 39，深色模式）**：① 手机开**深色模式**后冷启动 + 全程使用：界面始终米色**不变黑**；② 切回浅色模式：冷启动无黑边（轮 38 结论保持）、启动页照常。装机先做：手机连线后 `adb install -r apk\warm-paws-debug.apk`（SHA16 `63F5932ACDA5434A`）。若深色模式下仍发黑：MIUI「设置 → 显示 → 深色模式」里有按 App 的开关，把 Warm Paws 设为**不加深色/始终浅色**再试——那是系统侧最后一级开关，App 侧能做的三道闸本轮已全部关掉。
 - **待用户真机验收（轮 38，看启动这几秒）**：① 冷启动**不再有黑边**（原生启动层米色 + 橙爪铺满，四角无黑；我这边的真机逐帧已是如此）② **启动页回来了**（米色底 + 🐾 温暖的爪印 / Warm Paws / 一个温柔的角落 + 三条特性 + 「你已经做得比想象中好了」，然后淡出进首页）③ 网页端**仍然不显示启动页**（轮 30 的要求保持）。注意：桌面点图标那一瞬的**黑幕是桌面的「打开应用」转场背景**，不属于 App（我这边的帧里 App 窗口自己始终是米色圆角）。
 - **待用户真机验收（轮 37，漂流瓶）**：① 首页/App 漂流瓶：剩余次数显示与服务器一致（发 3 封后「今天还能投 0 封」、回 7 次后「还能捞 0 瓶」，不再出现「显示还剩 7 次却已被挡」）② 网页与 App 两端显示的次数**同源**（在网页用掉 1 次，App 里刷新即见同一本账）③ 捞到的信/记录列表不再出现**上一个人**的（换号或清缓存后重进为空/自己的）④ 超限只会被服务器挡住并给出明确文案。
 - **仍待用户（承轮 34）**：管理端「举报」页签里那条线上 e2e 留下的测试举报（显示「内容已删除」），点「驳回」即走完 处置→通知→已处理 全流程；重连手机后装机走查（举报弹窗、拉黑后内容隐藏、轮 31/32 遗留项）。
@@ -434,6 +435,7 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 | 12 | 已捞到有回信的不能点 | 记录列表对「收到回信待决定」的条目直接给「同意/拒绝」按钮，同意即进聊天；新文案 `bottle.stDecide`（zh/en 成对） |
 | 13 | 评论数点击弹输入框（手机） | 手机形态展开评论默认只读，点「✎ 写评论」才出输入框（`cmtCompose`，桌面不变） |
 | 14 | **App 冷启动黑边一直没修好 + 启动页又没了**（2026-09-23 用户原话：「为什么改了那么多次黑边还在，而且 app 端启动页又没了」） | **两个真因，都在"改了多轮没改对"的账上**：① 黑边：轮 25 的米色窗口底写在 `AppTheme.NoActionBar` 上，而 Activity 用的是 `AppTheme.NoActionBarLaunch`（parent=`Theme.SplashScreen`，与我们的主题**毫无继承**）→ 米色从未生效；该启动主题的 `android:background` 还是 Capacitor 模板自带蓝色 X 的 `splash.png`；Android 12+ 的系统启动画面（`windowSplashScreenBackground`）也没配 → 冷启动一圈黑。**修法**：窗口底/品牌启动图写进**真正被使用的主题**（parent 改 `AppTheme.NoActionBar`，`android:background=@drawable/launch_bg`）+ 删 11 张默认 `splash.png` + 新增 `values-v31/styles.xml`。② 启动页消失：轮 30 在 `<style>` 块中间插了一个**字面的 `</style>`**——HTML 解析器在 style 元素里见到它就立刻结束元素（注释也不豁免）→ 后面 30 行 CSS 全成裸文本，唯一活着的规则是 `display:none`（连 `html.cap-app #app-splash{display:flex}` 也死了）；且 `cap-app` 的判据是 UA 里有没有 "capacitor"，而 **Capacitor Android 的 WebView UA 默认不含这个串**。**修法**：合成一个合法样式块 + 判据四路（`window.androidBridge` / `window.Capacitor` / `appendUserAgent`("WarmPawsApp") / UA）+ `src/main.js` 用 `Capacitor.isNativePlatform()` 在挂载前兜底加类。见 F 区轮 38 |
+| 15 | **App 夜间/深色模式下整个变黑屏**（2026-09-23 夜用户原话：「黑屏没改，改一下」；承 #14 黑边老账） | **真因：恒浅色 App 没做任何深色模式退出**：① `AppTheme.NoActionBar` parent 是 `Theme.AppCompat.DayNight.NoActionBar`（深色下回落色翻黑）；② WebView 没退 Force Dark——Android 10-12 在夜间 uiMode 下默认对 WebView「强制深色」，把浅色页面整个反黑（`@capacitor/android` 8.5.2 **全包零 forceDark 处理**，grep 实锤），MIUI 自家深色实现也吃同一套开关。**取证**：回放轮 38 抓帧（15:05 浅色模式）冷启动全程无黑 → 唯一昼夜翻转变量=深色模式；轮 24-38 每轮验收都在白天浅色下做，这层从未被测到。**修法（三道闸）**：主题 DayNight→Light + `android:forceDarkAllowed=false` 写全三个继承节点；`MainActivity` 在 `super.onCreate` **之前** `setDefaultNightMode(MODE_NIGHT_NO)`；WebView 实例 `setForceDarkAllowed(false)`。另查实：**`values-night/` 目录从未存在**——轮 38 记录「values-night/styles.xml 沿用同款米色」系误记，就地纠正。见 F 区轮 39 |
 
 - **工具沉淀**：`tools/build-until-good.mjs`（构建 + 自验产物含 slug + 不合格自动重试，防坏包出门）、`tools/live-bundle-check.mjs`（线上入口包与本地 dist 逐字节比对 + hasSlug 检查）。
 - **本轮事故（已修复，教训见踩坑 #25/#26）**：一次 `npm run build; npm run deploy` 链式执行，build 被 env-guard 拦下后 deploy 照跑 → 坏包上线（线上无 Supabase 配置、登录失效）。复部署后线上 `hasSlug=true`、SHA 与本地一致。
@@ -536,6 +538,8 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 29. **「immediate watch 在 setup 期间同步执行」会把后面才声明的 const 变成 TDZ（轮 34b 真凶，/admin 白屏）**：轮 33 在 AdminView 里把举报页签的状态 const 声明放在 switchTab 之后，而文件更前面的 `watch(signedIn, …, { immediate: true })` 同步调 load() 重置这些状态 → `Cannot access before initialization`。构建、undef-check、33 套源码扫描测试**全都不执行组件代码**，所以全绿照样白屏。**教训（强制）**：①immediate watch / setup 期同步执行的代码路径，其引用的响应式状态必须声明在它**之前**（AdminView 举报块已加「位置硬约束」注释）；②新增 `tools/page-smoke.mjs`（8 条关键路由无头真实挂载 + 无崩溃盒断言）作为运行时防线，改 .vue 构建完必跑；③Git Bash 跑 web-probe/page-smoke 记得 `MSYS2_ARG_CONV_EXCL="--url"`（MSYS 会把 /admin 转成 Windows 路径）。
 
 30. **`<style>` 里不能出现字面 `</style>`；Android 主题必须看「Activity 用的是哪一个」（轮 38 双真因，各拖了 8 轮 / 13 轮）**：① **启动页消失**：轮 30 在启动页那个 `<style>` 块中间写了行注释，注释里带了**字面 `</style>`** —— HTML 解析器在 `<style>` 元素内遇到它就**立刻结束元素（注释也不豁免）**，后半段 CSS 全成了文档里的裸文本；恰好留在元素内的那半段是 `display:none`，于是「App 端启动页」静默消失，而网页端本来就要隐藏 → 症状只在 App，八轮没被发现。**教训（强制）**：写 `<style>`/`<script>` 内容时永不写出字面闭合标签（要举例就写「style 结束标签」文字），并让测试守标签守恒（`tools/splash-test.mjs` ⑥/⑦ 现断言 `<style` 与 `</style>` 计数相等 + 注释内不得含字面闭合标签）。② **黑边**：轮 25 把米色窗口底 `android:windowBackground` 写在 `AppTheme.NoActionBar` 上，而 `AndroidManifest.xml` 里 Activity 用的是 `AppTheme.NoActionBarLaunch`（当时 parent=`Theme.SplashScreen`，与我们的主题**毫无继承关系**）→ 米色从未生效，冷启动露的是启动主题默认底（黑）+ Capacitor 模板默认蓝色 X 的 `splash.png`。**教训（强制）**：改原生主题前**先打开 Manifest 确认 Activity 用哪个 style**，再确认它的 parent 链；`values-v31/` 里同名 style 是**整体替换不是合并**（要写全 parent+items），Android 12+ 系统启动画面走 `windowSplashScreenBackground`/`windowSplashScreenAnimatedIcon`，不设就退回 `?colorBackground`（深色下=黑）。③ **判定黑边不能用单张静态截图**：黑边只存在于「原生启动层结束 → WebView 铺满」的几百毫秒里，静态截图（甚至运行中截图）都扫不到；必须**连续抓帧**（本次 14 帧 / 约 100ms 间隔）再逐帧扫左右边缘列的暗像素，并且要能区分「桌面『打开应用』转场动画的黑幕」与「App 窗口自己的黑边」——前者是系统的，别当 bug 修。
+
+31. **恒浅色 App 必须显式退出深色模式；「验收时段」本身就是盲区（轮 39 真因）**：App 内 UI 恒为米色，但 `AppTheme.NoActionBar` 用 DayNight parent、WebView 没关 Force Dark——深色模式下 Android 10-12 的 WebView Force Dark（夜间 uiMode 默认开启，`@capacitor/android` 8.5.2 对此零处理）与 MIUI 自家深色会把浅色页面**整个反黑**；轮 24-38 每轮验收都在白天浅色模式下抓帧，这层从未被测到 → 用户「白天验收、夜里黑屏」。**教训（强制）**：① 浅色恒定的 App 三道闸缺一不可：主题不用 DayNight + `android:forceDarkAllowed=false` **写满继承链每个节点**（显式 parent 不继承、同名 style 整体替换，见 #30②）+ `AppCompatDelegate.setDefaultNightMode(MODE_NIGHT_NO)` 必须在 `super.onCreate` **之前**（BridgeActivity.onCreate 内部就 setContentView + 建 WebView，晚调无效）+ WebView 实例 `setForceDarkAllowed(false)`；② **验证要覆盖使用时段**：白天的浅色实测证明不了夜里深色下的表现——凡动主题/配色，浅色+深色各跑一遍（`adb shell cmd uimode night yes/no` 可切换）；③ splash-test 已把三道闸钉成断言（15→18），拆掉任何一道都红。
 
 ---
 
@@ -1004,6 +1008,14 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **真机实测（本轮最硬的一条证据）**：APK `apk\warm-paws-debug.apk` 4.76MB SHA16 `E7FA658BC1C27060`，`adb install -r` **Success** → 冷启动抓 14 帧：**g1 = 原生启动层（米色 + 居中橙爪）四角 `#FFF7EE`、左右零暗像素**；**g4/g7 = 网页启动页真的出现**（🐾 温暖的爪印 / Warm Paws / 一个温柔的角落 / 三条特性胶囊 / 「你已经做得比想象中好了」）；g8+ = 首页。除 **g0**（桌面「打开应用」转场帧，其周围的黑色是**桌面的**遮罩，App 窗口本身已是米色圆角）外，**App 自己的每一帧都没有黑边**。
      **顺带说明（不是 bug，先记下免得下次又当黑边修）**：g0 那帧的黑来自桌面启动转场动画的背景；`values-night/styles.xml` 沿用同款米色（本轮不动深色分支，因为 App 内 UI 恒为米色主题）。
      **待用户真机验收**：① 冷启动无黑边 ② 启动页出现并淡出进首页 ③ 网页端仍不显示启动页（轮 30 的要求保持）。
+
+  - **轮 39 · 深色模式「黑屏」修（2026-09-24，提交 `e1130fe`，APK 已重打待装机）**：
+     **用户报障（原话）**：「黑屏没改，改一下」。轮 38 收尾当晚用户真机验收仍见黑。
+     **取证（先证据后动手）**：① **回放轮 38 的抓帧**（/tmp/boot-38d，15:05，装机后那次）：f0 = 米色启动画面放大盖过桌面（**不是黑幕**）、f1 = 网页启动页、f4+ = 首页——浅色模式下冷启动全程无黑，轮 38 的结论在它测的条件下成立；② 排查仍可能出黑的面：`values-night/` **根本不存在**（轮 38 记录里「values-night/styles.xml 沿用同款米色」系**误记**，git 全历史查无此目录，就地纠正）、`values-v31` 系统启动画面米色在位、WebView 底色 capacitor.config.json=#fff7ee、Manifest 主题链正确；③ 唯一在「夜里 vs 下午」之间翻转的变量 = **深色模式**：App 恒为米色浅色主题，却 ① 用 DayNight parent（深色下回落色翻黑）② 没退 WebView Force Dark——Android 10-12 夜间 uiMode 下系统默认把浅色 WebView 内容**整个反黑**（`@capacitor/android` 8.5.2 **全包 grep 零 forceDark 处理**，实锤）③ 无任何退出声明；MIUI 自家深色实现吃同一套 forceDark 开关。轮 24-38 每轮验收都在白天浅色下抓帧 → 这层从未被测到，「黑边还在」的部分老账或即在此（反馈表 #15）。
+     **修法（三道闸）**：① `values/styles.xml`：`AppTheme.NoActionBar` parent `DayNight`→`Theme.AppCompat.Light.NoActionBar`；`AppTheme` 与 `AppTheme.NoActionBar` 各加 `android:forceDarkAllowed=false`（NoActionBar 显式声明 parent、**不继承 AppTheme**，节点必须各带），`values-v31/styles.xml` 同加（本文件同名 style 整体替换惯例，显式再写一份防丢）；② `MainActivity.java`：`AppCompatDelegate.setDefaultNightMode(MODE_NIGHT_NO)` 放在 `super.onCreate` **之前**（BridgeActivity.onCreate 内部就 setContentView + 建 WebView，晚调无效）+ 之后 WebView 实例 `setForceDarkAllowed(false)`（API 29+ 判位，minSdk 24）；③ `tools/splash-test.mjs` 15→**18**：三道闸断言（主题零 DayNight / 三处 forceDarkAllowed=false / night-mode 调用先于 super.onCreate——断言要匹配 `super.onCreate(savedInstanceState)` 全串，短串会被 MainActivity 注释里的「super.onCreate」抢先命中假红）。
+     **验证**：splash-test **18/18**；APK 重打 `apk\warm-paws-debug.apk` 4.99MB SHA16 `63F5932ACDA5434A`（00:45）。**网页/dist 零改动**——不部署、不 cap sync（auth-test 读的 AndroidManifest、cap-strip-hero 比对的 assets 均未动）。
+     **待用户真机验收（装机先行：连线后 `adb install -r apk\warm-paws-debug.apk`）**：① **深色模式下**冷启动 + 使用全程米色不变黑 ② 浅色模式冷启动无黑边（轮 38 结论保持）③ 启动页照常。若深色下仍发黑：MIUI「设置 → 显示 → 深色模式」按 App 开关把 Warm Paws 设为不加深色——系统侧最后一级，App 侧三道闸已全关。
+     **顺带收编**：轮 38 黑边探针 `tools/_probe-black-edge.js`（WebView 内查启动页/边缘像素/视口的 CDP 探针）入库存档。
 
   - **轮 34 续 · 迁移执行 + 线上闭环（2026-09-23，用户执行迁移后当日）**：
      **探针（坑 #7 判据）**：report_create / admin_report_page / admin_report_handle 匿名全 **42501**（存在无权）= 迁移生效实锤；wall_toggle_dislike 42501（新版权限收紧在位）；admin_overview 匿名 admin=false 提前返回（reports_pending 仅管理员可见，符合设计）。
