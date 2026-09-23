@@ -420,8 +420,11 @@ async function decideRec(l, accept) {
     </template>
     <p v-else class="notice">{{ t("bottle.signInHint") }}</p>
 
-    <!-- 轮 22：捞信结果居中弹窗（手机端核心反馈）——捞到可就地回信 / 放回海里（「先收着」已按用户要求移除） -->
-    <n-modal v-model:show="fishPop.show" preset="card" style="max-width: 88vw"
+    <!-- 轮 22：捞信结果居中弹窗（手机端核心反馈）——捞到可就地回信 / 放回海里（「先收着」已按用户要求移除）。
+         轮 40：宽度必须显式给——n-modal 不给 width 会被容器撑满，原来的 max-width: 88vw
+         在手机上≈343px 没事，桌面网页上就是 88vw≈1670px 的巨幕（用户报「弹窗也太大了吧」）。
+         min(560px, 100vw-32px)：桌面 560px 居中，手机仍是留 16px 边距的近全宽。 -->
+    <n-modal v-model:show="fishPop.show" preset="card" style="width: min(560px, calc(100vw - 32px))"
       :closable="false" :mask-closable="false" :close-on-esc="false"
       :title="fishPop.mode === 'got' ? t('bottle.gotTitle') : (fishPop.mode === 'fishing' ? t('bottle.fishing') : t('bottle.popNotice'))">
       <template v-if="fishPop.mode === 'fishing'">

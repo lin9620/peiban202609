@@ -66,7 +66,7 @@ async function submit() {
 
 <template>
   <n-modal
-    :show="show" preset="card" style="max-width: 92vw"
+    :show="show" preset="card" style="width: min(520px, calc(100vw - 32px))"
     :title="t('report.title')" @update:show="(v) => emit('update:show', v)">
     <p v-if="target && target.label" class="report-quote">{{ target.label }}</p>
 
