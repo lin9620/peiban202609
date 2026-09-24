@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 轮 43：Android 12+ 系统启动画面的图标位留空（全透明）。
+     注意：不设 windowSplashScreenAnimatedIcon 时系统会默认放 App 启动图标
+     （我们的图标本身就是一枚爪印）→ 等于没去掉；放全透明 drawable，
+     图标位什么都不画，系统启动画面退成纯米色。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="#00000000" />
+</shape>

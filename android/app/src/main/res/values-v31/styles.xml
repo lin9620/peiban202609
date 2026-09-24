@@ -8,7 +8,10 @@
          注意：values-v31 里的同名 style 是整体替换（不是合并），所以要写全 parent + items。 -->
     <style name="AppTheme.NoActionBarLaunch" parent="AppTheme.NoActionBar">
         <item name="android:windowSplashScreenBackground">#FFF7EE</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/launch_paw</item>
+        <!-- 轮 43：图标位留空（用户不要大爪子页面）。不能直接删这一项——不设时
+             系统默认放 App 启动图标（仍是爪印），所以指到全透明 drawable；
+             轮 38 那枚爪印 drawable 已删（测试守「启动链零爪印」）。 -->
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/launch_transparent</item>
         <item name="android:background">@drawable/launch_bg</item>
         <!-- 轮 39：Force Dark 退出写全（虽然 values/ 的 AppTheme.NoActionBar 已带，
              继承链能拿到；这里再显式一份，防止将来改 parent 或拆继承时静默丢失——

@@ -70,11 +70,10 @@ ok("轮 38 ③ 米色窗口底挂在「Activity 真正使用」的主题上（�
   manifest.includes('android:theme="@style/AppTheme.NoActionBarLaunch"')
     && /<style name="AppTheme\.NoActionBarLaunch" parent="AppTheme\.NoActionBar">/.test(styles)
     && /<style name="AppTheme\.NoActionBar"[\s\S]*?<item name="android:windowBackground">#FFF7EE<\/item>/.test(styles));
-ok("轮 38 ④ 原生启动层是米色品牌图，Capacitor 默认蓝色 X splash.png 已删净（主题零 @drawable/splash 引用）",
+ok("轮 38 ④ 原生启动层是米色窗口底，Capacitor 默认蓝色 X splash.png 已删净（主题零 @drawable/splash 引用）",
   styles.includes("@drawable/launch_bg")
     && !/@drawable\/splash\b/.test(styles)
     && !/@drawable\/splash\b/.test(stylesV31)
-    && fs.existsSync("android/app/src/main/res/drawable/launch_paw.xml")
     && filesUnder("android/app/src/main/res", /splash/i).length === 0);
 ok("轮 38 ⑤ Android 12+ 系统启动画面同样米色（不设就退回 ?colorBackground=黑 → 冷启动一圈黑）",
   stylesV31.includes('<item name="android:windowSplashScreenBackground">#FFF7EE</item>')
@@ -101,6 +100,19 @@ ok("轮 39 ③ MainActivity 强制浅色配置在 super.onCreate 之前 + WebVie
   mainActivity.includes("AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO)")
     && mainActivity.indexOf("AppCompatDelegate.setDefaultNightMode") < mainActivity.indexOf("super.onCreate(savedInstanceState)")
     && mainActivity.includes("setForceDarkAllowed(false)"));
+
+/* ─── 轮 43：启动链去掉「大爪子」页面（用户：启动页不要那个大爪子的页面，去掉）────
+ * 原生两层（Android 12+ 系统启动画面 + 窗口底）都退成纯米色，品牌呈现交给网页启动页。
+ * 注意图标位不能「不设」——不设时系统默认放 App 启动图标（我们的图标也是爪印）。 */
+const launchBg = read("android/app/src/main/res/drawable/launch_bg.xml");
+ok("轮 43 ① 原生启动链零爪印：launch_bg 纯米色 + launch_paw 已删（主题与 drawable 双查）",
+  !styles.includes("launch_paw") && !stylesV31.includes("launch_paw")
+    && !launchBg.includes("launch_paw")
+    && launchBg.includes("#FFF7EE")
+    && !fs.existsSync("android/app/src/main/res/drawable/launch_paw.xml"));
+ok("轮 43 ② 系统启动画面图标位全透明（不设会默认放 App 图标 = 另一枚爪印）",
+  stylesV31.includes('<item name="android:windowSplashScreenAnimatedIcon">@drawable/launch_transparent</item>')
+    && fs.existsSync("android/app/src/main/res/drawable/launch_transparent.xml"));
 
 /* 轮 30 埋的雷：它在启动页样式块中间插了 </style>，把唯一 style 提前闭合，
  * 后面 30 行 CSS 全成了裸文本 → 唯一生效的规则是 display:none，启动页从此
