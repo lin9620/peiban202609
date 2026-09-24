@@ -262,22 +262,22 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
 ---
 
-# 一、当前状态速览（2026-09-25 更新 · 轮 43）
+# 一、当前状态速览（2026-09-25 更新 · 轮 44）
 
 | 项 | 值 |
 |---|---|
 | 项目 | peiban（陪伴 / warm-paws），路径 `D:\05ruanjian\peiban` |
 | 技术栈 | Vue 3 + Vite + Naive UI；数据层双模式：直连 Supabase（`db.supabase.js`）/ Worker 网关（`db.gateway.js` + `worker/api.js`，**线上走网关**）；Cloudflare 部署 https://dale.de5.net；Supabase Postgres + RLS + security definer RPC |
-| 代码 | 轮 43：**启动链去掉「大爪子」页面**（用户原话：「启动页不要那个大爪子的页面，去掉」）——原生两层全退纯米色：`launch_bg.xml` 删居中爪印项、`values-v31` 系统启动画面图标位改指**全透明 drawable**（注意不能不设：不设系统默认放 App 图标，还是爪印）、`launch_paw.xml` 已删；带文案的网页启动页（#app-splash，🐾56px+温暖话）**保留**；splash-test 18→**20/20**。轮 42：修「冷启动首页整页崩」（轮 41 `immediate:true` TDZ，撤 immediate + 初始查询移入 `onMounted` + 新增 `tools/tdz-check.mjs`）。轮 41：首页启动期预热漂流瓶。轮 40（`083c895`）：桌面弹窗宽度收敛（`n-modal` 显式 `width: min(560/520px, 100vw-32px)`）。轮 39（`e1130fe`）：深色模式「黑屏」三道闸。轮 38：冷启动黑边+启动页双修。此前轮 37：**漂流瓶全线上** |
-| 部署 | Version `3431e8bb` 已上线（轮 42 修首页崩）；`live-check` 14/14；线上入口 `index-BdKRGbcL.js` SHA16 `0ed578e10f51a0c3` 与本地 dist 逐字节一致（`live-bundle-check`）。**注意上一版也是坏的**：轮 41 部署的 `index-CPSDoYFN.js` 带 TDZ 崩（首页整页错误盒），已由本轮覆盖。更早 `baa4367e`（轮 40）、`59c5bd12`（轮 38） |
+| 代码 | 轮 44：**我的页「我在暖心墙的帖子」整块挪到页面最底（我的食谱之下）+ 帖子时间显示到秒**（用户拍板）——新纯函数 `fmtWhenSec`（与 `fmtWhen` 同口径：跨年补年份、非法→空串，只多 second；不做成参数是让两处调用语义各自显式），ProfileView 帖子卡从「只有日期」改接它；wall-rules-test 39→**42**。轮 43：**启动链去掉「大爪子」页面**（原生两层退纯米色，网页启动页保留；splash-test 18→**20**）。轮 42：修「冷启动首页整页崩」（轮 41 `immediate:true` TDZ + 新增 `tools/tdz-check.mjs`）。轮 41：首页启动期预热漂流瓶。轮 40（`083c895`）：桌面弹窗宽度收敛（`n-modal` 显式 `width: min(560/520px, 100vw-32px)`）。轮 39（`e1130fe`）：深色模式「黑屏」三道闸。轮 38：冷启动黑边+启动页双修。此前轮 37：**漂流瓶全线上** |
+| 部署 | Version `12e6e3e0` 已上线（轮 44 我的页帖子挪底 + 时间到秒）；`live-check` 14/14；线上入口 SHA16 `88fc3eeb89fd5983` 与本地 dist 逐字节一致（`live-bundle-check`）。更早 `3431e8bb`（轮 42 修首页崩）、`baa4367e`（轮 40）、`59c5bd12`（轮 38） |
 | 数据库 | `MIGRATION_reports.sql` 已执行（线上 e2e 6/6 闭环）；`MIGRATION_notifications_drop_dm.sql`（轮 13 #23）仍未确认。**本轮零迁移零 SQL 改动**（只动前端 + Android 原生资源） |
-| App | **轮 43 APK 已重打、待装机**（2026-09-25 02:22）：`apk\warm-paws-debug.apk` 4.99MB SHA16 `35115BBB8BEEB235`——含本轮「启动链去大爪子」，轮 42 的 TDZ 修复与轮 39 的深色三道闸也都在包内。重连手机后 `adb install -r apk\warm-paws-debug.apk`。网页/dist 零改动（无部署、无 cap sync）。历史装机记录：轮 42 `17A0CAB139460AC7`（10:2x 装机+真机复验）→ 轮 40 `D88A2E9C0496140A`（01:37 装机）|
+| App | **轮 44 APK 已重打、待装机**（2026-09-25）：`apk\warm-paws-debug.apk` SHA16 `88B42A09744AB402`——包内含轮 44（我的页挪底+到秒）、轮 43（启动链去大爪子）、轮 42（TDZ 修复）、轮 39（深色三道闸）。重连手机后 `adb install -r apk\warm-paws-debug.apk`，一次装机四轮全验。历史：轮 42 `17A0CAB139460AC7`（已装机复验）→ 轮 40 `D88A2E9C0496140A`（已装机）|
 | App 冷启动实测 | 轮 38：**真机冷启动 14 帧像素扫描（浅色模式）**：原生启动层米色+橙爪（四角 `#FFF7EE`、左右零暗像素）→ 网页启动页 → 首页，App 自己的每一帧都没有黑边。**轮 39 补勘**：那次抓帧是下午**浅色模式**下做的——夜间深色模式的路径当时测不到，正是「白天验收全绿、夜里黑屏」的盲区（F 区轮 39）；深色模式验证须装机后补做 |
 | 测试 | 轮 43：splash-test 18→**20/20**（轮 38 ④ 反向 + 新增「启动链零爪印 / 系统启动画面图标位全透明」两条；**注释里不写字面串的规矩再次生效**——v31 注释写了「launch_paw.xml 已删」被自己的断言逮住假红，改成文字描述）。轮 42：新增 `tools/tdz-check.mjs` + 离线 **33 套 0 fail** + page-smoke 8/8 + live-check 14/14。轮 38 基线：离线 40 套 ALL GREEN |
 
 ## 二、现在在做什么
 
-- **当前任务**：轮 43（**启动链去掉「大爪子」页面**）**已完成：已改、已测、APK 已重打，待装机验收**（F 区轮 43）。用户原话：「启动页不要那个大爪子的页面，去掉」。原生两层全退纯米色：窗口底 `launch_bg.xml` 删居中爪印项、Android 12+ 系统启动画面图标位改指全透明 drawable（不能不设——不设系统默认放 App 图标，仍是爪印）、`launch_paw.xml` 已删；**带文案的网页启动页保留**（🐾56px + 温暖的爪印 + 三条特性，轮 38 用户点名要回来的那个）。冷启动视觉从此 = 纯米色 → 网页启动页 → 首页。splash-test 20/20，APK SHA16 `35115BBB8BEEB235` 待装机。
+- **当前任务**：轮 44（**我的页：帖子挪底 + 时间到秒**）**已完成并交付**（F 区轮 44）。用户原话：「我的页面，我在暖心墙的帖子移到最下面，在我的食谱下面，而且时间显示到秒」。① ProfileView 的「我在暖心墙的帖子」整块从「改昵称」下方挪到页面最底（我的食谱之下）；② 帖子卡时间从「只有日期」改为**显示到秒**——新纯函数 `fmtWhenSec`（与 `fmtWhen` 同口径：跨年补年份、非法→空串）。已部署 Version `12e6e3e0`（线上 SHA16 `88fc3eeb89fd5983` 本地=线上），wall-rules-test 39→42、undef/tdz 0、page-smoke 8/8；APK `88B42A09744AB402` 待装机。**网页端刷新「我的」页即可验收**；App 端随下次装机。
 - **待用户真机验收（轮 43，启动这几秒）**：① 冷启动**不再出现大橙爪页面**（原生段纯米色一闪而过）② 随后的网页启动页照常（米色+🐾+文案）③ 进首页正常。若**连网页启动页也不要**（开 App 直接进首页），说一声，那是 `index.html` 的 #app-splash 层，另做一轮摘掉。
 - **前一轮**：轮 42（**修「冷启动首页整页崩」**）**已完成并交付**——真因是轮 41 给 `BottleView` 的 watch 加了 `{ immediate: true }`，回调里用了第 224 行才声明的 `recPage` → TDZ `Cannot access 'ht' before initialization` → `App.vue` 错误边界把整页换成「这里好像有点小状况」，首页/漂流瓶数据全出不来（**线上 `index-CPSDoYFN.js` 与真机包同坏**）。已修（撤 `immediate`，初始查询移入 `onMounted` 显式调用）、已测（33 套离线 0 fail + undef 0 + **新增 tdz-check 0** + page-smoke 8/8）、已部署（Version `3431e8bb`，线上入口 SHA16 `0ed578e10f51a0c3` 本地=线上）、已装机（SHA16 `17A0CAB139460AC7`）并真机复验（冷启动无错误盒、367ms 发取数、页面零「同步中」）。**上轮教训**：轮 41 漏跑 `page-smoke` 就交付 → 坏包上线，已写进踩坑 #32，并把 `page-smoke` 定为与 `undef-check` 同级的硬门槛。
 - **待用户真机验收（轮 42，首页）**：① 手机冷启动首页正常（不再出现「这里好像有点小状况 / 刷新页面」）② 进首页/漂流瓶时次数与记录**立刻有值**（不再长时间「同步中」）③ 网页端同样正常（线上已修，可直接刷新网页对照）。
@@ -446,6 +446,7 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 | 15 | **App 夜间/深色模式下整个变黑屏**（2026-09-23 夜用户原话：「黑屏没改，改一下」；承 #14 黑边老账） | **真因：恒浅色 App 没做任何深色模式退出**：① `AppTheme.NoActionBar` parent 是 `Theme.AppCompat.DayNight.NoActionBar`（深色下回落色翻黑）；② WebView 没退 Force Dark——Android 10-12 在夜间 uiMode 下默认对 WebView「强制深色」，把浅色页面整个反黑（`@capacitor/android` 8.5.2 **全包零 forceDark 处理**，grep 实锤），MIUI 自家深色实现也吃同一套开关。**取证**：回放轮 38 抓帧（15:05 浅色模式）冷启动全程无黑 → 唯一昼夜翻转变量=深色模式；轮 24-38 每轮验收都在白天浅色下做，这层从未被测到。**修法（三道闸）**：主题 DayNight→Light + `android:forceDarkAllowed=false` 写全三个继承节点；`MainActivity` 在 `super.onCreate` **之前** `setDefaultNightMode(MODE_NIGHT_NO)`；WebView 实例 `setForceDarkAllowed(false)`。另查实：**`values-night/` 目录从未存在**——轮 38 记录「values-night/styles.xml 沿用同款米色」系误记，就地纠正。见 F 区轮 39 |
 | 16 | **启动后首页整页「这里好像有点小状况：Cannot access 'ht' before initialization」，漂流瓶/首页全空**（2026-09-24 用户报障：「你自己看看吧」） | 真因 = 轮 41 给 `BottleView` 的 watch 加 `{ immediate: true }` 触发 TDZ：回调里 `recPage.value = 0` 而 `recPage` 声明在第 224 行、watch 在第 87 行 → setup 同步执行时抛错 → `App.vue` 错误边界接管整页。**修法**：撤掉 `immediate`，初始查询改为 `onMounted(() => { purgeLegacyBottleLocals(); onSessionChanged(); })` 显式调用（setup 跑完才执行，const 已就绪）；轮 41 的「启动期预热 + 单飞合并」保留。**验证**：tdz-check 新增（0 问题 + 回归命中旧代码）、page-smoke 8/8、离线 33 套 0 fail、真机冷启动 3s/9s 两帧无错误盒、367ms 发 quota+held、页面零「同步中」。见 F 区轮 42、踩坑 #32 |
 | 17 | **启动时那个「米色底+大橙爪」页面不要了**（2026-09-25 用户原话：「启动页不要那个大爪子的页面，去掉」） | 那是**原生启动层**（Android 12+ 系统启动画面的 `windowSplashScreenAnimatedIcon` + 窗口底 `launch_bg` 的 108dp 居中爪印，轮 38 加的）。**修法**：两层全退纯米色——`launch_bg` 删爪印项、图标位改指**全透明 drawable**（不能不设：不设系统默认放 App 图标，我们的图标本身就是爪印，等于没去掉）、`launch_paw.xml` 删除；**带文案的网页启动页保留**（#app-splash：🐾56px + 温暖的爪印 + 三条特性——轮 38 用户点名要回来的页面）。冷启动视觉 = 纯米色一闪 → 网页启动页 → 首页。splash-test 18→20（启动链零爪印 + 图标位透明两条断言）；APK 重打 SHA16 `35115BBB8BEEB235` 待装机。见 F 区轮 43 |
+| 18 | **我的页：帖子区块沉底 + 时间到秒**（2026-09-25 用户原话：「我的页面，我在暖心墙的帖子移到最下面，在我的食谱下面，而且时间显示到秒」） | ① ProfileView 的「我在暖心墙的帖子」整块（含最新 3 条卡与「更多 →」）从「改昵称」下方挪到**页面最底**（我的食谱之下）；② 帖子卡时间原来只有日期（`toLocaleDateString`），改为**显示到秒**——新纯函数 `fmtWhenSec`（与 `fmtWhen` 同口径：跨年补年份、非法→空串，只多 second；刻意不做参数，两处调用语义各自显式：墙上列表到分钟、个人主页到秒）。范围就按用户说的只动「我的」页——暖心墙/my-posts/帖子详情仍是到分钟，要全站到秒说一声。验证：wall-rules-test 39→**42** + undef/tdz 0 + page-smoke 8/8 + 部署 Version `12e6e3e0`（SHA16 `88fc3eeb89fd5983` 本地=线上）+ APK `88B42A09744AB402` 待装机。见 F 区轮 44 |
 
 - **工具沉淀**：`tools/build-until-good.mjs`（构建 + 自验产物含 slug + 不合格自动重试，防坏包出门）、`tools/live-bundle-check.mjs`（线上入口包与本地 dist 逐字节比对 + hasSlug 检查）。
 - **本轮事故（已修复，教训见踩坑 #25/#26）**：一次 `npm run build; npm run deploy` 链式执行，build 被 env-guard 拦下后 deploy 照跑 → 坏包上线（线上无 Supabase 配置、登录失效）。复部署后线上 `hasSlug=true`、SHA 与本地一致。
@@ -1060,6 +1061,12 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **验证**：splash-test **20/20**；APK 重打 `apk\warm-paws-debug.apk` 4.99MB SHA16 `35115BBB8BEEB235`（02:22）。**网页/dist 零改动**——不部署、不 cap sync；轮 42 的 TDZ 修复与轮 39 深色三道闸都在本包内。
      **冷启动视觉（改后）**：点图标 → **纯米色**（原生段，一闪而过）→ 网页启动页（米色+🐾+温暖话）→ 首页。
      **待用户真机验收**：① 无大橙爪页面 ② 网页启动页照常 ③ 进首页正常。若**连网页启动页也不要**，说一声——那是 `index.html` 的 #app-splash 层，另做一轮摘掉（含看门狗/App.vue 关页逻辑联动）。
+
+  - **轮 44 · 我的页：帖子挪底 + 时间到秒（2026-09-25，部署 Version `12e6e3e0`）**：
+     **用户原话**：「我的页面，我在暖心墙的帖子移到最下面，在我的食谱下面，而且时间显示到秒」。
+     **改动**：① `ProfileView.vue`：「我在暖心墙的帖子」整块（标题行 + 最新 3 条卡 + 「更多 →」）从「改昵称」下方搬到**页面最底**——新的区块顺序 = 账户头 → 改昵称/登录卡 → 心情日历 → 我的食谱 → **我在暖心墙的帖子**；② 帖子卡时间原来只有日期（`new Date(p.ts).toLocaleDateString()`），改接新纯函数 **`fmtWhenSec`**（`wallRules.js`，与 `fmtWhen` 同口径：跨年补年份、非法→空串，只多 `second: "2-digit"`；刻意不做参数——墙上列表到分钟、个人主页到秒，两处调用语义各自显式）。范围按用户说的只动「我的」页；暖心墙 / my-posts / 帖子详情仍是到分钟。
+     **验证**：wall-rules-test 39→**42/42**（+3：时分秒结构 / 跨年口径 / 非法空串）+ undef 0 + tdz 0 + post-detail 15 + uifix 24 + app-shell 40 + auth 130 + bottle 66 全绿 + build 0（env-guard slug ✓）+ **page-smoke 8/8** + 部署 **Version `12e6e3e0`** + live-check 14/14 + live-bundle-check 入口 SHA16 `88fc3eeb89fd5983` 本地=线上 + cap sync + README 计数同步（wall-rules 42、**splash-test 20——补轮 43 漏改的欠账**，踩坑 #19）+ APK 重打 SHA16 `88B42A09744AB402`（含轮 43+44）。
+     **待验收**：网页端刷新「我的」页即可看（帖子区块在最底、时间到秒）；App 端随下次装机。
 
   - **轮 34 续 · 迁移执行 + 线上闭环（2026-09-23，用户执行迁移后当日）**：
      **探针（坑 #7 判据）**：report_create / admin_report_page / admin_report_handle 匿名全 **42501**（存在无权）= 迁移生效实锤；wall_toggle_dislike 42501（新版权限收紧在位）；admin_overview 匿名 admin=false 提前返回（reports_pending 仅管理员可见，符合设计）。
