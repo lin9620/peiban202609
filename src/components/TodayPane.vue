@@ -101,6 +101,8 @@ function moodPick(i) {
     setItem("wp-mood-" + todayKey(), String(i));
     checkedToday.value = true;
     justDone.value = true;
+    /* 轮 51 的「打卡完跳去宠物」已被轮 53 撤销——用户真正要的跳转方向相反：
+     * 是从宠物页的任务行跳来这里打卡（见 PetView 任务块轮 53 注释），不是打完卡跳走。 */
     setTimeout(() => { justDone.value = false; }, 3000);
   }
 }

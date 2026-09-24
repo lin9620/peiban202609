@@ -390,7 +390,12 @@ const brightRatio = computed(() => {
     <section class="card">
       <div class="row-between">
         <h2>{{ t("profile.myBook") }}</h2>
-        <router-link class="my-posts-link" to="/pet?tab=book">{{ t("profile.bookOpen") }} →</router-link>
+        <!-- 轮 54：手机端不再跳独立 /pet 页（跳出三联还要找返回），改深链首页宠物联+食谱页签
+             （/?tab=pet 落宠物联，petTab=book 由 PetView 消费）；桌面布局无三联，保持独立页。 -->
+        <router-link class="my-posts-link"
+          :to="isMobileNav ? { path: '/', query: { tab: 'pet', petTab: 'book' } } : '/pet?tab=book'">
+          {{ t("profile.bookOpen") }} →
+        </router-link>
       </div>
       <p v-if="!cookbook.length" class="sub">{{ t("profile.bookEmpty") }}</p>
       <div v-else class="book-grid">

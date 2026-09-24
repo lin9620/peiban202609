@@ -1,6 +1,7 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from "vue";
-import { useRoute } from "vue-router";
+import { ref, computed, watch, onMounted, onUnmounted } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { isMobileNav } from "../stores/uiStore.js";
 import { t, i18n } from "../i18n.js";
 import { stories } from "../data/stories.js";
 import { dayIndex } from "../utils/daily.js";
@@ -34,9 +35,32 @@ import {
 
 const tab = ref("care");
 /* 外部直达某 Tab：「我的」页食谱 → /pet?tab=book（手绘厨房画板 → /pet?tab=paint） */
-const routeQ = useRoute().query;
-const qTab = typeof routeQ.tab === "string" ? routeQ.tab : "";
-if (["care", "adv", "paint", "book"].includes(qTab)) tab.value = qTab;
+const routeQ = useRoute();
+/* 轮 52：手机形态页内返回钮——「我的 → 去厨房」落到这里整页都是宠物乐园，
+   之前没有任何可见的返回（只能靠系统返回键或底部 Tab），网页端更是一眼懵。 */
+const routerQ = useRouter();
+/* 轮 53：心情任务行 → 首页今日联的「今天过得怎么样」打卡卡（深链 /?tab=today，
+ * 宠物联内嵌与 /pet 独立页两种形态都成立——HomeView watch route.query.tab 消费成初始联） */
+function goMood() {
+  routerQ.push({ path: "/", query: { tab: "today" } }).catch(() => {});
+}
+function goBack() {
+  /* 有历史就退回去；直链进来（无历史）就回「我的」页（去厨房的来路） */
+  if (typeof window !== "undefined" && window.history.state && window.history.state.back != null) {
+    routerQ.back();
+  } else {
+    routerQ.replace("/profile").catch(() => {});
+  }
+}
+const qTab = typeof routeQ.query.tab === "string" ? routeQ.query.tab : "";
+/* 轮 54：「我的 → 去厨房」手机端深链 /?tab=pet&petTab=book（首页宠物联+食谱页签）。
+ * PetView 懒挂载且挂过保留——深链到达时可能早已挂载，setup 首读 + watch 后续都要接。 */
+const qPet = typeof routeQ.query.petTab === "string" ? routeQ.query.petTab : "";
+watch(() => routeQ.query.petTab, (v) => {
+  if (["care", "adv", "paint", "book"].includes(v)) tab.value = v;
+});
+if (["care", "adv", "paint", "book"].includes(qPet)) tab.value = qPet;
+else if (["care", "adv", "paint", "book"].includes(qTab)) tab.value = qTab;
 
 /* —— 零食雨小游戏 —— */
 const snackOn = ref(false);
@@ -368,6 +392,7 @@ function onToggleFramed(d) {
 <template>
   <div class="pet-page">
   <div class="park-hero">
+    <button v-if="isMobileNav && routeQ.name === 'pet'" class="pet-back" aria-label="back" @click="goBack">&#8592;</button>
     <div>
       <h1 class="park-title">🐾 {{ t("pet.parkTitle") }}</h1>
       <p class="park-sub">{{ t("pet.subtitle") }}</p>
@@ -597,9 +622,14 @@ function onToggleFramed(d) {
     <div class="task-progress"><div :style="{ width: donePct + '%' }"></div></div>
     <div
       v-for="task in taskRows" :key="task.key" class="task-row"
-      :class="{ done: dailyTasks[task.key] }">
+      :class="{ done: dailyTasks[task.key], clicky: task.key === 'mood' }"
+      :role="task.key === 'mood' ? 'button' : undefined"
+      @click="task.key === 'mood' && goMood()">
       <div class="t-ico">{{ task.ico }}</div>
-      <div class="t-name">{{ t("tasks." + task.key) }}</div>
+      <div class="t-name">
+        {{ t("tasks." + task.key) }}
+        <span v-if="task.key === 'mood'" class="t-go">去打卡 →</span>
+      </div>
       <div class="t-state">{{ dailyTasks[task.key] ? "\u2705" : "" }}</div>
     </div>
     <button class="btn" style="margin-top: 6px" :disabled="!canClaim" @click="claim">
@@ -698,6 +728,17 @@ function onToggleFramed(d) {
 .park-hero {
   display: flex; justify-content: space-between; align-items: flex-start;
   gap: 14px; flex-wrap: wrap; margin-bottom: 18px;
+}
+/* 轮 53：心情任务行可点（去首页今日联打卡） */
+.task-row.clicky { cursor: pointer; }
+.task-row.clicky:hover { background: var(--accent-soft, rgba(245, 140, 80, .1)); }
+.t-go { margin-left: 8px; font-size: 11.5px; font-weight: 700; color: var(--accent-deep, #d96f2e); }
+/* 轮 52：手机形态返回钮（与 SettingsView 的 set-back 同款视觉） */
+.pet-back {
+  appearance: none; font: inherit; cursor: pointer; flex: none;
+  min-width: 40px; min-height: 40px; border-radius: 999px;
+  border: 1px solid rgba(160, 110, 60, .2); background: rgba(255, 255, 255, .7);
+  font-weight: 800; font-size: 16px;
 }
 .park-title { font-size: 24px; font-weight: 800; letter-spacing: .3px; }
 .park-sub { font-size: 13px; color: var(--ink-soft); font-weight: 600; max-width: 470px; margin-top: 2px; }
