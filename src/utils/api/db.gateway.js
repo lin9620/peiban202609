@@ -78,9 +78,10 @@ export const db = {
 
   /* ══════════ 帖子 ══════════ */
 
-  /** 最近 limit 条（新→旧）；removed 兼容由 Worker 内部处理 */
-  async listPosts(limit) {
-    return call(`/posts?limit=${enc(limit)}`);
+  /** 最近 limit 条（新→旧）；removed 兼容由 Worker 内部处理。轮 56：offset 分页（0/缺省不附参数，契约不变） */
+  async listPosts(limit, offset = 0) {
+    const off = Number(offset) > 0 ? Number(offset) : 0;
+    return call(`/posts?limit=${enc(limit)}${off ? `&offset=${enc(off)}` : ""}`);
   },
 
   /** 某用户的帖子（新→旧）；offset = 分页偏移（0/缺省 = 旧行为） */

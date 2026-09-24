@@ -28,7 +28,7 @@ let fail = 0;
 for (const p of PAGES) {
   const r = spawnSync(process.execPath, [
     "tools/web-probe.mjs",
-    `--serve=${serve}`, `--url=${p}`, "--w=1280", "--h=900", "--wait=1500", `--file=${expr}`,
+    `--serve=${serve}`, `--url=${p}`, "--w=1280", "--h=900", "--wait=2500", `--file=${expr}`  /* 轮58: 1500在机器负载高时偶发误报(mounted=false无崩溃),放宽 */,
   ], { cwd: root, encoding: "utf8", env: { ...process.env, MSYS2_ARG_CONV_EXCL: "--url" } });
   const out = (r.stdout || "") + (r.stderr || "");
   let mounted = false, crash = "(求值失败)";

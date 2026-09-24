@@ -18,6 +18,7 @@ import { MIN_PASSWORD, NICK_MAX, passwordProblem } from "../utils/authRules.js";
 import { fmtWhenSec } from "../utils/wallRules.js";
 import { db } from "../utils/api/db.js";
 import { cloudFetchUserPosts } from "../utils/wall.js";
+import { cacheKey, swr } from "../utils/cache.js";
 
 /* 心情图标：一律用 Unicode 转义，避免源码中的 emoji 编码损坏 */
 const MOOD = ["\u{1F929}", "\u{1F642}", "\u{1F60C}", "\u{1F327}\uFE0F", "\u{1F614}"];
@@ -60,7 +61,10 @@ watch(
   { immediate: true },
 );
 
-/* #9 我在暖心墙的帖子：默认只展示最新 3 条（共有 5），「更多」进 /my-posts 分页看全部 */
+/* #9 我在暖心墙的帖子：默认只展示最新 3 条（共有 5），「更多」进 /my-posts 分页看全部。
+ * 轮 58：接 SWR（快照秒开 + 后台取新 + 回写）——此前每次进页干等一次网络往返，
+ * 用户报「我的帖子老是出现的很慢」；/my-posts 页早有同款（轮 36），这里补齐。
+ * 键带 uid 换号不串；缓存的是 rowsToPosts 视图（img 已是 URL，可序列化）。 */
 const myPosts = ref([]);
 const myPostsBusy = ref(false);
 watch(
@@ -68,8 +72,17 @@ watch(
   async ([ready, uid]) => {
     if (!ready || !uid) { myPosts.value = []; return; }
     myPostsBusy.value = true;
-    try { myPosts.value = (await cloudFetchUserPosts(uid, 3)) || []; }
-    catch (e) { myPosts.value = []; }
+    await swr(
+      cacheKey("profile-myposts", uid),
+      {
+        cached: (rows) => { myPosts.value = rows; },
+        fresh: (rows) => { myPosts.value = rows; },
+      },
+      async () => {
+        const got = (await cloudFetchUserPosts(uid, 3)) || [];
+        return got.length ? got : null;   /* 空列表/失败不覆盖快照、不回写 */
+      },
+    );
     myPostsBusy.value = false;
   },
   { immediate: true },
@@ -376,7 +389,7 @@ const brightRatio = computed(() => {
         </div>
       </div>
 
-      <div class="mood-cal">
+      <div v-if="loggedDays > 0" class="mood-cal">
         <div
           v-for="c in cells" :key="c.key"
           class="mood-cell" :class="{ has: c.emoji, today: c.today }">

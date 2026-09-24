@@ -13,6 +13,7 @@ import {
   wallet, moodStreak, petNotices, dismissPetNotice,
 } from "./stores/petStore.js";
 import { cloud, initCloud, cloudHandleAppRedirect, isAppAuthRedirect } from "./utils/supabase.js";
+import { cloudFetchUserPosts } from "./utils/wall.js";
 import { setUserScope } from "./utils/userScope.js";
 import { cacheDrop, cacheKey, swr } from "./utils/cache.js";
 import * as dmApi from "./utils/dm.js";
@@ -81,6 +82,17 @@ async function prefetchBottle() {
   try { await Promise.all([bottleQuota(), bottleHeld()]); } catch (e) { /* 预热失败不影响启动 */ }
 }
 
+/* 轮 58：「我的」页帖子预览（3 条）预热——与 ProfileView 同一个 swr 键，进页直接吃快照 */
+async function prefetchProfilePosts() {
+  if (!(cloud.ready && cloud.user)) return;
+  try {
+    await swr(cacheKey("profile-myposts", cloud.user.id), {}, async () => {
+      const got = (await cloudFetchUserPosts(cloud.user.id, 3)) || [];
+      return got.length ? got : null;
+    });
+  } catch (e) { /* 预热失败不影响启动 */ }
+}
+
 /* 关闭启动页：淡出后从 DOM 摘掉（静态层在 #app 外，Vue 挂载不影响它） */
 function removeSplash() {
   const el = document.getElementById("app-splash");
@@ -93,7 +105,7 @@ onMounted(async () => {
   /* 轮 24：启动页（index.html 静态层）在「云端会话就绪 + 会话缓存预热」后淡出；
    * 最多等 2.5 秒兜底放行——云端挂了也不能把用户挡在启动页里。 */
   const boot = initCloud()
-    .then(() => { prefetchBottle(); return prefetchConvs(); })   /* 轮 41：漂流瓶预热不阻塞，私信照旧等待 */
+    .then(() => { prefetchBottle(); prefetchProfilePosts(); return prefetchConvs(); })   /* 轮 41：漂流瓶预热不阻塞，私信照旧等待 */
     .catch(() => { /* 预热失败不挡启动 */ });
   await Promise.race([boot, new Promise((r) => setTimeout(r, 2500))]);
   removeSplash();
@@ -260,10 +272,8 @@ onBeforeUnmount(() => { clearTimeout(scrubTimer); scrubTimer = 0; });
             </router-view>
           </main>
 
-          <footer class="footer">
-            <span>{{ t("footerNote") }}</span>
-            <!-- 隐私政策入口已挪到「设置」页（手机端 7：页脚只留一句签名）；/privacy 路由保留（Google 审核用） -->
-          </footer>
+          <!-- 轮 57：页脚整块移除（用户：去掉「用心制作·你做的比你认为的更好」和那段空框）。
+               隐私政策入口在「设置」页；/privacy 路由保留（Google 审核用）。 -->
         </div>
 
         <TabBar v-if="isMobileNav && !inChat" />

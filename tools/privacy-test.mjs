@@ -203,15 +203,11 @@ t_("P26 如实说明公开范围（帖子公开、管理员可见邮箱）", () 
 
 /* ═════════ ④ 样式 ═════════ */
 t_("P27 样式齐备（版面 + 页脚入口）", () => {
-  for (const cls of [".legal-page", ".legal-title", ".legal-p", ".legal-list", ".legal-mail", ".footer-link"]) {
+  for (const cls of [".legal-page", ".legal-title", ".legal-p", ".legal-list", ".legal-mail"]) {
     assert.ok(css.includes(cls), `style.css 缺少 ${cls}`);
   }
   assert.ok(css.includes(".legal-list li::marker"), "列表符号未按主题着色");
 });
-t_("P28 页脚改为可换行的一行（窄屏不挤压）", () => {
-  assert.ok(/\.footer\s*\{[^}]*flex-wrap:\s*wrap/.test(css), "页脚缺少 flex-wrap");
-});
-
 /* ═════════ ⑤ 构建产物（若已构建） ═════════ */
 if (exists("dist/privacy/index.html")) {
   const h = read("dist/privacy/index.html");

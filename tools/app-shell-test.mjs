@@ -53,9 +53,8 @@ const cmt = read("src/views/CommunityView.vue");
 ok("T14 聊天页整屏样式（shell--chat + 100dvh + 内部滚动）",
   css.includes(".shell--mobile-nav.shell--chat .dm-page") && css.includes("height: 100dvh")
   && css.includes(".shell--mobile-nav.shell--chat .dm-scroll"));
-ok("T15 聊天页隐藏 TabBar 与页脚（shell--chat 形态类）",
-  app.includes("'shell--chat': inChat") && app.includes('<TabBar v-if="isMobileNav && !inChat"')
-  && css.includes(".shell--mobile-nav.shell--chat .footer { display: none; }"));
+ok("T15 聊天页隐藏 TabBar（shell--chat 形态类；页脚轮 57 已整体移除）",
+  app.includes("'shell--chat': inChat") && app.includes('<TabBar v-if="isMobileNav && !inChat"'));
 ok("T16 手机形态 push / 桌面形态 replace（历史不污染、返回键可用）",
   mv.includes("if (isMobileNav.value) {") && mv.includes('router.push({ name: "messages"')
   && mv.includes('router.replace({ name: "messages"'));
@@ -128,8 +127,9 @@ ok("T28 共有1 宠物睡着了送行给「弹窗」提示（以前角落一句�
   && read("src/views/PetView.vue").includes('t("adventure.sleepingTitle"')
   && read("src/views/PetView.vue").includes('t("common.gotIt")')
   && pet.includes(".sleep-modal {"));
-ok("T29 共有6 我的食谱回原版卡片（菜格 + ♥用心度 + 可删）+ 标题行「去厨房 →」跳 /pet?tab=book",
-  read("src/views/ProfileView.vue").includes('class="my-posts-link" to="/pet?tab=book"')
+ok("T29 共有6 我的食谱回原版卡片（菜格 + ♥用心度 + 可删）+ 「去厨房」:手机深链首页宠物联食谱(/?tab=pet&petTab=book)/桌面保持 /pet?tab=book（轮54）",
+  read("src/views/ProfileView.vue").includes("petTab: 'book'")
+  && read("src/views/ProfileView.vue").includes("'/pet?tab=book'")
   && read("src/views/ProfileView.vue").includes("const HEART =")
   && read("src/views/ProfileView.vue").includes("{{ HEART }} {{ d.effort }}%")
   && read("src/views/ProfileView.vue").includes('@click="removeDish(d.id)"')
@@ -166,10 +166,9 @@ ok("T34 冻结过渡自愈（后台/遮挡时路由过渡停在 opacity:0 → �
 /* ─── 用户反馈返工（2026-09-20 第二批） ─── */
 const cv = read("src/views/ComposeView.vue");
 /* ─── ⑨ T10 · 手机端「＋ 发帖」独立页：整屏编辑器（不能再是默认款 textarea） ─── */
-ok("T35 /compose 归到 shell--chat 形态（TabBar + 页脚让位，自己吃满 100dvh）",
+ok("T35 /compose 归到 shell--chat 形态（TabBar 让位，自己吃满 100dvh）",
   /const inChat = computed\(\(\) => isMobileNav\.value[\s\S]{0,160}route\.name === "compose"\)/.test(app)
-  && app.includes('<TabBar v-if="isMobileNav && !inChat"')
-  && css.includes(".shell--mobile-nav.shell--chat .footer { display: none; }"));
+  && app.includes('<TabBar v-if="isMobileNav && !inChat"'));
 ok("T36 发帖页有真正的排版样式（顶栏 / 卡片 / 大输入框 / 动作条，不再是光秃 textarea）",
   cv.includes(".compose-head {")
   && cv.includes(".compose-area {")

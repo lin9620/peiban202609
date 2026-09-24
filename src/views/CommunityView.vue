@@ -105,7 +105,15 @@ watch(() => cloud.user && cloud.user.id, (uid) => {
   }
 });
 
-async function loadCloud() {
+/* 轮 56：服务端分页（真·无限流）——FEED_PAGE 条/页，触底向服务器取下一页追加；
+   下拉刷新 = 重置回第 1 页并强制取新（绕过 SWR 缓存）。 */
+const FEED_PAGE = 50;
+const cloudOffset = ref(0);
+const cloudDone = ref(false);
+const pageBusy = ref(false);
+const refreshNote = ref(false);
+
+async function loadCloud({ fresh = false } = {}) {
   loadingCloud.value = true;
   /* 本地优先（SWR）：缓存「帖 + 每帖评论数」整包 → 二次进页不闪「载入中」，评论数也是真的 */
   const consume = (box) => {
@@ -121,18 +129,56 @@ async function loadCloud() {
       }
       cloudCmtTotal.value = next;
     }
+    /* 轮 56：分页游标——已到手的行数就是下一页的 offset；页不满 = 服务器已到底 */
+    cloudOffset.value = box.rows.length;
+    cloudDone.value = box.rows.length < FEED_PAGE;
   };
-  await swr(
-    cacheKey("wall:posts", (cloud.user && cloud.user.id) || ""),
-    { cached: consume, fresh: consume },
-    async () => {
-      const rows = await cloudFetchPosts();
-      if (!rows) return null;   /* 拉取失败（原有语义）→ 不覆盖、不回写缓存 */
-      const counts = await cloudFetchCommentCounts(rows.map((r) => r.dbId)).catch(() => null);
-      return { rows, counts: counts || {} };
-    },
-  );
+  const fetcher = async () => {
+    const rows = await cloudFetchPosts(FEED_PAGE, 0);
+    if (!rows) return null;   /* 拉取失败（原有语义）→ 不覆盖、不回写缓存 */
+    const counts = await cloudFetchCommentCounts(rows.map((r) => r.dbId)).catch(() => null);
+    return { rows, counts: counts || {} };
+  };
+  if (fresh) {
+    /* 下拉刷新：强制取新（绕过缓存），失败时保留旧列表（与「不覆盖」同语义） */
+    const box = await fetcher();
+    if (box) { consume(box); reveal.value = PAGE_SIZE; }
+  } else {
+    await swr(
+      cacheKey("wall:posts", (cloud.user && cloud.user.id) || ""),
+      { cached: consume, fresh: consume },
+      fetcher,
+    );
+  }
   loadingCloud.value = false;
+}
+
+/* 触底续载：向服务器取下一页追加（filterBlocked 与首屏同口径；评论数就地补齐） */
+async function loadMoreCloud() {
+  if (cloudDone.value || pageBusy.value || loadingCloud.value) return;
+  pageBusy.value = true;
+  try {
+    const rows = await cloudFetchPosts(FEED_PAGE, cloudOffset.value);
+    if (rows && rows.length) {
+      const fresh = filterBlocked(rows);
+      countViews(fresh);
+      cloudPosts.value = cloudPosts.value.concat(fresh);
+      cloudOffset.value += fresh.length;
+      cloudDone.value = fresh.length < FEED_PAGE;
+      const counts = await cloudFetchCommentCounts(rows.map((r) => r.dbId)).catch(() => null);
+      if (counts) {
+        const next = { ...cloudCmtTotal.value };
+        for (const p of fresh) {
+          if (p.dbId != null) next[cmtKey(p)] = counts[p.dbId] || 0;
+        }
+        cloudCmtTotal.value = next;
+      }
+    } else if (rows) {
+      cloudDone.value = true;   /* 服务器返回空页 = 真的到底了 */
+    }
+  } finally {
+    pageBusy.value = false;
+  }
 }
 
 /* ═════════ 排序（推荐 / 同感 / 抱抱 / 暖暖 最多） ═════════
@@ -250,7 +296,11 @@ function tm(e) {
 async function te() {
   if (!pulling) return;
   pulling = false;
-  if (pullDist.value >= 62) await loadCloud();
+  if (pullDist.value >= 62) {
+    await loadCloud({ fresh: true });   /* 轮 56：下拉刷新 = 强制取新第 1 页（不再拿缓存装样子） */
+    refreshNote.value = true;
+    setTimeout(() => { refreshNote.value = false; }, 2500);
+  }
   pullDist.value = 0;
 }
 
@@ -725,7 +775,9 @@ onMounted(() => {
   if (typeof IntersectionObserver === "undefined") return;
   feedIO = new IntersectionObserver((entries) => {
     for (const e of entries) {
-      if (e.isIntersecting && hasMore.value) reveal.value += PAGE_SIZE;
+      if (!e.isIntersecting) continue;
+      if (hasMore.value) reveal.value += PAGE_SIZE;         /* 已拉取的里还有没亮的 */
+      else if (!cloudDone.value) loadMoreCloud();            /* 亮完了 → 向服务器取下一页 */
     }
   }, { rootMargin: "420px 0px" });
   if (sentEl.value) feedIO.observe(sentEl.value);
@@ -1040,11 +1092,15 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
     </article>
 
     <p class="notice" style="text-align: center">{{ t("community.sampleNotice") }}</p>
-    <!-- 触底续载哨兵：滚近底部自动再放 10 条（IntersectionObserver，手机/桌面同款） -->
+    <!-- 触底续载哨兵：滚近底部先亮已拉取的，亮完向服务器取下一页（轮 56 真·无限流） -->
     <div ref="sentEl" class="feed-sentinel" aria-hidden="true"></div>
-    <p v-if="shownPage.length && !hasMore" class="notice" style="text-align: center">
+    <p v-if="refreshNote" class="notice" style="text-align: center; color: var(--good); font-weight: 700">
+      {{ t("community.refreshed") }}
+    </p>
+    <p v-if="shownPage.length && !hasMore && cloudDone" class="notice" style="text-align: center">
       {{ t("community.noMore") }}
     </p>
+    <p v-if="pageBusy" class="sub" style="text-align: center">{{ t("community.loading") }}</p>
 
     <!-- 举报弹窗（帖子/评论共用一个实例） -->
     <ReportDialog v-model:show="reportShow" :target="reportTarget" />

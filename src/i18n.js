@@ -23,7 +23,6 @@ export const messages = {
       segDm: "Chats", segBottle: "Bottle", segNotif: "Alerts",
     },
     langBtn: "中文",
-    footerNote: "Made with warmth · You are doing better than you think.",
 
     common: {
       send: "Send", save: "Save", cancel: "Cancel", delete: "Delete",
@@ -62,7 +61,7 @@ export const messages = {
         othersTitle: "Around you right now",
         anon: "Someone",
         peopleCount: "{n} people",
-        loginHint: "Log in to set your profile status. The hall only shows counts, not names.",
+        loginHint: "Sign in to leave your status here.",
         syncFail: "Cloud sync didn't go through — your status stays on this device.",
         syncNeedSetup: "Cloud status isn't switched on yet — the site owner needs to run one database update 🔧",
         agoMin: "{n}m ago", agoHour: "{n}h ago",
@@ -285,6 +284,7 @@ export const messages = {
       reactFail: "Couldn't record that reaction — please try again 🙏",
       removed: "Thanks for telling us — this note is off the wall now 💛",
       noMore: "That's the latest for now — come back later for more 🐾",
+      refreshed: "Refreshed ✓",
       composeTitle: "Share on the wall",
       composeBack: "Back to the wall",
       dailyLimit: "Seven notes a day is plenty — you've used them up. See you tomorrow 💛",
@@ -717,7 +717,6 @@ export const messages = {
       segDm: "会话中心", segBottle: "漂流瓶", segNotif: "通知",
     },
     langBtn: "English",
-    footerNote: "用心制作 · 你做得比你以为的更好。",
 
     common: {
       send: "发送", save: "保存", cancel: "取消", delete: "删除",
@@ -756,7 +755,7 @@ export const messages = {
         othersTitle: "此刻大厅里",
         anon: "一位小伙伴",
         peopleCount: "{n} 人",
-        loginHint: "登录后可设置个人主页状态；大厅只统计人数，不展示昵称。",
+        loginHint: "登录后可以在这里留下此刻的状态。",
         syncFail: "云端同步没成功 —— 状态先留在本机。",
         syncNeedSetup: "云端状态还没开启 —— 站点主人需要先执行一次数据库更新 🔧",
         agoMin: "{n} 分钟前", agoHour: "{n} 小时前",
@@ -979,6 +978,7 @@ export const messages = {
       reactFail: "这个回应暂时没记上——再试一次吧 🙏",
       removed: "谢谢你告诉我们——这条已经从墙上撤下了 💛",
       noMore: "就到这里啦——晚点再来看新的吧 🐾",
+      refreshed: "已刷新 ✓",
       composeTitle: "发暖心帖",
       composeBack: "回到暖心墙",
       dailyLimit: "每天最多 7 条——今天已经发满啦，明天再来吧 💛",

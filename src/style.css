@@ -109,18 +109,6 @@ button, input, textarea { font-family: inherit; }
 
 .greeting { text-align: center; font-size: 14.5px; color: var(--ink-soft); padding: 14px 0 16px; font-weight: 600; }
 
-/* 页脚：一句心意 + 隐私政策入口（居中一行，窄屏自动换行） */
-.footer {
-  display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap;
-  text-align: center; font-size: 12px; color: var(--ink-faint); padding: 34px 0 6px; font-weight: 600;
-}
-.footer-link {
-  color: var(--ink-soft); font-weight: 700; text-decoration: none;
-  border-bottom: 1px dashed currentColor; padding-bottom: 1px;
-  transition: color .18s ease;
-}
-.footer-link:hover { color: var(--accent-deep); }
-
 /* ═══════════ 卡片（玻璃拟态） ═══════════ */
 .card {
   background: var(--glass);
@@ -1672,7 +1660,6 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
    .shell--mobile-nav .nav / .shell--mobile-nav .topbar-right .icon-link */
 .shell--mobile-nav .topbar { display: none; }
 .shell--mobile-nav main { padding-bottom: calc(78px + env(safe-area-inset-bottom, 0px)); }
-.shell--mobile-nav .footer { padding: 20px 0 8px; }
 
 /* 消息页 = 微信式：列表页 ↔ 聊天页 二选一（v-show 由 isMobileNav/activeId 驱动） */
 .shell--mobile-nav .dm-head { display: none; }
@@ -1682,7 +1669,6 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 /* 聊天页整屏（微信同款）：TabBar 与页脚让位，消息区内部滚动、输入区自然吸底 */
 .shell--mobile-nav.shell--chat { padding-bottom: 0; }
 .shell--mobile-nav.shell--chat main { padding-bottom: 0; }
-.shell--mobile-nav.shell--chat .footer { display: none; }
 /* 整屏页（聊天 / 发帖）：页面自身的 min-height:100dvh 与「宠物通知浮层」那 14px 外边距叠加
    会多出一条 14px 的滚动 —— 整屏形态下把浮层外边距归零，页面才真的刚好一屏。 */
 .shell--mobile-nav.shell--chat .pet-notice-stack { margin-bottom: 0; }
@@ -1771,6 +1757,38 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
   backdrop-filter: none; -webkit-backdrop-filter: none;
   background: var(--glass-strong, #fff);
 }
+/* ═══ 轮 59 · 手机端 UI 精修（密度 / 对比 / 空态）——全部限定 .shell--mobile-nav，桌面零变化 ═══ */
+/* 卡片收一收：24px 肥边 → 16px，一屏多看半张卡；圆角 20、卡距 12、标题/副文案随缩 */
+.shell--mobile-nav .card {
+  padding: 16px 14px;
+  margin-bottom: 12px;
+  border-radius: 20px;
+}
+.shell--mobile-nav .card h2 { font-size: 15.5px; }
+.shell--mobile-nav .card .sub { font-size: 12.5px; margin-bottom: 10px; }
+/* 灰 pill → 暖色软底：心情按钮 / 大厅状态钮（Naive 内联主题变量，选择器+important 压过） */
+.shell--mobile-nav .chip-row .n-button,
+.shell--mobile-nav .hall .n-button {
+  background: rgba(245, 140, 80, .10) !important;
+  color: #7c4a24 !important;
+  font-weight: 700;
+}
+.shell--mobile-nav .chip-row .n-button .n-button__border,
+.shell--mobile-nav .hall .n-button .n-button__border {
+  border-color: rgba(245, 140, 80, .28) !important;
+}
+/* 游客空态：别孤零零顶在页首，垂直居中 + 爪印陪伴 */
+.shell--mobile-nav .dm-empty {
+  min-height: 52vh; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 14px; text-align: center;
+}
+.shell--mobile-nav .dm-empty::before { content: "🐾"; font-size: 42px; opacity: .9; }
+.shell--mobile-nav .bottle-guest {
+  min-height: 46vh; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 10px; text-align: center;
+}
+.shell--mobile-nav .bottle-guest .bg-wave { font-size: 46px; }
+
 /* 手机端 5：下拉到底不再露一片空白（橡皮筋兜底交给浏览器背景色，不渲染额外区域） */
 @media (max-width: 899px) {
   html, body { overscroll-behavior-y: contain; }

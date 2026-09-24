@@ -438,7 +438,11 @@ async function decideRec(l, accept) {
         </div>
       </div>
     </template>
-    <p v-else class="notice">{{ t("bottle.signInHint") }}</p>
+    <!-- 轮 59：游客空态从裸提示升级为居中块（此前一整屏渐变里孤零零一行字） -->
+    <div v-else class="bottle-guest">
+      <span class="bg-wave">🌊</span>
+      <p class="notice">{{ t("bottle.signInHint") }}</p>
+    </div>
 
     <!-- 轮 22：捞信结果居中弹窗（手机端核心反馈）——捞到可就地回信 / 放回海里（「先收着」已按用户要求移除）。
          轮 40：宽度必须显式给——n-modal 不给 width 会被容器撑满，原来的 max-width: 88vw

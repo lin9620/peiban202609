@@ -67,11 +67,18 @@ export const db = {
   /* ══════════ 帖子 ══════════ */
 
   /** 最近 limit 条（新→旧）；removed 列不存在（老库）时退回不带该过滤的查询 */
-  async listPosts(limit) {
-    let res = await sb().from(T.posts).select("*").eq("removed", false).order("created_at", { ascending: false }).limit(limit);
-    if (res && res.error) {
-      res = await sb().from(T.posts).select("*").order("created_at", { ascending: false }).limit(limit);
-    }
+  async listPosts(limit, offset = 0) {
+    /* 轮 56：offset 分页（0/缺省 = 旧行为）；removed 兼容回退同款 */
+    const off = Number(offset) > 0 ? Number(offset) : 0;
+    const q = (withRemoved) => {
+      /* 链序与旧实现一致（from→select→eq→order→limit/range），api-contract 钉的是形状 */
+      let base = sb().from(T.posts).select("*");
+      if (withRemoved) base = base.eq("removed", false);
+      base = base.order("created_at", { ascending: false });
+      return off > 0 ? base.range(off, off + Number(limit) - 1) : base.limit(limit);
+    };
+    let res = await q(true);
+    if (res && res.error) res = await q(false);
     return unwrap(Promise.resolve(res));
   },
 
