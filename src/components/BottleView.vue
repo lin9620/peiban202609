@@ -79,12 +79,18 @@ const sendText = (v) => (v === null ? t("bottle.quotaSyncing") : t("bottle.leftS
 const fishText = (v) => (v === null ? t("bottle.quotaSyncing") : t("bottle.leftFish", { n: v }));
 /* 登录就绪/换号 → 次数与托盘一律重读（修「首次进主页漂流瓶记录空白，必须手动点刷新」：
  * 旧版只在 onMounted 拉一次，那时会话往往还没就绪，拉了个空就再也不拉了）。
- * 轮 41（真根因）：这个 watch 原来**没开 immediate** —— App 启动路径是
+ * 轮 41（真根因）：只挂「会话变化」监视是不够的 —— App 启动路径是
  * 「splash 等 initCloud 就绪 → 再挂 HomeView/BottleView」，会话先于组件就绪，
  * watch 永不触发 → 次数/托盘/记录一次都不查，直到点「捞一瓶」才第一次发请求
- * （用户报「进首页不提前查、点漂流瓶一直出不来」）。immediate: true = 组件一挂载
- * 就按当前会话状态查一遍；BottleView 随首页常挂载，所以效果就是「进首页就查好」。 */
-watch([cloudSigned, myId], () => {
+ * （用户报「进首页不提前查、点漂流瓶一直出不来」）。所以初始那一次必须**主动查**。
+ *
+ * ⚠️ 轮 42 修（轮 41 事故）：初始查询**不能**写成 watch(..., { immediate: true })。
+ * immediate 会在 **watch 那一行同步执行**回调，而回调要动 recPage/recTab/recLoading
+ * 这些**在后面才声明的 const** —— 此时它们还在 TDZ 里，直接
+ * `ReferenceError: Cannot access 'ht' before initialization`（打包后 recPage 被压成 ht），
+ * setup 抛错 → App.vue 错误边界接管 → 首页整页变「这里好像有点小状况」，
+ * 漂流瓶/首页数据全都出不来（用户报「启动后首页啥也没有」）。 */
+function onSessionChanged() {
   quota.value = null;      /* 换人就先清空：绝不拿上一个人的次数顶着显示 */
   quotaErr.value = "";
   fished.value = null;
@@ -94,7 +100,9 @@ watch([cloudSigned, myId], () => {
     loadRecords(true);
     syncQuota();
   }
-}, { immediate: true });
+}
+/* 只挂「会话就绪/换号」；初始那一次由下方 onMounted 显式调用（那时所有 const 都已就绪） */
+watch([cloudSigned, myId], onSessionChanged);
 
 async function refreshBottle() {
   if (!cloudSigned.value) return;
@@ -214,8 +222,10 @@ async function doRelease(l) {
 }
 
 /* 轮 37：进页面先清掉老版本留在家里的本地漂流瓶数据（次数账本 + SWR 快照），
- * 再全部现拉服务器 —— 页面里不再有任何本地缓存参与显示。 */
-onMounted(() => { purgeLegacyBottleLocals(); refreshBottle(); loadRecords(true); });
+ * 再全部现拉服务器 —— 页面里不再有任何本地缓存参与显示。
+ * 轮 42：初始查询在这里显式触发（onMounted 在 setup 全部执行完之后才跑，
+ * onSessionChanged 里用到的 const 一定都已初始化 —— 修 TDZ 崩溃，见上方注释）。 */
+onMounted(() => { purgeLegacyBottleLocals(); onSessionChanged(); });
 
 /* —— 漂流瓶记录（#17）：我发布的 / 我捞到的 两类，按发布时间新→旧，10 条一页 —— */
 const REC_PAGE = 10;
