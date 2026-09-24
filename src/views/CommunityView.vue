@@ -106,12 +106,18 @@ watch(() => cloud.user && cloud.user.id, (uid) => {
 });
 
 /* 轮 56：服务端分页（真·无限流）——FEED_PAGE 条/页，触底向服务器取下一页追加；
-   下拉刷新 = 重置回第 1 页并强制取新（绕过 SWR 缓存）。 */
+   下拉刷新 = 重置回第 1 页并强制取新（绕过 SWR 缓存）。
+   轮 60（真机实测翻车修复）：**旧格式缓存盒不得当分页游标**——升级首启时缓存还是
+   老口径（16 条），consume 把 16 当 offset、16<50 当「服务器已到底」→ 无限流永不动、
+   卡死在十几条（用户：「就显示了几条就没了」）。改法：缓存盒只做**展示快照**
+   （offset 归 0、done=false、freshLanded=false），游标只认**本轮 fetch 的结果**
+   （box.fromFetch）；快照亮完而 fresh 未落地前不翻页（防与第 1 页重复）。 */
 const FEED_PAGE = 50;
 const cloudOffset = ref(0);
 const cloudDone = ref(false);
 const pageBusy = ref(false);
 const refreshNote = ref(false);
+const freshLanded = ref(false);
 
 async function loadCloud({ fresh = false } = {}) {
   loadingCloud.value = true;
@@ -129,20 +135,41 @@ async function loadCloud({ fresh = false } = {}) {
       }
       cloudCmtTotal.value = next;
     }
-    /* 轮 56：分页游标——已到手的行数就是下一页的 offset；页不满 = 服务器已到底 */
-    cloudOffset.value = box.rows.length;
-    cloudDone.value = box.rows.length < FEED_PAGE;
+    if (box.fromFetch) {
+      /* 只有本轮 fetch 的结果能当分页游标：行数=下一页 offset；页不满=服务器已到底 */
+      cloudOffset.value = box.rows.length;
+      cloudDone.value = box.rows.length < FEED_PAGE;
+      freshLanded.value = true;
+    } else {
+      /* 旧/外来缓存盒：仅展示快照——游标归零、不算到底、翻页等 fresh 落地 */
+      cloudOffset.value = 0;
+      cloudDone.value = false;
+      freshLanded.value = false;
+    }
   };
   const fetcher = async () => {
     const rows = await cloudFetchPosts(FEED_PAGE, 0);
     if (!rows) return null;   /* 拉取失败（原有语义）→ 不覆盖、不回写缓存 */
     const counts = await cloudFetchCommentCounts(rows.map((r) => r.dbId)).catch(() => null);
-    return { rows, counts: counts || {} };
+    return { rows, counts: counts || {}, fromFetch: true };
   };
   if (fresh) {
-    /* 下拉刷新：强制取新（绕过缓存），失败时保留旧列表（与「不覆盖」同语义） */
+    /* 下拉刷新：强制取新（绕过缓存），失败时保留旧列表（与「不覆盖」同语义）。
+       轮 61：提示必须说实话——之前「已刷新」无条件显示，拉取失败也谎报成功（用户实测怒斥）。
+       成功时对比刷新前最新 ts：有新帖报条数，没新帖如实说「已刷新」，失败明说再试。 */
+    const prevMaxTs = cloudPosts.value.reduce((m, p) => Math.max(m, p.ts || 0), 0);
     const box = await fetcher();
-    if (box) { consume(box); reveal.value = PAGE_SIZE; }
+    if (box) {
+      consume(box);
+      reveal.value = PAGE_SIZE;
+      const freshRows = box.rows.filter((p) => (p.ts || 0) > prevMaxTs);
+      refreshNote.value = freshRows.length
+        ? t("community.refreshNew", { n: freshRows.length })
+        : t("community.refreshed");
+    } else {
+      refreshNote.value = t("community.refreshFail");
+    }
+    setTimeout(() => { refreshNote.value = false; }, 2500);
   } else {
     await swr(
       cacheKey("wall:posts", (cloud.user && cloud.user.id) || ""),
@@ -155,7 +182,7 @@ async function loadCloud({ fresh = false } = {}) {
 
 /* 触底续载：向服务器取下一页追加（filterBlocked 与首屏同口径；评论数就地补齐） */
 async function loadMoreCloud() {
-  if (cloudDone.value || pageBusy.value || loadingCloud.value) return;
+  if (cloudDone.value || pageBusy.value || loadingCloud.value || !freshLanded.value) return;
   pageBusy.value = true;
   try {
     const rows = await cloudFetchPosts(FEED_PAGE, cloudOffset.value);
@@ -875,6 +902,11 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
       </div>
     </section>
 
+    <!-- 轮 60：「已刷新」提示放列表顶部（原来插在底部哨兵旁，下拉的人看不见） -->
+    <p v-if="refreshNote" class="notice" style="text-align: center; color: var(--good); font-weight: 700">
+      {{ t("community.refreshed") }}
+    </p>
+
     <!-- 排序：默认最新；还有 同感最多 / 抱抱最多 / 暖暖最多 -->
     <div class="sort-row">
       <span class="sort-label">{{ t("community.sortLabel") }}</span>
@@ -1094,9 +1126,6 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
     <p class="notice" style="text-align: center">{{ t("community.sampleNotice") }}</p>
     <!-- 触底续载哨兵：滚近底部先亮已拉取的，亮完向服务器取下一页（轮 56 真·无限流） -->
     <div ref="sentEl" class="feed-sentinel" aria-hidden="true"></div>
-    <p v-if="refreshNote" class="notice" style="text-align: center; color: var(--good); font-weight: 700">
-      {{ t("community.refreshed") }}
-    </p>
     <p v-if="shownPage.length && !hasMore && cloudDone" class="notice" style="text-align: center">
       {{ t("community.noMore") }}
     </p>
