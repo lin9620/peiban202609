@@ -117,7 +117,6 @@ const feedCursor = ref(null);   /* 轮 62：游标 = 已加载最后一条的 db
 const cloudDone = ref(false);
 const pageBusy = ref(false);
 const refreshNote = ref(false);
-const freshLanded = ref(false);
 
 async function loadCloud({ fresh = false } = {}) {
   loadingCloud.value = true;
@@ -136,15 +135,13 @@ async function loadCloud({ fresh = false } = {}) {
       cloudCmtTotal.value = next;
     }
     if (box.fromFetch) {
-      /* 只有本轮 fetch 的结果能当分页游标：游标=末条 dbId（id<游标 取下一页）；页不满=服务器已到底 */
+      /* 本轮 fetch 的结果：游标=末条 dbId（id<游标 取下一页）；页不满=服务器已到底 */
       feedCursor.value = box.rows.length ? box.rows[box.rows.length - 1].dbId : feedCursor.value;
       cloudDone.value = box.rows.length < FEED_PAGE;
-      freshLanded.value = true;
     } else {
-      /* 旧/外来缓存盒：仅展示快照——游标清空、不算到底、翻页等 fresh 落地 */
+      /* 旧/外来缓存盒：仅展示快照——游标清空、不算到底（loadMoreCloud 的去重+跳页会自愈错位） */
       feedCursor.value = null;
       cloudDone.value = false;
-      freshLanded.value = false;
     }
   };
   const fetcher = async () => {
@@ -180,29 +177,38 @@ async function loadCloud({ fresh = false } = {}) {
   loadingCloud.value = false;
 }
 
-/* 触底续载：向服务器取下一页追加（filterBlocked 与首屏同口径；评论数就地补齐） */
+/* 触底续载（轮 62 自愈版）：游标取下一页，**追加前去重**——缓存快照与游标页交叠、
+   时间戳并列导致跨页重排等任何错位，都只表现为「整页重复」→ 跳过该页用下一页游标续取
+   （最多跳 3 页），永不产生重复 :key、永不假到底。 */
 async function loadMoreCloud() {
-  if (cloudDone.value || pageBusy.value || loadingCloud.value || !freshLanded.value) return;
+  if (cloudDone.value || pageBusy.value || loadingCloud.value) return;
   pageBusy.value = true;
   try {
-    const rows = await cloudFetchPosts(FEED_PAGE, feedCursor.value);
-    if (rows && rows.length) {
-      const fresh = filterBlocked(rows);
-      countViews(fresh);
-      cloudPosts.value = cloudPosts.value.concat(fresh);
-      feedCursor.value = fresh[fresh.length - 1].dbId;
-      cloudDone.value = fresh.length < FEED_PAGE;
-      const counts = await cloudFetchCommentCounts(rows.map((r) => r.dbId)).catch(() => null);
-      if (counts) {
-        const next = { ...cloudCmtTotal.value };
-        for (const p of fresh) {
-          if (p.dbId != null) next[cmtKey(p)] = counts[p.dbId] || 0;
+    let cursor = feedCursor.value;
+    for (let hop = 0; hop < 3; hop++) {
+      const rows = await cloudFetchPosts(FEED_PAGE, cursor);
+      if (!rows) return;                    /* 拉取失败：保留现场，下次触底再试 */
+      if (!rows.length) { cloudDone.value = true; return; }   /* 空页 = 真到底 */
+      const seen = new Set(cloudPosts.value.map((p) => p.dbId));
+      const add = filterBlocked(rows.filter((p) => !seen.has(p.dbId)));
+      if (add.length) {
+        countViews(add);
+        cloudPosts.value = cloudPosts.value.concat(add);
+        feedCursor.value = rows[rows.length - 1].dbId;
+        cloudDone.value = rows.length < FEED_PAGE;
+        const counts = await cloudFetchCommentCounts(rows.map((r) => r.dbId)).catch(() => null);
+        if (counts) {
+          const next = { ...cloudCmtTotal.value };
+          for (const p of add) {
+            if (p.dbId != null) next[cmtKey(p)] = counts[p.dbId] || 0;
+          }
+          cloudCmtTotal.value = next;
         }
-        cloudCmtTotal.value = next;
+        return;
       }
-    } else if (rows) {
-      cloudDone.value = true;   /* 服务器返回空页 = 真的到底了 */
+      cursor = rows[rows.length - 1].dbId;  /* 整页都是已加载过的 → 前进游标跳过这页 */
     }
+    cloudDone.value = true;                 /* 连跳 3 页全重复：数据库真没有没看过的了 */
   } finally {
     pageBusy.value = false;
   }
