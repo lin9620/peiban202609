@@ -1621,7 +1621,10 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
   display: flex; align-items: center; justify-content: center; min-height: 44px;
 }
 .tab-compose-x {
-  width: 46px; height: 46px; margin-top: -16px; border-radius: 50%;
+  /* 轮 48（用户：「＋号整体往下一点，那个上面的圆都超出了」）：圆从探出栏外
+     （margin-top:-16px）收回栏内——46px 圆在 44px 行高里 flex 居中，上下各溢 1px，
+     被 4px 栏内边距完全吃掉，圆不再超出 TabBar 顶缘。栏高不变、页面让位不用动。 */
+  width: 46px; height: 46px; margin-top: 0; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   background: linear-gradient(135deg, #ffb277, #f58c50);
   color: #fff; font-size: 26px; font-weight: 700; line-height: 1;
@@ -1640,6 +1643,9 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 
 /* ＋ 弹层：遮罩 + 两瓣创作入口 */
 .tabbar-mask { position: fixed; inset: 0; z-index: 130; background: rgba(38, 30, 22, .38); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+/* 轮 48：弹层宽度回到原样（全宽双卡）——轮 46 把两瓣入口改成了紧凑菜单卡，
+   用户不买账（「谁让你改投漂流瓶跟发帖的宽度了，改回原来的宽度」）；
+   当初真正要修的是 ＋ 钮本身的位置，见下面 .tab-compose-x 的轮 48 注释。 */
 .tabbar-sheet {
   position: fixed; left: 0; right: 0; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); z-index: 135;
   display: flex; flex-direction: column; gap: 10px; padding: 0 18px;
