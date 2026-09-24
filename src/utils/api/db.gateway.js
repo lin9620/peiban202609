@@ -78,10 +78,12 @@ export const db = {
 
   /* ══════════ 帖子 ══════════ */
 
-  /** 最近 limit 条（新→旧）；removed 兼容由 Worker 内部处理。轮 56：offset 分页（0/缺省不附参数，契约不变） */
-  async listPosts(limit, offset = 0) {
-    const off = Number(offset) > 0 ? Number(offset) : 0;
-    return call(`/posts?limit=${enc(limit)}${off ? `&offset=${enc(off)}` : ""}`);
+  /** 最近 limit 条（新→旧）；removed 兼容由 Worker 内部处理。
+   *  轮 56：offset 分页（0/缺省不附参数，契约不变）。轮 62：beforeId 游标——万帖级深翻页成本恒定，优先用它。 */
+  async listPosts(limit, opts = {}) {
+    const off = Number(opts.offset) > 0 ? Number(opts.offset) : 0;
+    const bid = Number(opts.beforeId) > 0 ? Number(opts.beforeId) : 0;
+    return call(`/posts?limit=${enc(limit)}${off ? `&offset=${enc(off)}` : ""}${bid ? `&before_id=${enc(bid)}` : ""}`);
   },
 
   /** 某用户的帖子（新→旧）；offset = 分页偏移（0/缺省 = 旧行为） */

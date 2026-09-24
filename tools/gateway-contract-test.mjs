@@ -53,6 +53,17 @@ setGatewayAuthProbe(() => true); /* 单测注入：auth 就绪（与 db.supabase
   }
 }
 
+/* ── 轮 62：before_id 游标（万帖级深翻页恒定成本） ── */
+{
+  const c = capture();
+  try {
+    await db.listPosts(50, { beforeId: 623 });
+    ok("listPosts before_id 游标端点", c.calls[0].url === "/api/posts?limit=50&before_id=623", c.calls[0].url);
+  } finally {
+    c.restore();
+  }
+}
+
 /* ── 端点形状（21 个方法一次跑完） ── */
 {
   const c = capture();

@@ -113,7 +113,7 @@ watch(() => cloud.user && cloud.user.id, (uid) => {
    （offset 归 0、done=false、freshLanded=false），游标只认**本轮 fetch 的结果**
    （box.fromFetch）；快照亮完而 fresh 未落地前不翻页（防与第 1 页重复）。 */
 const FEED_PAGE = 50;
-const cloudOffset = ref(0);
+const feedCursor = ref(null);   /* 轮 62：游标 = 已加载最后一条的 dbId（id 单调=发布序），取代 offset */
 const cloudDone = ref(false);
 const pageBusy = ref(false);
 const refreshNote = ref(false);
@@ -136,13 +136,13 @@ async function loadCloud({ fresh = false } = {}) {
       cloudCmtTotal.value = next;
     }
     if (box.fromFetch) {
-      /* 只有本轮 fetch 的结果能当分页游标：行数=下一页 offset；页不满=服务器已到底 */
-      cloudOffset.value = box.rows.length;
+      /* 只有本轮 fetch 的结果能当分页游标：游标=末条 dbId（id<游标 取下一页）；页不满=服务器已到底 */
+      feedCursor.value = box.rows.length ? box.rows[box.rows.length - 1].dbId : feedCursor.value;
       cloudDone.value = box.rows.length < FEED_PAGE;
       freshLanded.value = true;
     } else {
-      /* 旧/外来缓存盒：仅展示快照——游标归零、不算到底、翻页等 fresh 落地 */
-      cloudOffset.value = 0;
+      /* 旧/外来缓存盒：仅展示快照——游标清空、不算到底、翻页等 fresh 落地 */
+      feedCursor.value = null;
       cloudDone.value = false;
       freshLanded.value = false;
     }
@@ -185,12 +185,12 @@ async function loadMoreCloud() {
   if (cloudDone.value || pageBusy.value || loadingCloud.value || !freshLanded.value) return;
   pageBusy.value = true;
   try {
-    const rows = await cloudFetchPosts(FEED_PAGE, cloudOffset.value);
+    const rows = await cloudFetchPosts(FEED_PAGE, feedCursor.value);
     if (rows && rows.length) {
       const fresh = filterBlocked(rows);
       countViews(fresh);
       cloudPosts.value = cloudPosts.value.concat(fresh);
-      cloudOffset.value += fresh.length;
+      feedCursor.value = fresh[fresh.length - 1].dbId;
       cloudDone.value = fresh.length < FEED_PAGE;
       const counts = await cloudFetchCommentCounts(rows.map((r) => r.dbId)).catch(() => null);
       if (counts) {

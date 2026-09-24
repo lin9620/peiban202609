@@ -113,6 +113,12 @@ async function hit(script, path, init) {
   ok("listPosts 返回行", JSON.stringify(await res.json()) === JSON.stringify(row));
 }
 {
+  const { res, c } = await hit([{ body: row }], "/api/posts?limit=50&before_id=623");
+  ok("listPosts before_id 游标（轮62）", res.status === 200
+    && c.outbound[0].url === `${ORIGIN}/rest/v1/wall_posts?select=*&id=lt.623&removed=eq.false&order=created_at.desc&limit=50`,
+    c.outbound[0].url);
+}
+{
   const { res, c } = await hit([{ status: 400, body: { code: "42703" } }, { body: row }], "/api/posts?limit=200");
   ok("removed 缺列 → 退回查询仍 200", res.status === 200);
   ok("退回查询不带 removed",

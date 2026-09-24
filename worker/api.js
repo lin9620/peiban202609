@@ -178,9 +178,12 @@ async function objectOrPassthrough(res) {
 
 /** 帖子列表：先带 removed 过滤；任何非 2xx 都退回不带过滤的查询（老库没有这一列；与直连模式对齐）
  *  offset：分页偏移（「我的帖子」10 条/页续拉用；0/缺省 = 与旧行为一致） */
-async function listPosts(env, request, uid, limit, offset) {
+async function listPosts(env, request, uid, limit, offset, beforeId = 0) {
   const base = ["select=*"];
   if (uid) base.push(`user_id=eq.${encodeURIComponent(uid)}`);
+  /* 轮 62：before_id 游标（keyset）——offset 深翻页要扫过并丢弃前面所有行，万帖级线性变慢；
+     id 是串行主键（单调递增=发布顺序），id<游标 走主键索引，任意深度成本恒定。 */
+  if (Number(beforeId) > 0) base.push(`id=lt.${Number(beforeId)}`);
   const order = "order=created_at.desc";
   const lim = `limit=${limit}`;
   const off = Number(offset) > 0 ? `offset=${Number(offset)}` : "";
@@ -503,7 +506,11 @@ export default {
       /* —— 帖子 —— */
       if (seg[0] === "posts") {
         if (seg.length === 1) {
-          if (m === "GET") return listPosts(env, request, "", parseLimit(q.get("limit"), 200), parseOffset(q.get("offset")));
+          if (m === "GET") {
+            const bidRaw = q.get("before_id") || "";
+            const bid = /^\d+$/.test(bidRaw) ? Number(bidRaw) : 0;
+            return listPosts(env, request, "", parseLimit(q.get("limit"), 200), parseOffset(q.get("offset")), bid);
+          }
           if (m === "POST") return insertSingle(env, request, TABLE.posts);
         } else if (seg.length === 3) {
           const id = decodeSeg(seg[1]);
