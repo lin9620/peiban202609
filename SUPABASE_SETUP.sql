@@ -1610,6 +1610,8 @@ begin
 end $$;
 
 -- 独立记录分页，深链按 ID 取单条；只返回参与者自己的信件。
+-- 轮 45「我捞到的」口径：只显示已回信的（回信人=我），按捞到时间（held_at）新→旧；
+-- 已放回的/在守的不再进记录列表（与 MIGRATION_bottle_records.sql 保持同源）。
 create or replace function public.bottle_records(
   p_id     uuid default null,
   p_offset integer default 0,
@@ -1622,11 +1624,11 @@ returns setof public.bottle_letters language sql stable security definer set sea
      and (
        (p_mine is null and (l.user_id = auth.uid() or l.reply_by = auth.uid()))
        or (p_mine is true and l.user_id = auth.uid())
-       or (p_mine is false and exists (
-             select 1 from public.bottle_fishes f
-              where f.user_id = auth.uid() and f.letter_id = l.id))
+       or (p_mine is false and l.reply_by = auth.uid() and l.reply_at is not null)
      )
-   order by l.created_at desc, l.id
+   order by
+     (case when p_mine is false then l.held_at else l.created_at end) desc,
+     l.id
    limit greatest(coalesce(p_limit, 30), 1)
    offset greatest(coalesce(p_offset, 0), 0)
 $$;

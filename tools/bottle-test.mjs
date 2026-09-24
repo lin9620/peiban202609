@@ -303,6 +303,24 @@ ok("i18n：宠物回信时代的话已清（sent/replyArrived 不复存在）",
   ok("真跑：清理幂等（再清一次没有可删的键，返回 0）", purgeLegacyBottleLocals() === 0);
 }
 
+/* ─── 轮 45：记录口径（「我捞到的」只显已回信 + 按捞到时间倒序）──────────────
+ * SQL 口径改动必须迁移/SETUP 同源（踩坑 #6），且口径要锁形——旧「捞起过就留痕
+ * （含放回海里）」的 exists 过滤不许悄悄回来（踩坑 #21 家族）。 */
+const recSql = read("MIGRATION_bottle_records.sql");
+const recOrder = "(case when p_mine is false then l.held_at else l.created_at end) desc";
+const recPredicate = "l.reply_by = auth.uid() and l.reply_at is not null";
+ok("轮45 迁移/SETUP 同源：「已回信」判据 + 「捞到时间排序」两处一字不差",
+  has(recSql, recPredicate, recOrder) && has(setupSql, recPredicate, recOrder));
+ok("轮45 旧口径已清：records 里「捞起过就留痕」的 exists 过滤不再出现（放回/在守的信不进记录）",
+  !recSql.includes("f.user_id = auth.uid() and f.letter_id = l.id")
+    && !setupSql.includes("f.user_id = auth.uid() and f.letter_id = l.id"));
+
+/* ─── 轮 49：已回信待对方同意 → 简洁提示（用户原话：「需要给用户一个提示,待对方同意后可聊天,简洁一点」） */
+ok("轮49 stWaitAgree zh/en 成对 + BottleView held 分支接线（waiting → 提示，其余仍「你已回信」）",
+  has(read("src/components/BottleView.vue"), '"bottle.stWaitAgree"', 'bottleChatState(l, myId.value) === "waiting"')
+    && messages.zh.bottle.stWaitAgree === "待对方同意后可聊天"
+    && typeof messages.en.bottle.stWaitAgree === "string" && messages.en.bottle.stWaitAgree.length > 0);
+
 console.log(`bottle-test: ${pass} pass, ${fails.length} fail`);
 for (const f of fails) console.log("FAIL  " + f);
 if (fails.length) process.exit(1);

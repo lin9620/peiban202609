@@ -280,7 +280,12 @@ function recState(l) {
     if (l.status === "held") return "bottle.stPicked";
     return "bottle.stSea";
   }
-  if (l.reply_by === myId.value) return "bottle.stAnswered";
+  /* 轮 49：已回信但对方还没同意/婉拒（chatState=waiting）→ 明示「待对方同意后可聊天」，
+     不再笼统显示「你已回信」（用户：这时候要给提示，简洁一点）；同意后 canChat 直接进聊天。 */
+  if (l.reply_by === myId.value) {
+    if (bottleChatState(l, myId.value) === "waiting") return "bottle.stWaitAgree";
+    return "bottle.stAnswered";
+  }
   if (l.status === "held") return "bottle.stInHand";
   return "bottle.stReleased";
 }
