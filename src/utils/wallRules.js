@@ -31,6 +31,23 @@ export function fmtWhen(ts, locale = "zh", now = Date.now()) {
   });
 }
 
+/**
+ * 帖子时间显示到秒（轮 44，「我的」页帖子卡用；用户拍板）。
+ * 与 fmtWhen 同口径（跨年补年份、非法→""），只多 second。
+ * 不做成参数是为了让两处调用语义各自显式：墙上列表到分钟可读性优先，个人主页精确到秒。
+ * @returns {string} 如 "9月19日 14:32:05"；跨年 "2025年9月19日 14:32:05"；非法 → ""
+ */
+export function fmtWhenSec(ts, locale = "zh", now = Date.now()) {
+  const d = ts == null || ts === "" ? new Date(NaN) : new Date(ts);
+  if (isNaN(d.getTime())) return "";
+  const sameYear = d.getFullYear() === new Date(now).getFullYear();
+  return d.toLocaleString(locale === "zh" ? "zh-CN" : "en-US", {
+    month: "short", day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+  });
+}
+
 /* ══════════ 排序 ══════════ */
 
 /**

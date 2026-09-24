@@ -14,6 +14,8 @@ import {
 } from "../utils/supabase.js";
 /* 登录规则（纯函数，Node 单测覆盖）：本地校验 / 昵称兜底 / 邮件链接解析 / 回跳地址 */
 import { MIN_PASSWORD, NICK_MAX, passwordProblem } from "../utils/authRules.js";
+/* 轮 44：帖子时间显示到秒（fmtWhenSec 纯函数，wall-rules-test 覆盖） */
+import { fmtWhenSec } from "../utils/wallRules.js";
 import { db } from "../utils/api/db.js";
 import { cloudFetchUserPosts } from "../utils/wall.js";
 
@@ -294,43 +296,6 @@ const brightRatio = computed(() => {
       <p v-if="nickMsg" class="streak-note">{{ nickMsg }}</p>
     </section>
 
-    <!-- #9 我在暖心墙的帖子（共有 5：默认最新 3 条 + 「更多」→ /my-posts 分页看全部） -->
-    <section v-if="cloudSigned" class="card">
-      <div class="row-between">
-        <h2>{{ t("profile.myPosts") }}</h2>
-        <router-link class="my-posts-link" to="/my-posts">{{ t("profile.more") }} →</router-link>
-      </div>
-      <p v-if="myPostsBusy" class="sub">…</p>
-      <p v-else-if="!myPosts.length" class="sub">{{ t("profile.myPostsEmpty") }}</p>
-      <!-- 轮 18：与暖心墙完全同款的帖子卡（头像/署名/时间/全文/配图/回应数/浏览数）；
-           轮 20：整卡点击进独立详情页 /post/:id（完整帖子+评论展开），不再跳回暖心墙列表 -->
-      <div v-else class="my-posts">
-        <router-link
-          v-for="p in myPosts" :key="p.id"
-          class="post-card card my-post" :to="'/post/' + p.dbId">
-          <div class="post-head">
-            <n-avatar round :size="42" class="post-avatar">🙂</n-avatar>
-            <div class="post-meta">
-              <div class="post-name">{{ p.name }}</div>
-              <div class="post-time">{{ new Date(p.ts).toLocaleDateString() }}</div>
-            </div>
-          </div>
-          <p class="post-text">{{ p.text || "🖼️" }}</p>
-          <img v-if="p.img" :src="p.img" class="pic" alt="" />
-          <div class="react-row">
-            <n-button
-              v-for="r in REACTIONS" :key="r.key"
-              round size="small" quaternary :focusable="false">
-              {{ t(r.tk) }} · {{ (p.reacts && p.reacts[r.key]) || 0 }}
-            </n-button>
-          </div>
-          <div v-if="p.stats" class="post-foot">
-            <span class="post-views">{{ t("community.views", { n: p.views || 0 }) }}</span>
-          </div>
-        </router-link>
-      </div>
-    </section>
-
     <!-- 刚完成动作的提示（如「新密码已保存」）—— 放在登录卡片外：成功后那张卡片会被隐藏 -->
     <section v-if="flash" class="card auth-flash">{{ flash }}</section>
 
@@ -439,6 +404,45 @@ const brightRatio = computed(() => {
             </n-button>
           </div>
         </div>
+      </div>
+    </section>
+
+    <!-- #9 我在暖心墙的帖子（共有 5：默认最新 3 条 + 「更多」→ /my-posts 分页看全部）。
+         轮 44：整块从「改昵称」下方挪到页面最底（用户拍板：在我的食谱下面）；
+         帖子时间从「只有日期」改为显示到秒（fmtWhenSec）。 -->
+    <section v-if="cloudSigned" class="card">
+      <div class="row-between">
+        <h2>{{ t("profile.myPosts") }}</h2>
+        <router-link class="my-posts-link" to="/my-posts">{{ t("profile.more") }} →</router-link>
+      </div>
+      <p v-if="myPostsBusy" class="sub">…</p>
+      <p v-else-if="!myPosts.length" class="sub">{{ t("profile.myPostsEmpty") }}</p>
+      <!-- 轮 18：与暖心墙完全同款的帖子卡（头像/署名/时间/全文/配图/回应数/浏览数）；
+           轮 20：整卡点击进独立详情页 /post/:id（完整帖子+评论展开），不再跳回暖心墙列表 -->
+      <div v-else class="my-posts">
+        <router-link
+          v-for="p in myPosts" :key="p.id"
+          class="post-card card my-post" :to="'/post/' + p.dbId">
+          <div class="post-head">
+            <n-avatar round :size="42" class="post-avatar">🙂</n-avatar>
+            <div class="post-meta">
+              <div class="post-name">{{ p.name }}</div>
+              <div class="post-time">{{ fmtWhenSec(p.ts) }}</div>
+            </div>
+          </div>
+          <p class="post-text">{{ p.text || "🖼️" }}</p>
+          <img v-if="p.img" :src="p.img" class="pic" alt="" />
+          <div class="react-row">
+            <n-button
+              v-for="r in REACTIONS" :key="r.key"
+              round size="small" quaternary :focusable="false">
+              {{ t(r.tk) }} · {{ (p.reacts && p.reacts[r.key]) || 0 }}
+            </n-button>
+          </div>
+          <div v-if="p.stats" class="post-foot">
+            <span class="post-views">{{ t("community.views", { n: p.views || 0 }) }}</span>
+          </div>
+        </router-link>
       </div>
     </section>
   </div>

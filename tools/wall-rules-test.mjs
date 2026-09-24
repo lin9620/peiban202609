@@ -13,7 +13,7 @@ import {
   VIEW_KEY, ANON_KEY, POST_DAY_KEY, postRef, utcDay, pruneStamps, collectViews,
   DISLIKE_RATIO, REMOVAL_LOW_VIEWS, DISLIKE_MIN_COUNT, dislikeRatio, ratioPct, shouldRemove,
   isVisible, visibleOnly, postedOnDay, countPostedOnDay, dayCountFromStorage,
-  canPostToday, postsLeftToday, WALL_POST_DAILY_LIMIT, errorKind, fmtWhen,
+  canPostToday, postsLeftToday, WALL_POST_DAILY_LIMIT, errorKind, fmtWhen, fmtWhenSec,
 } from "../src/utils/wallRules.js";
 import { messages } from "../src/i18n.js";
 
@@ -52,6 +52,26 @@ t("#25 英文口径 → 也含 时:分", () => {
   const now = new Date();
   const s = fmtWhen(now.getTime(), "en", now.getTime());
   assert.ok(/\d{1,2}:\d{2}/.test(s), `输出=${s}`);
+});
+
+/* ══════════ 帖子时间到秒：fmtWhenSec（轮 44，「我的」页帖子卡） ══════════ */
+t("轮44 当年时间 → 含 时:分:秒", () => {
+  const now = new Date(); now.setHours(14, 32, 5, 0);
+  const s = fmtWhenSec(now.getTime(), "zh", now.getTime());
+  assert.ok(/\d{1,2}:\d{2}:\d{2}/.test(s), `输出=${s}`);
+});
+t("轮44 与 fmtWhen 同口径：跨年补年份（当年不带）", () => {
+  const now = new Date();
+  const past = new Date(now); past.setFullYear(now.getFullYear() - 1);
+  const a = fmtWhenSec(past.getTime(), "zh", now.getTime());
+  const b = fmtWhenSec(now.getTime(), "zh", now.getTime());
+  assert.ok(a.includes(String(past.getFullYear())), `跨年应带年份，输出=${a}`);
+  assert.ok(!b.includes(String(now.getFullYear())), `当年不应再带年份，输出=${b}`);
+});
+t("轮44 非法时间 → 空串（不抛错；与 fmtWhen 同一守卫）", () => {
+  assert.equal(fmtWhenSec("不是时间", "zh"), "");
+  assert.equal(fmtWhenSec(null, "zh"), "");
+  assert.equal(fmtWhenSec("", "zh"), "");
 });
 
 /* ══════════ 排序 ══════════ */

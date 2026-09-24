@@ -80,7 +80,7 @@
 ```bash
 node tools/comment-test.mjs   # 评论系统纯函数单测（26 项：二级回复/parentId 封顶/级联删除/评论数兜底）
 node tools/wall-test.mjs      # 暖心墙云端数据层纯函数单测（34 项：行映射/二级字段/评论数聚合/浏览与厌恶字段）
-node tools/wall-rules-test.mjs # 暖心墙进阶规则纯函数单测（39 项：排序/时间范围显隐与筛选/浏览去重/双档下架阈值/每日 7 条/错误归类/帖子时间到分钟）
+node tools/wall-rules-test.mjs # 暖心墙进阶规则纯函数单测（42 项：排序/时间范围显隐与筛选/浏览去重/双档下架阈值/每日 7 条/错误归类/帖子时间到分钟与到秒）
 node tools/pet-home-test.mjs   # 宠物主页云层纯函数单测（19 项：宠物快照 / 手绘厨房清洗 / 互动计数独立列 / 图片引用外置与行体积安全阀 / 镜像队列安全性）
 node tools/pet-visual-test.mjs # 宠物形象与互动表情单测（163 项：五物种×六变体生成合法 Lottie / 表情随 mood 切换（弯弯眼·张嘴·星星·双心·Zzz）/ 贴纸描边·胡须·眉毛·曲线尾 / petMood 信号与缓存守卫）
 node tools/food-painter-test.mjs # 手绘食物画板单测（20 项：保存后清空画板与撤销栈 / 画笔与橡皮模式复位 / 异步撤销不回流旧画 / 食谱 7 份上限 / 48 小时过期边界）
@@ -338,7 +338,7 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 | 体验 | `#/` 路由直接访问 `/pet` 会 404 | 迁移到 history 模式 + 每条路由独立静态 HTML + SPA 回退 | `router.js` / `vite.config.js` / `wrangler.jsonc` |
 | 体验 | 「在线陪伴数」是本地随机数，易误导 | 去掉虚构人数，改如实文案（路线图保留"等有真实统计再接"） | `views/HomeView.vue` / `i18n.js` |
 
-回归验证（全部本地可跑）：`wall-rules-test` 39 项 · `comment-test` 26 项 · `wall-test` 34 项 · `pet-home-test` 19 项 · `pet-visual-test` 163 项 · `food-painter-test` 20 项 · `uifix-test` 24 项 · `image-fit` 20 项 · `snack-test` 24 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 130 项 · `privacy-test` 34 项 · `arity-test` 8 项 · `seo-test` 42 项 · `dm-test` 286 项 · `notify-test` 149 项 · `status-test` 49 项 · `status-counts-test` 11 项 · `bottle-test` 66 项 · `bottle-chat-test` 86 项 · `api-contract-test` 83 项 · `gateway-contract-test` 66 项 · `worker-test` 195 项 · `cache-test` 12 项 · `home-panes-test` 9 项 · `app-shell-test` 40 项 · `react-queue-test` 12 项 · `back-stack-test` 9 项 · `post-detail-test` 15 项 · `splash-test` 18 项 · `userScope-test` 8 项 · `report-test` 61 项 · `page-smoke` 8 项 · `undef-check` · `tdz-check`。
+回归验证（全部本地可跑）：`wall-rules-test` 42 项 · `comment-test` 26 项 · `wall-test` 34 项 · `pet-home-test` 19 项 · `pet-visual-test` 163 项 · `food-painter-test` 20 项 · `uifix-test` 24 项 · `image-fit` 20 项 · `snack-test` 24 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 130 项 · `privacy-test` 34 项 · `arity-test` 8 项 · `seo-test` 42 项 · `dm-test` 286 项 · `notify-test` 149 项 · `status-test` 49 项 · `status-counts-test` 11 项 · `bottle-test` 66 项 · `bottle-chat-test` 86 项 · `api-contract-test` 83 项 · `gateway-contract-test` 66 项 · `worker-test` 195 项 · `cache-test` 12 项 · `home-panes-test` 9 项 · `app-shell-test` 40 项 · `react-queue-test` 12 项 · `back-stack-test` 9 项 · `post-detail-test` 15 项 · `splash-test` 20 项 · `userScope-test` 8 项 · `report-test` 61 项 · `page-smoke` 8 项 · `undef-check` · `tdz-check`。
 
 ## 🗺️ 路线图
 
