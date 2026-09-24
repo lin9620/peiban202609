@@ -440,6 +440,12 @@ function listFor(p) { return topComments(comments.value, p); }
 /* 某条一级评论下的回复（二级） */
 function repliesFor(p, cm) { return repliesOf(comments.value, p, cm.id); }
 function repliesN(p, cm) { return replyCount(comments.value, p, cm.id); }
+/* 轮 50：二级回复默认显示前两条（用户拍板，不再默认全收起）；
+   >2 条时「N 条回复」按钮 = 展开全部 ↔ 收回默认两条。 */
+function visibleReplies(p, cm) {
+  const rs = repliesFor(p, cm);
+  return isRepOpen(p, cm) ? rs : rs.slice(0, 2);
+}
 /* 评论数：本地有列表就数本地，没有就先用进页面时拉到云端总数（不再显示成 0） */
 function countFor(p) {
   return displayCount(listed(p), cloudCmtTotal.value[cmtKey(p)] || 0);
@@ -768,8 +774,10 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
   <div @touchstart.passive="ts" @touchmove.passive="tm" @touchend.passive="te">
     <div class="wall-pull" :style="{ height: pullDist + 'px', opacity: pullDist / 62 }">↓</div>
     <!-- 头部 + 发布框（手机端收起：发布统一走底部 ＋ → 独立发布页，页顶不再占一屏）
-         轮 35：去掉与 h2 重复的小标签；副标题只在桌面显示（手机端两行文案太占首屏） -->
-    <section class="card">
+         轮 35：去掉与 h2 重复的小标签；副标题只在桌面显示（手机端两行文案太占首屏）
+         轮 47：手机端整卡隐藏——副标题/发布框都是桌面专属后，这张卡里只剩「暖心墙」
+         三个字，等于一块纯文字浮窗占着首屏（用户：留在那儿干嘛）；底部 Tab 本来就叫暖心墙。 -->
+    <section v-if="!isMobileNav" class="card">
       <h2 style="margin-bottom: 4px">{{ t("community.title") }}</h2>
       <p v-if="!isMobileNav" class="sub">{{ t("community.subtitle") }}</p>
 
@@ -920,7 +928,7 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
               v-if="canReportCmt(cm)" class="cmt-act"
               @click="openReportCmt(cm)">{{ t("report.act") }}</button>
             <button
-              v-if="repliesN(p, cm)"
+              v-if="repliesN(p, cm) > 2"
               class="cmt-act cmt-act-rep"
               @click="toggleReplies(p, cm)">
               {{ t("comment.replies", { n: repliesN(p, cm) }) }}
@@ -928,9 +936,9 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
             </button>
           </div>
 
-          <!-- 二级：回复列表（默认收起，点「N 条回复」展开） -->
-          <div v-if="isRepOpen(p, cm) && repliesN(p, cm)" class="cmt-reps">
-            <div v-for="rp in repliesFor(p, cm)" :key="rp.id" class="cmt-rep">
+          <!-- 二级：回复列表（轮 50：默认显示前两条；>2 条点「N 条回复」展开全部） -->
+          <div v-if="repliesN(p, cm)" class="cmt-reps">
+            <div v-for="rp in visibleReplies(p, cm)" :key="rp.id" class="cmt-rep">
               <div class="cmt-head">
                 <b><span :class="{ clickable: canOpen(rp) }"
                         :title="canOpen(rp) ? t('community.viewHome') : ''"

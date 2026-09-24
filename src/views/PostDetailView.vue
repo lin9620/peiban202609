@@ -121,6 +121,8 @@ const cmtErr = ref("");
 
 const tops = computed(() => comments.value.filter((c) => !c.parentId));
 const repsOf = (cm) => comments.value.filter((c) => c.parentId === cm.id);
+/* 轮 50：与暖心墙同口径——二级回复默认显示前两条，>2 条点「N 条回复」展开全部 */
+const visibleReps = (cm) => (repOpen[cm.id] ? repsOf(cm) : repsOf(cm).slice(0, 2));
 const countN = computed(() => comments.value.length);
 const canDel = (cm) => !!(cm && cm.cloud && myId.value && cm.userId === myId.value);
 
@@ -284,14 +286,14 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
             <div class="cmt-acts">
               <button v-if="signedIn" class="cmt-act" @click="startReply(cm)">{{ t("comment.reply") }}</button>
               <button v-if="canReportCmt(cm)" class="cmt-act" @click="openReportCmt(cm)">{{ t("report.act") }}</button>
-              <button v-if="repsOf(cm).length" class="cmt-act" @click="toggleReplies(cm)">
+              <button v-if="repsOf(cm).length > 2" class="cmt-act" @click="toggleReplies(cm)">
                 {{ t("comment.replies", { n: repsOf(cm).length }) }}
                 <i :class="{ open: repOpen[cm.id] }">&#9662;</i>
               </button>
             </div>
 
-            <div v-if="repOpen[cm.id] && repsOf(cm).length" class="cmt-reps">
-              <div v-for="rp in repsOf(cm)" :key="rp.id" class="cmt-item">
+            <div v-if="repsOf(cm).length" class="cmt-reps">
+              <div v-for="rp in visibleReps(cm)" :key="rp.id" class="cmt-item">
                 <div class="cmt-head">
                   <b>{{ rp.name }}<span v-if="rp.replyTo" class="cmt-at"> @{{ rp.replyTo }}</span></b>
                   <span>{{ when(rp.ts) }}</span>
