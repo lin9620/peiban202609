@@ -111,7 +111,7 @@ onBeforeUnmount(() => {
         <summary>{{ row.user_id === userId ? t("bottle.myLetter") : t("bottle.fromSea") }} · {{ row.body.slice(0, 36) }}</summary>
         <p class="bottle-record-text">{{ row.body }}</p>
         <template v-if="row.reply">
-          <b class="sub">{{ t("bottle.replyFrom") }}</b>
+          <b class="sub">{{ t(row.reply_by === userId.value ? "bottle.replyMine" : "bottle.replyFrom") }}</b>
           <p class="bottle-record-text">{{ row.reply }}</p>
         </template>
       </details>

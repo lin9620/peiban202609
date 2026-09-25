@@ -412,7 +412,8 @@ async function decideRec(l, accept) {
             </n-button>
           </div>
           <div v-if="l.reply" class="m-a">
-            <span class="m-who">{{ t("bottle.replyFrom") }}</span>
+            <!-- 轮 66：「我捞到的」里 l.reply 是我写出去的回信 → 标「我的回信」（原来误标「收到的回信」） -->
+            <span class="m-who">{{ t(recTab === "held" ? "bottle.replyMine" : "bottle.replyFrom") }}</span>
             <span class="m-body">{{ l.reply }}</span>
           </div>
           <!-- 收到回信还没决定：就在这条记录上直接同意 / 拒绝（同意后进聊天） -->

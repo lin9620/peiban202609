@@ -6,7 +6,7 @@ import { t, i18n } from "../i18n.js";
 import { getItem, setItem } from "../utils/storage.js";
 /* 轮 32：个人数据键按账号分域（游客账/各登录账号互不串），读写走 scopeGet/scopeSet */
 import { scopeGet, scopeSet, scopeGetRaw, scopeSetRaw } from "../utils/userScope.js";
-import { cacheKey, swr } from "../utils/cache.js";
+import { cacheKey, cacheSet, swr } from "../utils/cache.js";
 import {
   CMT_KEY, seedComments, addComment, removeComment, displayCount,
   canDelete, normalizeText, postKey, MAX_LEN,
@@ -144,9 +144,11 @@ async function loadCloud({ fresh = false } = {}) {
       cloudDone.value = false;
     }
   };
+  /* 轮 66：挂载取数器也走「随机换一批」——不再固定拉最新页（那正是「A 复活」的根源：
+     随机批不回写缓存 + 挂载永远拉最新页 → 重开/刷新总回到同一批）。 */
   const fetcher = async () => {
-    const rows = await cloudFetchPosts(FEED_PAGE, 0);
-    if (!rows) return null;   /* 拉取失败（原有语义）→ 不覆盖、不回写缓存 */
+    const rows = await cloudFetchPostsSample(FEED_PAGE);
+    if (!rows) return null;
     const counts = await cloudFetchCommentCounts(rows.map((r) => r.dbId)).catch(() => null);
     return { rows, counts: counts || {}, fromFetch: true };
   };
@@ -158,19 +160,9 @@ async function loadCloud({ fresh = false } = {}) {
     if (box) {
       consume(box);
       reveal.value = PAGE_SIZE;
-      /* 轮 65（用户：不需要「新增 N 条」提示）：有新帖直接进列表，不再计数提示。
-         没有新帖 → 随机换一批（7 天池随机起点），每次下拉都有新东西看。 */
-      if (box.rows.length && box.rows.every((p) => cloudPosts.value.some((q) => q.dbId === p.dbId))) {
-        const batch = await cloudFetchPostsSample(FEED_PAGE);
-        if (batch && batch.length) {
-          consume({ rows: batch, counts: {}, fromFetch: true });
-          refreshNote.value = t("community.refreshBatch");
-        } else {
-          refreshNote.value = t("community.refreshed");
-        }
-      } else {
-        refreshNote.value = t("community.refreshed");
-      }
+      /* 轮 66：每次下拉都随机换一批；结果回写缓存（重开 App 先看到这批，旧批次不再复活）。 */
+      cacheSet(cacheKey("wall:posts", (cloud.user && cloud.user.id) || ""), box);
+      refreshNote.value = t("community.refreshBatch");
     } else {
       refreshNote.value = t("community.refreshFail");
     }
