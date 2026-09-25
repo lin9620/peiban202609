@@ -80,7 +80,7 @@ for (const lang of ["zh", "en"]) {
 ok("TodayPane 模板不再引用 emoji 映射/硬拼 emoji",
   !todayPane.includes("STATUS_EMOJI") && has(todayPane, '{{ t("home.companions." + k) }}'));
 ok("大厅只渲染状态人数，不渲染个人昵称或个人列表",
-  has(todayPane, "{{ statusLabel(row.status) }}", 't("home.companions.peopleCount", { n: row.count })')
+  has(todayPane, "{{ statusLabel(row.status) }}", 'row.count === 1 ? "home.companions.peopleCount1" : "home.companions.peopleCount"')
     && !todayPane.includes("o.nickname") && !todayPane.includes("cloudFetchStatuses"));
 ok("主页徽章同样只输出 statusLabel",
   has(wallerView, "{{ statusLabel(profStatus) }}") && !wallerView.includes("STATUS_EMOJI"));

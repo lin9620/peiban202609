@@ -1030,7 +1030,6 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
           @click="dislike(p)">
           &#128078; {{ p.reacts.dislike || 0 }}
         </button>
-        <span class="post-ratio-hint">{{ t("community.dislikeRule") }}</span>
         <button
           v-if="canReportPost(p)" class="cmt-act post-report"
           @click="openReportPost(p)">{{ t("report.act") }}</button>

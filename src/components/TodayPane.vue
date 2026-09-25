@@ -195,7 +195,7 @@ const seasonName = computed(() => season.name[i18n.locale] || season.name.en);
             :disabled="statusBusy"
             @click="setStatus(row.status)">
             <span>{{ statusLabel(row.status) }}</span>
-            <b>{{ t("home.companions.peopleCount", { n: row.count }) }}</b>
+            <b>{{ t(row.count === 1 ? "home.companions.peopleCount1" : "home.companions.peopleCount", { n: row.count }) }}</b>
           </button>
         </div>
       </div>
