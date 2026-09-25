@@ -325,7 +325,7 @@ async function decideRec(l, accept) {
     <template v-if="cloudSigned">
       <n-input
         v-model:value="mailDraft"
-        type="textarea" :rows="3" :maxlength="BOTTLE_BODY_MAX"
+        type="textarea" :autosize="{ minRows: 3, maxRows: 10 }" :maxlength="BOTTLE_BODY_MAX"
         :placeholder="t('bottle.placeholder')" />
       <div class="mail-send">
         <span class="m-count">{{ mailDraft.length }}/{{ BOTTLE_BODY_MAX }} · {{ sendText(sendLeft) }}</span>
@@ -352,7 +352,7 @@ async function decideRec(l, accept) {
         <span class="m-who">{{ t("bottle.fromSea") }}</span>
         <n-input
           v-model:value="replyDrafts[l.id]"
-          type="textarea" :rows="2" :maxlength="BOTTLE_BODY_MAX"
+          type="textarea" :autosize="{ minRows: 2, maxRows: 6 }" :maxlength="BOTTLE_BODY_MAX"
           :placeholder="t('bottle.replyPlaceholder')" />
         <div class="mail-send">
           <n-button type="primary" size="small" round
@@ -403,7 +403,7 @@ async function decideRec(l, accept) {
           <div v-if="replyOpen === l.id && recTab === 'held' && l.status === 'held'" class="mail-send" style="flex-direction: column; align-items: stretch; gap: 6px" @click.stop>
             <n-input
               v-model:value="replyDrafts[l.id]"
-              type="textarea" :rows="3" :maxlength="BOTTLE_BODY_MAX"
+              type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" :maxlength="BOTTLE_BODY_MAX"
               :placeholder="t('bottle.replyPlaceholder')" />
             <n-button type="primary" size="small" round
               :disabled="busyId === l.id || !String(replyDrafts[l.id] || '').trim()"
@@ -463,7 +463,7 @@ async function decideRec(l, accept) {
         <span class="m-who">{{ t("bottle.fromSea") }}</span>
         <n-input
           v-model:value="replyDrafts[fishPop.letter.id]"
-          type="textarea" :rows="3" :maxlength="BOTTLE_BODY_MAX"
+          type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" :maxlength="BOTTLE_BODY_MAX"
           :placeholder="t('bottle.replyPlaceholder')" style="margin-top: 10px" />
         <div class="mail-send" style="margin-top: 8px">
           <n-button type="primary" round

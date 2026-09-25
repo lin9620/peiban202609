@@ -578,13 +578,14 @@ function goSignIn() {
               {{ blockedByMe ? t("dm.gateBlockedByMe") : t("dm.gateRequest") }}
             </p>
             <template v-else>
-              <n-input
-                v-model:value="body" type="textarea" :rows="2" :maxlength="2000"
-                :placeholder="isMobileNav ? t('dm.placeholderMobile') : t('dm.placeholder')"
-                @keydown.enter.exact.prevent="send" />
-              <div class="dm-send-row">
-                <span class="sub dm-hint">{{ t("dm.hint") }}</span>
-                <span v-if="sendErr" class="sub dm-err">{{ sendErr }}</span>
+              <p class="sub dm-hint">{{ t("dm.hint") }}</p>
+              <p v-if="sendErr" class="sub dm-err">{{ sendErr }}</p>
+              <!-- 轮 68：微信式输入行——单行起、随内容长高（1~6 行），发送键在框右侧 -->
+              <div class="dm-input-row">
+                <n-input
+                  v-model:value="body" type="textarea" :autosize="{ minRows: 1, maxRows: 6 }" :maxlength="2000"
+                  :placeholder="isMobileNav ? t('dm.placeholderMobile') : t('dm.placeholder')"
+                  @keydown.enter.exact.prevent="send" />
                 <n-button type="primary" round size="small" :loading="sending" :disabled="!body.trim()" @click="send">
                   {{ t("dm.send") }}
                 </n-button>

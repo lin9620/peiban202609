@@ -72,9 +72,10 @@ const chatThread = (css.match(/\.shell--mobile-nav\.shell--chat \.dm-thread \{[\
 ok("T20 手机聊天卡横向撑满（flex column 必须重置 align-items:stretch）",
   /align-items:\s*stretch/.test(chatWrap) && /width:\s*100%/.test(chatWrap)
   && /width:\s*100%/.test(chatThread), chatWrap.replace(/\s+/g, " "));
-ok("T21 手机聊天页隐藏桌面提示（dm-hint）+ 发送键靠右",
+ok("T21 手机聊天页隐藏桌面提示（dm-hint）+ 微信式输入行（发送键在框旁,轮 68）",
   css.includes(".shell--mobile-nav.shell--chat .dm-hint { display: none; }")
-  && css.includes(".shell--mobile-nav.shell--chat .dm-send-row { justify-content: flex-end; }"));
+  && css.includes(".dm-input-row { display: flex; align-items: flex-end;")
+  && mv.includes('class="dm-input-row"'));
 
 ok("T22 手机输入框用短占位符（桌面仍保留 Enter/Shift 说明）",
   mv.includes("isMobileNav ? t('dm.placeholderMobile') : t('dm.placeholder')")

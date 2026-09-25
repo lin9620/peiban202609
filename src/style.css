@@ -1543,7 +1543,9 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 .dm-recall:hover { color: #d9534f; }
 .dm-compose { padding-top: 10px; border-top: 1px dashed rgba(255, 159, 90, .28); }
 .dm-gate { margin: 0 0 6px; }
-.dm-send-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+/* 轮 68：微信式聊天输入行——输入框随内容长高（autosize 1~6 行），发送键贴在框右下 */
+.dm-input-row { display: flex; align-items: flex-end; gap: 8px; margin-top: 8px; }
+.dm-input-row .n-input { flex: 1; }
 .dm-hint { font-size: 11.5px; flex: 1; }
 .dm-err { color: #d9534f; }
 .dm-empty { text-align: center; }
@@ -1735,7 +1737,7 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 }
 /* 手机上「Enter 发送 · Shift+Enter 换行」是桌面说明，隐藏；发送键靠右（微信体感） */
 .shell--mobile-nav.shell--chat .dm-hint { display: none; }
-.shell--mobile-nav.shell--chat .dm-send-row { justify-content: flex-end; }
+
 
 /* ← 返回钮（仅手机聊天页） */
 .dm-thread-back {
