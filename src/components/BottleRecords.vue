@@ -12,6 +12,8 @@ const userId = computed(() => cloud.user?.id || "");
 const focusId = computed(() => typeof route.query.bottle === "string" ? route.query.bottle : "");
 const rows = ref([]);
 const focused = ref(null);
+/* 轮 70：区分「我发布的 / 我捞到的」——按钮切换（默认我发布的）；深链信件不受页签限制 */
+const mine = ref(true);
 const loading = ref(false);
 const busy = ref("");
 const error = ref("");
@@ -36,7 +38,7 @@ async function load(append = false) {
   try {
     const pageOffset = append ? offset : 0;
     const [page, selected] = await Promise.all([
-      bottleRecords(null, pageOffset),
+      bottleRecords(null, pageOffset, { mine: mine.value, limit: 30 }),
       focusId.value ? bottleRecords(focusId.value) : Promise.resolve([]),
     ]);
     if (run !== generation) return;
@@ -81,6 +83,11 @@ function reset() {
   offset = 0;
   load();
 }
+function setMine(v) {
+  if (mine.value === v) return;
+  mine.value = v;
+  reset();   /* 切页签 = 换过滤口径，重置分页重拉 */
+}
 watch([userId, focusId], reset, { immediate: true });
 function refreshVisible() {
   if (!document.hidden && !busy.value && offset <= 30) load();
@@ -103,9 +110,14 @@ onBeforeUnmount(() => {
       <button class="dm-act" :disabled="loading || !!busy" @click="load()">{{ t("bottle.refreshRecords") }}</button>
     </div>
     <p class="sub">{{ t("bottle.recordsHint") }}</p>
+    <!-- 轮 70：区分「我发布的 / 我捞到的」——点按钮切换（默认我发布的；深链信件始终置顶显示） -->
+    <div class="br-tabs" role="tablist">
+      <button class="br-tab" :class="{ on: mine }" role="tab" :aria-selected="mine" @click="setMine(true)">{{ t("bottle.mineTab") }}</button>
+      <button class="br-tab" :class="{ on: !mine }" role="tab" :aria-selected="!mine" @click="setMine(false)">{{ t("bottle.heldTab") }}</button>
+    </div>
     <p v-if="error" role="alert" class="notice">{{ t(error) }}</p>
     <p v-if="loading" class="sub" role="status">{{ t("bottle.recordsLoading") }}</p>
-    <p v-else-if="!displayed.length && !error" class="sub">{{ t("bottle.recordsEmpty") }}</p>
+    <p v-else-if="!displayed.length && !error" class="sub">{{ t(mine ? "bottle.mineEmpty" : "bottle.heldEmpty") }}</p>
     <article v-for="row in displayed" :key="row.id" class="bottle-record" :class="{ focused: row.id === focusId }">
       <details :open="row.id === focusId || state(row) === 'choose'">
         <summary>{{ row.user_id === userId ? t("bottle.myLetter") : t("bottle.fromSea") }} · {{ row.body.slice(0, 36) }}</summary>
@@ -133,4 +145,13 @@ onBeforeUnmount(() => {
 .bottle-record.focused { outline: 2px solid currentColor; }
 .bottle-record summary { cursor: pointer; overflow-wrap: anywhere; }
 .bottle-record-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; }
+.br-tabs { display: flex; gap: 8px; margin: 8px 0 10px; }
+.br-tab {
+  border: 1px solid rgba(245, 140, 80, .28); background: rgba(245, 140, 80, .08);
+  color: #7c4a24; font-family: inherit; font-weight: 700; font-size: 12.5px;
+  padding: 5px 14px; border-radius: 999px; cursor: pointer; transition: all .15s ease;
+}
+.br-tab.on {
+  background: linear-gradient(135deg, #ffb277, #f58c50); color: #fff; border-color: transparent;
+}
 </style>
