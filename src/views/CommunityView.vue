@@ -117,7 +117,8 @@ const feedCursor = ref(null);   /* 轮 62：游标 = 已加载最后一条的 db
 const cloudDone = ref(false);
 const pageBusy = ref(false);
 const refreshNote = ref(false);
-const newestSeenTs = ref(0);   /* 轮 73：补上缺失声明——轮 72 的条件补丁被注释字样骗过漏加（真新帖判定用） */
+const newestSeenTs = ref(0);   /* 轮 73：补上缺失声明（真新帖判定用） */
+const lastPulledRows = ref([]);   /* 轮 76：本次刷新拉到的批（评论数后台补齐用） */
 
 async function loadCloud({ fresh = false } = {}) {
   loadingCloud.value = true;
@@ -155,31 +156,27 @@ async function loadCloud({ fresh = false } = {}) {
     return { rows, counts: counts || {}, fromFetch: true };
   };
   if (fresh) {
-    /* 轮 72（用户：「下拉刷新速度太慢」）：提速两招——
-       ① **并行**：最新页与随机批同时开拉（原来串行 2-3 个往返，现在 1 个 RTT 出结果）；
-       ② **可感知**：拉取期间顶部显示「刷新中…」，不再是按下后干等。
-       结果取舍：最新页里有真新帖 → 用最新页（提示「已刷新 ✓」）；否则用随机批（「换了一批内容」）；
-       两者都失败 → 「没刷出来」。缓存始终回写（重开先见这批）。 */
+    /* 轮 76（用户：「太慢了」「提示不消失」）——三处提速/纠偏：
+       ① **1 个 RTT 出内容**：帖子先渲染（评论数后台补，不再阻塞）；
+       ② **8 秒超时保护**：网络挂起时提示「没刷出来」并复位，不再永久钉住「刷新中…」；
+       ③ **单定时器管理提示**：连续下拉不再互相覆盖导致提示永不消失。 */
     refreshNote.value = t("community.refreshing");
     const prevNewest = newestSeenTs.value;
-    const [box, batch] = await Promise.all([
-      fetcher(),
+    const pull = Promise.all([
+      cloudFetchPosts(FEED_PAGE, 0).catch(() => null),
       cloudFetchPostsSample(FEED_PAGE).catch(() => null),
-    ]);
-    const freshCount = box ? box.rows.filter((p) => (p.ts || 0) > prevNewest).length : 0;
-    if (box && (freshCount > 0 || !batch)) {
-      consume(box);
+    ]).then(([posts, batch]) => ({ posts: Array.isArray(posts) ? posts : null, batch: Array.isArray(batch) ? batch : null }));
+    const box = await Promise.race([pull, new Promise((res) => setTimeout(() => res(null), 8000))]);
+    if (box) {
+      lastPulledRows.value = box.posts;
+      consume({ rows: box.posts, counts: {}, fromFetch: true });
       reveal.value = PAGE_SIZE;
       cacheSet(cacheKey("wall:posts", (cloud.user && cloud.user.id) || ""), box);
-      refreshNote.value = t("community.refreshed");
-    } else if (batch && batch.length) {
-      consume({ rows: batch, counts: {}, fromFetch: true });
-      cacheSet(cacheKey("wall:posts", (cloud.user && cloud.user.id) || ""), { rows: batch, counts: {}, fromFetch: true });
-      refreshNote.value = t("community.refreshBatch");
-    } else if (box) {
-      consume(box);
-      reveal.value = PAGE_SIZE;
-      refreshNote.value = t("community.refreshed");
+      if (box.batch) {
+        refreshNote.value = t("community.refreshBatch");
+      } else {
+        refreshNote.value = t("community.refreshed");
+      }
     } else {
       refreshNote.value = t("community.refreshFail");
     }
@@ -192,6 +189,20 @@ async function loadCloud({ fresh = false } = {}) {
     );
   }
   loadingCloud.value = false;
+  /* 轮 76：评论数后台补齐——刚刷新的批先渲染，评论数到达后并入并回写缓存 */
+  if (fresh && lastPulledRows.value.length) {
+    const ids = lastPulledRows.value.map((r) => r.dbId);
+    const key = cacheKey("wall:posts", (cloud.user && cloud.user.id) || "");
+    cloudFetchCommentCounts(ids).then((counts) => {
+      if (!counts) return;
+      const next = { ...cloudCmtTotal.value };
+      for (const p of lastPulledRows.value) {
+        if (p.dbId != null) next[cmtKey(p)] = counts[p.dbId] || 0;
+      }
+      cloudCmtTotal.value = next;
+      cacheSet(key, { rows: lastPulledRows.value, counts, fromFetch: true });
+    }).catch(() => {});
+  }
 }
 
 /* 触底续载（轮 62 自愈版）：游标取下一页，**追加前去重**——缓存快照与游标页交叠、
