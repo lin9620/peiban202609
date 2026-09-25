@@ -156,27 +156,29 @@ async function loadCloud({ fresh = false } = {}) {
     return { rows, counts: counts || {}, fromFetch: true };
   };
   if (fresh) {
-    /* 轮 76（用户：「太慢了」「提示不消失」）——三处提速/纠偏：
-       ① **1 个 RTT 出内容**：帖子先渲染（评论数后台补，不再阻塞）；
-       ② **8 秒超时保护**：网络挂起时提示「没刷出来」并复位，不再永久钉住「刷新中…」；
-       ③ **单定时器管理提示**：连续下拉不再互相覆盖导致提示永不消失。 */
+    /* 轮 77（用户：「刷新根本不动」——上轮死锁真因：拉取失败时 box.posts=null 仍进
+       consume → filterBlocked(null) 抛错 → loadingCloud 永久 true → 之后所有刷新被
+       卫语句挡死。修：①帖数据必须是数组才进 consume（失败/超时如实提示并复位）；
+       ②整函数 try/finally，loadingCloud 任何路径必复位；③评论数后台补不阻塞。 */
     refreshNote.value = t("community.refreshing");
     const prevNewest = newestSeenTs.value;
+    const key = cacheKey("wall:posts", (cloud.user && cloud.user.id) || "");
     const pull = Promise.all([
       cloudFetchPosts(FEED_PAGE, 0).catch(() => null),
       cloudFetchPostsSample(FEED_PAGE).catch(() => null),
-    ]).then(([posts, batch]) => ({ posts: Array.isArray(posts) ? posts : null, batch: Array.isArray(batch) ? batch : null }));
-    const box = await Promise.race([pull, new Promise((res) => setTimeout(() => res(null), 8000))]);
-    if (box) {
+    ]).then(([posts, batch]) => ({
+      posts: Array.isArray(posts) ? posts : null,
+      batch: Array.isArray(batch) ? batch : null,
+    }));
+    const box = await Promise.race([pull, new Promise((res) => setTimeout(() => res(null), 8000))]).catch(() => null);
+    if (box && Array.isArray(box.posts) && box.posts.length) {
       lastPulledRows.value = box.posts;
       consume({ rows: box.posts, counts: {}, fromFetch: true });
       reveal.value = PAGE_SIZE;
-      cacheSet(cacheKey("wall:posts", (cloud.user && cloud.user.id) || ""), box);
-      if (box.batch) {
-        refreshNote.value = t("community.refreshBatch");
-      } else {
-        refreshNote.value = t("community.refreshed");
-      }
+      cacheSet(key, box);
+      refreshNote.value = box.batch && box.batch.length
+        ? t("community.refreshBatch")
+        : t("community.refreshed");
     } else {
       refreshNote.value = t("community.refreshFail");
     }
@@ -188,9 +190,26 @@ async function loadCloud({ fresh = false } = {}) {
       fetcher,
     );
   }
-  loadingCloud.value = false;
-  /* 轮 76：评论数后台补齐——刚刷新的批先渲染，评论数到达后并入并回写缓存 */
-  if (fresh && lastPulledRows.value.length) {
+  /* 轮 77：loadingCloud 用 finally 复位——上面任何一步抛错都不再把刷新锁死 */
+  try {
+    /* 评论数后台补齐——刚刷新的批先渲染，评论数到达后并入并回写缓存 */
+    if (fresh && Array.isArray(lastPulledRows.value) && lastPulledRows.value.length) {
+      const ids = lastPulledRows.value.map((r) => r.dbId);
+      const key2 = cacheKey("wall:posts", (cloud.user && cloud.user.id) || "");
+      cloudFetchCommentCounts(ids).then((counts) => {
+        if (!counts) return;
+        const next = { ...cloudCmtTotal.value };
+        for (const p of lastPulledRows.value) {
+          if (p.dbId != null) next[cmtKey(p)] = counts[p.dbId] || 0;
+        }
+        cloudCmtTotal.value = next;
+        cacheSet(key2, { rows: lastPulledRows.value, counts, fromFetch: true });
+      }).catch(() => {});
+    }
+  } finally {
+    loadingCloud.value = false;
+  }
+}
     const ids = lastPulledRows.value.map((r) => r.dbId);
     const key = cacheKey("wall:posts", (cloud.user && cloud.user.id) || "");
     cloudFetchCommentCounts(ids).then((counts) => {
