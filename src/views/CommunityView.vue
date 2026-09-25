@@ -138,6 +138,7 @@ async function loadCloud({ fresh = false } = {}) {
       /* 本轮 fetch 的结果：游标=末条 dbId（id<游标 取下一页）；页不满=服务器已到底 */
       feedCursor.value = box.rows.length ? box.rows[box.rows.length - 1].dbId : feedCursor.value;
       cloudDone.value = box.rows.length < FEED_PAGE;
+      newestSeenTs.value = Math.max(newestSeenTs.value, ...box.rows.map((p) => p.ts || 0));
     } else {
       /* 旧/外来缓存盒：仅展示快照——游标清空、不算到底（loadMoreCloud 的去重+跳页会自愈错位） */
       feedCursor.value = null;
@@ -147,22 +148,37 @@ async function loadCloud({ fresh = false } = {}) {
   /* 轮 66：挂载取数器也走「随机换一批」——不再固定拉最新页（那正是「A 复活」的根源：
      随机批不回写缓存 + 挂载永远拉最新页 → 重开/刷新总回到同一批）。 */
   const fetcher = async () => {
-    const rows = await cloudFetchPostsSample(FEED_PAGE);
-    if (!rows) return null;
+    const rows = await cloudFetchPosts(FEED_PAGE, 0);
+    if (!rows) return null;   /* 拉取失败 → 不覆盖、不回写缓存 */
     const counts = await cloudFetchCommentCounts(rows.map((r) => r.dbId)).catch(() => null);
     return { rows, counts: counts || {}, fromFetch: true };
   };
   if (fresh) {
-    /* 下拉刷新：强制取新（绕过缓存），失败时保留旧列表（与「不覆盖」同语义）。
-       轮 61：提示必须说实话——之前「已刷新」无条件显示，拉取失败也谎报成功（用户实测怒斥）。
-       成功时对比刷新前最新 ts：有新帖报条数，没新帖如实说「已刷新」，失败明说再试。 */
-    const box = await fetcher();
-    if (box) {
+    /* 轮 72（用户：「下拉刷新速度太慢」）：提速两招——
+       ① **并行**：最新页与随机批同时开拉（原来串行 2-3 个往返，现在 1 个 RTT 出结果）；
+       ② **可感知**：拉取期间顶部显示「刷新中…」，不再是按下后干等。
+       结果取舍：最新页里有真新帖 → 用最新页（提示「已刷新 ✓」）；否则用随机批（「换了一批内容」）；
+       两者都失败 → 「没刷出来」。缓存始终回写（重开先见这批）。 */
+    refreshNote.value = t("community.refreshing");
+    const prevNewest = newestSeenTs.value;
+    const [box, batch] = await Promise.all([
+      fetcher(),
+      cloudFetchPostsSample(FEED_PAGE).catch(() => null),
+    ]);
+    const freshCount = box ? box.rows.filter((p) => (p.ts || 0) > prevNewest).length : 0;
+    if (box && (freshCount > 0 || !batch)) {
       consume(box);
       reveal.value = PAGE_SIZE;
-      /* 轮 66：每次下拉都随机换一批；结果回写缓存（重开 App 先看到这批，旧批次不再复活）。 */
       cacheSet(cacheKey("wall:posts", (cloud.user && cloud.user.id) || ""), box);
+      refreshNote.value = t("community.refreshed");
+    } else if (batch && batch.length) {
+      consume({ rows: batch, counts: {}, fromFetch: true });
+      cacheSet(cacheKey("wall:posts", (cloud.user && cloud.user.id) || ""), { rows: batch, counts: {}, fromFetch: true });
       refreshNote.value = t("community.refreshBatch");
+    } else if (box) {
+      consume(box);
+      reveal.value = PAGE_SIZE;
+      refreshNote.value = t("community.refreshed");
     } else {
       refreshNote.value = t("community.refreshFail");
     }
