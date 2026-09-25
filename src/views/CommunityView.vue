@@ -171,14 +171,23 @@ async function loadCloud({ fresh = false } = {}) {
       batch: Array.isArray(batch) ? batch : null,
     }));
     const box = await Promise.race([pull, new Promise((res) => setTimeout(() => res(null), 8000))]).catch(() => null);
-    if (box && Array.isArray(box.posts) && box.posts.length) {
+    /* 轮 79（关键取舍修复）：最新页里**有真新帖**（比见过的最新 ts 还新）→ 用最新页；
+       **没有** → 用随机批（换一批）——此前随机批取了但永远不用，内容自然「不刷新」。
+       两个分支都回写缓存；都失败/超时 → 如实提示并保留旧列表。 */
+    const hasNew = box && Array.isArray(box.posts) && box.posts.some((p) => (p.ts || 0) > prevNewest);
+    const batchOk = box && Array.isArray(box.batch) && box.batch.length > 0;
+    if (box && Array.isArray(box.posts) && box.posts.length && (hasNew || !batchOk)) {
       lastPulledRows.value = box.posts;
       consume({ rows: box.posts, counts: {}, fromFetch: true });
       reveal.value = PAGE_SIZE;
       cacheSet(key, box);
-      refreshNote.value = box.batch && box.batch.length
-        ? t("community.refreshBatch")
-        : t("community.refreshed");
+      refreshNote.value = t("community.refreshed");
+    } else if (box && batchOk) {
+      lastPulledRows.value = box.batch;
+      consume({ rows: box.batch, counts: {}, fromFetch: true });
+      reveal.value = PAGE_SIZE;
+      cacheSet(key, { rows: box.batch, counts: {}, fromFetch: true });
+      refreshNote.value = t("community.refreshBatch");
     } else {
       refreshNote.value = t("community.refreshFail");
     }
