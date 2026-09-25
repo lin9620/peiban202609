@@ -52,7 +52,9 @@ export function naiveThemeFor(key) {
       color: cardBg,
     },
     Input: {
-      borderRadius: "999px",
+      /* 轮 71：999px → 20px——胶囊圆角在多行时会把框拉成怪形（用户实测）。
+         20px + CSS 圆角自动收缩：单行(≈36px 高)仍是椭圆，autosize 长高后变圆角长方形。 */
+      borderRadius: "20px",
       color: dark ? "rgba(38, 44, 78, .6)" : "rgba(255, 255, 255, .85)",
       colorFocus: dark ? "#2A3060" : "#FFFFFF",
       border: dark ? "1px solid rgba(139, 156, 232, .3)" : "1px solid rgba(160, 110, 60, .18)",
