@@ -16,7 +16,7 @@ import { cloud } from "../utils/supabase.js";
 /* 回应写入收敛器（纯逻辑，Node 单测覆盖）：连点串行落库 + 过期响应不回写 */
 import { createWriteQueue } from "../utils/reactQueue.js";
 import {
-  cloudFetchPosts, cloudInsertPost, cloudFetchComments, cloudInsertComment,
+  cloudFetchPosts, cloudFetchPostsSample, cloudInsertPost, cloudFetchComments, cloudInsertComment,
   cloudDeleteComment, cloudSetReaction, cloudFetchCommentCounts, canUseWall, canReadWall,
   cloudAddView, cloudToggleDislike,
 } from "../utils/wall.js";
@@ -117,6 +117,7 @@ const feedCursor = ref(null);   /* 轮 62：游标 = 已加载最后一条的 db
 const cloudDone = ref(false);
 const pageBusy = ref(false);
 const refreshNote = ref(false);
+const newestSeenTs = ref(0);    /* 轮 64：见过的最新帖 ts——下拉时对比才知道有没有新帖 */
 
 async function loadCloud({ fresh = false } = {}) {
   loadingCloud.value = true;
@@ -138,6 +139,7 @@ async function loadCloud({ fresh = false } = {}) {
       /* 本轮 fetch 的结果：游标=末条 dbId（id<游标 取下一页）；页不满=服务器已到底 */
       feedCursor.value = box.rows.length ? box.rows[box.rows.length - 1].dbId : feedCursor.value;
       cloudDone.value = box.rows.length < FEED_PAGE;
+      newestSeenTs.value = Math.max(newestSeenTs.value, ...box.rows.map((p) => p.ts || 0));
     } else {
       /* 旧/外来缓存盒：仅展示快照——游标清空、不算到底（loadMoreCloud 的去重+跳页会自愈错位） */
       feedCursor.value = null;
@@ -154,15 +156,25 @@ async function loadCloud({ fresh = false } = {}) {
     /* 下拉刷新：强制取新（绕过缓存），失败时保留旧列表（与「不覆盖」同语义）。
        轮 61：提示必须说实话——之前「已刷新」无条件显示，拉取失败也谎报成功（用户实测怒斥）。
        成功时对比刷新前最新 ts：有新帖报条数，没新帖如实说「已刷新」，失败明说再试。 */
-    const prevMaxTs = cloudPosts.value.reduce((m, p) => Math.max(m, p.ts || 0), 0);
+    const prevMaxTs = Math.max(newestSeenTs.value, cloudPosts.value.reduce((m, p) => Math.max(m, p.ts || 0), 0));
     const box = await fetcher();
     if (box) {
       consume(box);
       reveal.value = PAGE_SIZE;
       const freshRows = box.rows.filter((p) => (p.ts || 0) > prevMaxTs);
-      refreshNote.value = freshRows.length
-        ? t("community.refreshNew", { n: freshRows.length })
-        : t("community.refreshed");
+      if (freshRows.length) {
+        refreshNote.value = t("community.refreshNew", { n: freshRows.length });
+      } else {
+        /* 轮 64（用户拍板「下拉就刷新一批内容」）：没有新帖时不再原样返回——
+           随机换一批（7 天池随机起点，服务器数总量→随机偏移），怎么拉都有新东西看。 */
+        const batch = await cloudFetchPostsSample(FEED_PAGE);
+        if (batch && batch.length) {
+          consume({ rows: batch, counts: {}, fromFetch: true });
+          refreshNote.value = t("community.refreshBatch");
+        } else {
+          refreshNote.value = t("community.refreshed");
+        }
+      }
     } else {
       refreshNote.value = t("community.refreshFail");
     }

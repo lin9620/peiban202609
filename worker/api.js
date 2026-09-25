@@ -178,6 +178,22 @@ async function objectOrPassthrough(res) {
 
 /** 帖子列表：先带 removed 过滤；任何非 2xx 都退回不带过滤的查询（老库没有这一列；与直连模式对齐）
  *  offset：分页偏移（「我的帖子」10 条/页续拉用；0/缺省 = 与旧行为一致） */
+/* 轮 64：sample 随机一批（「换一批」）——先数 7 天池总量（count=exact + Range 0-0，微小查询），
+   再随机起点取一页。两次微小上游调用，不用全表排序。 */
+async function samplePosts(env, request, limit, since) {
+  const base = ["select=id", "removed=eq.false"];
+  if (since) base.push(`created_at=gte.${encodeURIComponent(since)}`);
+  const c = await upstream(env, request, restUrl(env, TABLE.posts, [...base, "order=created_at.desc"].join("&")), { headers: { prefer: "count=exact", range: "0-0" } });
+  if (!c || !c.ok) return fail(502, "upstream-unreachable");
+  const total = parseInt(((c.headers.get("content-range") || "").split("/")[1] || "0"), 10) || 0;
+  const maxOff = Math.max(0, total - limit);
+  const off = Math.floor(Math.random() * (maxOff + 1));
+  const qs = [...base, "order=created_at.desc", `limit=${limit}`, off > 0 ? `offset=${off}` : ""].filter(Boolean).join("&");
+  const res = await upstream(env, request, restUrl(env, TABLE.posts, qs));
+  if (!res || !res.ok) return fail(502, "upstream-unreachable");
+  return new Response(await res.text(), { status: res.status, headers: { "content-type": "application/json" } });
+}
+
 async function listPosts(env, request, uid, limit, offset, beforeId = 0) {
   const base = ["select=*"];
   if (uid) base.push(`user_id=eq.${encodeURIComponent(uid)}`);
@@ -509,6 +525,10 @@ export default {
           if (m === "GET") {
             const bidRaw = q.get("before_id") || "";
             const bid = /^\d+$/.test(bidRaw) ? Number(bidRaw) : 0;
+            if (q.get("sample") === "1") {
+              const since = /^\d{4}-\d{2}-\d{2}T/.test(q.get("since") || "") ? q.get("since") : "";
+              return samplePosts(env, request, parseLimit(q.get("limit"), 50), since);
+            }
             return listPosts(env, request, "", parseLimit(q.get("limit"), 200), parseOffset(q.get("offset")), bid);
           }
           if (m === "POST") return insertSingle(env, request, TABLE.posts);

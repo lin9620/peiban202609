@@ -7,6 +7,7 @@ import { useRoute, useRouter } from "vue-router";
 import { NButton, NInput } from "naive-ui";
 import { t } from "../i18n.js";
 import { getItem, setItem } from "../utils/storage.js";
+import { isApp } from "../stores/uiStore.js";
 import {
   cloud, cloudSignUp, cloudSignIn,
   cloudResetPassword, cloudUpdatePassword, cloudSignInWithGoogle, cloudClearRecovery,
@@ -237,12 +238,16 @@ function passHint(pass) {
         </n-button>
       </div>
 
-      <!-- Google 一键登录（忘记密码时先不需要它，避免歧义） -->
+      <!-- Google 一键登录（忘记密码时先不需要它，避免歧义）。
+           轮 63：Google 禁止 WebView 内登录（防钓鱼），App 内最佳形态是 Chrome Custom Tabs，
+           而它依赖设备上有支持 CCT 的浏览器（无 Chrome 的国产 ROM 会回退外部浏览器）——
+           提前一句话给预期：会打开浏览器，登录完自动回来（深链回跳，轮 31 的中转页链路）。 -->
       <template v-if="!forgot">
         <button type="button" class="oauth-google" :disabled="googleBusy" @click="doGoogle">
           <span class="oauth-g" aria-hidden="true">G</span>
           <span>{{ googleBusy ? t("profile.googleBusy") : t("profile.googleSignIn") }}</span>
         </button>
+        <p v-if="isApp" class="oauth-hint">{{ t("profile.googleAppHint") }}</p>
         <p class="or-line"><span>{{ t("profile.orEmail") }}</span></p>
       </template>
 

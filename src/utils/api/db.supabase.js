@@ -84,6 +84,22 @@ export const db = {
     return unwrap(Promise.resolve(res));
   },
 
+  /** 轮 64：随机换一批（先 count 总量 → 随机起点 range 一页；与网关 sample 同语义） */
+  async listPostsSample(limit, since) {
+    let cq = sb().from(T.posts).select("id", { count: "exact", head: true }).eq("removed", false);
+    if (since) cq = cq.gte("created_at", since);
+    const { count, error } = await cq;
+    if (error) return unwrap(Promise.resolve({ error }));
+    const total = Number(count) || 0;
+    const maxOff = Math.max(0, total - Number(limit));
+    const off = Math.floor(Math.random() * (maxOff + 1));
+    let res = await sb().from(T.posts).select("*").eq("removed", false).order("created_at", { ascending: false }).range(off, off + Number(limit) - 1);
+    if (res && res.error) {
+      res = await sb().from(T.posts).select("*").order("created_at", { ascending: false }).range(off, off + Number(limit) - 1);
+    }
+    return unwrap(Promise.resolve(res));
+  },
+
   /** 某用户的帖子（新→旧）；同样带 removed 兼容。offset = 分页偏移（0/缺省 = 旧行为） */
   async listPostsByUser(userId, limit, offset = 0) {
     const off = Number(offset) > 0 ? Number(offset) : 0;

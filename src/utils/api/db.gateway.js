@@ -86,6 +86,11 @@ export const db = {
     return call(`/posts?limit=${enc(limit)}${off ? `&offset=${enc(off)}` : ""}${bid ? `&before_id=${enc(bid)}` : ""}`);
   },
 
+  /** 轮 64：随机换一批（7 天池；Worker 数总量→随机起点，深池也不怕） */
+  async listPostsSample(limit, since) {
+    return call(`/posts?sample=1&limit=${enc(limit)}${since ? `&since=${enc(since)}` : ""}`);
+  },
+
   /** 某用户的帖子（新→旧）；offset = 分页偏移（0/缺省 = 旧行为） */
   async listPostsByUser(userId, limit, offset = 0) {
     const off = Number(offset) > 0 ? `&offset=${enc(Number(offset))}` : "";

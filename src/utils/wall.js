@@ -161,6 +161,25 @@ export async function cloudFetchPosts(limit = SORT_WINDOW, beforeId = 0) {
   }
 }
 
+/** 轮 64：随机换一批（7 天池；作者/回应数富化与 cloudFetchPosts 同款） */
+export async function cloudFetchPostsSample(limit = 50) {
+  if (!canReadWall()) return null;
+  try {
+    const since = new Date(Date.now() - 7 * 86400000).toISOString();
+    const rows = await db.listPostsSample(Number(limit) > 0 ? Number(limit) : 50, since);
+    let reactions = {};
+    try {
+      const ids = (rows || []).map((x) => x.id);
+      const rk = ids.length ? await db.listReactionsByPosts(ids) : [];
+      reactions = aggregateReactions(rk || [], cloud.user ? cloud.user.id : "");
+    } catch (e) { /* 回应拉取失败不阻塞帖子 */ }
+    return rowsToPosts(rows || [], reactions, publicUrl);
+  } catch (e) {
+    console.warn("[cloud] fetchPostsSample:", e);
+    return null;
+  }
+}
+
 /** 发布帖子；imageDataUrl 可空。返回视图帖子或 null */
 export async function cloudInsertPost({ text, imageDataUrl, name }) {
   if (!canUseWall()) return null;
