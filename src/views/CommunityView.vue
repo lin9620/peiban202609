@@ -117,6 +117,7 @@ const feedCursor = ref(null);   /* 轮 62：游标 = 已加载最后一条的 db
 const cloudDone = ref(false);
 const pageBusy = ref(false);
 const refreshNote = ref(false);
+const newestSeenTs = ref(0);   /* 轮 73：补上缺失声明——轮 72 的条件补丁被注释字样骗过漏加（真新帖判定用） */
 
 async function loadCloud({ fresh = false } = {}) {
   loadingCloud.value = true;
