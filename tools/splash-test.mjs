@@ -127,6 +127,12 @@ ok("轮 38 ⑥ 启动页 CSS 真在 <style> 里 + 标签配对（裸文本回归
 ok("轮 38 ⑦ 显示规则优先级正确（默认 display:none 在前，html.cap-app 恢复显示在后）",
   styleBlocks.indexOf("#app-splash { display: none; }") < styleBlocks.indexOf("html.cap-app #app-splash { display: flex; }"));
 
+ok("轮 74 启动页语言跟随（用户:英文语言还是中文启动页）：内联判语言脚本在位（wp-lang 存档优先→系统语言），英文替换文案齐备",
+  html.includes('localStorage.getItem("wp-lang")')
+    && html.includes('"Warm Paws"')
+    && html.includes("Care for a little pet")
+    && html.includes("Meet gentle people on the Wall"));
+
 console.log(`splash-test: ${pass} pass, ${fails.length} fail`);
 for (const f of fails) console.log("FAIL  " + f);
 if (fails.length) process.exit(1);

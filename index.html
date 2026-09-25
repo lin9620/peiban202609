@@ -171,6 +171,29 @@
     <div class="sp-dots"><i></i><i></i><i></i></div>
   </div>
 
+  <script>
+    /* 轮 74：启动页语言跟随——静态层在 i18n 之外，渲染时直接判：
+     * 手动选过语言（wp-lang 存档）优先，否则系统语言 zh→中文、其余→英文。
+     * 放在启动页标记之后：解析器同步执行，首帧前完成替换，不会闪中文。 */
+    (function () {
+      try {
+        var saved = null;
+        try { saved = localStorage.getItem("wp-lang"); } catch (e) {}
+        var lang = saved || ((navigator.language || "").toLowerCase().indexOf("zh") === 0 ? "zh" : "en");
+        if (lang !== "en") return;
+        var set = function (sel, text) { var el = document.querySelector("#app-splash " + sel); if (el) el.textContent = text; };
+        set(".sp-name", "Warm Paws");
+        set(".sp-sub", "A gentle place to be");
+        set(".sp-tag", "A gentle corner");
+        var feats = document.querySelectorAll("#app-splash .sp-feat");
+        if (feats[0]) feats[0].textContent = "🐱 Care for a little pet";
+        if (feats[1]) feats[1].textContent = "🌊 Bottle up your thoughts";
+        if (feats[2]) feats[2].textContent = "❤️ Meet gentle people on the Wall";
+        set(".sp-quote", "「You’re doing better than you think.」");
+      } catch (e) { /* 任何异常保持中文默认 */ }
+    })();
+  </script>
+
   <noscript>
     <h1>Warm Paws · 温暖的爪印</h1>
     <p>
