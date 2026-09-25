@@ -1129,7 +1129,6 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
       </div>
     </article>
 
-    <p class="notice" style="text-align: center">{{ t("community.sampleNotice") }}</p>
     <!-- 触底续载哨兵：滚近底部先亮已拉取的，亮完向服务器取下一页（轮 56 真·无限流） -->
     <div ref="sentEl" class="feed-sentinel" aria-hidden="true"></div>
     <p v-if="shownPage.length && !hasMore && cloudDone" class="notice" style="text-align: center">
