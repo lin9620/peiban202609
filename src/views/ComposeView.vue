@@ -169,10 +169,10 @@ async function submit() {
  *   TabBar 与页脚一并让位 → 这页自己吃满 100dvh，底部留 safe-area。
  * 桌面形态也走同一页（窄屏居中 max-width 720），不会因为手机优先而崩。 */
 .compose-page {
-  display: flex; flex-direction: column; gap: 12px;
+  display: flex; flex-direction: column; gap: 10px;
   min-height: 100dvh;
   max-width: 720px; margin: 0 auto;
-  padding: 12px 14px calc(18px + env(safe-area-inset-bottom, 0px));
+  padding: 10px 14px calc(16px + env(safe-area-inset-bottom, 0px));
 }
 
 /* 顶栏 */
@@ -198,24 +198,31 @@ async function submit() {
 .compose-title { font-size: 17px; font-weight: 800; letter-spacing: .3px; }
 
 /* 卡片：输入框吃掉剩余高度，动作条自然吸底 */
+/* 轮 76：发帖卡 = 「信纸」——暖纸渐变 + 爪印水印 + 收紧的留白。
+   皮肤变量优先（夜间主题不破），渐变仅在浅色皮肤变量缺失时兜底。 */
 .compose-card {
+  position: relative; overflow: hidden;
   flex: 1 1 auto;
-  display: flex; flex-direction: column; gap: 12px;
-  /* 底色走皮肤变量（浅色近白 / 夜间深蓝），不破夜间主题；不做毛玻璃（手机端 5） */
+  display: flex; flex-direction: column; gap: 10px;
   background: var(--glass-strong, #fff);
-  border: 1.5px solid rgba(255, 255, 255, .95);
-  border-radius: 22px; padding: 16px;
-  box-shadow: var(--shadow);
+  border: 1px solid rgba(160, 110, 60, .16);
+  border-radius: 24px; padding: 16px 16px 12px;
+  box-shadow: 0 10px 30px rgba(160, 110, 60, .10);
 }
-.compose-card--signin { align-items: center; justify-content: center; text-align: center; gap: 16px; }
+.compose-card::before {
+  content: "🐾"; position: absolute; right: 10px; top: 6px;
+  font-size: 34px; opacity: .12; pointer-events: none;
+}
+.compose-card--signin { align-items: center; justify-content: center; text-align: center; gap: 16px; min-height: 46vh; }
 .compose-sub { font-size: 13.5px; font-weight: 700; color: var(--ink-soft); line-height: 1.75; }
+.compose-count { font-size: 11.5px; font-weight: 700; color: var(--accent-deep); opacity: .85; }
 
 /* 大输入框：把原生 textarea 的边框/把手全去掉，只用字号与行高排字 */
 .compose-area {
   flex: 1 1 auto;
-  width: 100%; min-height: 42vh;
+  width: 100%; min-height: 38vh;
   border: none; outline: none; resize: none; background: transparent;
-  font: inherit; font-size: 15.5px; line-height: 1.85; letter-spacing: .2px;
+  font: inherit; font-size: 16px; line-height: 1.9; letter-spacing: .2px;
   color: var(--ink); padding: 0;
 }
 .compose-area::placeholder { color: var(--ink-faint); font-weight: 600; opacity: .9; }
@@ -228,10 +235,11 @@ async function submit() {
 
 /* 工具行：图片 / 移除 / 字数（字数贴右；发布按钮独立成整行，见下） */
 .compose-bar {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  padding-top: 12px;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding-top: 10px;
   border-top: 1px dashed rgba(255, 159, 90, .28);
 }
+.compose-bar .compose-count { margin-left: auto; }
 .compose-tool {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 7px 14px; border-radius: 999px;
