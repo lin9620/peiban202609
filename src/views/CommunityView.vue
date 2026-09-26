@@ -219,19 +219,6 @@ async function loadCloud({ fresh = false } = {}) {
     loadingCloud.value = false;
   }
 }
-    const ids = lastPulledRows.value.map((r) => r.dbId);
-    const key = cacheKey("wall:posts", (cloud.user && cloud.user.id) || "");
-    cloudFetchCommentCounts(ids).then((counts) => {
-      if (!counts) return;
-      const next = { ...cloudCmtTotal.value };
-      for (const p of lastPulledRows.value) {
-        if (p.dbId != null) next[cmtKey(p)] = counts[p.dbId] || 0;
-      }
-      cloudCmtTotal.value = next;
-      cacheSet(key, { rows: lastPulledRows.value, counts, fromFetch: true });
-    }).catch(() => {});
-  }
-}
 
 /* 触底续载（轮 62 自愈版）：游标取下一页，**追加前去重**——缓存快照与游标页交叠、
    时间戳并列导致跨页重排等任何错位，都只表现为「整页重复」→ 跳过该页用下一页游标续取
