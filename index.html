@@ -15,6 +15,20 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="manifest" href="/manifest.json" />
   <script>
+    /* 轮 83：首帧前给 <html> 打 js 标记（内联执行，早于任何绘制）。 */
+    document.documentElement.classList.add("js");
+  </script>
+  <style>
+    /* 轮 83：修「打开网页先看到一段英文占位/裸链接，才进正常页面」——构建期写进
+     * #app 的 SEO 静态正文（.seo-static，见 vite.config 注入处）本来要裸露到 Vue
+     * 挂载为止，CSS 慢时更是无样式裸奔。真人浏览器（有 JS）首帧前就把它隐藏，
+     * 挂载后 Vue 直接接管；无 JS 的爬虫没有 js 类，占位照常可读（SEO 不受影响）。
+     * 6 秒看门狗的中文兜底不带 seo-static 类，不受影响。 */
+    html.js .seo-static { display: none !important; }
+    /* CSS 未就绪的窗口期先铺暖底色避免白屏（style.css 就绪后无缝接管渐变） */
+    html.js body { background: #fff4e8; }
+  </style>
+  <script>
   /* ── 启动看门狗（修「有时候页面一堆英文乱码」）──────────────────────
    * 那段英文是构建期写进 #app 的 SEO 静态占位（给搜索引擎看的）。正常情况下
    * Vue 一挂载就会整体替换掉它；但一旦 JS 资源加载失败（版本更新后旧缓存指向

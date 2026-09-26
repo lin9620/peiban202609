@@ -201,9 +201,13 @@ function seoRoutes() {
            否则子页面在搜索结果里仍显示全站通用描述 */
         h = h.replace(/<meta\s+name="description"[\s\S]*?\/>/, `<meta name="description" content="${r.desc}" />`);
         /* 需要正文的子页面：把内容塞进挂载点。Vue 挂载时会清空该容器，视觉无差别；
-           不执行 JS 的抓取方则能读到真实内容而不是空壳 */
+           不执行 JS 的抓取方则能读到真实内容而不是空壳。
+           轮 83：外面包一层 .seo-static（index.html 首帧前的内联规则对有 JS 的浏览器
+           display:none）——静态正文只给无 JS 的爬虫读，真人不再「先看英文占位再进正页」。
+           不能直接给 <section> 加类：cap-strip-hero 的正则按 `<section class="card seo-hero">`
+           原文匹配，动了 APK 剥离就静默失效。 */
         if (r.html) {
-          h = h.replace('<div id="app"></div>', `<div id="app">\n      ${r.html}\n    </div>`);
+          h = h.replace('<div id="app"></div>', `<div id="app">\n      <div class="seo-static">${r.html}</div>\n    </div>`);
         }
         fs.mkdirSync(path.join(distDir, r.dir), { recursive: true });
         fs.writeFileSync(path.join(distDir, r.dir, "index.html"), h);
@@ -217,7 +221,8 @@ function seoRoutes() {
           E.home.companions.title + ". " + E.home.companions.hall,
           E.home.mood.title + " " + E.home.mood.subtitle,
         ]);
-        h = h.replace('<div id="app"></div>', `<div id="app">\n      ${heroHome}\n    </div>`);
+        /* 轮 83：首页正文同样包 .seo-static（理由见上方子页注入处） */
+        h = h.replace('<div id="app"></div>', `<div id="app">\n      <div class="seo-static">${heroHome}</div>\n    </div>`);
         fs.writeFileSync(tpl, h);
         made++;
       }

@@ -1012,6 +1012,17 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 .sort-btn.on { color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent-deep)); }
 .sort-btn.on:hover { color: #fff; }
 
+/* 轮 83：网页端刷新按钮 —— 排序行右端；点它走与触屏下拉同一条 loadCloud({fresh:true})。
+ * App 壳（html.cap-app，index.html 内联脚本判定）里有原生下拉刷新，这里隐藏避免重复。 */
+.wall-refresh { margin-left: auto; font-size: 15px; line-height: 1; padding: 5px 12px; }
+.wall-refresh:disabled { opacity: .55; cursor: default; transform: none; }
+.wall-refresh.spin { animation: wall-refresh-spin 1s linear infinite; }
+@keyframes wall-refresh-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .wall-refresh.spin { animation: none; }
+}
+html.cap-app .wall-refresh { display: none; }
+
 /* 帖子底部：浏览数 + 厌恶按钮 + 比例 */
 .post-foot {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
