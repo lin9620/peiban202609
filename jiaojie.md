@@ -38,9 +38,11 @@ npm run dev:api        # 本地 Worker
 node node_modules/vite/bin/vite.js build   # 生产构建（比 npm run build 更容易拿到明确退出码）
 npx wrangler deploy    # 部署 Worker + 静态资产
 git -c http.proxy= -c https.proxy= -c http.version=HTTP/1.1 push   # push（本机网络需要这些参数）
-node tools/<x>-test.mjs # 33 套离线测试（提交前全跑）
-node tools/undef-check.mjs  # 未导入符号检查（白屏元凶，必跑）
+node tools/<x>-test.mjs # 36 套离线测试（提交前全跑）
+node tools/undef-check.mjs  # 未导入符号检查 + 「赋值给未声明裸标识符」（白屏元凶，必跑；--selftest 10 项）
 node tools/tdz-check.mjs    # immediate watch 引用「后面才声明的 const」的 TDZ 检查（崩页元凶，改 .vue 必跑）
+node tools/feed-window-live.mjs  # 动态流虚拟窗口真机几何取证（需 dev 服务器 + CDP 9222；改动态流必跑）
+node tools/web-refresh-test.mjs  # 网页端刷新按钮与首帧 SEO 静态正文回归（6 项）
 node tools/page-smoke.mjs --serve=dist   # 无头真实挂载 8 条关键路由 + 无崩溃盒断言（改 .vue 必跑）
 node tools/live-check.mjs   # 部署后线上验证，应输出 LIVE ALL PASS (14)
 node tools/live-bundle-check.mjs  # 部署后必跑：线上入口包 SHA 与本地 dist 逐字节比对 + Supabase slug 检查（踩坑 #25/#26）
@@ -263,23 +265,25 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
 ---
 
-# 一、当前状态速览（2026-09-26 更新 · 轮 80）
-# 一、当前状态速览（2026-09-26 更新 · 轮 75）
+# 一、当前状态速览（2026-09-26 更新 · 轮 82）
 
 | 项 | 值 |
 |---|---|
 | 项目 | peiban（陪伴 / warm-paws），路径 `D:\05ruanjian\peiban` |
 | 技术栈 | Vue 3 + Vite + Naive UI；数据层双模式：直连 Supabase（`db.supabase.js`）/ Worker 网关（`db.gateway.js` + `worker/api.js`，**线上走网关**）；Cloudflare 部署 https://dale.de5.net；Supabase Postgres + RLS + security definer RPC |
-| 代码 | 轮 80（**陈旧 dist 系统性事故修复+全部积压修复上线**）：用户:「刷新根本不动」→ CDP 取证 /community 渲染 0 张卡→真因:轮 77 try/finally 补丁留下孤儿代码块→此后每次 vite build 语法失败被 grep 过滤误判成功→轮 73-79 部署全是 03:54 旧 dist(无崩溃修复/无换一批/无英文修复);修:删孤儿块→build 成功(新 chunk index-CB4a4YgL.js)→部署 9946c57b→装机。轮 79：「换一批」取舍逻辑恢复(轮 77 重写弄丢)。轮 78：英文 UI 精修(审计探针 MIME 坑修复后实锤:卡面审核规则行删除/人数单复数/排序钮文案)。轮 74-77：启动页语言跟随/newestSeenTs 崩溃修复/下拉刷新提速+提示三态。此前轮 55-59：压测数据灌注+发帖页信纸+UI 精修+页脚 |
+| 代码 | 轮 82（**动态流 B 档虚拟窗口，待提交待部署**）：300 条长列表只挂 ~16 张卡（DOM 卡片数上限 60 断言），上下占位块撑住滚动高度，深链钉住 + 近底续载由 `nearEnd` 算。三处真缺陷（真机取证）：`POST_GAP` 写死 18 而手机断点是 12（累计串位）/ 估高写死 340 而 CSS 占位是 320（尾部十几张 = 138px 可见空档）/ `overflow-anchor` 处理不对（`scrollTo(0,0)` 被拽回 39k）。轮 81（**A 档性能**）：`content-visibility:auto` + 列表图懒加载 + 时间文案 `memoWhen`。轮 80（**陈旧 dist 事故修复**）：CDP 取证 /community 渲染 0 张卡→轮 77 孤儿代码块让每次 vite build 语法失败被误判成功→轮 73-79 部署全是旧 dist；删孤儿块→部署 9946c57b→装机。轮 74-79：启动页语言跟随/newestSeenTs 崩溃修复/下拉提速+提示三态/英文精修/换一批取舍。 |
 | 部署 | Version `9946c57b` 已上线（轮 80 陈旧 dist 修复,**含轮 59-79 全部积压修复真正上线**）；live-check 14/14；线上入口 SHA16 `8c85a5957972063d` 本地=线上。历史：`1a0570fb`（轮 72 提速,其部署实为 03:54 旧产物）、`176c967f`（轮 60-62） |
 | 数据库 | `MIGRATION_reports.sql` 已执行（线上 e2e 6/6 闭环）；`MIGRATION_notifications_drop_dm.sql`（轮 13 #23）仍未确认。**本轮零迁移零 SQL 改动**（只动前端 + Android 原生资源） |
 | App | **轮 80 攒批 APK 已重打并装机 ✅**：SHA16 `9DA84059319DDA50`，`adb install -r` Success。包内含轮 39-80 全部 App 端改动(启动页语言跟随/输入框三连/换一批语义/游标/回信标签/谷歌提示/**刷新死锁修复**)。**验证须亮屏**：锁屏后 Chromium 冻结渲染进程,CDP 读数成假象。历史：轮 74 包 `C3F39BE5B8E5CFF3` → 轮 62 包 `21AAA9660D9DE6E0` |
 | App 冷启动实测 | 轮 38：**真机冷启动 14 帧像素扫描（浅色模式）**：原生启动层米色+橙爪（四角 `#FFF7EE`、左右零暗像素）→ 网页启动页 → 首页，App 自己的每一帧都没有黑边。**轮 39 补勘**：那次抓帧是下午**浅色模式**下做的——夜间深色模式的路径当时测不到，正是「白天验收全绿、夜里黑屏」的盲区（F 区轮 39）；深色模式验证须装机后补做 |
-| 测试 | 最新基线（轮 80）：splash **21/21** + i18n **19/19** + bottle **69/69** + bottle-chat **94/94** + dm **286/286** + app-shell **40/40** + wall **34/34** + wall-rules **42/42** + auth **130/130** + status **49/49** + api-contract **83/83** + gateway **67/67** + worker **196/196** + undef/tdz **0** + page-smoke **8/8** + build 0 + live-check **14/14**。详见 README 与 F 区各轮 |
+| 测试 | 最新基线（轮 83，`tools` 共 36 套 + 4 项静态/挂载门槛）：feed-perf **27/27** + feed-window **19/19** + feed-window-live **10/10**（需 dev 服务器）+ web-refresh **6/6** + splash **21/21** + i18n **19/19** + bottle **69/69** + bottle-chat **94/94** + dm **286/286** + app-shell **40/40** + wall **34/34** + wall-rules **42/42** + auth **130/130** + status **49/49** + api-contract **83/83** + gateway **67/67** + worker **196/196** + undef **0**（含 --selftest **10/10**）+ tdz **0** + page-smoke **8/8** + build 0 + live-check **14/14**。**36 套离线全绿**。详见 README 与 F 区各轮 |
 
 ## 二、现在在做什么
 
-- **当前任务**：轮 80（**陈旧 dist 系统性事故修复,已上机**）——**等用户验收**:①暖心墙下拉 → 「刷新中…」→ 换一批/新增提示,**内容真的会变**②下滑到底自动翻页③消息页无错误盒④发帖页信纸样式⑤英文 UI。**上一批轮 59-79 的部署全部发的是 03:54 旧产物——本轮才真正带上全部修复**。
+- **当前任务**：轮 82（**动态流 B 档虚拟窗口，改动完成、测试过了、待提交待部署**）——把「已亮的帖子全挂 DOM」改成**窗口化**：只渲染视口附近 ~16 张卡（上下占位块撑住滚动高度），高度表按真实 `getBoundingClientRect` 长出来、只有深链才吃估高并按锚点位移补偿一次；近底续载改由 `nearEnd` 算（有占位块后原哨兵会被推到几万像素外）。**真机取证修掉三处真缺陷**：卡距从真卡片现读（手机断点 12 / 桌面 18）、估高与 `.post-card` 的 `contain-intrinsic-size` 锁成一条链（320）、交出浏览器自带滚动锚定并在卸载时还原。**验收**：36 套离线全绿 + feed-perf 27/27 + feed-window 19/19 + **feed-window-live 10/10**（真引擎 300 条：DOM 卡片 ≤16 张、视口内零空档、回滚/回顶不白屏、控制台无异常）+ undef 0（含 --selftest 10/10）+ tdz 0 + page-smoke 8/8 + build 0（含轮 83 的网页刷新按钮与首帧占位修复，同批待提交待部署）。
+- **待用户验收（亮屏，下轮部署后）**：暖心墙长列表快速上下滚——**不白屏、不跳位**；一直往下滑始终能续上新帖；从通知点「评论」跳回来能正确定位到那条（不再拽回列表顶部）。
+- **上一轮**：轮 81（**动态流 A 档性能，同批待提交待部署**）——屏外卡片跳过渲染（`content-visibility:auto` + `contain-intrinsic-size`）、列表图 `loading=lazy` + `decoding=async` + 未解码占位底色、时间文案记忆化 `memoWhen`（同一批帖子不再每帧重跑 `toLocaleString`）。
+- **上一轮**：轮 80（**陈旧 dist 系统性事故修复,已上机**）——**等用户验收**:①暖心墙下拉 → 「刷新中…」→ 换一批/新增提示,**内容真的会变**②下滑到底自动翻页③消息页无错误盒④发帖页信纸样式⑤英文 UI。**上一批轮 59-79 的部署全部发的是 03:54 旧产物——本轮才真正带上全部修复**。
 - **上一轮**：轮 79（**「换一批」取舍逻辑恢复**）
 - **当前任务**：轮 77（**刷新死锁修复,已上机**）——**等用户验收**:暖心墙下拉 → 「刷新中…」→ 1 个往返换内容;网络抖动时提示「没刷出来,再试一次」且**再拉仍可用**(不再永久死锁)。轮 74 的启动页语言跟随同包。
 - **上一轮**：轮 74（**启动页语言跟随,已上机**）——**等用户验收**:系统/设置语言为英文时,启动页显示英文(名称 Warm Paws/口号/三条特性/温柔话全英文);中文用户不变。轮 73 的崩溃修复也在此包(刷新已恢复)。
@@ -615,6 +619,12 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 31. **恒浅色 App 必须显式退出深色模式；「验收时段」本身就是盲区（轮 39 真因）**：App 内 UI 恒为米色，但 `AppTheme.NoActionBar` 用 DayNight parent、WebView 没关 Force Dark——深色模式下 Android 10-12 的 WebView Force Dark（夜间 uiMode 默认开启，`@capacitor/android` 8.5.2 对此零处理）与 MIUI 自家深色会把浅色页面**整个反黑**；轮 24-38 每轮验收都在白天浅色模式下抓帧，这层从未被测到 → 用户「白天验收、夜里黑屏」。**教训（强制）**：① 浅色恒定的 App 三道闸缺一不可：主题不用 DayNight + `android:forceDarkAllowed=false` **写满继承链每个节点**（显式 parent 不继承、同名 style 整体替换，见 #30②）+ `AppCompatDelegate.setDefaultNightMode(MODE_NIGHT_NO)` 必须在 `super.onCreate` **之前**（BridgeActivity.onCreate 内部就 setContentView + 建 WebView，晚调无效）+ WebView 实例 `setForceDarkAllowed(false)`；② **验证要覆盖使用时段**：白天的浅色实测证明不了夜里深色下的表现——凡动主题/配色，浅色+深色各跑一遍（`adb shell cmd uimode night yes/no` 可切换）；③ splash-test 已把三道闸钉成断言（15→18），拆掉任何一道都红。
 
 32. **同一坑第二次犯：immediate watch 的 TDZ（轮 41 真因，首页整页崩）**：#29 已经把这条写成「强制」规矩，轮 41 还是在 `BottleView.vue` 重犯——为了让「进首页就查漂流瓶」生效，把 `watch([cloudSigned,myId], cb)` 改成 `{ immediate: true }`，而 `cb` 要动 `recPage`（连带 `recTab/recLoading`）这些**声明在第 224 行**的 const，watch 在**第 87 行** → immediate 在那一行同步执行回调，绑定还在 TDZ → `ReferenceError: Cannot access 'ht' before initialization`（`ht` = 打包后 `recPage` 的压缩名）→ `App.vue` 的 `onErrorCaptured` 接管 → **首页整页变「这里好像有点小状况」**，漂流瓶与首页数据全军覆没。**为什么上一轮没拦住**：轮 41 只跑了离线套件（不执行组件代码）+ `undef-check`（这不是「未定义」，是执行顺序）+ `build`（构建不看运行时），**偏偏漏跑 #29② 自己立的 `page-smoke`** —— 它一跑就红。**教训（强制）**：① 交付前 `page-smoke` 与 `undef-check` **同级硬门槛**，改任何 `.vue` 必跑（真机/线上出现错误盒也先跑它复现）；② 初始查询不要用 `immediate: true`，改成「`onMounted` / setup 末尾显式调用一次」——`onMounted` 在 setup 全部执行完之后才跑，引用的 const 必已初始化（`BottleView` 现按此写）；③ 新增 **`tools/tdz-check.mjs`** 静态防线（顶层 `watch(..., {immediate:true})` 的回调体——含它调用的本文件顶层 function 声明的体——里出现的标识符，若其顶层 const/let 声明行在本文件更后面即报错；自带 `--selftest` 2 项，并用轮 41 旧代码回归实测命中 `BottleView.vue:87 recPage（声明 224）`），构建前必跑；④ 定位手法留档（源码名被混淆时很好用，承 #11）：真机抓帧看到错误盒 → `adb logcat | Select-String 'before initialization'` 拿到压缩名 → 在 `dist` 产物里数该名字的**所有**出现处，找到声明点反查源码变量。
+
+33. **「未声明就赋值」连 undef-check / tdz-check 都抓不到（轮 82 真凶，B1 虚拟窗口整段接线静默失效）**：给页面接管滚动锚定时写了 `prevAnchor = root.style.overflowAnchor` 却**漏了 `let` 声明** —— ESM 是严格模式，赋值未声明标识符直接 `ReferenceError`，`onMounted` 从那一行起**整段中断**（后面 5 个 addEventListener / 首次窗口计算 / RO 装配全没执行），界面却「看着正常」：首屏十几条照常显示，只是永远不再续载、也没有占位块。`undef-check` 只查「导入的符号导入了没」，`tdz-check` 只查 immediate watch 的声明顺序，`vite build` 更不看运行时 —— **三层防线全绿**，只有真机量几何（DOM 卡片数 / 占位块高度 / docH 是否增长）才现形。**教训（强制）**：① `tools/undef-check.mjs` 新增第 2b 类检查（赋值给本文件从未声明的裸标识符），并自带 `--selftest` 10 项；② 挂载钩子里「顺序敏感的大量装配」要能一眼看出是否中断 —— 关键装配放前面、可疑赋值放后面，或包成独立函数；③ 真机几何取证脚本（`tools/feed-window-live.mjs`）把「DOM 卡片数上限」「回滚/回顶不白屏」「docH 单调增长」量成断言，纳入改动态流的收尾。
+34. **「近似正则」的静态检查会假绿也会假红，必须自带反向样本（轮 82 的 undef-check 2b 落地过程）**：初版实现直接整文件扫赋值 → 刷出 **365 条**假警报，来源三类：① `.vue` 的 `<template>` 里 `class="x"`、`:style="{…}"` 被剥成 `class=` / `style=`，与赋值长得一模一样（**必须只扫 `<script>` 块**）；② 多层嵌套模板串（`` `…${a ? `&before_id=${enc(b)}` : ""}` ``）剥不干净，把 `before_id=` 当赋值（**赋值正则要 `(?<![\w$.'"`])` 前缀 + `=(?![=>])` 后缀**）；③ 声明集合漏收 —— `const W = 640, H = 480` 只收 W、方法简写 `async listPosts(limit, opts = {})` 的参数、`for (const [k, v] of xs)` 与解构默认值 `{ replyTo = "" }` 全算「未声明」（**要按语句级切声明器 + 收方法参数 + 支持解构/for-of**）。修完 365 → **0**，且十类样本（含「真缺陷」与九类「不许报」）钉进 `--selftest`。**教训**：这类检查**假红会淹没真问题、假绿会放过真事故**，落地时必须：先跑全仓看假红 → 修到 0 → 再把「真缺陷样本 + 各类假红样本」都写成自检项；只加规则不写自检等于埋雷。
+35. **硬编码的布局常量 ≠ CSS 真相；「同一件事的三个数字」必须锁成一条链（轮 82 三处真缺陷之二）**：① 组件里 `POST_GAP = 18`（桌面 `.card` 的 margin-bottom），可同一份 CSS 里 `.shell--mobile-nav .card { margin-bottom: 12px }`（420px 断点）—— 手机端每张卡少算 6px，几百条后累计上千像素**串位**；② 估高写死 `FEED_EST = 340`，而 `.post-card` 的 `contain-intrinsic-size`（= 未渲染时浏览器实际给的高度）是 **320px** —— 20px × 窗口尾部十几张 = 一截可见空档（真机取证量到过 **138px**）。**教训（强制）**：① 布局常量**从真实元素 `getComputedStyle` 现读**（读不到才回落常量，断点/主题一变就得失效重读）；② 同一件事分散在三处（CSS 的值 / 模块常量 / 组件用的值）时，**只留一条链**（`FEED_EST = DEFAULT_EST`）并用测试断言三者严格相等（`feed-window-test` T17 + `feed-perf-test` T23），禁止各自写一个「差不多」的数。
+36. **`overflow-anchor` 是双刃剑；「正在滚动」的时间戳必须先有人写（轮 82 真缺陷之三）**：① 虚拟窗口按设计会改动视口上方的布局（占位块高度），浏览器自带的滚动锚定会在这种时候擅自把滚动位置搬回去 —— 真机取证里 `window.scrollTo(0,0)` 被拽回 **39k** 处；正确做法是 `document.documentElement.style.overflowAnchor = "none"` 交出控制权、卸载时把**原值**还回去，滚动补偿由我们自己按「锚点卡片位移」做。② 补偿前有两条守卫（「还在滚让位」「别人动过让位」），其中「还在滚」依赖 `lastScrollAt` —— 而这个时间戳**从来没被写过**（不是声明漏了，是 `scroll` 监听里那行赋值没加），于是守卫恒为假 = 形同虚设，脚本滚动有概率把用户的平滑滚动**掐在半路**。**教训**：写守卫条件时顺手确认「这个变量谁在写」，否则条件恒真/恒假都不会报错；关键守卫加一次性真机场景验证（跳转/回顶/上滚）。
+37. **rAF 被节流时，真机几何取证会得出假结论（轮 82 取证环境雷）**：无头 / 被遮挡的 Chromium 会把 `requestAnimationFrame` 压到 ~1Hz，于是「跳转后的下一帧」要等一整秒 —— 空档、延迟、串位类信号全被放大成假缺陷（这也是此前「100→0→14 坍缩」读数的一类来源）。**教训**：真机取证脚本开头先量 rAF 频率，低于 20fps 就在结论里显式标注「时序相关信号不可信」并要求前台复跑（`tools/feed-window-live.mjs` 已内置）；量几何要用「当前真实存在的元素」而不是上一帧的缓存读数。
 
 ---
 
@@ -1292,6 +1302,23 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **修法（一行）**：补 `const newestSeenTs = ref(0)`。undef/tdz 抓不到这类「运行时未声明引用」（非未导入符号），靠 page-smoke 真实挂载 + 真机验证兜住。
      **验证**：undef/tdz **0** + wall **34/34** + i18n **19/19** + build 0 + page-smoke **8/8**；已部署（live-check 14/14）+ APK 装机 Success。
      **待用户验收（亮屏）**：暖心墙下拉 → 「刷新中…」→ 换一批/新增提示正常、列表真的换内容；消息页无错误盒。
+
+  - **轮 83 · 网页端刷新按钮 + 首帧静态占位修复（2026-09-26，待提交待部署——攒批）**：
+     **背景**：轮 64-80 的下拉刷新只认 touch 事件，**桌面网页没有触屏够不着**；另外「打开网页先看到一段英文占位/裸链接才进正页」——那是构建期写进 `#app` 的 SEO 静态正文在 Vue 挂载前裸露（CSS 慢时更是无样式裸奔）。
+     **改法**：① 排序行右端补刷新按钮（`class=wall-refresh`，`@click=manualRefresh` → 与下拉同一条 `loadCloud({ fresh: true })` 强制取新路径；`loadingCloud` 期间禁用），App 壳内隐藏（有原生下拉）——`html.cap-app` 规则，i18n `community.refreshBtn` 中英成对；② `index.html` 首帧前内联：`html.js .seo-static { display:none !important }` + `html.js body { background:#fff4e8 }`（CSS 未就绪窗口期不白屏），`vite.config.js` 把预渲染正文**包一层 `.seo-static`**——真人首帧前就隐藏、挂载后 Vue 接管，无 JS 的爬虫没有 `js` 类照常读到正文（SEO 不受影响）；**不能直接给 `<section>` 加类**（`cap-strip-hero` 按 `class="card seo-hero"` 原文匹配，动了 APK 剥离会静默失效）。
+     **验证**：新增 web-refresh-test **6/6** + seo-test **42/42** + page-smoke **8/8** + i18n **19/19** + 本地 build 0。
+
+  - **轮 82 · 动态流 B 档：虚拟窗口（2026-09-26，待提交待部署——攒批）**：
+     **背景**：A 档只让屏外卡片「跳过渲染」，**几百条帖子仍全挂 DOM**（节点数、内存、滚动合成面积都随帖数线性长）。
+     **改法**：只渲染视口附近 **~16 张卡**（`pageItems = shownPage.slice(winStart, winEnd)`），上下放 `.feed-pad` 占位块撑住滚动高度；高度表（前缀和 + 二分定位）按**真实 `getBoundingClientRect`** 长出来，只有深链跳转时吃 `DEFAULT_EST` 并按锚点位移补偿一次；近底续载从 `IntersectionObserver` 哨兵改为 **`nearEnd()` 计算**（有占位块后哨兵会被推到几万像素外，永不触发）；短列表（≤ `WINDOW_ON_THRESHOLD`）走回退分支（窗口 = 全部、占位清零）。
+     **真机取证修掉三处真缺陷**（`tools/feed-window-live.mjs`，300 条本地帖分段下滚量几何）：① **卡距**：`POST_GAP` 写死 18，而 CSS 手机断点是 **12**（`.shell--mobile-nav .card`）→ 改从真卡片 `getComputedStyle().marginBottom` 现读、读不到才回落常量（几百条后累计串位）；② **估高**：写死 340 而 `.post-card` 的 `contain-intrinsic-size` 是 **320** → 20px × 窗口尾部十几张 = **138px 可见空档**，改成 `FEED_EST = DEFAULT_EST` 只留一条链（T17/T23 断言三者严格相等）；③ **`overflow-anchor`**：全局 `none` 关错了范围（真机 `scrollTo(0,0)` 被拽回 39k）→ 只在「程序式跳转」那一小段交出锚定、卸载时还原原值；顺带发现 `lastScrollAt` **从来没人写**（守卫恒为假 = 形同虚设）。
+     **顺手补的防线**：`undef-check.mjs` 新增第 2b 类检查（「赋值给本文件从未声明的裸标识符」——**本轮真凶**：`prevAnchor = …` 漏了 `let`，ESM 严格模式下 `ReferenceError` 让 `onMounted` 整段中断，界面却「看着正常」只有首屏十几条）+ 自带 `--selftest` **10/10**（九类假红样本 + 一类真缺陷样本一起钉住：初版整文件扫刷出 365 条假警报）。
+     **验证**：feed-window **19/19**（纯逻辑）+ feed-perf **27/27**（含 B 档接线 11 项）+ feed-window-live **10/10**（DOM 卡片 ≤16 张 / 视口内零空档 / A→B→A 复访同内容 / 回顶不白屏 / 控制台无异常）+ undef **0** + tdz **0** + page-smoke **8/8** + 全量 36 套离线全绿 + build 0。
+     **待用户验收（亮屏，部署后）**：长列表快速上下滚**不白屏不跳位**、一直下滑始终能续新帖、从通知点「评论」跳回来能正确定位（不再拽回顶部）。
+
+  - **轮 81 · 动态流 A 档性能（2026-09-26，待提交待部署——攒批）**：
+     **改法**：① 屏外卡片跳过 style/layout/paint —— `.post-card { content-visibility:auto; contain-intrinsic-size:auto 320px }`（**必须写占位高度**，否则屏外卡片高度塌成 0、滚动条乱跳）；② 列表图 `loading="lazy"` + `decoding="async"` + `.pic` 未解码前给占位底色（无图帖仍受 `v-if="p.img"` 保护）；③ 时间文案记忆化 —— `memoWhen(fmtWhen)`（同一批帖子滚动时不再每帧重跑 `toLocaleString`，非法时间仍返回空串且可缓存）。
+     **验证**：feed-perf-test **16/16**（A 档：CSS 断言 + 接线断言 + memoWhen 行为与参数透传 + 用例注册位置自检）。
 
   - **轮 80 · 陈旧 dist 系统性事故修复（2026-09-26，已部署 9946c57b + 已装机 APK 9DA84059319DDA50）**：
      **用户报障**：「sb，我他妈现在刷新根本不动」。CDP 连真机取证：/community 挂载后渲染 **0 张卡**（库里 520 条帖都在——CLEANUP SQL 未执行）。
