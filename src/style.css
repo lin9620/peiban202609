@@ -1038,6 +1038,9 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 
 /* 触底续载哨兵（不可见占位，滚近底部由 IntersectionObserver 再放 10 条） */
 .feed-sentinel { height: 1px; }
+/* 轮 82 · B1 档虚拟窗口占位块：高度由脚本按「实测高度表」写成行内 style（精确到像素，
+   所以回收卡片时页面总高不变、滚动位置不动）；这里只保证它是纯占位、不参与任何绘制。 */
+.feed-pad { margin: 0; padding: 0; border: 0; }
 
 /* ═══════════ 主题套件（data-theme 切换） ═══════════ */
 html[data-theme="sakura"] {

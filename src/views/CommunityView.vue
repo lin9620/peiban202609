@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch, nextTick } from "vue";
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { NButton, NInput, NAvatar, NTag } from "naive-ui";
 import { t, i18n } from "../i18n.js";
@@ -12,6 +12,11 @@ import {
   canDelete, normalizeText, postKey, MAX_LEN,
   topComments, repliesOf, replyCount,
 } from "../utils/comments.js";
+/* 动态流虚拟窗口（纯逻辑，Node 单测覆盖：tools/feed-window-test.mjs）—— 轮 82 · B1 档 */
+import {
+  buildOffsets, windowRange, nearEnd, revealTarget, idOf,
+  DEFAULT_EST, DEFAULT_OVERSCAN, WINDOW_ON_THRESHOLD,
+} from "../utils/feedWindow.js";
 import { cloud } from "../utils/supabase.js";
 /* 回应写入收敛器（纯逻辑，Node 单测覆盖）：连点串行落库 + 过期响应不回写 */
 import { createWriteQueue } from "../utils/reactQueue.js";
@@ -378,6 +383,16 @@ async function te() {
     setTimeout(() => { refreshNote.value = false; }, 2500);
   }
   pullDist.value = 0;
+}
+
+/* ════════ 网页端刷新按钮（轮 83）════════
+ * 下拉刷新靠 touch 事件（ts/tm/te），桌面网页没有触屏永远够不着 —— 用户点名补一个按钮。
+ * 点它 = 与下拉同一条强制取新路径（loadCloud({ fresh: true })，轮 79 取舍逻辑在内部），
+ * 提示语（刷新中/已刷新/换一批/失败）也由 loadCloud 内部管理，这里不再重复置。
+ * App 壳里隐藏（style.css 的 html.cap-app 规则）：App 有原生下拉，两处入口重复。 */
+async function manualRefresh() {
+  if (loadingCloud.value) return;   /* 刷新进行中防重入（按钮同时 disabled 兜底） */
+  await loadCloud({ fresh: true });
 }
 
 /* ════════ 每日限额：每个用户每天最多 7 条（WALL_POST_DAILY_LIMIT，库触发器同口径） ═════════ */
@@ -846,21 +861,235 @@ watch([sortMode, rangeMode], () => { reveal.value = PAGE_SIZE; });
 const shownPage = computed(() => shown.value.slice(0, reveal.value));
 const hasMore = computed(() => shown.value.length > reveal.value);
 const sentEl = ref(null);
-let feedIO = null;
+
+/* ══════════ 轮 82 · B1 档：动态流虚拟窗口（只挂视口附近的卡片）══════════
+ * 真因：A 档（轮 81）让屏外卡片不参与 style/layout/paint，但「节点数」仍是 O(列表长度)——
+ *   滚到 300 条 = 300 张卡 + 上千个 naive 组件实例常驻，数据一变还要全量 diff vnode 树。
+ * 做法：把「已亮出条数」和「真正挂进 DOM 的条数」拆开——只挂视口上下各 DEFAULT_OVERSCAN 条，
+ *   其余用等高占位块撑住滚动高度。窗口与高度表全是纯函数（utils/feedWindow.js，有 Node 单测）。
+ * 三个关键点：
+ *   ① 高度优先实测：窗口只朝用户看过的方向扩张，被回收的卡片都量过 → 占位块 = 真实像素和，
+ *      页面总高与「还在挂着的卡片的位置」都不变 → 向上回滚不会撞空档，也不必补偿滚动；
+ *      只有深链跳转才吃估高，那时按「锚点卡片位移」补偿一次，画面不跳。
+ *   ② 短列表不启用（≤ WINDOW_ON_THRESHOLD 条时窗口 = 全部）→ 老路径逐字节不变，可作回退阀。
+ *   ③ 触底续载改由 nearEnd 算（视口底接近数据末尾）——一旦有了底部占位块，
+ *      原来的哨兵会被推到几万像素外，永远不触发；sentEl 保留作底部锚点与既有测试的选择器。
+ */
+const POST_GAP = 18;                 /* 卡片间距 = .card 的 margin-bottom（漏算会几百条后串位） */
+/* 卡片还没渲染时的 DOM 高度 = .post-card 的 contain-intrinsic-size（已 box-sizing:border-box），
+   表格估高必须与它一模一样 —— 差 20px × 窗口尾部十几张就是一截可见空档（真机取证量到过 138px）。
+   所以不在这里另写一个数，直接复用 feedWindow 的 DEFAULT_EST：CSS ↔ 常量 ↔ 估高只有一条链
+   （feed-window-test 的 T17 与 feed-perf-test 的 T23 把这三者锁成相等）。 */
+const FEED_EST = DEFAULT_EST;
+const winStart = ref(0);
+const winEnd = ref(PAGE_SIZE + 2);   /* 首屏先挂一小把，onMounted 立刻按真实视口算准 */
+const padTop = ref(0);
+const padBottom = ref(0);
+const padTopEl = ref(null);
+const cardEls = new Map();           /* id → 卡片元素（量高 / 锚点补偿用） */
+const seenCards = new Set();         /* 至少在视口里露过面的卡片 id（只有它们的屏外高度可信） */
+const heights = {};                  /* id → 实测高度 px（键用 idOf 归一） */
+const pageItems = computed(() => shownPage.value.slice(winStart.value, winEnd.value));
+
+let feedRaf = 0;
+let cardRO = null;
+let pinnedIdx = -1;                  /* 深链钉住的条号；用户自己滚一下就解除 */
+let userMoved = false;
+let lastScrollAt = 0;                /* 最近一次滚动事件时刻：正在滚动时别去插一脚 */
+let prevAnchor = "";                 /* <html> 上 overflow-anchor 的原值（程序式跳转期间借走、跳完还回去） */
+
+/* —— 浏览器自带「滚动锚定」的临时借用（轮 82 真机取证） ——
+   两件事互相冲突，必须分时段：
+   ① **用户自己滚**时，视口上方的占位块会长高（估高 → 实测），这时全靠浏览器锚定把画面钉住；
+      永久关掉它就是「越滚越跳」（取证 L8：收缩位移在滚动中被漏掉）。
+   ② **程序式跳转**（深链定位 / 回顶部）时，锚定会跟我们对拉：取证里 `window.scrollTo(0,0)`
+      被它拽回 39k，平滑动画也被它搅坏（L7）。
+   所以只在跳转那一小段关掉，跳完（含自查补齐）立刻还回原值。 */
+function holdAnchor() {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  if (root.style.overflowAnchor !== "none") prevAnchor = root.style.overflowAnchor;
+  root.style.overflowAnchor = "none";
+}
+function releaseAnchor() {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.overflowAnchor = prevAnchor;
+}
+
+const cardRefs = new Map();          /* id → 稳定的 ref 回调：模板里 :ref 用它，避免每次渲染换函数
+                                        导致 Vue 对同一元素反复「卸载再挂载」回调（顺带反复 unobserve） */
+function bindCard(p) {
+  const k = idOf(p);
+  let fn = cardRefs.get(k);
+  if (!fn) {
+    if (cardRefs.size > 600) cardRefs.clear();   /* 长列表滚久了别让闭包无界堆积 */
+    fn = (el) => setCardEl(p, el);
+    cardRefs.set(k, fn);
+  }
+  return fn;
+}
+
+function setCardEl(p, el) {
+  const k = idOf(p);
+  const old = cardEls.get(k);
+  if (!el) {
+    if (old && cardRO) cardRO.unobserve(old);
+    cardEls.delete(k);
+    return;
+  }
+  cardEls.set(k, el);
+  if (cardRO) cardRO.observe(el);
+}
+
+/** 卡片间距：从真实卡片上读（随断点/主题会变 —— 真机取证：420px 宽是 12px，桌面是 18px，
+ *  写死任一个，几百条之后就是上千像素的累计串位）；读不到再退回常量。
+ *  读到的值缓存住（每帧都 getComputedStyle 会强制样式重算），窗口尺寸一变就失效重读。 */
+let gapCache = 0;
+function feedGap() {
+  if (gapCache > 0) return gapCache;
+  for (const [, el] of cardEls) {
+    try {
+      const mb = parseFloat(getComputedStyle(el).marginBottom);
+      if (Number.isFinite(mb) && mb > 0) { gapCache = mb; return mb; }
+    } catch { break; }        /* 老引擎 / 无头测试环境读不到 → 用兜底 */
+  }
+  return POST_GAP;            /* 不缓存：等卡片真的挂上来再读一次 */
+}
+
+/** 列表内容顶到视口顶的距离（负值 = 已滚过列表顶部多少像素） */
+function listScrollTop() {
+  const el = padTopEl.value;
+  if (!el || typeof el.getBoundingClientRect !== "function") return 0;
+  return -el.getBoundingClientRect().top;
+}
+
+/** 量卡片的真实高度：只信「确实渲染过」的。
+ *  content-visibility:auto 下，没渲染过的卡片（屏外且从没露过面）量到的只是
+ *  contain-intrinsic-size 的占位值 —— 拿它当实测没意义（估高已经等于这个值），
+ *  而一旦卡片露过面，它的屏外高度就是可信的（浏览器会记住上次渲染的真实尺寸）。
+ *  所以：进过视口 ±120px 的卡片，之后无论滚到哪都照量。 */
+function measureCards(vh) {
+  for (const [k, el] of cardEls) {
+    if (!el || typeof el.getBoundingClientRect !== "function") continue;
+    const r = el.getBoundingClientRect();
+    const inBand = r.bottom > -120 && r.top < vh + 120;
+    if (inBand) seenCards.add(k);
+    if (!inBand && !seenCards.has(k)) continue;
+    const h = Math.round(r.height);
+    if (h > 0 && Math.abs((heights[k] || 0) - h) > 0.5) heights[k] = h;
+  }
+}
+
+/** 算出并应用窗口（pin >= 0 = 深链钉住第 pin 条，忽略滚动位置） */
+function syncFeedWindow(pin = -1) {
+  const list = shownPage.value;
+  const n = list.length;
+  if (n <= WINDOW_ON_THRESHOLD) {          /* 短列表：窗口 = 全部，不加占位（老路径） */
+    winStart.value = 0;
+    winEnd.value = n;
+    padTop.value = 0;
+    padBottom.value = 0;
+    return { offsets: null, total: 0 };
+  }
+  const vh = window.innerHeight || 0;
+  measureCards(vh);
+  const { offsets, total } = buildOffsets(list, heights, { gap: feedGap(), est: FEED_EST });
+  const r = windowRange({
+    offsets, total,
+    scrollTop: listScrollTop(),
+    viewportH: vh,
+    overscan: DEFAULT_OVERSCAN,
+    pinIndex: pin >= 0 ? pin : -1,
+  });
+  /* 锚点补偿：窗口上方总高变了（量到新高度 / 深链吃估高）→ 把原窗口第一张卡搬回原处。
+     两条纪律：
+     ① 正在滚动（平滑动画 / 用户手势，200ms 内有过滚动事件）时绝不动手 —— 脚本滚动会
+        打断动画，用户就落在半路（真机取证：scrollTo(0,0) 被这里一次 scrollBy 掐断在 43k 处）；
+        这段时间里「内容被上方变化顶开」交给浏览器自带的滚动锚定（overflow-anchor，默认开着）兜。
+     ② 滚动位置被别人动过（两次测量之间）也不动手，理由同上。
+     也就是说：我们的补偿是给「停住之后」的场景兜底（尤其没有原生锚定的 Safari）。 */
+  const anchorK = winStart.value < n ? idOf(list[winStart.value]) : "";
+  const anchor = anchorK ? cardEls.get(anchorK) : null;
+  const before = anchor ? anchor.getBoundingClientRect().top : null;
+  const yBefore = window.scrollY;
+  winStart.value = r.start;
+  winEnd.value = r.end;
+  padTop.value = r.padTop;
+  padBottom.value = r.padBottom;
+  if (before != null) {
+    nextTick(() => {
+      const el = cardEls.get(anchorK);     /* 已被回收 → 剩下卡片的位置本来就没变，不用补 */
+      if (!el || typeof el.getBoundingClientRect !== "function") return;
+      if (performance.now() - lastScrollAt < 200) return;   /* 还在滚 → 让位 */
+      if (Math.abs(window.scrollY - yBefore) > 1) return;   /* 别人动过 → 让位 */
+      const d = el.getBoundingClientRect().top - before;
+      if (Math.abs(d) > 0.5) window.scrollBy({ top: d, left: 0, behavior: "instant" });
+    });
+  }
+  return { offsets, total };
+}
+/** 用户自己动了（滚轮/触摸/按键）→ 深链钉住解除（程序滚动不会触发这些事件） */
+function onUserMove() { userMoved = true; }
+
+function feedTick() {
+  feedRaf = 0;
+  if (userMoved) { userMoved = false; pinnedIdx = -1; }
+  const { offsets, total } = syncFeedWindow(pinnedIdx);
+  /* 触底续载：短列表（offsets=null）沿用旧哨兵「一进来就能续」的语义 */
+  const near = offsets
+    ? nearEnd({ total, scrollTop: listScrollTop(), viewportH: window.innerHeight || 0 })
+    : true;
+  if (!near) return;
+  if (hasMore.value) reveal.value += PAGE_SIZE;      /* 已拉取的里还有没亮的 → 先亮下一批 */
+  else if (!cloudDone.value) loadMoreCloud();        /* 亮完了 → 向服务器取下一页 */
+}
+
+function scheduleFeedTick() {
+  if (feedRaf) return;
+  feedRaf = requestAnimationFrame(feedTick);
+}
+
+/* 滚动事件单独一支：除了排窗口重算，还要**记下时刻**——锚点补偿靠它判定
+   「用户正在滚（平滑动画 / 手势）」并让位（轮 82 前这个时间戳从没被写过，
+   于是那条「还在滚别动手」的守卫永远为假 = 形同虚设，补偿有概率掐断平滑滚动）。 */
+function onScroll() {
+  lastScrollAt = performance.now();
+  scheduleFeedTick();
+}
+
+/* 窗口尺寸/断点变化 → 卡片间距、可见范围都得重读（并清掉间距缓存） */
+function onViewport() {
+  gapCache = 0;
+  scheduleFeedTick();
+}
+
+watch([shownPage, cloudDone], scheduleFeedTick);     /* 数据一变（续亮/续页/排序）重算窗口与触底 */
+
 onMounted(() => {
-  if (typeof IntersectionObserver === "undefined") return;
-  feedIO = new IntersectionObserver((entries) => {
-    for (const e of entries) {
-      if (!e.isIntersecting) continue;
-      if (hasMore.value) reveal.value += PAGE_SIZE;         /* 已拉取的里还有没亮的 */
-      else if (!cloudDone.value) loadMoreCloud();            /* 亮完了 → 向服务器取下一页 */
-    }
-  }, { rootMargin: "420px 0px" });
-  if (sentEl.value) feedIO.observe(sentEl.value);
+  if (typeof ResizeObserver !== "undefined") cardRO = new ResizeObserver(scheduleFeedTick);
+  /* 注意：这里**不**关浏览器的滚动锚定 —— 用户自己滚的时候，视口上方占位块会长高
+     （估高 → 实测），全靠它把画面钉住。锚定只在程序式跳转那一小段借走（holdAnchor），
+     见 centerOn 与上面的说明。 */
+  scheduleFeedTick();
+  window.addEventListener("scroll", onScroll, { passive: true });
+  window.addEventListener("resize", onViewport);
+  window.addEventListener("wheel", onUserMove, { passive: true });
+  window.addEventListener("touchmove", onUserMove, { passive: true });
+  window.addEventListener("keydown", onUserMove);
 });
-watch(hasMore, async () => {
-  await nextTick();
-  if (feedIO && sentEl.value) { feedIO.unobserve(sentEl.value); feedIO.observe(sentEl.value); }
+onUnmounted(() => {
+  if (feedRaf) cancelAnimationFrame(feedRaf);
+  if (cardRO) cardRO.disconnect();
+  releaseAnchor();                   /* 中途离场（跳转动画还没跑完）也要把锚定还回去 */
+  cardEls.clear();
+  cardRefs.clear();
+  seenCards.clear();
+  gapCache = 0;
+  window.removeEventListener("scroll", onScroll);
+  window.removeEventListener("resize", onViewport);
+  window.removeEventListener("wheel", onUserMove);
+  window.removeEventListener("touchmove", onUserMove);
+  window.removeEventListener("keydown", onUserMove);
 });
 
 /* 头像/昵称 → TA 的墙上的主页（/u/:id）；示例帖与本地帖没有云身份，不响应点击 */
@@ -879,6 +1108,7 @@ const when = (ts) => whenFmt(ts, i18n.locale);
  * 云端帖的 dbId 才是数据库里的真实 id；还没加载出来（或不是本页可见帖）就什么都不做。 */
 const route = useRoute();
 const focusId = ref(String(route.query.post || ""));
+const focusDone = ref("");   /* 已定位成功的帖：后续续页/数据到达不再把用户拽回来（原来每续一页拽一次） */
 
 function findPostEl(id) {
   if (typeof document === "undefined" || !id) return null;
@@ -888,16 +1118,76 @@ function findPostEl(id) {
 async function focusPost(id) {
   const key = String(id || "");
   focusId.value = key;
-  if (!key) return;
+  if (!key || focusDone.value === key) return;
+  /* 轮 82：目标可能还没「亮」出来（默认只亮 10 条）→ 先把 reveal 撑到它那一条 */
+  const idx = shown.value.findIndex((p) => String(p.dbId) === key);
+  if (idx >= 0 && idx >= reveal.value) reveal.value = revealTarget(idx, PAGE_SIZE);
   await nextTick();
-  const el = findPostEl(key);
-  if (el && el.scrollIntoView) {
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
+  let el = findPostEl(key);
+  /* 还在窗口外（虚拟窗口只挂视口附近十几条）→ 把窗口钉到目标条上，
+     否则 DOM 里根本没有这个元素，scrollIntoView 无处可去 */
+  if (!el && idx >= 0) {
+    pinnedIdx = idx;
+    syncFeedWindow(idx);
+    await nextTick();
+    el = findPostEl(key);
   }
+  if (!el) return;
+  focusDone.value = key;
+  /* 轮 82 真机取证（feed-window-live）：`await nextTick()` 只保证 DOM 挂上，**布局还没落地**
+     ——窗口重算是走 rAF 的，这一刻读到的 rect 还是旧 padTop 下的位置，直接
+     `scrollIntoView({behavior:"smooth"})` 等于用旧坐标算出错误终点：真机量到动画结束后
+     目标停在视口上方 690px（用户视角：点「评论」跳过去，什么都没看到）。 */
+  centerOn(el);
+}
+
+/** 把一张卡滚到视口中间：等布局生效 → 按真实 rect 自己算偏移 → 滚完自查补齐。
+ *  不自查的话，平滑滚动途中窗口又量到新高度（目标文档位置跟着变），落点会偏一截；
+ *  兜底这次用即时定位（跳转本来就发生在「用户点通知」这种明确跳跃场景）。 */
+function centerOn(el) {
+  holdAnchor();                       /* 跳转期间别让浏览器锚定跟我们抢滚动条 */
+  const t0 = performance.now();
+  let tries = 0;                      /* 已「重新对准」几次（上限防御，跳转不该无限重试） */
+  let stable = 0;                     /* 连续几帧「停住了 + 目标在视口里」 */
+  let lastY = NaN;
+  let first = true;
+  /* 真机取证（轮 82 L7）：原来那版是「平滑滚 + 700ms 后自查一次」，靠不住 ——
+     这个距离上平滑动画 700ms 还没跑完（trail：250ms→6.5k、500ms→38k、750ms→57k），
+     自查那一刻目标还在半路，算出来的修正量≈0，于是**动画自己的落点**说了算；
+     而那个落点是用滚动前的高度表算的（上方一百多条还是估高），等它们逐条量成实测，
+     目标就被顶到视口上方一整屏（实测 top=-773，vh=773）。
+     改法：等**滚动真的停住**再判落点（滚动中只看不动手，免得掐断动画），
+     不在视口里就再对准一次（instant），最多 20 次；连停 3 帧且目标可见才算定住。
+     这样落点由「最终高度表 + 真实 rect」决定，与动画时长、是否被打断都无关。 */
+  const frame = () => {
+    const vh = window.innerHeight || 0;
+    const box = el.getBoundingClientRect();
+    const y = window.scrollY;
+    const moving = y !== lastY;
+    lastY = y;
+    const inView = box.top >= 0 && box.bottom <= vh;
+    if (first) {
+      first = false;
+      window.scrollTo({ top: y + box.top - Math.max(0, (vh - box.height) / 2), left: 0, behavior: "smooth" });
+    } else if (moving) {
+      stable = 0;                     /* 动画 / 用户还在动 → 只看不动手 */
+    } else if (inView) {
+      stable++;
+    } else if (tries++ < 20) {
+      stable = 0;
+      window.scrollTo({ top: y + box.top - Math.max(0, (vh - box.height) / 2), left: 0, behavior: "instant" });
+    }
+    if (stable >= 3 || tries >= 20 || performance.now() - t0 > 3000) {
+      releaseAnchor();                /* 落点定住了，把锚定还回去（用户接着滚要靠它） */
+      return;
+    }
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
 }
 
 /* 首屏（含云端帖异步到达）与地址栏变化都要重新定位一次 */
-watch(() => route.query.post, (v) => focusPost(v), { immediate: false });
+watch(() => route.query.post, (v) => { focusDone.value = ""; focusPost(v); }, { immediate: false });
 watch(cloudPosts, () => { if (focusId.value) focusPost(focusId.value); });
 onMounted(() => { if (focusId.value) focusPost(focusId.value); });
 </script>
@@ -970,6 +1260,13 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
         @click="pickSort(s.key)">
         {{ t(s.tk) }}
       </button>
+      <!-- 轮 83：网页端刷新按钮（排序行右端，margin-left:auto 推过去）。
+           App 壳里由 CSS 隐藏（html.cap-app .wall-refresh），App 用原生下拉刷新。 -->
+      <button
+        class="sort-btn wall-refresh" :class="{ spin: loadingCloud }"
+        :disabled="loadingCloud"
+        :title="t('community.refreshBtn')" :aria-label="t('community.refreshBtn')"
+        @click="manualRefresh">↻</button>
     </div>
 
     <!-- 时间范围：只在「最新」之外的排序下出现（「最新」= 看全部最新内容，没有时间窗口） -->
@@ -983,8 +1280,11 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
       </button>
     </div>
 
-    <!-- 动态流（默认 10 条，滑到底自动续 10 条） -->
-    <article v-for="p in shownPage" :key="p.id" class="post-card card"
+    <!-- 轮 82 · B1 档：虚拟窗口占位块（高度由脚本按实测高度表写行内 style，撑住滚动高度） -->
+    <div ref="padTopEl" class="feed-pad" :style="{ height: padTop + 'px' }" aria-hidden="true"></div>
+
+    <!-- 动态流（默认 10 条，滑到底自动续 10 条；只挂视口附近十几条，其余用占位块撑高） -->
+    <article v-for="p in pageItems" :key="p.id" :ref="bindCard(p)" class="post-card card"
       :id="p.dbId != null ? 'post-' + p.dbId : undefined"
       :class="{ 'post-focus': focusId && String(p.dbId) === focusId }">
       <div class="post-head">
@@ -1179,7 +1479,11 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
       </div>
     </article>
 
-    <!-- 触底续载哨兵：滚近底部先亮已拉取的，亮完向服务器取下一页（轮 56 真·无限流） -->
+    <!-- 窗口下方占位块（同样撑住滚动高度） -->
+    <div class="feed-pad" :style="{ height: padBottom + 'px' }" aria-hidden="true"></div>
+
+    <!-- 触底续载哨兵（轮 82 起：续载判断改由 feedWindow.nearEnd 计算——有占位块后哨兵
+         会被推到几万像素外，永远不触发；此元素保留作底部锚点与既有测试选择器） -->
     <div ref="sentEl" class="feed-sentinel" aria-hidden="true"></div>
     <p v-if="shownPage.length && !hasMore && cloudDone" class="notice" style="text-align: center">
       {{ t("community.noMore") }}
