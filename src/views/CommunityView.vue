@@ -25,7 +25,7 @@ import {
   SORTS, sortPosts, collectViews, visibleOnly, utcDay, ratioPct,
   canPostToday, postsLeftToday, dayCountFromStorage, WALL_POST_DAILY_LIMIT,
   errorKind, VIEW_KEY, ANON_KEY, POST_DAY_KEY, POSTS_KEY, REACTS_KEY,
-  RANGES, inRange, usesRange, rangeFor, fmtWhen,
+  RANGES, inRange, usesRange, rangeFor, fmtWhen, memoWhen,
   recommendPosts, RECOMMEND_DAYS,
 } from "../utils/wallRules.js";
 import { isMobileNav } from "../stores/uiStore.js";
@@ -868,7 +868,12 @@ const router = useRouter();
 function canOpen(p) { return !!(p && p.cloud && p.userId); }
 function goProfile(p) { if (canOpen(p)) router.push({ name: "waller", params: { id: p.userId } }); }
 
-const when = (ts) => fmtWhen(ts, i18n.locale);   /* #25 帖子/评论时间显示到分钟 */
+/* #25 帖子/评论时间显示到分钟。
+ * 轮 81 · 动态流性能：包一层记忆化 —— 列表一屏几十条、滚动时每帧都要重算，
+ * 而 fmtWhen 内部走 Date#toLocaleString（贵），同一批帖子被反复格式化是纯浪费。
+ * 显示结果与直接调用 fmtWhen 完全一致（见 tools/feed-perf-test.mjs）。 */
+const whenFmt = memoWhen((ts, locale) => fmtWhen(ts, locale));
+const when = (ts) => whenFmt(ts, i18n.locale);
 
 /* —— 深链到某帖：/community?post=<dbId>（通知中心点「评论/回应」跳回来时用） ——
  * 云端帖的 dbId 才是数据库里的真实 id；还没加载出来（或不是本页可见帖）就什么都不做。 */
@@ -1002,7 +1007,10 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
       </div>
 
       <p class="post-text">{{ i18n.locale === "zh" && p.zh ? p.zh : p.text || p.en }}</p>
-      <img v-if="p.img" :src="p.img" class="pic" alt="" />
+      <!-- 轮 81 · 动态流性能：图片懒加载 + 异步解码。
+           原来一进页面/一续页就把这一页所有图片一起下载解码，滚动时主线程被解码尖刺打断；
+           loading=lazy 只解码视口附近的图，decoding=async 让解码离开主线程。 -->
+      <img v-if="p.img" :src="p.img" class="pic" loading="lazy" decoding="async" alt="" />
 
       <div class="react-row">
         <n-button

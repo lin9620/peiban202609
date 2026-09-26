@@ -48,6 +48,41 @@ export function fmtWhenSec(ts, locale = "zh", now = Date.now()) {
   });
 }
 
+/**
+ * 给「时间文案」格式化函数加一级记忆化（轮 81 · 动态流性能）。
+ *
+ * 为什么需要：暖心墙列表一屏就是几十张卡，滚动/刷新时每帧都要重算时间文案，
+ * 而 fmtWhen 内部走 `Date#toLocaleString`（每次调用都要装配 Intl 选项、过 ICU）——
+ * 同一批帖子在同一次渲染里会被反复格式化上百次，纯浪费主线程。
+ *
+ * 规则（与 fmtWhen 语义严格一致，不改变任何显示）：
+ *   - 同一 locale 下同一 ts 的文案恒定 → 命中直接返回，不再进 ICU；
+ *   - locale 变化 → 整表失效（否则中英文案会串）；
+ *   - 超过 max 条 → 整体清空（列表再长也不会无界吃内存）。
+ *
+ * 已知取舍：fmtWhen 对「跨年」会补年份，年份只在条目生成那一刻判定；
+ * 因此页面一直挂着跨年（一年一次、且不刷新）时，去年时间戳的年份标记要刷新才补。
+ * 这个窗口极小，换来一整轮滚动的实打实收益，故不做额外守卫。
+ *
+ * @param {(ts: any, locale: string) => string} fmt 原始格式化函数（如 fmtWhen）
+ * @param {number} [max] 容量上限（默认 4000 条，足够覆盖一整轮无限流）
+ * @returns {(ts: any, locale: string) => string}
+ */
+export function memoWhen(fmt, max = 4000) {
+  const cache = new Map();
+  let cachedLocale = "";
+  return function (ts, locale) {
+    if (cachedLocale !== locale) { cache.clear(); cachedLocale = locale; }
+    const key = String(ts);
+    const hit = cache.get(key);
+    if (hit !== undefined) return hit;
+    const text = fmt(ts, locale);
+    if (cache.size >= max) cache.clear();
+    cache.set(key, text);
+    return text;
+  };
+}
+
 /* ══════════ 排序 ══════════ */
 
 /**
