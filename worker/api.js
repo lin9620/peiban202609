@@ -490,16 +490,56 @@ async function postsQuery(env, request, qs) {
   return res;
 }
 
-/** /post/:id 存在性检查：只有「确认存在」才返回 true；上游挂/查无 → false（宁可真 404 不发软 200） */
-async function postExists(env, request, id) {
-  const res = await postsQuery(env, request, `select=${encodeURIComponent("id")}&id=eq.${encodeURIComponent(id)}&limit=1`);
-  if (!res || !res.ok) return false;
+/** /post/:id 取帖子行（存在性 + ①c 注入共用）：确认存在才返回行；上游挂/查无 → null（宁可真 404 不发软 200） */
+async function getPostRow(env, request, id) {
+  const res = await postsQuery(env, request, `select=${encodeURIComponent("id,body,author_name,created_at,image_path")}&id=eq.${encodeURIComponent(id)}&limit=1`);
+  if (!res || !res.ok) return null;
   try {
     const rows = await res.json();
-    return Array.isArray(rows) && rows.length > 0;
+    return Array.isArray(rows) && rows.length ? rows[0] : null;
   } catch (e) {
-    return false;
+    return null;
   }
+}
+
+/* 与 vite.config.js seoRoutes 的 ROOT_DESC 同源（og:description / twitter:description 共用占位串）
+ * —— 两处是复制粘贴的兄弟代码，改一处必改另一处（踩坑 #28 口径）。 */
+const ROOT_DESC_CONTENT = 'content="Care for a little pet, draw its food, share kindness with gentle people."';
+const ROOT_TITLE_CONTENT = 'content="Warm Paws · A gentle place to be"';
+
+function escapeHtmlWorker(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/** ①c：把帖子标题/正文/OG 注入 SPA 壳 —— 爬虫（不执行 JS）读到这一页真实内容；
+ * 正文包在 .seo-static 里（轮 83 内联规则对有 JS 的真人首帧前隐藏），挂载后 Vue 接管。
+ * 根壳的 #app 里是家页 hero（内无嵌套 div），整块替换成帖子正文，避免每帖都带家页文案。 */
+function postShellHtml(shellHtml, row, origin, env) {
+  const body = String(row.body || "").trim();
+  const who = escapeHtmlWorker(row.author_name || "Guest");
+  const day = escapeHtmlWorker(String(row.created_at || "").slice(0, 10));
+  /* 标题/描述压平空白（正文里的 \n 不能带进 <title>/meta） */
+  const flat = body.replace(/\s+/g, " ");
+  const titleText = flat ? flat.slice(0, 60) : `${row.author_name || "Guest"} shared a post`;
+  const descText = flat ? flat.slice(0, 160) : `${row.author_name || "Guest"} shared a post on the Warm Paws kindness wall.`;
+  const t = escapeHtmlWorker(titleText);
+  const d = escapeHtmlWorker(descText);
+  const paras = body ? body.split(/\n+/).filter(Boolean).map((x) => `<p>${escapeHtmlWorker(x)}</p>`).join("") : "";
+  const imgUrl = row.image_path
+    ? `${env.SUPABASE_URL}/storage/v1/object/public/${IMAGE_BUCKET}/${row.image_path.split("/").map(encodeURIComponent).join("/")}`
+    : "";
+  const content = `<div class="seo-static"><section class="card seo-hero"><h2 class="seo-title">${t}</h2>${paras}${imgUrl}<p>${who} · ${day}</p></section></div>`;
+  let h = shellHtml;
+  h = h.replace(/<title>[\s\S]*?<\/title>/, `<title>${t} · Warm Paws</title>`);
+  h = h.replace(/<meta\s+name="description"[\s\S]*?\/>/, `<meta name="description" content="${d}" />`);
+  h = h.replace(/<link rel="canonical" href="[^"]*"/, `<link rel="canonical" href="${origin}/post/${row.id}"`);
+  h = h.replace(/<meta property="og:url" content="[^"]*"/, `<meta property="og:url" content="${origin}/post/${row.id}"`);
+  h = h.split(ROOT_TITLE_CONTENT).join(`content="${t} · Warm Paws"`);
+  h = h.split(ROOT_DESC_CONTENT).join(`content="${d}"`);
+  if (imgUrl) h = h.replace(/<meta property="og:image" content="[^"]*"/, `<meta property="og:image" content="${imgUrl}"`);
+  h = h.replace(/<div class="seo-static">[\s\S]*?<\/section>\s*<\/div>/, content);
+  return h;
 }
 
 /** 动态 sitemap：固定 5 页（lastmod=今天）+ 最新 100 帖的 /post/:id 深链（lastmod=发帖日）。
@@ -509,7 +549,11 @@ async function postExists(env, request, id) {
 async function sitemap(env, request, url) {
   const origin = url.origin;
   const today = new Date().toISOString().slice(0, 10);
-  const fixed = [["", "1.0"], ["/pet", "0.9"], ["/community", "0.9"], ["/profile", "0.5"], ["/privacy", "0.3"]];
+  const fixed = [
+    ["", "1.0"], ["/pet", "0.9"], ["/community", "0.9"], ["/profile", "0.5"], ["/privacy", "0.3"],
+    /* 轮 86：/zh/* 中文预渲染页（与 en 页 hreflang 互指） */
+    ["/zh", "1.0"], ["/zh/pet", "0.9"], ["/zh/community", "0.9"], ["/zh/profile", "0.5"], ["/zh/privacy", "0.3"],
+  ];
   let posts = [];
   const res = await postsQuery(env, request, `select=${encodeURIComponent("id,created_at")}&order=id.desc&limit=100`);
   if (res && res.ok) {
@@ -608,10 +652,20 @@ export default {
       if (res.status === 404 && path.startsWith("/post/")) {
         const id = decodeSeg(decodeURIComponent(path.slice("/post/".length)).split("/")[0] || "");
         if (id && /^[0-9]+$/.test(id)) {
-          const exists = await postExists(env, request, id);
-          if (exists) {
+          const row = await getPostRow(env, request, id);
+          if (row) {
             const shell = await env.ASSETS.fetch(new URL("/", url.origin));
-            if (shell && shell.ok) return shell;
+            if (shell && shell.ok) {
+              try {
+                const html = await shell.text();
+                const headers = new Headers(shell.headers);
+                headers.delete("etag");
+                headers.delete("content-length");
+                return new Response(postShellHtml(html, row, url.origin, env), { status: 200, headers });
+              } catch (e) {
+                return shell;   /* 注入失败退回原壳（有壳总比没有强） */
+              }
+            }
           }
           /* 查无此帖 / 上游挂 → 落到下面的真 404 */
         }

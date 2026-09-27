@@ -970,12 +970,31 @@ function seoEnv() {
     SUPABASE_URL: ORIGIN,
     SUPABASE_ANON_KEY: ANON,
     /* worker 回壳走 ASSETS.fetch(new URL("/", origin)) —— Cloudflare 运行时接受 URL 对象，
-     * mock 这里必须同时认 Request 与 URL（r.url 在 URL 实例上是 undefined） */
+     * mock 这里必须同时认 Request 与 URL（r.url 在 URL 实例上是 undefined）。
+     * 壳结构镜像真实 dist/index.html：multiline description / canonical / og 家页占位 / 家页 hero 在 .seo-static 里。 */
     ASSETS: { fetch: async (r) => {
       const p = (r instanceof URL) ? r.pathname : new URL(r.url).pathname;
       if (p === "/") {
-        return new Response('<html><head><meta name="robots" content="index, follow" /><title>Warm Paws</title></head><body>SHELL</body></html>',
-          { status: 200, headers: { "content-type": "text/html", etag: 'W/"shell-v1"' } });
+        const shell = [
+          "<!DOCTYPE html><html lang=\"en\"><head>",
+          '<meta name="robots" content="index, follow" />',
+          "<title>Warm Paws · A gentle place to be</title>",
+          '<meta',
+          '    name="description"',
+          '    content="A warm, healing corner: an adorable pet to care for."',
+          '  />',
+          '<link rel="canonical" href="https://dale.de5.net/" />',
+          '<meta property="og:url" content="https://dale.de5.net/" />',
+          '<meta property="og:title" content="Warm Paws · A gentle place to be" />',
+          '<meta property="og:description" content="Care for a little pet, draw its food, share kindness with gentle people." />',
+          '<meta name="twitter:title" content="Warm Paws · A gentle place to be" />',
+          '<meta name="twitter:description" content="Care for a little pet, draw its food, share kindness with gentle people." />',
+          '<meta property="og:image" content="https://dale.de5.net/og-image.png" />',
+          "</head><body>",
+          '<div id="app"><div class="seo-static"><section class="card seo-hero"><h2 class="seo-title">A soft place to land</h2><ul class="seo-links"><li><a href="/pet">pet</a></li></ul></section></div></div>',
+          "</body></html>",
+        ].join("\n");
+        return new Response(shell, { status: 200, headers: { "content-type": "text/html", etag: 'W/"shell-v1"' } });
       }
       return new Response("nope", { status: 404 });
     } },
@@ -997,13 +1016,39 @@ function seoEnv() {
   /* ①b：/post/:id 存在 → SPA 壳；查无/上游挂/非数字 → 真 404 */
   const env = seoEnv();
   {
-    const c = capture([{ body: [{ id: 123 }] }]);
+    /* ①c：存在 → 壳注入标题/正文/OG；无图帖 og:image 保持家页默认 */
+    const c = capture([{ body: [{ id: 123, body: "整理书桌的时候翻到一张旧车票\n想起一段好天气", author_name: "压测员68", created_at: "2026-09-25T03:42:00Z" }] }]);
     try {
       const res = await worker.fetch(req("/post/123"), env, {});
-      ok("/post/123 存在 → 回 SPA 壳 200", res.status === 200 && (await res.text()).includes("SHELL"));
+      const text = await res.text();
+      ok("/post/123 存在 → 壳 200", res.status === 200);
+      ok("①c <title> 换成帖子正文截断（换行压平）",
+        text.includes("<title>整理书桌的时候翻到一张旧车票 想起一段好天气 · Warm Paws</title>"), text.slice(0, 240));
+      ok("①c canonical/og:url 指向 /post/123",
+        text.includes('rel="canonical" href="https://site.test/post/123"') && text.includes('property="og:url" content="https://site.test/post/123"'));
+      ok("①c og:title/twitter:title 替换", text.split("整理书桌的时候翻到一张旧车票 想起一段好天气 · Warm Paws").length >= 3);
+      ok("①c description/og:description 替换",
+        text.includes('name="description" content="整理书桌的时候翻到一张旧车票') && !text.includes("Care for a little pet"));
+      ok("①c 正文进 .seo-static（换行 → 两段 <p>）",
+        text.includes("<p>整理书桌的时候翻到一张旧车票</p>") && text.includes("<p>想起一段好天气</p>"));
+      ok("①c 家页 hero 被整块替换（不再有 A soft place to land）", !text.includes("A soft place to land"));
+      ok("①c 无图帖 og:image 保持家页默认", text.includes('content="https://dale.de5.net/og-image.png"'));
       ok("/post 存在性查询出站 URL",
-        c.outbound[0].url === `${ORIGIN}/rest/v1/wall_posts?select=id&id=eq.123&limit=1&removed=eq.false`,
+        c.outbound[0].url === `${ORIGIN}/rest/v1/wall_posts?select=id%2Cbody%2Cauthor_name%2Ccreated_at%2Cimage_path&id=eq.123&limit=1&removed=eq.false`,
         c.outbound[0].url);
+    } finally { c.restore(); }
+  }
+  {
+    /* ①c：HTML 转义（script 不落地/属性引号转义）+ 带图帖 og:image 换成帖子图 */
+    const c = capture([{ body: [{ id: 9, body: "<script>alert(1)</script> 你好", author_name: 'A"B', created_at: "2026-09-27T00:00:00Z", image_path: "u1/abc xyz.png" }] }]);
+    try {
+      const res = await worker.fetch(req("/post/9"), env, {});
+      const text = await res.text();
+      ok("①c 正文 HTML 转义（script 不落地）",
+        text.includes("&lt;script&gt;alert(1)&lt;/script&gt; 你好") && !text.includes("<script>alert"));
+      ok("①c 带图帖 og:image → Storage 公网 URL（路径段转义）",
+        text.includes("storage/v1/object/public/wall-images/u1/abc%20xyz.png"), (text.match(/og:image[^>]*/) || [""])[0]);
+      ok("①c 作者名转义进落款", text.includes("A&quot;B · 2026-09-27"));
     } finally { c.restore(); }
   }
   {
@@ -1044,8 +1089,9 @@ function seoEnv() {
     const xml = await res.text();
     ok("sitemap.xml 200 + xml 类型",
       res.status === 200 && (res.headers.get("content-type") || "").includes("xml"));
-    ok("sitemap 含固定页与帖子深链",
+    ok("sitemap 含固定页（en+zh）与帖子深链",
       xml.includes("<loc>https://site.test/privacy</loc>") &&
+      xml.includes("<loc>https://site.test/zh/community</loc>") &&
       xml.includes("<loc>https://site.test/post/9</loc>") &&
       xml.includes("<lastmod>2026-09-27</lastmod>"), xml.slice(0, 160));
     ok("sitemap 出站 URL（order=id.desc&limit=100 + removed 降级列）",

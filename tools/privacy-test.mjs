@@ -54,7 +54,8 @@ const sm = read("public/sitemap.xml");
 
 /* ═════════ ① 路由与入口：外部找得到这页 ═════════ */
 t_("P1 路由 /privacy 已登记且命名 privacy", () => {
-  assert.ok(/path:\s*"\/privacy",\s*name:\s*"privacy"/.test(router), "缺少 /privacy 路由");
+  /* 轮 86：path 与 name 之间允许 alias（/zh/privacy 中文预渲染别名） */
+  assert.ok(/path:\s*"\/privacy",[^\n]*name:\s*"privacy"/.test(router), "缺少 /privacy 路由");
 });
 t_("P2 /privacy 按需加载（不拖首屏）", () => {
   assert.ok(/name:\s*"privacy",\s*component:\s*\(\)\s*=>\s*import\(\s*"\.\/views\/PrivacyView\.vue"\s*\)/.test(router),

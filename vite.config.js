@@ -114,10 +114,13 @@ function seoRoutes() {
       if (!fs.existsSync(tpl)) return;
       const SITE = "https://dale.de5.net";
       /* og:description / twitter:description 共用的占位串（来自 index.html），子页替换用 */
-      const ROOT_DESC =
-        'content="Care for a little pet, draw its food, share kindness with gentle people."';
+      const ROOT_DESC_TEXT =
+        'Care for a little pet, draw its food, share kindness with gentle people.';
+      const ROOT_DESC = `content="${ROOT_DESC_TEXT}"`;
       const hero = seoHero(messages.en);
       const E = messages.en;
+      /* 轮 86：/zh/* 中文预渲染 —— 中文长尾查询竞争小；文案唯一来源仍是 i18n 词条 */
+      const ZH = messages.zh;
       const routes = [
         {
           dir: "pet",
@@ -186,44 +189,92 @@ function seoRoutes() {
           html: privacyStaticHtml("en"),
         },
       ];
+      /* 轮 86：/zh/* 中文页 —— title 为页面名（非营销文案），desc/正文全部取自 zh 词条不新造句子 */
+      const zhRoutes = [
+        { dir: "pet", title: "暖爪 · 你的小宠物", desc: `${ZH.pet.subtitle}${ZH.pet.tip}`, html: hero(ZH.pet.subtitle, [ZH.pet.tip, ZH.home.companions.hall]) },
+        { dir: "community", title: "暖爪 · 暖心墙", desc: `${ZH.community.subtitle}${ZH.community.cloudOn}`, html: hero(ZH.community.title, [ZH.community.subtitle, ZH.community.cloudOn, ZH.community.empty]) },
+        { dir: "profile", title: "暖爪 · 我的温柔角落", desc: ZH.profile.cloudReady, html: hero(ZH.home.heroTitle, [ZH.profile.cloudReady, ZH.home.companions.hall]) },
+        { dir: "privacy", title: "暖爪 · 隐私政策", desc: ZH.privacy.intro, html: privacyStaticHtml("zh") },
+      ];
       let made = 0;
-      for (const r of routes) {
-        let h = fs.readFileSync(tpl, "utf8");
-        h = h
-          .replace(/<title>[\s\S]*?<\/title>/, `<title>${r.title}</title>`)
-          .replace(/<link rel="canonical" href="[^"]*"/, `<link rel="canonical" href="${SITE}/${r.dir}"`)
-          .replace(/<meta property="og:url" content="[^"]*"/, `<meta property="og:url" content="${SITE}/${r.dir}"`)
-          .replace(/<meta property="og:title" content="[^"]*"/, `<meta property="og:title" content="${r.title}"`)
-          .replace(/<meta name="twitter:title" content="[^"]*"/, `<meta name="twitter:title" content="${r.title}"`);
+      /* 轮 86：en/zh 共用装配器 —— title/canonical/og/description/正文注入/hreflang 一处维护。
+       * zh=true 时：<html lang> 换 zh-CN，URL 前缀 /zh，其余口径一致。
+       * hreflang 互指（en ↔ zh，x-default 落 en）每页带全组，插在 </head> 前。 */
+      const bakePage = (h, { title, desc, dir, html, zh }) => {
+        /* home（dir=""）保留尾斜杠 —— T9 钉住 canonical=https://dale.de5.net/ 的既有口径 */
+        const selfEn = SITE + (dir ? "/" + dir : "/");
+        const selfZh = SITE + "/zh" + (dir ? "/" + dir : "/");
+        const self = zh ? selfZh : selfEn;
+        let out = h
+          .replace(/<title>[\s\S]*?<\/title>/, `<title>${title}</title>`)
+          .replace(/<link rel="canonical" href="[^"]*"/, `<link rel="canonical" href="${self}"`)
+          .replace(/<meta property="og:url" content="[^"]*"/, `<meta property="og:url" content="${self}"`)
+          .replace(/<meta property="og:title" content="[^"]*"/, `<meta property="og:title" content="${title}"`)
+          .replace(/<meta name="twitter:title" content="[^"]*"/, `<meta property="og:title" content="${title}"`);
         /* og:description 与 twitter:description 的 content 值相同，一次全部替换 */
-        h = h.split(ROOT_DESC).join(`content="${r.desc}"`);
+        out = out.split(ROOT_DESC).join(`content="${desc}"`);
         /* <meta name="description"> 与 OG 那句不是同一个字符串，得单独换，
            否则子页面在搜索结果里仍显示全站通用描述 */
-        h = h.replace(/<meta\s+name="description"[\s\S]*?\/>/, `<meta name="description" content="${r.desc}" />`);
+        out = out.replace(/<meta\s+name="description"[\s\S]*?\/>/, `<meta name="description" content="${desc}" />`);
+        out = out.replace("</head>",
+          `<link rel="alternate" hreflang="en" href="${selfEn}" />\n` +
+          `  <link rel="alternate" hreflang="zh" href="${selfZh}" />\n` +
+          `  <link rel="alternate" hreflang="x-default" href="${selfEn}" />\n  ` +
+          "</head>");
+        if (zh) out = out.replace('<html lang="en">', '<html lang="zh-CN">');
         /* 需要正文的子页面：把内容塞进挂载点。Vue 挂载时会清空该容器，视觉无差别；
            不执行 JS 的抓取方则能读到真实内容而不是空壳。
            轮 83：外面包一层 .seo-static（index.html 首帧前的内联规则对有 JS 的浏览器
            display:none）——静态正文只给无 JS 的爬虫读，真人不再「先看英文占位再进正页」。
            不能直接给 <section> 加类：cap-strip-hero 的正则按 `<section class="card seo-hero">`
            原文匹配，动了 APK 剥离就静默失效。 */
-        if (r.html) {
-          h = h.replace('<div id="app"></div>', `<div id="app">\n      <div class="seo-static">${r.html}</div>\n    </div>`);
+        if (html) {
+          out = out.replace('<div id="app"></div>', `<div id="app">\n      <div class="seo-static">${html}</div>\n    </div>`);
         }
+        return out;
+      };
+      for (const r of routes) {
+        let h = fs.readFileSync(tpl, "utf8");
+        h = bakePage(h, { title: r.title, desc: r.desc, dir: r.dir, html: r.html, zh: false });
         fs.mkdirSync(path.join(distDir, r.dir), { recursive: true });
         fs.writeFileSync(path.join(distDir, r.dir, "index.html"), h);
         made++;
+        /* 轮 86：同名 zh 页面（/zh/<dir>）在同一次循环生成 —— en/zh 永远成对，不会漂 */
+        const zr = zhRoutes.find((x) => x.dir === r.dir);
+        if (zr) {
+          let zh = fs.readFileSync(tpl, "utf8");
+          zh = bakePage(zh, { title: zr.title, desc: zr.desc, dir: r.dir, html: zr.html, zh: true });
+          fs.mkdirSync(path.join(distDir, "zh", r.dir), { recursive: true });
+          fs.writeFileSync(path.join(distDir, "zh", r.dir, "index.html"), zh);
+          made++;
+        }
       }
       /* 首页本体也注入正文（先做子页再做首页，子页拿到的模板仍是干净壳） */
       {
-        let h = fs.readFileSync(tpl, "utf8");
         const heroHome = hero(E.home.heroTitle, [
           E.home.heroSub.split("{n}").join("Warm Paws"),
           E.home.companions.title + ". " + E.home.companions.hall,
           E.home.mood.title + " " + E.home.mood.subtitle,
         ]);
+        let h = fs.readFileSync(tpl, "utf8");
         /* 轮 83：首页正文同样包 .seo-static（理由见上方子页注入处） */
-        h = h.replace('<div id="app"></div>', `<div id="app">\n      <div class="seo-static">${heroHome}</div>\n    </div>`);
+        h = bakePage(h, { title: "Warm Paws · A gentle place to be", desc: ROOT_DESC_TEXT, dir: "", html: heroHome, zh: false });
         fs.writeFileSync(tpl, h);
+        made++;
+        /* 轮 86：zh 首页 /zh */
+        const zhHeroHome = hero(ZH.home.heroTitle, [
+          ZH.home.heroSub.split("{n}").join("Warm Paws"),
+          ZH.home.companions.title + "。" + ZH.home.companions.hall,
+          ZH.home.mood.title + " " + ZH.home.mood.subtitle,
+        ]);
+        let zh = fs.readFileSync(tpl, "utf8");
+        zh = bakePage(zh, {
+          title: "暖爪 · 一个可以安心落脚的地方",
+          desc: `${ZH.home.heroTitle}。${ZH.home.heroSub.split("{n}").join("Warm Paws")}`,
+          dir: "", html: zhHeroHome, zh: true,
+        });
+        fs.mkdirSync(path.join(distDir, "zh"), { recursive: true });
+        fs.writeFileSync(path.join(distDir, "zh", "index.html"), zh);
         made++;
       }
       /* 404 页：未知路径返回真 404（配合 wrangler not_found_handling=404-page）。
