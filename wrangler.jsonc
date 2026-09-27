@@ -17,6 +17,8 @@
     // 必须让请求先到 Worker 才能把 404 改写成 SPA 壳（见 worker/api.js 的回退分支）。
     // /post/*（轮 85 ①b）：帖子详情深链同样没有预渲染文件 —— Worker 先查帖子存在性，
     // 存在回 SPA 壳（200），查无/上游挂维持真 404（软 404 红线不动）。
-    "run_worker_first": ["/api/*", "/u/*", "/messages/*", "/post/*", "/sb/*"]
+    // /sitemap.xml（轮 85 ②）：动态 sitemap 要在静态资产之前拦截 —— 首次部署漏加它，
+    // 结果线上还是静态 5 条（探针实测打脸），Worker 分支根本没机会跑。
+    "run_worker_first": ["/api/*", "/u/*", "/messages/*", "/post/*", "/sitemap.xml", "/sb/*"]
   }
 }
