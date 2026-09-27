@@ -500,36 +500,40 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
               <i class="rt-arrow">&#8250;</i>
             </button>
 
-            <!-- 轮 97：统一输入条样式 -->
+            <!-- 轮 103：一级评论的就地回复框（点「回复」出现在该评论下面，与墙一致；手机端也显示） -->
             <div v-if="repActive === cm.id" class="cmt-input cmt-input-in">
               <div class="cmt-input-row">
                 <n-input v-model:value="repDraft[cm.id]" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }"
-                  :placeholder="repPlaceholder(cm)" :maxlength="MAX_LEN" />
+                  :bordered="false" :placeholder="repPlaceholder(cm)" :maxlength="MAX_LEN" />
                 <n-button type="primary" size="small" round @click="sendCmt(cm)">{{ t("common.send") }}</n-button>
-                </div>
+              </div>
             </div>
+
+            <!-- 轮 103：主评论输入框在评论区最前面（与暖心墙完全一致；回复时让位） -->
+            <div v-if="!signedIn" class="cmt-input">
+              <p class="cmt-empty">
+                {{ t("community.commentSignIn") }}
+                <router-link class="cmt-login" to="/profile">{{ t("common.signIn") }}</router-link>
+              </p>
+            </div>
+            <div v-else-if="!repActive" class="cmt-input">
+              <div class="cmt-input-row">
+                <n-input v-model:value="cmtDraft" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }"
+                  :bordered="false" :placeholder="t('comment.placeholder')" :maxlength="MAX_LEN" />
+                <n-button type="primary" size="small" round @click="sendCmt()">{{ t("community.post") }}</n-button>
+              </div>
+            </div>
+
+            <!-- 轮 87：一级评论未展示完 → 「查看更多评论」续 15 条（此后下滑也会自动续展） -->
+            <button v-if="tops.length > shownTops.length" class="cmt-act cmt-viewmore" @click="cmtReveal += CMT_PAGE">
+              {{ t("comment.viewMoreCmt") }} <i class="vm-arrow">&#8250;</i>
+            </button>
+
+            <p v-if="!comments.length && !cmtLoading" class="cmt-empty">{{ t("comment.empty") }}</p>
           </div>
-
-          <!-- 轮 87：一级评论未展示完 → 「查看更多评论」续 15 条（此后下滑也会自动续展） -->
-          <button v-if="tops.length > shownTops.length" class="cmt-act cmt-viewmore" @click="cmtReveal += CMT_PAGE">
-            {{ t("comment.viewMoreCmt") }} <i class="vm-arrow">&#8250;</i>
-          </button>
-
-          <p v-if="!comments.length && !cmtLoading" class="cmt-empty">{{ t("comment.empty") }}</p>
         </div>
-        <p v-if="hint" class="sub" style="color: var(--low); font-weight: 700">{{ hint }}</p>
       </article>
     </template>
-
-    <!-- 轮 97：评论输入固定底栏（发送常驻右侧；超一行自动扩行；回复时让位给回复弹窗条） -->
-    <div class="cmt-bar-fixed">
-      <template v-if="signedIn">
-        <n-input v-model:value="cmtDraft" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }"
-          :placeholder="t('comment.placeholder')" :maxlength="MAX_LEN" />
-        <n-button type="primary" size="small" round @click="sendCmt()">{{ t("community.post") }}</n-button>
-      </template>
-      <router-link v-else class="bar-signin" to="/profile">{{ t("comment.barSignIn") }}</router-link>
-    </div>
 
     <!-- 轮 87：…菜单改 document 点击收起（原全屏遮罩会被卡片堆叠上下文盖住，举报/拷贝点了没反应） -->
     <!-- 举报弹窗（帖子/评论共用一个实例） -->

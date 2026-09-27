@@ -50,8 +50,8 @@ ok("PostDetailView：评论点击展开（cmt-toggle ↔ comment.count），两�
 ok("PostDetailView：就地回复（回复「回复」仍挂一级下并 @ 对方）",
   has(detail, "function startReply(cm, rp = null)") && has(detail, "cm.id + \":\" + rp.id")
     && has(detail, "comment.replyPh"));
-ok("PostDetailView：未登录拦截（不能评论：底栏 barSignIn；回应/厌恶给登录提示）",
-  has(detail, "comment.barSignIn", "community.reactSignIn", "community.dislikeSignIn")
+ok("PostDetailView：未登录拦截（不能评论：commentSignIn；回应/厌恶给登录提示）",
+  has(detail, "community.commentSignIn", "community.reactSignIn", "community.dislikeSignIn")
     && has(detail, "if (!signedIn.value) return;"));
 ok("PostDetailView：删自己的评论（云端比对 userId；删一级连回复一起）",
   has(detail, "cm.cloud && myId.value && cm.userId === myId.value")
