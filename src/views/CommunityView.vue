@@ -1520,26 +1520,16 @@ watch(() => route.query.refresh, (v) => {
         </p>
 
         <!-- 轮 91：发评论输入框放评论区最前面（与详情页一致；手机端不再需要「写评论」解锁） -->
-        <!-- 轮 105：主评论输入框放评论区最前面（与详情页一致；白底胶囊+发送在右） -->
+        <!-- 轮 103：评论输入改弹窗 —— 点输入条弹出统一面板 -->
         <div v-if="p.cloud && !signedIn" class="cmt-input">
           <p class="cmt-empty">
             {{ t("community.commentSignIn") }}
             <router-link class="cmt-login" to="/profile">{{ t("common.signIn") }}</router-link>
           </p>
         </div>
-        <div v-else class="cmt-input">
-          <div class="cmt-input-row">
-            <n-input
-              v-model:value="cmtDraft[cmtKey(p)]"
-              type="textarea"
-              :autosize="{ minRows: 1, maxRows: 4 }"
-              :bordered="false"
-              :placeholder="t('comment.placeholder')"
-              :maxlength="MAX_LEN" />
-            <n-button type="primary" size="small" round class="cmt-send" @click="sendCmt(p)">
-              {{ t("common.send") }}
-            </n-button>
-          </div>
+        <div v-else class="cmt-entry" @click="openComposerMain(p)">
+          <span class="cmt-entry-ph">{{ t("comment.placeholder") }}</span>
+          <n-button type="primary" size="small" round class="cmt-send">{{ t("common.send") }}</n-button>
         </div>
 
         <!-- 一级评论 -->
