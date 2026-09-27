@@ -8,7 +8,7 @@ import { App as CapApp } from "@capacitor/app";
 import { t } from "./i18n.js";
 import SideRails from "./components/SideRails.vue";
 import TabBar from "./components/TabBar.vue";
-import { isApp, isMobileNav, runBack } from "./stores/uiStore.js";
+import { isApp, isMobileNav, runBack, tabbarSuppressed } from "./stores/uiStore.js";
 import {
   wallet, moodStreak, petNotices, dismissPetNotice,
 } from "./stores/petStore.js";
@@ -276,7 +276,8 @@ onBeforeUnmount(() => { clearTimeout(scrubTimer); scrubTimer = 0; });
                隐私政策入口在「设置」页；/privacy 路由保留（Google 审核用）。 -->
         </div>
 
-        <TabBar v-if="isMobileNav && !inChat" />
+        <!-- 轮 108：tabbarSuppressed —— 底部输入条打开时收起 tabbar（输入条直接贴键盘，图2） -->
+        <TabBar v-if="isMobileNav && !inChat && !tabbarSuppressed" />
         <SideRails v-if="!isMobileNav" />
       </n-dialog-provider>
     </n-message-provider>

@@ -45,7 +45,7 @@ import {
   RANGES, inRange, usesRange, rangeFor, fmtWhen, memoWhen,
   recommendPosts, RECOMMEND_DAYS,
 } from "../utils/wallRules.js";
-import { isMobileNav } from "../stores/uiStore.js";
+import { isMobileNav, tabbarSuppressed } from "../stores/uiStore.js";
 /* 轮 33：举报弹窗 + 全站拉黑过滤（我拉黑的人，TA 的帖子/评论在我这里渲染前剔除） */
 import ReportDialog from "../components/ReportDialog.vue";
 import { filterBlocked, refreshBlocks } from "../utils/userBlocks.js";
@@ -814,13 +814,16 @@ async function focusSelector(sel) {
   await nextTick();
   const el = document.querySelector(sel);
   if (!el) return;
-  /* 就地出框还要看得见：滚到视野中央（二级回复的框挂在整层线程末尾，不滚会被当成「没反应」） */
+  /* 就地出框还要看得见：滚到视野中央（二级「就地」框挂在被回复那条下面，长线程里不滚就会被当成「没反应」；
+     轮 110 一级框已上移到本评论正文/操作行之下，仍在原位置附近，滚动保留只为防卡顶把它压到视口外） */
   if (el.scrollIntoView) el.scrollIntoView({ block: "center", behavior: "smooth" });
   if (el.focus) el.focus();
 }
 function cmtInputSel(p) {
   const k = CSS.escape(String(cmtKey(p)));
-  return `#cmtbox-${k} input, #cmtbox-${k} textarea`;
+  /* 轮 109：主评论输入框上移到卡内「浏览次数 ↔ 评论按钮」之间（id = cmtmain-*）；
+     未登录的云端帖该框不渲染 → 兜底仍查评论区内的输入位（老口径不变） */
+  return `#cmtmain-${k} input, #cmtmain-${k} textarea, #cmtbox-${k} input, #cmtbox-${k} textarea`;
 }
 function repInputSel(p, cm, rp = null) {
   /* 一级回复框 id = repbox-<帖>:<一级评论>；二级「就地」框 = repbox-<帖>:<一级评论>:<二级评论> */
@@ -857,6 +860,133 @@ function toggleCmt(p) {
     /* 手机端反馈：点「N 条评论」多半只是想看评论，不该自动弹键盘 → 只有桌面保持聚焦 */
     if (!isMobileNav.value) focusSelector(cmtInputSel(p));
   }
+}
+
+/* ═══ 轮 108 · 手机端主评论两段式（用户截图图1/图2）：卡内常驻「说点温柔的话…」占位条 →
+ * 点击弹底部输入条（发送在右），再点占位条或发送成功即收起。
+ * 轮 108 续3：一级/二级「回复」也统一走这条底部输入条（回复模式带「回复 xxx…」占位符），
+ * 内联回复框只在桌面渲染；发送复用 sendCmt(p, cm) 全套既有逻辑。
+ * 桌面（Web 端）保持评论区首部的内联输入框——两平台不同输入方式（轮 106 定案）。
+ * 云端帖未登录没有可写输入位：占位条/回复点击只给登录提示（与原内联态一致）。 ═══ */
+const mainBarKey = ref("");     /* 底部输入条正服务哪条帖（postKey）；空 = 收起 */
+const mainBarPost = ref(null);  /* 对应的帖子对象（发送要用 p.cloud / p.dbId） */
+const mainBarReply = ref(null); /* 回复目标 { cm, rp }；null = 主评论模式（续3） */
+const mainBarInput = ref(null);
+const mainBarEl = ref(null);    /* 条本体（点空白收起时用来排除条内点击） */
+function closeMainBar() {
+  mainBarKey.value = "";
+  mainBarPost.value = null;
+  mainBarReply.value = null;
+}
+/* 底部条草稿：主评论模式读写 cmtDraft[postKey]，回复模式读写 repDraft[repKey]——
+ * 与内联框同源存取，切目标/切模式互不串字 */
+const mainBarDraft = computed({
+  get() {
+    const r = mainBarReply.value, p = mainBarPost.value;
+    if (!p) return "";
+    return r ? (repDraft.value[repKey(p, r.cm)] || "") : (cmtDraft.value[mainBarKey.value] || "");
+  },
+  set(v) {
+    const r = mainBarReply.value, p = mainBarPost.value;
+    if (!p) return;
+    if (r) repDraft.value = { ...repDraft.value, [repKey(p, r.cm)]: v };
+    else cmtDraft.value = { ...cmtDraft.value, [mainBarKey.value]: v };
+  },
+});
+/* 占位文案：主评论 = comment.placeholder；回复 = 「回复 xxx…」（与内联框同源 repPlaceholder） */
+const mainBarPh = computed(() => {
+  const r = mainBarReply.value, p = mainBarPost.value;
+  return r && p ? repPlaceholder(p, r.cm, r.rp) : t("comment.placeholder");
+});
+/* 输入条开着 = tabbar 收起（贴键盘，图2）+ 点页面空白处即收起（用户反馈）。
+ * 组件卸载必须复位/摘监听，否则 tabbar 在别的页消失、document 挂着死监听 */
+function mainBarDocClose(e) {
+  const tgt = e.target;
+  if (mainBarEl.value && mainBarEl.value.contains(tgt)) return;   /* 条内（输入框/发送键）不关 */
+  /* 占位条与回复触发点（评论正文/回复钮）不关——它们自己管开条/切换/收起；
+   * 否则点「回复」先开条、同一击冒泡到 document 又把它关掉（真机实测条闪没） */
+  if (tgt && tgt.closest && tgt.closest(".cmt-entry, .bar-reply-tap")) return;
+  closeMainBar();
+}
+watch(mainBarKey, (v) => {
+  tabbarSuppressed.value = !!v;
+  if (typeof document === "undefined") return;
+  if (v) document.addEventListener("click", mainBarDocClose);
+  else document.removeEventListener("click", mainBarDocClose);
+});
+onUnmounted(() => {
+  tabbarSuppressed.value = false;
+  if (typeof document !== "undefined") document.removeEventListener("click", mainBarDocClose);
+});
+function focusMainBar() {
+  return nextTick().then(() => { try { mainBarInput.value?.focus(); } catch (e) { /* 无焦点环境忽略 */ } });
+}
+async function openMainBar(p) {
+  if (p.cloud && !signedIn.value) {
+    if (!isOpen(p)) toggleCmt(p);
+    return;
+  }
+  /* 再点同一条的占位条 = 收起（仅主评论模式；回复模式下点占位条 = 切回主评论） */
+  if (mainBarKey.value === cmtKey(p) && !mainBarReply.value) { closeMainBar(); return; }
+  mainBarKey.value = cmtKey(p);
+  mainBarPost.value = p;
+  mainBarReply.value = null;
+  await focusMainBar();
+}
+/* 轮 108 续3：回复统一入口——手机端 = 底部条回复模式；桌面 = 原内联框原路；
+ * 云端帖未登录 = 原拦截提示（两平台一致）。再点同目标的「回复」= 收起底部条 */
+function replyViaBar(p, cm, rp = null, e = null) {
+  if (e) e.stopPropagation();   /* 不让同一击冒泡去触发「点空白收起」/整层评论接管 */
+  if (!isMobileNav.value || (p.cloud && !signedIn.value)) {
+    if (rp) openReplyTo(p, cm, rp); else openReply(p, cm);
+    return;
+  }
+  const r0 = mainBarReply.value;
+  if (mainBarKey.value === cmtKey(p) && r0 && r0.cm.id === cm.id
+    && (r0.rp ? r0.rp.id : null) === (rp ? rp.id : null)) {
+    closeMainBar();
+    return;
+  }
+  mainBarKey.value = cmtKey(p);
+  mainBarPost.value = p;
+  mainBarReply.value = { cm, rp: rp || null };
+  atName.value = { ...atName.value, [cmtKey(p)]: rp ? (rp.name || "") : "" };
+  if (rp) openRep.value = { ...openRep.value, [repOpenKey(p, cm)]: true };
+  focusMainBar();
+}
+/* 轮 108 续3（用户：不只是回复钮——整条评论点哪儿都要弹输入框）：
+ * 一级/二级评论整层接管点击（stopPropagation 免得同一击冒泡到 document 的点空白收起）。
+ * 内部交互件（按钮/链接/…菜单/展开钮/输入框/作者名）不当作「点评论」；
+ * 桌面不接管整层——只有正文点击保持原「就地回复框」行为，其余区域不响应（网页端不改）。 */
+function cmtItemTap(p, cm, e, rp = null) {
+  if (e) e.stopPropagation();
+  const tg = e && e.target;
+  if (!isMobileNav.value) {
+    if (tg && tg.closest && tg.closest(".cmt-text")) {
+      if (rp) openReplyTo(p, cm, rp); else openReply(p, cm);
+    }
+    return;
+  }
+  if (tg && tg.closest && tg.closest("button, a, .more-pop, .replies-toggle, .cmt-input, .clickable")) return;
+  replyViaBar(p, cm, rp);
+}
+async function sendMainBar() {
+  const p = mainBarPost.value;
+  if (!p) return;
+  const r = mainBarReply.value;
+  await (r ? sendCmt(p, r.cm) : sendCmt(p));
+  if (!isOpen(p)) toggleCmt(p);   /* 成败都展开评论区：成功看到新评论，失败看到 cmtErr 提示 */
+  /* 草稿被清空 = 发送成功 → 收起输入条；失败时草稿留着（sendCmt 语义），输入条不收 */
+  const k = r ? repKey(p, r.cm) : cmtKey(p);
+  if (!String((r ? repDraft.value : cmtDraft.value)[k] || "").trim()) closeMainBar();
+}
+/* 轮 109：网页端顶部输入框的发送——沿用 sendCmt 全套逻辑（含失败提示/草稿保留），
+ * 发完把评论区展开：成功看到新评论、失败看到 cmtErr（App 端 sendMainBar 同款处理）。
+ * 空草稿不发也不展开（免得误触发送键把评论区扒开）。 */
+async function sendTopCmt(p) {
+  if (!normalizeText(cmtDraft.value[cmtKey(p)])) return;
+  await sendCmt(p);
+  if (!isOpen(p)) toggleCmt(p);
 }
 
 /* 轮 91：输入框移到评论区最前且手机端常驻显示——「写评论」解锁态（cmtCompose/openComposer）退役 */
@@ -1501,6 +1631,29 @@ watch(() => route.query.refresh, (v) => {
         <!-- 轮 84：举报入口迁入帖子右上角 … 菜单，post-foot 只留浏览数与厌恶 -->
       </div>
 
+      <!-- 轮 109：网页端主评论输入框上移到「浏览次数」与「评论按钮」之间（每条卡都常驻，
+           位置与 App 端 .cmt-entry 占位条同位）。手机端不渲染 → App 端零变化（仍走占位条 + 底部输入条）。
+           未登录的云端帖没有可写输入位：该框不渲染，点「N 条评论」展开后照旧见登录提示。 -->
+      <div v-if="!isMobileNav && (!p.cloud || signedIn)" :id="'cmtmain-' + cmtKey(p)"
+        class="cmt-input cmt-input-top">
+        <div class="cmt-input-row">
+          <n-input
+            v-model:value="cmtDraft[cmtKey(p)]"
+            type="textarea"
+            :autosize="{ minRows: 1, maxRows: 4 }"
+            :placeholder="t('comment.placeholder')"
+            :maxlength="MAX_LEN" />
+          <n-button type="primary" size="small" round class="cmt-send" @click="sendTopCmt(p)">
+            {{ t("common.send") }}
+          </n-button>
+        </div>
+      </div>
+
+      <!-- 轮 108：手机端主评论入口条（卡内常驻占位，图1样式；点击弹底部输入条） -->
+      <div v-if="isMobileNav" class="cmt-entry" @click="openMainBar(p)">
+        {{ t("comment.placeholder") }}
+      </div>
+
       <div class="cmt-toggle" @click="toggleCmt(p)">
         <span class="cmt-ico">&#128172;</span> {{ t("comment.count", { n: countFor(p) }) }}
         <span class="cmt-caret" :class="{ open: isOpen(p) }">&#9662;</span>
@@ -1511,30 +1664,18 @@ watch(() => route.query.refresh, (v) => {
           {{ t("community.loading") }}
         </p>
 
-        <!-- 轮 91：发评论输入框放评论区最前面（与详情页一致；手机端不再需要「写评论」解锁） -->
+        <!-- 轮 91：评论区首部给「未登录」提示（原本这里放输入框——可以评论的位置在最前）。
+             轮 108：手机端主评论改走卡内占位条 + 底部输入条（两平台不同输入方式）。
+             轮 109：桌面内联输入框整体上移到「浏览次数 ↔ 评论按钮」之间 → 这里只剩未登录提示。 -->
         <div v-if="p.cloud && !signedIn" class="cmt-input">
           <p class="cmt-empty">
             {{ t("community.commentSignIn") }}
             <router-link class="cmt-login" to="/profile">{{ t("common.signIn") }}</router-link>
           </p>
         </div>
-        <div v-else class="cmt-input">
-          <!-- 轮 97：统一输入条样式——发送在右、超过一行自动扩行 -->
-          <div class="cmt-input-row">
-            <n-input
-              v-model:value="cmtDraft[cmtKey(p)]"
-              type="textarea"
-              :autosize="{ minRows: 1, maxRows: 4 }"
-              :placeholder="t('comment.placeholder')"
-              :maxlength="MAX_LEN" />
-            <n-button type="primary" size="small" round class="cmt-send" @click="sendCmt(p)">
-              {{ t("common.send") }}
-            </n-button>
-          </div>
-        </div>
 
-        <!-- 一级评论 -->
-        <div v-for="cm in listFor(p)" :key="cm.id" class="cmt-item">
+        <!-- 一级评论（轮 108 续3：整条评论点哪儿都弹底部输入条——接管层在此，内部按钮除外） -->
+        <div v-for="cm in listFor(p)" :key="cm.id" class="cmt-item" @click="cmtItemTap(p, cm, $event)">
           <div class="cmt-head">
             <b :class="{ clickable: canOpen(cm) }"
                :title="canOpen(cm) ? t('community.viewHome') : ''"
@@ -1551,12 +1692,12 @@ watch(() => route.query.refresh, (v) => {
               <button class="more-item" @click="moreCopy">{{ t("common.copy") }}</button>
             </div>
           </div>
-          <p class="cmt-text cmt-text-open" :title="t('comment.reply')" @click="openReply(p, cm)">{{ cm.text }}</p>
+          <p class="cmt-text cmt-text-open" :title="t('comment.reply')">{{ cm.text }}</p>
 
           <div class="cmt-acts">
             <!-- 轮 84：时间从评论头移到「回复」左侧 -->
             <span class="cmt-time">{{ when(cm.ts) }}</span>
-            <button class="cmt-act" @click="openReply(p, cm)">{{ t("comment.reply") }}</button>
+            <button class="cmt-act bar-reply-tap" @click="replyViaBar(p, cm)">{{ t("comment.reply") }}</button>
             <!-- 轮 87：回应图标改空心灰内联 SVG（emoji 太艳丽；点亮 = 深一档灰，不再用品牌色） -->
             <button v-if="cm.dbId != null" class="cmt-react" :class="{ on: cmtReacted(cm, 'heart') }"
               :disabled="!!cmtReactBusy[cm.id]" :title="t('comment.likeT')" :aria-label="t('comment.likeT')"
@@ -1567,9 +1708,30 @@ watch(() => route.query.refresh, (v) => {
               <!-- 轮 88：「N 条回复」按钮移到回复列表底部（见下方 replies-toggle），操作行只留时间/回复/回应 -->
           </div>
 
+          <!-- 轮 110：一级评论的回复框紧跟这条一级评论——正文/操作行之下、二级列表之上
+               （用户原话「把一级评论回复框点击后出现在一级评论下面，二级评论上面，你现在是一级评论最下面」）。
+               二级评论的就地框（cmt-input-rep-in，位置不动）与手机端底部输入条都不受影响。
+               云端帖未登录不给开：openReply 已拦截，这里再守一道（轮 91 口径不变）。 -->
+          <div
+            :id="'repbox-' + repKey(p, cm)"
+            v-if="isReplyOpen(p, cm) && !isMobileNav && !(p.cloud && !signedIn)" class="cmt-input cmt-input-rep">
+            <!-- 轮 97：统一输入条样式 -->
+            <div class="cmt-input-row">
+              <n-input
+                v-model:value="repDraft[repKey(p, cm)]"
+                type="textarea"
+                :autosize="{ minRows: 1, maxRows: 4 }"
+                :placeholder="repPlaceholder(p, cm)"
+                :maxlength="MAX_LEN" />
+              <n-button type="primary" size="small" round @click="sendCmt(p, cm)">
+                {{ t("common.send") }}
+              </n-button>
+            </div>
+          </div>
+
           <!-- 二级：回复列表（轮 50：默认显示前两条；>2 条点「N 条回复」展开全部） -->
           <div v-if="repliesN(p, cm)" class="cmt-reps">
-            <div v-for="rp in visibleReplies(p, cm)" :key="rp.id" class="cmt-rep">
+            <div v-for="rp in visibleReplies(p, cm)" :key="rp.id" class="cmt-rep" @click="cmtItemTap(p, cm, $event, rp)">
               <div class="cmt-head">
                 <b><span :class="{ clickable: canOpen(rp) }"
                         :title="canOpen(rp) ? t('community.viewHome') : ''"
@@ -1586,11 +1748,11 @@ watch(() => route.query.refresh, (v) => {
                   <button class="more-item" @click="moreCopy">{{ t("common.copy") }}</button>
                 </div>
               </div>
-              <p class="cmt-text cmt-text-open" :title="t('comment.reply')" @click="openReplyTo(p, cm, rp)">{{ rp.text }}</p>
+              <p class="cmt-text cmt-text-open" :title="t('comment.reply')">{{ rp.text }}</p>
                 <div class="cmt-acts">
                   <!-- 轮 84：时间移到「回复」左侧 + 轮 87：回应图标改空心灰 -->
                   <span class="cmt-time">{{ when(rp.ts) }}</span>
-                  <button class="cmt-act" @click="openReplyTo(p, cm, rp)">
+                  <button class="cmt-act bar-reply-tap" @click="replyViaBar(p, cm, rp)">
                     {{ t("comment.reply") }}
                   </button>
                   <button v-if="rp.dbId != null" class="cmt-react" :class="{ on: cmtReacted(rp, 'heart') }"
@@ -1604,7 +1766,7 @@ watch(() => route.query.refresh, (v) => {
               <!-- 二级评论的回复框就地在它下面出现（用户反馈：以前甩到整块评论底部，像点了没反应） -->
               <div
                 :id="'repbox-' + repKey(p, cm) + ':' + rp.id"
-                v-if="replyRpOf(p, cm) === rp.id && !(p.cloud && !signedIn)"
+                v-if="replyRpOf(p, cm) === rp.id && !isMobileNav && !(p.cloud && !signedIn)"
                 class="cmt-input cmt-input-rep-in">
                 <!-- 轮 97：回复框同样统一（发送在右 + 自动扩行） -->
                 <div class="cmt-input-row">
@@ -1628,23 +1790,6 @@ watch(() => route.query.refresh, (v) => {
             <i class="rt-arrow">&#8250;</i>
           </button>
 
-          <!-- 一级：就地回复框（云端帖未登录不给开，openReply 已拦截；这里再守一道） -->
-          <div
-            :id="'repbox-' + repKey(p, cm)"
-            v-if="isReplyOpen(p, cm) && !(p.cloud && !signedIn)" class="cmt-input cmt-input-rep">
-            <!-- 轮 97：统一输入条样式 -->
-            <div class="cmt-input-row">
-              <n-input
-                v-model:value="repDraft[repKey(p, cm)]"
-                type="textarea"
-                :autosize="{ minRows: 1, maxRows: 4 }"
-                :placeholder="repPlaceholder(p, cm)"
-                :maxlength="MAX_LEN" />
-              <n-button type="primary" size="small" round @click="sendCmt(p, cm)">
-                {{ t("common.send") }}
-              </n-button>
-            </div>
-          </div>
         </div>
 
         <!-- 轮 84：一级评论超过 3 条 → 「查看更多」进帖子详情页 -->
@@ -1670,6 +1815,14 @@ watch(() => route.query.refresh, (v) => {
     <p v-if="pageBusy" class="sub" style="text-align: center">{{ t("community.loading") }}</p>
 
     <!-- 轮 87：…菜单改 document 点击收起（原全屏遮罩被卡片堆叠上下文盖住菜单，举报/拷贝点了没反应） -->
+
+    <!-- 轮 108：手机端主评论底部输入条（图2样式：发送在右；贴键盘；点空白收起；一次只服务一条帖） -->
+    <div v-if="isMobileNav && mainBarPost" ref="mainBarEl" class="cmt-main-bar">
+      <n-input ref="mainBarInput" v-model:value="mainBarDraft" type="textarea"
+        :autosize="{ minRows: 1, maxRows: 4 }"
+        :placeholder="mainBarPh" :maxlength="MAX_LEN" />
+      <n-button type="primary" size="small" round @click="sendMainBar">{{ t("common.send") }}</n-button>
+    </div>
 
     <!-- 举报弹窗（帖子/评论共用一个实例） -->
     <ReportDialog v-model:show="reportShow" :target="reportTarget" />

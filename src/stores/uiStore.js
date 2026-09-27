@@ -19,6 +19,11 @@ if (typeof window !== "undefined") {
 }
 export const isMobileNav = computed(() => isApp || vw.value < 900);
 
+/* 轮 108：底部输入条（暖心墙主评论）打开时收起 tabbar——输入条要直接贴键盘（图2 要求）。
+ * 不用 z-index 硬盖：条在 route-wrap 内部、受父级堆叠上下文限制，z-index 压不过根级
+ * tabbar（轮 103 弹窗被盖是同一陷阱）；聊天页 inChat 隐藏 tabbar 是同款先例。 */
+export const tabbarSuppressed = ref(false);
+
 const THEME_KEY = "wp-theme";
 function loadTheme() {
   try { return localStorage.getItem(THEME_KEY) || "cream"; } catch (e) { return "cream"; }

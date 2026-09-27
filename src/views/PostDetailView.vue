@@ -21,7 +21,7 @@ import {
   postCopyText, commentCopyText,
 } from "../utils/comments.js";
 import { fmtWhen } from "../utils/wallRules.js";
-import { isMobileNav } from "../stores/uiStore.js";
+import { isMobileNav, tabbarSuppressed } from "../stores/uiStore.js";
 /* 轮 84：…菜单的「拷贝」（WebView 里 navigator.clipboard 缺失时 execCommand 兜底） */
 import { copyText } from "../utils/clipboard.js";
 /* 轮 33：举报弹窗 + 全站拉黑过滤（我拉黑的人，TA 的帖子/评论在我这里不显示） */
@@ -129,28 +129,6 @@ const repActive = ref("");       /* 就地回复框挂在哪个目标：一级 i
 const atName = ref("");
 const cmtErr = ref("");
 
-/* 轮 105：统一评论输入弹窗 —— 详情页所有输入位点「评论/回复」→ 弹出此面板 */
-const composer = ref({ show: false, placeholder: "", cm: null, rp: null });
-function openComposerMain() {
-  composer.value = { show: true, placeholder: t("comment.placeholder"), cm: null, rp: null };
-}
-function openComposerReply(cm, rp = null) {
-  if (!signedIn.value) return;
-  composer.value = { show: true, placeholder: repPlaceholder(cm, rp), cm, rp };
-}
-function onComposerSend(text) {
-  const c = composer.value;
-  if (!c.cm) {
-    cmtDraft.value = text;
-    sendCmt();
-  } else {
-    repDraft.value = { ...repDraft.value, [c.cm.id]: text };
-    atName.value = c.rp ? c.rp.name : "";
-    sendCmt(c.cm, c.rp);
-  }
-  composer.value = { ...composer.value, show: false };
-}
-
 /* ═════════ 轮 84 · 评论排序 + 评论回应 + …菜单 ═════════ */
 
 /* 排序只作用于一级评论："new" = 发布时间倒序；"hot" = 心最多（同数看碎心，再按时间倒序） */
@@ -237,22 +215,29 @@ async function moreCopy() {
   setTimeout(() => { hint.value = ""; }, 2500);
 }
 
-/* 轮 87：手机端统一回复输入条（用户反馈：逐条内联回复框在手机上没法用）——
- * 点「回复」只在底部弹出一条输入条，发送在右下角；桌面保持就地内联框不变。
- * repActive 形如 "cmId" 或 "cmId:rpId"，从这里反查回复目标。 */
-const barCm = computed(() => comments.value.find((c) => c.id === String(repActive.value).split(":")[0]) || null);
-const barRp = computed(() => {
-  if (!String(repActive.value).includes(":")) return null;
-  const rid = String(repActive.value).split(":")[1];
-  return comments.value.find((c) => c.id === rid) || null;
+/* 轮 108 续5：手机端回复统一走底部输入条（轮 98 的 reply-bar 退役）——与暖心墙同款：
+ * 占位「回复 xxx…」、草稿按回复目标隔离存取（repDraft，与桌面内联框同 store）、
+ * 点空白/再点同目标收起、tabbar 收起。桌面保持就地内联框（repActive）原路不变。 */
+const detailBarReply = ref(null);   /* 底部条回复目标 { cm, rp }；null = 主评论模式 */
+function closeDetailBar() {
+  detailBar.value = false;
+  detailBarReply.value = null;
+}
+const detailBarDraft = computed({
+  get() {
+    const r = detailBarReply.value;
+    return r ? (repDraft.value[r.cm.id] || "") : (cmtDraft.value || "");
+  },
+  set(v) {
+    const r = detailBarReply.value;
+    if (r) repDraft.value = { ...repDraft.value, [r.cm.id]: v };
+    else cmtDraft.value = v;
+  },
 });
-const barInput = ref(null);
-watch(repActive, async () => {
-  if (!repActive.value || !isMobileNav.value) return;
-  await nextTick();
-  try { if (barInput.value) barInput.value.focus(); } catch (e) { /* 无焦点环境忽略 */ }
+const detailBarPh = computed(() => {
+  const r = detailBarReply.value;
+  return r ? repPlaceholder(r.cm, r.rp) : t("comment.placeholder");
 });
-function sendBar() { if (barCm.value) sendCmt(barCm.value, barRp.value); }
 
 const tops = computed(() => {
   const list = comments.value.filter((c) => !c.parentId);
@@ -313,12 +298,27 @@ function toggleCmt() {
 function toggleReplies(cm) {
   repOpen.value = { ...repOpen.value, [cm.id]: !repOpen.value[cm.id] };
 }
-function startReply(cm, rp = null) {
+function startReply(cm, rp = null, e = null) {
   if (!signedIn.value) return;
-  /* 轮 98：取消按钮已移除 —— 再点同一条的「回复」= 收起该框 */
+  /* 轮 108 续5：手机端 = 底部输入条回复模式（再点同目标 = 收起）；桌面 = 就地内联框原路。
+   * 回复「回复」仍是两级封顶：挂同一级下，@那位回复者（与墙规则一致） */
+  if (isMobileNav.value) {
+    if (e) e.stopPropagation();   /* 不让同一击冒泡去触发「点空白收起」 */
+    const r0 = detailBarReply.value;
+    if (detailBar.value && r0 && r0.cm.id === cm.id
+      && (r0.rp ? r0.rp.id : null) === (rp ? rp.id : null)) {
+      closeDetailBar();
+      return;
+    }
+    detailBarReply.value = { cm, rp: rp || null };
+    atName.value = rp ? rp.name : "";
+    if (rp) repOpen.value = { ...repOpen.value, [cm.id]: true };
+    detailBar.value = true;
+    nextTick().then(() => { try { detailBarInput.value?.focus(); } catch (e2) { /* 无焦点环境忽略 */ } });
+    return;
+  }
   const key = rp ? cm.id + ":" + rp.id : cm.id;
   if (repActive.value === key) { repActive.value = ""; atName.value = ""; return; }
-  /* 回复「回复」仍是两级封顶：挂同一级下，@那位回复者（与墙规则一致） */
   atName.value = rp ? rp.name : "";
   repActive.value = key;
 }
@@ -334,6 +334,46 @@ const repLeft = computed(() => {
   const k = repActive.value.split(":")[0];
   return leftOf(repDraft.value[k] || "");
 });
+
+/* ═══ 轮 108 续4 · 手机端主评论两段式（与暖心墙同款：占位条 → 底部输入条）═══
+ * 占位条在 cmt-box 首部（帖子下、所有评论上）；桌面主评论框自轮 111 起在卡内
+ * 「浏览次数 ↔ N 条评论」之间（轮 93 的 cmt-bar-fixed 悬浮底栏已退役）。
+ * 未登录点占位条 → 去登录页（详情页评论区常开，没有墙内那种「展开看登录提示」的路径）。 */
+const detailBar = ref(false);
+const detailBarInput = ref(null);
+const detailBarEl = ref(null);
+function detailBarDocClose(e) {
+  const tgt = e.target;
+  if (detailBarEl.value && detailBarEl.value.contains(tgt)) return;   /* 条内（输入/发送）不关 */
+  if (tgt && tgt.closest && tgt.closest(".cmt-entry")) return;        /* 占位条点击归 toggle 管 */
+  detailBar.value = false;
+}
+watch(detailBar, (v) => {
+  tabbarSuppressed.value = v;   /* 条开着 = tabbar 收起（贴键盘，图2），与暖心墙同口径 */
+  if (typeof document === "undefined") return;
+  if (v) document.addEventListener("click", detailBarDocClose);
+  else document.removeEventListener("click", detailBarDocClose);
+});
+onUnmounted(() => {
+  tabbarSuppressed.value = false;
+  if (typeof document !== "undefined") document.removeEventListener("click", detailBarDocClose);
+});
+async function toggleDetailBar() {
+  if (!signedIn.value) { router.push("/profile"); return; }
+  if (repActive.value) cancelReply();   /* 桌面残留回复态让位 */
+  if (detailBar.value && !detailBarReply.value) { closeDetailBar(); return; }  /* 再点占位条=收起（主评论模式） */
+  detailBarReply.value = null;          /* 回复模式点占位条 = 切回主评论 */
+  detailBar.value = true;
+  await nextTick();
+  try { detailBarInput.value?.focus(); } catch (e) { /* 无焦点环境忽略 */ }
+}
+async function sendDetailBar() {
+  const r = detailBarReply.value;
+  await (r ? sendCmt(r.cm, r.rp) : sendCmt());
+  /* 草稿被清空 = 发送成功 → 收起；失败草稿留着（sendCmt 语义），cmtErr 已在评论区可见 */
+  const left = r ? repDraft.value[r.cm.id] : cmtDraft.value;
+  if (!String(left || "").trim()) closeDetailBar();
+}
 
 async function sendCmt(cm = null, rp = null) {
   const text = cm ? (repDraft.value[cm.id] || "") : cmtDraft.value;
@@ -355,6 +395,13 @@ async function sendCmt(cm = null, rp = null) {
   } else {
     cmtDraft.value = "";
   }
+}
+/* 轮 111：桌面卡内主评论输入框（在「浏览次数 ↔ N 条评论」之间）的发送——
+ * 沿用 sendCmt() 全套逻辑（失败提示 cmtErr / 草稿保留由 sendCmt 决定）；空草稿不发
+ * （免得误触发布键给评论区顶出错误提示）。手机端不渲染该框，走底部的 sendDetailBar。 */
+async function sendTopCmt() {
+  if (!String(cmtDraft.value || "").trim()) return;
+  await sendCmt();
 }
 
 async function delCmt(cm) {
@@ -448,6 +495,17 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
             <!-- 轮 84：举报入口迁入帖子右上角 … 菜单，post-foot 只留浏览数与厌恶 -->
           </div>
 
+        <!-- 轮 111：桌面主评论输入框上移到「浏览次数 ↔ N 条评论」之间（与暖心墙轮 109 同款位置/形态）。
+             App 端不渲染——手机端走轮 108 续4 的卡内占位条 + 底部输入条；未登录仍是登录入口（原底栏同款 bar-signin）。 -->
+        <div v-if="!isMobileNav" id="detail-cmtmain" class="cmt-input cmt-input-top">
+          <div v-if="signedIn" class="cmt-input-row">
+            <n-input v-model:value="cmtDraft" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }"
+              :placeholder="t('comment.placeholder')" :maxlength="MAX_LEN" />
+            <n-button type="primary" size="small" round class="cmt-send" @click="sendTopCmt()">{{ t("community.post") }}</n-button>
+          </div>
+          <router-link v-else class="bar-signin" to="/profile">{{ t("comment.barSignIn") }}</router-link>
+        </div>
+
         <div class="cmt-bar">
           <div class="cmt-toggle" @click="toggleCmt">
             <span class="cmt-ico">&#128172;</span> {{ t("comment.count", { n: countN }) }}
@@ -463,7 +521,13 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
         </div>
 
         <div v-if="openCmt" class="cmt-box">
-          <!-- 轮 93：发评论输入框改为页面底部常驻输入条（cmt-bar-fixed），列表内不再嵌输入框 -->
+          <!-- 轮 108 续4：手机端主评论占位条（帖子下、所有评论上，与暖心墙同款；点击弹底部输入条；
+               桌面不渲染——桌面主评论框自轮 111 起在卡内「浏览次数 ↔ N 条评论」之间） -->
+          <div v-if="isMobileNav" class="cmt-entry" @click="toggleDetailBar">
+            {{ t("comment.placeholder") }}
+          </div>
+          <!-- 轮 111：桌面主评论框已搬到卡内「浏览次数 ↔ N 条评论」之间（见帖子卡 post-foot 之后），
+               评论区里从此没有任何输入位（轮 93 的 cmt-bar-fixed 悬浮底栏同步退役） -->
 
           <p v-if="cmtErr" class="cmt-empty" style="color: var(--low); font-weight: 700">{{ cmtErr }}</p>
           <p v-if="cmtLoading && !comments.length" class="cmt-empty">{{ t("community.loading") }}</p>
@@ -482,11 +546,11 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
                 <button class="more-item" @click="moreCopy">{{ t("common.copy") }}</button>
               </div>
             </div>
-            <p class="cmt-text" :title="signedIn ? t('comment.reply') : ''" @click="startReply(cm)">{{ cm.text }}</p>
+            <p class="cmt-text" :title="signedIn ? t('comment.reply') : ''" @click="startReply(cm, null, $event)">{{ cm.text }}</p>
             <div class="cmt-acts">
               <!-- 轮 84：时间从评论头移到「回复」左侧 -->
               <span class="cmt-time">{{ when(cm.ts) }}</span>
-              <button v-if="signedIn" class="cmt-act" @click="startReply(cm)">{{ t("comment.reply") }}</button>
+              <button v-if="signedIn" class="cmt-act" @click="startReply(cm, null, $event)">{{ t("comment.reply") }}</button>
               <!-- 轮 87：回应图标改空心灰内联 SVG（emoji 太艳丽；点亮 = 深一档灰） -->
               <button v-if="cm.dbId != null" class="cmt-react" :class="{ on: cmtReacted(cm, 'heart') }"
                 :disabled="!!cmtReactBusy[cm.id]" :title="t('comment.likeT')" :aria-label="t('comment.likeT')"
@@ -495,6 +559,18 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
                 :disabled="!!cmtReactBusy[cm.id]" :title="t('comment.brokenT')" :aria-label="t('comment.brokenT')"
                 @click="cmtReact(cm, 'broken')"><svg class="rc-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.59.94 4.5 2.35C12.91 3.94 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z"/><path d="M12 6.8 10.4 9.4l2.4 1.5-1.5 2.4 1.1 1.8"/></svg><i>{{ reactCount(cm, "broken") }}</i></button>
               <!-- 轮 88：「N 条回复」按钮移到回复列表底部（见下方 replies-toggle），操作行只留时间/回复/回应 -->
+            </div>
+
+            <!-- 轮 112：一级评论的回复框紧跟这条一级评论——正文/操作行之下、二级列表之上
+                 （用户原话「帖子详细页面的一级评论输入框：把一级评论回复框点击后出现在一级评论下面，
+                 二级评论上面，你现在是一级评论最下面。二级评论输入框不改。app端不改」）。
+                 二级就地框（本评论内 cmt-input-in 的上一个分支）与手机端底部输入条都不受影响。 -->
+            <div v-if="!isMobileNav && repActive === cm.id" class="cmt-input cmt-input-in">
+              <div class="cmt-input-row">
+                <n-input v-model:value="repDraft[cm.id]" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }"
+                  :placeholder="repPlaceholder(cm)" :maxlength="MAX_LEN" />
+                <n-button type="primary" size="small" round @click="sendCmt(cm)">{{ t("common.send") }}</n-button>
+                </div>
             </div>
 
             <div v-if="repsOf(cm).length" class="cmt-reps">
@@ -510,11 +586,11 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
                     <button class="more-item" @click="moreCopy">{{ t("common.copy") }}</button>
                   </div>
                 </div>
-                <p class="cmt-text" @click="startReply(cm, rp)">{{ rp.text }}</p>
+                <p class="cmt-text" @click="startReply(cm, rp, $event)">{{ rp.text }}</p>
                 <div class="cmt-acts">
                   <!-- 轮 84：时间移到「回复」左侧 + 轮 87：回应图标改空心灰 -->
                   <span class="cmt-time">{{ when(rp.ts) }}</span>
-                  <button v-if="signedIn" class="cmt-act" @click="startReply(cm, rp)">{{ t("comment.reply") }}</button>
+                  <button v-if="signedIn" class="cmt-act" @click="startReply(cm, rp, $event)">{{ t("comment.reply") }}</button>
                   <button v-if="rp.dbId != null" class="cmt-react" :class="{ on: cmtReacted(rp, 'heart') }"
                     :disabled="!!cmtReactBusy[rp.id]" :title="t('comment.likeT')" :aria-label="t('comment.likeT')"
                     @click="cmtReact(rp, 'heart')"><svg class="rc-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.59.94 4.5 2.35C12.91 3.94 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z"/></svg><i>{{ reactCount(rp, "heart") }}</i></button>
@@ -539,14 +615,6 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
               <i class="rt-arrow">&#8250;</i>
             </button>
 
-            <!-- 轮 97：统一输入条样式 -->
-            <div v-if="!isMobileNav && repActive === cm.id" class="cmt-input cmt-input-in">
-              <div class="cmt-input-row">
-                <n-input v-model:value="repDraft[cm.id]" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }"
-                  :placeholder="repPlaceholder(cm)" :maxlength="MAX_LEN" />
-                <n-button type="primary" size="small" round @click="sendCmt(cm)">{{ t("common.send") }}</n-button>
-                </div>
-            </div>
           </div>
 
           <!-- 轮 87：一级评论未展示完 → 「查看更多评论」续 15 条（此后下滑也会自动续展） -->
@@ -560,23 +628,16 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
       </article>
     </template>
 
-    <!-- 轮 97：评论输入固定底栏（发送常驻右侧；超一行自动扩行；回复时让位给回复弹窗条） -->
-    <div v-if="!repActive" class="cmt-bar-fixed">
-      <template v-if="signedIn">
-        <n-input v-model:value="cmtDraft" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }"
-          :placeholder="t('comment.placeholder')" :maxlength="MAX_LEN" />
-        <n-button type="primary" size="small" round @click="sendCmt()">{{ t("community.post") }}</n-button>
-      </template>
-      <router-link v-else class="bar-signin" to="/profile">{{ t("comment.barSignIn") }}</router-link>
-    </div>
+    <!-- 轮 111：桌面评论输入固定底栏（cmt-bar-fixed，轮 93 引入）**已退役**——
+         主评论框搬进卡内「浏览次数 ↔ N 条评论」之间（用户要求与暖心墙轮 109 同款），未登录入口同址保留。 -->
 
-    <!-- 轮 91：输入条改 3 行文本域（用户反馈：单行小框没法输入），发送在右下角；Enter 换行不再误发送 -->
-    <div v-if="repActive && isMobileNav" class="reply-bar">
-      <n-input ref="barInput" v-model:value="repDraft[barCm ? barCm.id : '']" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }"
-        :placeholder="repPlaceholder(barCm, barRp)" :maxlength="MAX_LEN" />
-      <div class="reply-bar-foot">
-        <n-button type="primary" size="small" round @click="sendBar">{{ t("common.send") }}</n-button>
-      </div>
+    <!-- 轮 108 续5：手机端回复输入条（reply-bar）已退役——回复统一走下方 cmt-main-bar 底部输入条 -->
+    <!-- 轮 108 续5：手机端底部输入条（主评论+回复共用，与暖心墙同款：贴键盘、tabbar 收起、点空白收起） -->
+    <div v-if="isMobileNav && detailBar" ref="detailBarEl" class="cmt-main-bar">
+      <n-input ref="detailBarInput" v-model:value="detailBarDraft" type="textarea"
+        :autosize="{ minRows: 1, maxRows: 4 }"
+        :placeholder="detailBarPh" :maxlength="MAX_LEN" />
+      <n-button type="primary" size="small" round @click="sendDetailBar">{{ t("common.send") }}</n-button>
     </div>
 
     <!-- 轮 87：…菜单改 document 点击收起（原全屏遮罩会被卡片堆叠上下文盖住，举报/拷贝点了没反应） -->

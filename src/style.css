@@ -1096,25 +1096,45 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
   border-radius: 999px; padding: 5px 6px 5px 14px;
 }
 .cmt-input-row .n-input { flex: 1; font-size: 13.5px; }
-.cmt-input .n-input, .cmt-bar-fixed .n-input { font-size: 13.5px; }
+.cmt-input .n-input { font-size: 13.5px; }
 
-/* 轮 93：详情页评论输入固定底栏（参考用户截图：头像 + 说点什么吧… 胶囊，常驻页面底部） */
-.cmt-bar-fixed {
-  position: fixed; left: 50%; transform: translateX(-50%);
-  bottom: calc(64px + env(safe-area-inset-bottom, 0px) + 8px);
-  width: min(100% - 24px, 752px);
-  z-index: 140; display: flex; align-items: center; gap: 10px;
-  padding: 8px 12px; border-radius: 999px;
-  background: rgba(255, 255, 255, .92); border: 1px solid rgba(160, 110, 60, .12);
-  box-shadow: 0 6px 18px rgba(90, 60, 30, .08);
+/* 轮 111：详情页评论输入固定底栏（cmt-bar-fixed，轮 93 引入）**已退役**——主评论框搬进卡内
+ * 「浏览次数 ↔ N 条评论」之间（用户要求与暖心墙轮 109 同款位置），桌面不再有悬浮输入条，
+ * 因此 .cmt-box 的 56px 底部让位也一并撤掉；未登录入口 bar-signin 仍在卡内同址使用，样式独立保留。 */
+.bar-signin { font-size: 12px; font-weight: 700; color: var(--ink-faint); text-decoration: none; }
+
+/* ═══ 轮 108 · 暖心墙手机端主评论两段式（用户截图图1/图2）═══
+ * 卡内占位条：圆角浅底灰字，开箱即见（占位文案权当提示）；点击 → 底部输入条。
+ * 底部输入条：贴屏幕底（bottom:0，键盘弹出时直接压在键盘上——图2 要求 tabbar 不露头），
+ * z-index 150 > tabbar 140 + 实色背景把它身后的半透明 tabbar 完全盖住；
+ * 输入框 flex:1、发送键常驻右侧（与聊天输入条同款手势）。
+ * 桌面端两个类都不会渲染（模板侧 isMobileNav 门禁）——Web 保持内联输入框不变。 */
+.cmt-entry {
+  display: flex; align-items: center; min-height: 40px;
+  margin: 10px 0 2px; padding: 9px 14px;
+  border-radius: 12px;
+  background: rgba(243, 245, 248, .92);
+  border: 1px solid rgba(160, 110, 60, .08);
+  color: var(--ink-faint); font-size: 14px; cursor: pointer;
 }
-.cmt-bar-fixed .n-input { font-size: 13.5px; }
-.cmt-bar-fixed .bar-signin { font-size: 12px; font-weight: 700; color: var(--ink-faint); text-decoration: none; }
-/* 输入条常驻底部 —— 评论列表末尾留出让位空间，最后一条不被盖住 */
-.cmt-box { padding-bottom: 56px; }
-@media (min-width: 900px) {
-  .cmt-bar-fixed { bottom: 16px; }
+.cmt-entry:active { background: rgba(236, 239, 243, .95); }
+.cmt-main-bar {
+  position: fixed; left: 0; right: 0;
+  bottom: 0; z-index: 150;
+  display: flex; align-items: flex-end; gap: 10px;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  background: #fff7ee;
+  border-top: 1px solid rgba(160, 110, 60, .14);
+  box-shadow: 0 -8px 22px rgba(90, 60, 30, .10);
 }
+.cmt-main-bar .n-input { flex: 1; font-size: 14px; }
+
+/* ═══ 轮 109 · 网页端主评论输入框上移到「浏览次数」与「评论按钮」之间（用户：放在评论按钮跟
+ * 浏览次数按钮中间，每条都是）═══
+ * 位置与 App 端 .cmt-entry 占位条同位（.post-foot 之后、.cmt-toggle 之前），形态仍是轮 102
+ * 的统一输入条（.cmt-input-row）。只在桌面渲染（模板侧 !isMobileNav 门禁）→ App 端零变化。
+ * 轮 111 起详情页桌面主评论框同款同位（两个页面共用这个类名）。 */
+.cmt-input-top { margin-top: 10px; }
 
 /* 详情页：评论标题行（左）+ 排序按钮（右） */
 .cmt-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
