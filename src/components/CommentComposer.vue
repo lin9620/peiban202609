@@ -37,39 +37,43 @@ function send() {
 </script>
 
 <template>
-  <transition name="composer-up">
-    <div v-if="show" class="composer-mask" @click="close">
-      <div class="composer-panel" @click.stop>
-        <div class="composer-icons" aria-hidden="true">
-          <span class="ci-emoji">☺</span><span class="ci-at">@</span>
-        </div>
-        <div class="composer-row">
-          <n-input ref="inputRef" v-model:value="draft" type="textarea"
-            :autosize="{ minRows: 1, maxRows: 4 }" :bordered="false"
-            :placeholder="placeholder" :maxlength="maxlength"
-            @keyup.enter="send" />
-          <n-button type="primary" size="small" round @click="send">{{ t("common.send") }}</n-button>
+  <Teleport to="body">
+    <transition name="composer-up">
+      <div v-if="show" class="composer-mask" @click="close">
+        <div class="composer-panel" @click.stop>
+          <div class="composer-icons" aria-hidden="true">
+            <span class="ci-emoji">☺</span><span class="ci-at">@</span>
+          </div>
+          <div class="composer-row">
+            <n-input ref="inputRef" v-model:value="draft" type="textarea"
+              :autosize="{ minRows: 1, maxRows: 4 }" :bordered="false"
+              :placeholder="placeholder" :maxlength="maxlength"
+              @keyup.enter="send" />
+            <n-button type="primary" size="small" round @click="send">{{ t("common.send") }}</n-button>
+          </div>
         </div>
       </div>
-    </div>
-  </transition>
+    </transition>
+  </Teleport>
 </template>
 
 <style>
-/* 轮 103：统一评论输入弹窗（全局样式：两个视图共用同一套类名） */
-.composer-mask { position: fixed; inset: 0; z-index: 150; background: rgba(38, 30, 22, .32); }
+/* 轮 103：统一评论输入弹窗（全局样式：两个视图共用同一套类名）
+ * z-index 必须高于 .tabbar（z-index 未显式设，但 naive-ui 弹层 ~2000+，
+ * 底栏 tabbar 是 fixed 元素）—— 用 2000 保险 */
+.composer-mask { position: fixed; inset: 0; z-index: 9998; background: rgba(38, 30, 22, .45); }
 .composer-panel {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 151;
-  padding: 12px 14px calc(14px + env(safe-area-inset-bottom, 0px));
-  background: var(--paper, #fff7ee); border-radius: 18px 18px 0 0;
-  box-shadow: 0 -10px 30px rgba(90, 60, 30, .14);
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 9999;
+  padding: 14px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  background: #fff; border-radius: 18px 18px 0 0;
+  box-shadow: 0 -8px 30px rgba(90, 60, 30, .18);
 }
-.composer-icons { display: flex; gap: 14px; margin-bottom: 6px; }
+.composer-icons { display: flex; gap: 14px; margin-bottom: 8px; }
 .composer-icons .ci-emoji, .composer-icons .ci-at {
-  font-size: 17px; color: var(--ink-faint); line-height: 1;
+  font-size: 18px; color: var(--ink-faint); line-height: 1;
 }
-.composer-row { display: flex; align-items: flex-end; gap: 8px; }
-.composer-row .n-input { flex: 1; font-size: 14px; }
+.composer-row { display: flex; align-items: flex-end; gap: 10px; }
+.composer-row .n-input { flex: 1; font-size: 14.5px; }
 .composer-row .n-input .n-input__border, .composer-row .n-input .n-input__state-border { display: none; }
 .composer-up-enter-active, .composer-up-leave-active { transition: transform .22s ease, opacity .22s ease; }
 .composer-up-enter-from, .composer-up-leave-to { transform: translateY(100%); opacity: 0; }
