@@ -1,0 +1,74 @@
+# 依赖与构建产物
+node_modules/
+dist/
+
+# 私密配置：Supabase 密钥，绝不能提交
+.env
+.env.local
+.env.*.local
+supabase.json
+.dev.vars
+
+# 工具生成的报告与运行日志
+undef-report.txt
+comment-test.txt
+arity-test.txt
+*.log
+
+# 本地工具缓存与临时脚本（云部署不需要）
+.wrangler/
+.edge-final/
+_*.mjs
+_*.txt
+_*.ps1
+
+# Android / Capacitor（App 轨道红线：密钥与本地构建产物绝不提交）
+*.keystore
+*.jks
+android/local.properties
+android/app/build/
+android/.capacitor/
+android/.gradle/
+android/build/
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+
+# 本地产物 APK（调试包体积大且每次构建都变；发版包走 Play 后台，不入库）
+apk/
+
+# 编辑器与系统文件
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# ===== ↑ 以上同步自 .gitignore（「从 .gitignore 同步」只重写以上部分）=====
+.git/
+.hg/
+.svn/
+bower_components/
+jspm_packages/
+__pycache__/
+site-packages/
+venv/
+coverage/
+htmlcov/
+lcov-report/
+cmakefiles/
+cmake-build-*/
+bazel-*/
+pods/
+deriveddata/
+storybook-static/
+playwright-report/
+test-results/
+allure-results/
+allure-report/
+cdk.out/
+*.egg-info/
+*.dist-info/
+eggs/
+pip-wheel-metadata/
+wheels/
+# ----- ↑ 以上为 ZCode 默认排除规则（自定义规则请写在本行下方，不会被同步/恢复改动）-----
+# 自定义规则写在下方（本行提示可删除）
