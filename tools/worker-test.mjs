@@ -964,6 +964,106 @@ async function hit(script, path, init) {
     c.outbound[0].init.body === "{}", c.outbound[0].url);
 }
 
+/* ─────────── 轮 85 · SEO（/u noindex / /post 存在性壳 / 动态 sitemap） ─────────── */
+function seoEnv() {
+  return {
+    SUPABASE_URL: ORIGIN,
+    SUPABASE_ANON_KEY: ANON,
+    /* worker 回壳走 ASSETS.fetch(new URL("/", origin)) —— Cloudflare 运行时接受 URL 对象，
+     * mock 这里必须同时认 Request 与 URL（r.url 在 URL 实例上是 undefined） */
+    ASSETS: { fetch: async (r) => {
+      const p = (r instanceof URL) ? r.pathname : new URL(r.url).pathname;
+      if (p === "/") {
+        return new Response('<html><head><meta name="robots" content="index, follow" /><title>Warm Paws</title></head><body>SHELL</body></html>',
+          { status: 200, headers: { "content-type": "text/html", etag: 'W/"shell-v1"' } });
+      }
+      return new Response("nope", { status: 404 });
+    } },
+  };
+}
+{
+  /* ③：/u/:id 薄内容壳 → noindex, follow 注入 + etag 抹除 + 不查库 */
+  const c = capture();
+  try {
+    const res = await worker.fetch(req("/u/abc"), seoEnv(), {});
+    const text = await res.text();
+    ok("/u/:id 壳 200 且 robots 注入 noindex, follow",
+      res.status === 200 && text.includes("noindex, follow") && !text.includes('content="index, follow"'), text.slice(0, 140));
+    ok("/u/:id 注入后不再带原 etag", !res.headers.get("etag"));
+    ok("/u/:id noindex 不出站查库", c.outbound.length === 0);
+  } finally { c.restore(); }
+}
+{
+  /* ①b：/post/:id 存在 → SPA 壳；查无/上游挂/非数字 → 真 404 */
+  const env = seoEnv();
+  {
+    const c = capture([{ body: [{ id: 123 }] }]);
+    try {
+      const res = await worker.fetch(req("/post/123"), env, {});
+      ok("/post/123 存在 → 回 SPA 壳 200", res.status === 200 && (await res.text()).includes("SHELL"));
+      ok("/post 存在性查询出站 URL",
+        c.outbound[0].url === `${ORIGIN}/rest/v1/wall_posts?select=id&id=eq.123&limit=1&removed=eq.false`,
+        c.outbound[0].url);
+    } finally { c.restore(); }
+  }
+  {
+    const c = capture([{ body: [] }]);
+    try {
+      const res = await worker.fetch(req("/post/999"), env, {});
+      ok("/post/999 查无此帖 → 真 404", res.status === 404);
+    } finally { c.restore(); }
+  }
+  {
+    const c = capture([{ throw: true }]);
+    try {
+      const res = await worker.fetch(req("/post/777"), env, {});
+      ok("/post/777 上游挂 → 真 404（不发软 200）", res.status === 404);
+    } finally { c.restore(); }
+  }
+  {
+    const c = capture([{ status: 400, body: { code: "42703" } }, { body: [{ id: 5 }] }]);
+    try {
+      const res = await worker.fetch(req("/post/5"), env, {});
+      ok("/post 老库无 removed 列（400）→ 降级重试后回壳",
+        res.status === 200 && !c.outbound[1].url.includes("removed"), c.outbound[1].url);
+    } finally { c.restore(); }
+  }
+  {
+    const c = capture();
+    try {
+      const res = await worker.fetch(req("/post/abc"), env, {});
+      ok("/post/abc 非数字 → 真 404 且不出站", res.status === 404 && c.outbound.length === 0);
+    } finally { c.restore(); }
+  }
+}
+{
+  /* ②：动态 sitemap —— 固定 5 页 + 最新 100 帖深链；lastmod 取发帖日 */
+  const c = capture([{ body: [{ id: 9, created_at: "2026-09-27T01:02:03Z" }] }]);
+  try {
+    const res = await worker.fetch(req("/sitemap.xml"), seoEnv(), {});
+    const xml = await res.text();
+    ok("sitemap.xml 200 + xml 类型",
+      res.status === 200 && (res.headers.get("content-type") || "").includes("xml"));
+    ok("sitemap 含固定页与帖子深链",
+      xml.includes("<loc>https://site.test/privacy</loc>") &&
+      xml.includes("<loc>https://site.test/post/9</loc>") &&
+      xml.includes("<lastmod>2026-09-27</lastmod>"), xml.slice(0, 160));
+    ok("sitemap 出站 URL（order=id.desc&limit=100 + removed 降级列）",
+      c.outbound[0].url === `${ORIGIN}/rest/v1/wall_posts?select=id%2Ccreated_at&order=id.desc&limit=100&removed=eq.false`,
+      c.outbound[0].url);
+  } finally { c.restore(); }
+}
+{
+  /* ②：上游挂 → 降级成只含固定 5 页的合法 XML（不 5xx，Google 下次自然重试） */
+  const c = capture([{ throw: true }]);
+  try {
+    const res = await worker.fetch(req("/sitemap.xml"), seoEnv(), {});
+    const xml = await res.text();
+    ok("sitemap 上游挂 → 仍 200 且只含固定页（无 /post 条目）",
+      res.status === 200 && xml.includes("<loc>https://site.test</loc>") && !xml.includes("/post/"));
+  } finally { c.restore(); }
+}
+
 console.log(`worker-test: ${pass} pass, ${fails.length} fail`);
 for (const f of fails) console.log("FAIL  " + f);
 if (fails.length) process.exit(1);

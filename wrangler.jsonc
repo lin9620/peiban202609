@@ -15,6 +15,8 @@
     // 保险：即使 dist 里意外出现 api/ 目录，/api/* 也一定先进 Worker；
     // /u/*（他人主页）与 /messages/*（会话直链）带动态 id、没有预渲染文件，
     // 必须让请求先到 Worker 才能把 404 改写成 SPA 壳（见 worker/api.js 的回退分支）。
-    "run_worker_first": ["/api/*", "/u/*", "/messages/*", "/sb/*"]
+    // /post/*（轮 85 ①b）：帖子详情深链同样没有预渲染文件 —— Worker 先查帖子存在性，
+    // 存在回 SPA 壳（200），查无/上游挂维持真 404（软 404 红线不动）。
+    "run_worker_first": ["/api/*", "/u/*", "/messages/*", "/post/*", "/sb/*"]
   }
 }

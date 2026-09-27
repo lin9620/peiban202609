@@ -478,6 +478,63 @@ async function imgResponse(env, request, ctx, rawSegs) {
 
 
 
+/* ──────── 轮 85 · SEO 组合（/post 深链回壳 + /u noindex + 动态 sitemap） ──────── */
+
+/** 帖子查询（带 removed 列降级）：老库无该列时 PostgREST 400 → 去掉过滤重试一次，
+ * 与单帖接口 objectOrPassthrough 上方的 attempt 口径一致。 */
+async function postsQuery(env, request, qs) {
+  const attempt = (withRemoved) =>
+    upstream(env, request, restUrl(env, TABLE.posts, withRemoved ? `${qs}&removed=eq.false` : qs));
+  let res = await attempt(true);
+  if (res && !res.ok && res.status === 400) res = await attempt(false);
+  return res;
+}
+
+/** /post/:id 存在性检查：只有「确认存在」才返回 true；上游挂/查无 → false（宁可真 404 不发软 200） */
+async function postExists(env, request, id) {
+  const res = await postsQuery(env, request, `select=${encodeURIComponent("id")}&id=eq.${encodeURIComponent(id)}&limit=1`);
+  if (!res || !res.ok) return false;
+  try {
+    const rows = await res.json();
+    return Array.isArray(rows) && rows.length > 0;
+  } catch (e) {
+    return false;
+  }
+}
+
+/** 动态 sitemap：固定 5 页（lastmod=今天）+ 最新 100 帖的 /post/:id 深链（lastmod=发帖日）。
+ * dist 里的静态 sitemap.xml 只有 5 个固定页 —— 帖子是这个站最大的长尾内容，得让 Google
+ * 知道它们存在。origin 取请求本身（换域名这份代码零改动）；上游挂 → 降级成只含固定 5 页
+ * 的合法 XML（Google 下次抓取自然重试），不会 5xx。 */
+async function sitemap(env, request, url) {
+  const origin = url.origin;
+  const today = new Date().toISOString().slice(0, 10);
+  const fixed = [["", "1.0"], ["/pet", "0.9"], ["/community", "0.9"], ["/profile", "0.5"], ["/privacy", "0.3"]];
+  let posts = [];
+  const res = await postsQuery(env, request, `select=${encodeURIComponent("id,created_at")}&order=id.desc&limit=100`);
+  if (res && res.ok) {
+    try { posts = await res.json(); } catch (e) { posts = []; }
+  }
+  if (!Array.isArray(posts)) posts = [];
+  const parts = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+  ];
+  for (const [p, pr] of fixed) {
+    parts.push(`<url><loc>${origin}${p}</loc><lastmod>${today}</lastmod><priority>${pr}</priority></url>`);
+  }
+  for (const r of posts) {
+    if (r && r.id != null) {
+      parts.push(`<url><loc>${origin}/post/${r.id}</loc><lastmod>${String(r.created_at || "").slice(0, 10)}</lastmod></url>`);
+    }
+  }
+  parts.push("</urlset>");
+  return new Response(parts.join("\n"), {
+    status: 200,
+    headers: { "content-type": "application/xml; charset=utf-8", "cache-control": "public, max-age=3600" },
+  });
+}
+
 /* ══════════ 路由分发 ══════════ */
 
 export default {
@@ -514,15 +571,50 @@ export default {
       return new Response(resp.body, { status: resp.status, headers: out });
     }
 
+    /* ──────── 轮 85：动态 sitemap 拦截在静态资产之前（上游挂时函数内降级为固定 5 页） ──────── */
+    if (path === "/sitemap.xml" && request.method === "GET") return sitemap(env, request, url);
+
     /* 非 /api/*：静态资源优先；**动态路由回退**（/u/:id 他人主页、/messages/:id 直链会话
      * 没有预渲染文件，assets 会给真 404）→ 404 时改发 SPA 壳（根 index.html，200），
-     * 前端路由接管渲染。未知乱路径仍维持真 404（防软 404，SEO 口径不变）。 */
+     * 前端路由接管渲染。未知乱路径仍维持真 404（防软 404，SEO 口径不变）。
+     * 轮 85 ③：/u/:id 的壳注入 noindex（他人主页是薄内容壳，防稀释整站质量；follow 保留）——
+     *   就地替换根壳的 robots meta，并抹掉 etag（body 已变，原 etag 不再成立）。
+     * 轮 85 ①b：/post/:id 深链回壳前**先查帖子存在性**——查无/上游挂维持真 404
+     *   （软 404 是轮 11 定案红线；帖子被删/乱 id 决不能变 200）。 */
     if (path !== "/api" && !path.startsWith("/api/")) {
       if (!env.ASSETS) return fail(404, "not-found");
       const res = await env.ASSETS.fetch(request);
       if (res.status === 404 && (path.startsWith("/u/") || path.startsWith("/messages/"))) {
         const shell = await env.ASSETS.fetch(new URL("/", url.origin));
-        if (shell && shell.ok) return shell;
+        if (shell && shell.ok) {
+          if (path.startsWith("/u/")) {
+            try {
+              const html = await shell.text();
+              const injected = html.replace(
+                '<meta name="robots" content="index, follow" />',
+                '<meta name="robots" content="noindex, follow" />',
+              );
+              const headers = new Headers(shell.headers);
+              headers.delete("etag");
+              headers.delete("content-length");
+              return new Response(injected, { status: 200, headers });
+            } catch (e) {
+              return shell;   /* 注入失败退回原壳（有壳总比没有强） */
+            }
+          }
+          return shell;
+        }
+      }
+      if (res.status === 404 && path.startsWith("/post/")) {
+        const id = decodeSeg(decodeURIComponent(path.slice("/post/".length)).split("/")[0] || "");
+        if (id && /^[0-9]+$/.test(id)) {
+          const exists = await postExists(env, request, id);
+          if (exists) {
+            const shell = await env.ASSETS.fetch(new URL("/", url.origin));
+            if (shell && shell.ok) return shell;
+          }
+          /* 查无此帖 / 上游挂 → 落到下面的真 404 */
+        }
       }
       return res;
     }
