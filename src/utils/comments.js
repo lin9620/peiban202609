@@ -197,8 +197,9 @@ export const CMT_REACT_KINDS = ["heart", "broken"];
 /** 墙内一级评论默认显示几条 */
 export const WALL_TOP_LIMIT = 3;
 
-/** 排序口径：new = 最新（一级评论时间倒序）；hot = 最热（心最多，其次碎心，再按时间倒序） */
-export const SORT_MODES = ["new", "hot"];
+/** 排序口径：default = 默认（推荐模式，与暖心墙帖子排序同源 —— 视图层用 recommendPosts）；
+ * new = 最新（一级评论时间倒序）。轮 87：「最热」按用户反馈移除。 */
+export const SORT_MODES = ["default", "new"];
 
 /** 某条评论的回应数（缺字段 → 0；负值/非数字一律归 0，避免脏数据把排序带偏） */
 export function reactCount(comment, kind) {
@@ -241,19 +242,14 @@ export function toggleReact(comment, kind, on) {
 
 /**
  * 评论列表排序（返回新数组，不改入参）。
- * mode="hot"：心多的在前；心数相同看碎心（讨论热度），再相同按时间倒序保证稳定。
  * mode="new"（含未知值）：按 ts 倒序。
+ * 轮 87：「最热」移除 —— 默认口径改为推荐模式（视图层直接用 wallRules 的
+ * recommendPosts，与暖心墙帖子排序同源），这里只保留时间倒序。
  * ts 非法一律当 0（排到最后），避免一条脏数据把顺序打乱。
  */
 export function sortComments(list, mode = "new") {
   const arr = Array.isArray(list) ? list.slice() : [];
   const ts = (c) => (Number.isFinite(Number(c && c.ts)) ? Number(c.ts) : 0);
-  if (mode === "hot") {
-    return arr.sort((a, b) =>
-      reactCount(b, "heart") - reactCount(a, "heart")
-      || reactCount(b, "broken") - reactCount(a, "broken")
-      || ts(b) - ts(a));
-  }
   return arr.sort((a, b) => ts(b) - ts(a));
 }
 

@@ -3,7 +3,7 @@
      cloudFetchComments / cloudInsertComment / cloudDeleteComment / cloudToggleReaction /
      cloudAddView / cloudToggleDislike，全部复用暖心墙现有云端 API（零新迁移、零新 i18n 键）。 -->
 <script setup>
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { NAvatar, NButton, NInput } from "naive-ui";
 import { t, i18n } from "../i18n.js";
@@ -20,7 +20,8 @@ import {
   SORT_MODES, sortComments, reactCount, toggleReact, hasReacted as cmtHasReacted,
   postCopyText, commentCopyText,
 } from "../utils/comments.js";
-import { fmtWhen } from "../utils/wallRules.js";
+import { fmtWhen, recommendPosts } from "../utils/wallRules.js";
+import { isMobileNav } from "../stores/uiStore.js";
 /* 轮 84：…菜单的「拷贝」（WebView 里 navigator.clipboard 缺失时 execCommand 兜底） */
 import { copyText } from "../utils/clipboard.js";
 /* 轮 33：举报弹窗 + 全站拉黑过滤（我拉黑的人，TA 的帖子/评论在我这里不显示） */
@@ -120,7 +121,7 @@ async function dislike() {
 /* ───────── 评论（两级：一级评论 + 挂在一级下的回复，与暖心墙同款交互） ───────── */
 const comments = ref([]);        /* 扁平视图评论（cloudFetchComments → rowsToComments 输出） */
 const cmtLoading = ref(false);
-const openCmt = ref(false);
+const openCmt = ref(true);   /* 轮 87：进详情页评论默认展开（load() 已自动拉取评论） */
 const cmtDraft = ref("");
 const repDraft = ref({});        /* 每个一级评论线程一个草稿（与墙一致） */
 const repOpen = ref({});         /* 某一级评论的回复列表展开 */
@@ -131,7 +132,12 @@ const cmtErr = ref("");
 /* ═════════ 轮 84 · 评论排序 + 评论回应 + …菜单 ═════════ */
 
 /* 排序只作用于一级评论："new" = 发布时间倒序；"hot" = 心最多（同数看碎心，再按时间倒序） */
-const cmtSort = ref("new");
+const cmtSort = ref("default");
+/* 轮 87：一级评论先展示 15 条，下滑接近底部续展 15 条（与暖心墙信息流同手感）；
+ * 「查看更多评论」按钮也能续。二级回复仍默认前两条（轮 50 口径不变）。 */
+const CMT_PAGE = 15;
+const cmtReveal = ref(CMT_PAGE);
+watch(cmtSort, () => { cmtReveal.value = CMT_PAGE; });
 
 /* —— 评论回应（与暖心墙同口径：乐观翻转 → RPC 权威计数覆盖 → 失败回滚） —— */
 const cmtReactBusy = ref({});
@@ -187,6 +193,13 @@ function toggleCmtMore(cm) {
   moreTarget.value = { type: "comment", reportable: canReportCmt(cm), dbId: cm.dbId, label: cm.text || "", copy: commentCopyText(cm) };
 }
 function closeMore() { moreKey.value = ""; }
+/* 轮 87：去掉全屏遮罩（.card 的 backdrop-filter 造出堆叠上下文，遮罩盖住菜单 →
+ * 举报/拷贝点击全被吞掉）。改 document 级点击收起，动作不受影响。 */
+watch(moreKey, (v) => {
+  if (typeof document === "undefined") return;
+  if (v) document.addEventListener("click", closeMore);
+  else document.removeEventListener("click", closeMore);
+});
 function moreReport() {
   const t0 = moreTarget.value;
   closeMore();
@@ -202,7 +215,38 @@ async function moreCopy() {
   setTimeout(() => { hint.value = ""; }, 2500);
 }
 
-const tops = computed(() => sortComments(comments.value.filter((c) => !c.parentId), cmtSort.value));
+/* 轮 87：手机端统一回复输入条（用户反馈：逐条内联回复框在手机上没法用）——
+ * 点「回复」只在底部弹出一条输入条，发送在右下角；桌面保持就地内联框不变。
+ * repActive 形如 "cmId" 或 "cmId:rpId"，从这里反查回复目标。 */
+const barCm = computed(() => comments.value.find((c) => c.id === String(repActive.value).split(":")[0]) || null);
+const barRp = computed(() => {
+  if (!String(repActive.value).includes(":")) return null;
+  const rid = String(repActive.value).split(":")[1];
+  return comments.value.find((c) => c.id === rid) || null;
+});
+const barInput = ref(null);
+watch(repActive, async () => {
+  if (!repActive.value || !isMobileNav.value) return;
+  await nextTick();
+  try { if (barInput.value) barInput.value.focus(); } catch (e) { /* 无焦点环境忽略 */ }
+});
+function sendBar() { if (barCm.value) sendCmt(barCm.value, barRp.value); }
+
+const tops = computed(() => {
+  const list = comments.value.filter((c) => !c.parentId);
+  /* 轮 87：默认 = 推荐模式（recommendPosts，与暖心墙帖子排序同源）；最新 = 时间倒序 */
+  return cmtSort.value === "new" ? sortComments(list, "new") : recommendPosts(list);
+});
+const shownTops = computed(() => tops.value.slice(0, cmtReveal.value));
+/* 轮 87：下滑接近底部续展一级评论（与暖心墙信息流同手感；查看更多评论按钮同效） */
+function onWallScroll() {
+  if (cmtReveal.value >= tops.value.length) return;
+  if (window.innerHeight + window.scrollY >= document.documentElement.offsetHeight - 700) {
+    cmtReveal.value = Math.min(cmtReveal.value + CMT_PAGE, tops.value.length);
+  }
+}
+onMounted(() => window.addEventListener("scroll", onWallScroll, { passive: true }));
+onUnmounted(() => window.removeEventListener("scroll", onWallScroll));
 const repsOf = (cm) => comments.value.filter((c) => c.parentId === cm.id);
 /* 轮 50：与暖心墙同口径——二级回复默认显示前两条，>2 条点「N 条回复」展开全部 */
 const visibleReps = (cm) => (repOpen[cm.id] ? repsOf(cm) : repsOf(cm).slice(0, 2));
@@ -364,11 +408,11 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
             <span class="cmt-ico">&#128172;</span> {{ t("comment.count", { n: countN }) }}
             <span class="cmt-caret" :class="{ open: openCmt }">&#9662;</span>
           </div>
-          <!-- 轮 84：评论排序（最新/最热，只排一级评论），按钮在评论标题右侧 -->
+          <!-- 轮 87：评论排序「默认 / 最新」——默认 = 推荐模式（与暖心墙帖子排序同源） -->
           <div class="cmt-sort">
             <button v-for="sm in SORT_MODES" :key="sm" class="sort-btn cmt-sort-btn"
               :class="{ on: cmtSort === sm }" @click="cmtSort = sm">
-              {{ t(sm === "new" ? "comment.sortNew" : "comment.sortHot") }}
+              {{ t(sm === "default" ? "comment.sortDefault" : "comment.sortNew") }}
             </button>
           </div>
         </div>
@@ -377,7 +421,7 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
           <p v-if="cmtErr" class="cmt-empty" style="color: var(--low); font-weight: 700">{{ cmtErr }}</p>
           <p v-if="cmtLoading && !comments.length" class="cmt-empty">{{ t("community.loading") }}</p>
 
-          <div v-for="cm in tops" :key="cm.id" class="cmt-item">
+          <div v-for="cm in shownTops" :key="cm.id" class="cmt-item">
             <div class="cmt-head">
               <b>{{ cm.name }}</b>
               <button v-if="canDel(cm)" class="cmt-del" :title="t('common.delete')" @click="delCmt(cm)">×</button>
@@ -394,13 +438,13 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
               <!-- 轮 84：时间从评论头移到「回复」左侧 -->
               <span class="cmt-time">{{ when(cm.ts) }}</span>
               <button v-if="signedIn" class="cmt-act" @click="startReply(cm)">{{ t("comment.reply") }}</button>
-              <!-- 轮 84：回应按钮（❤️/💔，带计数） -->
+              <!-- 轮 87：回应图标改空心灰内联 SVG（emoji 太艳丽；点亮 = 深一档灰） -->
               <button v-if="cm.dbId != null" class="cmt-react" :class="{ on: cmtReacted(cm, 'heart') }"
                 :disabled="!!cmtReactBusy[cm.id]" :title="t('comment.likeT')" :aria-label="t('comment.likeT')"
-                @click="cmtReact(cm, 'heart')">&#10084; <i>{{ reactCount(cm, "heart") }}</i></button>
+                @click="cmtReact(cm, 'heart')"><svg class="rc-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.59.94 4.5 2.35C12.91 3.94 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z"/></svg><i>{{ reactCount(cm, "heart") }}</i></button>
               <button v-if="cm.dbId != null" class="cmt-react" :class="{ on: cmtReacted(cm, 'broken') }"
                 :disabled="!!cmtReactBusy[cm.id]" :title="t('comment.brokenT')" :aria-label="t('comment.brokenT')"
-                @click="cmtReact(cm, 'broken')">&#128148; <i>{{ reactCount(cm, "broken") }}</i></button>
+                @click="cmtReact(cm, 'broken')"><svg class="rc-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.59.94 4.5 2.35C12.91 3.94 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z"/><path d="M12 6.8 10.4 9.4l2.4 1.5-1.5 2.4 1.1 1.8"/></svg><i>{{ reactCount(cm, "broken") }}</i></button>
               <button v-if="repsOf(cm).length > 2" class="cmt-act" @click="toggleReplies(cm)">
                 {{ t("comment.replies", { n: repsOf(cm).length }) }}
                 <i :class="{ open: repOpen[cm.id] }">&#9662;</i>
@@ -422,17 +466,17 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
                 </div>
                 <p class="cmt-text" @click="startReply(cm, rp)">{{ rp.text }}</p>
                 <div class="cmt-acts">
-                  <!-- 轮 84：时间移到「回复」左侧 + 回应按钮 -->
+                  <!-- 轮 84：时间移到「回复」左侧 + 轮 87：回应图标改空心灰 -->
                   <span class="cmt-time">{{ when(rp.ts) }}</span>
                   <button v-if="signedIn" class="cmt-act" @click="startReply(cm, rp)">{{ t("comment.reply") }}</button>
                   <button v-if="rp.dbId != null" class="cmt-react" :class="{ on: cmtReacted(rp, 'heart') }"
                     :disabled="!!cmtReactBusy[rp.id]" :title="t('comment.likeT')" :aria-label="t('comment.likeT')"
-                    @click="cmtReact(rp, 'heart')">&#10084; <i>{{ reactCount(rp, "heart") }}</i></button>
+                    @click="cmtReact(rp, 'heart')"><svg class="rc-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.59.94 4.5 2.35C12.91 3.94 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z"/></svg><i>{{ reactCount(rp, "heart") }}</i></button>
                   <button v-if="rp.dbId != null" class="cmt-react" :class="{ on: cmtReacted(rp, 'broken') }"
                     :disabled="!!cmtReactBusy[rp.id]" :title="t('comment.brokenT')" :aria-label="t('comment.brokenT')"
-                    @click="cmtReact(rp, 'broken')">&#128148; <i>{{ reactCount(rp, "broken") }}</i></button>
+                    @click="cmtReact(rp, 'broken')"><svg class="rc-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.59.94 4.5 2.35C12.91 3.94 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z"/><path d="M12 6.8 10.4 9.4l2.4 1.5-1.5 2.4 1.1 1.8"/></svg><i>{{ reactCount(rp, "broken") }}</i></button>
                 </div>
-                <div v-if="repActive === cm.id + ':' + rp.id" class="cmt-input cmt-input-in">
+                <div v-if="!isMobileNav && repActive === cm.id + ':' + rp.id" class="cmt-input cmt-input-in">
                   <n-input v-model:value="repDraft[cm.id]" round size="small"
                     :placeholder="repPlaceholder(cm, rp)" :maxlength="MAX_LEN"
                     @keyup.enter="sendCmt(cm, rp)" />
@@ -445,7 +489,7 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
               </div>
             </div>
 
-            <div v-if="repActive === cm.id" class="cmt-input cmt-input-in">
+            <div v-if="!isMobileNav && repActive === cm.id" class="cmt-input cmt-input-in">
               <n-input v-model:value="repDraft[cm.id]" round size="small"
                 :placeholder="repPlaceholder(cm)" :maxlength="MAX_LEN"
                 @keyup.enter="sendCmt(cm)" />
@@ -456,6 +500,11 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
               </p>
             </div>
           </div>
+
+          <!-- 轮 87：一级评论未展示完 → 「查看更多评论」续 15 条（此后下滑也会自动续展） -->
+          <button v-if="tops.length > shownTops.length" class="cmt-act cmt-viewmore" @click="cmtReveal += CMT_PAGE">
+            {{ t("comment.viewMoreCmt") }} <i class="vm-arrow">&#8250;</i>
+          </button>
 
           <p v-if="!comments.length && !cmtLoading" class="cmt-empty">{{ t("comment.empty") }}</p>
 
@@ -478,9 +527,21 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
       </article>
     </template>
 
-    <!-- 轮 84：…菜单的透明遮罩（点空白收起；菜单本体在各 head 内 absolute 定位） -->
-    <div v-if="moreKey" class="more-mask" @click="closeMore"></div>
+    <!-- 轮 87：手机端统一回复输入条 —— 点「回复」只在底部弹出一条，发送在右下角（App/窄屏；
+         桌面保持就地内联框）。repActive 反查回复目标，回复数多少都不影响。 -->
+    <div v-if="repActive && isMobileNav" class="reply-bar">
+      <n-input ref="barInput" v-model:value="repDraft[barCm ? barCm.id : '']" round size="small"
+        :placeholder="repPlaceholder(barCm, barRp)" :maxlength="MAX_LEN" @keyup.enter="sendBar" />
+      <div class="reply-bar-foot">
+        <span class="cmt-left" :class="{ full: repLeft <= 0 }">
+          {{ repLeft <= 0 ? t("comment.full", { n: MAX_LEN }) : t("comment.left", { n: repLeft }) }}
+        </span>
+        <n-button quaternary size="small" round @click="cancelReply">{{ t("comment.cancel") }}</n-button>
+        <n-button type="primary" size="small" round @click="sendBar">{{ t("common.send") }}</n-button>
+      </div>
+    </div>
 
+    <!-- 轮 87：…菜单改 document 点击收起（原全屏遮罩会被卡片堆叠上下文盖住，举报/拷贝点了没反应） -->
     <!-- 举报弹窗（帖子/评论共用一个实例） -->
     <ReportDialog v-model:show="reportShow" :target="reportTarget" />
   </div>

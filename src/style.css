@@ -1055,9 +1055,23 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
   transition: all .18s ease;
 }
 .cmt-react i { font-style: normal; margin-left: 3px; }
-.cmt-react:hover { color: var(--accent-deep); background: var(--accent-soft); }
-.cmt-react.on { color: var(--accent-deep); background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.cmt-react svg.rc-ico { width: 14px; height: 14px; display: inline-block; vertical-align: -2px; }
+.cmt-react:hover { color: var(--ink-soft); background: rgba(255, 255, 255, .85); }
+/* 轮 87：点亮 = 深一档灰 + 细描边（用户反馈：品牌色/emoji 太艳丽；两种回应都保持空心灰） */
+.cmt-react.on { color: var(--ink-soft); background: rgba(160, 110, 60, .07); box-shadow: inset 0 0 0 1px rgba(160, 110, 60, .22); }
 .cmt-react:disabled { opacity: .55; cursor: default; }
+
+/* 轮 87：手机端统一回复输入条（详情页）—— 固定在底栏之上，发送在右下角 */
+.reply-bar {
+  position: fixed; left: 0; right: 0; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); z-index: 140;
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  background: var(--paper, #fff7ee);
+  border-top: 1px solid rgba(160, 110, 60, .14);
+  box-shadow: 0 -8px 22px rgba(90, 60, 30, .10);
+}
+.reply-bar-foot { display: flex; align-items: center; gap: 8px; }
+.reply-bar-foot .cmt-left { margin-right: auto; font-size: 11px; font-weight: 700; color: var(--ink-faint); }
 
 /* 详情页：评论标题行（左）+ 排序按钮（右） */
 .cmt-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

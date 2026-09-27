@@ -356,6 +356,14 @@ function toggleCmtMore(cm) {
   moreTarget.value = { type: "comment", reportable: canReportCmt(cm), dbId: cm.dbId, label: cm.text || "", copy: commentCopyText(cm) };
 }
 function closeMore() { moreKey.value = ""; }
+/* 轮 87：不再用全屏遮罩（.card 的 backdrop-filter 会造出堆叠上下文，菜单 z-index 出不来，
+ * 遮罩反而盖住菜单 → 点举报/拷贝全被遮罩吃掉「无反应」）。改为 document 级点击收起：
+ * 触发钮有 @click.stop 不会立即关；菜单项点击后冒泡到 document 一并收起，动作不受影响。 */
+watch(moreKey, (v) => {
+  if (typeof document === "undefined") return;
+  if (v) document.addEventListener("click", closeMore);
+  else document.removeEventListener("click", closeMore);
+});
 function moreReport() {
   const t0 = moreTarget.value;
   closeMore();
@@ -1471,13 +1479,13 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
             <!-- 轮 84：时间从评论头移到「回复」左侧 -->
             <span class="cmt-time">{{ when(cm.ts) }}</span>
             <button class="cmt-act" @click="openReply(p, cm)">{{ t("comment.reply") }}</button>
-            <!-- 轮 84：回应按钮（❤️/💔，带计数；云端评论才有 dbId，本地/示例评论不显示） -->
+            <!-- 轮 87：回应图标改空心灰内联 SVG（emoji 太艳丽；点亮 = 深一档灰，不再用品牌色） -->
             <button v-if="cm.dbId != null" class="cmt-react" :class="{ on: cmtReacted(cm, 'heart') }"
               :disabled="!!cmtReactBusy[cm.id]" :title="t('comment.likeT')" :aria-label="t('comment.likeT')"
-              @click="cmtReact(p, cm, 'heart')">&#10084; <i>{{ reactCount(cm, "heart") }}</i></button>
+              @click="cmtReact(p, cm, 'heart')"><svg class="rc-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.59.94 4.5 2.35C12.91 3.94 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z"/></svg><i>{{ reactCount(cm, "heart") }}</i></button>
             <button v-if="cm.dbId != null" class="cmt-react" :class="{ on: cmtReacted(cm, 'broken') }"
               :disabled="!!cmtReactBusy[cm.id]" :title="t('comment.brokenT')" :aria-label="t('comment.brokenT')"
-              @click="cmtReact(p, cm, 'broken')">&#128148; <i>{{ reactCount(cm, "broken") }}</i></button>
+              @click="cmtReact(p, cm, 'broken')"><svg class="rc-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.59.94 4.5 2.35C12.91 3.94 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z"/><path d="M12 6.8 10.4 9.4l2.4 1.5-1.5 2.4 1.1 1.8"/></svg><i>{{ reactCount(cm, "broken") }}</i></button>
             <button
               v-if="repliesN(p, cm) > 2"
               class="cmt-act cmt-act-rep"
@@ -1507,19 +1515,19 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
                 </div>
               </div>
               <p class="cmt-text cmt-text-open" :title="t('comment.reply')" @click="openReplyTo(p, cm, rp)">{{ rp.text }}</p>
-              <div class="cmt-acts">
-                <!-- 轮 84：时间移到「回复」左侧 + 回应按钮 -->
-                <span class="cmt-time">{{ when(rp.ts) }}</span>
-                <button class="cmt-act" @click="openReplyTo(p, cm, rp)">
-                  {{ t("comment.reply") }}
-                </button>
-                <button v-if="rp.dbId != null" class="cmt-react" :class="{ on: cmtReacted(rp, 'heart') }"
-                  :disabled="!!cmtReactBusy[rp.id]" :title="t('comment.likeT')" :aria-label="t('comment.likeT')"
-                  @click="cmtReact(p, rp, 'heart')">&#10084; <i>{{ reactCount(rp, "heart") }}</i></button>
-                <button v-if="rp.dbId != null" class="cmt-react" :class="{ on: cmtReacted(rp, 'broken') }"
-                  :disabled="!!cmtReactBusy[rp.id]" :title="t('comment.brokenT')" :aria-label="t('comment.brokenT')"
-                  @click="cmtReact(p, rp, 'broken')">&#128148; <i>{{ reactCount(rp, "broken") }}</i></button>
-              </div>
+                <div class="cmt-acts">
+                  <!-- 轮 84：时间移到「回复」左侧 + 轮 87：回应图标改空心灰 -->
+                  <span class="cmt-time">{{ when(rp.ts) }}</span>
+                  <button class="cmt-act" @click="openReplyTo(p, cm, rp)">
+                    {{ t("comment.reply") }}
+                  </button>
+                  <button v-if="rp.dbId != null" class="cmt-react" :class="{ on: cmtReacted(rp, 'heart') }"
+                    :disabled="!!cmtReactBusy[rp.id]" :title="t('comment.likeT')" :aria-label="t('comment.likeT')"
+                    @click="cmtReact(p, rp, 'heart')"><svg class="rc-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.59.94 4.5 2.35C12.91 3.94 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z"/></svg><i>{{ reactCount(rp, "heart") }}</i></button>
+                  <button v-if="rp.dbId != null" class="cmt-react" :class="{ on: cmtReacted(rp, 'broken') }"
+                    :disabled="!!cmtReactBusy[rp.id]" :title="t('comment.brokenT')" :aria-label="t('comment.brokenT')"
+                    @click="cmtReact(p, rp, 'broken')"><svg class="rc-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.59.94 4.5 2.35C12.91 3.94 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z"/><path d="M12 6.8 10.4 9.4l2.4 1.5-1.5 2.4 1.1 1.8"/></svg><i>{{ reactCount(rp, "broken") }}</i></button>
+                </div>
 
               <!-- 二级评论的回复框就地在它下面出现（用户反馈：以前甩到整块评论底部，像点了没反应） -->
               <div
@@ -1617,8 +1625,7 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
     </p>
     <p v-if="pageBusy" class="sub" style="text-align: center">{{ t("community.loading") }}</p>
 
-    <!-- 轮 84：…菜单的透明遮罩（点空白收起；菜单本体在各 head 内 absolute 定位） -->
-    <div v-if="moreKey" class="more-mask" @click="closeMore"></div>
+    <!-- 轮 87：…菜单改 document 点击收起（原全屏遮罩被卡片堆叠上下文盖住菜单，举报/拷贝点了没反应） -->
 
     <!-- 举报弹窗（帖子/评论共用一个实例） -->
     <ReportDialog v-model:show="reportShow" :target="reportTarget" />

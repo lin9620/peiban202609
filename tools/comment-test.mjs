@@ -5,7 +5,7 @@ import {
   canDelete, normalizeText, postKey, MAX_LEN, MAX_PER_POST, SEEDS,
   topComments, repliesOf, replyCount, displayCount,
   /* 轮 84：评论回应 / 排序 / 墙内前 3 条 / 拷贝文本 */
-  CMT_REACT_KINDS, WALL_TOP_LIMIT, reactCount, hasReacted, toggleReact,
+  CMT_REACT_KINDS, WALL_TOP_LIMIT, SORT_MODES, reactCount, hasReacted, toggleReact,
   sortComments, wallTopComments, hasMoreComments, postCopyText, commentCopyText,
 } from "../src/utils/comments.js";
 
@@ -299,14 +299,10 @@ t("R5 sortComments new：按时间倒序；非法 ts 当 0 排最后", () => {
   assert.deepEqual(xs.map((c) => c.id), ["a", "b", "c"], "不改入参数组");
 });
 
-t("R6 sortComments hot：心多在前；心同看碎心；再同按时间倒序", () => {
-  const xs = [
-    mkCmt({ id: "a", reacts: { heart: 3, broken: 0 }, ts: 1 }),
-    mkCmt({ id: "b", reacts: { heart: 3, broken: 2 }, ts: 1 }),
-    mkCmt({ id: "c", reacts: { heart: 3, broken: 2 }, ts: 9 }),
-    mkCmt({ id: "d", reacts: { heart: 9, broken: 0 }, ts: 1 }),
-  ];
-  assert.deepEqual(sortComments(xs, "hot").map((c) => c.id), ["d", "c", "b", "a"]);
+t("R6 SORT_MODES：「最热」已移除，默认(default)/最新(new)；默认=推荐模式由视图层用 recommendPosts 承接", () => {
+  assert.deepEqual(SORT_MODES, ["default", "new"]);
+  const xs = [mkCmt({ id: "a", ts: 5 }), mkCmt({ id: "b", ts: 9 })];
+  assert.deepEqual(sortComments(xs).map((c) => c.id), ["b", "a"]);
 });
 
 t("R7 wallTopComments / hasMoreComments：只取前 3 条；恰好 3 条不算更多", () => {
