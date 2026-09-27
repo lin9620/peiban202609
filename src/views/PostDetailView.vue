@@ -545,7 +545,7 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
           :placeholder="t('comment.placeholder')" :maxlength="MAX_LEN" />
         <n-button type="primary" size="small" round @click="sendCmt()">{{ t("community.post") }}</n-button>
       </template>
-      <router-link v-else class="bar-signin" to="/profile">{{ t("community.commentSignIn") }}</router-link>
+      <router-link v-else class="bar-signin" to="/profile">{{ t("comment.barSignIn") }}</router-link>
     </div>
 
     <!-- 轮 91：输入条改 3 行文本域（用户反馈：单行小框没法输入），发送在右下角；Enter 换行不再误发送 -->
