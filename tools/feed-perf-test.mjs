@@ -313,8 +313,10 @@ t("T29 滚动锚定「按需借用」：只在程序式跳转期间关，跳完 
   const on = n.slice(c0, cands.length ? Math.min(...cands) : n.indexOf("</script>", c0));
   assert.ok(/holdAnchor\(\)/.test(on), "跳转没借用锚定（真机：scrollTo 被锚定拽回 39k）");
   assert.ok(/releaseAnchor\(\)/.test(on), "跳转结束没还回去");
-  const off = n.slice(n.indexOf("onUnmounted(() => {"));
-  assert.ok(/releaseAnchor\(\)/.test(off.slice(0, 700)), "离场没还回锚定");
+  /* 轮 109（假失败修复）：本文件 onUnmounted 不止一处（轮108 给底部输入条/监听兜底先注册了一个），
+     indexOf 只会抓到前一个 → 改成把每个 onUnmounted 块都切出来，要求至少一处还回锚定。 */
+  const offs = n.split("onUnmounted(() => {").slice(1);
+  assert.ok(offs.some((x) => /releaseAnchor\(\)/.test(x.slice(0, 700))), "离场没还回锚定");
 });
 
 t("T30 让位守卫真的活着：滚动时刻被记录 + 间距缓存随断点失效", () => {

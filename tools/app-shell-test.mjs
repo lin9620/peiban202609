@@ -53,8 +53,8 @@ const cmt = read("src/views/CommunityView.vue");
 ok("T14 聊天页整屏样式（shell--chat + 100dvh + 内部滚动）",
   css.includes(".shell--mobile-nav.shell--chat .dm-page") && css.includes("height: 100dvh")
   && css.includes(".shell--mobile-nav.shell--chat .dm-scroll"));
-ok("T15 聊天页隐藏 TabBar（shell--chat 形态类；页脚轮 57 已整体移除）",
-  app.includes("'shell--chat': inChat") && app.includes('<TabBar v-if="isMobileNav && !inChat"'));
+ok("T15 聊天页隐藏 TabBar（shell--chat 形态类；页脚轮 57 已整体移除；轮108 起叠 tabbarSuppressed）",
+  app.includes("'shell--chat': inChat") && app.includes('<TabBar v-if="isMobileNav && !inChat && !tabbarSuppressed"'));
 ok("T16 手机形态 push / 桌面形态 replace（历史不污染、返回键可用）",
   mv.includes("if (isMobileNav.value) {") && mv.includes('router.push({ name: "messages"')
   && mv.includes('router.replace({ name: "messages"'));
@@ -169,7 +169,7 @@ const cv = read("src/views/ComposeView.vue");
 /* ─── ⑨ T10 · 手机端「＋ 发帖」独立页：整屏编辑器（不能再是默认款 textarea） ─── */
 ok("T35 /compose 归到 shell--chat 形态（TabBar 让位，自己吃满 100dvh）",
   /const inChat = computed\(\(\) => isMobileNav\.value[\s\S]{0,160}route\.name === "compose"\)/.test(app)
-  && app.includes('<TabBar v-if="isMobileNav && !inChat"'));
+  && app.includes('<TabBar v-if="isMobileNav && !inChat && !tabbarSuppressed"'));
 ok("T36 发帖页有真正的排版样式（顶栏 / 卡片 / 大输入框 / 动作条，不再是光秃 textarea）",
   cv.includes(".compose-head {")
   && cv.includes(".compose-area {")
@@ -189,10 +189,39 @@ ok("T38 回应按钮涟漪关掉（连续点击不再留一圈颜色阴影）+ �
   css.includes(".react-row .n-button .n-button-base-wave { display: none !important; }")
   && css.includes(".react-row .n-button,")
   && cmt.includes(':focusable="false"'));
-ok("T39 二级评论回复框就地渲染（replyRp + 只在被回复那条下面开框 + 一级框让位）",
+ok("T39 二级评论回复框就地渲染（replyRp + 只在被回复那条下面开框 + 一级框让位；轮108续3 起仅桌面渲染，手机端回复统一走底部输入条）",
   cmt.includes("const replyRp = ref({});")
   && cmt.includes("function openReplyTo(p, cm, rp)")
   && cmt.includes("replyRp.value = { ...replyRp.value, [repKey(p, cm)]: rp.id };")
+  && cmt.includes('v-if="replyRpOf(p, cm) === rp.id'));
+
+/* ─── 轮 109 · 网页端主评论输入框位置（用户：「放在评论按钮跟浏览次数按钮中间，每条都是，
+         app端不改，只改网页端」）─── */
+ok("T40 轮109：网页端主评论输入框在「浏览次数」与「评论按钮」之间（卡内常驻、桌面专属；App 端不渲染）",
+  cmt.includes('v-if="!isMobileNav && (!p.cloud || signedIn)"')
+  && cmt.includes('class="cmt-input cmt-input-top"')
+  && cmt.includes(':id="\'cmtmain-\' + cmtKey(p)"')
+  && cmt.indexOf('class="post-foot"') < cmt.indexOf("cmt-input-top")
+  && cmt.indexOf("cmt-input-top") < cmt.indexOf('class="cmt-toggle"')
+  && cmt.includes("sendTopCmt(p)")
+  && cmt.includes("#cmtmain-")
+  && css.includes(".cmt-input-top {"));
+ok("T41 轮108：底部输入条/回复模式下收起 TabBar（tabbarSuppressed 在 uiStore 导出 + App.vue 接线）",
+  read("src/stores/uiStore.js").includes("export const tabbarSuppressed = ref(false);")
+  && /import \{[^}]*tabbarSuppressed[^}]*\} from "\.\/stores\/uiStore\.js"/.test(app)
+  && app.includes('<TabBar v-if="isMobileNav && !inChat && !tabbarSuppressed"'));
+
+/* ─── 轮 110 · 网页端一级评论回复框位置（用户：「把一级评论回复框点击后出现在一级评论下面，
+         二级评论上面，你现在是一级评论最下面；二级评论输入框不改；app端不改」）─── */
+const iActs1 = cmt.indexOf('class="cmt-acts"');
+const iRepBox = cmt.indexOf('class="cmt-input cmt-input-rep"');
+const iReps = cmt.indexOf('class="cmt-reps"');
+const iRepBoxIn = cmt.indexOf('class="cmt-input cmt-input-rep-in"');
+const iToggle = cmt.indexOf('class="replies-toggle"');
+ok("T42 轮110：网页端一级回复框在「本评论操作行」之下、「二级回复列表」之上（不再压在整条评论底部）；二级就地框仍在二级列表内",
+  iActs1 > -1 && iRepBox > -1 && iReps > -1 && iRepBoxIn > -1 && iToggle > -1
+  && iActs1 < iRepBox && iRepBox < iReps && iReps < iRepBoxIn && iRepBoxIn < iToggle
+  && cmt.includes('v-if="isReplyOpen(p, cm) && !isMobileNav && !(p.cloud && !signedIn)"')
   && cmt.includes('v-if="replyRpOf(p, cm) === rp.id'));
 
 out.push("");

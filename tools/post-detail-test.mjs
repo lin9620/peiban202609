@@ -47,12 +47,28 @@ ok("PostDetailView：完整帖子卡（全文不截断 + 头像/署名/时间/�
     'class="react-row"', 'class="post-foot"', "community.views"));
 ok("PostDetailView：评论点击展开（cmt-toggle ↔ comment.count），两级回复可展开（轮88 底部展开钮 comment.expandOthers）",
   has(detail, 'class="cmt-toggle"', "comment.count", "comment.expandOthers", "toggleReplies"));
-ok("PostDetailView：就地回复（回复「回复」仍挂一级下并 @ 对方）",
-  has(detail, "function startReply(cm, rp = null)") && has(detail, "cm.id + \":\" + rp.id")
+ok("PostDetailView：就地回复（回复「回复」仍挂一级下并 @ 对方；轮108续5 起手机端走底部输入条，桌面就地框）",
+  has(detail, "function startReply(cm, rp = null, e = null)") && has(detail, "cm.id + \":\" + rp.id")
     && has(detail, "comment.replyPh"));
-ok("PostDetailView：未登录拦截（不能评论：底栏 barSignIn；回应/厌恶给登录提示）",
+ok("PostDetailView：未登录拦截（不能评论：卡内输入位给登录入口 barSignIn；回应/厌恶给登录提示）",
   has(detail, "comment.barSignIn", "community.reactSignIn", "community.dislikeSignIn")
     && has(detail, "if (!signedIn.value) return;"));
+/* ─── 轮 111 · 详情页桌面主评论输入框位置（用户：「放在评论按钮跟浏览次数按钮中间。跟上面的
+         网页端1条一样。app端不改」）─── */
+ok("PostDetailView 轮111：桌面主评论输入框在「浏览次数」与「评论按钮」之间（卡内常驻、App 端不渲染；悬浮底栏 cmt-bar-fixed 退役）",
+  has(detail, 'id="detail-cmtmain"', 'class="cmt-input cmt-input-top"', "sendTopCmt", "comment.barSignIn")
+    && detail.indexOf('class="post-foot"') < detail.indexOf("cmt-input-top")
+    && detail.indexOf("cmt-input-top") < detail.indexOf('class="cmt-bar"')
+    && detail.indexOf('class="cmt-bar"') < detail.indexOf('class="cmt-toggle"')
+    && !detail.includes('class="cmt-bar-fixed"'));   /* 悬浮底栏真退役（注释里提到名字不算） */
+/* ─── 轮 112 · 详情页一级评论回复框位置（用户：「一级评论回复框点击后出现在一级评论下面，二级评论上面，
+         你现在是一级评论最下面。二级评论输入框不改。app端不改」）─── */
+ok("PostDetailView 轮112：一级回复框在「本评论操作行」之下、「二级回复列表」之上（二级就地框仍在二级列表内、手机端仍是底部输入条）",
+  detail.indexOf('class="cmt-acts"') < detail.indexOf('repActive === cm.id"')
+    && detail.indexOf('repActive === cm.id"') < detail.indexOf('class="cmt-reps"')
+    && detail.indexOf('class="cmt-reps"') < detail.indexOf("repActive === cm.id + ':' + rp.id\"")
+    && detail.indexOf("repActive === cm.id + ':' + rp.id\"") < detail.indexOf('class="replies-toggle"')
+    && has(detail, 'v-if="!isMobileNav && repActive === cm.id"', "repPlaceholder(cm)"));
 ok("PostDetailView：删自己的评论（云端比对 userId；删一级连回复一起）",
   has(detail, "cm.cloud && myId.value && cm.userId === myId.value")
     && has(detail, "c.id !== cm.id && c.parentId !== cm.id"));
