@@ -227,7 +227,8 @@ if (exists("dist/privacy/index.html")) {
      这正是 Google 存品牌页时抓取该链接、OAuth 审核方直接取 HTML 的场景：
      纯 SPA 壳子（空 <div id="app">）在它们眼里等于空白页 */
   t_("P31 正文预渲染进静态 HTML（13 节标题 + 4 个列表都展开）", () => {
-    const body = h.slice(h.indexOf('<div id="app">'), h.indexOf("<noscript>"));
+    /* 轮 84：head 里新增了字体兜底的 <noscript> —— 切片终点必须找 #app 之后的那个 */
+    const body = h.slice(h.indexOf('<div id="app">'), h.indexOf("<noscript>", h.indexOf('<div id="app">')));
     for (let i = 1; i <= 13; i++) {
       const head = messages.en.privacy[`s${i}t`];
       assert.ok(head, `i18n 缺第 ${i} 节标题`);
@@ -243,7 +244,7 @@ if (exists("dist/privacy/index.html")) {
   t_("P32 全部词条都进静态正文（防改文案后预渲染失同步）", () => {
     const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
       .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-    const body = h.slice(h.indexOf('<div id="app">'), h.indexOf("<noscript>"));
+    const body = h.slice(h.indexOf('<div id="app">'), h.indexOf("<noscript>", h.indexOf('<div id="app">')));
     const missing = [];
     for (const [k, v] of Object.entries(messages.en.privacy)) {
       for (const one of Array.isArray(v) ? v : [v]) {

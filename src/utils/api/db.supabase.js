@@ -23,6 +23,7 @@ const T = {
   posts: "wall_posts",
   comments: "wall_comments",
   reactions: "wall_reactions",
+  commentReactions: "wall_comment_reactions",
   profiles: "profiles",
   petProfiles: "pet_profiles",
 };
@@ -212,6 +213,23 @@ export const db = {
 
   deleteReaction({ postId, userId, kind }) {
     return unwrap(sb().from(T.reactions).delete().eq("post_id", postId).eq("user_id", userId).eq("kind", kind));
+  },
+
+  /* ══════════ 轮 84 · 评论回应（👍心 / 💔碎心） ══════════ */
+
+  /** 一次取多评论的回应明细（谁点了什么）；「我的」由调用方按 user_id 过滤 */
+  listCommentReactions(commentIds) {
+    return unwrap(sb().from(T.commentReactions).select("comment_id,user_id,kind").in("comment_id", commentIds));
+  },
+
+  /** 我在这批评论里点过的回应（只回 comment_id,kind） */
+  listMyCommentReactions(commentIds, userId) {
+    return unwrap(sb().from(T.commentReactions).select("comment_id,kind").in("comment_id", commentIds).eq("user_id", userId));
+  },
+
+  /** 切换评论回应；RPC 返回服务端权威计数 {ok,on,hearts,brokens}，前端拿返回值覆盖乐观值 */
+  toggleCommentReaction(commentId, kind) {
+    return unwrap(sb().rpc("wall_toggle_comment_reaction", { p_comment: commentId, p_kind: kind }));
   },
 
   /* ══════════ RPC：服务端权威逻辑（去重 / 计数 / 自动下架） ══════════ */

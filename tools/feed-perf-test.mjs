@@ -139,14 +139,15 @@ t("T10 .post-card 的占位高度取了合理量级", () => {
 /* ══════════ A2 · 列表图懒加载 ══════════ */
 const cmt = read("src/views/CommunityView.vue");
 t("T11 动态流帖子图：loading=lazy + decoding=async", () => {
-  const m = cmt.match(/<img[^>]*class="pic"[^>]*>/);
+  /* 轮 84：图上加了 go-detail 类（点图进详情页），类名断言放宽为前缀匹配 */
+  const m = cmt.match(/<img[^>]*class="pic[^"]*"[^>]*>/);
   assert.ok(m, 'CommunityView 里找不到 class="pic" 的帖子图');
   assert.ok(m[0].includes('loading="lazy"'), '帖子图缺 loading="lazy"');
   assert.ok(m[0].includes('decoding="async"'), '帖子图缺 decoding="async"');
 });
 
 t("T12 帖子图仍受 v-if=\"p.img\" 保护（无图帖不渲染空 img）", () => {
-  assert.ok(/<img\s+v-if="p\.img"[^>]*class="pic"/.test(cmt), '帖子图丢了 v-if="p.img"');
+  assert.ok(/<img\s+v-if="p\.img"[^>]*class="pic[^"]*"/.test(cmt), '帖子图丢了 v-if="p.img"');
 });
 
 /* ══════════ A3 · 占位底色 ══════════ */

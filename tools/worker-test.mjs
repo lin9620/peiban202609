@@ -273,6 +273,35 @@ async function hit(script, path, init) {
     c.outbound[0].url);
 }
 
+/* ─────────── 轮 84 · 评论回应（👍心 / 💔碎心） ─────────── */
+{
+  const { c } = await hit([{ body: [] }], "/api/comments/reactions?ids=1,2");
+  ok("listCommentReactions 出站 URL（in-list + limit）",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/wall_comment_reactions?select=comment_id%2Cuser_id%2Ckind&comment_id=${enc(`in.("1","2")`)}&limit=2000`,
+    c.outbound[0].url);
+}
+{
+  const { c } = await hit([{ body: [] }], "/api/comments/reactions/mine?ids=1,2&user_id=u1");
+  ok("listMyCommentReactions 出站 URL",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/wall_comment_reactions?select=comment_id%2Ckind&comment_id=${enc(`in.("1","2")`)}&user_id=eq.u1&limit=2000`,
+    c.outbound[0].url);
+}
+{
+  const { c } = await hit([{ body: { ok: true, on: true, hearts: 1, brokens: 0 } }],
+    "/api/comments/react", { method: "POST", body: JSON.stringify({ comment_id: 7, kind: "heart" }) });
+  ok("toggleCommentReaction rpc URL + body",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/wall_toggle_comment_reaction` &&
+    c.outbound[0].init.body === JSON.stringify({ p_comment: 7, p_kind: "heart" }));
+}
+{
+  const { res } = await hit([], "/api/comments/react", { method: "POST", body: JSON.stringify({ comment_id: 7, kind: "hug" }) });
+  ok("toggleCommentReaction 非法 kind → 400", res.status === 400);
+}
+{
+  const { res } = await hit([], "/api/comments/reactions/mine?ids=1&user_id=", { method: "GET" });
+  ok("listMyCommentReactions 缺 user_id → 400", res.status === 400);
+}
+
 /* ─────────── RPC（服务端权威逻辑） ─────────── */
 {
   const { c } = await hit([{ body: { ok: true } }], "/api/posts/p1/view", { method: "POST", body: JSON.stringify({ viewer: "v1" }) });

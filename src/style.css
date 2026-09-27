@@ -1012,6 +1012,66 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 .sort-btn.on { color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent-deep)); }
 .sort-btn.on:hover { color: #fff; }
 
+/* ══════════ 轮 84：评论互动（…菜单 / 回应 / 时间位 / 排序 / 查看更多） ══════════ */
+
+/* 帖子/评论头部的 ⋯ 触发钮（cmt-head 原本就带 margin-left:auto 的删除钮，⋯ 跟在删除钮后） */
+.more-btn, .cmt-more {
+  border: none; background: none; font-family: inherit; cursor: pointer;
+  font-size: 15px; line-height: 1; color: var(--ink-faint);
+  padding: 2px 6px; border-radius: 8px; transition: all .18s ease;
+}
+.more-btn:hover, .cmt-more:hover { color: var(--accent-deep); background: var(--accent-soft); }
+
+/* …菜单本体：absolute 挂在 .post-head / .cmt-head（这两处加 position:relative）右下 */
+.more-pop {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 40;
+  display: flex; flex-direction: column; min-width: 108px;
+  padding: 6px; gap: 2px;
+  box-shadow: 0 8px 22px rgba(90, 60, 30, .14);
+}
+.more-item {
+  border: none; background: none; font-family: inherit; cursor: pointer;
+  text-align: left; font-size: 12.5px; font-weight: 700; color: var(--ink-soft);
+  padding: 7px 10px; border-radius: 8px; transition: all .15s ease;
+}
+.more-item:hover { color: var(--accent-deep); background: var(--accent-soft); }
+
+/* 透明遮罩：点空白处收起 …菜单（盖全屏，无视觉） */
+.more-mask { position: fixed; inset: 0; z-index: 39; background: transparent; }
+
+/* 帖子头/评论头要接住 absolute 菜单 */
+.post-head { position: relative; }
+.cmt-head { position: relative; }
+
+/* 评论行：时间移到「回复」左侧（原在 .cmt-head 里） */
+.cmt-time { font-size: 11px; font-weight: 700; color: var(--ink-faint); white-space: nowrap; }
+
+/* 评论回应按钮（❤️/💔）：紧跟「回复」右侧；点亮 = 品牌色描边底 */
+.cmt-react {
+  border: none; font-family: inherit; cursor: pointer;
+  padding: 4px 10px; border-radius: 999px;
+  font-size: 12px; font-weight: 800; color: var(--ink-soft);
+  background: rgba(255, 255, 255, .6);
+  transition: all .18s ease;
+}
+.cmt-react i { font-style: normal; margin-left: 3px; }
+.cmt-react:hover { color: var(--accent-deep); background: var(--accent-soft); }
+.cmt-react.on { color: var(--accent-deep); background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.cmt-react:disabled { opacity: .55; cursor: default; }
+
+/* 详情页：评论标题行（左）+ 排序按钮（右） */
+.cmt-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cmt-bar .cmt-toggle { flex: 0 0 auto; }
+.cmt-sort { margin-left: auto; display: flex; gap: 6px; }
+.cmt-sort-btn { padding: 4px 11px; font-size: 11.5px; }
+
+/* 墙内「查看更多」→ 详情页 */
+.cmt-viewmore { margin-top: 2px; }
+.cmt-viewmore .vm-arrow { font-style: normal; margin-left: 2px; }
+
+/* 点正文/图进详情页的手型（示例帖/本地帖由 goDetail 自身拦截，不响应） */
+.go-detail { cursor: pointer; }
+
 /* 轮 83：网页端刷新按钮 —— 排序行右端；点它走与触屏下拉同一条 loadCloud({fresh:true})。
  * App 壳（html.cap-app，index.html 内联脚本判定）里有原生下拉刷新，这里隐藏避免重复。 */
 .wall-refresh { margin-left: auto; font-size: 15px; line-height: 1; padding: 5px 12px; }

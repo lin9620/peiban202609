@@ -7,10 +7,14 @@ import { getItem, setItem } from "../utils/storage.js";
 /* 轮 32：个人数据键按账号分域（游客账/各登录账号互不串），读写走 scopeGet/scopeSet */
 import { scopeGet, scopeSet, scopeGetRaw, scopeSetRaw } from "../utils/userScope.js";
 import { cacheKey, cacheSet, swr } from "../utils/cache.js";
+/* 轮 84：墙内前 3 条 / 查看更多 / 评论回应 / 拷贝文本。
+   注意：import 大括号内不要写注释 —— undef-check 的导入解析器会把注释与下一个名字粘连（踩过）。 */
 import {
   CMT_KEY, seedComments, addComment, removeComment, displayCount,
   canDelete, normalizeText, postKey, MAX_LEN,
   topComments, repliesOf, replyCount,
+  wallTopComments, hasMoreComments, reactCount, toggleReact,
+  hasReacted as cmtHasReacted, postCopyText, commentCopyText,
 } from "../utils/comments.js";
 /* 动态流虚拟窗口（纯逻辑，Node 单测覆盖：tools/feed-window-test.mjs）—— 轮 82 · B1 档 */
 import {
@@ -20,10 +24,12 @@ import {
 import { cloud } from "../utils/supabase.js";
 /* 回应写入收敛器（纯逻辑，Node 单测覆盖）：连点串行落库 + 过期响应不回写 */
 import { createWriteQueue } from "../utils/reactQueue.js";
+/* 轮 84：评论回应（mine 拉取 + 切换）—— 大括号内不写注释，同上 */
 import {
   cloudFetchPosts, cloudFetchPostsSample, cloudInsertPost, cloudFetchComments, cloudInsertComment,
   cloudDeleteComment, cloudSetReaction, cloudFetchCommentCounts, canUseWall, canReadWall,
   cloudAddView, cloudToggleDislike,
+  cloudFetchMyCommentReactions, cloudToggleCommentReaction,
 } from "../utils/wall.js";
 /* 进阶规则（纯函数，Node 单测覆盖）：排序 / 浏览去重 / 厌恶比例下架 / 每日一条 */
 import {
@@ -37,6 +43,8 @@ import { isMobileNav } from "../stores/uiStore.js";
 /* 轮 33：举报弹窗 + 全站拉黑过滤（我拉黑的人，TA 的帖子/评论在我这里渲染前剔除） */
 import ReportDialog from "../components/ReportDialog.vue";
 import { filterBlocked, refreshBlocks } from "../utils/userBlocks.js";
+/* 轮 84：…菜单的「拷贝」（WebView 里 navigator.clipboard 缺失时 execCommand 兜底） */
+import { copyText } from "../utils/clipboard.js";
 import {
   validateImageFile, isSaneShape, isUsableDataUrl, shrinkToDataUrl,
 } from "../utils/imaging.js";
@@ -330,6 +338,80 @@ function openReportCmt(cm) {
 const canReportPost = (p) => !!(p && p.cloud && p.dbId != null && p.userId && p.userId !== myUid.value);
 const canReportCmt = (cm) => !!(cm && cm.cloud && cm.dbId != null && cm.userId && cm.userId !== myUid.value);
 
+/* ═════════ 轮 84 · …菜单（帖子/评论：举报迁入 + 拷贝） ═════════
+ * 同一时刻最多开一个菜单（moreKey 唯一键）；透明遮罩盖全屏，点空白收起。
+ * 菜单本体渲染在 .post-head / .cmt-head 里（absolute 定位到触发按钮下方）。 */
+const moreKey = ref("");
+const moreTarget = ref(null);   /* { type, reportable, dbId, label, copy } */
+function postMoreKey(p) { return "post:" + (p.dbId != null ? p.dbId : p.id); }
+function cmtMoreKey(cm) { return "cmt:" + cm.id; }
+function togglePostMore(p) {
+  const k = postMoreKey(p);
+  moreKey.value = moreKey.value === k ? "" : k;
+  moreTarget.value = { type: "post", reportable: canReportPost(p), dbId: p.dbId, label: p.text || p.en || "", copy: postCopyText(p) };
+}
+function toggleCmtMore(cm) {
+  const k = cmtMoreKey(cm);
+  moreKey.value = moreKey.value === k ? "" : k;
+  moreTarget.value = { type: "comment", reportable: canReportCmt(cm), dbId: cm.dbId, label: cm.text || "", copy: commentCopyText(cm) };
+}
+function closeMore() { moreKey.value = ""; }
+function moreReport() {
+  const t0 = moreTarget.value;
+  closeMore();
+  if (!t0 || !t0.reportable || t0.dbId == null) return;
+  reportTarget.value = { type: t0.type, id: t0.dbId, label: t0.label };
+  reportShow.value = true;
+}
+async function moreCopy() {
+  const t0 = moreTarget.value;
+  closeMore();
+  const ok = await copyText(t0 ? t0.copy : "");
+  showWallMsg(ok ? "common.copied" : "common.copyFail");
+}
+
+/* ═════════ 轮 84 · 评论回应（❤️ / 💔） ═════════
+ * 与帖子厌恶同思路：乐观翻转 → RPC 返回服务端权威计数 → 覆盖；失败回滚。
+ * 「我点过哪些」不进列表（按用户变化），展开评论区后单独拉一次 mine。 */
+const cmtReactBusy = ref({});
+function cmtReacted(cm, kind) { return cmtHasReacted(cm, kind); }
+async function cmtReact(p, cm, kind) {
+  if (!cm || cm.dbId == null || cmtReactBusy.value[cm.id]) return;
+  if (!signedIn.value) return showWallMsg("community.reactSignIn");
+  cmtReactBusy.value = { ...cmtReactBusy.value, [cm.id]: true };
+  const prevReacts = { ...(cm.reacts || {}) };
+  const prevMine = [...(cm.myReacts || [])];
+  const wasOn = prevMine.includes(kind);
+  const opt = toggleReact(cm, kind, !wasOn);
+  cm.reacts = opt.reacts;
+  cm.myReacts = opt.myReacts;
+  const res = await cloudToggleCommentReaction(cm.dbId, kind);
+  if (res && res.ok) {
+    /* 服务端权威计数覆盖乐观值；on 只描述本次点击的 kind（两种可同时点亮，与帖子回应同口径） */
+    cm.reacts = { heart: res.hearts, broken: res.brokens };
+    cm.myReacts = res.on ? [...new Set([...prevMine, kind])] : prevMine.filter((x) => x !== kind);
+  } else {
+    cm.reacts = prevReacts;
+    cm.myReacts = prevMine;
+    showWallMsg("community.reactFail");
+  }
+  const next = { ...cmtReactBusy.value };
+  delete next[cm.id];
+  cmtReactBusy.value = next;
+}
+/* 展开评论区后补拉「我点过的」；失败静默（只是少了高亮，不影响计数展示） */
+async function loadCmtMine(p, rows) {
+  const ids = (Array.isArray(rows) ? rows : []).filter((r) => r.dbId != null).map((r) => r.dbId);
+  if (!ids.length || !cloud.user || !cloud.user.id) return;
+  const mine = await cloudFetchMyCommentReactions(ids, cloud.user.id);
+  if (!mine) return;
+  const map = {};
+  for (const r of mine) { (map[r.comment_id] = map[r.comment_id] || []).push(r.kind); }
+  const arr = comments.value[cmtKey(p)];
+  if (!Array.isArray(arr)) return;
+  for (const cm of arr) { if (map[cm.dbId]) cm.myReacts = map[cm.dbId]; }
+}
+
 /* ════════ 厌恶：#26 双档下架线由服务端假删除（浏览<100 时 >3 个；≥100 时 >0.5%） ═════════ */
 async function dislike(p) {
   /* #28 未登录：不静默，给一句温柔的登录提示 */
@@ -576,8 +658,10 @@ function persistCmt() {
 function cmtKey(p) { return postKey(p); }
 /* 该帖评论是否已拉到本地：是数组 → 本地列表为准；undefined → 用云端聚合数（见 displayCount） */
 function listed(p) { return comments.value[cmtKey(p)]; }
-/* 一级评论（主列表） */
-function listFor(p) { return topComments(comments.value, p); }
+/* 一级评论（主列表）。轮 84：墙内只展示前 WALL_TOP_LIMIT(3) 条；更多 → 「查看更多」进详情页。
+ * 顺序维持原口径（按发布先后），详情页里才提供 最新/最热 排序。 */
+function listFor(p) { return wallTopComments(topComments(comments.value, p)); }
+function hasMoreCmts(p) { return hasMoreComments(topComments(comments.value, p)); }
 /* 某条一级评论下的回复（二级） */
 function repliesFor(p, cm) { return repliesOf(comments.value, p, cm.id); }
 function repliesN(p, cm) { return replyCount(comments.value, p, cm.id); }
@@ -742,6 +826,7 @@ function loadThread(p, force = false) {
     }
     comments.value = { ...comments.value, [k]: filterBlocked(rows) };
     cloudCmtTotal.value = { ...cloudCmtTotal.value, [k]: rows.length };
+    loadCmtMine(p, rows);   /* 轮 84：补拉「我点过的评论回应」（高亮用，失败静默） */
   });
 }
 function toggleCmt(p) {
@@ -1097,6 +1182,13 @@ const router = useRouter();
 function canOpen(p) { return !!(p && p.cloud && p.userId); }
 function goProfile(p) { if (canOpen(p)) router.push({ name: "waller", params: { id: p.userId } }); }
 
+/* 轮 84：点帖子正文/图 → 帖子详情页（/post/:id）。
+ * 示例帖与未上云的本地帖没有 dbId，无处可去 → 不响应（光标也不会变成手型，CSS 同口径）。 */
+function goDetail(p) {
+  if (!p || p.dbId == null) return;
+  router.push({ name: "postDetail", params: { id: p.dbId } });
+}
+
 /* #25 帖子/评论时间显示到分钟。
  * 轮 81 · 动态流性能：包一层记忆化 —— 列表一屏几十条、滚动时每帧都要重算，
  * 而 fmtWhen 内部走 Date#toLocaleString（贵），同一批帖子被反复格式化是纯浪费。
@@ -1304,13 +1396,21 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
         <n-tag v-if="p.sample" round size="tiny" :bordered="false" class="soft-tag">
           {{ i18n.locale === "zh" ? "示例" : "sample" }}
         </n-tag>
+        <!-- 轮 84：帖子右上角 … 菜单（举报迁入 + 拷贝正文）；post-foot 里原举报按钮移除 -->
+        <button class="more-btn" :title="t('comment.more')" :aria-label="t('comment.more')"
+          @click.stop="togglePostMore(p)">⋯</button>
+        <div v-if="moreKey === postMoreKey(p)" class="more-pop card" @click.stop>
+          <button v-if="canReportPost(p)" class="more-item" @click="moreReport">{{ t("report.act") }}</button>
+          <button class="more-item" @click="moreCopy">{{ t("common.copy") }}</button>
+        </div>
       </div>
 
-      <p class="post-text">{{ i18n.locale === "zh" && p.zh ? p.zh : p.text || p.en }}</p>
+      <!-- 轮 84：点正文/图进帖子详情页（示例帖与本地帖没有 dbId，goDetail 不响应） -->
+      <p class="post-text go-detail" @click="goDetail(p)">{{ i18n.locale === "zh" && p.zh ? p.zh : p.text || p.en }}</p>
       <!-- 轮 81 · 动态流性能：图片懒加载 + 异步解码。
            原来一进页面/一续页就把这一页所有图片一起下载解码，滚动时主线程被解码尖刺打断；
            loading=lazy 只解码视口附近的图，decoding=async 让解码离开主线程。 -->
-      <img v-if="p.img" :src="p.img" class="pic" loading="lazy" decoding="async" alt="" />
+      <img v-if="p.img" :src="p.img" class="pic go-detail" loading="lazy" decoding="async" alt="" @click="goDetail(p)" />
 
       <div class="react-row">
         <n-button
@@ -1334,9 +1434,7 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
           @click="dislike(p)">
           &#128078; {{ p.reacts.dislike || 0 }}
         </button>
-        <button
-          v-if="canReportPost(p)" class="cmt-act post-report"
-          @click="openReportPost(p)">{{ t("report.act") }}</button>
+        <!-- 轮 84：举报入口迁入帖子右上角 … 菜单，post-foot 只留浏览数与厌恶 -->
       </div>
 
       <div class="cmt-toggle" @click="toggleCmt(p)">
@@ -1354,19 +1452,32 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
           <div class="cmt-head">
             <b :class="{ clickable: canOpen(cm) }"
                :title="canOpen(cm) ? t('community.viewHome') : ''"
-               @click="goProfile(cm)">{{ cm.name }}</b><span>{{ when(cm.ts) }}</span>
+               @click="goProfile(cm)">{{ cm.name }}</b>
             <button
               v-if="canDel(cm)"
               class="cmt-del" :title="t('common.delete')"
               @click="delCmt(p, cm)">×</button>
+            <!-- 轮 84：评论右上角 … 菜单（举报迁入 + 拷贝） -->
+            <button class="cmt-more" :title="t('comment.more')" :aria-label="t('comment.more')"
+              @click.stop="toggleCmtMore(cm)">⋯</button>
+            <div v-if="moreKey === cmtMoreKey(cm)" class="more-pop card" @click.stop>
+              <button v-if="canReportCmt(cm)" class="more-item" @click="moreReport">{{ t("report.act") }}</button>
+              <button class="more-item" @click="moreCopy">{{ t("common.copy") }}</button>
+            </div>
           </div>
           <p class="cmt-text cmt-text-open" :title="t('comment.reply')" @click="openReply(p, cm)">{{ cm.text }}</p>
 
           <div class="cmt-acts">
+            <!-- 轮 84：时间从评论头移到「回复」左侧 -->
+            <span class="cmt-time">{{ when(cm.ts) }}</span>
             <button class="cmt-act" @click="openReply(p, cm)">{{ t("comment.reply") }}</button>
-            <button
-              v-if="canReportCmt(cm)" class="cmt-act"
-              @click="openReportCmt(cm)">{{ t("report.act") }}</button>
+            <!-- 轮 84：回应按钮（❤️/💔，带计数；云端评论才有 dbId，本地/示例评论不显示） -->
+            <button v-if="cm.dbId != null" class="cmt-react" :class="{ on: cmtReacted(cm, 'heart') }"
+              :disabled="!!cmtReactBusy[cm.id]" :title="t('comment.likeT')" :aria-label="t('comment.likeT')"
+              @click="cmtReact(p, cm, 'heart')">&#10084; <i>{{ reactCount(cm, "heart") }}</i></button>
+            <button v-if="cm.dbId != null" class="cmt-react" :class="{ on: cmtReacted(cm, 'broken') }"
+              :disabled="!!cmtReactBusy[cm.id]" :title="t('comment.brokenT')" :aria-label="t('comment.brokenT')"
+              @click="cmtReact(p, cm, 'broken')">&#128148; <i>{{ reactCount(cm, "broken") }}</i></button>
             <button
               v-if="repliesN(p, cm) > 2"
               class="cmt-act cmt-act-rep"
@@ -1383,20 +1494,31 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
                 <b><span :class="{ clickable: canOpen(rp) }"
                         :title="canOpen(rp) ? t('community.viewHome') : ''"
                         @click="goProfile(rp)">{{ rp.name }}</span><span class="cmt-at" v-if="rp.replyTo">@{{ rp.replyTo }}</span></b>
-                <span>{{ when(rp.ts) }}</span>
                 <button
                   v-if="canDel(rp)"
                   class="cmt-del" :title="t('common.delete')"
                   @click="delCmt(p, rp)">×</button>
+                <!-- 轮 84：回复也有 … 菜单 -->
+                <button class="cmt-more" :title="t('comment.more')" :aria-label="t('comment.more')"
+                  @click.stop="toggleCmtMore(rp)">⋯</button>
+                <div v-if="moreKey === cmtMoreKey(rp)" class="more-pop card" @click.stop>
+                  <button v-if="canReportCmt(rp)" class="more-item" @click="moreReport">{{ t("report.act") }}</button>
+                  <button class="more-item" @click="moreCopy">{{ t("common.copy") }}</button>
+                </div>
               </div>
               <p class="cmt-text cmt-text-open" :title="t('comment.reply')" @click="openReplyTo(p, cm, rp)">{{ rp.text }}</p>
               <div class="cmt-acts">
+                <!-- 轮 84：时间移到「回复」左侧 + 回应按钮 -->
+                <span class="cmt-time">{{ when(rp.ts) }}</span>
                 <button class="cmt-act" @click="openReplyTo(p, cm, rp)">
                   {{ t("comment.reply") }}
                 </button>
-                <button
-                  v-if="canReportCmt(rp)" class="cmt-act"
-                  @click="openReportCmt(rp)">{{ t("report.act") }}</button>
+                <button v-if="rp.dbId != null" class="cmt-react" :class="{ on: cmtReacted(rp, 'heart') }"
+                  :disabled="!!cmtReactBusy[rp.id]" :title="t('comment.likeT')" :aria-label="t('comment.likeT')"
+                  @click="cmtReact(p, rp, 'heart')">&#10084; <i>{{ reactCount(rp, "heart") }}</i></button>
+                <button v-if="rp.dbId != null" class="cmt-react" :class="{ on: cmtReacted(rp, 'broken') }"
+                  :disabled="!!cmtReactBusy[rp.id]" :title="t('comment.brokenT')" :aria-label="t('comment.brokenT')"
+                  @click="cmtReact(p, rp, 'broken')">&#128148; <i>{{ reactCount(rp, "broken") }}</i></button>
               </div>
 
               <!-- 二级评论的回复框就地在它下面出现（用户反馈：以前甩到整块评论底部，像点了没反应） -->
@@ -1445,6 +1567,11 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
           </div>
         </div>
 
+        <!-- 轮 84：一级评论超过 3 条 → 「查看更多」进帖子详情页 -->
+        <button v-if="hasMoreCmts(p)" class="cmt-act cmt-viewmore" @click="goDetail(p)">
+          {{ t("community.viewMore") }} <i class="vm-arrow">&#8250;</i>
+        </button>
+
         <p v-if="!listFor(p).length && !(cmtLoading[cmtKey(p)] && !listed(p))" class="cmt-empty">
           {{ t("comment.empty") }}
         </p>
@@ -1489,6 +1616,9 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
       {{ t("community.noMore") }}
     </p>
     <p v-if="pageBusy" class="sub" style="text-align: center">{{ t("community.loading") }}</p>
+
+    <!-- 轮 84：…菜单的透明遮罩（点空白收起；菜单本体在各 head 内 absolute 定位） -->
+    <div v-if="moreKey" class="more-mask" @click="closeMore"></div>
 
     <!-- 举报弹窗（帖子/评论共用一个实例） -->
     <ReportDialog v-model:show="reportShow" :target="reportTarget" />

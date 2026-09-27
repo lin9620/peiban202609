@@ -211,6 +211,25 @@ const rows = [{ id: 1 }, { id: 2 }];
   const { fake } = await run([{ data: { ok: true } }], () => db.toggleDislike(1));
   ok("toggleDislike RPC 形状", fake.calls[0] === 'rpc:wall_toggle_dislike:{"p_post":1}', fake.calls[0]);
 }
+
+/* ─────────── 轮 84 · 评论回应（👍心 / 💔碎心） ─────────── */
+{
+  const { fake } = await run([{ data: [] }], () => db.listCommentReactions([3, 4]));
+  ok("listCommentReactions 形状",
+    fake.calls[0] === "from:wall_comment_reactions|select:comment_id,user_id,kind|in:comment_id:[3,4]", fake.calls[0]);
+}
+{
+  const { fake } = await run([{ data: [] }], () => db.listMyCommentReactions([3, 4], "u1"));
+  ok("listMyCommentReactions 形状",
+    fake.calls[0] === 'from:wall_comment_reactions|select:comment_id,kind|in:comment_id:[3,4]|eq:user_id:"u1"', fake.calls[0]);
+}
+{
+  const { fake, out } = await run([{ data: { ok: true, on: true, hearts: 2, brokens: 1 } }], () =>
+    db.toggleCommentReaction(9, "heart"));
+  ok("toggleCommentReaction RPC 形状",
+    fake.calls[0] === 'rpc:wall_toggle_comment_reaction:{"p_comment":9,"p_kind":"heart"}', fake.calls[0]);
+  ok("toggleCommentReaction 返回权威计数", out && out.ok === true && out.hearts === 2 && out.brokens === 1);
+}
 {
   const { fake } = await run([{ data: { ok: true, counted: true, counts: { pats: 2, feeds: 1 } } }], () =>
     db.petInteract("owner", "pat", "anon"));

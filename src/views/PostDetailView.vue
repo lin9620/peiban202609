@@ -8,12 +8,21 @@ import { useRoute, useRouter } from "vue-router";
 import { NAvatar, NButton, NInput } from "naive-ui";
 import { t, i18n } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
+/* 轮 84：评论回应（mine 拉取 + 切换）—— import 大括号内不写注释（undef-check 解析器会粘连） */
 import {
   cloudFetchPost, cloudFetchProfile, cloudFetchComments, cloudInsertComment,
   cloudDeleteComment, cloudToggleReaction, cloudAddView, cloudToggleDislike,
+  cloudFetchMyCommentReactions, cloudToggleCommentReaction,
 } from "../utils/wall.js";
-import { normalizeText, MAX_LEN } from "../utils/comments.js";
+/* 轮 84：评论排序 / 回应 / 拷贝文本 */
+import {
+  normalizeText, MAX_LEN,
+  SORT_MODES, sortComments, reactCount, toggleReact, hasReacted as cmtHasReacted,
+  postCopyText, commentCopyText,
+} from "../utils/comments.js";
 import { fmtWhen } from "../utils/wallRules.js";
+/* 轮 84：…菜单的「拷贝」（WebView 里 navigator.clipboard 缺失时 execCommand 兜底） */
+import { copyText } from "../utils/clipboard.js";
 /* 轮 33：举报弹窗 + 全站拉黑过滤（我拉黑的人，TA 的帖子/评论在我这里不显示） */
 import ReportDialog from "../components/ReportDialog.vue";
 import { filterBlocked, isBlocked } from "../utils/userBlocks.js";
@@ -119,7 +128,81 @@ const repActive = ref("");       /* 就地回复框挂在哪个目标：一级 i
 const atName = ref("");
 const cmtErr = ref("");
 
-const tops = computed(() => comments.value.filter((c) => !c.parentId));
+/* ═════════ 轮 84 · 评论排序 + 评论回应 + …菜单 ═════════ */
+
+/* 排序只作用于一级评论："new" = 发布时间倒序；"hot" = 心最多（同数看碎心，再按时间倒序） */
+const cmtSort = ref("new");
+
+/* —— 评论回应（与暖心墙同口径：乐观翻转 → RPC 权威计数覆盖 → 失败回滚） —— */
+const cmtReactBusy = ref({});
+function cmtReacted(cm, kind) { return cmtHasReacted(cm, kind); }
+async function cmtReact(cm, kind) {
+  if (!cm || cm.dbId == null || cmtReactBusy.value[cm.id]) return;
+  if (!signedIn.value) { hint.value = t("community.reactSignIn"); return; }
+  cmtReactBusy.value = { ...cmtReactBusy.value, [cm.id]: true };
+  const prevReacts = { ...(cm.reacts || {}) };
+  const prevMine = [...(cm.myReacts || [])];
+  const wasOn = prevMine.includes(kind);
+  const opt = toggleReact(cm, kind, !wasOn);
+  cm.reacts = opt.reacts;
+  cm.myReacts = opt.myReacts;
+  const res = await cloudToggleCommentReaction(cm.dbId, kind);
+  if (res && res.ok) {
+    /* 服务端权威计数覆盖乐观值；on 只描述本次点击的 kind（两种可同时点亮，与帖子回应同口径） */
+    cm.reacts = { heart: res.hearts, broken: res.brokens };
+    cm.myReacts = res.on ? [...new Set([...prevMine, kind])] : prevMine.filter((x) => x !== kind);
+  } else {
+    cm.reacts = prevReacts;
+    cm.myReacts = prevMine;
+    hint.value = t("community.reactFail");
+  }
+  const next = { ...cmtReactBusy.value };
+  delete next[cm.id];
+  cmtReactBusy.value = next;
+}
+/* 评论加载后补拉「我点过的」；失败静默（只少高亮，不影响计数展示） */
+async function loadCmtMine(rows) {
+  const ids = (Array.isArray(rows) ? rows : []).filter((r) => r.dbId != null).map((r) => r.dbId);
+  if (!ids.length || !myId.value) return;
+  const mine = await cloudFetchMyCommentReactions(ids, myId.value);
+  if (!mine) return;
+  const map = {};
+  for (const r of mine) { (map[r.comment_id] = map[r.comment_id] || []).push(r.kind); }
+  for (const cm of comments.value) { if (map[cm.dbId]) cm.myReacts = map[cm.dbId]; }
+}
+
+/* —— …菜单（帖子右上角 / 每条评论右上角：举报迁入 + 拷贝；同一时刻最多开一个） —— */
+const moreKey = ref("");
+const moreTarget = ref(null);   /* { type, reportable, dbId, label, copy } */
+function togglePostMore() {
+  moreKey.value = moreKey.value === "post" ? "" : "post";
+  moreTarget.value = {
+    type: "post", reportable: !!post.value && canReportPost(), dbId: post.value && post.value.dbId,
+    label: post.value ? post.value.text || "" : "", copy: postCopyText(post.value),
+  };
+}
+function toggleCmtMore(cm) {
+  const k = "cmt:" + cm.id;
+  moreKey.value = moreKey.value === k ? "" : k;
+  moreTarget.value = { type: "comment", reportable: canReportCmt(cm), dbId: cm.dbId, label: cm.text || "", copy: commentCopyText(cm) };
+}
+function closeMore() { moreKey.value = ""; }
+function moreReport() {
+  const t0 = moreTarget.value;
+  closeMore();
+  if (!t0 || !t0.reportable || t0.dbId == null) return;
+  reportTarget.value = { type: t0.type, id: t0.dbId, label: t0.label };
+  reportShow.value = true;
+}
+async function moreCopy() {
+  const t0 = moreTarget.value;
+  closeMore();
+  const ok = await copyText(t0 ? t0.copy : "");
+  hint.value = ok ? t("common.copied") : t("common.copyFail");
+  setTimeout(() => { hint.value = ""; }, 2500);
+}
+
+const tops = computed(() => sortComments(comments.value.filter((c) => !c.parentId), cmtSort.value));
 const repsOf = (cm) => comments.value.filter((c) => c.parentId === cm.id);
 /* 轮 50：与暖心墙同口径——二级回复默认显示前两条，>2 条点「N 条回复」展开全部 */
 const visibleReps = (cm) => (repOpen[cm.id] ? repsOf(cm) : repsOf(cm).slice(0, 2));
@@ -131,7 +214,10 @@ function loadComments() {
   cmtLoading.value = true;
   cloudFetchComments(post.value.dbId).then((rows) => {
     cmtLoading.value = false;
-    if (Array.isArray(rows)) comments.value = filterBlocked(rows);
+    if (Array.isArray(rows)) {
+      comments.value = filterBlocked(rows);
+      loadCmtMine(comments.value);   /* 轮 84：补拉「我点过的评论回应」（高亮用，失败静默） */
+    }
   });
 }
 function toggleCmt() {
@@ -241,6 +327,13 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
             <div class="post-name">{{ post.name }}</div>
             <div class="post-time">{{ when(post.ts) }}</div>
           </div>
+          <!-- 轮 84：帖子右上角 … 菜单（举报迁入 + 拷贝正文）；post-foot 里原举报按钮移除 -->
+          <button class="more-btn" :title="t('comment.more')" :aria-label="t('comment.more')"
+            @click.stop="togglePostMore">⋯</button>
+          <div v-if="moreKey === 'post'" class="more-pop card" @click.stop>
+            <button v-if="canReportPost()" class="more-item" @click="moreReport">{{ t("report.act") }}</button>
+            <button class="more-item" @click="moreCopy">{{ t("common.copy") }}</button>
+          </div>
         </div>
 
         <p class="post-text">{{ post.text }}</p>
@@ -263,14 +356,21 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
             @click="dislike">
             &#128078; {{ post.reacts.dislike || 0 }}
           </button>
-          <button v-if="canReportPost()" class="cmt-act" @click="openReportPost">
-            {{ t("report.act") }}
-          </button>
-        </div>
+            <!-- 轮 84：举报入口迁入帖子右上角 … 菜单，post-foot 只留浏览数与厌恶 -->
+          </div>
 
-        <div class="cmt-toggle" @click="toggleCmt">
-          <span class="cmt-ico">&#128172;</span> {{ t("comment.count", { n: countN }) }}
-          <span class="cmt-caret" :class="{ open: openCmt }">&#9662;</span>
+        <div class="cmt-bar">
+          <div class="cmt-toggle" @click="toggleCmt">
+            <span class="cmt-ico">&#128172;</span> {{ t("comment.count", { n: countN }) }}
+            <span class="cmt-caret" :class="{ open: openCmt }">&#9662;</span>
+          </div>
+          <!-- 轮 84：评论排序（最新/最热，只排一级评论），按钮在评论标题右侧 -->
+          <div class="cmt-sort">
+            <button v-for="sm in SORT_MODES" :key="sm" class="sort-btn cmt-sort-btn"
+              :class="{ on: cmtSort === sm }" @click="cmtSort = sm">
+              {{ t(sm === "new" ? "comment.sortNew" : "comment.sortHot") }}
+            </button>
+          </div>
         </div>
 
         <div v-if="openCmt" class="cmt-box">
@@ -279,13 +379,28 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
 
           <div v-for="cm in tops" :key="cm.id" class="cmt-item">
             <div class="cmt-head">
-              <b>{{ cm.name }}</b><span>{{ when(cm.ts) }}</span>
+              <b>{{ cm.name }}</b>
               <button v-if="canDel(cm)" class="cmt-del" :title="t('common.delete')" @click="delCmt(cm)">×</button>
+              <!-- 轮 84：评论右上角 … 菜单（举报迁入 + 拷贝） -->
+              <button class="cmt-more" :title="t('comment.more')" :aria-label="t('comment.more')"
+                @click.stop="toggleCmtMore(cm)">⋯</button>
+              <div v-if="moreKey === 'cmt:' + cm.id" class="more-pop card" @click.stop>
+                <button v-if="canReportCmt(cm)" class="more-item" @click="moreReport">{{ t("report.act") }}</button>
+                <button class="more-item" @click="moreCopy">{{ t("common.copy") }}</button>
+              </div>
             </div>
             <p class="cmt-text" :title="signedIn ? t('comment.reply') : ''" @click="startReply(cm)">{{ cm.text }}</p>
             <div class="cmt-acts">
+              <!-- 轮 84：时间从评论头移到「回复」左侧 -->
+              <span class="cmt-time">{{ when(cm.ts) }}</span>
               <button v-if="signedIn" class="cmt-act" @click="startReply(cm)">{{ t("comment.reply") }}</button>
-              <button v-if="canReportCmt(cm)" class="cmt-act" @click="openReportCmt(cm)">{{ t("report.act") }}</button>
+              <!-- 轮 84：回应按钮（❤️/💔，带计数） -->
+              <button v-if="cm.dbId != null" class="cmt-react" :class="{ on: cmtReacted(cm, 'heart') }"
+                :disabled="!!cmtReactBusy[cm.id]" :title="t('comment.likeT')" :aria-label="t('comment.likeT')"
+                @click="cmtReact(cm, 'heart')">&#10084; <i>{{ reactCount(cm, "heart") }}</i></button>
+              <button v-if="cm.dbId != null" class="cmt-react" :class="{ on: cmtReacted(cm, 'broken') }"
+                :disabled="!!cmtReactBusy[cm.id]" :title="t('comment.brokenT')" :aria-label="t('comment.brokenT')"
+                @click="cmtReact(cm, 'broken')">&#128148; <i>{{ reactCount(cm, "broken") }}</i></button>
               <button v-if="repsOf(cm).length > 2" class="cmt-act" @click="toggleReplies(cm)">
                 {{ t("comment.replies", { n: repsOf(cm).length }) }}
                 <i :class="{ open: repOpen[cm.id] }">&#9662;</i>
@@ -296,13 +411,26 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
               <div v-for="rp in visibleReps(cm)" :key="rp.id" class="cmt-item">
                 <div class="cmt-head">
                   <b>{{ rp.name }}<span v-if="rp.replyTo" class="cmt-at"> @{{ rp.replyTo }}</span></b>
-                  <span>{{ when(rp.ts) }}</span>
                   <button v-if="canDel(rp)" class="cmt-del" :title="t('common.delete')" @click="delCmt(rp)">×</button>
+                  <!-- 轮 84：回复也有 … 菜单 -->
+                  <button class="cmt-more" :title="t('comment.more')" :aria-label="t('comment.more')"
+                    @click.stop="toggleCmtMore(rp)">⋯</button>
+                  <div v-if="moreKey === 'cmt:' + rp.id" class="more-pop card" @click.stop>
+                    <button v-if="canReportCmt(rp)" class="more-item" @click="moreReport">{{ t("report.act") }}</button>
+                    <button class="more-item" @click="moreCopy">{{ t("common.copy") }}</button>
+                  </div>
                 </div>
                 <p class="cmt-text" @click="startReply(cm, rp)">{{ rp.text }}</p>
                 <div class="cmt-acts">
+                  <!-- 轮 84：时间移到「回复」左侧 + 回应按钮 -->
+                  <span class="cmt-time">{{ when(rp.ts) }}</span>
                   <button v-if="signedIn" class="cmt-act" @click="startReply(cm, rp)">{{ t("comment.reply") }}</button>
-                  <button v-if="canReportCmt(rp)" class="cmt-act" @click="openReportCmt(rp)">{{ t("report.act") }}</button>
+                  <button v-if="rp.dbId != null" class="cmt-react" :class="{ on: cmtReacted(rp, 'heart') }"
+                    :disabled="!!cmtReactBusy[rp.id]" :title="t('comment.likeT')" :aria-label="t('comment.likeT')"
+                    @click="cmtReact(rp, 'heart')">&#10084; <i>{{ reactCount(rp, "heart") }}</i></button>
+                  <button v-if="rp.dbId != null" class="cmt-react" :class="{ on: cmtReacted(rp, 'broken') }"
+                    :disabled="!!cmtReactBusy[rp.id]" :title="t('comment.brokenT')" :aria-label="t('comment.brokenT')"
+                    @click="cmtReact(rp, 'broken')">&#128148; <i>{{ reactCount(rp, "broken") }}</i></button>
                 </div>
                 <div v-if="repActive === cm.id + ':' + rp.id" class="cmt-input cmt-input-in">
                   <n-input v-model:value="repDraft[cm.id]" round size="small"
@@ -349,6 +477,9 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
         <p v-if="hint" class="sub" style="color: var(--low); font-weight: 700">{{ hint }}</p>
       </article>
     </template>
+
+    <!-- 轮 84：…菜单的透明遮罩（点空白收起；菜单本体在各 head 内 absolute 定位） -->
+    <div v-if="moreKey" class="more-mask" @click="closeMore"></div>
 
     <!-- 举报弹窗（帖子/评论共用一个实例） -->
     <ReportDialog v-model:show="reportShow" :target="reportTarget" />

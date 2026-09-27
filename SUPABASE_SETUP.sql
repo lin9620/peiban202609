@@ -138,6 +138,81 @@ create policy "reactions write by auth" on public.wall_reactions
 create policy "reactions remove own" on public.wall_reactions
   for delete using (auth.uid() = user_id);
 
+-- 4b) 评论回应（轮 84 · 👍心 / 💔碎心）
+--     计数去归一化在 wall_comments.hearts / brokens；明细表按 (评论,用户,种类) 主键去重；
+--     切换走 RPC wall_toggle_comment_reaction（服务端算权威计数，与 wall_toggle_dislike 同思路）。
+--     与 MIGRATION_comment_reactions.sql 同源，改一处必查另一处。
+alter table public.wall_comments add column if not exists hearts  integer not null default 0;
+alter table public.wall_comments add column if not exists brokens integer not null default 0;
+
+create table if not exists public.wall_comment_reactions (
+  comment_id bigint      not null references public.wall_comments (id) on delete cascade,
+  user_id    uuid        not null references auth.users (id)          on delete cascade,
+  kind       text        not null check (kind in ('heart', 'broken')),
+  created_at timestamptz not null default now(),
+  primary key (comment_id, user_id, kind)
+);
+
+create index if not exists wall_comment_reactions_cmt_idx  on public.wall_comment_reactions (comment_id);
+create index if not exists wall_comment_reactions_user_idx on public.wall_comment_reactions (user_id);
+
+alter table public.wall_comment_reactions enable row level security;
+
+drop policy if exists "comment reactions readable by all" on public.wall_comment_reactions;
+drop policy if exists "comment reactions write by auth"   on public.wall_comment_reactions;
+drop policy if exists "comment reactions remove own"      on public.wall_comment_reactions;
+
+create policy "comment reactions readable by all" on public.wall_comment_reactions
+  for select using (true);
+create policy "comment reactions write by auth" on public.wall_comment_reactions
+  for insert to authenticated with check (auth.uid() = user_id);
+create policy "comment reactions remove own" on public.wall_comment_reactions
+  for delete to authenticated using (auth.uid() = user_id);
+
+create or replace function public.wall_toggle_comment_reaction(p_comment bigint, p_kind text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_uid    uuid := auth.uid();
+  v_on     boolean;
+  v_hearts integer;
+  v_broken integer;
+begin
+  if v_uid is null then
+    return jsonb_build_object('ok', false, 'reason', 'auth-required');
+  end if;
+  if p_kind not in ('heart', 'broken') then
+    return jsonb_build_object('ok', false, 'reason', 'bad-kind');
+  end if;
+  if not exists (select 1 from public.wall_comments where id = p_comment) then
+    return jsonb_build_object('ok', false, 'reason', 'not-found');
+  end if;
+
+  if exists (
+    select 1 from public.wall_comment_reactions
+    where comment_id = p_comment and user_id = v_uid and kind = p_kind
+  ) then
+    delete from public.wall_comment_reactions
+      where comment_id = p_comment and user_id = v_uid and kind = p_kind;
+    v_on := false;
+  else
+    insert into public.wall_comment_reactions (comment_id, user_id, kind)
+    values (p_comment, v_uid, p_kind)
+    on conflict do nothing;
+    v_on := true;
+  end if;
+
+  select count(*) filter (where kind = 'heart'),
+         count(*) filter (where kind = 'broken')
+    into v_hearts, v_broken
+    from public.wall_comment_reactions where comment_id = p_comment;
+
+  update public.wall_comments set hearts = v_hearts, brokens = v_broken where id = p_comment;
+
+  return jsonb_build_object('ok', true, 'on', v_on, 'hearts', v_hearts, 'brokens', v_broken);
+end $$;
+
+grant execute on function public.wall_toggle_comment_reaction(bigint, text) to authenticated;
+
 -- 5) 图片存储桶（公开读，登录上传，只能改/删自己路径下的对象）
 insert into storage.buckets (id, name, public)
 values ('wall-images', 'wall-images', true)

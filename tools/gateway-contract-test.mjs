@@ -279,6 +279,34 @@ setGatewayAuthProbe(() => true); /* 单测注入：auth 就绪（与 db.supabase
   }
 }
 
+/* ── 轮 84 · 评论回应（👍心 / 💔碎心；独立块，不挤占上面大块的序号断言） ── */
+{
+  const calls = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push({ url: String(url), init });
+    const body = String(url).includes("/api/comments/react")
+      ? JSON.stringify({ ok: true, on: true, hearts: 2, brokens: 1 })
+      : "[]";
+    return new Response(body, { status: 200, headers: { "content-type": "application/json" } });
+  };
+  try {
+    await db.listCommentReactions([3, 4]);
+    await db.listMyCommentReactions([3, 4], "u1");
+    const r = await db.toggleCommentReaction(9, "heart");
+    const u = (i) => calls[i].url;
+    const m = (i) => calls[i].init.method || "GET";
+    const b = (i) => calls[i].init.body;
+    ok("listCommentReactions 端点", u(0) === `/api/comments/reactions?ids=${enc("3,4")}`, u(0));
+    ok("listMyCommentReactions 端点", u(1) === `/api/comments/reactions/mine?ids=${enc("3,4")}&user_id=u1`, u(1));
+    ok("toggleCommentReaction 端点+body",
+      u(2) === "/api/comments/react" && m(2) === "POST" && b(2) === JSON.stringify({ comment_id: 9, kind: "heart" }), u(2));
+    ok("toggleCommentReaction 返回 RPC 权威计数", r && r.ok === true && r.hearts === 2 && r.brokens === 1);
+  } finally {
+    globalThis.fetch = real;
+  }
+}
+
 setGatewayAuthProbe(null);
 setAuthTokenProvider(() => "");
 console.log(`gateway-contract: ${pass} pass, ${fails.length} fail`);

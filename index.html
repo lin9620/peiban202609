@@ -122,8 +122,16 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css" />
+  <!-- 轮 84：字体 CSS 改非阻塞（media=print 加载完再切回 all）。
+       实测：jsdelivr/googleapis 慢或挂时，阻塞样式会挡住后面 module 脚本的执行——
+       Vue 迟迟不挂载，页面一直停在 SEO 静态占位（网页端「先看到英文占位页」的根源之一，
+       page-smoke 也因此偶发全红）。noscript 兜底：无 JS 环境仍以阻塞方式加载字体。 -->
+  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css" media="print" onload="this.media='all'" />
+  <noscript>
+    <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css" />
+  </noscript>
 </head>
 <body>
   <div id="app"></div>

@@ -93,6 +93,10 @@ export function rowsToComments(rows) {
     /* 二级评论：parent_id 是 DB 主键，这里统一加上 c 前缀，和 id 命名保持一致 */
     parentId: r.parent_id ? "c" + r.parent_id : null,
     replyTo: r.reply_to_name || "",
+    /* 轮 84：评论回应计数（去归一化列，RPC wall_toggle_comment_reaction 维护）。
+     * 旧库没跑迁移时这两列不存在 → undefined，reactCount 纯函数会归 0，不炸。 */
+    reacts: { heart: r.hearts, broken: r.brokens },
+    myReacts: [],
   }));
 }
 
@@ -212,6 +216,38 @@ export async function cloudFetchComments(dbPostId) {
     return rowsToComments(data || []);
   } catch (e) {
     console.warn("[cloud] fetchComments:", e);
+    return null;
+  }
+}
+
+/* —— 轮 84 · 评论回应（👍心 / 💔碎心）—— */
+
+/**
+ * 拉「我在这批评论里点过的回应」，失败返回 null。
+ * 返回行是 { comment_id, kind }；调用方自己聚合成 { [dbCommentId]: [kind,...] }。
+ * @param {number[]} dbCommentIds
+ * @param {string} userId 当前登录用户 id（mine 查询条件；计数是公开的，点了什么不敏感）
+ */
+export async function cloudFetchMyCommentReactions(dbCommentIds, userId) {
+  if (!canUseWall() || !Array.isArray(dbCommentIds) || !dbCommentIds.length || !userId) return null;
+  try {
+    return await db.listMyCommentReactions(dbCommentIds, userId) || [];
+  } catch (e) {
+    console.warn("[cloud] myCommentReactions:", e);
+    return null;
+  }
+}
+
+/**
+ * 切换某条评论的回应（服务端权威计数）。
+ * @returns {Promise<object|null>} RPC 结果 { ok, on, hearts, brokens }；失败返回 null
+ */
+export async function cloudToggleCommentReaction(dbCommentId, kind) {
+  if (!canUseWall()) return null;
+  try {
+    return await db.toggleCommentReaction(dbCommentId, kind);
+  } catch (e) {
+    console.warn("[cloud] toggleCommentReaction:", e);
     return null;
   }
 }

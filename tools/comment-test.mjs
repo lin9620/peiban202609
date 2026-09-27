@@ -4,6 +4,9 @@ import {
   seedComments, listComments, countComments, addComment, removeComment,
   canDelete, normalizeText, postKey, MAX_LEN, MAX_PER_POST, SEEDS,
   topComments, repliesOf, replyCount, displayCount,
+  /* 轮 84：评论回应 / 排序 / 墙内前 3 条 / 拷贝文本 */
+  CMT_REACT_KINDS, WALL_TOP_LIMIT, reactCount, hasReacted, toggleReact,
+  sortComments, wallTopComments, hasMoreComments, postCopyText, commentCopyText,
 } from "../src/utils/comments.js";
 
 const out = [];
@@ -249,6 +252,82 @@ t("T26 每帖上限把回复也算进去（回复绕不过 MAX_PER_POST）", () 
   assert.equal(over.ok, false);
   assert.equal(over.reason, "full");
   assert.equal(replyCount(over.store, p, rid), MAX_PER_POST - 1);
+});
+
+/* ══════════ 轮 84 · 评论回应 / 排序 / 墙内前 3 条 / 拷贝文本 ══════════ */
+
+const mkCmt = (over = {}) => ({
+  id: "c1", dbId: 1, name: "A", text: "hello", ts: 1000,
+  reacts: { heart: 2, broken: 1 }, myReacts: ["heart"], ...over,
+});
+
+t("R1 回应种类与库约束同源（heart/broken）", () => {
+  assert.deepEqual(CMT_REACT_KINDS, ["heart", "broken"]);
+});
+
+t("R2 reactCount：缺字段/负数/非数字一律归 0", () => {
+  assert.equal(reactCount(mkCmt(), "heart"), 2);
+  assert.equal(reactCount({ reacts: {} }, "heart"), 0);
+  assert.equal(reactCount({ reacts: { heart: -3 } }, "heart"), 0);
+  assert.equal(reactCount({ reacts: { heart: "x" } }, "heart"), 0);
+  assert.equal(reactCount(null, "heart"), 0);
+});
+
+t("R3 hasReacted：认 myReacts 也认 mine（本地/云端两种来源形状）", () => {
+  assert.equal(hasReacted(mkCmt(), "heart"), true);
+  assert.equal(hasReacted(mkCmt({ myReacts: undefined, mine: ["broken"] }), "broken"), true);
+  assert.equal(hasReacted(mkCmt({ myReacts: [] }), "broken"), false);
+});
+
+t("R4 toggleReact：加一/减一并维护 myReacts；不减到负；不改入参（纯函数）", () => {
+  const c = mkCmt();
+  const on = toggleReact(c, "broken", true);
+  assert.equal(on.reacts.broken, 2);
+  assert.deepEqual(on.myReacts, ["heart", "broken"]);
+  const off = toggleReact(on, "heart", false);
+  assert.equal(off.reacts.heart, 1);
+  assert.deepEqual(off.myReacts, ["broken"]);
+  const clamp = toggleReact(mkCmt({ reacts: { heart: 0, broken: 0 }, myReacts: [] }), "heart", false);
+  assert.equal(clamp.reacts.heart, 0);
+  assert.equal(c.reacts.heart, 2, "入参对象不能被改");
+  assert.deepEqual(c.myReacts, ["heart"], "入参 myReacts 不能被改");
+});
+
+t("R5 sortComments new：按时间倒序；非法 ts 当 0 排最后", () => {
+  const xs = [mkCmt({ id: "a", ts: 5 }), mkCmt({ id: "b", ts: 9 }), mkCmt({ id: "c", ts: "x" })];
+  assert.deepEqual(sortComments(xs, "new").map((c) => c.id), ["b", "a", "c"]);
+  assert.deepEqual(xs.map((c) => c.id), ["a", "b", "c"], "不改入参数组");
+});
+
+t("R6 sortComments hot：心多在前；心同看碎心；再同按时间倒序", () => {
+  const xs = [
+    mkCmt({ id: "a", reacts: { heart: 3, broken: 0 }, ts: 1 }),
+    mkCmt({ id: "b", reacts: { heart: 3, broken: 2 }, ts: 1 }),
+    mkCmt({ id: "c", reacts: { heart: 3, broken: 2 }, ts: 9 }),
+    mkCmt({ id: "d", reacts: { heart: 9, broken: 0 }, ts: 1 }),
+  ];
+  assert.deepEqual(sortComments(xs, "hot").map((c) => c.id), ["d", "c", "b", "a"]);
+});
+
+t("R7 wallTopComments / hasMoreComments：只取前 3 条；恰好 3 条不算更多", () => {
+  assert.equal(WALL_TOP_LIMIT, 3);
+  const xs = [1, 2, 3, 4, 5].map((i) => mkCmt({ id: "c" + i }));
+  assert.deepEqual(wallTopComments(xs).map((c) => c.id), ["c1", "c2", "c3"]);
+  assert.equal(hasMoreComments(xs), true);
+  assert.equal(hasMoreComments(xs.slice(0, 3)), false);
+  assert.deepEqual(wallTopComments(null), []);
+});
+
+t("R8 postCopyText：正文+图片链接两行；无正文给空串", () => {
+  assert.equal(postCopyText({ text: "hi", img: "https://x/y.png" }), "hi\nhttps://x/y.png");
+  assert.equal(postCopyText({ text: "hi" }), "hi");
+  assert.equal(postCopyText(null), "");
+});
+
+t("R9 commentCopyText：带署名前缀", () => {
+  assert.equal(commentCopyText({ name: "压测员68", text: "好天气" }), "压测员68：好天气");
+  assert.equal(commentCopyText({ text: "匿名" }), "匿名");
+  assert.equal(commentCopyText(null), "");
 });
 
 out.push("");

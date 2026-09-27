@@ -25,6 +25,7 @@ const TABLE = {
   posts: "wall_posts",
   comments: "wall_comments",
   reactions: "wall_reactions",
+  commentReactions: "wall_comment_reactions",   /* 轮 84：评论的 👍心 / 💔碎心 */
   profiles: "profiles",
   pet: "pet_profiles",
 };
@@ -218,6 +219,35 @@ async function listComments(env, request, postId, limit) {
   const res = await upstream(
     env, request,
     restUrl(env, TABLE.comments, `select=*&post_id=eq.${encodeURIComponent(postId)}&order=created_at.asc&limit=${limit}`),
+  );
+  return res || fail(502, "upstream-unreachable");
+}
+
+/* ── 轮 84 · 评论回应（👍心 / 💔碎心）────
+ * 计数本身不在这里算：去归一化列 wall_comments.hearts / brokens 由 RPC 维护，
+ * 列表接口 select=* 就带回来了。这里只负责两件事：
+ *   ① 一次取多评论的回应明细（谁点了什么）→ 前端聚合出「我点过哪些」
+ *   ② 转发切换 RPC（服务端算权威计数）
+ */
+const CMT_REACT_SEL = `select=${encodeURIComponent("comment_id,user_id,kind")}`;
+
+/** 一批评论的全部回应明细（返回行里没有评论的就没有人点过） */
+async function listCommentReactions(env, request, ids, limit) {
+  const inList = encodeURIComponent(`in.(${ids.map((x) => `"${x}"`).join(",")})`);
+  const res = await upstream(
+    env, request,
+    restUrl(env, TABLE.commentReactions, `${CMT_REACT_SEL}&comment_id=${inList}&limit=${limit}`),
+  );
+  return res || fail(502, "upstream-unreachable");
+}
+
+/** 我在这一批评论里点过的回应（只回 comment_id,kind —— user_id 由服务端条件固定，不接受客户端指定别的） */
+async function listMyCommentReactions(env, request, ids, uid, limit) {
+  const inList = encodeURIComponent(`in.(${ids.map((x) => `"${x}"`).join(",")})`);
+  const sel = `select=${encodeURIComponent("comment_id,kind")}`;
+  const res = await upstream(
+    env, request,
+    restUrl(env, TABLE.commentReactions, `${sel}&comment_id=${inList}&user_id=eq.${encodeURIComponent(uid)}&limit=${limit}`),
   );
   return res || fail(502, "upstream-unreachable");
 }
@@ -576,6 +606,28 @@ export default {
           const id = decodeSeg(seg[1]);
           if (!id) return fail(400, "bad-id");
           return deleteRows(env, request, TABLE.comments, `id=eq.${encodeURIComponent(id)}`);
+        }
+        /* —— 轮 84 · 评论回应（👍心 / 💔碎心）—— */
+        if (seg.length === 2 && seg[1] === "reactions" && m === "GET") {
+          const ids = parseIds(q.get("ids"));
+          if (!ids.length) return fail(400, "bad-ids");
+          return listCommentReactions(env, request, ids, parseLimit(q.get("limit"), 2000));
+        }
+        if (seg.length === 3 && seg[1] === "reactions" && seg[2] === "mine" && m === "GET") {
+          const ids = parseIds(q.get("ids"));
+          if (!ids.length) return fail(400, "bad-ids");
+          const uid = (q.get("user_id") || "").trim();
+          if (!uid) return fail(400, "bad-uid");
+          return listMyCommentReactions(env, request, ids, uid, parseLimit(q.get("limit"), 2000));
+        }
+        if (seg.length === 2 && seg[1] === "react" && m === "POST") {
+          const b = await readJson(request);
+          if (b.err) return b.err;
+          const id = Number(b.body && b.body.comment_id);
+          const kind = b.body && b.body.kind;
+          if (!Number.isFinite(id) || id <= 0) return fail(400, "bad-id");
+          if (kind !== "heart" && kind !== "broken") return fail(400, "bad-kind");
+          return rpc(env, request, "wall_toggle_comment_reaction", { p_comment: id, p_kind: kind });
         }
       }
       if (seg[0] === "comment-post-ids" && seg.length === 1 && m === "GET") {

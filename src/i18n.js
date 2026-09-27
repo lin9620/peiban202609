@@ -32,6 +32,8 @@ export const messages = {
       oops: "Something went a little sideways",
       reload: "Reload the page",
       gotIt: "Got it",
+      /* 轮 84：…菜单里的拷贝 */
+      copy: "Copy", copied: "Copied ✓", copyFail: "Couldn't copy — try again",
     },
 
     home: {
@@ -292,6 +294,8 @@ export const messages = {
       refreshFail: "Couldn't refresh — try again",
       refreshBatch: "Refreshed ✓ · a new batch for you",
       refreshing: "Refreshing…",
+      /* 轮 84：墙内评论超过 3 条时的「查看更多」→ 帖子详情页 */
+      viewMore: "View more",
       composeTitle: "Share on the wall",
       composeBack: "Back to the wall",
       dailyLimit: "Seven notes a day is plenty — you've used them up. See you tomorrow 💛",
@@ -358,6 +362,10 @@ export const messages = {
       cancel: "Cancel",
       replies: "{n} replies",
       fail: "Couldn't post that — please try again ",
+      /* 轮 84：评论互动（回应/排序/…菜单） */
+      likeT: "Like", brokenT: "Dislike",
+      sortNew: "Newest", sortHot: "Hottest",
+      more: "More",
     },
 
     rail: {
@@ -734,6 +742,8 @@ export const messages = {
       oops: "这里好像有点小状况",
       reload: "刷新页面",
       gotIt: "知道啦",
+      /* 轮 84：…菜单里的拷贝 */
+      copy: "拷贝", copied: "已拷贝 ✓", copyFail: "没拷上，再试一次",
     },
 
     home: {
@@ -994,6 +1004,8 @@ export const messages = {
       refreshFail: "没刷出来，再试一次",
       refreshBatch: "已刷新 ✓ 换了一批内容",
       refreshing: "刷新中…",
+      /* 轮 84：墙内评论超过 3 条时的「查看更多」→ 帖子详情页 */
+      viewMore: "查看更多",
       composeTitle: "发暖心帖",
       composeBack: "回到暖心墙",
       dailyLimit: "每天最多 7 条——今天已经发满啦，明天再来吧 💛",
@@ -1060,6 +1072,10 @@ export const messages = {
       cancel: "取消",
       replies: "{n} 条回复",
       fail: "没发出去——再试一次吧 🙏",
+      /* 轮 84：评论互动（回应/排序/…菜单） */
+      likeT: "喜欢", brokenT: "不喜欢",
+      sortNew: "最新", sortHot: "最热",
+      more: "更多",
     },
 
     rail: {

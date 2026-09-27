@@ -182,3 +182,107 @@ export function removeComment(store, post, commentId) {
 export function allPosts(myPosts) {
   return Array.isArray(myPosts) ? myPosts.slice() : [];
 }
+
+/* ══════════ 轮 84 · 评论回应 / 排序 / 墙内前 3 条 ══════════
+ * 用户口径：
+ *   · 墙内每条帖子的评论**只显前 3 条一级评论**，更多走「查看更多」进详情页
+ *   · 详情页可以按「最新 / 最热」排（最热 = 心最多）
+ *   · 每条评论在「回复」右边有 👍心 / 💔碎心（带数量）
+ * 全部写在这里（组件只做渲染），这样 Node 单测能直接锁住口径。
+ */
+
+/** 两种评论回应：心（赞同/温暖）、碎心（心疼/不认同）。与数据库 check 约束同源。 */
+export const CMT_REACT_KINDS = ["heart", "broken"];
+
+/** 墙内一级评论默认显示几条 */
+export const WALL_TOP_LIMIT = 3;
+
+/** 排序口径：new = 最新（一级评论时间倒序）；hot = 最热（心最多，其次碎心，再按时间倒序） */
+export const SORT_MODES = ["new", "hot"];
+
+/** 某条评论的回应数（缺字段 → 0；负值/非数字一律归 0，避免脏数据把排序带偏） */
+export function reactCount(comment, kind) {
+  const r = comment && comment.reacts;
+  const n = Number(r && r[kind]);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
+/**
+ * 我有没有点过这一种回应。
+ * 本地评论把「我点过的」存在 myReacts（数组）；云端评论由服务端聚合成 mine（数组）。
+ * 两种形状都认，组件与规则层不必区分来源。
+ */
+export function hasReacted(comment, kind, userId = "") {
+  if (!comment) return false;
+  const list = Array.isArray(comment.myReacts) ? comment.myReacts
+    : Array.isArray(comment.mine) ? comment.mine : [];
+  return list.includes(kind);
+}
+
+/**
+ * 切换某条评论的回应（返回**新的**评论对象，不改入参）——纯函数，便于乐观更新与回滚。
+ * on = true → 加一；false → 减一（不会低于 0）。myReacts 同步维护。
+ */
+export function toggleReact(comment, kind, on) {
+  if (!comment || !CMT_REACT_KINDS.includes(kind)) return comment;
+  const reacts = { ...(comment.reacts || {}) };
+  const now = reactCount(comment, kind);
+  reacts[kind] = on ? now + 1 : Math.max(0, now - 1);
+  /* 从现有 myReacts/mine 全量出发，只增删本次点击的 kind ——
+   * 两种回应可同时点亮（与帖子回应同口径，RPC 也是按 kind 独立切换）；
+   * 不能只从「被点击的 kind」重建，否则另一种已点亮的会被悄悄丢掉。 */
+  const mine = new Set(
+    Array.isArray(comment.myReacts) ? comment.myReacts
+      : Array.isArray(comment.mine) ? comment.mine : [],
+  );
+  if (on) mine.add(kind); else mine.delete(kind);
+  return { ...comment, reacts, myReacts: [...mine] };
+}
+
+/**
+ * 评论列表排序（返回新数组，不改入参）。
+ * mode="hot"：心多的在前；心数相同看碎心（讨论热度），再相同按时间倒序保证稳定。
+ * mode="new"（含未知值）：按 ts 倒序。
+ * ts 非法一律当 0（排到最后），避免一条脏数据把顺序打乱。
+ */
+export function sortComments(list, mode = "new") {
+  const arr = Array.isArray(list) ? list.slice() : [];
+  const ts = (c) => (Number.isFinite(Number(c && c.ts)) ? Number(c.ts) : 0);
+  if (mode === "hot") {
+    return arr.sort((a, b) =>
+      reactCount(b, "heart") - reactCount(a, "heart")
+      || reactCount(b, "broken") - reactCount(a, "broken")
+      || ts(b) - ts(a));
+  }
+  return arr.sort((a, b) => ts(b) - ts(a));
+}
+
+/** 墙内展示：只取前 WALL_TOP_LIMIT 条一级评论（调用方自己先按口径排序） */
+export function wallTopComments(list, limit = WALL_TOP_LIMIT) {
+  const arr = Array.isArray(list) ? list : [];
+  const n = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Math.floor(Number(limit)) : WALL_TOP_LIMIT;
+  return arr.slice(0, n);
+}
+
+/** 墙内是否需要「查看更多」：一级评论总数超过展示上限时才有 */
+export function hasMoreComments(list, limit = WALL_TOP_LIMIT) {
+  const arr = Array.isArray(list) ? list : [];
+  const n = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Math.floor(Number(limit)) : WALL_TOP_LIMIT;
+  return arr.length > n;
+}
+
+/** 帖子的可复制正文：把帖子结构还原成一段纯文本（拷贝菜单用；无正文给空串） */
+export function postCopyText(post) {
+  if (!post) return "";
+  const parts = [];
+  if (post.text) parts.push(String(post.text));
+  if (post.img) parts.push(String(post.img));
+  return parts.join("\n");
+}
+
+/** 评论的可复制正文（拷贝菜单用） */
+export function commentCopyText(comment) {
+  if (!comment) return "";
+  const who = comment.name ? String(comment.name) + "：" : "";
+  return who + String(comment.text || "");
+}

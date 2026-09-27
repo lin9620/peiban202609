@@ -175,6 +175,23 @@ export const db = {
     });
   },
 
+  /* ══════════ 轮 84 · 评论回应（👍心 / 💔碎心） ══════════ */
+
+  /** 一次取多评论的回应明细（谁点了什么） */
+  async listCommentReactions(commentIds) {
+    return call(`/comments/reactions?ids=${enc(commentIds.join(","))}`);
+  },
+
+  /** 我在这批评论里点过的回应（只回 comment_id,kind） */
+  async listMyCommentReactions(commentIds, userId) {
+    return call(`/comments/reactions/mine?ids=${enc(commentIds.join(","))}&user_id=${enc(userId)}`);
+  },
+
+  /** 切换评论回应；返回服务端权威计数 {ok,on,hearts,brokens}，前端拿返回值覆盖乐观值 */
+  async toggleCommentReaction(commentId, kind) {
+    return call("/comments/react", { method: "POST", body: { comment_id: commentId, kind } });
+  },
+
   /* ══════════ RPC：服务端权威逻辑（去重 / 计数 / 自动下架） ══════════ */
 
   /** 记一次浏览（同访客同日只计一次，服务端去重） */
