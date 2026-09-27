@@ -299,7 +299,7 @@ t("R5 sortComments new：按时间倒序；非法 ts 当 0 排最后", () => {
   assert.deepEqual(xs.map((c) => c.id), ["a", "b", "c"], "不改入参数组");
 });
 
-t("R6 SORT_MODES：「最热」已移除，默认(default)/最新(new)；默认=推荐模式由视图层用 recommendPosts 承接", () => {
+t("R6 SORT_MODES：「最热」已移除，默认(default)/最新(new)；默认=自然顺序由视图层直接透传（轮 90：评论不用帖子的 7 天推荐池）", () => {
   assert.deepEqual(SORT_MODES, ["default", "new"]);
   const xs = [mkCmt({ id: "a", ts: 5 }), mkCmt({ id: "b", ts: 9 })];
   assert.deepEqual(sortComments(xs).map((c) => c.id), ["b", "a"]);

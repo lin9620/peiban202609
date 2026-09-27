@@ -360,13 +360,15 @@ export const messages = {
       reply: "Reply",
       replyPh: "Reply to {n}…",
       cancel: "Cancel",
-      replies: "{n} replies",
       fail: "Couldn't post that — please try again ",
-      /* 轮 84：评论互动（回应/排序/…菜单）；轮 87：「最热」改「默认」（推荐模式） */
+      /* 轮 84：评论互动（回应/排序/…菜单）；轮 87：「最热」改「默认」（推荐模式）；
+       * 轮 88：回复展开钮移到回复列表底部（comment.replies 退役） */
       likeT: "Like", brokenT: "Dislike",
       sortDefault: "Default", sortNew: "Newest",
       more: "More",
       viewMoreCmt: "View more comments",
+      expandOthers: "Expand {n} more replies", collapseReplies: "Collapse replies",
+      viewAllReplies: "View all {n} replies",
     },
 
     rail: {
@@ -1071,13 +1073,15 @@ export const messages = {
       reply: "回复",
       replyPh: "回复 {n}…",
       cancel: "取消",
-      replies: "{n} 条回复",
       fail: "没发出去——再试一次吧 🙏",
-      /* 轮 84：评论互动（回应/排序/…菜单）；轮 87：「最热」改「默认」（推荐模式） */
+      /* 轮 84：评论互动（回应/排序/…菜单）；轮 87：「最热」改「默认」（推荐模式）；
+       * 轮 88：回复展开钮移到回复列表底部（comment.replies 退役） */
       likeT: "喜欢", brokenT: "不喜欢",
       sortDefault: "默认", sortNew: "最新",
       more: "更多",
       viewMoreCmt: "查看更多评论",
+      expandOthers: "展开其他 {n} 条回复", collapseReplies: "收起回复",
+      viewAllReplies: "查看全部 {n} 条回复",
     },
 
     rail: {

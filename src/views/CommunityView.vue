@@ -847,17 +847,7 @@ function toggleCmt(p) {
   }
 }
 
-/* —— 评论输入框的出现时机（手机端反馈：点评论数不该直接出现输入框）——
- * 手机形态：展开评论先只读；点「写评论」按钮才出现输入框（各条「回复」不受影响）。
- * 桌面形态：保持原样（输入框常驻，展开即聚焦）。 */
-const cmtCompose = ref({});
-function cmtComposeOpen(p) {
-  return !isMobileNav.value || !!cmtCompose.value[cmtKey(p)];
-}
-function openComposer(p) {
-  cmtCompose.value = { ...cmtCompose.value, [cmtKey(p)]: true };
-  focusSelector(cmtInputSel(p));
-}
+/* 轮 91：输入框移到评论区最前且手机端常驻显示——「写评论」解锁态（cmtCompose/openComposer）退役 */
 /**
  * 发表评论。
  *  - 传 cm → 作为二级回复挂到该一级评论下（云端写 parent_id，本地写 parentId）
@@ -1197,6 +1187,12 @@ function goDetail(p) {
   router.push({ name: "postDetail", params: { id: p.dbId } });
 }
 
+/* 轮 89：墙内回复超过可见数 → 跳详情页（带 cid 参数），详情页自动展开该线程的二级回复 */
+function goDetailReplies(p, cm) {
+  if (!p || p.dbId == null || !cm || cm.dbId == null) return;
+  router.push({ name: "postDetail", params: { id: p.dbId }, query: { cid: cm.dbId } });
+}
+
 /* #25 帖子/评论时间显示到分钟。
  * 轮 81 · 动态流性能：包一层记忆化 —— 列表一屏几十条、滚动时每帧都要重算，
  * 而 fmtWhen 内部走 Date#toLocaleString（贵），同一批帖子被反复格式化是纯浪费。
@@ -1455,6 +1451,28 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
           {{ t("community.loading") }}
         </p>
 
+        <!-- 轮 91：发评论输入框放评论区最前面（与详情页一致；手机端不再需要「写评论」解锁） -->
+        <div v-if="p.cloud && !signedIn" class="cmt-input">
+          <p class="cmt-empty">
+            {{ t("community.commentSignIn") }}
+            <router-link class="cmt-login" to="/profile">{{ t("common.signIn") }}</router-link>
+          </p>
+        </div>
+        <div v-else class="cmt-input">
+          <n-input
+            v-model:value="cmtDraft[cmtKey(p)]"
+            round size="small"
+            :placeholder="t('comment.placeholder')"
+            :maxlength="MAX_LEN"
+            @keyup.enter="sendCmt(p)" />
+          <n-button type="primary" size="small" round @click="sendCmt(p)">
+            {{ t("common.send") }}
+          </n-button>
+          <p class="cmt-left" :class="{ full: cmtLeft(p) <= 0 }">
+            {{ cmtLeft(p) <= 0 ? t("comment.full", { n: MAX_LEN }) : t("comment.left", { n: cmtLeft(p) }) }}
+          </p>
+        </div>
+
         <!-- 一级评论 -->
         <div v-for="cm in listFor(p)" :key="cm.id" class="cmt-item">
           <div class="cmt-head">
@@ -1486,13 +1504,7 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
             <button v-if="cm.dbId != null" class="cmt-react" :class="{ on: cmtReacted(cm, 'broken') }"
               :disabled="!!cmtReactBusy[cm.id]" :title="t('comment.brokenT')" :aria-label="t('comment.brokenT')"
               @click="cmtReact(p, cm, 'broken')"><svg class="rc-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.59.94 4.5 2.35C12.91 3.94 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z"/><path d="M12 6.8 10.4 9.4l2.4 1.5-1.5 2.4 1.1 1.8"/></svg><i>{{ reactCount(cm, "broken") }}</i></button>
-            <button
-              v-if="repliesN(p, cm) > 2"
-              class="cmt-act cmt-act-rep"
-              @click="toggleReplies(p, cm)">
-              {{ t("comment.replies", { n: repliesN(p, cm) }) }}
-              <i :class="{ open: isRepOpen(p, cm) }">&#9662;</i>
-            </button>
+              <!-- 轮 88：「N 条回复」按钮移到回复列表底部（见下方 replies-toggle），操作行只留时间/回复/回应 -->
           </div>
 
           <!-- 二级：回复列表（轮 50：默认显示前两条；>2 条点「N 条回复」展开全部） -->
@@ -1553,6 +1565,12 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
             </div>
           </div>
 
+          <!-- 轮 89：墙内回复超过可见数 → 跳详情页（带 cid 参数定位展开该线程），不再就地展开 -->
+          <button v-if="repliesN(p, cm) > 2" class="replies-toggle" @click="goDetailReplies(p, cm)">
+            {{ t("comment.viewAllReplies", { n: repliesN(p, cm) }) }}
+            <i class="rt-arrow">&#8250;</i>
+          </button>
+
           <!-- 一级：就地回复框（云端帖未登录不给开，openReply 已拦截；这里再守一道） -->
           <div
             :id="'repbox-' + repKey(p, cm)"
@@ -1583,34 +1601,6 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
         <p v-if="!listFor(p).length && !(cmtLoading[cmtKey(p)] && !listed(p))" class="cmt-empty">
           {{ t("comment.empty") }}
         </p>
-
-        <!-- 新评论（一级）：云端帖未登录 → 登录提示（#28：只存本机的评论别人看不到，不误导） -->
-        <div v-if="p.cloud && !signedIn" class="cmt-input">
-          <p class="cmt-empty">
-            {{ t("community.commentSignIn") }}
-            <router-link class="cmt-login" to="/profile">{{ t("common.signIn") }}</router-link>
-          </p>
-        </div>
-        <!-- 手机端：默认只读；点「写评论」才出现输入框（桌面端输入框常驻，走 v-else） -->
-        <div v-else-if="!cmtComposeOpen(p)" class="cmt-input">
-          <button class="cmt-toggle" @click="openComposer(p)">
-            <span class="cmt-ico">&#9998;</span> {{ t("comment.write") }}
-          </button>
-        </div>
-        <div v-else class="cmt-input">
-          <n-input
-            v-model:value="cmtDraft[cmtKey(p)]"
-            round size="small"
-            :placeholder="t('comment.placeholder')"
-            :maxlength="MAX_LEN"
-            @keyup.enter="sendCmt(p)" />
-          <n-button type="primary" size="small" round @click="sendCmt(p)">
-            {{ t("common.send") }}
-          </n-button>
-          <p class="cmt-left" :class="{ full: cmtLeft(p) <= 0 }">
-            {{ cmtLeft(p) <= 0 ? t("comment.full", { n: MAX_LEN }) : t("comment.left", { n: cmtLeft(p) }) }}
-          </p>
-        </div>
       </div>
     </article>
 

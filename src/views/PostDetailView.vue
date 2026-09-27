@@ -20,7 +20,7 @@ import {
   SORT_MODES, sortComments, reactCount, toggleReact, hasReacted as cmtHasReacted,
   postCopyText, commentCopyText,
 } from "../utils/comments.js";
-import { fmtWhen, recommendPosts } from "../utils/wallRules.js";
+import { fmtWhen } from "../utils/wallRules.js";
 import { isMobileNav } from "../stores/uiStore.js";
 /* 轮 84：…菜单的「拷贝」（WebView 里 navigator.clipboard 缺失时 execCommand 兜底） */
 import { copyText } from "../utils/clipboard.js";
@@ -234,8 +234,9 @@ function sendBar() { if (barCm.value) sendCmt(barCm.value, barRp.value); }
 
 const tops = computed(() => {
   const list = comments.value.filter((c) => !c.parentId);
-  /* 轮 87：默认 = 推荐模式（recommendPosts，与暖心墙帖子排序同源）；最新 = 时间倒序 */
-  return cmtSort.value === "new" ? sortComments(list, "new") : recommendPosts(list);
+  /* 轮 90：默认 = 自然顺序（与暖心墙评论一致：旧→新，不滤不限——评论不是帖子，不用 7 天推荐池）；
+     最新 = 时间倒序 */
+  return cmtSort.value === "new" ? sortComments(list, "new") : list;
 });
 const shownTops = computed(() => tops.value.slice(0, cmtReveal.value));
 /* 轮 87：下滑接近底部续展一级评论（与暖心墙信息流同手感；查看更多评论按钮同效） */
@@ -249,7 +250,7 @@ onMounted(() => window.addEventListener("scroll", onWallScroll, { passive: true 
 onUnmounted(() => window.removeEventListener("scroll", onWallScroll));
 const repsOf = (cm) => comments.value.filter((c) => c.parentId === cm.id);
 /* 轮 50：与暖心墙同口径——二级回复默认显示前两条，>2 条点「N 条回复」展开全部 */
-const visibleReps = (cm) => (repOpen[cm.id] ? repsOf(cm) : repsOf(cm).slice(0, 2));
+const visibleReps = (cm) => (repOpen.value[cm.id] ? repsOf(cm) : repsOf(cm).slice(0, 2));
 const countN = computed(() => comments.value.length);
 const canDel = (cm) => !!(cm && cm.cloud && myId.value && cm.userId === myId.value);
 
@@ -261,8 +262,27 @@ function loadComments() {
     if (Array.isArray(rows)) {
       comments.value = filterBlocked(rows);
       loadCmtMine(comments.value);   /* 轮 84：补拉「我点过的评论回应」（高亮用，失败静默） */
+      focusTargetComment();   /* 轮 89：带 cid 进入 → 展开目标线程并滚动定位 */
     }
   });
+}
+
+/* 轮 89：墙内「查看全部回复」带 cid 跳转进来 → 展开目标线程 + 滚动定位。
+ * 目标一级评论可能在推荐池（7 天）之外 → 先切「最新」保证可见，并把 reveal 撑到它的位置。 */
+const focusCid = computed(() => (route.query.cid ? String(route.query.cid) : ""));
+async function focusTargetComment() {
+  if (!focusCid.value) return;
+  cmtSort.value = "new";
+  const key = "c" + focusCid.value;
+  repOpen.value = { ...repOpen.value, [key]: true };
+  await nextTick();
+  const idx = tops.value.findIndex((c) => c.id === key);
+  if (idx >= 0 && idx >= cmtReveal.value) cmtReveal.value = idx + 1;
+  await nextTick();
+  if (typeof document !== "undefined") {
+    const el = document.getElementById("cmt-" + focusCid.value);
+    if (el) el.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
 }
 function toggleCmt() {
   openCmt.value = !openCmt.value;
@@ -418,10 +438,28 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
         </div>
 
         <div v-if="openCmt" class="cmt-box">
+          <!-- 轮 90：发评论输入框放评论区最前面（用户反馈；原来沉在整列评论底部） -->
+          <div v-if="!signedIn" class="cmt-input">
+            <p class="cmt-empty">
+              {{ t("community.commentSignIn") }}
+              <router-link class="cmt-login" to="/profile">{{ t("common.signIn") }}</router-link>
+            </p>
+          </div>
+          <div v-else class="cmt-input">
+            <n-input v-model:value="cmtDraft" round size="small" :placeholder="t('comment.placeholder')"
+              :maxlength="MAX_LEN" @keyup.enter="sendCmt()" />
+            <n-button type="primary" size="small" round @click="sendCmt()">{{ t("common.send") }}</n-button>
+            <p class="cmt-left" :class="{ full: cmtLeft <= 0 }">
+              {{ cmtLeft <= 0 ? t("comment.full", { n: MAX_LEN }) : t("comment.left", { n: cmtLeft }) }}
+            </p>
+          </div>
+
           <p v-if="cmtErr" class="cmt-empty" style="color: var(--low); font-weight: 700">{{ cmtErr }}</p>
           <p v-if="cmtLoading && !comments.length" class="cmt-empty">{{ t("community.loading") }}</p>
 
-          <div v-for="cm in shownTops" :key="cm.id" class="cmt-item">
+          <div v-for="cm in shownTops" :key="cm.id" class="cmt-item"
+            :id="cm.dbId != null ? 'cmt-' + cm.dbId : undefined"
+            :class="{ 'cmt-focus': focusCid && String(cm.dbId) === focusCid }">
             <div class="cmt-head">
               <b>{{ cm.name }}</b>
               <button v-if="canDel(cm)" class="cmt-del" :title="t('common.delete')" @click="delCmt(cm)">×</button>
@@ -445,10 +483,7 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
               <button v-if="cm.dbId != null" class="cmt-react" :class="{ on: cmtReacted(cm, 'broken') }"
                 :disabled="!!cmtReactBusy[cm.id]" :title="t('comment.brokenT')" :aria-label="t('comment.brokenT')"
                 @click="cmtReact(cm, 'broken')"><svg class="rc-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.59.94 4.5 2.35C12.91 3.94 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z"/><path d="M12 6.8 10.4 9.4l2.4 1.5-1.5 2.4 1.1 1.8"/></svg><i>{{ reactCount(cm, "broken") }}</i></button>
-              <button v-if="repsOf(cm).length > 2" class="cmt-act" @click="toggleReplies(cm)">
-                {{ t("comment.replies", { n: repsOf(cm).length }) }}
-                <i :class="{ open: repOpen[cm.id] }">&#9662;</i>
-              </button>
+              <!-- 轮 88：「N 条回复」按钮移到回复列表底部（见下方 replies-toggle），操作行只留时间/回复/回应 -->
             </div>
 
             <div v-if="repsOf(cm).length" class="cmt-reps">
@@ -489,6 +524,12 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
               </div>
             </div>
 
+            <!-- 轮 88：展开/收起回复按钮移到回复列表底部（参考主流社区「展开其他 N 条回复 ›」样式） -->
+            <button v-if="repsOf(cm).length > 2" class="replies-toggle" @click="toggleReplies(cm)">
+              {{ repOpen[cm.id] ? t("comment.collapseReplies") : t("comment.expandOthers", { n: repsOf(cm).length - 2 }) }}
+              <i class="rt-arrow">&#8250;</i>
+            </button>
+
             <div v-if="!isMobileNav && repActive === cm.id" class="cmt-input cmt-input-in">
               <n-input v-model:value="repDraft[cm.id]" round size="small"
                 :placeholder="repPlaceholder(cm)" :maxlength="MAX_LEN"
@@ -507,31 +548,15 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
           </button>
 
           <p v-if="!comments.length && !cmtLoading" class="cmt-empty">{{ t("comment.empty") }}</p>
-
-          <div v-if="!signedIn" class="cmt-input">
-            <p class="cmt-empty">
-              {{ t("community.commentSignIn") }}
-              <router-link class="cmt-login" to="/profile">{{ t("common.signIn") }}</router-link>
-            </p>
-          </div>
-          <div v-else class="cmt-input">
-            <n-input v-model:value="cmtDraft" round size="small" :placeholder="t('comment.placeholder')"
-              :maxlength="MAX_LEN" @keyup.enter="sendCmt()" />
-            <n-button type="primary" size="small" round @click="sendCmt()">{{ t("common.send") }}</n-button>
-            <p class="cmt-left" :class="{ full: cmtLeft <= 0 }">
-              {{ cmtLeft <= 0 ? t("comment.full", { n: MAX_LEN }) : t("comment.left", { n: cmtLeft }) }}
-            </p>
-          </div>
         </div>
         <p v-if="hint" class="sub" style="color: var(--low); font-weight: 700">{{ hint }}</p>
       </article>
     </template>
 
-    <!-- 轮 87：手机端统一回复输入条 —— 点「回复」只在底部弹出一条，发送在右下角（App/窄屏；
-         桌面保持就地内联框）。repActive 反查回复目标，回复数多少都不影响。 -->
+    <!-- 轮 91：输入条改 3 行文本域（用户反馈：单行小框没法输入），发送在右下角；Enter 换行不再误发送 -->
     <div v-if="repActive && isMobileNav" class="reply-bar">
-      <n-input ref="barInput" v-model:value="repDraft[barCm ? barCm.id : '']" round size="small"
-        :placeholder="repPlaceholder(barCm, barRp)" :maxlength="MAX_LEN" @keyup.enter="sendBar" />
+      <n-input ref="barInput" v-model:value="repDraft[barCm ? barCm.id : '']" type="textarea" :rows="3"
+        :placeholder="repPlaceholder(barCm, barRp)" :maxlength="MAX_LEN" />
       <div class="reply-bar-foot">
         <span class="cmt-left" :class="{ full: repLeft <= 0 }">
           {{ repLeft <= 0 ? t("comment.full", { n: MAX_LEN }) : t("comment.left", { n: repLeft }) }}

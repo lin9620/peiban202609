@@ -1061,15 +1061,30 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 .cmt-react.on { color: var(--ink-soft); background: rgba(160, 110, 60, .07); box-shadow: inset 0 0 0 1px rgba(160, 110, 60, .22); }
 .cmt-react:disabled { opacity: .55; cursor: default; }
 
-/* 轮 87：手机端统一回复输入条（详情页）—— 固定在底栏之上，发送在右下角 */
+/* 轮 91：展开/查看更多去底色框 —— 融入背景，只留灰字 + 箭头（用户反馈） */
+.replies-toggle, .cmt-viewmore.replies-toggle, button.cmt-viewmore {
+  border: none; font-family: inherit; cursor: pointer;
+  margin: 4px 0 2px; padding: 4px 2px; border-radius: 0;
+  font-size: 12.5px; font-weight: 700; color: var(--ink-faint);
+  background: none;
+  transition: color .18s ease;
+}
+.replies-toggle:hover, button.cmt-viewmore:hover { color: var(--accent-deep); background: none; }
+.replies-toggle .rt-arrow { font-style: normal; margin-left: 4px; color: var(--ink-faint); }
+
+/* 轮 89：从墙内带 cid 跳转进来的目标评论 —— 细描边高亮 + 平滑滚动定位 */
+.cmt-focus { outline: 2px solid rgba(224, 162, 116, .55); outline-offset: 6px; border-radius: 10px; }
+
+/* 轮 87/91：手机端统一回复输入条（详情页）—— 固定在底栏之上，3 行文本域，发送在右下角 */
 .reply-bar {
   position: fixed; left: 0; right: 0; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); z-index: 140;
-  display: flex; flex-direction: column; gap: 6px;
-  padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px));
   background: var(--paper, #fff7ee);
   border-top: 1px solid rgba(160, 110, 60, .14);
   box-shadow: 0 -8px 22px rgba(90, 60, 30, .10);
 }
+.reply-bar .n-input { font-size: 14px; }
 .reply-bar-foot { display: flex; align-items: center; gap: 8px; }
 .reply-bar-foot .cmt-left { margin-right: auto; font-size: 11px; font-weight: 700; color: var(--ink-faint); }
 

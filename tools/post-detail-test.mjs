@@ -45,8 +45,8 @@ ok("PostDetailView：数据链全部来自暖心墙现有 API（单帖/评论/�
 ok("PostDetailView：完整帖子卡（全文不截断 + 头像/署名/时间/配图/回应行/浏览厌恶）",
   has(detail, 'class="post-text"', "white-space: pre-wrap", 'class="pic"',
     'class="react-row"', 'class="post-foot"', "community.views"));
-ok("PostDetailView：评论点击展开（cmt-toggle ↔ comment.count），两级回复可展开（comment.replies）",
-  has(detail, 'class="cmt-toggle"', "comment.count", "comment.replies", "toggleReplies"));
+ok("PostDetailView：评论点击展开（cmt-toggle ↔ comment.count），两级回复可展开（轮88 底部展开钮 comment.expandOthers）",
+  has(detail, 'class="cmt-toggle"', "comment.count", "comment.expandOthers", "toggleReplies"));
 ok("PostDetailView：就地回复（回复「回复」仍挂一级下并 @ 对方）",
   has(detail, "function startReply(cm, rp = null)") && has(detail, "cm.id + \":\" + rp.id")
     && has(detail, "comment.replyPh"));
