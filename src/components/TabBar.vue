@@ -24,6 +24,16 @@ function isActive(item) {
   return route.path === item.path || route.path.startsWith(item.path + "/");
 }
 
+/* 轮 100：App 端再点当前页的 tab = 刷新该页（用户口径：暖心墙 tab 点击就是刷新）。
+ * 已在本页时拦下默认导航（同路径 push 会被 vue-router 忽略 = 之前点了没反应），
+ * 改推一个带时间戳的 refresh query —— CommunityView 监听它强制取新第一页并回顶部。 */
+function onTabClick(item, e) {
+  if (item.path !== "/community") return;
+  if (route.path !== "/community" && !route.path.startsWith("/community/")) return;
+  e.preventDefault();
+  router.push({ path: "/community", query: { refresh: String(Date.now()) } }).catch(() => {});
+}
+
 /* —— 中间 ＋ 钮：上弹两瓣（投漂流瓶 / 发暖心墙帖）—— */
 const open = ref(false);
 function toggle() { open.value = !open.value; }
@@ -44,7 +54,8 @@ function composePost() {
   <nav class="tabbar" aria-label="App">
     <router-link
       v-for="item in TABS.slice(0, 2)" :key="item.path"
-      :to="item.path" class="tab-item" :class="{ active: isActive(item) }">
+      :to="item.path" class="tab-item" :class="{ active: isActive(item) }"
+      @click="onTabClick(item, $event)">
       <span class="tab-label">{{ t(item.key) }}</span>
     </router-link>
 

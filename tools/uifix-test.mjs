@@ -32,10 +32,9 @@ t("T1 评论输入框加 :maxlength 硬限制", () => {
   assert.ok(cmt.includes(':maxlength="MAX_LEN"'), "缺少 :maxlength");
   assert.ok(cmt.includes("MAX_LEN,"), "未从 comments.js 导入 MAX_LEN");
 });
-t("T2 评论框展示剩余字数 / 上限提示", () => {
-  assert.ok(cmt.includes('class="cmt-left"'), "缺少字数提示元素");
-  assert.ok(cmt.includes('t("comment.left"'), "缺少剩余字数文案");
-  assert.ok(cmt.includes('t("comment.full"'), "缺少达上限文案");
+t("T2 评论框仍受 :maxlength 硬限制（轮 97 起字数提示行退役，不再渲染）", () => {
+  assert.ok(cmt.includes(':maxlength="MAX_LEN"'), "缺少 :maxlength");
+  assert.ok(!cmt.includes('class="cmt-left"'), "字数提示元素应已按统一输入条样式移除");
 });
 t("T3 字数由 MAX_LEN 单一来源驱动（不是写死 200）", () => {
   assert.equal(MAX_LEN, 200);

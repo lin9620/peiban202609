@@ -728,6 +728,8 @@ function replyRpOf(p, cm) { return replyRp.value[repKey(p, cm)] || null; }
 function openReply(p, cm) {
   /* #28 未登录不能回复云端帖 */
   if (p.cloud && !signedIn.value) return showWallMsg("community.commentSignIn");
+  /* 轮 98：取消按钮已移除 —— 再点同一条的「回复」= 收起该框（无二级框开着时） */
+  if (isReplyOpen(p, cm) && !replyRp.value[repKey(p, cm)]) return cancelReply(p);
   const k = cmtKey(p);
   replyTo.value = { ...replyTo.value, [k]: cm.id };
   atName.value = { ...atName.value, [k]: "" };
@@ -749,6 +751,8 @@ function clearReplyToRp(p, cm) {
 function openReplyTo(p, cm, rp) {
   /* #28 未登录不能回复云端帖 */
   if (p.cloud && !signedIn.value) return showWallMsg("community.commentSignIn");
+  /* 轮 98：再点同一条回复的「回复」= 收起该框 */
+  if (replyRp.value[repKey(p, cm)] === rp.id) return cancelReply(p);
   const k = cmtKey(p);
   /* 一级回复框让位（否则一上一下两个框） */
   const nextTo = { ...replyTo.value };
@@ -1334,6 +1338,14 @@ function centerOn(el) {
 watch(() => route.query.post, (v) => { focusDone.value = ""; focusPost(v); }, { immediate: false });
 watch(cloudPosts, () => { if (focusId.value) focusPost(focusId.value); });
 onMounted(() => { if (focusId.value) focusPost(focusId.value); });
+
+/* 轮 100：App 底栏再点「暖心墙」tab = 刷新 —— 强制取新第一页并回顶部（之前同路径
+ * push 被 vue-router 忽略，点了没反应；TabBar 现在推一个带时间戳的 refresh query） */
+watch(() => route.query.refresh, (v) => {
+  if (!v || !cloud.ready) return;
+  window.scrollTo({ top: 0, behavior: "smooth" });
+  loadCloud({ fresh: true });
+});
 </script>
 
 <template>
@@ -1519,9 +1531,6 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
               {{ t("common.send") }}
             </n-button>
           </div>
-          <p class="cmt-left" :class="{ full: cmtLeft(p) <= 0 }">
-            {{ cmtLeft(p) <= 0 ? t("comment.full", { n: MAX_LEN }) : t("comment.left", { n: cmtLeft(p) }) }}
-          </p>
         </div>
 
         <!-- 一级评论 -->
@@ -1608,13 +1617,7 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
                   <n-button type="primary" size="small" round @click="sendCmt(p, cm)">
                     {{ t("common.send") }}
                   </n-button>
-                  <n-button quaternary size="small" round @click="cancelReply(p)">
-                    {{ t("comment.cancel") }}
-                  </n-button>
                 </div>
-                <p class="cmt-left" :class="{ full: repLeft(p, cm) <= 0 }">
-                  {{ repLeft(p, cm) <= 0 ? t("comment.full", { n: MAX_LEN }) : t("comment.left", { n: repLeft(p, cm) }) }}
-                </p>
               </div>
             </div>
           </div>
@@ -1640,13 +1643,7 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
               <n-button type="primary" size="small" round @click="sendCmt(p, cm)">
                 {{ t("common.send") }}
               </n-button>
-              <n-button quaternary size="small" round @click="cancelReply(p)">
-                {{ t("comment.cancel") }}
-              </n-button>
             </div>
-            <p class="cmt-left" :class="{ full: repLeft(p, cm) <= 0 }">
-              {{ repLeft(p, cm) <= 0 ? t("comment.full", { n: MAX_LEN }) : t("comment.left", { n: repLeft(p, cm) }) }}
-            </p>
           </div>
         </div>
 

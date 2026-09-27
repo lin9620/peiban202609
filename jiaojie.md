@@ -1312,6 +1312,17 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **验证**：undef/tdz **0** + wall **34/34** + i18n **19/19** + build 0 + page-smoke **8/8**；已部署（live-check 14/14）+ APK 装机 Success。
      **待用户验收（亮屏）**：暖心墙下拉 → 「刷新中…」→ 换一批/新增提示正常、列表真的换内容；消息页无错误盒。
 
+  - **轮 100 · App 底栏「暖心墙」再点 = 刷新（2026-09-27，改动完成、测试全绿，待提交待部署——攒批；APK 需重打）**：
+     **用户反馈**：App 在暖心墙页面时，点底栏「暖心墙」文字本来就是刷新，现在点了没反应。
+     **根因**：底栏 tab 是普通 `router-link to="/community"`，已在 /community 时再点 = 同路径导航被 vue-router 忽略，什么都不会发生。
+     **修法**：① TabBar 对 community tab 加 `onTabClick` —— 已在本页时 `preventDefault` 并推 `{ path: "/community", query: { refresh: 时间戳 } }`；② CommunityView 监听 `route.query.refresh` → `loadCloud({ fresh: true })` 强制取新第一页 + 平滑回顶部（与下拉刷新同一条 fresh 路径）。
+     **验证**：全量 36 套离线 0 fail + undef/tdz **0** + page-smoke **9/9** + build 0。真机手感待装机验收。
+
+  - **轮 98 · 回复框统一收尾（2026-09-27，改动完成、测试全绿，待提交待部署——攒批；APK 需重打）**：
+     **用户反馈（附截图）**：墙内回复框（回复 压测员04 那个大框）也要改成目标样式——不是一点击就三行、去掉取消、去掉字数行。
+     **改法**：① 墙内两个回复框（cmt-input-rep / cmt-input-rep-in）去「取消」+ 去字数行，与主评论框完全一致（textarea autosize 1~4 行 + 发送在右）；② 详情页回复弹窗条去「取消」+ 字数行，minRows 3→1（maxRows 4，一行起步自动扩行）；③ 关闭路径：openReply/openReplyTo/startReply 加 toggle —— 再点同一条的「回复」即收起该框（取消钮没了以后的无按钮关闭路径）。
+     **验证**：全量 36 套离线 0 fail + undef/tdz **0** + page-smoke **9/9** + build 0。
+
   - **轮 97 · 四处评论输入框统一样式（2026-09-27，已提交 `89aa260` / 已部署 `e7531035` / 已装机 APK `EF08876CD66ACBC5`）**：
      **用户反馈（附截图）**：暖心墙所有评论输入框（①墙内帖子下 ②墙内评论下 ③详情页 ④详情页评论下）都改成截图那种——发送键常驻右侧，输入超过一行自动扩行。
      **改法**：四处的 n-input 统一为 `type="textarea" + :autosize="{ minRows: 1, maxRows: 4 }"`（手机回复弹窗条 minRows 3 / maxRows 6），发送键放在输入框右侧（`.cmt-input-row` 行内布局）；移除 Enter 误发送（Enter=换行）；轮 96 的点击展开态（cmtFocus/barFocus + .open 规则）退役——autosize 按内容自动扩行更符合直觉。

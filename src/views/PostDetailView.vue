@@ -293,9 +293,12 @@ function toggleReplies(cm) {
 }
 function startReply(cm, rp = null) {
   if (!signedIn.value) return;
+  /* 轮 98：取消按钮已移除 —— 再点同一条的「回复」= 收起该框 */
+  const key = rp ? cm.id + ":" + rp.id : cm.id;
+  if (repActive.value === key) { repActive.value = ""; atName.value = ""; return; }
   /* 回复「回复」仍是两级封顶：挂同一级下，@那位回复者（与墙规则一致） */
   atName.value = rp ? rp.name : "";
-  repActive.value = rp ? cm.id + ":" + rp.id : cm.id;
+  repActive.value = key;
 }
 function cancelReply() {
   repActive.value = "";
@@ -503,11 +506,7 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
                     <n-input v-model:value="repDraft[cm.id]" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }"
                       :placeholder="repPlaceholder(cm, rp)" :maxlength="MAX_LEN" />
                     <n-button type="primary" size="small" round @click="sendCmt(cm, rp)">{{ t("common.send") }}</n-button>
-                    <n-button quaternary size="small" round @click="cancelReply">{{ t("comment.cancel") }}</n-button>
-                  </div>
-                  <p class="cmt-left" :class="{ full: repLeft <= 0 }">
-                    {{ repLeft <= 0 ? t("comment.full", { n: MAX_LEN }) : t("comment.left", { n: repLeft }) }}
-                  </p>
+                    </div>
                 </div>
               </div>
             </div>
@@ -524,11 +523,7 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
                 <n-input v-model:value="repDraft[cm.id]" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }"
                   :placeholder="repPlaceholder(cm)" :maxlength="MAX_LEN" />
                 <n-button type="primary" size="small" round @click="sendCmt(cm)">{{ t("common.send") }}</n-button>
-                <n-button quaternary size="small" round @click="cancelReply">{{ t("comment.cancel") }}</n-button>
-              </div>
-              <p class="cmt-left" :class="{ full: repLeft <= 0 }">
-                {{ repLeft <= 0 ? t("comment.full", { n: MAX_LEN }) : t("comment.left", { n: repLeft }) }}
-              </p>
+                </div>
             </div>
           </div>
 
@@ -555,13 +550,9 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
 
     <!-- 轮 91：输入条改 3 行文本域（用户反馈：单行小框没法输入），发送在右下角；Enter 换行不再误发送 -->
     <div v-if="repActive && isMobileNav" class="reply-bar">
-      <n-input ref="barInput" v-model:value="repDraft[barCm ? barCm.id : '']" type="textarea" :autosize="{ minRows: 3, maxRows: 6 }"
+      <n-input ref="barInput" v-model:value="repDraft[barCm ? barCm.id : '']" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }"
         :placeholder="repPlaceholder(barCm, barRp)" :maxlength="MAX_LEN" />
       <div class="reply-bar-foot">
-        <span class="cmt-left" :class="{ full: repLeft <= 0 }">
-          {{ repLeft <= 0 ? t("comment.full", { n: MAX_LEN }) : t("comment.left", { n: repLeft }) }}
-        </span>
-        <n-button quaternary size="small" round @click="cancelReply">{{ t("comment.cancel") }}</n-button>
         <n-button type="primary" size="small" round @click="sendBar">{{ t("common.send") }}</n-button>
       </div>
     </div>
@@ -624,7 +615,5 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
 .cmt-input { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 .cmt-input-in { margin: 8px 0 2px; }
 .cmt-input > .n-input { flex: 1; min-width: 0; }
-.cmt-left { font-size: 12px; color: var(--ink-faint); white-space: nowrap; }
-.cmt-left.full { color: var(--low); font-weight: 700; }
 .cmt-login { font-weight: 700; }
 </style>
