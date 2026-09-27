@@ -1088,6 +1088,11 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 .reply-bar-foot { display: flex; align-items: center; gap: 8px; }
 .reply-bar-foot .cmt-left { margin-right: auto; font-size: 11px; font-weight: 700; color: var(--ink-faint); }
 
+/* 轮 96：评论输入框点击展开（未点击一行，点击 3 行）；发送键在输入框右下 */
+.cmt-input-row { display: flex; align-items: flex-end; gap: 8px; }
+.cmt-input-row .n-input { flex: 1; }
+.cmt-input .n-input, .cmt-bar-fixed .n-input, .cmt-input-row .n-input { font-size: 13.5px; }
+
 /* 轮 93：详情页评论输入固定底栏（参考用户截图：头像 + 说点什么吧… 胶囊，常驻页面底部） */
 .cmt-bar-fixed {
   position: fixed; left: 50%; transform: translateX(-50%);

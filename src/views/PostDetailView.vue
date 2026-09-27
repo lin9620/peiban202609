@@ -497,12 +497,14 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
                     :disabled="!!cmtReactBusy[rp.id]" :title="t('comment.brokenT')" :aria-label="t('comment.brokenT')"
                     @click="cmtReact(rp, 'broken')"><svg class="rc-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.59.94 4.5 2.35C12.91 3.94 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z"/><path d="M12 6.8 10.4 9.4l2.4 1.5-1.5 2.4 1.1 1.8"/></svg><i>{{ reactCount(rp, "broken") }}</i></button>
                 </div>
+                <!-- 轮 97：统一输入条样式（发送在右 + 自动扩行） -->
                 <div v-if="!isMobileNav && repActive === cm.id + ':' + rp.id" class="cmt-input cmt-input-in">
-                  <n-input v-model:value="repDraft[cm.id]" round size="small"
-                    :placeholder="repPlaceholder(cm, rp)" :maxlength="MAX_LEN"
-                    @keyup.enter="sendCmt(cm, rp)" />
-                  <n-button type="primary" size="small" round @click="sendCmt(cm, rp)">{{ t("common.send") }}</n-button>
-                  <n-button quaternary size="small" round @click="cancelReply">{{ t("comment.cancel") }}</n-button>
+                  <div class="cmt-input-row">
+                    <n-input v-model:value="repDraft[cm.id]" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }"
+                      :placeholder="repPlaceholder(cm, rp)" :maxlength="MAX_LEN" />
+                    <n-button type="primary" size="small" round @click="sendCmt(cm, rp)">{{ t("common.send") }}</n-button>
+                    <n-button quaternary size="small" round @click="cancelReply">{{ t("comment.cancel") }}</n-button>
+                  </div>
                   <p class="cmt-left" :class="{ full: repLeft <= 0 }">
                     {{ repLeft <= 0 ? t("comment.full", { n: MAX_LEN }) : t("comment.left", { n: repLeft }) }}
                   </p>
@@ -516,12 +518,14 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
               <i class="rt-arrow">&#8250;</i>
             </button>
 
+            <!-- 轮 97：统一输入条样式 -->
             <div v-if="!isMobileNav && repActive === cm.id" class="cmt-input cmt-input-in">
-              <n-input v-model:value="repDraft[cm.id]" round size="small"
-                :placeholder="repPlaceholder(cm)" :maxlength="MAX_LEN"
-                @keyup.enter="sendCmt(cm)" />
-              <n-button type="primary" size="small" round @click="sendCmt(cm)">{{ t("common.send") }}</n-button>
-              <n-button quaternary size="small" round @click="cancelReply">{{ t("comment.cancel") }}</n-button>
+              <div class="cmt-input-row">
+                <n-input v-model:value="repDraft[cm.id]" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }"
+                  :placeholder="repPlaceholder(cm)" :maxlength="MAX_LEN" />
+                <n-button type="primary" size="small" round @click="sendCmt(cm)">{{ t("common.send") }}</n-button>
+                <n-button quaternary size="small" round @click="cancelReply">{{ t("comment.cancel") }}</n-button>
+              </div>
               <p class="cmt-left" :class="{ full: repLeft <= 0 }">
                 {{ repLeft <= 0 ? t("comment.full", { n: MAX_LEN }) : t("comment.left", { n: repLeft }) }}
               </p>
@@ -539,11 +543,11 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
       </article>
     </template>
 
-    <!-- 轮 94：评论输入固定底栏（参考用户截图：无头像、输入胶囊 + 右侧常驻「发布」；回复时让位） -->
+    <!-- 轮 97：评论输入固定底栏（发送常驻右侧；超一行自动扩行；回复时让位给回复弹窗条） -->
     <div v-if="!repActive" class="cmt-bar-fixed">
       <template v-if="signedIn">
-        <n-input v-model:value="cmtDraft" size="small"
-          :placeholder="t('comment.placeholder')" :maxlength="MAX_LEN" @keyup.enter="sendCmt()" />
+        <n-input v-model:value="cmtDraft" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }"
+          :placeholder="t('comment.placeholder')" :maxlength="MAX_LEN" />
         <n-button type="primary" size="small" round @click="sendCmt()">{{ t("community.post") }}</n-button>
       </template>
       <router-link v-else class="bar-signin" to="/profile">{{ t("comment.barSignIn") }}</router-link>
@@ -551,7 +555,7 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
 
     <!-- 轮 91：输入条改 3 行文本域（用户反馈：单行小框没法输入），发送在右下角；Enter 换行不再误发送 -->
     <div v-if="repActive && isMobileNav" class="reply-bar">
-      <n-input ref="barInput" v-model:value="repDraft[barCm ? barCm.id : '']" type="textarea" :rows="3"
+      <n-input ref="barInput" v-model:value="repDraft[barCm ? barCm.id : '']" type="textarea" :autosize="{ minRows: 3, maxRows: 6 }"
         :placeholder="repPlaceholder(barCm, barRp)" :maxlength="MAX_LEN" />
       <div class="reply-bar-foot">
         <span class="cmt-left" :class="{ full: repLeft <= 0 }">

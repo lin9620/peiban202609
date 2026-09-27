@@ -1170,7 +1170,10 @@ onMounted(() => {
 });
 /* 轮 95：恢复离场存档 —— 整份列表/高度表/已亮条数/游标原样回来，
  * 然后 holdAnchor 包住程序式滚动到原位置（占位块用恢复的高度表，零漂移）。
- * restoreTick 在恢复的两个 tick 里拦下自动重拉，避免存档列表被第一页覆盖。 */
+ * restoreTick 在恢复的两个 tick 里拦下自动重拉，避免存档列表被第一页覆盖。
+ * 轮 96 修真崩溃：restoreTick 之前漏声明 —— ESM 严格模式赋值未声明标识符直接
+ * ReferenceError（踩坑 #33 同类），返回暖心墙必崩进「这里有点小状况」。 */
+let restoreTick = false;
 function restoreFeed() {
   const s = savedFeedPos;
   if (!s || !Array.isArray(s.rows) || !s.rows.length) { savedFeedPos = null; return; }
@@ -1504,15 +1507,18 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
           </p>
         </div>
         <div v-else class="cmt-input">
-          <n-input
-            v-model:value="cmtDraft[cmtKey(p)]"
-            round size="small"
-            :placeholder="t('comment.placeholder')"
-            :maxlength="MAX_LEN"
-            @keyup.enter="sendCmt(p)" />
-          <n-button type="primary" size="small" round @click="sendCmt(p)">
-            {{ t("common.send") }}
-          </n-button>
+          <!-- 轮 97：统一输入条样式——发送在右、超过一行自动扩行 -->
+          <div class="cmt-input-row">
+            <n-input
+              v-model:value="cmtDraft[cmtKey(p)]"
+              type="textarea"
+              :autosize="{ minRows: 1, maxRows: 4 }"
+              :placeholder="t('comment.placeholder')"
+              :maxlength="MAX_LEN" />
+            <n-button type="primary" size="small" round class="cmt-send" @click="sendCmt(p)">
+              {{ t("common.send") }}
+            </n-button>
+          </div>
           <p class="cmt-left" :class="{ full: cmtLeft(p) <= 0 }">
             {{ cmtLeft(p) <= 0 ? t("comment.full", { n: MAX_LEN }) : t("comment.left", { n: cmtLeft(p) }) }}
           </p>
@@ -1591,18 +1597,21 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
                 :id="'repbox-' + repKey(p, cm) + ':' + rp.id"
                 v-if="replyRpOf(p, cm) === rp.id && !(p.cloud && !signedIn)"
                 class="cmt-input cmt-input-rep-in">
-                <n-input
-                  v-model:value="repDraft[repKey(p, cm)]"
-                  round size="small"
-                  :placeholder="repPlaceholder(p, cm, rp)"
-                  :maxlength="MAX_LEN"
-                  @keyup.enter="sendCmt(p, cm)" />
-                <n-button type="primary" size="small" round @click="sendCmt(p, cm)">
-                  {{ t("common.send") }}
-                </n-button>
-                <n-button quaternary size="small" round @click="cancelReply(p)">
-                  {{ t("comment.cancel") }}
-                </n-button>
+                <!-- 轮 97：回复框同样统一（发送在右 + 自动扩行） -->
+                <div class="cmt-input-row">
+                  <n-input
+                    v-model:value="repDraft[repKey(p, cm)]"
+                    type="textarea"
+                    :autosize="{ minRows: 1, maxRows: 4 }"
+                    :placeholder="repPlaceholder(p, cm, rp)"
+                    :maxlength="MAX_LEN" />
+                  <n-button type="primary" size="small" round @click="sendCmt(p, cm)">
+                    {{ t("common.send") }}
+                  </n-button>
+                  <n-button quaternary size="small" round @click="cancelReply(p)">
+                    {{ t("comment.cancel") }}
+                  </n-button>
+                </div>
                 <p class="cmt-left" :class="{ full: repLeft(p, cm) <= 0 }">
                   {{ repLeft(p, cm) <= 0 ? t("comment.full", { n: MAX_LEN }) : t("comment.left", { n: repLeft(p, cm) }) }}
                 </p>
@@ -1620,18 +1629,21 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
           <div
             :id="'repbox-' + repKey(p, cm)"
             v-if="isReplyOpen(p, cm) && !(p.cloud && !signedIn)" class="cmt-input cmt-input-rep">
-            <n-input
-              v-model:value="repDraft[repKey(p, cm)]"
-              round size="small"
-              :placeholder="repPlaceholder(p, cm)"
-              :maxlength="MAX_LEN"
-              @keyup.enter="sendCmt(p, cm)" />
-            <n-button type="primary" size="small" round @click="sendCmt(p, cm)">
-              {{ t("common.send") }}
-            </n-button>
-            <n-button quaternary size="small" round @click="cancelReply(p)">
-              {{ t("comment.cancel") }}
-            </n-button>
+            <!-- 轮 97：统一输入条样式 -->
+            <div class="cmt-input-row">
+              <n-input
+                v-model:value="repDraft[repKey(p, cm)]"
+                type="textarea"
+                :autosize="{ minRows: 1, maxRows: 4 }"
+                :placeholder="repPlaceholder(p, cm)"
+                :maxlength="MAX_LEN" />
+              <n-button type="primary" size="small" round @click="sendCmt(p, cm)">
+                {{ t("common.send") }}
+              </n-button>
+              <n-button quaternary size="small" round @click="cancelReply(p)">
+                {{ t("comment.cancel") }}
+              </n-button>
+            </div>
             <p class="cmt-left" :class="{ full: repLeft(p, cm) <= 0 }">
               {{ repLeft(p, cm) <= 0 ? t("comment.full", { n: MAX_LEN }) : t("comment.left", { n: repLeft(p, cm) }) }}
             </p>
