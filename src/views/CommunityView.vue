@@ -1,3 +1,9 @@
+<script>
+/* 轮 95：模块级存档 —— 离开暖心墙时保存浏览位置（script setup 的变量是每实例一份，
+ * 离开组件就没了；这里必须跨实例存活，返回时才恢复得了）。 */
+let savedFeedPos = null;
+</script>
+
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from "vue";
 import { useRouter, useRoute } from "vue-router";
@@ -102,17 +108,19 @@ const signedIn = computed(() => !!(cloud.ready && cloud.user));
 onMounted(() => {
   posts.value = scopeGet(POSTS_KEY, []) || [];
   myReacts.value = scopeGet(REACTS_KEY, {}) || {};
-  if (cloud.ready) loadCloud();
+  /* 轮 95：有离场存档 → 整份列表原样恢复（含已加载的更深处页），不被第一页覆盖 */
+  if (savedFeedPos) restoreFeed();
+  else if (cloud.ready) loadCloud();
   refreshBlocks();   /* 轮 33：拉黑名单就绪（快照先撑着，云端校准） */
 });
 /* 云端就绪晚于挂载（异步探测）→ 就绪后补拉一次；未登录也拉（RLS 匿名只读） */
 watch(() => cloud.ready, (v) => {
-  if (v && !cloudPosts.value.length) loadCloud();
+  if (v && !cloudPosts.value.length && !restoreTick) loadCloud();
 });
 /* 会话从无到有（登录完成）→ 用本人身份重拉一次：帖子的 mine（我点过谁）才准确，
    否则「我点过的抱抱」显示成没点，再点一次会把旧的取消掉（用户实测「取消不了」的根因）。 */
 watch(() => cloud.user && cloud.user.id, (uid) => {
-  if (cloud.ready && uid) {
+  if (cloud.ready && uid && !restoreTick) {
     refreshBlocks();   /* 轮 33：登录后同步我的拉黑名单（过滤靠它） */
     if (cloudPosts.value.length) loadCloud();
   }
@@ -1160,7 +1168,44 @@ onMounted(() => {
   window.addEventListener("touchmove", onUserMove, { passive: true });
   window.addEventListener("keydown", onUserMove);
 });
+/* 轮 95：恢复离场存档 —— 整份列表/高度表/已亮条数/游标原样回来，
+ * 然后 holdAnchor 包住程序式滚动到原位置（占位块用恢复的高度表，零漂移）。
+ * restoreTick 在恢复的两个 tick 里拦下自动重拉，避免存档列表被第一页覆盖。 */
+function restoreFeed() {
+  const s = savedFeedPos;
+  if (!s || !Array.isArray(s.rows) || !s.rows.length) { savedFeedPos = null; return; }
+  Object.assign(heights, s.heights);
+  cloudPosts.value = s.rows;
+  feedCursor.value = s.cursor;
+  cloudDone.value = s.done;
+  newestSeenTs.value = Math.max(newestSeenTs.value, s.newestTs || 0);
+  reveal.value = s.reveal;
+  restoreTick = true;
+  nextTick(() => {
+    holdAnchor();
+    window.scrollTo(0, s.y);
+    nextTick(() => {
+      releaseAnchor();
+      restoreTick = false;
+      savedFeedPos = null;
+      scheduleFeedTick();
+    });
+  });
+}
+
 onUnmounted(() => {
+  /* 轮 95：离场存位（含实测高度表），返回时整份恢复 */
+  if (cloudPosts.value.length) {
+    savedFeedPos = {
+      y: window.scrollY,
+      reveal: reveal.value,
+      cursor: feedCursor.value,
+      done: cloudDone.value,
+      newestTs: newestSeenTs.value,
+      rows: cloudPosts.value,
+      heights: { ...heights },
+    };
+  }
   if (feedRaf) cancelAnimationFrame(feedRaf);
   if (cardRO) cardRO.disconnect();
   releaseAnchor();                   /* 中途离场（跳转动画还没跑完）也要把锚定还回去 */

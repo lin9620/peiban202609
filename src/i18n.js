@@ -369,6 +369,7 @@ export const messages = {
       viewMoreCmt: "View more comments",
       expandOthers: "Expand {n} more replies", collapseReplies: "Collapse replies",
       viewAllReplies: "View all {n} replies",
+      barSignIn: "Sign in to comment",
     },
 
     rail: {
@@ -1082,6 +1083,7 @@ export const messages = {
       viewMoreCmt: "查看更多评论",
       expandOthers: "展开其他 {n} 条回复", collapseReplies: "收起回复",
       viewAllReplies: "查看全部 {n} 条回复",
+      barSignIn: "登录后即可评论",
     },
 
     rail: {

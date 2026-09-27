@@ -438,21 +438,7 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
         </div>
 
         <div v-if="openCmt" class="cmt-box">
-          <!-- 轮 90：发评论输入框放评论区最前面（用户反馈；原来沉在整列评论底部） -->
-          <div v-if="!signedIn" class="cmt-input">
-            <p class="cmt-empty">
-              {{ t("community.commentSignIn") }}
-              <router-link class="cmt-login" to="/profile">{{ t("common.signIn") }}</router-link>
-            </p>
-          </div>
-          <div v-else class="cmt-input">
-            <n-input v-model:value="cmtDraft" round size="small" :placeholder="t('comment.placeholder')"
-              :maxlength="MAX_LEN" @keyup.enter="sendCmt()" />
-            <n-button type="primary" size="small" round @click="sendCmt()">{{ t("common.send") }}</n-button>
-            <p class="cmt-left" :class="{ full: cmtLeft <= 0 }">
-              {{ cmtLeft <= 0 ? t("comment.full", { n: MAX_LEN }) : t("comment.left", { n: cmtLeft }) }}
-            </p>
-          </div>
+          <!-- 轮 93：发评论输入框改为页面底部常驻输入条（cmt-bar-fixed），列表内不再嵌输入框 -->
 
           <p v-if="cmtErr" class="cmt-empty" style="color: var(--low); font-weight: 700">{{ cmtErr }}</p>
           <p v-if="cmtLoading && !comments.length" class="cmt-empty">{{ t("community.loading") }}</p>
@@ -552,6 +538,16 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
         <p v-if="hint" class="sub" style="color: var(--low); font-weight: 700">{{ hint }}</p>
       </article>
     </template>
+
+    <!-- 轮 94：评论输入固定底栏（参考用户截图：无头像、输入胶囊 + 右侧常驻「发布」；回复时让位） -->
+    <div v-if="!repActive" class="cmt-bar-fixed">
+      <template v-if="signedIn">
+        <n-input v-model:value="cmtDraft" size="small"
+          :placeholder="t('comment.placeholder')" :maxlength="MAX_LEN" @keyup.enter="sendCmt()" />
+        <n-button type="primary" size="small" round @click="sendCmt()">{{ t("community.post") }}</n-button>
+      </template>
+      <router-link v-else class="bar-signin" to="/profile">{{ t("comment.barSignIn") }}</router-link>
+    </div>
 
     <!-- 轮 91：输入条改 3 行文本域（用户反馈：单行小框没法输入），发送在右下角；Enter 换行不再误发送 -->
     <div v-if="repActive && isMobileNav" class="reply-bar">

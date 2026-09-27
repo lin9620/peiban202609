@@ -1312,6 +1312,27 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **验证**：undef/tdz **0** + wall **34/34** + i18n **19/19** + build 0 + page-smoke **8/8**；已部署（live-check 14/14）+ APK 装机 Success。
      **待用户验收（亮屏）**：暖心墙下拉 → 「刷新中…」→ 换一批/新增提示正常、列表真的换内容；消息页无错误盒。
 
+  - **轮 95 · 详情页返回暖心墙恢复浏览位置（2026-09-27，改动完成、测试全绿，待提交待部署——攒批；APK 需重打）**：
+     **用户反馈**：暖心墙点帖进详情页，点返回只回到暖心墙顶部，没有回到之前浏览的位置。
+     **根因**：组件重挂载 → 列表只剩第一页、滚动归零、虚拟窗口高度表（实测高度）清空 —— 哪怕浏览器想恢复位置，内容高度也对不上。
+     **修法（手动存/恢复，不用 keep-alive——避免动 App.vue 的转场/壳结构）**：① 模块级 `savedFeedPos`（plain `<script>` 块声明，跨实例存活）；② 离场（onUnmounted）存：scrollY / reveal / feedCursor / cloudDone / newestSeenTs / **整份已加载列表** / **实测高度表克隆**；③ 返回挂载时 `restoreFeed()`：整份列表+高度表+游标原样恢复（自动重拉被 restoreTick 拦两个 tick，存档列表不被第一页覆盖）→ holdAnchor 包住 `scrollTo(0, y)` → feedTick 按恢复的高度表重算窗口 —— 占位块零漂移，位置精确；④ 新发的帖/刷新照旧可用（恢复是一次性的，存档用后即清）。
+     **验证**：全量 36 套离线 0 fail + feed-window **19/19** + undef/tdz **0** + page-smoke **9/9** + build 0。真机手感待装机验收。
+
+  - **轮 94 · 评论透明化 + 底栏按截图微调（2026-09-27，改动完成、测试全绿，待提交待部署——攒批；APK 需重打）**：
+     **用户反馈（附截图）**：① 帖子内部评论改成截图那种透明样式（不要评论卡片框）；② 底栏照截图微调。
+     **改法**：① `.cmt-item` 去背景/描边（墙+详情页同改；回复的左缩进引导线保留）；② `cmt-bar-fixed` 去头像、「发布」键常驻右侧（复用 community.post 词条）、底栏改浅白半透明；轮 91 的展开钮透明保持。
+     **验证**：全量 36 套离线 0 fail + post-detail **15/15** + undef/tdz **0** + page-smoke **9/9** + build 0。
+
+  - **轮 93 · 详情页评论输入改常驻底部输入条（2026-09-27，改动完成、测试全绿，待提交待部署——攒批；APK 需重打）**：
+     **用户反馈（附截图）**：帖子下面评论输入框改成截图那种——不要嵌在评论列表里的那种。
+     **改法**：① 删除 cmt-box 内嵌的输入框/登录提示（轮 90 版）；② 新增 `cmt-bar-fixed` 固定底栏：头像 + 圆角输入（placeholder 说点什么吧…/comment.placeholder）+ 发送键（有文字才出现），未登录显示「登录后即可评论」入口（comment.barSignIn，中英成对）；③ 位置：移动端固定在 tabbar 之上 `calc(64px+safe-area+8px)`，桌面（≥900px）居中悬浮 bottom 16px、宽度对齐 .shell；④ 与回复弹窗条互斥（repActive 时输入条让位）；⑤ cmt-box 底部留 56px 让位，最后一条评论不被盖住。post-detail-test 未登录断言从 commentSignIn 改为 barSignIn。
+     **验证**：全量 36 套离线 0 fail + post-detail **15/15** + i18n **19/19** + undef/tdz **0** + page-smoke **9/9** + build 0。
+
+  - **轮 92 · 暖心墙下滑空白压小（2026-09-27，改动完成、测试全绿，待提交待部署——攒批；APK 需重打）**：
+     **用户反馈**：App 几个页面下拉之后没有内容、到底部有大空隙。**真机 CDP 实测（临时探针 tools/_gap-probe.mjs，用完即删）**：/community 底部 feed-pad 一度 **13280px**（/pet /profile /messages /notifications /my-posts 均 scrollH≈内容底，无异常空隙）——「大空隙」只发生在暖心墙长列表，来源是轮 82 虚拟窗口：overscan=6 = 视口外上下各 6 张（约 2000px）渲染缓冲，App 快速甩动一次就冲出渲染区，落进几千像素的空白占位。
+     **修法**：`DEFAULT_OVERSCAN` **6 → 14**（上下各约 4 屏缓冲，甩动后大概率落在已渲染内容上；DOM 卡片 ~37 张仍在 60 上限断言内，feed-window-live 的 WINDOW_MAX=60 不变）。
+     **验证**：全量 36 套离线 0 fail + feed-window **19/19** + feed-perf **27/27** + undef/tdz **0** + page-smoke **9/9** + build 0。真机甩动手感待装机验收。**诊断附注**：真机 CDP 需亮屏（锁屏冻结渲染进程会超时/假数据），本次用 `svc power stayon usb` 保持常亮完成测量。
+
   - **轮 91 · 评论输入位置/样式统一（2026-09-27，已提交 `b5f7375` / 已部署 `f5b8e461` / 已装机）**：
      **用户反馈**：① 墙内点评论后输入框为什么不跟详情页一致；② 详情页点回复后输入条太小没法输入、样式丑；③ 「展开其他 N 条回复/查看更多评论」不要底色框，融入背景。**（⋯ 与帖子右侧对齐一条用户撤回不做）**
      **改法**：① 墙内 cmt-box 的输入框三态（登录提示/常驻输入）移到评论区最前（与轮 90 详情页同构），删除「写评论」解锁路径（cmtCompose/cmtComposeOpen/openComposer 退役）——手机端开箱即见输入框但不自动聚焦（轮 74 口径保留）；② reply-bar 输入改 `type="textarea" :rows="3"`、去掉 `size=small/round`、字号 14px、去 keyup.enter（Enter=换行不误发送），内边距加大；③ `.replies-toggle`/`.cmt-viewmore` 去底色（background: none、灰字 + › 箭头、hover 变暖）。
