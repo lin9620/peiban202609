@@ -21,7 +21,6 @@ import {
   postCopyText, commentCopyText,
 } from "../utils/comments.js";
 import { fmtWhen } from "../utils/wallRules.js";
-import { isMobileNav } from "../stores/uiStore.js";
 /* 轮 84：…菜单的「拷贝」（WebView 里 navigator.clipboard 缺失时 execCommand 兜底） */
 import { copyText } from "../utils/clipboard.js";
 /* 轮 33：举报弹窗 + 全站拉黑过滤（我拉黑的人，TA 的帖子/评论在我这里不显示） */
@@ -215,22 +214,6 @@ async function moreCopy() {
   setTimeout(() => { hint.value = ""; }, 2500);
 }
 
-/* 轮 87：手机端统一回复输入条（用户反馈：逐条内联回复框在手机上没法用）——
- * 点「回复」只在底部弹出一条输入条，发送在右下角；桌面保持就地内联框不变。
- * repActive 形如 "cmId" 或 "cmId:rpId"，从这里反查回复目标。 */
-const barCm = computed(() => comments.value.find((c) => c.id === String(repActive.value).split(":")[0]) || null);
-const barRp = computed(() => {
-  if (!String(repActive.value).includes(":")) return null;
-  const rid = String(repActive.value).split(":")[1];
-  return comments.value.find((c) => c.id === rid) || null;
-});
-const barInput = ref(null);
-watch(repActive, async () => {
-  if (!repActive.value || !isMobileNav.value) return;
-  await nextTick();
-  try { if (barInput.value) barInput.value.focus(); } catch (e) { /* 无焦点环境忽略 */ }
-});
-function sendBar() { if (barCm.value) sendCmt(barCm.value, barRp.value); }
 
 const tops = computed(() => {
   const list = comments.value.filter((c) => !c.parentId);
@@ -501,7 +484,7 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
                     @click="cmtReact(rp, 'broken')"><svg class="rc-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.59.94 4.5 2.35C12.91 3.94 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z"/><path d="M12 6.8 10.4 9.4l2.4 1.5-1.5 2.4 1.1 1.8"/></svg><i>{{ reactCount(rp, "broken") }}</i></button>
                 </div>
                 <!-- 轮 97：统一输入条样式（发送在右 + 自动扩行） -->
-                <div v-if="!isMobileNav && repActive === cm.id + ':' + rp.id" class="cmt-input cmt-input-in">
+                <div v-if="repActive === cm.id + ':' + rp.id" class="cmt-input cmt-input-in">
                   <div class="cmt-input-row">
                     <n-input v-model:value="repDraft[cm.id]" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }"
                       :placeholder="repPlaceholder(cm, rp)" :maxlength="MAX_LEN" />
@@ -518,7 +501,7 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
             </button>
 
             <!-- 轮 97：统一输入条样式 -->
-            <div v-if="!isMobileNav && repActive === cm.id" class="cmt-input cmt-input-in">
+            <div v-if="repActive === cm.id" class="cmt-input cmt-input-in">
               <div class="cmt-input-row">
                 <n-input v-model:value="repDraft[cm.id]" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }"
                   :placeholder="repPlaceholder(cm)" :maxlength="MAX_LEN" />
@@ -539,22 +522,13 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
     </template>
 
     <!-- 轮 97：评论输入固定底栏（发送常驻右侧；超一行自动扩行；回复时让位给回复弹窗条） -->
-    <div v-if="!repActive" class="cmt-bar-fixed">
+    <div class="cmt-bar-fixed">
       <template v-if="signedIn">
         <n-input v-model:value="cmtDraft" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }"
           :placeholder="t('comment.placeholder')" :maxlength="MAX_LEN" />
         <n-button type="primary" size="small" round @click="sendCmt()">{{ t("community.post") }}</n-button>
       </template>
       <router-link v-else class="bar-signin" to="/profile">{{ t("comment.barSignIn") }}</router-link>
-    </div>
-
-    <!-- 轮 91：输入条改 3 行文本域（用户反馈：单行小框没法输入），发送在右下角；Enter 换行不再误发送 -->
-    <div v-if="repActive && isMobileNav" class="reply-bar">
-      <n-input ref="barInput" v-model:value="repDraft[barCm ? barCm.id : '']" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }"
-        :placeholder="repPlaceholder(barCm, barRp)" :maxlength="MAX_LEN" />
-      <div class="reply-bar-foot">
-        <n-button type="primary" size="small" round @click="sendBar">{{ t("common.send") }}</n-button>
-      </div>
     </div>
 
     <!-- 轮 87：…菜单改 document 点击收起（原全屏遮罩会被卡片堆叠上下文盖住，举报/拷贝点了没反应） -->

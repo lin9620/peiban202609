@@ -49,6 +49,8 @@ import { isMobileNav } from "../stores/uiStore.js";
 /* 轮 33：举报弹窗 + 全站拉黑过滤（我拉黑的人，TA 的帖子/评论在我这里渲染前剔除） */
 import ReportDialog from "../components/ReportDialog.vue";
 import { filterBlocked, refreshBlocks } from "../utils/userBlocks.js";
+/* 轮 103：统一评论输入弹窗（四处输入位共用，点评论区/回复→弹出，发完即走） */
+import CommentComposer from "../components/CommentComposer.vue";
 /* 轮 84：…菜单的「拷贝」（WebView 里 navigator.clipboard 缺失时 execCommand 兜底） */
 import { copyText } from "../utils/clipboard.js";
 import {
@@ -139,6 +141,30 @@ const cloudDone = ref(false);
 const pageBusy = ref(false);
 const refreshNote = ref(false);
 const newestSeenTs = ref(0);   /* 轮 73：补上缺失声明（真新帖判定用） */
+
+/* 轮 103：统一评论输入弹窗 —— 四处输入位全部改为此弹窗（点评论区/回复→弹出，发完即走）。
+ * 发送时把文字预填进既有草稿位再调 sendCmt —— 云端/本地/mine 刷新等全套逻辑零改动复用。 */
+const composer = ref({ show: false, placeholder: "", post: null, cm: null, rp: null });
+function openComposerMain(p) {
+  composer.value = { show: true, placeholder: t("comment.placeholder"), post: p, cm: null, rp: null };
+}
+function openComposerReply(p, cm, rp = null) {
+  if (p.cloud && !signedIn.value) return showWallMsg("community.commentSignIn");
+  composer.value = { show: true, placeholder: repPlaceholder(p, cm, rp), post: p, cm, rp };
+}
+function onComposerSend(text) {
+  const c = composer.value;
+  if (!c.post) return;
+  if (c.cm) {
+    repDraft.value = { ...repDraft.value, [repKey(c.post, c.cm)]: text };
+    atName.value = { ...atName.value, [cmtKey(c.post)]: c.rp ? c.rp.name : "" };
+    sendCmt(c.post, c.cm);
+  } else {
+    cmtDraft.value = { ...cmtDraft.value, [cmtKey(c.post)]: text };
+    sendCmt(c.post);
+  }
+  composer.value = { ...composer.value, show: false };
+}
 const lastPulledRows = ref([]);   /* 轮 76：本次刷新拉到的批（评论数后台补齐用） */
 
 async function loadCloud({ fresh = false } = {}) {
@@ -726,17 +752,9 @@ const replyRp = ref({});
 function replyRpOf(p, cm) { return replyRp.value[repKey(p, cm)] || null; }
 /* 回复一级评论：挂到它下面，不 @（视觉上已经挨着作者） */
 function openReply(p, cm) {
-  /* #28 未登录不能回复云端帖 */
   if (p.cloud && !signedIn.value) return showWallMsg("community.commentSignIn");
-  /* 轮 98：取消按钮已移除 —— 再点同一条的「回复」= 收起该框（无二级框开着时） */
-  if (isReplyOpen(p, cm) && !replyRp.value[repKey(p, cm)]) return cancelReply(p);
-  const k = cmtKey(p);
-  replyTo.value = { ...replyTo.value, [k]: cm.id };
-  atName.value = { ...atName.value, [k]: "" };
-  /* 同级只有一个框：开一级回复框就先收掉这条评论下的二级回复框 */
-  clearReplyToRp(p, cm);
-  if (p.cloud && canReadWall()) loadThread(p); /* 顺手刷新，边看边回 */
-  focusSelector(repInputSel(p, cm));
+  /* 轮 103：改为弹窗（取消钮/就地框全部退役） */
+  openComposerReply(p, cm);
 }
 /* 收掉某条一级评论下的「就地二级回复框」 */
 function clearReplyToRp(p, cm) {
@@ -749,19 +767,9 @@ function clearReplyToRp(p, cm) {
 }
 /* 回复某条回复：输入框就地出现在「这条二级评论」下方（仍挂在同一个一级评论下，两级封顶），并 @ 这位回复者 */
 function openReplyTo(p, cm, rp) {
-  /* #28 未登录不能回复云端帖 */
   if (p.cloud && !signedIn.value) return showWallMsg("community.commentSignIn");
-  /* 轮 98：再点同一条回复的「回复」= 收起该框 */
-  if (replyRp.value[repKey(p, cm)] === rp.id) return cancelReply(p);
-  const k = cmtKey(p);
-  /* 一级回复框让位（否则一上一下两个框） */
-  const nextTo = { ...replyTo.value };
-  delete nextTo[k];
-  replyTo.value = nextTo;
-  replyRp.value = { ...replyRp.value, [repKey(p, cm)]: rp.id };
-  atName.value = { ...atName.value, [k]: rp.name || "" };
-  openRep.value = { ...openRep.value, [repOpenKey(p, cm)]: true };
-  focusSelector(repInputSel(p, cm, rp));
+  /* 轮 103：改为弹窗 */
+  openComposerReply(p, cm, rp);
 }
 function cancelReply(p) {
   const k = cmtKey(p);
@@ -1512,25 +1520,16 @@ watch(() => route.query.refresh, (v) => {
         </p>
 
         <!-- 轮 91：发评论输入框放评论区最前面（与详情页一致；手机端不再需要「写评论」解锁） -->
+        <!-- 轮 103：评论输入改弹窗 —— 点输入条弹出统一面板 -->
         <div v-if="p.cloud && !signedIn" class="cmt-input">
           <p class="cmt-empty">
             {{ t("community.commentSignIn") }}
             <router-link class="cmt-login" to="/profile">{{ t("common.signIn") }}</router-link>
           </p>
         </div>
-        <div v-else class="cmt-input">
-          <!-- 轮 97：统一输入条样式——发送在右、超过一行自动扩行 -->
-          <div class="cmt-input-row">
-            <n-input
-              v-model:value="cmtDraft[cmtKey(p)]"
-              type="textarea"
-              :autosize="{ minRows: 1, maxRows: 4 }"
-              :placeholder="t('comment.placeholder')"
-              :maxlength="MAX_LEN" />
-            <n-button type="primary" size="small" round class="cmt-send" @click="sendCmt(p)">
-              {{ t("common.send") }}
-            </n-button>
-          </div>
+        <div v-else class="cmt-entry" @click="openComposerMain(p)">
+          <span class="cmt-entry-ph">{{ t("comment.placeholder") }}</span>
+          <n-button type="primary" size="small" round class="cmt-send">{{ t("common.send") }}</n-button>
         </div>
 
         <!-- 一级评论 -->
@@ -1587,37 +1586,15 @@ watch(() => route.query.refresh, (v) => {
                 </div>
               </div>
               <p class="cmt-text cmt-text-open" :title="t('comment.reply')" @click="openReplyTo(p, cm, rp)">{{ rp.text }}</p>
-                <div class="cmt-acts">
-                  <!-- 轮 84：时间移到「回复」左侧 + 轮 87：回应图标改空心灰 -->
-                  <span class="cmt-time">{{ when(rp.ts) }}</span>
-                  <button class="cmt-act" @click="openReplyTo(p, cm, rp)">
-                    {{ t("comment.reply") }}
-                  </button>
-                  <button v-if="rp.dbId != null" class="cmt-react" :class="{ on: cmtReacted(rp, 'heart') }"
-                    :disabled="!!cmtReactBusy[rp.id]" :title="t('comment.likeT')" :aria-label="t('comment.likeT')"
-                    @click="cmtReact(p, rp, 'heart')"><svg class="rc-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.59.94 4.5 2.35C12.91 3.94 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z"/></svg><i>{{ reactCount(rp, "heart") }}</i></button>
-                  <button v-if="rp.dbId != null" class="cmt-react" :class="{ on: cmtReacted(rp, 'broken') }"
-                    :disabled="!!cmtReactBusy[rp.id]" :title="t('comment.brokenT')" :aria-label="t('comment.brokenT')"
-                    @click="cmtReact(p, rp, 'broken')"><svg class="rc-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.59.94 4.5 2.35C12.91 3.94 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z"/><path d="M12 6.8 10.4 9.4l2.4 1.5-1.5 2.4 1.1 1.8"/></svg><i>{{ reactCount(rp, "broken") }}</i></button>
-                </div>
-
-              <!-- 二级评论的回复框就地在它下面出现（用户反馈：以前甩到整块评论底部，像点了没反应） -->
-              <div
-                :id="'repbox-' + repKey(p, cm) + ':' + rp.id"
-                v-if="replyRpOf(p, cm) === rp.id && !(p.cloud && !signedIn)"
-                class="cmt-input cmt-input-rep-in">
-                <!-- 轮 97：回复框同样统一（发送在右 + 自动扩行） -->
-                <div class="cmt-input-row">
-                  <n-input
-                    v-model:value="repDraft[repKey(p, cm)]"
-                    type="textarea"
-                    :autosize="{ minRows: 1, maxRows: 4 }"
-                    :placeholder="repPlaceholder(p, cm, rp)"
-                    :maxlength="MAX_LEN" />
-                  <n-button type="primary" size="small" round @click="sendCmt(p, cm)">
-                    {{ t("common.send") }}
-                  </n-button>
-                </div>
+              <div class="cmt-acts">
+                <span class="cmt-time">{{ when(rp.ts) }}</span>
+                <button class="cmt-act" @click="openReplyTo(p, cm, rp)">{{ t("comment.reply") }}</button>
+                <button v-if="rp.dbId != null" class="cmt-react" :class="{ on: cmtReacted(rp, 'heart') }"
+                  :disabled="!!cmtReactBusy[rp.id]" :title="t('comment.likeT')" :aria-label="t('comment.likeT')"
+                  @click="cmtReact(p, rp, 'heart')"><svg class="rc-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.59.94 4.5 2.35C12.91 3.94 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z"/></svg><i>{{ reactCount(rp, "heart") }}</i></button>
+                <button v-if="rp.dbId != null" class="cmt-react" :class="{ on: cmtReacted(rp, 'broken') }"
+                  :disabled="!!cmtReactBusy[rp.id]" :title="t('comment.brokenT')" :aria-label="t('comment.brokenT')"
+                  @click="cmtReact(p, rp, 'broken')"><svg class="rc-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.59.94 4.5 2.35C12.91 3.94 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z"/><path d="M12 6.8 10.4 9.4l2.4 1.5-1.5 2.4 1.1 1.8"/></svg><i>{{ reactCount(rp, "broken") }}</i></button>
               </div>
             </div>
           </div>
@@ -1628,23 +1605,8 @@ watch(() => route.query.refresh, (v) => {
             <i class="rt-arrow">&#8250;</i>
           </button>
 
-          <!-- 一级：就地回复框（云端帖未登录不给开，openReply 已拦截；这里再守一道） -->
-          <div
-            :id="'repbox-' + repKey(p, cm)"
-            v-if="isReplyOpen(p, cm) && !(p.cloud && !signedIn)" class="cmt-input cmt-input-rep">
-            <!-- 轮 97：统一输入条样式 -->
-            <div class="cmt-input-row">
-              <n-input
-                v-model:value="repDraft[repKey(p, cm)]"
-                type="textarea"
-                :autosize="{ minRows: 1, maxRows: 4 }"
-                :placeholder="repPlaceholder(p, cm)"
-                :maxlength="MAX_LEN" />
-              <n-button type="primary" size="small" round @click="sendCmt(p, cm)">
-                {{ t("common.send") }}
-              </n-button>
-            </div>
-          </div>
+          
+
         </div>
 
         <!-- 轮 84：一级评论超过 3 条 → 「查看更多」进帖子详情页 -->
@@ -1670,6 +1632,10 @@ watch(() => route.query.refresh, (v) => {
     <p v-if="pageBusy" class="sub" style="text-align: center">{{ t("community.loading") }}</p>
 
     <!-- 轮 87：…菜单改 document 点击收起（原全屏遮罩被卡片堆叠上下文盖住菜单，举报/拷贝点了没反应） -->
+
+    <!-- 轮 103：统一评论/回复输入弹窗 -->
+    <CommentComposer :show="composer.show" :placeholder="composer.placeholder"
+      :maxlength="MAX_LEN" @send="onComposerSend" @close="composer.show = false" />
 
     <!-- 举报弹窗（帖子/评论共用一个实例） -->
     <ReportDialog v-model:show="reportShow" :target="reportTarget" />
