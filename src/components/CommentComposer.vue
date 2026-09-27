@@ -41,22 +41,24 @@ function insertEmoji() {
 </script>
 
 <template>
-  <transition name="composer-up">
-    <div v-if="show" class="composer-mask" @click="close">
-      <div class="composer-panel" @click.stop>
-        <button class="composer-x" @click="close" aria-label="✕">✕</button>
-        <div class="composer-icons">
-          <button class="ci-emoji" @click="insertEmoji">☺</button>
-        </div>
-        <div class="composer-row">
-          <n-input ref="inputRef" v-model:value="draft" type="textarea"
-            :autosize="{ minRows: 1, maxRows: 4 }" :bordered="false"
-            :placeholder="placeholder" :maxlength="maxlength" />
-          <n-button type="primary" size="small" round @click="send">{{ t("common.send") }}</n-button>
+  <Teleport to="body">
+    <transition name="composer-up">
+      <div v-if="show" class="composer-mask" @click="close">
+        <div class="composer-panel" @click.stop>
+          <div class="composer-icons">
+            <button class="ci-emoji" @click="insertEmoji">☺</button>
+            <button class="ci-at" @click="insertAt">@</button>
+          </div>
+          <div class="composer-row">
+            <n-input ref="inputRef" v-model:value="draft" type="textarea"
+              :autosize="{ minRows: 1, maxRows: 4 }" :bordered="false"
+              :placeholder="placeholder" :maxlength="maxlength" />
+            <n-button type="primary" size="small" round @click="send">{{ t("common.send") }}</n-button>
+          </div>
         </div>
       </div>
-    </div>
-  </transition>
+    </transition>
+  </Teleport>
 </template>
 
 <style>

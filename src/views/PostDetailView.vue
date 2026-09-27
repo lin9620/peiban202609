@@ -129,6 +129,28 @@ const repActive = ref("");       /* 就地回复框挂在哪个目标：一级 i
 const atName = ref("");
 const cmtErr = ref("");
 
+/* 轮 105：统一评论输入弹窗 —— 详情页所有输入位点「评论/回复」→ 弹出此面板 */
+const composer = ref({ show: false, placeholder: "", cm: null, rp: null });
+function openComposerMain() {
+  composer.value = { show: true, placeholder: t("comment.placeholder"), cm: null, rp: null };
+}
+function openComposerReply(cm, rp = null) {
+  if (!signedIn.value) return;
+  composer.value = { show: true, placeholder: repPlaceholder(cm, rp), cm, rp };
+}
+function onComposerSend(text) {
+  const c = composer.value;
+  if (!c.cm) {
+    cmtDraft.value = text;
+    sendCmt();
+  } else {
+    repDraft.value = { ...repDraft.value, [c.cm.id]: text };
+    atName.value = c.rp ? c.rp.name : "";
+    sendCmt(c.cm, c.rp);
+  }
+  composer.value = { ...composer.value, show: false };
+}
+
 /* ═════════ 轮 84 · 评论排序 + 评论回应 + …菜单 ═════════ */
 
 /* 排序只作用于一级评论："new" = 发布时间倒序；"hot" = 心最多（同数看碎心，再按时间倒序） */
