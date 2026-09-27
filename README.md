@@ -90,7 +90,7 @@ node tools/pet-visual-test.mjs # 宠物形象与互动表情单测（163 项：�
 node tools/food-painter-test.mjs # 手绘食物画板单测（20 项：保存后清空画板与撤销栈 / 画笔与橡皮模式复位 / 异步撤销不回流旧画 / 食谱 7 份上限 / 48 小时过期边界）
 node tools/api-contract-test.mjs # 云端数据访问适配层契约测试（87 项：表名 / 过滤 / 排序 / RPC 参数 / Storage 桶与路径 / 降级查询形状 / upsert 只写 user_id+data+updated_at 的计数红线）
 node tools/gateway-contract-test.mjs # 网关模式前端侧契约测试（71 项：/api/* 端点形状 / 鉴权头 / 计数红线 / 错误上抛）
-node tools/worker-test.mjs    # API 网关 Worker 契约测试（201 项：/api/* → Supabase REST 翻译形状 / JWT 透传 / PGRST116→null / 路径穿越防护 / 图片边缘缓存 MISS→HIT 与降级 / 自助删号透传 / 轮84 评论回应三端点）
+node tools/worker-test.mjs    # API 网关 Worker 契约测试（214 项：/api/* → Supabase REST 翻译形状 / JWT 透传 / PGRST116→null / 路径穿越防护 / 图片边缘缓存 MISS→HIT 与降级 / 自助删号透传 / 轮84 评论回应三端点 / 轮85 /u noindex+/post存在性壳+动态sitemap）
 node tools/dm-test.mjs        # 私信规则层单测（286 项：撤回窗口 / 未读计数 / 日期分隔 / 错误码→i18n 映射 / 迁移覆盖）
 node tools/notify-test.mjs    # 通知规则层单测（149 项：分栏白名单(私信已退出) / 聚合语义 / 点击落点 / 未读兜底）
 node tools/status-test.mjs    # 陪你大厅状态规则层单测（49 项：四键前后端一致 / 24h 窗口纯函数 / emoji 归文案不重复 / 两条链路契约 / 降级分支 / 迁移与文档覆盖）
@@ -217,7 +217,7 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 | 文件 / 标签 | 作用 |
 |---|---|
 | `public/robots.txt` | 允许全站抓取，并声明站点地图地址 |
-| `public/sitemap.xml` | 站点地图；**构建时由 `vite.config.js` 的 `seo-sitemap` 插件自动把 `lastmod` 刷成当天**，不会给搜索引擎提交陈旧日期 |
+| `public/sitemap.xml` | 站点地图（**轮 85 起为 Worker 动态生成**：固定 5 页 + 最新 100 帖的 `/post/:id` 深链，lastmod=发帖日；上游故障时自动降级成只含固定页的合法 XML）。dist 里的静态副本由 `seo-sitemap` 插件刷 lastmod，仅作 Worker 不可用时的兜底 |
 | `public/og-image.png` | 1200×630 分享卡（微信/QQ/Discord/X 分享出去有图） |
 | `public/favicon.png` · `apple-touch-icon.png` | 浏览器标签页图标 / iOS 主屏图标（真实 PNG，搜索结果里也能显示） |
 | `index.html` | canonical、description、robots、theme-color、Open Graph、Twitter 大卡、JSON-LD 结构化数据、`noscript` 兜底文案 |
@@ -342,7 +342,7 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 | 体验 | `#/` 路由直接访问 `/pet` 会 404 | 迁移到 history 模式 + 每条路由独立静态 HTML + SPA 回退 | `router.js` / `vite.config.js` / `wrangler.jsonc` |
 | 体验 | 「在线陪伴数」是本地随机数，易误导 | 去掉虚构人数，改如实文案（路线图保留"等有真实统计再接"） | `views/HomeView.vue` / `i18n.js` |
 
-回归验证（全部本地可跑）：`wall-rules-test` 42 项 · `comment-test` 35 项 · `wall-test` 34 项 · `pet-home-test` 19 项 · `pet-visual-test` 163 项 · `food-painter-test` 20 项 · `uifix-test` 24 项 · `image-fit` 20 项 · `snack-test` 24 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 130 项 · `privacy-test` 33 项 · `arity-test` 8 项 · `seo-test` 42 项 · `dm-test` 286 项 · `notify-test` 149 项 · `status-test` 49 项 · `status-counts-test` 11 项 · `bottle-test` 69 项 · `bottle-chat-test` 94 项 · `api-contract-test` 87 项 · `gateway-contract-test` 71 项 · `worker-test` 201 项 · `cache-test` 12 项 · `home-panes-test` 9 项 · `app-shell-test` 40 项 · `react-queue-test` 12 项 · `back-stack-test` 9 项 · `post-detail-test` 15 项 · `splash-test` 21 项 · `userScope-test` 8 项 · `report-test` 61 项 · `feed-perf-test` 27 项 · `feed-window-test` 19 项 · `feed-window-live` 10 项（需 dev 服务器）· `web-refresh-test` 6 项 · `page-smoke` 8 项 · `undef-check`（`--selftest` 10 项）· `tdz-check`。
+回归验证（全部本地可跑）：`wall-rules-test` 42 项 · `comment-test` 35 项 · `wall-test` 34 项 · `pet-home-test` 19 项 · `pet-visual-test` 163 项 · `food-painter-test` 20 项 · `uifix-test` 24 项 · `image-fit` 20 项 · `snack-test` 24 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 130 项 · `privacy-test` 33 项 · `arity-test` 8 项 · `seo-test` 42 项 · `dm-test` 286 项 · `notify-test` 149 项 · `status-test` 49 项 · `status-counts-test` 11 项 · `bottle-test` 69 项 · `bottle-chat-test` 94 项 · `api-contract-test` 87 项 · `gateway-contract-test` 71 项 · `worker-test` 214 项 · `cache-test` 12 项 · `home-panes-test` 9 项 · `app-shell-test` 40 项 · `react-queue-test` 12 项 · `back-stack-test` 9 项 · `post-detail-test` 15 项 · `splash-test` 21 项 · `userScope-test` 8 项 · `report-test` 61 项 · `feed-perf-test` 27 项 · `feed-window-test` 19 项 · `feed-window-live` 10 项（需 dev 服务器）· `web-refresh-test` 6 项 · `page-smoke` 8 项 · `undef-check`（`--selftest` 10 项）· `tdz-check`。
 
 ## 🗺️ 路线图
 
