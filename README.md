@@ -55,7 +55,7 @@
 ### 🔒 隐私与合规
 - **隐私政策页 `/privacy`**：页脚常驻入口，四语言无关的中英双语正文（数据收集范围 / 存储位置与保护 / 撤回与删号途径 / 儿童条款 / 联系邮箱）
 - 该页同时是 **Google OAuth 发布审核要求的 Privacy policy URL**：第 4、5 节逐条写明「只申请 email 与 profile」「不读 Gmail / Drive / 日历」「不出售不转售」「不用于广告」「Limited Use 承诺」「如何撤销授权」
-- 合规表述由 `tools/privacy-test.mjs`（34 项）锁形：文案改了但漏掉任何一条，测试会红
+- 合规表述由 `tools/privacy-test.mjs`（33 项）锁形：文案改了但漏掉任何一条，测试会红
 - **正文预渲染进静态 HTML**：`vite.config.js` 的 `seoRoutes()` 在构建期把政策正文（章节由 `s1t..s13t` 键名约定派生）写进 `<div id="app">`，因此**不执行 JS 的抓取方**（Google 存 Branding 页时的 URL 校验、OAuth 审核）也能读到完整政策，而不是一个空壳；文案仍只有 i18n 一份来源，漏改由 P31/P32 兜住
 
 ### 🌐 双语与视觉
@@ -78,7 +78,7 @@
 ## 🧪 测试与静态检查
 
 ```bash
-node tools/comment-test.mjs   # 评论系统纯函数单测（26 项：二级回复/parentId 封顶/级联删除/评论数兜底）
+node tools/comment-test.mjs   # 评论系统纯函数单测（35 项：二级回复/parentId 封顶/级联删除/评论数兜底/轮84 回应计数与切换/最新最热排序/墙内前3条/拷贝文本）
 node tools/wall-test.mjs      # 暖心墙云端数据层纯函数单测（34 项：行映射/二级字段/评论数聚合/浏览与厌恶字段）
 node tools/wall-rules-test.mjs # 暖心墙进阶规则纯函数单测（42 项：排序/时间范围显隐与筛选/浏览去重/双档下架阈值/每日 7 条/错误归类/帖子时间到分钟与到秒）
 node tools/feed-perf-test.mjs  # 动态流性能回归（27 项）：A 档 16 项（屏外跳过渲染 content-visibility+contain-intrinsic-size / 列表图懒加载与异步解码 / 未解码占位底色 / 时间文案记忆化 memoWhen 行为与接线 / 用例注册位置自检）+ B 档 11 项（虚拟窗口接线：只渲染窗口切片 / 上下占位块 / 函数 ref 与 ResizeObserver / 卡距现读与估高同源 / 短列表回退阀 / nearEnd 续载 / 监听装配与卸载 / 深链钉住 / 滚动锚定按需借用 / 让位守卫真活着）
@@ -88,9 +88,9 @@ node tools/web-refresh-test.mjs # 网页端暖心墙刷新按钮回归（6 项�
 node tools/pet-home-test.mjs   # 宠物主页云层纯函数单测（19 项：宠物快照 / 手绘厨房清洗 / 互动计数独立列 / 图片引用外置与行体积安全阀 / 镜像队列安全性）
 node tools/pet-visual-test.mjs # 宠物形象与互动表情单测（163 项：五物种×六变体生成合法 Lottie / 表情随 mood 切换（弯弯眼·张嘴·星星·双心·Zzz）/ 贴纸描边·胡须·眉毛·曲线尾 / petMood 信号与缓存守卫）
 node tools/food-painter-test.mjs # 手绘食物画板单测（20 项：保存后清空画板与撤销栈 / 画笔与橡皮模式复位 / 异步撤销不回流旧画 / 食谱 7 份上限 / 48 小时过期边界）
-node tools/api-contract-test.mjs # 云端数据访问适配层契约测试（83 项：表名 / 过滤 / 排序 / RPC 参数 / Storage 桶与路径 / 降级查询形状 / upsert 只写 user_id+data+updated_at 的计数红线）
-node tools/gateway-contract-test.mjs # 网关模式前端侧契约测试（66 项：/api/* 端点形状 / 鉴权头 / 计数红线 / 错误上抛）
-node tools/worker-test.mjs    # API 网关 Worker 契约测试（195 项：/api/* → Supabase REST 翻译形状 / JWT 透传 / PGRST116→null / 路径穿越防护 / 图片边缘缓存 MISS→HIT 与降级 / 自助删号透传）
+node tools/api-contract-test.mjs # 云端数据访问适配层契约测试（87 项：表名 / 过滤 / 排序 / RPC 参数 / Storage 桶与路径 / 降级查询形状 / upsert 只写 user_id+data+updated_at 的计数红线）
+node tools/gateway-contract-test.mjs # 网关模式前端侧契约测试（71 项：/api/* 端点形状 / 鉴权头 / 计数红线 / 错误上抛）
+node tools/worker-test.mjs    # API 网关 Worker 契约测试（201 项：/api/* → Supabase REST 翻译形状 / JWT 透传 / PGRST116→null / 路径穿越防护 / 图片边缘缓存 MISS→HIT 与降级 / 自助删号透传 / 轮84 评论回应三端点）
 node tools/dm-test.mjs        # 私信规则层单测（286 项：撤回窗口 / 未读计数 / 日期分隔 / 错误码→i18n 映射 / 迁移覆盖）
 node tools/notify-test.mjs    # 通知规则层单测（149 项：分栏白名单(私信已退出) / 聚合语义 / 点击落点 / 未读兜底）
 node tools/status-test.mjs    # 陪你大厅状态规则层单测（49 项：四键前后端一致 / 24h 窗口纯函数 / emoji 归文案不重复 / 两条链路契约 / 降级分支 / 迁移与文档覆盖）
@@ -102,7 +102,7 @@ node tools/cache-test.mjs     # 本地优先缓存单测（12 项：SWR 命中�
 node tools/home-panes-test.mjs # T6 首页三联单测（9 项：联顺序与默认漂流瓶 / /?tab= 消费与兜底 / 横滑判定(阈值+纵向让位) / i18n 频道键成对 / 频道条与懒挂载接线 / 宠物联禁滑 / 桌面零变化 / 抽件自包含）
 node tools/admin-test.mjs     # 管理中心纯函数单测（39 项：admin:false 兜底 / 字段缺省 / 趋势图 14 天补零 / 行规整 / 北京时间口径）
 node tools/auth-test.mjs      # 登录规则单测（130 项：邮箱密码校验 / 昵称校验 / Google 昵称兜底与首登改昵提示 / 设置页改密码(旧密码验证·谷歌直设) / 重置邮件链接解析与失效识别 / 回跳地址 / 没跑迁移的判定 / 页面接线 / 自助删号全链路契约(迁移·双模式·Worker·设置页·隐私表述)）
-node tools/privacy-test.mjs   # 隐私政策页回归（34 项：路由与页脚入口 / sitemap 与预渲染产物 / 合规表述逐条核对 —— 权限范围、不转售、不投放广告、Limited Use、撤销授权 / 中英键对称 / 不执行 JS 也能读到完整正文）
+node tools/privacy-test.mjs   # 隐私政策页回归（33 项：路由与页脚入口 / sitemap 与预渲染产物 / 合规表述逐条核对 —— 权限范围、不转售、不投放广告、Limited Use、撤销授权 / 中英键对称 / 不执行 JS 也能读到完整正文）
 node tools/snack-test.mjs     # 零食雨游戏纯逻辑单测（24 项：难度曲线/生成/碰撞/结算上限）
 node tools/seo-test.mjs       # SEO 资产检查（42 项：robots/sitemap/5 条路由/OG 标签/PNG 尺寸/安全头/预渲染产物）
 node tools/image-fit.mjs       # 图片纯函数单测（20 项：尺寸缩放/形状体检/文件预检/dataURL 校验）
@@ -342,7 +342,7 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 | 体验 | `#/` 路由直接访问 `/pet` 会 404 | 迁移到 history 模式 + 每条路由独立静态 HTML + SPA 回退 | `router.js` / `vite.config.js` / `wrangler.jsonc` |
 | 体验 | 「在线陪伴数」是本地随机数，易误导 | 去掉虚构人数，改如实文案（路线图保留"等有真实统计再接"） | `views/HomeView.vue` / `i18n.js` |
 
-回归验证（全部本地可跑）：`wall-rules-test` 42 项 · `comment-test` 26 项 · `wall-test` 34 项 · `pet-home-test` 19 项 · `pet-visual-test` 163 项 · `food-painter-test` 20 项 · `uifix-test` 24 项 · `image-fit` 20 项 · `snack-test` 24 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 130 项 · `privacy-test` 34 项 · `arity-test` 8 项 · `seo-test` 42 项 · `dm-test` 286 项 · `notify-test` 149 项 · `status-test` 49 项 · `status-counts-test` 11 项 · `bottle-test` 66 项 · `bottle-chat-test` 86 项 · `api-contract-test` 83 项 · `gateway-contract-test` 67 项 · `worker-test` 196 项 · `cache-test` 12 项 · `home-panes-test` 9 项 · `app-shell-test` 40 项 · `react-queue-test` 12 项 · `back-stack-test` 9 项 · `post-detail-test` 15 项 · `splash-test` 20 项 · `userScope-test` 8 项 · `report-test` 61 项 · `feed-perf-test` 27 项 · `feed-window-test` 19 项 · `feed-window-live` 10 项（需 dev 服务器）· `web-refresh-test` 6 项 · `page-smoke` 8 项 · `undef-check`（`--selftest` 10 项）· `tdz-check`。
+回归验证（全部本地可跑）：`wall-rules-test` 42 项 · `comment-test` 35 项 · `wall-test` 34 项 · `pet-home-test` 19 项 · `pet-visual-test` 163 项 · `food-painter-test` 20 项 · `uifix-test` 24 项 · `image-fit` 20 项 · `snack-test` 24 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 130 项 · `privacy-test` 33 项 · `arity-test` 8 项 · `seo-test` 42 项 · `dm-test` 286 项 · `notify-test` 149 项 · `status-test` 49 项 · `status-counts-test` 11 项 · `bottle-test` 69 项 · `bottle-chat-test` 94 项 · `api-contract-test` 87 项 · `gateway-contract-test` 71 项 · `worker-test` 201 项 · `cache-test` 12 项 · `home-panes-test` 9 项 · `app-shell-test` 40 项 · `react-queue-test` 12 项 · `back-stack-test` 9 项 · `post-detail-test` 15 项 · `splash-test` 21 项 · `userScope-test` 8 项 · `report-test` 61 项 · `feed-perf-test` 27 项 · `feed-window-test` 19 项 · `feed-window-live` 10 项（需 dev 服务器）· `web-refresh-test` 6 项 · `page-smoke` 8 项 · `undef-check`（`--selftest` 10 项）· `tdz-check`。
 
 ## 🗺️ 路线图
 
