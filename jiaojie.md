@@ -265,22 +265,22 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
 ---
 
-# 一、当前状态速览（2026-09-27 更新 · 轮 86）
+# 一、当前状态速览（2026-09-27 更新 · 轮 87）
 
 | 项 | 值 |
 |---|---|
 | 项目 | peiban（陪伴 / warm-paws），路径 `D:\05ruanjian\peiban` |
 | 技术栈 | Vue 3 + Vite + Naive UI；数据层双模式：直连 Supabase（`db.supabase.js`）/ Worker 网关（`db.gateway.js` + `worker/api.js`，**线上走网关**）；Cloudflare 部署 https://dale.de5.net；Supabase Postgres + RLS + security definer RPC |
 | 代码 | 轮 84（**评论互动与详情页，已提交 `7271ce0` / 已部署 / 已装机**）：墙内点正文/图进 `/post/:id`、评论只显前 3 条一级 + 「查看更多」、评论行 ❤️/💔（RPC 服务端权威计数）、详情页评论「最新/最热」排序、帖子/评论 `⋯` 菜单（举报迁入 + 拷贝，execCommand 兜底）；库新增 wall_comment_reactions + RPC（迁移已执行）。顺手修：字体 CDN 阻塞样式挡脚本执行（page-smoke 全红真凶）→ 字体 CSS 非阻塞。上一：轮 82（**动态流 B 档虚拟窗口**，`43d3021`）：300 条长列表只挂 ~16 张卡，深链钉住 + 近底续载由 `nearEnd` 算。轮 81（**A 档性能**）：`content-visibility:auto` + 列表图懒加载 + 时间文案 `memoWhen`。轮 80（**陈旧 dist 事故修复**）：CDP 取证 /community 渲染 0 张卡→轮 77 孤儿代码块让每次 vite build 语法失败被误判成功→轮 73-79 部署全是旧 dist；删孤儿块→部署 9946c57b→装机。轮 74-79：启动页语言跟随/newestSeenTs 崩溃修复/下拉提速+提示三态/英文精修/换一批取舍。 |
-| 部署 | Version **`754d910a`** 已上线（轮 86：/post 壳注入帖子标题正文OG + /zh/* 中文预渲染+hreflang + sitemap 110 条）；历史：`f9db3563`（轮 85 SEO 三件套）、`5c82e4e9`（轮 84 评论互动）、`757a4fac`（轮 81-83）；live-check **LIVE ALL PASS (14)**；线上入口 `index-f8irIksV.js` SHA16 **`63a5a8c18511df67` 本地=线上** |历史：`757a4fac`（轮 81-83：动态流 A+B 档 + 网页刷新按钮/首帧占位）、`9946c57b`（轮 80 陈旧 dist 修复，含轮 59-79 积压真正上线）、`1a0570fb`（轮 72 提速，其部署实为 03:54 旧产物）、`176c967f`（轮 60-62） |
+| 部署 | Version **`7701fd8e`** 已上线（轮 87：暖心墙/详情页六项修复——⋯菜单/空心灰心形/默认排序/评论15条续展/手机回复弹窗条）；历史：`754d910a`（轮 86）、`f9db3563`（轮 85）、`5c82e4e9`（轮 84）、`757a4fac`（轮 81-83）；live-check **LIVE ALL PASS (14)**；线上入口 `index-DB0RLlgR.js` SHA16 **`c2511ae53ffbbfa3` 本地=线上** |历史：`757a4fac`（轮 81-83：动态流 A+B 档 + 网页刷新按钮/首帧占位）、`9946c57b`（轮 80 陈旧 dist 修复，含轮 59-79 积压真正上线）、`1a0570fb`（轮 72 提速，其部署实为 03:54 旧产物）、`176c967f`（轮 60-62） |
 | 数据库 | 轮 84 `MIGRATION_comment_reactions.sql` **已执行**（探针实测：`/api/comments/reactions?ids=1` → 200 `[]`、anon 调 RPC → `auth-required` 即函数就绪）；`MIGRATION_reports.sql` 已执行（线上 e2e 6/6 闭环）；`MIGRATION_notifications_drop_dm.sql`（轮 13 #23）仍未确认 |
-| App | **轮 84 APK 已重打并装机 ✅**：SHA16 **`459BDEAFD36D346A`**（`apk/warm-paws-debug.apk`，BUILD SUCCESSFUL 15s），`adb install -r` **Success**（设备 `PBIJR8BM6D6HS8LV`）。**溯源**：`cap sync` 后 assets 引 `index-f8irIksV.js` = 线上跑的同一份；SEO 占位剥离 ×4 正常。**验证须亮屏**：锁屏后 Chromium 冻结渲染进程,CDP 读数成假象。历史：轮 81-83 包 `307438B28DBA2143` → 轮 80 包 `9DA84059319DDA50` → 轮 74 包 `C3F39BE5B8E5CFF3` → 轮 62 包 `21AAA9660D9DE6E0` |
+| App | **轮 87 APK 已重打 ✅（未装机，等发话）**：SHA16 **`C8F2D7F9AC4494E9`**。上一：轮 84 包 `459BDEAFD36D346A` 已装机；历史：轮 81-83 包 `307438B28DBA2143` → 轮 80 包 `9DA84059319DDA50`（`apk/warm-paws-debug.apk`，BUILD SUCCESSFUL 15s），`adb install -r` **Success**（设备 `PBIJR8BM6D6HS8LV`）。**溯源**：`cap sync` 后 assets 引 `index-f8irIksV.js` = 线上跑的同一份；SEO 占位剥离 ×4 正常。**验证须亮屏**：锁屏后 Chromium 冻结渲染进程,CDP 读数成假象。历史：轮 81-83 包 `307438B28DBA2143` → 轮 80 包 `9DA84059319DDA50` → 轮 74 包 `C3F39BE5B8E5CFF3` → 轮 62 包 `21AAA9660D9DE6E0` |
 | App 冷启动实测 | 轮 38：**真机冷启动 14 帧像素扫描（浅色模式）**：原生启动层米色+橙爪（四角 `#FFF7EE`、左右零暗像素）→ 网页启动页 → 首页，App 自己的每一帧都没有黑边。**轮 39 补勘**：那次抓帧是下午**浅色模式**下做的——夜间深色模式的路径当时测不到，正是「白天验收全绿、夜里黑屏」的盲区（F 区轮 39）；深色模式验证须装机后补做 |
 | 测试 | 最新基线（轮 85，`tools` 共 36 套 + 4 项静态/挂载门槛）：feed-perf **27/27** + feed-window **19/19** + feed-window-live **10/10**（需 dev 服务器）+ web-refresh **6/6** + splash **21/21** + i18n **19/19** + bottle **69/69** + bottle-chat **94/94** + dm **286/286** + app-shell **40/40** + wall **34/34** + wall-rules **42/42** + auth **130/130** + status **49/49** + comment **35/35** + api-contract **87/87** + gateway **71/71** + worker **224/224** + seo **50/50** + undef **0**（含 --selftest **10/10**）+ tdz **0** + page-smoke **9/9** + build 0 + live-check **14/14**。**36 套离线全绿**。详见 README 与 F 区各轮 |
 
 ## 二、现在在做什么
 
-- **当前任务**：轮 87（**暖心墙/详情页六项修复：改动完成、36 套离线全绿，待提交待部署——攒批；APK 也要重打**）。① **⋯菜单无反应修因**：全屏遮罩被 `.card` 的 backdrop-filter 堆叠上下文盖住菜单（z-index 出不来）→ 点击全被遮罩吞掉；改 document 级点击收起（触发钮 .stop，菜单项动作后冒泡收起），两个视图同修。② 回应图标 ❤️/💔 改**空心灰内联 SVG**（点亮 = 深一档灰+细描边，不再用品牌色/emoji）。③ 详情页排序「最热」移除 → 「**默认**」（推荐模式，视图层用 recommendPosts 与暖心墙帖子同源）/「最新」，SORT_MODES=["default","new"]，sortHot 词条删除。④ 详情页评论**默认展开**（openCmt=true + load() 自动拉取）+ 一级评论先 15 条、下滑接近底部续 15 条 + 「查看更多评论」按钮（cmtReveal；回复仍默认前两条，轮 50 口径不变）。⑤+⑥ 手机端（isMobileNav）回复改**统一底部输入条**（固定在 tabbar 之上，发送在右下角，repActive 反查目标，自动聚焦）——「二级评论>1 条无法评论/回复框内联不可用」一并解决；桌面保持就地内联框。验收口径：离线全绿；菜单点击/弹窗条手感待真机（APK 重打后）。详见 F 区轮 87。
+- **当前任务**：轮 87（**暖心墙/详情页六项修复：已提交 `928c79b` / 已部署 `7701fd8e` / 已打包 APK `C8F2D7F9AC4494E9`（未装机）**）。① **⋯菜单无反应修因**：全屏遮罩被 `.card` 的 backdrop-filter 堆叠上下文盖住菜单（z-index 出不来）→ 点击全被遮罩吞掉；改 document 级点击收起（触发钮 .stop，菜单项动作后冒泡收起），两个视图同修。② 回应图标 ❤️/💔 改**空心灰内联 SVG**（点亮 = 深一档灰+细描边，不再用品牌色/emoji）。③ 详情页排序「最热」移除 → 「**默认**」（推荐模式，视图层用 recommendPosts 与暖心墙帖子同源）/「最新」，SORT_MODES=["default","new"]，sortHot 词条删除。④ 详情页评论**默认展开**（openCmt=true + load() 自动拉取）+ 一级评论先 15 条、下滑接近底部续 15 条 + 「查看更多评论」按钮（cmtReveal；回复仍默认前两条，轮 50 口径不变）。⑤+⑥ 手机端（isMobileNav）回复改**统一底部输入条**（固定在 tabbar 之上，发送在右下角，repActive 反查目标，自动聚焦）——「二级评论>1 条无法评论/回复框内联不可用」一并解决；桌面保持就地内联框。验收口径：离线全绿；菜单点击/弹窗条手感待真机装机验收。详见 F 区轮 87。
 - **上一批**：轮 86（**SEO ①c 帖子注入壳 + ⑥ /zh/* 中文预渲染+hreflang：已提交 `5de652f` / 已部署 `754d910a`，线上探针全过**；前端有改 → **APK 需重打包机等发话**）。详见 F 区轮 86。
 - **上一批**：轮 85（**SEO 组合三件套：已提交 `1373421` + 已部署 `f9db3563`，线上探针全过**）——①b 帖子详情 `/post/:id` 存在性检查+回壳（查无/上游挂真 404）；③ `/u/:id` 薄内容壳 noindex；② sitemap 动态化。纯 Worker 侧。
 - **上一批**：轮 84（**评论互动与详情页：已提交 `7271ce0` / 已部署 `5c82e4e9` / 已装机 ✅，迁移已执行**）——五条需求全部落地：①墙内点正文/图进详情页（示例/本地帖不响应）+ 评论只显前 3 条一级 + 「查看更多」；②评论行时间移到「回复」左 + ❤️/💔（RPC 服务端权威计数，乐观更新失败回滚）；③详情页评论排序「最新/最热」按钮在评论标题右（只排一级）；④评论右上角 …（举报迁入 + 拷贝）；⑤帖子右上角 …（同）。App/网页同改（同一份 dist；APK 等发话重打）。顺手修：字体 CDN 阻塞样式挡脚本执行（page-smoke 全红真凶）→ 字体 CSS 非阻塞 + noscript 兜底。验收口径：本轮=离线+契约两层；线上端到端等部署+迁移执行后跑。**待用户验收（部署+迁移后）**：墙内点帖进详情、前 3 条+查看更多、点赞/点踩计数与高亮、排序切换、…菜单举报/拷贝。详见 F 区轮 84。
@@ -1308,6 +1308,11 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **修法（一行）**：补 `const newestSeenTs = ref(0)`。undef/tdz 抓不到这类「运行时未声明引用」（非未导入符号），靠 page-smoke 真实挂载 + 真机验证兜住。
      **验证**：undef/tdz **0** + wall **34/34** + i18n **19/19** + build 0 + page-smoke **8/8**；已部署（live-check 14/14）+ APK 装机 Success。
      **待用户验收（亮屏）**：暖心墙下拉 → 「刷新中…」→ 换一批/新增提示正常、列表真的换内容；消息页无错误盒。
+
+  - **轮 87 · 暖心墙/详情页六项修复（2026-09-27，已提交 `928c79b` + 已部署 Version `7701fd8e` + 已打包 APK `C8F2D7F9AC4494E9`（未装机））**：
+     **用户实测反馈六条**：① 帖子/评论 `⋯` 菜单点举报/拷贝无反应；② 心/碎心 emoji 太艳丽 → 改空心灰；③ 详情页「最热」去掉 → 「默认」=推荐模式（与暖心墙帖子排序同源）；④ 详情页评论默认展开 + 一级 15 条下滑续展 + 「查看更多评论」（二级仍默认两条）；⑤ 详情页二级评论 >1 条后无法评论；⑥ App 回复框逐条内联手机没法用 → 统一底部输入条。
+     **修法**：① 真因 = 全屏遮罩被 `.card` 的 backdrop-filter 堆叠上下文盖住菜单（z-index 出不来，点击全被吞）→ 两个视图去掉遮罩，改 **document 级点击收起**（触发钮 `.stop` 不误关，菜单项动作后冒泡收起）；② emoji 换**内联 SVG 描边心 + 裂纹心**（灰、无 iconify CDN 依赖），点亮 = 深一档灰 + 细描边；③ SORT_MODES=["default","new"]，视图层默认用 `recommendPosts`（7 天池按天洗牌，与帖子同源），sortComments 去 hot 分支，i18n sortHot→sortDefault（中英成对）；④ `openCmt=true` + `load()` 自动拉取 + `cmtReveal=15` + scroll 被动监听接近底部续 15 条 + 「查看更多评论」按钮（二级回复轮 50 口径不变）；⑤⑥ 手机端（isMobileNav）点「回复」改**统一底部输入条**（固定 tabbar 之上 `calc(64px+safe-area)`，取消/发送在右下角，`repActive` 反查 cm/rp 目标，弹出自动聚焦）——回复数多少都不再影响，桌面保持就地内联框。
+     **验证**：全量 36 套离线 0 fail + comment-test **35/35**（R6 改 SORT_MODES 口径）+ undef/tdz **0** + page-smoke **9/9** + build 0 + live-check **14/14**（部署后）。
 
   - **轮 86 · SEO ①c 帖子注入壳 + ⑥ /zh/* 中文预渲染+hreflang（2026-09-27，已提交 `5de652f` + 已部署 Version `754d910a`；前端有改 → **APK 需重打包机等发话**）**：
      **①c**：`/post/:id` 存在性检查升级为取整行（`getPostRow`，removed 400 降级口径不变）——Worker 把帖子标题/正文/作者/日期注入壳的 title/description/canonical/og:url/og:title/og:description（带图帖 og:image → Storage 公网 URL），正文包 `.seo-static`（真人首帧前隐藏、爬虫可读）；家页 hero 整块替换避免每帖带家页文案；HTML 全转义、标题压平换行；ROOT_DESC/ROOT_TITLE 与 vite.config 同源互指（坑 #28 口径）。**开发中真缺陷**：content 模板 `${img}` 引用了不存在的变量（实际叫 `imgUrl`）→ ReferenceError 被 catch 吞掉返回已消费的 body——undef-check 查不到（非导出符号），worker-test 读了响应体才现形。
