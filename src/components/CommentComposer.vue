@@ -39,8 +39,9 @@ function send() {
 <template>
   <Teleport to="body">
     <transition name="composer-up">
-      <div v-if="show" class="composer-mask" @click="close">
-        <div class="composer-panel" @click.stop>
+      <div v-if="show" class="composer-mask" @click="close" @touchend.prevent="close">
+        <div class="composer-panel" @click.stop @touchend.stop>
+          <button class="composer-x" @click.stop="close" aria-label="✕">✕</button>
           <div class="composer-icons" aria-hidden="true">
             <span class="ci-emoji">☺</span><span class="ci-at">@</span>
           </div>
@@ -67,6 +68,11 @@ function send() {
   padding: 14px 16px calc(16px + env(safe-area-inset-bottom, 0px));
   background: #fff; border-radius: 18px 18px 0 0;
   box-shadow: 0 -8px 30px rgba(90, 60, 30, .18);
+}
+.composer-x {
+  position: absolute; top: 10px; right: 12px;
+  border: none; background: none; font-size: 18px;
+  color: var(--ink-faint); cursor: pointer; padding: 4px 8px;
 }
 .composer-icons { display: flex; gap: 14px; margin-bottom: 8px; }
 .composer-icons .ci-emoji, .composer-icons .ci-at {
