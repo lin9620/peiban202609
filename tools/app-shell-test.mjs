@@ -189,11 +189,11 @@ ok("T38 回应按钮涟漪关掉（连续点击不再留一圈颜色阴影）+ �
   css.includes(".react-row .n-button .n-button-base-wave { display: none !important; }")
   && css.includes(".react-row .n-button,")
   && cmt.includes(':focusable="false"'));
-ok("T39 二级评论回复改弹窗（openReplyTo + 弹窗组件 + 取消/就地框退役）",
-  cmt.includes("function openReplyTo(p, cm, rp)")
-  && cmt.includes("openComposerReply(p, cm, rp)")
-  && cmt.includes("CommentComposer")
-  && !cmt.includes("cmt-input-rep-in"));
+ok("T39 二级评论回复框就地渲染（replyRp + 只在被回复那条下面开框 + 一级框让位）",
+  cmt.includes("const replyRp = ref({});")
+  && cmt.includes("function openReplyTo(p, cm, rp)")
+  && cmt.includes("replyRp.value = { ...replyRp.value, [repKey(p, cm)]: rp.id };")
+  && cmt.includes('v-if="replyRpOf(p, cm) === rp.id'));
 
 out.push("");
 out.push(`TOTAL ${pass + fail}  PASS ${pass}  FAIL ${fail}`);

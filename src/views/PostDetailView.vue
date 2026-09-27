@@ -21,11 +21,11 @@ import {
   postCopyText, commentCopyText,
 } from "../utils/comments.js";
 import { fmtWhen } from "../utils/wallRules.js";
+import { isMobileNav } from "../stores/uiStore.js";
 /* 轮 84：…菜单的「拷贝」（WebView 里 navigator.clipboard 缺失时 execCommand 兜底） */
 import { copyText } from "../utils/clipboard.js";
 /* 轮 33：举报弹窗 + 全站拉黑过滤（我拉黑的人，TA 的帖子/评论在我这里不显示） */
 import ReportDialog from "../components/ReportDialog.vue";
-import CommentComposer from "../components/CommentComposer.vue";
 import { filterBlocked, isBlocked } from "../utils/userBlocks.js";
 
 const route = useRoute();
@@ -125,29 +125,7 @@ const openCmt = ref(true);   /* 轮 87：进详情页评论默认展开（load()
 const cmtDraft = ref("");
 const repDraft = ref({});        /* 每个一级评论线程一个草稿（与墙一致） */
 const repOpen = ref({});         /* 某一级评论的回复列表展开 */
-const repActive = ref("");
-
-/* 轮 103：统一评论/回复输入弹窗 —— 详情页所有输入位改为此弹窗 */
-const composer = ref({ show: false, placeholder: "", cm: null, rp: null });
-function openComposerMain() {
-  composer.value = { show: true, placeholder: t("comment.placeholder"), cm: null, rp: null };
-}
-function openComposerReply(cm, rp = null) {
-  if (!signedIn.value) return;
-  composer.value = { show: true, placeholder: repPlaceholder(cm, rp), cm, rp };
-}
-function onComposerSend(text) {
-  const c = composer.value;
-  if (!c.cm) {
-    cmtDraft.value = text;
-    sendCmt();
-  } else {
-    repDraft.value = { ...repDraft.value, [c.cm.id]: text };
-    atName.value = c.rp ? c.rp.name : "";
-    sendCmt(c.cm, c.rp);
-  }
-  composer.value = { ...composer.value, show: false };
-}       /* 就地回复框挂在哪个目标：一级 id 或 一级id:回复id */
+const repActive = ref("");       /* 就地回复框挂在哪个目标：一级 id 或 一级id:回复id */
 const atName = ref("");
 const cmtErr = ref("");
 
@@ -237,6 +215,22 @@ async function moreCopy() {
   setTimeout(() => { hint.value = ""; }, 2500);
 }
 
+/* 轮 87：手机端统一回复输入条（用户反馈：逐条内联回复框在手机上没法用）——
+ * 点「回复」只在底部弹出一条输入条，发送在右下角；桌面保持就地内联框不变。
+ * repActive 形如 "cmId" 或 "cmId:rpId"，从这里反查回复目标。 */
+const barCm = computed(() => comments.value.find((c) => c.id === String(repActive.value).split(":")[0]) || null);
+const barRp = computed(() => {
+  if (!String(repActive.value).includes(":")) return null;
+  const rid = String(repActive.value).split(":")[1];
+  return comments.value.find((c) => c.id === rid) || null;
+});
+const barInput = ref(null);
+watch(repActive, async () => {
+  if (!repActive.value || !isMobileNav.value) return;
+  await nextTick();
+  try { if (barInput.value) barInput.value.focus(); } catch (e) { /* 无焦点环境忽略 */ }
+});
+function sendBar() { if (barCm.value) sendCmt(barCm.value, barRp.value); }
 
 const tops = computed(() => {
   const list = comments.value.filter((c) => !c.parentId);
@@ -466,11 +460,11 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
                 <button class="more-item" @click="moreCopy">{{ t("common.copy") }}</button>
               </div>
             </div>
-            <p class="cmt-text" :title="signedIn ? t('comment.reply') : ''" @click="openComposerReply(cm)">{{ cm.text }}</p>
+            <p class="cmt-text" :title="signedIn ? t('comment.reply') : ''" @click="startReply(cm)">{{ cm.text }}</p>
             <div class="cmt-acts">
               <!-- 轮 84：时间从评论头移到「回复」左侧 -->
               <span class="cmt-time">{{ when(cm.ts) }}</span>
-              <button v-if="signedIn" class="cmt-act" @click="openComposerReply(cm)">{{ t("comment.reply") }}</button>
+              <button v-if="signedIn" class="cmt-act" @click="startReply(cm)">{{ t("comment.reply") }}</button>
               <!-- 轮 87：回应图标改空心灰内联 SVG（emoji 太艳丽；点亮 = 深一档灰） -->
               <button v-if="cm.dbId != null" class="cmt-react" :class="{ on: cmtReacted(cm, 'heart') }"
                 :disabled="!!cmtReactBusy[cm.id]" :title="t('comment.likeT')" :aria-label="t('comment.likeT')"
@@ -494,11 +488,11 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
                     <button class="more-item" @click="moreCopy">{{ t("common.copy") }}</button>
                   </div>
                 </div>
-                <p class="cmt-text" @click="openComposerReply(cm, rp)">{{ rp.text }}</p>
+                <p class="cmt-text" @click="startReply(cm, rp)">{{ rp.text }}</p>
                 <div class="cmt-acts">
                   <!-- 轮 84：时间移到「回复」左侧 + 轮 87：回应图标改空心灰 -->
                   <span class="cmt-time">{{ when(rp.ts) }}</span>
-                  <button v-if="signedIn" class="cmt-act" @click="openComposerReply(cm, rp)">{{ t("comment.reply") }}</button>
+                  <button v-if="signedIn" class="cmt-act" @click="startReply(cm, rp)">{{ t("comment.reply") }}</button>
                   <button v-if="rp.dbId != null" class="cmt-react" :class="{ on: cmtReacted(rp, 'heart') }"
                     :disabled="!!cmtReactBusy[rp.id]" :title="t('comment.likeT')" :aria-label="t('comment.likeT')"
                     @click="cmtReact(rp, 'heart')"><svg class="rc-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.59.94 4.5 2.35C12.91 3.94 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z"/></svg><i>{{ reactCount(rp, "heart") }}</i></button>
@@ -507,7 +501,13 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
                     @click="cmtReact(rp, 'broken')"><svg class="rc-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.59.94 4.5 2.35C12.91 3.94 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z"/><path d="M12 6.8 10.4 9.4l2.4 1.5-1.5 2.4 1.1 1.8"/></svg><i>{{ reactCount(rp, "broken") }}</i></button>
                 </div>
                 <!-- 轮 97：统一输入条样式（发送在右 + 自动扩行） -->
-
+                <div v-if="!isMobileNav && repActive === cm.id + ':' + rp.id" class="cmt-input cmt-input-in">
+                  <div class="cmt-input-row">
+                    <n-input v-model:value="repDraft[cm.id]" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }"
+                      :placeholder="repPlaceholder(cm, rp)" :maxlength="MAX_LEN" />
+                    <n-button type="primary" size="small" round @click="sendCmt(cm, rp)">{{ t("common.send") }}</n-button>
+                    </div>
+                </div>
               </div>
             </div>
 
@@ -517,40 +517,47 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
               <i class="rt-arrow">&#8250;</i>
             </button>
 
-            <!-- 轮 103：一级评论的就地回复框（点「回复」出现在该评论下面，与墙一致；手机端也显示） -->
-
-
-            <!-- 轮 103：主评论输入框在评论区最前面（与暖心墙完全一致；回复时让位） -->
-            <div v-if="!signedIn" class="cmt-input">
-              <p class="cmt-empty">
-                {{ t("community.commentSignIn") }}
-                <router-link class="cmt-login" to="/profile">{{ t("common.signIn") }}</router-link>
-              </p>
-            </div>
-            <div v-else-if="!repActive" class="cmt-input">
+            <!-- 轮 97：统一输入条样式 -->
+            <div v-if="!isMobileNav && repActive === cm.id" class="cmt-input cmt-input-in">
               <div class="cmt-input-row">
-                <n-input v-model:value="cmtDraft" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }"
-                  :bordered="false" :placeholder="t('comment.placeholder')" :maxlength="MAX_LEN" />
-                <n-button type="primary" size="small" round @click="sendCmt()">{{ t("community.post") }}</n-button>
-              </div>
+                <n-input v-model:value="repDraft[cm.id]" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }"
+                  :placeholder="repPlaceholder(cm)" :maxlength="MAX_LEN" />
+                <n-button type="primary" size="small" round @click="sendCmt(cm)">{{ t("common.send") }}</n-button>
+                </div>
             </div>
-
-            <!-- 轮 87：一级评论未展示完 → 「查看更多评论」续 15 条（此后下滑也会自动续展） -->
-            <button v-if="tops.length > shownTops.length" class="cmt-act cmt-viewmore" @click="cmtReveal += CMT_PAGE">
-              {{ t("comment.viewMoreCmt") }} <i class="vm-arrow">&#8250;</i>
-            </button>
-
-            <p v-if="!comments.length && !cmtLoading" class="cmt-empty">{{ t("comment.empty") }}</p>
           </div>
+
+          <!-- 轮 87：一级评论未展示完 → 「查看更多评论」续 15 条（此后下滑也会自动续展） -->
+          <button v-if="tops.length > shownTops.length" class="cmt-act cmt-viewmore" @click="cmtReveal += CMT_PAGE">
+            {{ t("comment.viewMoreCmt") }} <i class="vm-arrow">&#8250;</i>
+          </button>
+
+          <p v-if="!comments.length && !cmtLoading" class="cmt-empty">{{ t("comment.empty") }}</p>
         </div>
+        <p v-if="hint" class="sub" style="color: var(--low); font-weight: 700">{{ hint }}</p>
       </article>
     </template>
 
-    <!-- 轮 87：…菜单改 document 点击收起（原全屏遮罩会被卡片堆叠上下文盖住，举报/拷贝点了没反应） -->
-    <!-- 轮 103：统一评论/回复输入弹窗 -->
-    <CommentComposer :show="composer.show" :placeholder="composer.placeholder"
-      :maxlength="MAX_LEN" @send="onComposerSend" @close="composer.show = false" />
+    <!-- 轮 97：评论输入固定底栏（发送常驻右侧；超一行自动扩行；回复时让位给回复弹窗条） -->
+    <div v-if="!repActive" class="cmt-bar-fixed">
+      <template v-if="signedIn">
+        <n-input v-model:value="cmtDraft" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }"
+          :placeholder="t('comment.placeholder')" :maxlength="MAX_LEN" />
+        <n-button type="primary" size="small" round @click="sendCmt()">{{ t("community.post") }}</n-button>
+      </template>
+      <router-link v-else class="bar-signin" to="/profile">{{ t("comment.barSignIn") }}</router-link>
+    </div>
 
+    <!-- 轮 91：输入条改 3 行文本域（用户反馈：单行小框没法输入），发送在右下角；Enter 换行不再误发送 -->
+    <div v-if="repActive && isMobileNav" class="reply-bar">
+      <n-input ref="barInput" v-model:value="repDraft[barCm ? barCm.id : '']" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }"
+        :placeholder="repPlaceholder(barCm, barRp)" :maxlength="MAX_LEN" />
+      <div class="reply-bar-foot">
+        <n-button type="primary" size="small" round @click="sendBar">{{ t("common.send") }}</n-button>
+      </div>
+    </div>
+
+    <!-- 轮 87：…菜单改 document 点击收起（原全屏遮罩会被卡片堆叠上下文盖住，举报/拷贝点了没反应） -->
     <!-- 举报弹窗（帖子/评论共用一个实例） -->
     <ReportDialog v-model:show="reportShow" :target="reportTarget" />
   </div>
