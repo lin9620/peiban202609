@@ -274,7 +274,7 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 | 代码 | 轮 84（**评论互动与详情页，已提交 `7271ce0` / 已部署 / 已装机**）：墙内点正文/图进 `/post/:id`、评论只显前 3 条一级 + 「查看更多」、评论行 ❤️/💔（RPC 服务端权威计数）、详情页评论「最新/最热」排序、帖子/评论 `⋯` 菜单（举报迁入 + 拷贝，execCommand 兜底）；库新增 wall_comment_reactions + RPC（迁移已执行）。顺手修：字体 CDN 阻塞样式挡脚本执行（page-smoke 全红真凶）→ 字体 CSS 非阻塞。上一：轮 82（**动态流 B 档虚拟窗口**，`43d3021`）：300 条长列表只挂 ~16 张卡，深链钉住 + 近底续载由 `nearEnd` 算。轮 81（**A 档性能**）：`content-visibility:auto` + 列表图懒加载 + 时间文案 `memoWhen`。轮 80（**陈旧 dist 事故修复**）：CDP 取证 /community 渲染 0 张卡→轮 77 孤儿代码块让每次 vite build 语法失败被误判成功→轮 73-79 部署全是旧 dist；删孤儿块→部署 9946c57b→装机。轮 74-79：启动页语言跟随/newestSeenTs 崩溃修复/下拉提速+提示三态/英文精修/换一批取舍。 |
 | 部署 | Version **`7701fd8e`** 已上线（轮 87：暖心墙/详情页六项修复——⋯菜单/空心灰心形/默认排序/评论15条续展/手机回复弹窗条）；历史：`754d910a`（轮 86）、`f9db3563`（轮 85）、`5c82e4e9`（轮 84）、`757a4fac`（轮 81-83）；live-check **LIVE ALL PASS (14)**；线上入口 `index-DB0RLlgR.js` SHA16 **`c2511ae53ffbbfa3` 本地=线上** |历史：`757a4fac`（轮 81-83：动态流 A+B 档 + 网页刷新按钮/首帧占位）、`9946c57b`（轮 80 陈旧 dist 修复，含轮 59-79 积压真正上线）、`1a0570fb`（轮 72 提速，其部署实为 03:54 旧产物）、`176c967f`（轮 60-62） |
 | 数据库 | 轮 84 `MIGRATION_comment_reactions.sql` **已执行**（探针实测：`/api/comments/reactions?ids=1` → 200 `[]`、anon 调 RPC → `auth-required` 即函数就绪）；`MIGRATION_reports.sql` 已执行（线上 e2e 6/6 闭环）；`MIGRATION_notifications_drop_dm.sql`（轮 13 #23）仍未确认 |
-| App | **轮 88-91 攒批 APK 已重打并装机 ✅**：SHA16 **`C7B2BA477A6EC2EF`**，`adb install -r` **Success**（设备 `PBIJR8BM6D6HS8LV`），冷启动前台确认。包内含轮 88-91 全部改动（回复钮移底部/跳详情定位/输入框前置/回复条 3 行/去底色）。历史：轮 87 包 `C8F2D7F9AC4494E9` → 轮 84 包 `459BDEAFD36D346A` → 轮 81-83 包 `307438B28DBA2143`（`apk/warm-paws-debug.apk`，BUILD SUCCESSFUL 15s），`adb install -r` **Success**（设备 `PBIJR8BM6D6HS8LV`）。**溯源**：`cap sync` 后 assets 引 `index-f8irIksV.js` = 线上跑的同一份；SEO 占位剥离 ×4 正常。**验证须亮屏**：锁屏后 Chromium 冻结渲染进程,CDP 读数成假象。历史：轮 81-83 包 `307438B28DBA2143` → 轮 80 包 `9DA84059319DDA50` → 轮 74 包 `C3F39BE5B8E5CFF3` → 轮 62 包 `21AAA9660D9DE6E0` |
+| App | **轮 92-95 攒批 APK 已重打并装机 ✅**：SHA16 **`F0573E2E5D439F52`**，`adb install -r` **Success**（设备 `PBIJR8BM6D6HS8LV`），冷启动前台确认。包内含轮 92-95 全部改动（OVERSCAN 14/输入底栏/评论透明化/返回恢复位置）。**溯源**：cap sync 后 assets 引 `index-BTNqO2X5.js` = 线上同一份。历史：轮 88-91 包 `C7B2BA477A6EC2EF` → 轮 87 包 `C8F2D7F9AC4494E9` → 轮 84 包 `459BDEAFD36D346A`（`apk/warm-paws-debug.apk`，BUILD SUCCESSFUL 15s），`adb install -r` **Success**（设备 `PBIJR8BM6D6HS8LV`）。**溯源**：`cap sync` 后 assets 引 `index-f8irIksV.js` = 线上跑的同一份；SEO 占位剥离 ×4 正常。**验证须亮屏**：锁屏后 Chromium 冻结渲染进程,CDP 读数成假象。历史：轮 81-83 包 `307438B28DBA2143` → 轮 80 包 `9DA84059319DDA50` → 轮 74 包 `C3F39BE5B8E5CFF3` → 轮 62 包 `21AAA9660D9DE6E0` |
 | App 冷启动实测 | 轮 38：**真机冷启动 14 帧像素扫描（浅色模式）**：原生启动层米色+橙爪（四角 `#FFF7EE`、左右零暗像素）→ 网页启动页 → 首页，App 自己的每一帧都没有黑边。**轮 39 补勘**：那次抓帧是下午**浅色模式**下做的——夜间深色模式的路径当时测不到，正是「白天验收全绿、夜里黑屏」的盲区（F 区轮 39）；深色模式验证须装机后补做 |
 | 测试 | 最新基线（轮 85，`tools` 共 36 套 + 4 项静态/挂载门槛）：feed-perf **27/27** + feed-window **19/19** + feed-window-live **10/10**（需 dev 服务器）+ web-refresh **6/6** + splash **21/21** + i18n **19/19** + bottle **69/69** + bottle-chat **94/94** + dm **286/286** + app-shell **40/40** + wall **34/34** + wall-rules **42/42** + auth **130/130** + status **49/49** + comment **35/35** + api-contract **87/87** + gateway **71/71** + worker **224/224** + seo **50/50** + undef **0**（含 --selftest **10/10**）+ tdz **0** + page-smoke **9/9** + build 0 + live-check **14/14**。**36 套离线全绿**。详见 README 与 F 区各轮 |
 
@@ -1312,23 +1312,23 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **验证**：undef/tdz **0** + wall **34/34** + i18n **19/19** + build 0 + page-smoke **8/8**；已部署（live-check 14/14）+ APK 装机 Success。
      **待用户验收（亮屏）**：暖心墙下拉 → 「刷新中…」→ 换一批/新增提示正常、列表真的换内容；消息页无错误盒。
 
-  - **轮 95 · 详情页返回暖心墙恢复浏览位置（2026-09-27，改动完成、测试全绿，待提交待部署——攒批；APK 需重打）**：
+  - **轮 95 · 详情页返回暖心墙恢复浏览位置（2026-09-27，已提交 `5876181` / 已部署 `0e7d5b2b` / 已装机 APK `F0573E2E5D439F52`）**：
      **用户反馈**：暖心墙点帖进详情页，点返回只回到暖心墙顶部，没有回到之前浏览的位置。
      **根因**：组件重挂载 → 列表只剩第一页、滚动归零、虚拟窗口高度表（实测高度）清空 —— 哪怕浏览器想恢复位置，内容高度也对不上。
      **修法（手动存/恢复，不用 keep-alive——避免动 App.vue 的转场/壳结构）**：① 模块级 `savedFeedPos`（plain `<script>` 块声明，跨实例存活）；② 离场（onUnmounted）存：scrollY / reveal / feedCursor / cloudDone / newestSeenTs / **整份已加载列表** / **实测高度表克隆**；③ 返回挂载时 `restoreFeed()`：整份列表+高度表+游标原样恢复（自动重拉被 restoreTick 拦两个 tick，存档列表不被第一页覆盖）→ holdAnchor 包住 `scrollTo(0, y)` → feedTick 按恢复的高度表重算窗口 —— 占位块零漂移，位置精确；④ 新发的帖/刷新照旧可用（恢复是一次性的，存档用后即清）。
      **验证**：全量 36 套离线 0 fail + feed-window **19/19** + undef/tdz **0** + page-smoke **9/9** + build 0。真机手感待装机验收。
 
-  - **轮 94 · 评论透明化 + 底栏按截图微调（2026-09-27，改动完成、测试全绿，待提交待部署——攒批；APK 需重打）**：
+  - **轮 94 · 评论透明化 + 底栏按截图微调（2026-09-27，已提交 `5876181` / 已部署 `0e7d5b2b` / 已装机 APK `F0573E2E5D439F52`）**：
      **用户反馈（附截图）**：① 帖子内部评论改成截图那种透明样式（不要评论卡片框）；② 底栏照截图微调。
      **改法**：① `.cmt-item` 去背景/描边（墙+详情页同改；回复的左缩进引导线保留）；② `cmt-bar-fixed` 去头像、「发布」键常驻右侧（复用 community.post 词条）、底栏改浅白半透明；轮 91 的展开钮透明保持。
      **验证**：全量 36 套离线 0 fail + post-detail **15/15** + undef/tdz **0** + page-smoke **9/9** + build 0。
 
-  - **轮 93 · 详情页评论输入改常驻底部输入条（2026-09-27，改动完成、测试全绿，待提交待部署——攒批；APK 需重打）**：
+  - **轮 93 · 详情页评论输入改常驻底部输入条（2026-09-27，已提交 `5876181` / 已部署 `0e7d5b2b` / 已装机 APK `F0573E2E5D439F52`）**：
      **用户反馈（附截图）**：帖子下面评论输入框改成截图那种——不要嵌在评论列表里的那种。
      **改法**：① 删除 cmt-box 内嵌的输入框/登录提示（轮 90 版）；② 新增 `cmt-bar-fixed` 固定底栏：头像 + 圆角输入（placeholder 说点什么吧…/comment.placeholder）+ 发送键（有文字才出现），未登录显示「登录后即可评论」入口（comment.barSignIn，中英成对）；③ 位置：移动端固定在 tabbar 之上 `calc(64px+safe-area+8px)`，桌面（≥900px）居中悬浮 bottom 16px、宽度对齐 .shell；④ 与回复弹窗条互斥（repActive 时输入条让位）；⑤ cmt-box 底部留 56px 让位，最后一条评论不被盖住。post-detail-test 未登录断言从 commentSignIn 改为 barSignIn。
      **验证**：全量 36 套离线 0 fail + post-detail **15/15** + i18n **19/19** + undef/tdz **0** + page-smoke **9/9** + build 0。
 
-  - **轮 92 · 暖心墙下滑空白压小（2026-09-27，改动完成、测试全绿，待提交待部署——攒批；APK 需重打）**：
+  - **轮 92 · 暖心墙下滑空白压小（2026-09-27，已提交 `5876181` / 已部署 `0e7d5b2b` / 已装机 APK `F0573E2E5D439F52`）**：
      **用户反馈**：App 几个页面下拉之后没有内容、到底部有大空隙。**真机 CDP 实测（临时探针 tools/_gap-probe.mjs，用完即删）**：/community 底部 feed-pad 一度 **13280px**（/pet /profile /messages /notifications /my-posts 均 scrollH≈内容底，无异常空隙）——「大空隙」只发生在暖心墙长列表，来源是轮 82 虚拟窗口：overscan=6 = 视口外上下各 6 张（约 2000px）渲染缓冲，App 快速甩动一次就冲出渲染区，落进几千像素的空白占位。
      **修法**：`DEFAULT_OVERSCAN` **6 → 14**（上下各约 4 屏缓冲，甩动后大概率落在已渲染内容上；DOM 卡片 ~37 张仍在 60 上限断言内，feed-window-live 的 WINDOW_MAX=60 不变）。
      **验证**：全量 36 套离线 0 fail + feed-window **19/19** + feed-perf **27/27** + undef/tdz **0** + page-smoke **9/9** + build 0。真机甩动手感待装机验收。**诊断附注**：真机 CDP 需亮屏（锁屏冻结渲染进程会超时/假数据），本次用 `svc power stayon usb` 保持常亮完成测量。
