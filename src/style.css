@@ -1088,10 +1088,15 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 .reply-bar-foot { display: flex; align-items: center; gap: 8px; }
 .reply-bar-foot .cmt-left { margin-right: auto; font-size: 11px; font-weight: 700; color: var(--ink-faint); }
 
-/* 轮 96：评论输入框点击展开（未点击一行，点击 3 行）；发送键在输入框右下 */
-.cmt-input-row { display: flex; align-items: flex-end; gap: 8px; }
-.cmt-input-row .n-input { flex: 1; }
-.cmt-input .n-input, .cmt-bar-fixed .n-input, .cmt-input-row .n-input { font-size: 13.5px; }
+/* 轮 102：四处评论输入框完全统一（复用详情页底栏同款胶囊）：
+   白底胶囊容器 + 无边框输入 + 发送/发布键在右下（textarea 扩行时按钮贴底随动） */
+.cmt-input-row {
+  display: flex; align-items: flex-end; gap: 8px; width: 100%; box-sizing: border-box;
+  background: rgba(255, 255, 255, .92); border: 1px solid rgba(160, 110, 60, .14);
+  border-radius: 999px; padding: 5px 6px 5px 14px;
+}
+.cmt-input-row .n-input { flex: 1; font-size: 13.5px; }
+.cmt-input .n-input, .cmt-bar-fixed .n-input { font-size: 13.5px; }
 
 /* 轮 93：详情页评论输入固定底栏（参考用户截图：头像 + 说点什么吧… 胶囊，常驻页面底部） */
 .cmt-bar-fixed {
