@@ -274,7 +274,7 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 | 代码 | 轮 84（**评论互动与详情页，已提交 `7271ce0` / 已部署 / 已装机**）：墙内点正文/图进 `/post/:id`、评论只显前 3 条一级 + 「查看更多」、评论行 ❤️/💔（RPC 服务端权威计数）、详情页评论「最新/最热」排序、帖子/评论 `⋯` 菜单（举报迁入 + 拷贝，execCommand 兜底）；库新增 wall_comment_reactions + RPC（迁移已执行）。顺手修：字体 CDN 阻塞样式挡脚本执行（page-smoke 全红真凶）→ 字体 CSS 非阻塞。上一：轮 82（**动态流 B 档虚拟窗口**，`43d3021`）：300 条长列表只挂 ~16 张卡，深链钉住 + 近底续载由 `nearEnd` 算。轮 81（**A 档性能**）：`content-visibility:auto` + 列表图懒加载 + 时间文案 `memoWhen`。轮 80（**陈旧 dist 事故修复**）：CDP 取证 /community 渲染 0 张卡→轮 77 孤儿代码块让每次 vite build 语法失败被误判成功→轮 73-79 部署全是旧 dist；删孤儿块→部署 9946c57b→装机。轮 74-79：启动页语言跟随/newestSeenTs 崩溃修复/下拉提速+提示三态/英文精修/换一批取舍。 |
 | 部署 | Version **`7701fd8e`** 已上线（轮 87：暖心墙/详情页六项修复——⋯菜单/空心灰心形/默认排序/评论15条续展/手机回复弹窗条）；历史：`754d910a`（轮 86）、`f9db3563`（轮 85）、`5c82e4e9`（轮 84）、`757a4fac`（轮 81-83）；live-check **LIVE ALL PASS (14)**；线上入口 `index-DB0RLlgR.js` SHA16 **`c2511ae53ffbbfa3` 本地=线上** |历史：`757a4fac`（轮 81-83：动态流 A+B 档 + 网页刷新按钮/首帧占位）、`9946c57b`（轮 80 陈旧 dist 修复，含轮 59-79 积压真正上线）、`1a0570fb`（轮 72 提速，其部署实为 03:54 旧产物）、`176c967f`（轮 60-62） |
 | 数据库 | 轮 84 `MIGRATION_comment_reactions.sql` **已执行**（探针实测：`/api/comments/reactions?ids=1` → 200 `[]`、anon 调 RPC → `auth-required` 即函数就绪）；`MIGRATION_reports.sql` 已执行（线上 e2e 6/6 闭环）；`MIGRATION_notifications_drop_dm.sql`（轮 13 #23）仍未确认 |
-| App | **轮 87 APK 已重打并装机 ✅**：SHA16 **`C8F2D7F9AC4494E9`**，`adb install -r` **Success**（设备 `PBIJR8BM6D6HS8LV`），冷启动前台确认（topResumedActivity=net.de5.dale）。上一：轮 84 包 `459BDEAFD36D346A`；历史：轮 81-83 包 `307438B28DBA2143` → 轮 80 包 `9DA84059319DDA50`（`apk/warm-paws-debug.apk`，BUILD SUCCESSFUL 15s），`adb install -r` **Success**（设备 `PBIJR8BM6D6HS8LV`）。**溯源**：`cap sync` 后 assets 引 `index-f8irIksV.js` = 线上跑的同一份；SEO 占位剥离 ×4 正常。**验证须亮屏**：锁屏后 Chromium 冻结渲染进程,CDP 读数成假象。历史：轮 81-83 包 `307438B28DBA2143` → 轮 80 包 `9DA84059319DDA50` → 轮 74 包 `C3F39BE5B8E5CFF3` → 轮 62 包 `21AAA9660D9DE6E0` |
+| App | **轮 88-91 攒批 APK 已重打并装机 ✅**：SHA16 **`C7B2BA477A6EC2EF`**，`adb install -r` **Success**（设备 `PBIJR8BM6D6HS8LV`），冷启动前台确认。包内含轮 88-91 全部改动（回复钮移底部/跳详情定位/输入框前置/回复条 3 行/去底色）。历史：轮 87 包 `C8F2D7F9AC4494E9` → 轮 84 包 `459BDEAFD36D346A` → 轮 81-83 包 `307438B28DBA2143`（`apk/warm-paws-debug.apk`，BUILD SUCCESSFUL 15s），`adb install -r` **Success**（设备 `PBIJR8BM6D6HS8LV`）。**溯源**：`cap sync` 后 assets 引 `index-f8irIksV.js` = 线上跑的同一份；SEO 占位剥离 ×4 正常。**验证须亮屏**：锁屏后 Chromium 冻结渲染进程,CDP 读数成假象。历史：轮 81-83 包 `307438B28DBA2143` → 轮 80 包 `9DA84059319DDA50` → 轮 74 包 `C3F39BE5B8E5CFF3` → 轮 62 包 `21AAA9660D9DE6E0` |
 | App 冷启动实测 | 轮 38：**真机冷启动 14 帧像素扫描（浅色模式）**：原生启动层米色+橙爪（四角 `#FFF7EE`、左右零暗像素）→ 网页启动页 → 首页，App 自己的每一帧都没有黑边。**轮 39 补勘**：那次抓帧是下午**浅色模式**下做的——夜间深色模式的路径当时测不到，正是「白天验收全绿、夜里黑屏」的盲区（F 区轮 39）；深色模式验证须装机后补做 |
 | 测试 | 最新基线（轮 85，`tools` 共 36 套 + 4 项静态/挂载门槛）：feed-perf **27/27** + feed-window **19/19** + feed-window-live **10/10**（需 dev 服务器）+ web-refresh **6/6** + splash **21/21** + i18n **19/19** + bottle **69/69** + bottle-chat **94/94** + dm **286/286** + app-shell **40/40** + wall **34/34** + wall-rules **42/42** + auth **130/130** + status **49/49** + comment **35/35** + api-contract **87/87** + gateway **71/71** + worker **224/224** + seo **50/50** + undef **0**（含 --selftest **10/10**）+ tdz **0** + page-smoke **9/9** + build 0 + live-check **14/14**。**36 套离线全绿**。详见 README 与 F 区各轮 |
 
@@ -1312,7 +1312,7 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **验证**：undef/tdz **0** + wall **34/34** + i18n **19/19** + build 0 + page-smoke **8/8**；已部署（live-check 14/14）+ APK 装机 Success。
      **待用户验收（亮屏）**：暖心墙下拉 → 「刷新中…」→ 换一批/新增提示正常、列表真的换内容；消息页无错误盒。
 
-  - **轮 91 · 评论输入位置/样式统一（2026-09-27，改动完成、测试全绿，待提交待部署——攒批；APK 需重打）**：
+  - **轮 91 · 评论输入位置/样式统一（2026-09-27，已提交 `b5f7375` / 已部署 `f5b8e461` / 已装机）**：
      **用户反馈**：① 墙内点评论后输入框为什么不跟详情页一致；② 详情页点回复后输入条太小没法输入、样式丑；③ 「展开其他 N 条回复/查看更多评论」不要底色框，融入背景。**（⋯ 与帖子右侧对齐一条用户撤回不做）**
      **改法**：① 墙内 cmt-box 的输入框三态（登录提示/常驻输入）移到评论区最前（与轮 90 详情页同构），删除「写评论」解锁路径（cmtCompose/cmtComposeOpen/openComposer 退役）——手机端开箱即见输入框但不自动聚焦（轮 74 口径保留）；② reply-bar 输入改 `type="textarea" :rows="3"`、去掉 `size=small/round`、字号 14px、去 keyup.enter（Enter=换行不误发送），内边距加大；③ `.replies-toggle`/`.cmt-viewmore` 去底色（background: none、灰字 + › 箭头、hover 变暖）。
      **验证**：全量 36 套离线 0 fail + undef/tdz **0** + page-smoke **9/9** + build 0。
@@ -1322,13 +1322,13 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **改法**：① cmt-box 内输入框（登录提示/发评输入二态）移到评论区最前，其后才是错误/载入/评论列表/查看更多/空态；② 无改动；③ `tops` 去掉 `recommendPosts`（import 一并移除）——默认 = 加载顺序直出（旧→新，与墙内评论一致），「最新」= 时间倒序；SORT_MODES 不变（["default","new"]）。
      **验证**：全量 36 套离线 0 fail + comment-test **35/35**（R6 文案更新）+ post-detail **15/15** + undef/tdz **0** + page-smoke **9/9** + build 0。
 
-  - **轮 89 · 墙内回复跳详情定位 + 详情页展开/回复修复（2026-09-27，改动完成、测试全绿，待提交待部署——攒批；APK 需重打）**：
+  - **轮 89 · 墙内回复跳详情定位 + 详情页展开/回复修复（2026-09-27，已提交 `b5f7375` / 已部署 `f5b8e461` / 已装机）**：
      **用户反馈**：①（早前需求补做）App 暖心墙里二级评论超过可见数时，「展开回复」应该跳到帖子详情页（带参数），详情页直接展开那一条一级评论的二级回复；② 详情页一级评论点「展开其他 N 条回复」展不开；③ 详情页点回复也没反应。
      **真因**：②③ 同源 —— `visibleReps` 在 script 作用域写成 `repOpen[cm.id]`（ref 当普通对象读，少 `.value`）→ 恒为 undefined → 回复列表永远只渲染前 2 条；展开钮标签会切换但列表不动；用户新发的回复（第 3 条起）也被藏住 → 看起来「回复失败」。这类「ref 少 .value」undef/tdz/page-smoke 都不执行组件交互，抓不到，靠真机交互验收。
      **修法**：① `repOpen.value[cm.id]` 修正；② 墙内按钮改「查看全部 {n} 条回复 ›」→ `goDetailReplies(p, cm)` 带 `?cid={dbId}` 跳详情页；③ 详情页 `focusTargetComment()`：切「最新」排序（推荐池会滤掉 7 天外评论）→ `repOpen` 展开目标线程 → `cmtReveal` 撑到目标位 → `scrollIntoView` 居中定位 + `.cmt-focus` 描边高亮；一级评论挂 `id="cmt-{dbId}"` 锚点。i18n comment.viewAllReplies 新增（中英成对）。
      **验证**：全量 36 套离线 0 fail + i18n **19/19** + undef/tdz **0** + page-smoke **9/9** + build 0。
 
-  - **轮 88 · 回复展开/收起钮移到回复列表底部（2026-09-27，改动完成、测试全绿，待提交待部署——攒批；APK 需重打）**：
+  - **轮 88 · 回复展开/收起钮移到回复列表底部（2026-09-27，已提交 `b5f7375` / 已部署 `f5b8e461` / 已装机）**：
      **用户反馈（附参考截图）**：「N 条回复 ▾」原来挤在评论操作行里，要改成主流社区样式——移到回复列表底部，胶囊按钮「展开其他 N 条回复 ›」。
      **改法**：① 两个视图（墙 + 详情页）删操作行里的旧钮（cmt-acts 只留时间/回复/回应）；② 回复列表（cmt-reps）下方新增 `replies-toggle` 胶囊钮——收起态「展开其他 {n-2} 条回复 ›」（n=回复总数、可见 2 条），展开态「收起回复」，点击语义与轮 50 一致；③ i18n：comment.expandOthers/collapseReplies 新增（中英成对）、comment.replies 退役删除；④ post-detail-test 钉住的 comment.replies 断言同步为 expandOthers。
      **验证**：全量 36 套离线 0 fail + post-detail **15/15** + i18n **19/19** + undef/tdz **0** + page-smoke **9/9** + build 0。
