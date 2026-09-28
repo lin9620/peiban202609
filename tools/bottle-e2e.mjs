@@ -15,7 +15,7 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const env = fs.readFileSync(path.join(root, ".env"), "utf8");
 const get = (k) => { const m = env.match(new RegExp("^\\s*" + k + "\\s*=\\s*(\\S+)\\s*$", "m")); return m ? m[1] : ""; };
 const URL_ = get("VITE_SUPABASE_URL"), KEY = get("VITE_SUPABASE_ANON_KEY");
-const BASE = "https://dale.de5.net/api";
+const BASE = "https://warmpaws.de5.net/api";
 
 let pass = 0, fail = 0;
 const ok = (n, c, extra = "") => {

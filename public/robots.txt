@@ -7,4 +7,4 @@ Disallow: /notifications
 Disallow: /admin
 
 # history 路由：/ /pet /community /profile /privacy 均为可独立收录的页面
-Sitemap: https://dale.de5.net/sitemap.xml
+Sitemap: https://warmpaws.de5.net/sitemap.xml

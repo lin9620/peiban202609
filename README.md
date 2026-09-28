@@ -1,15 +1,15 @@
 # 🐾 Warm Paws · 暖爪
 
-[![Live 站点](https://img.shields.io/badge/%F0%9F%8C%90_%E7%BA%BF%E4%B8%8A%E4%BD%93%E9%AA%8C-dale.de5.net-e07a3f?style=flat-square)](https://dale.de5.net)
+[![Live 站点](https://img.shields.io/badge/%F0%9F%8C%90_%E7%BA%BF%E4%B8%8A%E4%BD%93%E9%AA%8C-warmpaws.de5.net-e07a3f?style=flat-square)](https://warmpaws.de5.net)
 [![Vue](https://img.shields.io/badge/Vue-3-42b883?style=flat-square&logo=vuedotjs&logoColor=white)](https://vuejs.org)
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers%20%2B%20Pages-f38020?style=flat-square&logo=cloudflare&logoColor=white)](https://workers.cloudflare.com)
 [![Supabase](https://img.shields.io/badge/Supabase-Postgres%20%2B%20Auth-3ecf8e?style=flat-square&logo=supabase&logoColor=white)](https://supabase.com)
 
-👉 **线上地址：<https://dale.de5.net>** —— [暖心墙](https://dale.de5.net/community) · [宠物乐园](https://dale.de5.net/pet) · [隐私政策](https://dale.de5.net/privacy)
+👉 **线上地址：<https://warmpaws.de5.net>** —— [暖心墙](https://warmpaws.de5.net/community) · [宠物乐园](https://warmpaws.de5.net/pet) · [隐私政策](https://warmpaws.de5.net/privacy)
 
 一个面向海外用户的**温馨治愈系网站**：每日暖心故事、手绘食物喂养的宠物伙伴、温柔的社区墙。
 
-技术栈：**Vite + Vue 3 + Naive UI**（前端）· **Lottie**（宠物动画）· **Supabase**（登录 / 数据 / 图片存储）· **Cloudflare Workers**（API 网关 + 静态托管，已上线 https://dale.de5.net ）。
+技术栈：**Vite + Vue 3 + Naive UI**（前端）· **Lottie**（宠物动画）· **Supabase**（登录 / 数据 / 图片存储）· **Cloudflare Workers**（API 网关 + 静态托管，已上线 https://warmpaws.de5.net ）。
 
 ## ✨ 功能
 
@@ -203,8 +203,8 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 
 - **忘记密码**：登录表单上有「忘记密码」→ 填邮箱 → Supabase 发重置链接 → 点开链接回到 `/profile`，页面显示「设置新密码」，保存后即已登录。链接带 `redirect_to`，因此必须把站点地址加进白名单（否则会停在 Supabase 域名上）。
 - **Google 一键登录**：需在 Supabase Dashboard → Authentication → Providers → **Google** 开启并填 Client ID / Secret；Google Cloud Console 的 **Authorized redirect URI** 填 `https://<项目>.supabase.co/auth/v1/callback`（不是本站地址）。开启后登录卡片上会出现「使用 Google 登录」按钮，一键跳转，回来即已登录；昵称按 `full_name / name → 邮箱前缀` 兜底（Google 不返回 nickname）。
-- 两者都要求 **Authentication → URL Configuration**：Site URL 填线上地址，Redirect URLs 加 `https://dale.de5.net/**` 与 `http://localhost:5173/**`（与下方「上线检查清单」同一条要求）。
-- **Google 正式发布（In production）**：Google Cloud Console → OAuth consent screen / Google Auth Platform → **Branding** 要填齐四项，其中两项必须是本站真实地址：`Application home page` = `https://dale.de5.net`，`Application privacy policy link` = **`https://dale.de5.net/privacy`**（站内已备好这页，含 Google 用户数据用途与 Limited Use 声明）；`Audience` 页里可加 Test users——**只想自己/朋友用的话，留在 Testing 模式即可**，不必发布。
+- 两者都要求 **Authentication → URL Configuration**：Site URL 填线上地址，Redirect URLs 加 `https://warmpaws.de5.net/**` 与 `http://localhost:5173/**`（与下方「上线检查清单」同一条要求）。
+- **Google 正式发布（In production）**：Google Cloud Console → OAuth consent screen / Google Auth Platform → **Branding** 要填齐四项，其中两项必须是本站真实地址：`Application home page` = `https://warmpaws.de5.net`，`Application privacy policy link` = **`https://warmpaws.de5.net/privacy`**（站内已备好这页，含 Google 用户数据用途与 Limited Use 声明）；`Audience` 页里可加 Test users——**只想自己/朋友用的话，留在 Testing 模式即可**，不必发布。
 
 > 说明：新注册用户需到邮箱确认验证邮件（Supabase 默认开启）。若要关闭验证：Dashboard → Authentication → Providers → Email → Confirm email 关闭。
 
@@ -226,12 +226,12 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 
 **Search Console 验证（域名属性走 DNS TXT）**
 
-1. [search.google.com/search-console](https://search.google.com/search-console) → 添加资源 → 选 **域名** → 填 `dale.de5.net`
+1. [search.google.com/search-console](https://search.google.com/search-console) → 添加资源 → 选 **域名** → 填 `warmpaws.de5.net`
 2. 复制它给的 `google-site-verification=...` 整串
 3. 加 TXT 记录：**Cloudflare → DNS → 记录 → 添加记录**，类型 `TXT`、名称 `@`、内容粘贴整串、TTL `Auto`、保存
-   - `dale.de5.net` 的解析已委派给 Cloudflare（NS 是 `tori/cesar.ns.cloudflare.com`），所以记录必须加在 **Cloudflare**；dnshe 那边只需保留 `de5.net` 里指向 Cloudflare 的 NS 委派
+   - `warmpaws.de5.net` 的解析已委派给 Cloudflare（NS 是 `tori/cesar.ns.cloudflare.com`），所以记录必须加在 **Cloudflare**；dnshe 那边只需保留 `de5.net` 里指向 Cloudflare 的 NS 委派
 4. 回 Search Console 点 **验证**（一般 1~10 分钟通过）
-5. 验证通过后 → **站点地图** → 提交 `sitemap.xml`（完整地址 `https://dale.de5.net/sitemap.xml`）
+5. 验证通过后 → **站点地图** → 提交 `sitemap.xml`（完整地址 `https://warmpaws.de5.net/sitemap.xml`）
 
 **几个要点**
 
@@ -243,8 +243,8 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 **提交站点地图没反应？按这个顺序排查**
 
 1. **先确认资源已验证**：Search Console 顶部若还有「验证所有权」提示，站点地图是**提交不了**的（往往表现为点了没反应）。域名属性走 DNS TXT，点「验证」即可
-2. **TXT 记录的 zone 要对**：必须加在 `dale.de5.net`（Cloudflare），不是 `de5.net`（dnshe）。自检命令：`nslookup -type=TXT dale.de5.net 8.8.8.8`，应看到 `google-site-verification=...`
-3. **填完整地址更保险**：`https://dale.de5.net/sitemap.xml`（只填 `sitemap.xml` 也可以，前提是资源为域名属性）
+2. **TXT 记录的 zone 要对**：必须加在 `warmpaws.de5.net`（Cloudflare），不是 `de5.net`（dnshe）。自检命令：`nslookup -type=TXT warmpaws.de5.net 8.8.8.8`，应看到 `google-site-verification=...`
+3. **填完整地址更保险**：`https://warmpaws.de5.net/sitemap.xml`（只填 `sitemap.xml` 也可以，前提是资源为域名属性）
 4. **提交后显示「待处理」是正常的**：首次抓取可能几小时；若显示「无法获取」，等几分钟再点一次提交（部署刚生效/CDN 缓存滞后时常见）
 5. **别期待立刻收录**：站点地图只是「告知有这些页面」，不等于收录。新域名通常要几天到几周，最有效的加速是 **「网址检查」→ 请求编入索引** + 让别处链接到你的站
 6. **一键体检**：`node tools/online-check.mjs` 会**模拟 Googlebot 抓取**，确认没被 Cloudflare 拦截、没有 `noindex` 头、robots 与 sitemap 都能取到、未知路径返回真 404（防软 404）、/u/:id 与 /messages/:id 动态直链由 Worker 兜底成应用壳（共 23 项）
@@ -260,7 +260,7 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 | 已发现的网页 | **1** | 同上；不是"只收录了 1 页"，收录进度看左侧 **「网页 / 页面」** 报告 |
 | 上次读取时间 | 今天 | 说明 Google 刚来过 |
 
-> 看到「成功 / 1 / 1」就代表站点地图这条链路完全通了。**接下来做两件事**：① **「网址检查」→ 输入 `https://dale.de5.net/` → 请求编入索引**（主动催抓，比等站点地图快）；② 在 **「网页」报告**里等状态从「已发现 - 尚未编入索引」变成「已编入索引」（新站通常几天到几周，有外链会明显更快）。
+> 看到「成功 / 1 / 1」就代表站点地图这条链路完全通了。**接下来做两件事**：① **「网址检查」→ 输入 `https://warmpaws.de5.net/` → 请求编入索引**（主动催抓，比等站点地图快）；② 在 **「网页」报告**里等状态从「已发现 - 尚未编入索引」变成「已编入索引」（新站通常几天到几周，有外链会明显更快）。
 
 **「请求编入索引」弹「出了点问题，请稍后重试」怎么办？**
 
@@ -275,23 +275,23 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 **不一定非要靠这个按钮**，三条替代路径同样有效（而且更"自然"）：
 
 1. **「测试实际网址」**（同一页面里）→ 能正常抓取并显示「网址可用于 Google 搜索」，说明站点一切就绪，剩下只是时间问题
-2. **放一条外部链接**（GitHub 仓库主页 / 社交平台简介 / 论坛签名）指向 `https://dale.de5.net/` → Google 依靠外链自然发现新站，这是**新站最有效的加速方式**
+2. **放一条外部链接**（GitHub 仓库主页 / 社交平台简介 / 论坛签名）指向 `https://warmpaws.de5.net/` → Google 依靠外链自然发现新站，这是**新站最有效的加速方式**
 3. **等站点地图的下次抓取** —— 它已提交成功，Google 会按 `changefreq` 定期重抓；也可以再回站点地图页点一次「提交」（这不是索引请求，不受配额影响）
 
 > 若「网址检查」详情里出现「无法显示在 Google 搜索结果中」，那是**未收录时的常规文案**，重点看它下面的 **「发现方式 / 抓取情况 / 收录情况」** 三行：<br>
 > `已发现 - 尚未编入索引` → 正常，等（新站常态）· `已抓取 - 尚未编入索引` → 正常，等（Google 认为内容暂不值得收录，等外链积累）· 若出现 `robots.txt 屏蔽` / `noindex` / `备用网页（有规范标签）` → 才是真问题（本站已用 `node tools/online-check.mjs` 排除这三项）。
 
-## 🌐 部署（Cloudflare Workers · 已上线 https://dale.de5.net）
+## 🌐 部署（Cloudflare Workers · 已上线 https://warmpaws.de5.net）
 
 ```bash
 npm run build    # 构建出 dist/（改完代码随手跑，验证能编译）
-npm run deploy   # wrangler deploy 发布到 Worker warm-paws（dale.de5.net）
+npm run deploy   # wrangler deploy 发布到 Worker warm-paws（warmpaws.de5.net）
 ```
 
 > ⚠️ **发布策略：攒着发，不随手发。** 改 bug / 加功能时**只做本地验证**（`npm run build` + 相关 `tools/*-test.mjs`），**不要每改一处就 `npm run deploy`**；等确认「可以部署了」再一次性发布，省掉无谓的构建与 CDN 版本堆积。同理，也不要擅自 `git push`。
 
 1. 发布就是上面两条命令（`package.json` 的 `build` / `deploy` 脚本，配置见 `wrangler.jsonc`：Worker 名 `warm-paws`，静态资源目录 `./dist`，SPA 回退已配好）。
-2. Supabase 后台 → **Authentication → URL Configuration**：Site URL 填 `https://dale.de5.net`，Redirect URLs 加 `https://dale.de5.net/**` 与 `http://localhost:5173/**`
+2. Supabase 后台 → **Authentication → URL Configuration**：Site URL 填 `https://warmpaws.de5.net`，Redirect URLs 加 `https://warmpaws.de5.net/**` 与 `http://localhost:5173/**`
 3. 部署后验证：`node tools/live-check.mjs`（页面 / 缓存 / 安全头 / SEO 资产，应输出 `LIVE ALL PASS`）。
 
 > 路由已是 **history 模式**（`/pet`、`/community`、`/profile` 可直接访问与分享），构建时会为每条路由产出独立静态 HTML（含各自的 title / canonical / OG）；SPA 回退由 `wrangler.jsonc` 的 `not_found_handling` 兜底。部署后可用 `node tools/live-check.mjs` 验证线上站点（页面 / 缓存 / 安全头 / SEO 资产）。

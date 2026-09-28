@@ -64,14 +64,14 @@ await send("Page.enable", {});
 await send("Network.enable", {});
 /* 挡掉云端：dev 下前端直连 Supabase，但 `src/utils/supabase.js` 会把 URL 重写到
    `VITE_API_BASE + "/sb"`（**自有域名反代**，不是 *.supabase.co！）—— 实测真机请求：
-   `https://dale.de5.net/sb/rest/v1/wall_posts?select=*&…`。
+   `https://warmpaws.de5.net/sb/rest/v1/wall_posts?select=*&…`。
    只挡 supabase.co 一轮白跑（列表里全是云端「压测 #500」，本地灌的 300 条被 `all`
    的二选一挤掉 → 帖号解析全空、深链找不到目标）。所以这两类都要挡：
    ① 自有域名的 /sb 反代；② 直连 supabase.co（万一哪天不经反代）。
    ⚠ 通配符千万别写成 `*\/api\/*`：它会连**模块路径** `/src/utils/api/db.js` 一起挡掉
    → 整张模块图加载失败 → 应用根本不挂载（页面只剩看门狗的中文兜底）。 */
 await send("Network.setBlockedURLs", {
-  urls: ["*supabase.co*", "*dale.de5.net/sb/*", "*de5.net/sb/*",
+  urls: ["*supabase.co*", "*warmpaws.de5.net/sb/*", "*de5.net/sb/*",
     "http://localhost:5173/api/*", "http://127.0.0.1:5173/api/*"],
 });
 await send("Page.navigate", { url: URL });

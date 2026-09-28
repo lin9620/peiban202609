@@ -983,13 +983,13 @@ function seoEnv() {
           '    name="description"',
           '    content="A warm, healing corner: an adorable pet to care for."',
           '  />',
-          '<link rel="canonical" href="https://dale.de5.net/" />',
-          '<meta property="og:url" content="https://dale.de5.net/" />',
+          '<link rel="canonical" href="https://warmpaws.de5.net/" />',
+          '<meta property="og:url" content="https://warmpaws.de5.net/" />',
           '<meta property="og:title" content="Warm Paws · A gentle place to be" />',
           '<meta property="og:description" content="Care for a little pet, draw its food, share kindness with gentle people." />',
           '<meta name="twitter:title" content="Warm Paws · A gentle place to be" />',
           '<meta name="twitter:description" content="Care for a little pet, draw its food, share kindness with gentle people." />',
-          '<meta property="og:image" content="https://dale.de5.net/og-image.png" />',
+          '<meta property="og:image" content="https://warmpaws.de5.net/og-image.png" />',
           "</head><body>",
           '<div id="app"><div class="seo-static"><section class="card seo-hero"><h2 class="seo-title">A soft place to land</h2><ul class="seo-links"><li><a href="/pet">pet</a></li></ul></section></div></div>',
           "</body></html>",
@@ -1032,7 +1032,7 @@ function seoEnv() {
       ok("①c 正文进 .seo-static（换行 → 两段 <p>）",
         text.includes("<p>整理书桌的时候翻到一张旧车票</p>") && text.includes("<p>想起一段好天气</p>"));
       ok("①c 家页 hero 被整块替换（不再有 A soft place to land）", !text.includes("A soft place to land"));
-      ok("①c 无图帖 og:image 保持家页默认", text.includes('content="https://dale.de5.net/og-image.png"'));
+      ok("①c 无图帖 og:image 保持家页默认", text.includes('content="https://warmpaws.de5.net/og-image.png"'));
       ok("/post 存在性查询出站 URL",
         c.outbound[0].url === `${ORIGIN}/rest/v1/wall_posts?select=id%2Cbody%2Cauthor_name%2Ccreated_at%2Cimage_path&id=eq.123&limit=1&removed=eq.false`,
         c.outbound[0].url);

@@ -602,7 +602,7 @@ export const messages = {
       back: "Back to Home",
 
       s1t: "Who we are",
-      s1p1: "Warm Paws (this website, dale.de5.net) is a personal, non-commercial pet & kindness corner. This policy covers everything you do on this site. It does not cover other sites you reach by leaving us.",
+      s1p1: "Warm Paws (this website, warmpaws.de5.net) is a personal, non-commercial pet & kindness corner. This policy covers everything you do on this site. It does not cover other sites you reach by leaving us.",
 
       s2t: "What we collect",
       s2p1: "We only collect what the site needs to work. There is no profiling, no advertising and no data broker involved.",
@@ -1314,7 +1314,7 @@ export const messages = {
       back: "回到首页",
 
       s1t: "我们是谁",
-      s1p1: "暖爪（本站 dale.de5.net）是一个个人性质、非商业的小角落。这份政策管的是你在本站的所作所为；你从本站跳出去访问的其他网站，不归它管。",
+      s1p1: "暖爪（本站 warmpaws.de5.net）是一个个人性质、非商业的小角落。这份政策管的是你在本站的所作所为；你从本站跳出去访问的其他网站，不归它管。",
 
       s2t: "我们收集什么",
       s2p1: "只收集让站点能跑起来的那点东西。没有画像、没有广告、也没有把数据卖给数据商这回事。",

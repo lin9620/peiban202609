@@ -2,7 +2,7 @@
  * 覆盖：HTTPS 可达 → 页面关键词 → 静态资源 → 云端配置 → SEO 资产 → Googlebot 索引体检
  * 设计：每个请求带 15s 超时 + 250ms 间隔，避免被 Cloudflare 限速时脚本无限挂住
  */
-const BASE = "https://dale.de5.net";
+const BASE = "https://warmpaws.de5.net";
 const SUPA_REF = "rwulplykvipkshkxyxfe";
 const BOT_UA = "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)";
 

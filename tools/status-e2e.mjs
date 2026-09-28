@@ -1,6 +1,6 @@
 /* 陪你大厅状态（#4 状态上云）线上全链路实测
  *   node tools/status-e2e.mjs
- * 走线上 Worker（https://dale.de5.net/api/*）—— 与浏览器完全同一条链路：
+ * 走线上 Worker（https://warmpaws.de5.net/api/*）—— 与浏览器完全同一条链路：
  *   注册 → 写状态（Worker 白名单 + 服务端盖章 + RLS self update）→ 状态流读回
  *   → 非法 key 被拒 → 匿名改不动 → 他人改不动 → 24h 窗口过期隐去 → 清除 → 清理。
  * 前置：MIGRATION_profile_status.sql 已在 Supabase 执行（未跑则输出 SKIP 并退出码 2）。
@@ -16,7 +16,7 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const env = fs.readFileSync(path.join(root, ".env"), "utf8");
 const get = (k) => { const m = env.match(new RegExp("^\\s*" + k + "\\s*=\\s*(\\S+)\\s*$", "m")); return m ? m[1] : ""; };
 const URL_ = get("VITE_SUPABASE_URL"), KEY = get("VITE_SUPABASE_ANON_KEY");
-const BASE = "https://dale.de5.net/api";
+const BASE = "https://warmpaws.de5.net/api";
 
 let pass = 0, fail = 0;
 const ok = (n, c, extra = "") => {

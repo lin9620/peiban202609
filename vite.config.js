@@ -112,7 +112,7 @@ function seoRoutes() {
       const distDir = path.join(rootDir, "dist");
       const tpl = path.join(distDir, "index.html");
       if (!fs.existsSync(tpl)) return;
-      const SITE = "https://dale.de5.net";
+      const SITE = "https://warmpaws.de5.net";
       /* og:description / twitter:description 共用的占位串（来自 index.html），子页替换用 */
       const ROOT_DESC_TEXT =
         'Care for a little pet, draw its food, share kindness with gentle people.';
@@ -201,7 +201,7 @@ function seoRoutes() {
        * zh=true 时：<html lang> 换 zh-CN，URL 前缀 /zh，其余口径一致。
        * hreflang 互指（en ↔ zh，x-default 落 en）每页带全组，插在 </head> 前。 */
       const bakePage = (h, { title, desc, dir, html, zh }) => {
-        /* home（dir=""）保留尾斜杠 —— T9 钉住 canonical=https://dale.de5.net/ 的既有口径 */
+        /* home（dir=""）保留尾斜杠 —— T9 钉住 canonical=https://warmpaws.de5.net/ 的既有口径 */
         const selfEn = SITE + (dir ? "/" + dir : "/");
         const selfZh = SITE + "/zh" + (dir ? "/" + dir : "/");
         const self = zh ? selfZh : selfEn;

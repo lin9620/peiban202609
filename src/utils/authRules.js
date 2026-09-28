@@ -158,7 +158,7 @@ export function isRecoveryEvent(event) {
  * 非 http(s)（如 file:// 调试）或没有 origin 时返回 ""，交给 supabase-js 用 Site URL 兜底 —— 不抛错。
  * @param {string} origin location.origin
  * @param {string} pathname location.pathname
- * @returns {string} 如 https://dale.de5.net/profile
+ * @returns {string} 如 https://warmpaws.de5.net/profile
  */
 export function redirectUrl(origin, pathname = "/") {
   const o = String(origin == null ? "" : origin);

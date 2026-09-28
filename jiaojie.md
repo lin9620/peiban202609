@@ -20,9 +20,9 @@
 
 ### 0.1 技术栈与环境
 - **框架**：Vue 3（Composition API）+ Vite 5 + Vue Router（history 模式）+ Naive UI 2 + @iconify/vue + lottie-web + @supabase/supabase-js。
-- **部署**：Cloudflare Worker（静态资产 + API 网关一体，`worker/api.js`，`npm run deploy` 部署）；站点 https://dale.de5.net；Worker 项目名 `warm-paws`；路由兜底（轮 11 定案）：`not_found_handling: "404-page"`——未知乱路径返回**真 404**（防软 404，这是有意设计，别当 bug 修），仅 `/u/:id`、`/messages/:id` 两个动态直链前缀由 Worker 兜底分支改写成 SPA 壳（200）。
+- **部署**：Cloudflare Worker（静态资产 + API 网关一体，`worker/api.js`，`npm run deploy` 部署）；站点 **https://warmpaws.de5.net**（轮 109 换域名；旧域 dale.de5.net 的面板绑定保留、双域并存）；Worker 项目名 `warm-paws`；路由兜底（轮 11 定案）：`not_found_handling: "404-page"`——未知乱路径返回**真 404**（防软 404，这是有意设计，别当 bug 修），仅 `/u/:id`、`/messages/:id` 两个动态直链前缀由 Worker 兜底分支改写成 SPA 壳（200）。
 - **数据库**：Supabase（Postgres）——RLS 行级安全 + `security definer` RPC 做服务端权威逻辑；**anon key 是公开密钥，安全全靠 RLS，前端不得存敏感判断**。
-- **`.env` 键**：只有 `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` 两个；`.env`、`supabase.json`、`.dev.vars` 绝不提交（已在 .gitignore）。
+- **`.env` 键**：`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` / `VITE_API_BASE`（**网关与中转页的绝对地址，打 APK 必须指向线上域名**，轮 109 换域名改的就是它）；`.env`、`supabase.json`、`.dev.vars` 绝不提交（已在 .gitignore）。
 
 ### 0.2 数据层双模式（最重要的架构约束）
 - 前端永远经由 `src/utils/api/db.js` 的统一 `db` 接口取数，底层两种实现**必须同步改**：
@@ -265,7 +265,7 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
 ---
 
-# 一、当前状态速览（2026-09-28 更新 · 轮 113 已交付）
+# 一、当前状态速览（2026-09-28 更新 · 轮 114 换域名改动待部署）
 
 | 项 | 值 |
 |---|---|
@@ -280,7 +280,8 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
 ## 二、现在在做什么
 
-- **当前任务**：轮 113（**上传 / 部署 / 打包 / 装机 四链路全部完成 ✅**）。用户发话「上传，部署，打包，装机」→ 把轮 107-112 的攒批一次性发出去：① 提交 `bf7b2c2`（轮 107 死代码清理）+ `c194df0`（轮 108-112 代码）+ `8fecc0f`（轮 108-112 测试与文档），**push 成功**（`HEAD == origin/main == 8fecc0f`，工作区干净）② 部署 Worker **Version `3a91942c`**（`wrangler deploy` EXIT=0，https://warm-paws.yi1614351.workers.dev）③ 线上验证 **LIVE ALL PASS (14)** + live-bundle-check **本地 dist = 线上**（入口 `index-C5pZNGVS.js`，SHA16 `c6dbdbad5170f85f` 两边一致、443181 字节、含 slug）④ `cap sync` EXIT=0（SEO 占位剥离 ×8）+ Gradle **BUILD SUCCESSFUL in 30s** → APK `apk/warm-paws-debug.apk` 5.21 MB，SHA16 **`A4852FA5763FAE05`**，包内入口 `index-C5pZNGVS.js` = 线上同一份 ⑤ `adb install -r` **Success**（`net.de5.dale`）+ 冷启动前台存活、`mWakefulness=Awake`、`logcat` 无 crash/FATAL + 截图确认渲染。**待用户真机/网页验收**。详见 F 区轮 113。
+- **当前任务**：轮 114（**换域名 dale.de5.net → warmpaws.de5.net：改动完成、36 套离线全绿，待提交待部署——攒批；部署即自动绑新域，之后 APK 必须重打**）。22 文件 + `.env` 全量替换 + wrangler.jsonc `custom_domain` 自动建绑 + 旧域面板绑定保留双域并存；外部面板（Supabase Redirect URLs / Google Branding / GSC）待办清单见 F 区轮 114。**顺序红线：先 deploy 再打 APK**。
+- **上一批（已交付）**：轮 113（**上传 / 部署 / 打包 / 装机 四链路全部完成 ✅**）。用户发话「上传，部署，打包，装机」→ 把轮 107-112 的攒批一次性发出去：① 提交 `bf7b2c2`（轮 107 死代码清理）+ `c194df0`（轮 108-112 代码）+ `8fecc0f`（轮 108-112 测试与文档），**push 成功**（`HEAD == origin/main == 8fecc0f`，工作区干净）② 部署 Worker **Version `3a91942c`**（`wrangler deploy` EXIT=0，https://warm-paws.yi1614351.workers.dev）③ 线上验证 **LIVE ALL PASS (14)** + live-bundle-check **本地 dist = 线上**（入口 `index-C5pZNGVS.js`，SHA16 `c6dbdbad5170f85f` 两边一致、443181 字节、含 slug）④ `cap sync` EXIT=0（SEO 占位剥离 ×8）+ Gradle **BUILD SUCCESSFUL in 30s** → APK `apk/warm-paws-debug.apk` 5.21 MB，SHA16 **`A4852FA5763FAE05`**，包内入口 `index-C5pZNGVS.js` = 线上同一份 ⑤ `adb install -r` **Success**（`net.de5.dale`）+ 冷启动前台存活、`mWakefulness=Awake`、`logcat` 无 crash/FATAL + 截图确认渲染。**待用户真机/网页验收**。详见 F 区轮 113。
 - **上一轮（已交付）**：轮 112（**详情页一级评论回复框钉到「一级评论 ↔ 二级列表」之间（原在整条评论最底部），与暖心墙轮 110 同款同位；已随轮 113 批提交 `c194df0` / 部署 `3a91942c` / APK `A4852FA5763FAE05` 装机 ✅**）。用户原话：「帖子详细页面的一级评论输入框：把一级评论回复框点击后出现在一级评论下面，二级评论上面，你现在是一级评论最下面。二级评论输入框不改。app端不改」。详见 F 区轮 112。
 - **上一轮（待同批提交）**：轮 111（**详情页桌面主评论输入框挪到「浏览次数 ↔ 💬 N 条评论」之间（与暖心墙轮 109 同款同位），桌面悬浮底栏 cmt-bar-fixed 退役；改动完成、全量离线 0 fail + post-detail 16/16 + page-smoke 9/9 + build 0 + 运行时取证（放宽看已登录形态 + 还原后匿名/手机复验 + 截图）全过，**待提交待部署——攒批；APK 无需重打**（桌面专属）**）。详见 F 区轮 111。
 - **上一轮（待同批提交）**：轮 110（**网页端一级评论回复框上移到「一级评论下面、二级评论上面」；改动完成、全量 36 套离线 0 fail + page-smoke 9/9 + build 0 + 桌面运行时取证全过，待提交待部署——攒批；APK 无需重打**）。纯 DOM 搬家：`.cmt-input-rep` 从整条评论最底部搬到本评论 `.cmt-acts` 之下、`.cmt-reps` 之上。详见 F 区轮 110。
@@ -1320,6 +1321,11 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **修法（一行）**：补 `const newestSeenTs = ref(0)`。undef/tdz 抓不到这类「运行时未声明引用」（非未导入符号），靠 page-smoke 真实挂载 + 真机验证兜住。
      **验证**：undef/tdz **0** + wall **34/34** + i18n **19/19** + build 0 + page-smoke **8/8**；已部署（live-check 14/14）+ APK 装机 Success。
      **待用户验收（亮屏）**：暖心墙下拉 → 「刷新中…」→ 换一批/新增提示正常、列表真的换内容；消息页无错误盒。
+
+  - **轮 114 · 换域名 dale.de5.net → warmpaws.de5.net（2026-09-28，改动完成、测试全绿，**部署等发话**——部署即绑新域）**：
+     用户发话换域名。**仓库层（22 文件 + .env）**：① `.env` `VITE_API_BASE=https://warmpaws.de5.net`——**最关键一处**：打 APK 时所有 API 请求与 App 端谷歌登录中转页地址都从这里出；② `src/utils/supabase.js` siteOrigin() 两处兜底域名；③ `vite.config.js` SITE 常量（构建期全部 canonical/OG/hreflang 从这出）；④ `index.html` canonical/og:url/og:image/twitter:image/JSON-LD；⑤ `public/robots.txt` Sitemap 行 + `public/sitemap.xml` 固定 5 条（线上动态 sitemap 按**请求域名**现生成，Worker 侧零改动自动跟新域）；⑥ `src/i18n.js` 隐私政策正文「本站 域名」中英两处（Google 审核口径）；⑦ `public/app-auth.html`/`PrivacyView.vue`/`authRules.js` 注释；⑧ tools 十个脚本 BASE（live-check/online-check/live-bundle-check/seo-test/privacy-test/worker-test/auth-test/bottle-e2e/status-e2e/img-cache-e2e/feed-window-live/web-probe）；⑨ README.md 全量替换。**wrangler.jsonc 新增 `routes: [{ pattern: "warmpaws.de5.net", custom_domain: true }]`——`wrangler deploy` 时自动在 de5.net zone 建 DNS + 绑定**；旧域 dale.de5.net 是面板绑的、不在配置里，deploy 不动它 → **双域并存，老 APK/老链接不断**。
+     **外部平台待办（面板在用户手里）**：① Supabase → Authentication → URL Configuration：Site URL 改新域 + Redirect URLs 加 `https://warmpaws.de5.net/**`（旧的先留）——不改则谷歌登录回不来/重置邮件链旧站；② Google Cloud Console → OAuth Branding：home page + privacy policy link 改新域；③ Search Console：新域资源 + DNS TXT + 重提 sitemap；④ 旧域至少保留一两个月（老 APK 的 VITE_API_BASE 是旧域，靠它活着）。
+     验证：undef/tdz **0** + 全量 36 套离线 **0 fail**（seo 50/50 / privacy 33/33 / i18n 19/19 / worker 224/224 含新域名断言）+ build-until-good **BUILD_GOOD** + page-smoke **9/9**。**顺序红线：先 deploy（绑新域）再打 APK**——APK 里的 VITE_API_BASE 指向新域，新域没绑就装机 = 全部请求失败。
 
   - **轮 108 · 暖心墙主评论两段式：卡内占位条 → 底部输入条（2026-09-28，改动完成、测试全绿，待提交待部署——攒批；**APK 必须重打**，手机形态改动）**：
      **用户原话（附图1/图2）**：「暖心墙主评论输入框：输入样式改成图片1的样子，点击之后底部出现打字输入框，改成图片2的样式」。

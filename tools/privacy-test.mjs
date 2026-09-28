@@ -74,7 +74,7 @@ t_("P4 隐私政策常驻入口（手机端 7：页脚挪到「设置」页；/p
   assert.ok(read("src/router.js").includes('"./views/PrivacyView.vue"'), "/privacy 路由必须保留");
 });
 t_("P5 sitemap 登记 /privacy", () => {
-  assert.ok(sm.includes("<loc>https://dale.de5.net/privacy</loc>"), "sitemap 未登记");
+  assert.ok(sm.includes("<loc>https://warmpaws.de5.net/privacy</loc>"), "sitemap 未登记");
   assert.ok(/<loc>https:\/\/dale\.de5\.net\/privacy<\/loc>[\s\S]{0,120}<\/url>/.test(sm), "url 项结构不完整");
 });
 t_("P6 预渲染：/privacy 会生成独立静态 HTML", () => {
@@ -216,9 +216,9 @@ if (exists("dist/privacy/index.html")) {
   const CONTACT_MAIL = (view.match(/const CONTACT_MAIL = "([^"]+)"/) || [])[1] || "";
   t_("P29 产物 /privacy/index.html 标题与 canonical 独立", () => {
     assert.ok(h.includes("<title>Warm Paws · Privacy Policy</title>"), "标题不对");
-    assert.ok(h.includes('rel="canonical" href="https://dale.de5.net/privacy"'), "canonical 不对");
+    assert.ok(h.includes('rel="canonical" href="https://warmpaws.de5.net/privacy"'), "canonical 不对");
     assert.ok(h.includes('property="og:title" content="Warm Paws · Privacy Policy"'), "og:title 不对");
-    assert.ok(h.includes('property="og:url" content="https://dale.de5.net/privacy"'), "og:url 不对");
+    assert.ok(h.includes('property="og:url" content="https://warmpaws.de5.net/privacy"'), "og:url 不对");
   });
   t_("P30 产物可被搜索引擎收录（无 noindex）", () => {
     assert.ok(h.includes('content="index, follow"'), "缺少 index,follow");

@@ -32,7 +32,7 @@ const ok = (n, c, extra = "") => {
 };
 
 /* ═════════ ① 邮箱 / 密码本地校验 ═════════ */
-ok("A1 常见邮箱判为合法", isEmail("a@b.co") && isEmail("  me@dale.de5.net  ") && isEmail("x.y+z@sub.example.org"));
+ok("A1 常见邮箱判为合法", isEmail("a@b.co") && isEmail("  me@warmpaws.de5.net  ") && isEmail("x.y+z@sub.example.org"));
 ok("A2 明显不是邮箱的判为非法",
   !isEmail("") && !isEmail("abc") && !isEmail("a@b") && !isEmail("a b@c.com")
   && !isEmail("@b.com") && !isEmail("a@.com") && !isEmail("a@b.") && !isEmail("a@b@c.com"));
@@ -82,10 +82,10 @@ ok("A21 isRecoveryEvent 只认 PASSWORD_RECOVERY", isRecoveryEvent("PASSWORD_REC
 
 /* ═════════ ④ 回跳地址 ═════════ */
 ok("A22 回跳到当前页（登录表单在 /profile）",
-  redirectUrl("https://dale.de5.net", "/profile") === "https://dale.de5.net/profile");
+  redirectUrl("https://warmpaws.de5.net", "/profile") === "https://warmpaws.de5.net/profile");
 ok("A23 本地开发端口与末尾斜杠都正确",
   redirectUrl("http://localhost:5173", "/profile") === "http://localhost:5173/profile"
-  && redirectUrl("https://dale.de5.net/", "/profile") === "https://dale.de5.net/profile");
+  && redirectUrl("https://warmpaws.de5.net/", "/profile") === "https://warmpaws.de5.net/profile");
 ok("A24 非 http(s) / 空 origin 返回空串（交给 Site URL 兜底，不抛错）",
   redirectUrl("file://", "/profile") === "" && redirectUrl("", "/") === "" && redirectUrl(null, "/") === "");
 ok("A25 pathname 缺前导斜杠时补上", redirectUrl("https://a.com", "profile") === "https://a.com/profile");
@@ -423,7 +423,7 @@ ok("A48b nickLong 的 {n} 真会被替换（昵称上限提示不留占位符）
 /* ───────── 轮31 App 端谷歌登录：App 内授权窗口 + 站内中转页 + 自定义 scheme 拉回 ─────────
  * 用户问题：App 里点谷歌整页跳去系统浏览器，登完回不到 App。
  * 线上差分实测（POST /auth/v1/authorize + GET /auth/v1/verify）：
- *   https://dale.de5.net/** 被原样放行；net.de5.dale://login 被换成站点首页
+ *   https://warmpaws.de5.net/** 被原样放行；net.de5.dale://login 被换成站点首页
  *   → 所以 redirectTo 必须是站内 https 地址（/app-auth 中转页），再由中转页转交 scheme。 */
 {
   const sbj = read("src/utils/supabase.js");
@@ -448,7 +448,7 @@ ok("A48b nickLong 的 {n} 真会被替换（昵称上限提示不留占位符）
     parseAppAuthRedirect("").accessToken === "" && parseAppAuthRedirect("net.de5.dale://login").accessToken === ""
     && parseAppAuthRedirect(null).accessToken === "" && parseAppAuthRedirect(undefined).reason === "");
   ok("A84 isAppAuthRedirect 只认自家 scheme（别人的深链不处理）",
-    isAppAuthRedirect("net.de5.dale://login#x=1") && !isAppAuthRedirect("https://dale.de5.net/login")
+    isAppAuthRedirect("net.de5.dale://login#x=1") && !isAppAuthRedirect("https://warmpaws.de5.net/login")
     && !isAppAuthRedirect("net.de5.dale.evil://login") && !isAppAuthRedirect(null));
 
   /* ② App 分支：redirectTo 走站内中转页（不是自定义 scheme），且不出 App */

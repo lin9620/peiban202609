@@ -2,7 +2,7 @@
  * ------------------------------------------------------------
  * 为什么有这个页面：
  *  1. Google Cloud Console 从「测试」切到「正式发布」要求填一个可公开访问的
- *     Privacy policy URL —— 本页就是那个地址（https://dale.de5.net/privacy）。
+ *     Privacy policy URL —— 本页就是那个地址（https://warmpaws.de5.net/privacy）。
  *  2. Google 的 OAuth 验证要求政策里必须逐条说明 Google 用户数据怎么用，
  *     并写明 Limited Use 承诺（见第 4、5 节）。
  *

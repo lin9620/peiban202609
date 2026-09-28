@@ -1,5 +1,5 @@
 /* 线上部署验证：node tools/live-check.mjs（部署后跑一次，应输出 LIVE ALL PASS） */
-const BASE = "https://dale.de5.net";
+const BASE = "https://warmpaws.de5.net";
 const out = [];
 let bad = 0;
 async function check(name, path, fn) {
@@ -22,9 +22,9 @@ await check("资产缓存 immutable", "/", async (r) => {
 });
 await check("根路径 200", "/", (r) => r.status === 200);
 await check("/pet 200 + canonical 独立", "/pet?cb=" + Date.now(), async (r) =>
-  r.status === 200 && (await r.text()).includes('rel="canonical" href="https://dale.de5.net/pet"'));
+  r.status === 200 && (await r.text()).includes('rel="canonical" href="https://warmpaws.de5.net/pet"'));
 await check("/community 200 + canonical 独立", "/community?cb=" + Date.now(), async (r) =>
-  r.status === 200 && (await r.text()).includes('href="https://dale.de5.net/community"'));
+  r.status === 200 && (await r.text()).includes('href="https://warmpaws.de5.net/community"'));
 await check("/profile 200", "/profile", (r) => r.status === 200);
 await check("robots.txt 200 且含 Sitemap", "/robots.txt?cb=" + Date.now(), async (r) =>
   r.status === 200 && (await r.text()).includes("Sitemap:"));
@@ -32,8 +32,8 @@ await check("sitemap.xml 动态生成（固定页 + /post/ 帖子深链）", "/s
   /* 轮 85：sitemap 改 Worker 动态生成 —— 固定 5 页 + 最新 100 帖深链；不再是恰好 5 条 */
   const t = await r.text();
   const locs = (t.match(/<loc>/g) || []).length;
-  return t.includes("<loc>https://dale.de5.net/privacy</loc>")
-    && t.includes("<loc>https://dale.de5.net/post/")
+  return t.includes("<loc>https://warmpaws.de5.net/privacy</loc>")
+    && t.includes("<loc>https://warmpaws.de5.net/post/")
     && locs > 5;
 });
 await check("og-image.png 200（PNG 可部署）", "/og-image.png", (r) =>

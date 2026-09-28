@@ -7,7 +7,7 @@ const env = readFileSync(new URL("../.env", import.meta.url), "utf8");
 const slug = (env.match(/^VITE_SUPABASE_URL=https:\/\/([a-z0-9]+)\.supabase\.co/m) || [])[1];
 if (!slug) { console.log("NO_SLUG_IN_ENV"); process.exit(1); }
 
-const base = process.argv[2] || "https://dale.de5.net/";
+const base = process.argv[2] || "https://warmpaws.de5.net/";
 const html = await (await fetch(base, { redirect: "follow" })).text();
 const names = [...html.matchAll(/assets\/(index-[\w-]+\.js)/g)].map((m) => m[1]);
 const uniq = [...new Set(names)];

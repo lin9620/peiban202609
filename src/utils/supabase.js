@@ -142,9 +142,9 @@ function redirectOptions() {
  * 用户实测的问题：App 里点谷歌会整页跳去系统浏览器，登完回不到 App。
  * 修法（分三段，任一段失败都有兜底）：
  *   ① @capacitor/browser 在 App 内开授权窗口（不出到系统浏览器、不丢当前页面状态）；
- *   ② redirectTo 用【站内中转页】https://dale.de5.net/app-auth —— 不能直接写自定义
+ *   ② redirectTo 用【站内中转页】https://warmpaws.de5.net/app-auth —— 不能直接写自定义
  *      scheme：Supabase 的 Redirect URLs 白名单只放行站内 https 地址（线上差分实测：
- *      https://dale.de5.net/** 原样放行，net.de5.dale://login 被换成站点首页）；
+ *      https://warmpaws.de5.net/** 原样放行，net.de5.dale://login 被换成站点首页）；
  *   ③ 中转页（public/app-auth.html）把 query/hash 里的令牌原样转交给
  *      net.de5.dale://login → Android 命中 AndroidManifest 里的 intent-filter 把 App
  *      拉回前台（appUrlOpen / getLaunchUrl，见 App.vue）→ 这里解析令牌建会话。 */
@@ -153,8 +153,8 @@ const APP_AUTH_PAGE = "/app-auth";   /* 构建产物里的 dist/app-auth.html */
 /* 中转页所在站点：网页构建里 API_BASE 就是生产站点域名；没有就用线上写死的兜底 */
 function siteOrigin() {
   const o = API_BASE || (typeof window !== "undefined" && window.location ? window.location.origin : "");
-  if (!/^https:\/\//i.test(o)) return "https://dale.de5.net";
-  if (/localhost|127\.0\.0\.1/i.test(o)) return "https://dale.de5.net";   /* 本地调试也用线上中转页 */
+  if (!/^https:\/\//i.test(o)) return "https://warmpaws.de5.net";
+  if (/localhost|127\.0\.0\.1/i.test(o)) return "https://warmpaws.de5.net";   /* 本地调试也用线上中转页 */
   return o.replace(/\/+$/, "");
 }
 async function openAuthBrowser(url) {
@@ -455,7 +455,7 @@ export async function cloudChangePassword(oldPw, newPw) {
 /* —— Google 一键登录（双轨）：
  * App：App 内授权窗口 + 站内中转页拉回（见上方 APP_AUTH_PAGE 注释），全程不出 App；
  * 网页：与原来一致，整页跳 Google，回来时 supabase-js 自动建会话。
- * 前提：Supabase → Providers → Google 已开启；Redirect URLs 白名单含 https://dale.de5.net/**
+ * 前提：Supabase → Providers → Google 已开启；Redirect URLs 白名单含 https://warmpaws.de5.net/**
  *       （Web 与 App 都只用到站内 https 地址，不需要加自定义 scheme）。 */
 export async function cloudSignInWithGoogle() {
   if (!sb) return { ok: false, reason: "no-cloud" };

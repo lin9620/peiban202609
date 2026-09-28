@@ -1,5 +1,5 @@
 /* 网页版实测工装（独立于真机）：无头 Edge + CDP 精确设备模拟 + 真实站点/构建产物
- *   用法：node tools/web-probe.mjs --file=./tools/_expr_x.js [--url=https://dale.de5.net/]
+ *   用法：node tools/web-probe.mjs --file=./tools/_expr_x.js [--url=https://warmpaws.de5.net/]
  *                                    [--w=393] [--h=852] [--wait=1500] [--dpr=2.75] [--shot=out.png]
  *   行为：起无头 Edge（远程调试）→ Emulation.setDeviceMetricsOverride 精确模拟手机视口
  *         → 导航 → 等 load + wait ms → 在页面里求值 --file（awaitPromise/returnByValue）→ 打印 JSON
@@ -18,7 +18,7 @@ const arg = (name, dflt) => {
   return hit ? hit.split("=").slice(1).join("=") : dflt;
 };
 const file = arg("file", "");
-const url = arg("url", "https://dale.de5.net/");
+const url = arg("url", "https://warmpaws.de5.net/");
 const W = Number(arg("w", "393")), H = Number(arg("h", "852"));
 const dpr = Number(arg("dpr", "2.75"));
 const waitMs = Number(arg("wait", "1500"));
