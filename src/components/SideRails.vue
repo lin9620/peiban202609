@@ -2,7 +2,6 @@
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { t, i18n } from "../i18n.js";
 import { SPECIES } from "../data/pets.js";
-import { stories } from "../data/stories.js";
 import { todayKey } from "../utils/daily.js";
 import { getItem, setItem } from "../utils/storage.js";
 import {
@@ -83,12 +82,7 @@ function stopBreathe() { breathing.value = false; clearInterval(bTimer); }
 onUnmounted(() => clearInterval(bTimer));
 const phaseLabel = computed(() => (breathing.value ? PH[phaseIdx.value].label() : t("rail.breathe")));
 
-/* —— 暖心飘带 —— */
-const quotes = stories.map((s) => (i18n.locale === "zh" ? s.quote.zh : s.quote.en));
-const qi = ref(0);
-let qTimer = setInterval(() => { qi.value = (qi.value + 1) % quotes.length; }, 6000);
-onUnmounted(() => clearInterval(qTimer));
-const quoteNow = computed(() => quotes[qi.value] || "");
+/* —— 暖心飘带：轮 118 移除（与今日温柔签重复，且部分 stories 条目缺 zh 文案会漏英文）—— */
 
 /* —— 心情速记 —— */
 const MOODS = ["\u{1F929}", "\u{1F642}", "\u{1F60C}", "\u{1F327}\uFE0F", "\u{1F614}"];
@@ -261,11 +255,6 @@ watch(signedIn, loadBottle);
         <p v-if="breaths > 0" class="b-count">{{ t("rail.breaths", { n: breaths }) }}</p>
       </div>
 
-      <div class="rail-head" style="margin-top: 14px">{{ t("rail.ticker") }}</div>
-      <transition name="fade" mode="out-in">
-        <p :key="qi" class="tk-quote">{{ quoteNow }}</p>
-      </transition>
-
       <div class="rail-head" style="margin-top: 14px">{{ t("rail.moodQuick") }}</div>
       <div class="mq-row">
         <button
@@ -289,9 +278,11 @@ watch(signedIn, loadBottle);
   backdrop-filter: blur(16px) saturate(1.3);
   -webkit-backdrop-filter: blur(16px) saturate(1.3);
   border: 1px solid rgba(255, 255, 255, .75);
-  border-radius: 22px; padding: 14px;
-  box-shadow: var(--shadow); max-height: 82vh; overflow: auto;
+  border-radius: 22px; padding: 12px;
+  box-shadow: var(--shadow); max-height: calc(100vh - 112px); overflow-y: auto;
+  scrollbar-width: none; -ms-overflow-style: none;
 }
+.rail-card::-webkit-scrollbar { display: none; }
 .rail-head { font-size: 11px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; color: var(--ink-faint); }
 .rail-pet { display: flex; align-items: center; gap: 9px; margin: 10px 0 6px; }
 .rp-emoji { font-size: 34px; }
@@ -327,7 +318,7 @@ watch(signedIn, loadBottle);
 
 .breathe { text-align: center; margin-top: 12px; }
 .b-circle {
-  width: 64px; height: 64px; margin: 0 auto; border-radius: 50%;
+  width: 46px; height: 46px; margin: 0 auto; border-radius: 50%;
   background: radial-gradient(circle at 32% 30%, var(--accent-soft), var(--accent));
   box-shadow: 0 6px 18px rgba(255, 159, 90, .4);
   transform: scale(.78); transition: transform 3.9s ease-in-out;
@@ -337,7 +328,6 @@ watch(signedIn, loadBottle);
 .b-circle.shrink { transform: scale(.78); }
 .b-label { font-size: 12.5px; font-weight: 800; color: var(--ink-soft); margin: 10px 0 8px; min-height: 18px; }
 .b-count { font-size: 11px; color: var(--ink-faint); font-weight: 700; margin-top: 8px; }
-.tk-quote { font-size: 12px; line-height: 1.7; color: var(--ink); font-weight: 600; margin-top: 8px; min-height: 58px; }
 .mq-row { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
 .mq {
   font-size: 19px; background: #fff; border: 1.5px solid rgba(160, 110, 60, .15);
