@@ -37,13 +37,13 @@
     /* 谷歌登录 / 邮件链接的 App 端中转页（只给内置授权窗口用，正式站点不链接到它）。
      *
      * 为什么需要这一页：Supabase 的 Redirect URLs 白名单只放行站内 https 地址
-     * （实测：https://warmpaws.de5.net/** 原样放行，net.de5.dale://login 会被悄悄换成
+     * （实测：https://warmpaws.de5.net/** 原样放行，net.de5.warmpaws://login 会被悄悄换成
      * 站点首页）。所以 App 端把 redirectTo 指向本页，授权完成后由本页把
-     * query / hash 里的令牌原样转交给 net.de5.dale://login —— Android 命中
+     * query / hash 里的令牌原样转交给 net.de5.warmpaws://login —— Android 命中
      * AndroidManifest 里的 intent-filter，就会把 App 拉回前台，App 再用
      * cloudHandleAppRedirect() 解析令牌建会话（见 src/utils/supabase.js）。 */
     (function () {
-      var SCHEME = "net.de5.dale";
+      var SCHEME = "net.de5.warmpaws";
       var deep = SCHEME + "://login" + (location.search || "") + (location.hash || "");
       var btn = document.getElementById("go");
       btn.setAttribute("href", deep);

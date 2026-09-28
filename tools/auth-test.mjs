@@ -423,7 +423,7 @@ ok("A48b nickLong 的 {n} 真会被替换（昵称上限提示不留占位符）
 /* ───────── 轮31 App 端谷歌登录：App 内授权窗口 + 站内中转页 + 自定义 scheme 拉回 ─────────
  * 用户问题：App 里点谷歌整页跳去系统浏览器，登完回不到 App。
  * 线上差分实测（POST /auth/v1/authorize + GET /auth/v1/verify）：
- *   https://warmpaws.de5.net/** 被原样放行；net.de5.dale://login 被换成站点首页
+ *   https://warmpaws.de5.net/** 被原样放行；net.de5.warmpaws://login 被换成站点首页
  *   → 所以 redirectTo 必须是站内 https 地址（/app-auth 中转页），再由中转页转交 scheme。 */
 {
   const sbj = read("src/utils/supabase.js");
@@ -434,22 +434,22 @@ ok("A48b nickLong 的 {n} 真会被替换（昵称上限提示不留占位符）
 
   /* ① 纯函数：解析回跳 URL */
   const imp = parseAppAuthRedirect(
-    "net.de5.dale://login#access_token=eyJhbGci&expires_in=3600&refresh_token=rt-123&token_type=bearer");
+    "net.de5.warmpaws://login#access_token=eyJhbGci&expires_in=3600&refresh_token=rt-123&token_type=bearer");
   ok("A80 implicit 回跳（# 里的 access_token / refresh_token）被解析出来",
     imp.accessToken === "eyJhbGci" && imp.refreshToken === "rt-123" && !imp.error && !imp.code);
-  const pkce = parseAppAuthRedirect("net.de5.dale://login?code=abc-123&state=xyz");
+  const pkce = parseAppAuthRedirect("net.de5.warmpaws://login?code=abc-123&state=xyz");
   ok("A81 PKCE 回跳（?code=）也认，不会当成没令牌", pkce.code === "abc-123" && !pkce.accessToken);
   const denied = parseAppAuthRedirect(
-    "net.de5.dale://login#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid");
+    "net.de5.warmpaws://login#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid");
   ok("A82 用户取消 / 链接失效：reason 取 error_description（没 description 时退 error_code）",
     denied.error === "access_denied" && denied.reason === "Email link is invalid"
-    && parseAppAuthRedirect("net.de5.dale://login?error=access_denied&error_code=otp_expired").reason === "otp_expired");
+    && parseAppAuthRedirect("net.de5.warmpaws://login?error=access_denied&error_code=otp_expired").reason === "otp_expired");
   ok("A83 脏输入不抛错：空串 / 只有 scheme / null 都返回空结果",
-    parseAppAuthRedirect("").accessToken === "" && parseAppAuthRedirect("net.de5.dale://login").accessToken === ""
+    parseAppAuthRedirect("").accessToken === "" && parseAppAuthRedirect("net.de5.warmpaws://login").accessToken === ""
     && parseAppAuthRedirect(null).accessToken === "" && parseAppAuthRedirect(undefined).reason === "");
   ok("A84 isAppAuthRedirect 只认自家 scheme（别人的深链不处理）",
-    isAppAuthRedirect("net.de5.dale://login#x=1") && !isAppAuthRedirect("https://warmpaws.de5.net/login")
-    && !isAppAuthRedirect("net.de5.dale.evil://login") && !isAppAuthRedirect(null));
+    isAppAuthRedirect("net.de5.warmpaws://login#x=1") && !isAppAuthRedirect("https://warmpaws.de5.net/login")
+    && !isAppAuthRedirect("net.de5.warmpaws.evil://login") && !isAppAuthRedirect(null));
 
   /* ② App 分支：redirectTo 走站内中转页（不是自定义 scheme），且不出 App */
   ok("A85 App 端 redirectTo = 站点域名 + /app-auth（白名单内的 https 地址）",
@@ -482,15 +482,15 @@ ok("A48b nickLong 的 {n} 真会被替换（昵称上限提示不留占位符）
     typeof messages.zh.profile.appGoogleFail === "string" && typeof messages.en.profile.appGoogleFail === "string");
 
   /* ④ 中转页本体：把 query/hash 原样转交给自定义 scheme；给按钮兜底（无手势的自动跳转可能被浏览器拦） */
-  ok("A93 中转页把令牌转交给 net.de5.dale://login（query + hash 都不能丢）",
-    bridge.includes('var SCHEME = "net.de5.dale";')
+  ok("A93 中转页把令牌转交给 net.de5.warmpaws://login（query + hash 都不能丢）",
+    bridge.includes('var SCHEME = "net.de5.warmpaws";')
     && bridge.includes('SCHEME + "://login" + (location.search || "") + (location.hash || "")')
     && bridge.includes("location.replace(deep)"));
   ok("A94 中转页有按钮兜底 + 不被搜索引擎收录（内部页，站点不链接）",
     bridge.includes('id="go"') && bridge.includes("setTimeout") && bridge.includes("noindex, nofollow"));
 
   /* ⑤ Android 侧：intent-filter 缺了的话上面全白搭 */
-  ok("A95 AndroidManifest 注册 net.de5.dale://login（BROWSABLE + DEFAULT，配合 singleTask 拉回前台）",
+  ok("A95 AndroidManifest 注册 net.de5.warmpaws://login（BROWSABLE + DEFAULT，配合 singleTask 拉回前台）",
     /<intent-filter>[\s\S]*?BROWSABLE[\s\S]*?<data android:scheme="net.de5\.dale" android:host="login" \/>[\s\S]*?<\/intent-filter>/.test(manifest)
     && manifest.includes('android:launchMode="singleTask"'));
 
@@ -514,17 +514,17 @@ ok("A48b nickLong 的 {n} 真会被替换（昵称上限提示不留占位符）
     return state;
   }
   const b1 = runBridge("", "#access_token=T1&refresh_token=R1&token_type=bearer");
-  const want = "net.de5.dale://login#access_token=T1&refresh_token=R1&token_type=bearer";
+  const want = "net.de5.warmpaws://login#access_token=T1&refresh_token=R1&token_type=bearer";
   ok("A96 中转页：按钮 href 与自动跳转都指向同一个深链（hash 令牌一字不差）",
     b1.href === want && b1.timers.some((t) => t.ms === 50));
   b1.timers.filter((t) => t.ms === 50).forEach((t) => t.fn());
   ok("A97 中转页：自动跳转真的调了 location.replace(深链)（不是只设了 href）", b1.navigated === want);
   const b2 = runBridge("?code=abc-123&state=s1", "");
   ok("A98 中转页：PKCE 的 ?code= 也照样转交（search 与 hash 拼接顺序不串位）",
-    b2.href === "net.de5.dale://login?code=abc-123&state=s1");
+    b2.href === "net.de5.warmpaws://login?code=abc-123&state=s1");
   const b3 = runBridge("", "#error=access_denied&error_code=otp_expired");
   ok("A99 中转页：带错误回来的链接同样能拉回 App（App 侧再报错，不白屏）",
-    b3.href === "net.de5.dale://login#error=access_denied&error_code=otp_expired");
+    b3.href === "net.de5.warmpaws://login#error=access_denied&error_code=otp_expired");
   const late = b1.timers.filter((t) => t.ms >= 2000);
   late.forEach((t) => t.fn());
   ok("A100 中转页：自动跳转被拦时 2.5 秒后把文案改成「点按钮」（用户手势必定能拉起）",

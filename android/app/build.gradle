@@ -4,7 +4,7 @@ android {
     namespace = "net.de5.dale"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "net.de5.dale"
+        applicationId "net.de5.warmpaws"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

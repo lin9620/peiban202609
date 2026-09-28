@@ -144,11 +144,11 @@ function redirectOptions() {
  *   ① @capacitor/browser 在 App 内开授权窗口（不出到系统浏览器、不丢当前页面状态）；
  *   ② redirectTo 用【站内中转页】https://warmpaws.de5.net/app-auth —— 不能直接写自定义
  *      scheme：Supabase 的 Redirect URLs 白名单只放行站内 https 地址（线上差分实测：
- *      https://warmpaws.de5.net/** 原样放行，net.de5.dale://login 被换成站点首页）；
+ *      https://warmpaws.de5.net/** 原样放行，net.de5.warmpaws://login 被换成站点首页）；
  *   ③ 中转页（public/app-auth.html）把 query/hash 里的令牌原样转交给
- *      net.de5.dale://login → Android 命中 AndroidManifest 里的 intent-filter 把 App
+ *      net.de5.warmpaws://login → Android 命中 AndroidManifest 里的 intent-filter 把 App
  *      拉回前台（appUrlOpen / getLaunchUrl，见 App.vue）→ 这里解析令牌建会话。 */
-const APP_SCHEME = "net.de5.dale";
+const APP_SCHEME = "net.de5.warmpaws";
 const APP_AUTH_PAGE = "/app-auth";   /* 构建产物里的 dist/app-auth.html */
 /* 中转页所在站点：网页构建里 API_BASE 就是生产站点域名；没有就用线上写死的兜底 */
 function siteOrigin() {
@@ -176,9 +176,9 @@ async function closeAuthBrowser() {
 export function isAppAuthRedirect(rawUrl) {
   return typeof rawUrl === "string" && rawUrl.startsWith(APP_SCHEME + "://");
 }
-/* net.de5.dale://login#access_token=…&refresh_token=…  (implicit，本项目客户端默认流程)
- * net.de5.dale://login?code=…                          (PKCE 兜底)
- * net.de5.dale://login#error=access_denied&error_code=… (用户取消 / 被拒)
+/* net.de5.warmpaws://login#access_token=…&refresh_token=…  (implicit，本项目客户端默认流程)
+ * net.de5.warmpaws://login?code=…                          (PKCE 兜底)
+ * net.de5.warmpaws://login#error=access_denied&error_code=… (用户取消 / 被拒)
  * 纯函数：Node 单测直接喂字符串。 */
 export function parseAppAuthRedirect(rawUrl) {
   const out = { code: "", accessToken: "", refreshToken: "", error: "", reason: "" };

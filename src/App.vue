@@ -123,7 +123,7 @@ onMounted(async () => {
   } catch (e) { /* 插件缺失（网页调试）时静默 */ }
 
   /* —— 轮 31：谷歌登录从 App 内授权窗口回到 App ——
-   * 中转页（站内 /app-auth）把令牌转交给 net.de5.dale://login，Android 据此拉起本 App：
+   * 中转页（站内 /app-auth）把令牌转交给 net.de5.warmpaws://login，Android 据此拉起本 App：
    *   · App 还活着 → onNewIntent → appUrlOpen 事件；
    *   · App 被杀掉后的冷启动 → 事件不会重放，必须用 getLaunchUrl 把启动 intent 取回来。
    * 两条路都交给 handleAuthUrl：解析令牌 → 建会话（cloud.user 一变，登录页 watch 自动回跳）。 */
