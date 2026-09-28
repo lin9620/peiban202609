@@ -6,12 +6,11 @@
   "compatibility_date": "2025-09-01",
   // 轮 114：恢复 workers.dev 预览地址（加了 routes 后 Cloudflare 默认关闭它；之前一直开着，保持原状）
   "workers_dev": true,
-  // 轮 114 换域名：两个域都写进配置——**config 的 routes 会整体替换 Worker 的绑定集合**，
-  // 只写新域把面板绑的旧域顶掉了（首次部署实测旧域 530，已修复）。custom_domain 走
-  // deploy 自动建/保 DNS + 绑定；双域并存，老 APK（VITE_API_BASE=旧域）和老链接都不断。
+  // 轮 115：旧域 dale.de5.net 已按用户要求下线（用户要拿它另做静态页）——本 Worker 唯一入口
+  // = warmpaws.de5.net。**config 的 routes 会整体替换绑定集合**（踩坑 #42）：删掉条目再 deploy
+  // 即解除绑定并清掉自家 DNS 记录；存量 APK 已提前全部换新包（16A59F578311CD3A，指新域）。
   "routes": [
-    { "pattern": "warmpaws.de5.net", "custom_domain": true },
-    { "pattern": "dale.de5.net", "custom_domain": true }
+    { "pattern": "warmpaws.de5.net", "custom_domain": true }
   ],
   "assets": {
     "directory": "./dist",
