@@ -4,11 +4,14 @@
   // 其余路径仍静态资源优先；SPA 兜底行为由 assets 配置决定，npm run deploy 用法不变。
   "main": "worker/api.js",
   "compatibility_date": "2025-09-01",
-  // 轮 109 换域名：warmpaws.de5.net 走 custom_domain —— deploy 时 Cloudflare 自动建 DNS 记录
-  // 并把域名绑到本 Worker（de5.net zone 已在同账号）。旧域 dale.de5.net 的绑定在 Cloudflare
-  // 面板、不在本配置里，deploy 不会动它——双域并存，老 APK / 老链接 / 收录过渡期都不断。
+  // 轮 114：恢复 workers.dev 预览地址（加了 routes 后 Cloudflare 默认关闭它；之前一直开着，保持原状）
+  "workers_dev": true,
+  // 轮 114 换域名：两个域都写进配置——**config 的 routes 会整体替换 Worker 的绑定集合**，
+  // 只写新域把面板绑的旧域顶掉了（首次部署实测旧域 530，已修复）。custom_domain 走
+  // deploy 自动建/保 DNS + 绑定；双域并存，老 APK（VITE_API_BASE=旧域）和老链接都不断。
   "routes": [
-    { "pattern": "warmpaws.de5.net", "custom_domain": true }
+    { "pattern": "warmpaws.de5.net", "custom_domain": true },
+    { "pattern": "dale.de5.net", "custom_domain": true }
   ],
   "assets": {
     "directory": "./dist",
