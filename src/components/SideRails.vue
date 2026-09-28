@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { t, i18n } from "../i18n.js";
 import { SPECIES } from "../data/pets.js";
 import { stories } from "../data/stories.js";
@@ -8,8 +8,14 @@ import { getItem, setItem } from "../utils/storage.js";
 import {
   activePet, petUi, say, doPetting, feedDish, cookbook,
   adventure, harvestClover, feedVisitor, checkInMood,
+  dailyTasks, claimTasks, claimableCoins, TASK_LIST,
 } from "../stores/petStore.js";
 import { visitorByKey } from "../data/adventure.js";
+import { GENTLE_SLIPS } from "../data/gentleSlips.js";
+import { slipFor, bumpSlipStreak, splitHm, bottleLeft } from "../utils/railRules.js";
+import { BOTTLE_SEND_MAX, BOTTLE_FISH_MAX, bottleQuota, bottleHeld } from "../utils/bottle.js";
+import { copyText } from "../utils/clipboard.js";
+import { cloud } from "../utils/supabase.js";
 
 /* —— 左栏：伙伴角 —— */
 const emoji = computed(() => {
@@ -94,6 +100,81 @@ function moodPick(i) {
     checkedToday.value = true;
   }
 }
+
+/* ═══ 轮 117 · 侧栏新卡片（与主页面共用同一套 store/规则，不造第二本账） ═══ */
+
+/* —— 左栏：今日温柔任务（与宠物页同一套任务与领取）—— */
+const TASK_META = { feed: "🍚", mood: "🌻", draw: "🎨", play: "🎾", adv: "🎒" };
+const taskRows = computed(() =>
+  TASK_LIST.map((x) => ({ ...x, ico: TASK_META[x.key] || "✨" })));
+const doneCount = computed(() => TASK_LIST.filter((x) => dailyTasks[x.key]).length);
+const claimable = computed(() => claimableCoins());
+const claimedNote = ref(0);
+function doClaim() {
+  const c = claimTasks();
+  if (c > 0) {
+    claimedNote.value = c;
+    say(t("tasks.claimed", { c: c }), 3200);
+  }
+}
+
+/* —— 左栏：今日陪伴（挂页即陪伴；按天累计在 localStorage，可见时每 30 秒记一笔）—— */
+const accomKey = "wp-accomp-" + todayKey();
+const accomSec = ref(Number(getItem(accomKey)) || 0);
+function accomTick() {
+  if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+  accomSec.value = (Number(accomSec.value) || 0) + 30;
+  setItem(accomKey, String(accomSec.value));
+}
+let aTimer = setInterval(accomTick, 30000);
+onUnmounted(() => clearInterval(aTimer));
+const accomHm = computed(() => splitHm(accomSec.value));
+const companionText = computed(() =>
+  accomHm.value.h > 0
+    ? t("rail.timeHm", { h: accomHm.value.h, m: accomHm.value.m })
+    : t("rail.timeM", { m: accomHm.value.m }));
+
+/* —— 右栏：今日温柔签（每天确定性一签；连续收集天数按天推进）—— */
+const slip = computed(() => slipFor(GENTLE_SLIPS, todayKey()));
+const slipText = computed(() => {
+  const s = slip.value;
+  if (!s) return "";
+  return i18n.locale === "zh" ? s.zh : s.en;
+});
+const slipStreak = ref((() => {
+  const raw = getItem("wp-slip-streak");
+  try { return JSON.parse(raw) || {}; } catch (e) { return {}; }
+})());
+if (slip.value) {
+  const next = bumpSlipStreak(slipStreak.value, todayKey());
+  if (next.last !== slipStreak.value.last || next.count !== slipStreak.value.count) {
+    slipStreak.value = next;
+    setItem("wp-slip-streak", JSON.stringify(next));
+  }
+}
+const slipCopied = ref(false);
+async function copySlip() {
+  const okCopy = await copyText(slipText.value);
+  if (okCopy) {
+    slipCopied.value = true;
+    setTimeout(() => { slipCopied.value = false; }, 2000);
+  }
+}
+
+/* —— 右栏：海边来信（漂流瓶小卡；服务端权威次数，与首页同一本账）—— */
+const signedIn = computed(() => !!(cloud.ready && cloud.user));
+const btLeft = ref({ send: 0, fish: 0 });
+const btHeld = ref(0);
+async function loadBottle() {
+  if (!signedIn.value) return;
+  try {
+    const [q, held] = await Promise.all([bottleQuota(), bottleHeld()]);
+    btLeft.value = bottleLeft(q, BOTTLE_SEND_MAX, BOTTLE_FISH_MAX);
+    btHeld.value = Array.isArray(held) ? held.length : 0;
+  } catch (e) { /* 静默：小卡片不弹错 */ }
+}
+onMounted(loadBottle);
+watch(signedIn, loadBottle);
 </script>
 
 <template>
@@ -125,6 +206,25 @@ function moodPick(i) {
           <span class="rv-ico">{{ visitor.ico }}</span>
           <button class="ra tiny" @click="feedVisitor()">{{ t("adventure.feedVisitor") }}</button>
         </div>
+
+        <!-- 轮 117：今日温柔任务（与宠物页同一套任务/领取，侧栏直达） -->
+        <div class="rail-head" style="margin-top: 14px">{{ t("tasks.title") }}</div>
+        <div class="tk-list">
+          <div v-for="x in taskRows" :key="x.key" class="tk-row" :class="{ done: dailyTasks[x.key] }">
+            <span class="tk-ico">{{ x.ico }}</span>
+            <span class="tk-label">{{ t("tasks." + x.key) }}</span>
+            <span class="tk-coin">💰{{ x.coin }}</span>
+            <span class="tk-state">{{ dailyTasks[x.key] ? "✓" : "·" }}</span>
+          </div>
+        </div>
+        <button v-if="claimable > 0" class="ra wide" @click="doClaim">
+          {{ t("tasks.claim", { c: claimable }) }}
+        </button>
+        <p v-else-if="claimedNote > 0" class="b-count">{{ t("tasks.claimed", { c: claimedNote }) }}</p>
+        <p class="b-count">{{ t("tasks.progress", { done: doneCount, total: TASK_LIST.length }) }}</p>
+
+        <!-- 轮 117：今日陪伴（挂页即陪伴，按天累计） -->
+        <div class="ac-strip">🐾 {{ t("rail.companionTime", { t: companionText }) }}</div>
       </template>
     </div>
   </div>
@@ -132,7 +232,27 @@ function moodPick(i) {
   <div class="rail rail-right">
     <div class="rail-card">
       <div class="rail-head">{{ t("rail.healing") }}</div>
-      <div class="breathe">
+
+      <!-- 轮 117：今日温柔签（每天一签，连集天数 + 一键抄录） -->
+      <div class="slip" v-if="slipText">
+        <p class="slip-text">{{ slipText }}</p>
+        <div class="slip-foot">
+          <span class="b-count">{{ t("rail.slipStreak", { n: slipStreak.count }) }}</span>
+          <button class="ra tiny" @click="copySlip">{{ slipCopied ? t("rail.slipCopied") : t("common.copy") }}</button>
+        </div>
+      </div>
+
+      <!-- 轮 117：海边来信（漂流瓶次数与手里的信，与首页同一本账；未登录不渲染） -->
+      <template v-if="signedIn">
+        <div class="rail-head" style="margin-top: 14px">{{ t("rail.bottleTitle") }}</div>
+        <div class="bt">
+          <p class="bt-line">{{ t("rail.bottleLeft", { n: btLeft.send, m: btLeft.fish }) }}</p>
+          <p v-if="btHeld > 0" class="bt-line bt-warn">{{ t("rail.bottleHeld", { n: btHeld }) }}</p>
+          <router-link class="ra wide bt-go" to="/">{{ t("rail.bottleGo") }}</router-link>
+        </div>
+      </template>
+
+      <div class="breathe" style="margin-top: 14px">
         <div class="b-circle" :class="breathing ? PH[phaseIdx].k : ''"></div>
         <p class="b-label">{{ phaseLabel }}</p>
         <button class="ra" @click="breathing ? stopBreathe() : startBreathe()">
@@ -226,4 +346,36 @@ function moodPick(i) {
 }
 .mq:hover:not(:disabled) { transform: translateY(-2px) scale(1.08); border-color: var(--accent); }
 .mq:disabled { opacity: .55; cursor: default; }
+
+/* ═══ 轮 117 · 侧栏新卡片 ═══ */
+/* 今日温柔任务 */
+.tk-list { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.tk-row {
+  display: flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 700;
+  color: var(--ink-soft); background: rgba(255, 255, 255, .55);
+  border-radius: 10px; padding: 5px 7px;
+}
+.tk-row.done { color: var(--ink-faint); text-decoration: line-through; }
+.tk-ico { font-size: 13px; }
+.tk-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tk-coin { font-size: 10px; color: var(--ink-faint); font-weight: 800; }
+.tk-state { width: 12px; text-align: center; color: var(--accent-deep); font-weight: 900; }
+.ra.wide { display: block; width: 100%; text-align: center; margin-top: 8px; }
+.ac-strip {
+  margin-top: 12px; font-size: 11px; font-weight: 800; text-align: center;
+  color: var(--accent-deep); background: var(--accent-soft);
+  border-radius: 12px; padding: 6px 8px;
+}
+/* 今日温柔签 */
+.slip {
+  margin-top: 10px; background: #fff; border-radius: 14px; padding: 11px 12px;
+  box-shadow: var(--shadow-sm); border: 1px dashed rgba(160, 110, 60, .22);
+}
+.slip-text { font-size: 12px; line-height: 1.75; font-weight: 700; color: var(--ink); }
+.slip-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 7px; }
+/* 海边来信 */
+.bt { margin-top: 8px; }
+.bt-line { font-size: 11.5px; font-weight: 700; color: var(--ink-soft); line-height: 1.6; }
+.bt-line.bt-warn { color: var(--accent-deep); }
+.bt-go { text-decoration: none; margin-top: 7px; }
 </style>

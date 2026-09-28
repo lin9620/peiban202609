@@ -383,6 +383,16 @@ export const messages = {
       breaths: "{n} breaths",
       ticker: "Warm words",
       moodQuick: "Mood note",
+      slipTitle: "Today's gentle slip",
+      slipStreak: "Collected {n} days",
+      slipCopied: "Copied to heart ✓",
+      bottleTitle: "From the sea",
+      bottleLeft: "Toss {n} letters · reply {m} today",
+      bottleHeld: "{n} letter(s) in your hands",
+      bottleGo: "Visit the sea",
+      companionTime: "Together for {t}",
+      timeHm: "{h} h {m} min",
+      timeM: "{m} min",
     },
 
     admin: {
@@ -1097,6 +1107,16 @@ export const messages = {
       breaths: "已呼吸 {n} 次",
       ticker: "暖心飘带",
       moodQuick: "心情速记",
+      slipTitle: "今日温柔签",
+      slipStreak: "已集 {n} 天",
+      slipCopied: "已抄进心里 ✓",
+      bottleTitle: "海边来信",
+      bottleLeft: "还能投 {n} 封 · 回 {m} 封",
+      bottleHeld: "手里有 {n} 封信等你回",
+      bottleGo: "去海边看看",
+      companionTime: "今天已陪伴 {t}",
+      timeHm: "{h} 小时 {m} 分钟",
+      timeM: "{m} 分钟",
     },
 
     admin: {
