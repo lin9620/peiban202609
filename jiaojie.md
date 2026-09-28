@@ -1323,7 +1323,7 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **验证**：undef/tdz **0** + wall **34/34** + i18n **19/19** + build 0 + page-smoke **8/8**；已部署（live-check 14/14）+ APK 装机 Success。
      **待用户验收（亮屏）**：暖心墙下拉 → 「刷新中…」→ 换一批/新增提示正常、列表真的换内容；消息页无错误盒。
 
-  - **轮 117 · 网页端两侧竖栏扩容：温柔任务/陪伴时长/今日温柔签/海边来信（2026-09-29，改动完成、37 套离线全绿，待提交待部署——攒批；APK 无需重打**，SideRails 仅桌面 ≥1280px 渲染**）**：
+  - **轮 117 · 网页端两侧竖栏扩容：温柔任务/陪伴时长/今日温柔签/海边来信（2026-09-29，已提交 `5058950` / 已部署 Version `8419e629` / live-check LIVE ALL PASS (14) + live-bundle-check 本地=线上（入口 `index-BNbD4Izt.js` SHA16 `a79a320ee2c2fe00`）✅；**轮 118 视觉修复已随批部署 Version `f25e3ffa`**（滚动条隐藏/飘带退役，live-check 14/14 + bundle SHA16 `330b35158835a532` 本地=线上）；APK 无需重打，SideRails 仅桌面 ≥1280px 渲染）**：
      用户反馈「网页端两边太难看，一堆空的」→ 给 SideRails（伙伴角/治愈角）加四张新卡片，全部**复用既有数据层**（宠物任务/漂流瓶服务端次数/剪贴板），不造第二本账、零数据库改动：① **今日温柔任务**（左）：TASK_LIST 五任务逐行（图标+文案+💰+✓），可领取金币按钮=claimTasks()（与宠物页同一本账），完成后 say() 语音反馈；② **今日陪伴**（左）：挂页即陪伴，可见时每 30s 累计进 localStorage（wp-accomp-<dateKey>），strip 展示「今天已陪伴 X 分钟/X 小时 Y 分钟」；③ **今日温柔签**（右）：新增 `src/data/gentleSlips.js`（16 签 zh/en 双语，语气=温柔不评判落小动作），`railRules.slipFor` 按日期**确定性**抽签（同日同签、跨天轮换）+ 连集天数（bumpSlipStreak，跨月/跨年连续判定）+ 一键抄录（clipboard.js）；④ **海边来信**（右）：bottleQuota/bottleHeld（启动预热单飞合并，零额外请求）展示「还能投 X 封 · 回 Y 封 / 手里有 N 封信」，未登录整卡隐藏。
      新增文件：`src/data/gentleSlips.js` / `src/utils/railRules.js` / `tools/rail-test.mjs`（**31 项**：抽签确定性/范围/分布、脏数据兜底、连击跨月跨年、时长拆分、次数减法钳制）。i18n rail 块新键 zh/en 成对 10 个（slipTitle/slipStreak/slipCopied/bottleTitle/bottleLeft/bottleHeld/bottleGo/companionTime/timeHm/timeM）；任务文案复用既有 `tasks.*` 顶级块（**首版误写 pet.tasks.* 显示原始 key，桌面截图目检抓到后修正**——动态拼接 key undef/tdz/page-smoke 都测不到，目检是唯一防线）。
      **修真缺陷一枚**：slipIndexFor 首版用普通乘法做 FNV——超过 2^53 丢精度导致分布塌缩（30 天仅覆盖 <8 签，rail-test T3 抓到）→ `Math.imul` 修复。
