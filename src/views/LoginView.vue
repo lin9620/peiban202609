@@ -325,7 +325,7 @@ function passHint(pass) {
   appearance: none; font: inherit; cursor: pointer;
   min-width: 40px; min-height: 40px; border-radius: 999px;
   border: 1px solid rgba(160, 110, 60, .2); background: rgba(255, 255, 255, .7);
-  font-weight: 800; font-size: 16px;
+  font-weight: 500; font-size: 16px;
 }
 .login-sub { margin: 0 2px 14px; }
 .auth-sub { margin: 6px 0 0; }

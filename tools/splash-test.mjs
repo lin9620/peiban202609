@@ -26,7 +26,7 @@ function filesUnder(dir, re) {
 }
 
 ok("index.html：启动页静态层（不依赖 Vue，#app 外的 DOM 层；logo/文案/呼吸动画/背景色与主题一致）",
-  has(html, 'id="app-splash"', "sp-paw", "sp-breathe", "温暖的爪印", "#fff7ee"));
+  has(html, 'id="app-splash"', "sp-paw", "sp-breathe", "温暖的爪印", "#faf9f5"));
 ok("index.html：淡出类 .out（App.vue 关页用）+ aria-hidden + prefers-reduced-motion 降动画",
   has(html, "#app-splash.out", 'aria-hidden="true"', "prefers-reduced-motion"));
 ok("index.html：看门狗触发先摘启动页（6 秒中文兜底提示不被启动页挡住）",

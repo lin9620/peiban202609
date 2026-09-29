@@ -189,13 +189,13 @@ async function submit() {
   width: 38px; height: 38px; border-radius: 14px;
   border: 1.5px solid rgba(255, 255, 255, .95);
   background: var(--glass-strong); color: var(--ink);
-  font-size: 17px; font-weight: 800; line-height: 1;
+  font-size: 17px; font-weight: 500; line-height: 1;
   display: flex; align-items: center; justify-content: center;
   box-shadow: var(--shadow-sm); cursor: pointer;
   transition: transform .15s ease;
 }
 .compose-back:active { transform: scale(.94); }
-.compose-title { font-size: 17px; font-weight: 800; letter-spacing: .3px; }
+.compose-title { font-size: 17px; font-weight: 500; letter-spacing: .3px; }
 
 /* 卡片：输入框吃掉剩余高度，动作条自然吸底 */
 /* 轮 76：发帖卡 = 「信纸」——暖纸渐变 + 爪印水印 + 收紧的留白。
@@ -214,8 +214,8 @@ async function submit() {
   font-size: 34px; opacity: .12; pointer-events: none;
 }
 .compose-card--signin { align-items: center; justify-content: center; text-align: center; gap: 16px; min-height: 46vh; }
-.compose-sub { font-size: 13.5px; font-weight: 700; color: var(--ink-soft); line-height: 1.75; }
-.compose-count { font-size: 11.5px; font-weight: 700; color: var(--accent-deep); opacity: .85; }
+.compose-sub { font-size: 13.5px; font-weight: 500; color: var(--ink-soft); line-height: 1.75; }
+.compose-count { font-size: 11.5px; font-weight: 500; color: var(--accent-deep); opacity: .85; }
 
 /* 大输入框：把原生 textarea 的边框/把手全去掉，只用字号与行高排字 */
 .compose-area {
@@ -225,7 +225,7 @@ async function submit() {
   font: inherit; font-size: 16px; line-height: 1.9; letter-spacing: .2px;
   color: var(--ink); padding: 0;
 }
-.compose-area::placeholder { color: var(--ink-faint); font-weight: 600; opacity: .9; }
+.compose-area::placeholder { color: var(--ink-faint); font-weight: 500; opacity: .9; }
 
 .compose-pic {
   width: 100%; max-height: 260px; object-fit: contain;
@@ -245,20 +245,20 @@ async function submit() {
   padding: 7px 14px; border-radius: 999px;
   background: var(--accent-soft);
   border: 1.5px solid rgba(255, 255, 255, .9);
-  font-size: 12.5px; font-weight: 800; color: var(--accent-deep);
+  font-size: 12.5px; font-weight: 500; color: var(--accent-deep);
   cursor: pointer; user-select: none;
   transition: transform .15s ease;
 }
 .compose-tool:active { transform: scale(.96); }
 .compose-count {
   margin-left: auto;
-  font-size: 12px; font-weight: 700; color: var(--ink-faint);
+  font-size: 12px; font-weight: 500; color: var(--ink-faint);
   font-variant-numeric: tabular-nums;
 }
 /* 竖屏手机：发布键独占一整行（拇指好按，也和主流编辑器一致 —— 实测三个元素挤一行会换行成左对齐） */
-.compose-send { flex: 0 0 auto; width: 100%; height: 46px; font-weight: 800; font-size: 15px; }
+.compose-send { flex: 0 0 auto; width: 100%; height: 46px; font-weight: 500; font-size: 15px; }
 .compose-card--signin .compose-send { width: auto; min-width: 104px; height: 40px; font-size: 14px; }
-.compose-hint { font-size: 12.5px; font-weight: 700; color: var(--ink-soft); line-height: 1.7; }
+.compose-hint { font-size: 12.5px; font-weight: 500; color: var(--ink-soft); line-height: 1.7; }
 .compose-hint.bad { color: var(--low); }
 .compose-hint.good { color: var(--good); }
 

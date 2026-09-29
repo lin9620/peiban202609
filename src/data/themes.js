@@ -4,9 +4,9 @@
 export const THEMES = [
   {
     key: "cream", dark: false,
-    name: { en: "Creamy Orange", zh: "奶油橘" },
-    swatch: "#FF9F5A",
-    naive: { primary: "#FF9F5A", hover: "#FFB273", pressed: "#F0842F" },
+    name: { en: "Warm Cream", zh: "暖奶油" },
+    swatch: "#CC785C",
+    naive: { primary: "#CC785C", hover: "#CC785C", pressed: "#A9583E" },
   },
   {
     key: "sakura", dark: false,

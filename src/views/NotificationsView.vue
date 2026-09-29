@@ -237,7 +237,7 @@ onMounted(async () => {
 /* 聚合徽标：这行代表同键的 N 条原始通知；点一下整组一起消未读 */
 .notif-times {
   flex: none; align-self: center; margin-left: 6px;
-  font-size: 11.5px; font-weight: 800; color: var(--ink-soft);
+  font-size: 11.5px; font-weight: 500; color: var(--ink-soft);
   background: rgba(160, 110, 60, .1); border-radius: 999px; padding: 3px 9px;
 }
 </style>

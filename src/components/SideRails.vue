@@ -283,12 +283,12 @@ watch(signedIn, loadBottle);
   scrollbar-width: none; -ms-overflow-style: none;
 }
 .rail-card::-webkit-scrollbar { display: none; }
-.rail-head { font-size: 11px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; color: var(--ink-faint); }
+.rail-head { font-size: 11px; font-weight: 500; letter-spacing: 1.5px; text-transform: uppercase; color: var(--ink-faint); }
 .rail-pet { display: flex; align-items: center; gap: 9px; margin: 10px 0 6px; }
 .rp-emoji { font-size: 34px; }
 .rp-id { display: flex; flex-direction: column; line-height: 1.25; }
 .rp-id b { font-size: 14px; }
-.rp-id span { font-size: 11px; color: var(--ink-soft); font-weight: 700; }
+.rp-id span { font-size: 11px; color: var(--ink-soft); font-weight: 500; }
 .rail-speech {
   font-size: 11.5px; line-height: 1.55; color: var(--ink);
   background: #fff; border-radius: 12px; padding: 8px 10px;
@@ -298,10 +298,10 @@ watch(signedIn, loadBottle);
 .rb { display: flex; align-items: center; gap: 6px; }
 .rb-ico { font-size: 12px; width: 16px; }
 .rb-track { flex: 1; height: 7px; border-radius: 99px; background: rgba(160, 110, 60, .14); overflow: hidden; }
-.rb-fill { height: 100%; border-radius: 99px; background: linear-gradient(90deg, #ffc38f, #ff9f5a); transition: width .6s ease; }
+.rb-fill { height: 100%; border-radius: 99px; background: var(--accent); transition: width .6s ease; }
 .rail-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .ra {
-  font-family: inherit; font-size: 11.5px; font-weight: 800; color: var(--ink);
+  font-family: inherit; font-size: 11.5px; font-weight: 500; color: var(--ink);
   background: #fff; border: 1.5px solid rgba(160, 110, 60, .18);
   border-radius: 999px; padding: 6px 11px; cursor: pointer; transition: all .2s ease;
 }
@@ -309,7 +309,7 @@ watch(signedIn, loadBottle);
 .ra:disabled { opacity: .45; cursor: default; }
 .ra.tiny { padding: 4px 9px; font-size: 11px; }
 .rail-away {
-  margin-top: 10px; font-size: 11.5px; font-weight: 800; text-align: center;
+  margin-top: 10px; font-size: 11.5px; font-weight: 500; text-align: center;
   color: var(--accent-deep); background: var(--accent-soft);
   border-radius: 12px; padding: 7px 8px;
 }
@@ -326,8 +326,8 @@ watch(signedIn, loadBottle);
 .b-circle.grow { transform: scale(1.32); }
 .b-circle.hold { transform: scale(1.32); }
 .b-circle.shrink { transform: scale(.78); }
-.b-label { font-size: 12.5px; font-weight: 800; color: var(--ink-soft); margin: 10px 0 8px; min-height: 18px; }
-.b-count { font-size: 11px; color: var(--ink-faint); font-weight: 700; margin-top: 8px; }
+.b-label { font-size: 12.5px; font-weight: 500; color: var(--ink-soft); margin: 10px 0 8px; min-height: 18px; }
+.b-count { font-size: 11px; color: var(--ink-faint); font-weight: 500; margin-top: 8px; }
 .mq-row { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
 .mq {
   font-size: 19px; background: #fff; border: 1.5px solid rgba(160, 110, 60, .15);
@@ -341,18 +341,18 @@ watch(signedIn, loadBottle);
 /* 今日温柔任务 */
 .tk-list { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
 .tk-row {
-  display: flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 700;
+  display: flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 500;
   color: var(--ink-soft); background: rgba(255, 255, 255, .55);
   border-radius: 10px; padding: 5px 7px;
 }
 .tk-row.done { color: var(--ink-faint); text-decoration: line-through; }
 .tk-ico { font-size: 13px; }
 .tk-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tk-coin { font-size: 10px; color: var(--ink-faint); font-weight: 800; }
-.tk-state { width: 12px; text-align: center; color: var(--accent-deep); font-weight: 900; }
+.tk-coin { font-size: 10px; color: var(--ink-faint); font-weight: 500; }
+.tk-state { width: 12px; text-align: center; color: var(--accent-deep); font-weight: 500; }
 .ra.wide { display: block; width: 100%; text-align: center; margin-top: 8px; }
 .ac-strip {
-  margin-top: 12px; font-size: 11px; font-weight: 800; text-align: center;
+  margin-top: 12px; font-size: 11px; font-weight: 500; text-align: center;
   color: var(--accent-deep); background: var(--accent-soft);
   border-radius: 12px; padding: 6px 8px;
 }
@@ -361,11 +361,11 @@ watch(signedIn, loadBottle);
   margin-top: 10px; background: #fff; border-radius: 14px; padding: 11px 12px;
   box-shadow: var(--shadow-sm); border: 1px dashed rgba(160, 110, 60, .22);
 }
-.slip-text { font-size: 12px; line-height: 1.75; font-weight: 700; color: var(--ink); }
+.slip-text { font-size: 12px; line-height: 1.75; font-weight: 500; color: var(--ink); }
 .slip-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 7px; }
 /* 海边来信 */
 .bt { margin-top: 8px; }
-.bt-line { font-size: 11.5px; font-weight: 700; color: var(--ink-soft); line-height: 1.6; }
+.bt-line { font-size: 11.5px; font-weight: 500; color: var(--ink-soft); line-height: 1.6; }
 .bt-line.bt-warn { color: var(--accent-deep); }
 .bt-go { text-decoration: none; margin-top: 7px; }
 </style>

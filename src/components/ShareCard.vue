@@ -199,7 +199,7 @@ async function shareSave() {
 .modal-row { display: flex; gap: 12px; justify-content: center; }
 .modal-btn {
   border: none; background: var(--accent); color: #fff;
-  font-weight: 700; font-size: 14px; padding: 10px 26px;
+  font-weight: 500; font-size: 14px; padding: 10px 26px;
   border-radius: 999px; cursor: pointer;
 }
 .modal-btn.ghost { background: #eee3d4; color: #8a7460; }

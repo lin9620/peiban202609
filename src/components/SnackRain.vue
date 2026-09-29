@@ -224,7 +224,7 @@ const itemStyle = (it) => ({ left: (it.x * 100) + "%", top: (Math.max(0, it.y) *
 }
 .sr-chip {
   background: var(--glass-strong, #fff); color: var(--ink, #4a3b2f);
-  border-radius: 999px; padding: 6px 14px; font-weight: 700;
+  border-radius: 999px; padding: 6px 14px; font-weight: 500;
   box-shadow: 0 4px 14px rgba(40, 28, 16, .18); font-size: 15px;
 }
 .sr-chip.bad { background: #fde8e8; color: #c04747; }
@@ -243,17 +243,17 @@ const itemStyle = (it) => ({ left: (it.x * 100) + "%", top: (Math.max(0, it.y) *
 .sr-hint { margin: 0 0 16px; font-size: 13px; opacity: .6; }
 .sr-btn {
   border: 0; cursor: pointer; border-radius: 999px; padding: 11px 30px;
-  font-size: 16px; font-weight: 700; color: #fff;
-  background: linear-gradient(135deg, #FF9F5A, #F0842F);
+  font-size: 16px; font-weight: 500; color: #fff;
+  background: var(--accent);
   box-shadow: 0 8px 20px rgba(240, 132, 47, .35);
 }
 .sr-btn.ghost { background: transparent; color: var(--ink, #4a3b2f); box-shadow: inset 0 0 0 2px rgba(120, 100, 80, .25); }
 .sr-best { margin: 14px 0 0; font-size: 13px; opacity: .65; }
-.sr-left { margin: 6px 0 0; font-size: 13px; font-weight: 700; color: #F0842F; }
-.sr-left.dim { color: var(--ink, #4a3b2f); opacity: .55; font-weight: 600; }
-.sr-score { font-size: 44px; font-weight: 800; margin: 4px 0; color: #F0842F; }
-.sr-newbest { color: #46A78E; font-weight: 700; margin: 0 0 6px; }
-.sr-reward { list-style: none; padding: 0; margin: 8px 0 4px; display: flex; gap: 12px; justify-content: center; font-weight: 700; }
+.sr-left { margin: 6px 0 0; font-size: 13px; font-weight: 500; color: #F0842F; }
+.sr-left.dim { color: var(--ink, #4a3b2f); opacity: .55; font-weight: 500; }
+.sr-score { font-size: 44px; font-weight: 500; margin: 4px 0; color: #F0842F; }
+.sr-newbest { color: #46A78E; font-weight: 500; margin: 0 0 6px; }
+.sr-reward { list-style: none; padding: 0; margin: 8px 0 4px; display: flex; gap: 12px; justify-content: center; font-weight: 500; }
 .sr-row { display: flex; gap: 10px; justify-content: center; margin-top: 16px; }
 
 .sr-arena { position: absolute; inset: 0; touch-action: none; overflow: hidden; }
@@ -269,7 +269,7 @@ const itemStyle = (it) => ({ left: (it.x * 100) + "%", top: (Math.max(0, it.y) *
 }
 .sr-fx {
   position: absolute; transform: translate(-50%, -50%);
-  font-weight: 800; font-size: 20px; color: #ffd76a;
+  font-weight: 500; font-size: 20px; color: #ffd76a;
   text-shadow: 0 2px 6px rgba(0, 0, 0, .4);
   pointer-events: none; animation: srUp .7s ease-out forwards;
 }

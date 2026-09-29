@@ -248,6 +248,6 @@ onMounted(async () => {
 <style scoped>
 /* 拉黑按钮（轮 33）：平时低调；待确认态变警示色；已拉黑态常显可撤销 */
 .waller-block { color: var(--ink-faint); }
-.waller-block.armed { color: var(--low); font-weight: 700; }
+.waller-block.armed { color: var(--low); font-weight: 500; }
 .waller-block.blocked { color: var(--low); }
 </style>

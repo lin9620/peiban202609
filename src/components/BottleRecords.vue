@@ -148,10 +148,10 @@ onBeforeUnmount(() => {
 .br-tabs { display: flex; gap: 8px; margin: 8px 0 10px; }
 .br-tab {
   border: 1px solid rgba(245, 140, 80, .28); background: rgba(245, 140, 80, .08);
-  color: #7c4a24; font-family: inherit; font-weight: 700; font-size: 12.5px;
+  color: #7c4a24; font-family: inherit; font-weight: 500; font-size: 12.5px;
   padding: 5px 14px; border-radius: 999px; cursor: pointer; transition: all .15s ease;
 }
 .br-tab.on {
-  background: linear-gradient(135deg, #ffb277, #f58c50); color: #fff; border-color: transparent;
+  background: var(--accent);
 }
 </style>

@@ -6,11 +6,11 @@ export function naiveThemeFor(key) {
   const p = t.naive;
   const dark = !!t.dark;
 
-  const ink = dark ? "#E8EAF6" : "#4A3B2F";
-  const ink2 = dark ? "#C0C6E8" : "#6B5949";
-  const ink3 = dark ? "#9AA3CC" : "#96826F";
-  const line = dark ? "rgba(139, 156, 232, .25)" : "rgba(160, 110, 60, .16)";
-  const cardBg = dark ? "rgba(38, 44, 78, .72)" : "rgba(255, 255, 255, .72)";
+  const ink = dark ? "#E8EAF6" : "#141413";
+  const ink2 = dark ? "#C0C6E8" : "#6C6A64";
+  const ink3 = dark ? "#9AA3CC" : "#8E8B82";
+  const line = dark ? "rgba(139, 156, 232, .25)" : "#E6DFD8";
+  const cardBg = dark ? "rgba(38, 44, 78, .72)" : "#EFE9DE";
   const popBg = dark ? "#262C52" : "rgba(255, 255, 255, .96)";
 
   return {
@@ -28,41 +28,39 @@ export function naiveThemeFor(key) {
       textColor2: ink2,
       textColor3: ink3,
       borderColor: line,
-      dividerColor: dark ? "rgba(139, 156, 232, .18)" : "rgba(160, 110, 60, .12)",
-      borderRadius: "14px",
-      borderRadiusSmall: "10px",
+      dividerColor: dark ? "rgba(139, 156, 232, .18)" : "#EBE6DF",
+      borderRadius: "8px",
+      borderRadiusSmall: "6px",
       fontFamily:
-        "'Quicksand', 'LXGW WenKai', 'PingFang SC', 'Microsoft YaHei', sans-serif",
+        "'Inter', 'LXGW WenKai', 'PingFang SC', 'Microsoft YaHei', sans-serif",
       fontSize: "15px",
-      hoverColor: dark ? "rgba(139, 156, 232, .14)" : "rgba(255, 159, 90, .10)",
+      hoverColor: dark ? "rgba(139, 156, 232, .14)" : "rgba(204, 120, 92, .10)",
       boxShadow1: dark ? "0 2px 10px rgba(0, 0, 0, .35)" : "0 2px 10px rgba(160, 110, 60, .08)",
       boxShadow2: dark ? "0 8px 28px rgba(0, 0, 0, .45)" : "0 8px 28px rgba(160, 110, 60, .13)",
     },
     Button: {
-      borderRadiusMedium: "999px",
-      borderRadiusLarge: "999px",
-      borderRadiusSmall: "999px",
-      fontWeightStrong: "700",
+      borderRadiusMedium: "8px",
+      borderRadiusLarge: "8px",
+      borderRadiusSmall: "8px",
+      fontWeightStrong: "500",
       textColorGhost: ink2,
       colorQuaternary: "transparent",
-      colorQuaternaryHover: dark ? "rgba(139, 156, 232, .16)" : "rgba(255, 159, 90, .12)",
+      colorQuaternaryHover: dark ? "rgba(139, 156, 232, .16)" : "rgba(204, 120, 92, .12)",
     },
     Card: {
-      borderRadius: "24px",
+      borderRadius: "12px",
       color: cardBg,
     },
     Input: {
-      /* 轮 71：999px → 20px——胶囊圆角在多行时会把框拉成怪形（用户实测）。
-         20px + CSS 圆角自动收缩：单行(≈36px 高)仍是椭圆，autosize 长高后变圆角长方形。 */
-      borderRadius: "20px",
+      borderRadius: "8px",
       color: dark ? "rgba(38, 44, 78, .6)" : "rgba(255, 255, 255, .85)",
       colorFocus: dark ? "#2A3060" : "#FFFFFF",
-      border: dark ? "1px solid rgba(139, 156, 232, .3)" : "1px solid rgba(160, 110, 60, .18)",
+      border: dark ? "1px solid rgba(139, 156, 232, .3)" : "1px solid #E6DFD8",
       borderHover: `1px solid ${p.hover}`,
       borderFocus: `1px solid ${p.primary}`,
-      boxShadowFocus: dark ? "0 0 0 3px rgba(139, 156, 232, .2)" : "0 0 0 3px rgba(255, 159, 90, .18)",
+      boxShadowFocus: dark ? "0 0 0 3px rgba(139, 156, 232, .2)" : "0 0 0 3px rgba(204, 120, 92, .15)",
     },
-    Tag: { borderRadius: "999px", fontWeightStrong: "700" },
+    Tag: { borderRadius: "999px", fontWeightStrong: "500" },
     Avatar: { borderRadius: "50%" },
     Dropdown: {
       borderRadius: "16px",
@@ -71,10 +69,10 @@ export function naiveThemeFor(key) {
       optionTextColorActive: p.pressed,
       optionColorHover: dark ? "rgba(139, 156, 232, .16)" : "rgba(255, 159, 90, .14)",
     },
-    Message: { borderRadius: "16px", color: popBg },
-    Dialog: { borderRadius: "24px", color: popBg },
+    Message: { borderRadius: "12px", color: popBg },
+    Dialog: { borderRadius: "16px", color: popBg },
     Progress: {
-      railColor: dark ? "rgba(139, 156, 232, .18)" : "rgba(160, 110, 60, .12)",
+      railColor: dark ? "rgba(139, 156, 232, .18)" : "#E6DFD8",
     },
   };
 }

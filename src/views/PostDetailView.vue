@@ -651,7 +651,7 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
 .pd-head { margin: 10px 0; }
 .pd-back, .pd-retry {
   -webkit-appearance: none; appearance: none; font: inherit; cursor: pointer;
-  border: 0; background: transparent; color: var(--ink-soft); font-weight: 700;
+  border: 0; background: transparent; color: var(--ink-soft); font-weight: 500;
   padding: 8px 10px; border-radius: 10px; min-height: 40px;
 }
 .pd-back:hover, .pd-retry:hover { background: rgba(160, 110, 60, .08); }
@@ -659,7 +659,7 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
 .post-card { padding: 14px 16px; }
 .post-head { display: flex; align-items: center; gap: 10px; }
 .post-meta { flex: 1; min-width: 0; }
-.post-name { font-weight: 700; overflow-wrap: anywhere; }
+.post-name { font-weight: 500; overflow-wrap: anywhere; }
 .post-time { font-size: 12px; color: var(--ink-faint); }
 .post-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 10px 0 4px; line-height: 1.7; }
 .pic { display: block; max-width: 100%; border-radius: 12px; margin: 8px 0 4px; }
@@ -670,9 +670,9 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
   cursor: pointer; color: var(--ink-faint); font: inherit; font-size: 12px;
   padding: 2px 6px; border-radius: 8px;
 }
-.post-dis.on { color: var(--low); font-weight: 700; }
+.post-dis.on { color: var(--low); font-weight: 500; }
 .post-dis:disabled { cursor: default; opacity: .6; }
-.cmt-toggle { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; cursor: pointer; color: var(--ink-soft); font-weight: 700; }
+.cmt-toggle { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; cursor: pointer; color: var(--ink-soft); font-weight: 500; }
 .cmt-caret { transition: transform .15s ease; display: inline-block; }
 .cmt-caret.open, .cmt-act i.open { transform: rotate(180deg); }
 .cmt-box { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 10px; }
@@ -698,5 +698,5 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
 .cmt-input { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 .cmt-input-in { margin: 8px 0 2px; }
 .cmt-input > .n-input { flex: 1; min-width: 0; }
-.cmt-login { font-weight: 700; }
+.cmt-login { font-weight: 500; }
 </style>

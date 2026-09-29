@@ -9,7 +9,7 @@
     content="A warm, healing corner: an adorable pet to care for, hand-drawn food, a gentle daily story and a cloud-shared kindness wall. 一个温暖的角落：养一只小宠物、手绘食物、暖心墙与温柔的每日故事。"
   />
   <meta name="robots" content="index, follow" />
-  <meta name="theme-color" content="#fff7ee" />
+  <meta name="theme-color" content="#faf9f5" />
   <link rel="canonical" href="https://warmpaws.de5.net/" />
   <link rel="icon" type="image/png" sizes="192x192" href="/favicon.png" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
@@ -26,7 +26,7 @@
      * 6 秒看门狗的中文兜底不带 seo-static 类，不受影响。 */
     html.js .seo-static { display: none !important; }
     /* CSS 未就绪的窗口期先铺暖底色避免白屏（style.css 就绪后无缝接管渐变） */
-    html.js body { background: #fff4e8; }
+    html.js body { background: #faf9f5; }
   </style>
   <script>
   /* ── 启动看门狗（修「有时候页面一堆英文乱码」）──────────────────────
@@ -126,10 +126,10 @@
        实测：jsdelivr/googleapis 慢或挂时，阻塞样式会挡住后面 module 脚本的执行——
        Vue 迟迟不挂载，页面一直停在 SEO 静态占位（网页端「先看到英文占位页」的根源之一，
        page-smoke 也因此偶发全红）。noscript 兜底：无 JS 环境仍以阻塞方式加载字体。 -->
-  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=EB+Garamond:wght@400;500&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css" media="print" onload="this.media='all'" />
   <noscript>
-    <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=EB+Garamond:wght@400;500&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css" />
   </noscript>
 </head>
@@ -150,7 +150,7 @@
        * 注意：注释里**不能出现**字面的 style 结束标签——HTML 解析器在 style 元素里见到它就
        * 立刻结束元素（注释也不豁免），splash-test ⑥/⑦ 就是守这个的。 */
       #app-splash { position: fixed; inset: 0; z-index: 9999; flex-direction: column;
-        align-items: center; justify-content: center; gap: 10px; background: #fff7ee;
+        align-items: center; justify-content: center; gap: 10px; background: #faf9f5;
         transition: opacity .4s ease; padding: 24px; text-align: center; }
       #app-splash { display: none; }
       /* html.cap-app 由 index.html 内联脚本 + src/main.js 的 Capacitor.isNativePlatform() 加上 */

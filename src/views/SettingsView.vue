@@ -368,7 +368,7 @@ onMounted(() => { loadPrefs(); });
   appearance: none; font: inherit; cursor: pointer;
   min-width: 40px; min-height: 40px; border-radius: 999px;
   border: 1px solid rgba(160, 110, 60, .2); background: rgba(255, 255, 255, .7);
-  font-weight: 800; font-size: 16px; flex: none;
+  font-weight: 500; font-size: 16px; flex: none;
 }
 .set-top-t h1 { font-size: 20px; margin: 0; }
 .set-top-t .sub { margin: 2px 0 0; }
@@ -378,8 +378,8 @@ onMounted(() => { loadPrefs(); });
 .set-avatar {
   width: 54px; height: 54px; border-radius: 50%; flex: none;
   display: flex; align-items: center; justify-content: center;
-  font-size: 24px; font-weight: 800; color: #fff;
-  background: linear-gradient(135deg, #ffb26b, #f07f3c);
+  font-size: 24px; font-weight: 500; color: #fff;
+  background: var(--accent);
   box-shadow: 0 6px 14px rgba(240, 132, 47, .25);
 }
 .set-avatar.paw { background: var(--accent-soft); color: var(--accent-deep); font-size: 26px; box-shadow: none; }
@@ -389,7 +389,7 @@ onMounted(() => { loadPrefs(); });
 .set-go {
   appearance: none; font: inherit; cursor: pointer; flex: none;
   border: none; border-radius: 999px; padding: 9px 16px;
-  font-weight: 800; font-size: 13px; color: #fff; background: var(--accent);
+  font-weight: 500; font-size: 13px; color: #fff; background: var(--accent);
 }
 .set-go:hover { filter: brightness(1.05); }
 
@@ -413,7 +413,7 @@ onMounted(() => { loadPrefs(); });
   background: var(--accent-soft); display: flex; align-items: center; justify-content: center;
   font-size: 15px;
 }
-.set-label { flex: 1; font-size: 14px; font-weight: 700; min-width: 0; }
+.set-label { flex: 1; font-size: 14px; font-weight: 500; min-width: 0; }
 .danger-t { color: var(--low); }
 .set-val { font-size: 12.5px; color: var(--ink-soft); max-width: 44%; overflow-wrap: anywhere; text-align: right; }
 .set-val.set-mini { flex: none; max-width: none; }

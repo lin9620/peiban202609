@@ -188,11 +188,11 @@ function openWall(p) {
   appearance: none; font: inherit; cursor: pointer;
   min-width: 40px; min-height: 40px; border-radius: 999px;
   border: 1px solid rgba(160, 110, 60, .2); background: rgba(255, 255, 255, .7);
-  font-weight: 800; font-size: 16px;
+  font-weight: 500; font-size: 16px;
 }
 .mypage-pull { display: flex; align-items: center; justify-content: center; overflow: hidden; color: var(--ink-soft); transition: height .15s ease; }
 .mypage-signin { text-align: center; display: grid; gap: 10px; justify-items: center; padding: 18px 14px; }
 .mypage-post { cursor: pointer; }
-.mypage-go { font-size: 12px; font-weight: 700; color: var(--ink-faint); white-space: nowrap; }
+.mypage-go { font-size: 12px; font-weight: 500; color: var(--ink-faint); white-space: nowrap; }
 .mypage-sentinel { height: 4px; }
 </style>
