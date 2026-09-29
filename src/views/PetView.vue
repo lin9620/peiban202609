@@ -334,7 +334,7 @@ function harvest() {
 }
 function offerFood() {
   if (!visitorPet.value) return;
-  if (!cookbook.length) { say(t("adventure.noDish"), 3500); return; }
+  /* 轮 119：没有手绘料理也照常招待（家常茶点），不再拦「先画一道」 */
   feedVisitor();
   spawnFx(["\u{1F9FA}", "\u{1F497}", "\u2728"], 4);
 }
@@ -732,22 +732,22 @@ function onToggleFramed(d) {
 /* 轮 53：心情任务行可点（去首页今日联打卡） */
 .task-row.clicky { cursor: pointer; }
 .task-row.clicky:hover { background: var(--accent-soft, rgba(245, 140, 80, .1)); }
-.t-go { margin-left: 8px; font-size: 11.5px; font-weight: 700; color: var(--accent-deep, #d96f2e); }
+.t-go { margin-left: 8px; font-size: 11.5px; font-weight: 500; color: var(--accent-deep, #d96f2e); }
 /* 轮 52：手机形态返回钮（与 SettingsView 的 set-back 同款视觉） */
 .pet-back {
   appearance: none; font: inherit; cursor: pointer; flex: none;
   min-width: 40px; min-height: 40px; border-radius: 999px;
   border: 1px solid rgba(160, 110, 60, .2); background: rgba(255, 255, 255, .7);
-  font-weight: 800; font-size: 16px;
+  font-weight: 500; font-size: 16px;
 }
-.park-title { font-size: 24px; font-weight: 800; letter-spacing: .3px; }
-.park-sub { font-size: 13px; color: var(--ink-soft); font-weight: 600; max-width: 470px; margin-top: 2px; }
+.park-title { font-size: 24px; font-weight: 500; letter-spacing: .3px; }
+.park-sub { font-size: 13px; color: var(--ink-soft); font-weight: 500; max-width: 470px; margin-top: 2px; }
 .park-coins { display: flex; gap: 8px; flex-wrap: wrap; }
 .coin-pill {
   background: var(--glass-strong);
   border: 1.5px solid rgba(255, 255, 255, .9);
   border-radius: 999px; padding: 7px 15px;
-  font-size: 13px; font-weight: 800;
+  font-size: 13px; font-weight: 500;
   box-shadow: var(--shadow-sm);
 }
 
@@ -772,7 +772,7 @@ function onToggleFramed(d) {
   width: min(94vw, 560px); max-height: 88vh; overflow: auto;
   box-shadow: 0 24px 60px rgba(80, 50, 20, .3);
 }
-.adopt-modal h3 { font-size: 17px; margin-bottom: 14px; text-align: center; font-weight: 800; }
+.adopt-modal h3 { font-size: 17px; margin-bottom: 14px; text-align: center; font-weight: 500; }
 .adopt-row { display: flex; justify-content: center; margin-top: 14px; }
 
 /* ═══════════ 睡着了 · 送出门拦截弹窗 ═══════════ */
@@ -780,9 +780,9 @@ function onToggleFramed(d) {
 .sleep-modal { text-align: center; padding: 26px 24px 22px; }
 .sleep-ico { font-size: 44px; line-height: 1; margin-bottom: 8px; }
 .sleep-modal h3 { margin-bottom: 10px; }
-.sleep-tip { font-size: 13.5px; font-weight: 700; color: var(--ink-soft); line-height: 1.7; }
-.adopt-quota { font-size: 12.5px; font-weight: 700; color: var(--accent-deep); text-align: center; margin: -6px 0 10px; opacity: .85; }
-.adopt-msg { font-size: 12.5px; font-weight: 700; color: var(--accent-deep); margin-top: 12px; text-align: center; }
+.sleep-tip { font-size: 13.5px; font-weight: 500; color: var(--ink-soft); line-height: 1.7; }
+.adopt-quota { font-size: 12.5px; font-weight: 500; color: var(--accent-deep); text-align: center; margin: -6px 0 10px; opacity: .85; }
+.adopt-msg { font-size: 12.5px; font-weight: 500; color: var(--accent-deep); margin-top: 12px; text-align: center; }
 
 .custom-up { display: flex; align-items: center; gap: 14px; margin-top: 10px; }
 .custom-preview {

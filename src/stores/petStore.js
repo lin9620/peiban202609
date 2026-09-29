@@ -823,9 +823,11 @@ export function harvestClover() {
   return n;
 }
 
-/* 招待访客（消耗一次好感，之后旅行带回回礼） */
+/* 招待访客（消耗一次好感，之后旅行带回回礼）。
+ * 轮 119：不画食物也能招待——原门槛只查 cookbook 非空、从不消耗菜品，纯摩擦（用户反馈拆除）；
+ * 有画菜时招待的是手绘料理，没有就用家常茶点，奖励口径一致。 */
 export function feedVisitor() {
-  if (!adventure.visitor || !cookbook.length) return false;
+  if (!adventure.visitor) return false;
   wallet.coins += 6;
   adventure.friendship++;
   adventure.visitor = null;
