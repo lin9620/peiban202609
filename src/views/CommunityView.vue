@@ -36,6 +36,7 @@ import {
   cloudDeleteComment, cloudSetReaction, cloudFetchCommentCounts, canUseWall, canReadWall,
   cloudAddView, cloudToggleDislike,
   cloudFetchMyCommentReactions, cloudToggleCommentReaction,
+  cloudFavIds, cloudFavAdd, cloudFavRemove,
 } from "../utils/wall.js";
 /* 进阶规则（纯函数，Node 单测覆盖）：排序 / 浏览去重 / 厌恶比例下架 / 每日一条 */
 import {
@@ -353,10 +354,41 @@ const moreKey = ref("");
 const moreTarget = ref(null);   /* { type, reportable, dbId, label, copy } */
 function postMoreKey(p) { return "post:" + (p.dbId != null ? p.dbId : p.id); }
 function cmtMoreKey(cm) { return "cmt:" + cm.id; }
+/* 轮 128 · 收藏（#13）：⋯菜单收藏/取消；favSet 随信息流批次与登录态刷新 */
+const favSet = ref(new Set());
+async function refreshFav() {
+  if (!signedIn.value) { favSet.value = new Set(); return; }
+  const ids = [...new Set(cloudPosts.value.map((x) => x.dbId).filter((x) => x != null))];
+  if (!ids.length) return;
+  favSet.value = new Set(await cloudFavIds(ids));
+}
+watch(() => cloudPosts.value, () => { refreshFav(); });
+watch(signedIn, () => { refreshFav(); });
+function moreFav() {
+  const t0 = moreTarget.value;
+  closeMore();
+  if (!t0 || t0.dbId == null) return;
+  if (!signedIn.value) return showWallMsg("fav.signIn");
+  const wasOn = favSet.value.has(t0.dbId);
+  if (wasOn) {
+    favSet.value = new Set([...favSet.value].filter((x) => x !== t0.dbId));
+    cloudFavRemove(t0.dbId).then((ok) => { if (!ok) showWallMsg("fav.fail"); });
+    showWallMsg("fav.removed");
+  } else {
+    favSet.value = new Set([...favSet.value, t0.dbId]);
+    cloudFavAdd(t0.dbId).then((ok) => {
+      if (!ok) {
+        favSet.value = new Set([...favSet.value].filter((x) => x !== t0.dbId));
+        showWallMsg("fav.fail");
+      }
+    });
+    showWallMsg("fav.done");
+  }
+}
 function togglePostMore(p) {
   const k = postMoreKey(p);
   moreKey.value = moreKey.value === k ? "" : k;
-  moreTarget.value = { type: "post", reportable: canReportPost(p), dbId: p.dbId, label: p.text || p.en || "", copy: postCopyText(p) };
+  moreTarget.value = { type: "post", reportable: canReportPost(p), dbId: p.dbId, faved: favSet.value.has(p.dbId), label: p.text || p.en || "", copy: postCopyText(p) };
 }
 function toggleCmtMore(cm) {
   const k = cmtMoreKey(cm);
@@ -1620,6 +1652,9 @@ watch(() => route.query.refresh, (v) => {
           @click.stop="togglePostMore(p)">⋯</button>
         <div v-if="moreKey === postMoreKey(p)" class="more-pop card" @click.stop>
           <button v-if="canReportPost(p)" class="more-item" @click="moreReport">{{ t("report.act") }}</button>
+          <button v-if="moreTarget && moreTarget.dbId != null" class="more-item" @click="moreFav">
+            {{ moreTarget.faved ? t("fav.remove") : t("fav.add") }}
+          </button>
           <button class="more-item" @click="moreCopy">{{ t("common.copy") }}</button>
         </div>
       </div>

@@ -1110,6 +1110,85 @@ function seoEnv() {
   } finally { c.restore(); }
 }
 
+/* ─────────── 轮 128 · 帖子收藏夹 /api/fav/* ─────────── */
+{
+  const c = capture([{ body: [{ created_at: "t", post: { id: 7 } }] }]);
+  try {
+    const res = await worker.fetch(req("/api/fav", { headers: { authorization: "Bearer tok-fav" } }), makeEnv(), {});
+    const h = c.outbound[0] ? new Headers(c.outbound[0].init.headers) : new Headers();
+    const u = new URL(c.outbound[0].url);
+    ok("fav 列表：GET wall_favorites + JWT 透传",
+      res.status === 200 && c.outbound[0].url.includes("/wall_favorites?")
+      && u.searchParams.get("order") === "created_at.desc"
+      && u.searchParams.get("limit") === "50" && h.get("authorization") === "Bearer tok-fav");
+    ok("fav 列表：embed 帖子字段（created_at + post:wall_posts 白名单列）",
+      u.searchParams.get("select") === "created_at,post:wall_posts(id,user_id,name,text,img,created_at,views)");
+  } finally { c.restore(); }
+}
+{
+  const c = capture([{ body: [] }]);
+  try {
+    await worker.fetch(req("/api/fav?limit=10&offset=5"), makeEnv(), {});
+    const u = new URL(c.outbound[0].url);
+    ok("fav 列表：limit/offset 透传", u.searchParams.get("limit") === "10" && u.searchParams.get("offset") === "5");
+  } finally { c.restore(); }
+}
+{
+  const c = capture([{ status: 201, body: { id: 9, post_id: 12 } }]);
+  try {
+    const res = await worker.fetch(req("/api/fav", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ post_id: "12" }) }), makeEnv(), {});
+    ok("fav 收藏：POST + post_id 盖章为数字",
+      res.status === 201 && c.outbound[0].init.body === JSON.stringify({ post_id: 12 })
+      && c.outbound[0].url.includes("/wall_favorites"));
+  } finally { c.restore(); }
+}
+{
+  const c = capture();
+  try {
+    const res = await worker.fetch(req("/api/fav", { method: "POST", body: JSON.stringify({ post_id: "abc" }) }), makeEnv(), {});
+    ok("fav 收藏：非数字 post_id → 400 且不出站", res.status === 400 && c.outbound.length === 0);
+  } finally { c.restore(); }
+}
+{
+  const c = capture([{ status: 204, body: null }]);
+  try {
+    const res = await worker.fetch(req("/api/fav?post_id=12", { method: "DELETE" }), makeEnv(), {});
+    ok("fav 取消：DELETE wall_favorites?post_id=eq.12",
+      res.status === 204 && c.outbound[0].url.includes("/wall_favorites?post_id=eq.12"));
+  } finally { c.restore(); }
+}
+{
+  const c = capture();
+  try {
+    const res = await worker.fetch(req("/api/fav?post_id=x", { method: "DELETE" }), makeEnv(), {});
+    ok("fav 取消：非法 post_id → 400", res.status === 400 && c.outbound.length === 0);
+  } finally { c.restore(); }
+}
+{
+  const c = capture([{ body: [{ post_id: 1 }, { post_id: 2 }] }]);
+  try {
+    const res = await worker.fetch(req("/api/fav/check?ids=1,2,x,3"), makeEnv(), {});
+    const j = await res.json();
+    const u = new URL(c.outbound[0].url);
+    ok("fav 批量查：过滤非数字 id → in.(1,2,3)，回命中 {ids}",
+      j.ids.length === 2 && u.searchParams.get("post_id") === "in.(1,2,3)");
+  } finally { c.restore(); }
+}
+{
+  const c = capture();
+  try {
+    const res = await worker.fetch(req("/api/fav/check"), makeEnv(), {});
+    ok("fav 批量查：无 ids → {ids:[]} 且不出站", res.status === 200 && (await res.json()).ids.length === 0 && c.outbound.length === 0);
+  } finally { c.restore(); }
+}
+{
+  const c = capture([{ throw: true }]);
+  try {
+    const res = await worker.fetch(req("/api/fav"), makeEnv(), {});
+    ok("fav 上游挂 → 502 upstream-unreachable", res.status === 502);
+  } finally { c.restore(); }
+}
+
 console.log(`worker-test: ${pass} pass, ${fails.length} fail`);
 for (const f of fails) console.log("FAIL  " + f);
 if (fails.length) process.exit(1);

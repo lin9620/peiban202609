@@ -17,7 +17,7 @@ import { MIN_PASSWORD, NICK_MAX, passwordProblem } from "../utils/authRules.js";
 /* 轮 44：帖子时间显示到秒（fmtWhenSec 纯函数，wall-rules-test 覆盖） */
 import { fmtWhenSec } from "../utils/wallRules.js";
 import { db } from "../utils/api/db.js";
-import { cloudFetchUserPosts } from "../utils/wall.js";
+import { cloudFetchUserPosts, cloudFavListMine, cloudFavRemove } from "../utils/wall.js";
 import { cacheKey, swr } from "../utils/cache.js";
 
 /* 心情图标：一律用 Unicode 转义，避免源码中的 emoji 编码损坏 */
@@ -87,6 +87,26 @@ watch(
   },
   { immediate: true },
 );
+
+/* 轮 128 / #13 我的收藏：登录后拉最近 20 条（收藏列表私有，RLS 只回本人）；
+ * 被下架/删除的帖子（post 为 null）不展示；取消收藏乐观移除。 */
+const favRows = ref([]);
+const favBusy = ref(false);
+watch(
+  () => [cloud.ready, cloud.user && cloud.user.id],
+  async ([ready, uid]) => {
+    if (!ready || !uid) { favRows.value = []; return; }
+    favBusy.value = true;
+    const rows = await cloudFavListMine(20);
+    favRows.value = (rows || []).filter((r) => r.post);
+    favBusy.value = false;
+  },
+  { immediate: true },
+);
+async function unFav(dbId) {
+  const ok = await cloudFavRemove(dbId);
+  if (ok) favRows.value = favRows.value.filter((r) => r.post.dbId !== dbId);
+}
 
 /* —— 登录 / 注册 / 忘记密码已独立成页（/login，手机与网页共用）——
  * 本页未登录时只放一张入口卡；老的重置邮件可能回落到 /profile，
@@ -460,6 +480,33 @@ const brightRatio = computed(() => {
           <div v-if="p.stats" class="post-foot">
             <span class="post-views">{{ t("community.views", { n: p.views || 0 }) }}</span>
           </div>
+        </router-link>
+      </div>
+    </section>
+
+    <!-- 轮 128 / #13 我的收藏：收藏别人的暖心帖（私有；点卡进详情，可就地取消） -->
+    <section v-if="cloudSigned" class="card">
+      <div class="row-between">
+        <h2>{{ t("fav.title") }}</h2>
+      </div>
+      <p v-if="favBusy" class="sub">…</p>
+      <p v-else-if="!favRows.length" class="sub">{{ t("fav.empty") }}</p>
+      <div v-else class="my-posts">
+        <router-link
+          v-for="r in favRows" :key="r.post.dbId"
+          class="post-card card my-post" :to="'/post/' + r.post.dbId">
+          <div class="post-head">
+            <n-avatar round :size="42" class="post-avatar">🙂</n-avatar>
+            <div class="post-meta">
+              <div class="post-name">{{ r.post.name }}</div>
+              <div class="post-time">{{ fmtWhenSec(r.post.created_at) }}</div>
+            </div>
+          </div>
+          <p class="post-text">{{ r.post.text || "🖼️" }}</p>
+          <img v-if="r.post.img" :src="r.post.img" class="pic" alt="" />
+          <button class="btn small ghost" @click.stop.prevent="unFav(r.post.dbId)">
+            {{ t("fav.remove") }}
+          </button>
         </router-link>
       </div>
     </section>

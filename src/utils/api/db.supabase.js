@@ -531,4 +531,39 @@ export const db = {
       return "";
     }
   },
+
+  /* ══════════ 帖子收藏夹（轮 128 / #13：wall_favorites 直读直写，RLS 私有） ══════════ */
+
+  /** 我的收藏（含内嵌帖子；被下架/删除的帖 post 为 null，调用方过滤） */
+  async wallFavListMine(limit, offset) {
+    const data = await unwrap(
+      sb().from("wall_favorites")
+        .select("created_at, post:wall_posts(id,user_id,name,text,img,created_at,views)")
+        .order("created_at", { ascending: false })
+        .range(offset, offset + limit - 1),
+    );
+    return data || [];
+  },
+
+  /** 批量查「这些帖子里我收藏了哪些」→ post_id 数组（只含本人的，RLS 兜底） */
+  async wallFavCheck(postIds) {
+    const ids = (postIds || []).filter((x) => Number.isInteger(x));
+    if (!ids.length) return [];
+    const data = await unwrap(
+      sb().from("wall_favorites").select("post_id").in("post_id", ids),
+    );
+    return (data || []).map((r) => r.post_id);
+  },
+
+  /** 收藏（幂等：unique(user_id, post_id) 冲突视为已收藏，不报错） */
+  async wallFavAdd(postId) {
+    const r = await sb().from("wall_favorites").insert({ post_id: postId });
+    if (r.error && r.error.code !== "23505") throw r.error;
+    return true;
+  },
+
+  /** 取消收藏 */
+  async wallFavRemove(postId) {
+    return unwrap(sb().from("wall_favorites").delete().eq("post_id", postId));
+  },
 };

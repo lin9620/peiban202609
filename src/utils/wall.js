@@ -509,6 +509,51 @@ export async function cloudFetchProfile(userId) {
  * @param {number} [limit] 默认 50
  * @param {number} [offset] 分页偏移（「我的帖子」10 条/页续拉用；0/缺省 = 旧行为）
  */
+/* ──────── 帖子收藏夹（轮 128 / #13）────────
+ * 收藏列表私有（RLS 只回本人）；未登录/未跑迁移/失败一律回落 null 或空数组，不炸页面。 */
+
+/** 我的收藏（新→旧）：行形状归一为 { favedAt, post }；post 为 null（已下架/已删）的行由调用方决定显隐 */
+export async function cloudFavListMine(limit = 20, offset = 0) {
+  if (!canUseWall() || !cloud.user) return null;
+  try {
+    const rows = await db.wallFavListMine(Number(limit) > 0 ? Number(limit) : 20, Number(offset) > 0 ? Number(offset) : 0);
+    return (rows || []).map((r) => ({ favedAt: r.created_at, post: r.post || null }));
+  } catch (e) {
+    return null;
+  }
+}
+
+/** 批量查「这些帖子里我收藏了哪些」→ post_id 数组（直连环形 / 网关 {ids} 在这里归一） */
+export async function cloudFavIds(postIds) {
+  if (!canUseWall() || !cloud.user || !Array.isArray(postIds) || !postIds.length) return [];
+  try {
+    const r = await db.wallFavCheck(postIds);
+    return Array.isArray(r) ? r : (r && Array.isArray(r.ids) ? r.ids : []);
+  } catch (e) {
+    return [];
+  }
+}
+
+/** 收藏（幂等）；成功 true，失败 false（调用方提示） */
+export async function cloudFavAdd(postId) {
+  if (!canUseWall() || !cloud.user || !Number.isInteger(postId)) return false;
+  try {
+    return (await db.wallFavAdd(postId)) !== false;
+  } catch (e) {
+    return false;
+  }
+}
+
+/** 取消收藏；成功 true，失败 false */
+export async function cloudFavRemove(postId) {
+  if (!canUseWall() || !cloud.user || !Number.isInteger(postId)) return false;
+  try {
+    return (await db.wallFavRemove(postId)) !== false;
+  } catch (e) {
+    return false;
+  }
+}
+
 export async function cloudFetchUserPosts(userId, limit = 50, offset = 0) {
   if (!canReadWall() || !userId) return null;
   try {

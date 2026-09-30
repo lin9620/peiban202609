@@ -13,6 +13,7 @@ import {
   cloudFetchPost, cloudFetchProfile, cloudFetchComments, cloudInsertComment,
   cloudDeleteComment, cloudToggleReaction, cloudAddView, cloudToggleDislike,
   cloudFetchMyCommentReactions, cloudToggleCommentReaction,
+  cloudFavIds, cloudFavAdd, cloudFavRemove,
 } from "../utils/wall.js";
 /* 轮 84：评论排序 / 回应 / 拷贝文本 */
 import {
@@ -66,6 +67,24 @@ async function load() {
 }
 
 /* 登录态就绪/变化 → 重拉（拿到 mine 回应标记与本人署名） */
+/* 轮 128 · 收藏（#13）：详情页单帖收藏态；登录/换帖时刷新 */
+const favOn = ref(false);
+watch([myId, () => post.value && post.value.dbId], async ([uid, dbId]) => {
+  favOn.value = false;
+  if (!uid || dbId == null) return;
+  const ids = await cloudFavIds([dbId]);
+  favOn.value = ids.includes(dbId);
+}, { immediate: true });
+async function moreFav() {
+  const p0 = post.value;
+  if (!p0 || p0.dbId == null) return;
+  if (!signedIn.value) { hint.value = t("fav.signIn"); return; }
+  const want = !favOn.value;
+  favOn.value = want;
+  const ok = want ? await cloudFavAdd(p0.dbId) : await cloudFavRemove(p0.dbId);
+  if (!ok) { favOn.value = !want; hint.value = t("fav.fail"); return; }
+  hint.value = want ? t("fav.done") : t("fav.removed");
+}
 watch(myId, () => {
   if (!post.value) return;
   cloudFetchPost(uid.value).then((p) => { if (p) post.value = p; });
@@ -197,6 +216,7 @@ function togglePostMore() {
   moreKey.value = moreKey.value === "post" ? "" : "post";
   moreTarget.value = {
     type: "post", reportable: !!post.value && canReportPost(), dbId: post.value && post.value.dbId,
+    faved: !!(post.value && post.value.dbId != null && favOn.value),
     label: post.value ? post.value.text || "" : "", copy: postCopyText(post.value),
   };
 }
@@ -494,6 +514,9 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
             @click.stop="togglePostMore">⋯</button>
           <div v-if="moreKey === 'post'" class="more-pop card" @click.stop>
             <button v-if="canReportPost()" class="more-item" @click="moreReport">{{ t("report.act") }}</button>
+            <button v-if="moreTarget && moreTarget.dbId != null" class="more-item" @click="moreFav">
+              {{ moreTarget.faved ? t("fav.remove") : t("fav.add") }}
+            </button>
             <button class="more-item" @click="moreCopy">{{ t("common.copy") }}</button>
           </div>
         </div>

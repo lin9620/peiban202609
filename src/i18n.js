@@ -157,6 +157,18 @@ export const messages = {
       progress: "{done}/{total} done",
     },
 
+    fav: {
+      add: "Save",
+      remove: "Remove from favorites",
+      signIn: "Sign in to save posts",
+      done: "Saved ✓",
+      removed: "Removed from favorites",
+      fail: "Couldn't save — try again",
+      title: "My favorites",
+      empty: "Nothing saved yet — tap ⋯ on the wall to keep the warmth.",
+      gone: "This post is no longer available.",
+    },
+
     adventure: {
       yard: "Little Yard",
       cloverTip: "Clovers grow over time. Tap to harvest.",
@@ -877,6 +889,18 @@ export const messages = {
       claim: "领取 💰{c}",
       claimed: "已领取 {c} 金币 ✨ 继续完成任务还能再领！",
       progress: "{done}/{total}",
+    },
+
+    fav: {
+      add: "收藏",
+      remove: "取消收藏",
+      signIn: "登录后即可收藏",
+      done: "已收藏 ✓",
+      removed: "已取消收藏",
+      fail: "收藏失败，再试一次",
+      title: "我的收藏",
+      empty: "还没有收藏——去暖心墙点 ⋯ 把温暖留下来。",
+      gone: "这条帖子已经不在了。",
     },
 
     adventure: {

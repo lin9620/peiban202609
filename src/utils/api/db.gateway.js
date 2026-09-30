@@ -459,4 +459,28 @@ export const db = {
     if (!path || typeof path !== "string" || path.includes("..")) return "";
     return `${BASE}/img/${path.split("/").map(enc).join("/")}`;
   },
+
+  /* ══════════ 帖子收藏夹（轮 128 / #13：/api/fav/*，RLS 私有） ══════════ */
+
+  /** 我的收藏（含内嵌帖子；被下架/删除的帖 post 为 null，调用方过滤） */
+  async wallFavListMine(limit, offset) {
+    return call(`/fav?limit=${enc(limit)}&offset=${enc(offset)}`);
+  },
+
+  /** 批量查「这些帖子里我收藏了哪些」→ { ids: [...] }（形状与直连的数组在 wall.js 归一） */
+  async wallFavCheck(postIds) {
+    const ids = (postIds || []).filter((x) => Number.isInteger(x));
+    if (!ids.length) return { ids: [] };
+    return call(`/fav/check?ids=${enc(ids.join(","))}`);
+  },
+
+  /** 收藏（服务端盖章 user_id；重复收藏由 unique 约束幂等） */
+  async wallFavAdd(postId) {
+    return call("/fav", { method: "POST", body: { post_id: postId } });
+  },
+
+  /** 取消收藏 */
+  async wallFavRemove(postId) {
+    return call(`/fav?post_id=${enc(postId)}`, { method: "DELETE" });
+  },
 };

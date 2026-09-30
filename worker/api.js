@@ -26,6 +26,7 @@ const TABLE = {
   comments: "wall_comments",
   reactions: "wall_reactions",
   commentReactions: "wall_comment_reactions",   /* 轮 84：评论的 👍心 / 💔碎心 */
+  favorites: "wall_favorites",                 /* 轮 128：帖子收藏夹（收藏列表私有，RLS 兜底） */
   profiles: "profiles",
   pet: "pet_profiles",
 };
@@ -131,6 +132,7 @@ async function readJson(request) {
   try {
     text = await request.text();
   } catch (e) {
+    console.error("READJSON THREW:", String(e && e.message));
     return { err: fail(400, "bad-body") };
   }
   if (text.length > JSON_BODY_MAX) return { err: fail(413, "payload-too-large") };
@@ -693,6 +695,50 @@ export default {
       /* —— 账号：自助删号（App 上架 Play 2024 政策硬门槛；T3）—— */
       if (seg[0] === "account" && seg[1] === "delete") {
         return m === "POST" ? rpc(env, request, "delete_my_account", {}) : fail(405, "method-not-allowed");
+      }
+
+      /* —— 帖子收藏夹（轮 128 / #13）：三件事全靠 RLS——列表/批量查只回本人的收藏，
+         插入用 default auth.uid() 盖章（客户端只传 post_id），删除只能删自己的。
+         Worker 不解析 JWT、不做身份参数透传；post_id 只认数字。 —— */
+      if (seg[0] === "fav") {
+        if (seg.length === 1 && m === "GET") {
+          /* 我的收藏（含内嵌帖子）：created_at 倒序；被下架/删除的帖 embed 会置 null，由前端过滤 */
+          const lim = parseLimit(q.get("limit"), 50);
+          const off = Number(q.get("offset")) > 0 ? Number(q.get("offset")) : 0;
+          const qs = `select=created_at,post:wall_posts(id,user_id,name,text,img,created_at,views)&order=created_at.desc&limit=${lim}&offset=${off}`;
+          const res = await upstream(env, request, restUrl(env, TABLE.favorites, qs));
+          return res || fail(502, "upstream-unreachable");
+        }
+        if (seg.length === 1 && m === "POST") {
+          const b = await readJson(request);
+          if (b.err) return b.err;
+          const pid = Number(b.body && b.body.post_id);
+          if (!/^[0-9]+$/.test(String(b.body && b.body.post_id)) || pid <= 0) return fail(400, "bad-post-id");
+          /* 内联插入：insertSingle 会再读一次 body（已消费 → bad-body），这里同一次读取里校验+写库 */
+          const res = await upstream(env, request, restUrl(env, TABLE.favorites, ""), {
+            method: "POST",
+            body: JSON.stringify({ post_id: pid }),
+            headers: { accept: OBJECT_ACCEPT, prefer: "return=representation" },
+          });
+          return res || fail(502, "upstream-unreachable");
+        }
+        if (seg.length === 1 && m === "DELETE") {
+          const pid = q.get("post_id") || "";
+          if (!/^[0-9]+$/.test(pid)) return fail(400, "bad-post-id");
+          return deleteRows(env, request, TABLE.favorites, `post_id=eq.${pid}`);
+        }
+        if (seg[1] === "check" && seg.length === 2 && m === "GET") {
+          /* 批量查「这些帖子里我收藏了哪些」：ids=1,2,3 → 只回命中且属于本人的 post_id */
+          const ids = (q.get("ids") || "").split(",").filter((x) => /^[0-9]+$/.test(x.trim()));
+          if (!ids.length) return json({ ids: [] });
+          const qs = `select=post_id&post_id=in.(${ids.map((x) => x.trim()).join(",")})`;
+          const res = await upstream(env, request, restUrl(env, TABLE.favorites, qs));
+          if (!res) return fail(502, "upstream-unreachable");
+          if (!res.ok) return res;
+          const rows = await res.json().catch(() => []);
+          return json({ ids: rows.map((r) => r.post_id) });
+        }
+        return fail(404, "not-found");
       }
 
       /* —— 帖子 —— */

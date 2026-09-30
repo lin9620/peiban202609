@@ -169,6 +169,33 @@ create policy "comment reactions write by auth" on public.wall_comment_reactions
 create policy "comment reactions remove own" on public.wall_comment_reactions
   for delete to authenticated using (auth.uid() = user_id);
 
+-- ═══════════ 帖子收藏夹（#13）：收藏列表私有，user_id 由 default auth.uid() 盖章 ═══════════
+
+create table if not exists public.wall_favorites (
+  id         bigint generated always as identity primary key,
+  user_id    uuid        not null default auth.uid() references auth.users (id) on delete cascade,
+  post_id    bigint      not null references public.wall_posts (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  unique (user_id, post_id)
+);
+
+create index if not exists wall_favorites_user_idx on public.wall_favorites (user_id, created_at desc);
+
+alter table public.wall_favorites enable row level security;
+
+drop policy if exists "favorites select own" on public.wall_favorites;
+drop policy if exists "favorites insert own" on public.wall_favorites;
+drop policy if exists "favorites delete own" on public.wall_favorites;
+
+create policy "favorites select own" on public.wall_favorites
+  for select using (auth.uid() = user_id);
+create policy "favorites insert own" on public.wall_favorites
+  for insert with check (auth.uid() = user_id);
+create policy "favorites delete own" on public.wall_favorites
+  for delete using (auth.uid() = user_id);
+
+revoke all on public.wall_favorites from anon;
+
 create or replace function public.wall_toggle_comment_reaction(p_comment bigint, p_kind text)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
