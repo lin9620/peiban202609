@@ -1997,6 +1997,9 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 }
 .t-like[data-liked="true"] .t-like-heart { color: var(--like-color); }
 .t-like[data-liked="true"] .t-like-heart path { fill: currentColor; }
+/* 裂纹线是描边细节不是填充面：永不填充；点亮时用底色描边=真裂开（否则💔点亮变♥，用户实测抓到） */
+.t-like-heart .t-like-crack, .t-like[data-liked="true"] .t-like-heart .t-like-crack { fill: none !important; }
+.t-like[data-liked="true"] .t-like-heart .t-like-crack { stroke: var(--card, #efe9de); }
 /* 弹跳放在 HTML 包装层：直接 transform 内联 SVG 会让 Chromium 按 1× 栅格化（hi-DPI 发糊） */
 .t-like[data-liked="true"] .t-like-icon { display: inline-flex; animation: t-like-pop var(--like-pop) var(--like-pop-ease); }
 @keyframes t-like-pop { 0% { transform: scale(1); } 30% { transform: scale(.82); } 100% { transform: scale(1); } }
