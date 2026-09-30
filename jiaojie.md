@@ -1323,6 +1323,9 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **验证**：undef/tdz **0** + wall **34/34** + i18n **19/19** + build 0 + page-smoke **8/8**；已部署（live-check 14/14）+ APK 装机 Success。
      **待用户验收（亮屏）**：暖心墙下拉 → 「刷新中…」→ 换一批/新增提示正常、列表真的换内容；消息页无错误盒。
 
+  - **轮 130 · 对方主页按钮横排（2026-10-01，已提交 `3173b50` / 已部署 Version `bf97df59` / live-check 14/14 ✅；**APK `6FFA8C46DF02C2FF` 已重打待装机**——手机 USB 断开）**：
+     用户截图反馈「进入对方空间，发私信/拉黑两个按钮位置不对，太丑」——`.waller-dm` 原是 column 竖排挤在头像右侧窄列。修：column→row + gap 8px + wrap；dmMsg/blockedTip 提示语 width:100% 换行到按钮下方。待装机验收。
+
   - **轮 129 · 收藏夹两修 + 入口改版（2026-10-01，SQL 已由用户执行，已提交 `aeac7e1` / 已部署 Version `813fe946` / live-check 14/14 ✅；APK 需重打）**：
      用户执行迁移后实测两问题：① **「点击收藏之后，我的收藏里面出不来」**——线上探针实锤 `GET /api/fav` → 400 `column wall_posts_1.name does not exist`：embed 列名是我按前端映射名错猜的（真实列 = author_name/body/image_path，name/text/img 是 rowsToPosts 的输出名）。修：worker + db.supabase 的 embed 列对齐真实列；wall.js cloudFavListMine 行映射成 UI 形状（dbId/name/text/img(publicUrl)/ts/views）。② 「收藏入口放退出登录左边，去掉原来云端已登录的按钮，收藏卡不要放底部」：ProfileView 头部 actions 去 ☁️登录 n-tag，加「我的收藏」开关按钮（quaternary，退出登录左边）；收藏卡从页面底部挪到头部下方，`v-if="cloudSigned && showFavs"` 按按钮显隐。
      探针复核：匿名 GET /api/fav → 401（anon 权限按迁移设计；列解析已过=embed 列名正确），登录路径待用户验收。
