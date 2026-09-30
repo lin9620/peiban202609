@@ -1326,6 +1326,7 @@ function restoreFeed() {
   if (!s || !Array.isArray(s.rows) || !s.rows.length) { savedFeedPos = null; return; }
   Object.assign(heights, s.heights);
   cloudPosts.value = s.rows;
+  cloudCmtTotal.value = s.cmtTotal || {};   /* 轮 127：评论数一并恢复（缺失=老存档，回落空表） */
   feedCursor.value = s.cursor;
   cloudDone.value = s.done;
   newestSeenTs.value = Math.max(newestSeenTs.value, s.newestTs || 0);
@@ -1354,6 +1355,7 @@ onUnmounted(() => {
       newestTs: newestSeenTs.value,
       rows: cloudPosts.value,
       heights: { ...heights },
+      cmtTotal: { ...cloudCmtTotal.value },   /* 轮 127：评论数跟帖子一起存（否则返回全变 0，用户实测） */
     };
   }
   if (feedRaf) cancelAnimationFrame(feedRaf);
