@@ -1323,11 +1323,17 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **验证**：undef/tdz **0** + wall **34/34** + i18n **19/19** + build 0 + page-smoke **8/8**；已部署（live-check 14/14）+ APK 装机 Success。
      **待用户验收（亮屏）**：暖心墙下拉 → 「刷新中…」→ 换一批/新增提示正常、列表真的换内容；消息页无错误盒。
 
+  - **轮 129 · 收藏夹两修 + 入口改版（2026-10-01，SQL 已由用户执行，已提交 `aeac7e1` / 已部署 Version `813fe946` / live-check 14/14 ✅；APK 需重打）**：
+     用户执行迁移后实测两问题：① **「点击收藏之后，我的收藏里面出不来」**——线上探针实锤 `GET /api/fav` → 400 `column wall_posts_1.name does not exist`：embed 列名是我按前端映射名错猜的（真实列 = author_name/body/image_path，name/text/img 是 rowsToPosts 的输出名）。修：worker + db.supabase 的 embed 列对齐真实列；wall.js cloudFavListMine 行映射成 UI 形状（dbId/name/text/img(publicUrl)/ts/views）。② 「收藏入口放退出登录左边，去掉原来云端已登录的按钮，收藏卡不要放底部」：ProfileView 头部 actions 去 ☁️登录 n-tag，加「我的收藏」开关按钮（quaternary，退出登录左边）；收藏卡从页面底部挪到头部下方，`v-if="cloudSigned && showFavs"` 按按钮显隐。
+     探针复核：匿名 GET /api/fav → 401（anon 权限按迁移设计；列解析已过=embed 列名正确），登录路径待用户验收。
+     验证：undef/tdz **0** + 37 套离线 **0 fail** + build 0 + page-smoke 9/9。
+     **教训**：① PostgREST embed 列名必须查 SUPABASE_SETUP.sql 的真实建表列，不能拿前端视图字段名反推；② 批量 sed/python 剪切模板段前，先 grep 锚文本与相对位置（本轮「改昵称」注释在收藏块之前，插入断言写反导致两次失败）。
+
   - **轮 128 · 帖子收藏夹 #13（2026-10-01，已提交 `600ec1d` / 已部署 Version `0ab12fd2` / live-check 14/14 ✅；**SQL 待用户执行**——未执行前收藏操作优雅降级提示失败，页面不炸；APK 需重打）**：
      用户点名清单 #13「帖子收藏夹」。**四层**：① DB：`MIGRATION_wall_favorites.sql`（wall_favorites 表：user_id **default auth.uid() 盖章**——客户端只传 post_id；unique(user_id,post_id) 幂等；RLS 私有 select/insert/delete 三策略；anon revoke；SETUP 同步）② Worker：`/api/fav` 四路由（GET 列表含 wall_posts 内嵌白名单列 / POST 收藏 / DELETE 取消 / GET check 批量查）——**事故一次**：fav POST 先 readJson 校验再调 insertSingle（内部又读一次 body）→ "Body already been read" → readJson 插桩定位 → 改内联插入一次读取；worker-test 224→**234**（新增 9 项 fav 断言）③ 数据层：db 双模式 `wallFavListMine/Check/Add/Remove`（直连 unique 冲突 23505 幂等；网关 check 回 {ids} 与直连数组在 wall.js 归一）+ wall.js `cloudFavListMine/Ids/Add/Remove` 包装（未登录/失败降级 null/[]/false）④ UI：暖心墙+详情页 ⋯ 菜单加「收藏/取消收藏」（未登录引导登录；快照进 moreTarget）；个人页新增**我的收藏**卡（最近 20 条，点卡进详情，就地取消；被下架帖不展示）；i18n fav 组 zh/en 成对 9 键（i18n-test 抓到误写 wall.fav* → 已归位 fav.*）。
      债务：gateway/api-contract 对 fav 4 方法的断言待补（worker-test 已钉 Worker 侧形状）。
      验证：undef/tdz **0** + 37 套离线 **0 fail**（worker 234/i18n 19/19）+ build 0 + page-smoke 9/9 + live-check 14/14。
-     **待办**：① 用户 SQL Editor 执行 MIGRATION_wall_favorites.sql → 探针验证（anon 调 /api/fav 应空数组而非 404）② APK 重打（收藏进 App）③ gateway/api-contract fav 断言补齐。
+     **待办**：① ~~SQL 执行~~（✅ 用户已执行，匿名 401=按设计私有；登录路径待用户验收收藏列表）② APK 重打（收藏进 App）③ gateway/api-contract fav 断言补齐。
 
   - **轮 127 · 修复从其它页进暖心墙评论数丢失（2026-09-29，已提交 `e1d65db` / 已部署 Version `5654f75a` / live-check 14/14 / **APK `E88AB4044FFB6924` 装机 + 冷启动确认** ✅）**：
      用户实测「从其他页面进入暖心墙，评论的数量会丢失」。**真因**：轮 95 的离场存档 `savedFeedPos` 存了帖子/游标/高度表但**漏了评论数表 `cloudCmtTotal`**；返回时 `restoreFeed()` 原样恢复列表、又刻意不重拉数据（防位置漂移）→ 新组件实例里 `cloudCmtTotal = {}` → 全部帖子「0 条评论」。**修**：存档补存 `cmtTotal`、恢复时一并还原（老存档无此字段回落空表）。**教训**：给「离场存档→恢复」机制加新状态字段时，同步检查存档清单是否要跟着扩（同类风险点：myReacts 在 rows 快照里 ✓）。
