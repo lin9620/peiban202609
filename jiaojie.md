@@ -1323,6 +1323,10 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **验证**：undef/tdz **0** + wall **34/34** + i18n **19/19** + build 0 + page-smoke **8/8**；已部署（live-check 14/14）+ APK 装机 Success。
      **待用户验收（亮屏）**：暖心墙下拉 → 「刷新中…」→ 换一批/新增提示正常、列表真的换内容；消息页无错误盒。
 
+  - **轮 124 · 修复💔点亮变♥（2026-09-29，已提交 `f5062a0` / 已部署 Version `a9aa2d55` / live-check 14/14 / **APK `E344684180289471` 装机 + 冷启动确认** ✅）**：
+     用户实测「不喜欢的♥点击之后便成了♥的形状」——**真因**：like-button 的填充规则 `.t-like[data-liked="true"] .t-like-heart path { fill: currentColor }` 把坏心 SVG 里的**第二条 path（裂纹线）也一起填满**，裂纹与心体同色即消失 → 💔 点亮后视觉上就是 ♥。**修**：裂纹 path 标记 `t-like-crack`（两视图 4 处），CSS 定两条规则——裂纹**永不填充**（fill:none !important）；点亮时裂纹改**底色描边**（`stroke: var(--card)`）= 在填色的心上真裂开。
+     验证：build 0 + page-smoke 9/9 + live-check 14/14；规则进 dist CSS（t-like-crack 3 处）。手感待用户真机验收（点亮💔应看到裂纹）。
+
   - **轮 123 · 动效库落地第一批：五套配方替换全站交互（2026-09-29，已提交 `20f9b65`（含 transitions/ 32 配方入库） / 已部署 Version `9b607b0e` / live-check LIVE ALL PASS (14) + bundle 本地=线上（入口 `index-C-AjyKu1.js`） / **APK `B3D00F7291D6FFAD` 装机 Success + 冷启动前台 + 无崩溃** ✅）**：
      用户发话「把适合我们站的动画替换掉」。从 `transitions/` 选五套落地（配方源已入库，CSS 带规范要求的 prefers-reduced-motion 块）：① **like-button → 评论 ❤️/💔**（两视图 8 按钮）：t-like 语法（data-liked 驱动描边填充→#d4547a、HTML 包装层弹跳防 hi-DPI 栅格化、8 粒粒子扇形迸发错峰）；**点亮成功才放粒子**（fireReactBurst 700ms 窗口，取消/失败/未登录不放）；② **notification-badge → 消息红点**（顶栏 💬 + TabBar）：对角滑入+弹簧定格 500ms；③ **⋯菜单 scale-in**（两视图 more-pop）：原点感知 160ms 缩放淡入；④ **text-states-swap → 刷新提示/hint**：blur+位移交叉换态（Vue transition keyed）；⑤ **number-pop-in → 金币数字**：`:key=wallet.coins` 重挂载即重放，零 JS。**手术事故一次**：python 正则替换串用了 raw string，`\"` 原样进模板 → 构建失败（Unquoted attribute value）→ 清理 16 处转义修复（build-until-good 抓到）。
      验证：undef/tdz **0** + **37 套离线 0 fail** + page-smoke **9/9** + build-until-good **BUILD_GOOD**（入口 `index-C-AjyKu1.js`）+ 探针实测（未登录点击正确拒绝；强制点亮语法验证因本机网络抖动未跑完——DOM 结构上轮已确认 8 粒粒子+初始态正确，**登录态手感待用户真机/浏览器验收**）。
