@@ -1323,17 +1323,26 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **验证**：undef/tdz **0** + wall **34/34** + i18n **19/19** + build 0 + page-smoke **8/8**；已部署（live-check 14/14）+ APK 装机 Success。
      **待用户验收（亮屏）**：暖心墙下拉 → 「刷新中…」→ 换一批/新增提示正常、列表真的换内容；消息页无错误盒。
 
-  - **轮 121 · 字体层对齐 DESIGN.md（Claude 体系）第 2 步（2026-09-29，已提交 `c6bb9f6`（与轮 120 同批） / 已部署 Version `2e9ea244`；**APK `E38E991CBBD8199F` 待装机**——包内主 CSS 实测 9 处珊瑚 + EB Garamond）**：
+  - **轮 123 · 动效库落地第一批：五套配方替换全站交互（2026-09-29，已提交 `20f9b65`（含 transitions/ 32 配方入库） / 已部署 Version `9b607b0e` / live-check LIVE ALL PASS (14) + bundle 本地=线上（入口 `index-C-AjyKu1.js`） / **APK `B3D00F7291D6FFAD` 装机 Success + 冷启动前台 + 无崩溃** ✅）**：
+     用户发话「把适合我们站的动画替换掉」。从 `transitions/` 选五套落地（配方源已入库，CSS 带规范要求的 prefers-reduced-motion 块）：① **like-button → 评论 ❤️/💔**（两视图 8 按钮）：t-like 语法（data-liked 驱动描边填充→#d4547a、HTML 包装层弹跳防 hi-DPI 栅格化、8 粒粒子扇形迸发错峰）；**点亮成功才放粒子**（fireReactBurst 700ms 窗口，取消/失败/未登录不放）；② **notification-badge → 消息红点**（顶栏 💬 + TabBar）：对角滑入+弹簧定格 500ms；③ **⋯菜单 scale-in**（两视图 more-pop）：原点感知 160ms 缩放淡入；④ **text-states-swap → 刷新提示/hint**：blur+位移交叉换态（Vue transition keyed）；⑤ **number-pop-in → 金币数字**：`:key=wallet.coins` 重挂载即重放，零 JS。**手术事故一次**：python 正则替换串用了 raw string，`\"` 原样进模板 → 构建失败（Unquoted attribute value）→ 清理 16 处转义修复（build-until-good 抓到）。
+     验证：undef/tdz **0** + **37 套离线 0 fail** + page-smoke **9/9** + build-until-good **BUILD_GOOD**（入口 `index-C-AjyKu1.js`）+ 探针实测（未登录点击正确拒绝；强制点亮语法验证因本机网络抖动未跑完——DOM 结构上轮已确认 8 粒粒子+初始态正确，**登录态手感待用户真机/浏览器验收**）。
+     **候选未上**（下轮按需）：tabs-sliding（排序 Tab 滑动指示条，需测量 JS）、success-check（领金币打勾）、accordion（评论区展开动画——评论系统刚稳，不动）、confetti（Pro 付费款）。
+
+  - **轮 122 · 建立 `transitions/` 动效选型库（2026-09-29，本地文件+文档，**无代码改动**）**：
+     用户发话「把免费款里的全下载，加到本地 peiban 文件夹，自己建一个文件夹，以后动画从这里面选，写到 jiaojie」。**落地**：新文件夹 `transitions/` ——用 transitions.dev 官方 CLI（`npx transitions-dev add --free`；npm 全局缓存有权限坑，带 `--cache D:\05ruanjian\npm-cache` 解决——T1 轮同款坑）拉取**全部 32 份免费动效配方**（.md：场景说明+HTML+可调变量表+CSS，Pro 付费款未包含）。新增 `transitions/README.md` 索引：32 行配方表（名称/动效/暖爪候选落点，如 like-button→评论回应、toast→提示条、tabs-sliding→排序 Tab、skeleton-reveal→信息流载入）+ 选型三原则（状态变化服务/一处一主转场/时长用配方默认区间）。
+     **约定：以后全站做动画先从 `transitions/` 选配方**，CSS 搬入时保留 `t-` 前缀隔离与 `prefers-reduced-motion` 块。**未动任何站点代码**；本文件夹随下次提交一并入库。
+
+  - **轮 121 · 字体层对齐 DESIGN.md（Claude 体系）第 2 步（2026-09-29，已提交 `c6bb9f6` / 已部署（现役 Version `9b607b0e`）；**APK `B3D00F7291D6FFAD` 装机 ✅**——EB Garamond/Inter/珊瑚 token 进包）**：
      按规范「衬线展示 + 人文正文」落地：① 字体加载：Google Fonts 从 Quicksand 换为 **Inter（400/500/600）+ EB Garamond（400/500）**（async 非阻塞模式保持，轮 84 口径），**霞鹜文楷保留**——它就是规范的中文版衬线答案；② style.css 新增 `--font-display`（"EB Garamond", "LXGW WenKai", serif）/ `--font-body`（"Inter", "LXGW WenKai", ...）两变量；body 字族换 `--font-body`、行高 1.65→**1.55**（规范 body-md）；③ **主标题 `.hero-title` 换衬线展示体**：EB Garamond（latin）/霞鹜文楷（zh）、字号 30→34px、字重 700→500、字距 -0.5px（规范：展示体 400/500 + 负字距，禁 700 炸眼）；④ **字重阶梯收敛**：全站 font-weight 800/700/900→500、600→500（规范 sans 上限 500），style.css + 组件/视图内联全部扫平；⑤ theme.js Naive 字体栈 → Inter 版。Quicksand 全退役（0 残留）。
      验证：undef/tdz **0** + **37 套离线 0 fail** + build-until-good **BUILD_GOOD**（入口 `index-0jxJgHrt.js`）+ page-smoke **9/9** + 1440px 双语探针实测（computed font：hero=**EB Garamond**、body=**Inter**、weight 500 ✓，zh 正文自动落霞鹜文楷）。
      **后续（第 3 步结构层，未开工）**：奶油→奶油卡→深卡节奏重排、深色页脚、珊瑚 callout 大卡；品牌资产（og-image/favicon 旧橙）重生成待定。
 
-  - **轮 120 · 全站换肤对齐 DESIGN.md（Claude 体系）第一步换肤层（2026-09-29，已提交 `c6bb9f6` / 已部署 Version `2e9ea244`——live-check 因本机网络抖动 6 项 fetch failed 未跑完，但站点 curl 实测 200 + 对照实验确认是本机网络；**APK 已重打 `E38E991CBBD8199F` 待装机**）**：
+  - **轮 120 · 全站换肤对齐 DESIGN.md（Claude 体系）第一步换肤层（2026-09-29，已提交 `c6bb9f6` / 已部署（现役 Version `9b607b0e`，live-check 14/14 复跑全过——此前 6 项失败确认为本机网络抖动）；**APK `B3D00F7291D6FFAD` 装机 ✅**）**：
      用户放入 `DESIGN.md`（Claude/Anthropic 设计体系逆向 token）并拍板「先做第 1 步换肤层」。**核心 token 落地（:root）**：画布 `#faf9f5`（平涂，去 160deg 渐变+光斑装饰）、主色陶珊瑚 `#cc785c`（按下 `#a9583e`）、墨色 `#141413`/`#6c6a64`/`#8e8b82` 三阶、卡片改**实色奶油 `#efe9de` + 1px 发丝线 `#e6dfd8`**（新 `--card`/`--hairline` 变量；毛玻璃 blur 与阴影退役：`--shadow: none`，`--shadow-sm` 仅留 hover 级微影）、圆角分层 12px（卡）/8px（按钮输入）、语义色对齐（success #5db872 / warning #d4a017 / error #c64545）。**Naive 组件库**（theme.js）：墨色/边框/分割线对齐、borderRadius 8px、Button 8px + fontWeightStrong 500（规范禁 700/500 禁区见规范）、Card 12px、Dialog 16px、Dropdown/Message 12px、Input 珊瑚 15% 聚焦环、Progress 发丝线。**themes.js 默认皮肤**改名 Warm Cream/暖奶油，swatch+primary 对齐珊瑚（hover=primary：规范「按压加深、无 hover 变化」）。**硬编码清扫**：`rgba(255,159,90`→`rgba(204,120,92`、`rgba(255,146,87`→`rgba(169,88,62`（primary-active）、`rgba(160,110,60`→`rgba(140,128,112`（暖灰发丝）、全部橙色渐变（nav 选中/按钮/进度条/tab/chip/mood-cell/品牌爪印/首页 hero 紫渐变字）→ 平涂；index.html theme-color+启动页底色+manifest theme_color → #faf9f5（splash-test 断言同步）。
      **刻意保留**：顶栏胶囊外形、徽章 pill（规范：pill 只给徽章/动作）、白色小芯片（≈规范 pearl）、其余 4 套皮肤（sakura/mint/lavender/night 只覆盖自己的变量组，结构变化全局继承）。
      验证：undef/tdz **0** + **37 套离线 0 fail**（splash-test 断言同步后 21/21）+ page-smoke **9/9** + build-until-good **BUILD_GOOD**（入口 `index-DdDHH3Pf.js`）+ 1440px/393px 双截图目检（平涂画布/发丝卡/珊瑚交互色全站生效，光斑与滚动条均已消失）。**后续轮**：②字体层（EB Garamond 衬线标题 + Inter 正文，zh 保持霞鹜文楷）③结构层（奶油→奶油卡→深卡节奏、深色页脚、珊瑚 callout）。**品牌资产未动**：og-image/favicon/分享卡仍是旧橙（make-og 重生成待定）。
 
-  - **轮 119 · 招待来访宠物不再要求画过食物（2026-09-29，已提交 `2ec4727`，随轮 120/121 批部署 Version `2e9ea244`；APK 随轮 121 批重打 `E38E991CBBD8199F`）**：
+  - **轮 119 · 招待来访宠物不再要求画过食物（2026-09-29，已提交 `2ec4727`，随轮 120/123 批部署（现役 Version `9b607b0e`）；APK 随轮 123 批重打 `B3D00F7291D6FFAD` 装机 ✅）**：
      用户反馈「招待过来的宠物，不需要画的食物也能招待」。**真因**：`feedVisitor()` 的门槛 `|| !cookbook.length` 是纯摩擦——招待**从不消耗**任何菜品，只是形式上要求「画过至少一道」；没画过的用户遇到小客人只能干瞪眼。**修**：① petStore `feedVisitor()` 只留 `adventure.visitor` 存在性判断（奖励口径不变：💰6 +1 好感；有画菜=招待手绘料理，没有=家常茶点，纯本地演出无服务端概念）② PetView `offerFood()` 删 noDish 拦截分支 ③ i18n `adventure.noDish` zh/en 成对退役（**`rail.noDish` 保留**——那是喂**自己**宠物的真实消耗门槛）。App/网页同改（同一份 petStore）。
      验证：undef/tdz **0** + 全量 37 套离线 **0 fail** + build-until-good **BUILD_GOOD**（入口 `index-CCA_t9yo.js`）+ page-smoke **9/9**。
 
