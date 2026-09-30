@@ -538,7 +538,7 @@ export const db = {
   async wallFavListMine(limit, offset) {
     const data = await unwrap(
       sb().from("wall_favorites")
-        .select("created_at, post:wall_posts(id,user_id,name,text,img,created_at,views)")
+        .select("created_at, post:wall_posts(id,user_id,author_name,body,image_path,created_at,views)")
         .order("created_at", { ascending: false })
         .range(offset, offset + limit - 1),
     );

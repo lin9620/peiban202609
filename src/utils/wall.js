@@ -517,7 +517,20 @@ export async function cloudFavListMine(limit = 20, offset = 0) {
   if (!canUseWall() || !cloud.user) return null;
   try {
     const rows = await db.wallFavListMine(Number(limit) > 0 ? Number(limit) : 20, Number(offset) > 0 ? Number(offset) : 0);
-    return (rows || []).map((r) => ({ favedAt: r.created_at, post: r.post || null }));
+    return (rows || []).map((r) => ({
+      favedAt: r.created_at,
+      post: r.post
+        ? {
+            dbId: r.post.id,
+            userId: r.post.user_id,
+            name: r.post.author_name,
+            text: r.post.body,
+            img: r.post.image_path ? publicUrl(r.post.image_path) : "",
+            ts: r.post.created_at,
+            views: r.post.views || 0,
+          }
+        : null,
+    }));
   } catch (e) {
     return null;
   }

@@ -705,7 +705,7 @@ export default {
           /* 我的收藏（含内嵌帖子）：created_at 倒序；被下架/删除的帖 embed 会置 null，由前端过滤 */
           const lim = parseLimit(q.get("limit"), 50);
           const off = Number(q.get("offset")) > 0 ? Number(q.get("offset")) : 0;
-          const qs = `select=created_at,post:wall_posts(id,user_id,name,text,img,created_at,views)&order=created_at.desc&limit=${lim}&offset=${off}`;
+          const qs = `select=created_at,post:wall_posts(id,user_id,author_name,body,image_path,created_at,views)&order=created_at.desc&limit=${lim}&offset=${off}`;
           const res = await upstream(env, request, restUrl(env, TABLE.favorites, qs));
           return res || fail(502, "upstream-unreachable");
         }

@@ -92,6 +92,7 @@ watch(
  * 被下架/删除的帖子（post 为 null）不展示；取消收藏乐观移除。 */
 const favRows = ref([]);
 const favBusy = ref(false);
+const showFavs = ref(false);   /* 轮 129：头部「我的收藏」按钮开关 */
 watch(
   () => [cloud.ready, cloud.user && cloud.user.id],
   async ([ready, uid]) => {
@@ -282,10 +283,10 @@ const brightRatio = computed(() => {
         </p>
       </div>
       <div class="profile-actions">
-        <n-tag v-if="cloudSigned" round :bordered="false" class="soft-tag">
-          &#9729;&#xFE0F; {{ t("common.signIn") }}
-        </n-tag>
         <template v-if="signedIn">
+          <n-button quaternary round @click="showFavs = !showFavs">
+            {{ t("fav.title") }}
+          </n-button>
           <n-tag v-if="streak > 0" round :bordered="false" class="soft-tag">
             {{ t("home.mood.streak", { n: streak }) }}
           </n-tag>
@@ -305,6 +306,32 @@ const brightRatio = computed(() => {
       </div>
     </section>
 
+    <!-- 轮 128 / #13 我的收藏：收藏别人的暖心帖（私有；点卡进详情，可就地取消） -->
+    <section v-if="cloudSigned && showFavs" class="card">
+      <div class="row-between">
+        <h2>{{ t("fav.title") }}</h2>
+      </div>
+      <p v-if="favBusy" class="sub">…</p>
+      <p v-else-if="!favRows.length" class="sub">{{ t("fav.empty") }}</p>
+      <div v-else class="my-posts">
+        <router-link
+          v-for="r in favRows" :key="r.post.dbId"
+          class="post-card card my-post" :to="'/post/' + r.post.dbId">
+          <div class="post-head">
+            <n-avatar round :size="42" class="post-avatar">🙂</n-avatar>
+            <div class="post-meta">
+              <div class="post-name">{{ r.post.name }}</div>
+              <div class="post-time">{{ fmtWhenSec(r.post.created_at) }}</div>
+            </div>
+          </div>
+          <p class="post-text">{{ r.post.text || "🖼️" }}</p>
+          <img v-if="r.post.img" :src="r.post.img" class="pic" alt="" />
+          <button class="btn small ghost" @click.stop.prevent="unFav(r.post.dbId)">
+            {{ t("fav.remove") }}
+          </button>
+        </router-link>
+      </div>
+    </section>
     <!-- 改昵称：Google 首登自动昵称 → 常驻紧凑提示；点「改一改」出现输入框。
          保存走 profiles self update（RLS），署名/主页/头像即时生效 -->
     <section v-if="cloudSigned && (nickAuto || nickEdit)" class="card nick-box">
@@ -484,32 +511,6 @@ const brightRatio = computed(() => {
       </div>
     </section>
 
-    <!-- 轮 128 / #13 我的收藏：收藏别人的暖心帖（私有；点卡进详情，可就地取消） -->
-    <section v-if="cloudSigned" class="card">
-      <div class="row-between">
-        <h2>{{ t("fav.title") }}</h2>
-      </div>
-      <p v-if="favBusy" class="sub">…</p>
-      <p v-else-if="!favRows.length" class="sub">{{ t("fav.empty") }}</p>
-      <div v-else class="my-posts">
-        <router-link
-          v-for="r in favRows" :key="r.post.dbId"
-          class="post-card card my-post" :to="'/post/' + r.post.dbId">
-          <div class="post-head">
-            <n-avatar round :size="42" class="post-avatar">🙂</n-avatar>
-            <div class="post-meta">
-              <div class="post-name">{{ r.post.name }}</div>
-              <div class="post-time">{{ fmtWhenSec(r.post.created_at) }}</div>
-            </div>
-          </div>
-          <p class="post-text">{{ r.post.text || "🖼️" }}</p>
-          <img v-if="r.post.img" :src="r.post.img" class="pic" alt="" />
-          <button class="btn small ghost" @click.stop.prevent="unFav(r.post.dbId)">
-            {{ t("fav.remove") }}
-          </button>
-        </router-link>
-      </div>
-    </section>
   </div>
 </template>
 
