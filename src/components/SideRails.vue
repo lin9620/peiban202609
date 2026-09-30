@@ -214,7 +214,10 @@ watch(signedIn, loadBottle);
         <button v-if="claimable > 0" class="ra wide" @click="doClaim">
           {{ t("tasks.claim", { c: claimable }) }}
         </button>
-        <p v-else-if="claimedNote > 0" class="b-count">{{ t("tasks.claimed", { c: claimedNote }) }}</p>
+        <p v-else-if="claimedNote > 0" class="b-count">
+          <svg class="t-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12.5 9.5 18 20 6.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          {{ t("tasks.claimed", { c: claimedNote }) }}
+        </p>
         <p class="b-count">{{ t("tasks.progress", { done: doneCount, total: TASK_LIST.length }) }}</p>
 
         <!-- 轮 117：今日陪伴（挂页即陪伴，按天累计） -->
