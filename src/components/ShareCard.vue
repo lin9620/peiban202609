@@ -10,6 +10,28 @@ const props = defineProps({
 });
 const emit = defineEmits(["close"]);
 
+/* 轮 126 · card-tilt：指针倾斜 + 光泽跟随（transitions/card-tilt.md） */
+const canvasBox = ref(null);
+function tiltMove(e) {
+  const el = canvasBox.value;
+  if (!el) return;
+  const r = el.getBoundingClientRect();
+  const px = (e.clientX - r.left) / r.width;
+  const py = (e.clientY - r.top) / r.height;
+  el.style.setProperty("--tilt-rx", ((0.5 - py) * 10).toFixed(2) + "deg");
+  el.style.setProperty("--tilt-ry", ((px - 0.5) * 12).toFixed(2) + "deg");
+  el.style.setProperty("--tilt-gx", (px * 100).toFixed(1) + "%");
+  el.style.setProperty("--tilt-gy", (py * 100).toFixed(1) + "%");
+  el.classList.add("is-tilting");
+}
+function tiltLeave() {
+  const el = canvasBox.value;
+  if (!el) return;
+  el.classList.remove("is-tilting");
+  el.style.setProperty("--tilt-rx", "0deg");
+  el.style.setProperty("--tilt-ry", "0deg");
+}
+
 const cardBox = ref(null);
 const done = ref(false);
 const W = 800, H = 1000;
@@ -170,14 +192,19 @@ async function shareSave() {
   <div class="modal-mask" @click.self="emit('close')">
     <div class="modal" style="width: min(92vw, 460px)">
       <h3>{{ t("home.share") }}</h3>
-      <div class="share-canvas-box">
-        <canvas ref="cardBox" :width="W" :height="H" style="width: 100%" />
+      <div class="share-canvas-box t-tilt" ref="canvasBox"
+        @pointermove="tiltMove" @pointerenter="tiltMove" @pointerleave="tiltLeave">
+        <div class="tilt-card">
+          <span class="t-tilt-glare" aria-hidden="true"></span>
+          <canvas ref="cardBox" :width="W" :height="H" style="width: 100%" />
+        </div>
       </div>
       <div class="modal-row" style="margin-top: 16px">
         <button class="modal-btn ghost" @click="emit('close')">{{ t("common.close") }}</button>
         <button class="modal-btn" :disabled="busy" @click="shareSave">
           {{ busy ? t("home.saving") : done ? t("home.shared") : t("home.saveShare") }}
         </button>
+        <!-- 轮 126：3D 指针倾斜 + 光泽（card-tilt 配方） -->
       </div>
       <p v-if="errMsg" class="notice" style="margin-top: 10px">{{ errMsg }}</p>
     </div>

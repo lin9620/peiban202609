@@ -1323,6 +1323,11 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **验证**：undef/tdz **0** + wall **34/34** + i18n **19/19** + build 0 + page-smoke **8/8**；已部署（live-check 14/14）+ APK 装机 Success。
      **待用户验收（亮屏）**：暖心墙下拉 → 「刷新中…」→ 换一批/新增提示正常、列表真的换内容；消息页无错误盒。
 
+  - **轮 126 · 动效库落地第二批：全站复查 + 十处补齐（2026-09-29，改动完成、37 套离线全绿，待提交待部署——攒批；APK 需重打）**：
+     用户反馈「动画没替换完/感觉没效果」→ 全面复查 + 把能上的全上（本轮 10 项）：① **按压缩放 scale(.95)** 全站可点元素（DESIGN.md 系统级微交互：btn/ra/mq/chip/nav/sort/cmt-react/modal-btn 等 :active）② **页面切换转场升级**：fade → slide-fade（上升+消模糊 220ms；App.vue transition 改名 page，scrubStuckFade 同步清理 page-* 类防冻结自愈失效）③ **首页 hero 入场错峰**（texts-reveal：标题/副题/按钮组依次升起消模糊，纯 CSS nth-child 延迟）④ **信息流骨架屏**（skeleton-reveal：首载无帖时 2 张脉冲骨架卡，刷新有帖仍走原提示）⑤ **宠物通知浮层**滑入堆叠（banner-stacking）⑥ **分享卡 3D 指针倾斜+光泽**（card-tilt：pointermove 换算 rx/ry + 双层 radial 光泽跟随，离开回平）⑦ **任务领取成功打勾**（success-check：描边绘制 24→0）⑧ **登录/表单错误抖动**（error-state-shake：notice.bad 复用 t-crack-shake）⑨ **详情页排序滑动胶囊**（tabs-sliding：量 active 按钮位移+定宽，切换/挂载/resize 三时同步；.sort-btn.on 残留渐变顺带平涂）⑩ reduced-motion 块扩展覆盖全部新动画。
+     **复查结论**：轮 123 五项接线确认在位（like-button/红点/⋯菜单/文字换态/金币）；「没效果」体感主因 = ①动效多为状态触发（红点要新消息、金币要变化、提示要刷新才可见）②部分太细（160ms 菜单）。本轮补的全是高频可见位（每次切页/首屏/加载/领取/出错）。
+     验证：undef/tdz **0** + **37 套离线 0 fail** + page-smoke **9/9** + build-until-good **BUILD_GOOD**（入口 `index-CcLeF8o1.js`）+ 探针实测（heroAnim=t-rise ✓ / 骨架屏结构 ✓ / 金币 pop ✓）。
+
   - **轮 125 · 💔点亮重设计终版（2026-09-29，已提交 `bf15564` / 已部署 Version `7f2101f9` / live-check 14/14 / **APK `9688ED97A018B0BC` 装机 + 冷启动确认** ✅）**：
      轮 124 修复被用户实测打回（「放屁，你改了个几把」）——裂纹填底色方案治标不治本：**💔 点亮后填色+同形状，看起来就是 ❤️**，裂纹 1.7px 在小图标上根本救不回。**终版方案（语义区分而非视觉补丁）**：❤️ 点亮 = 玫瑰填色 + 弹跳 + 粒子（不变）；💔 点亮 = **不填充**，心体+裂纹描边转心灰 `#6c6a64`，图标走 **t-crack-shake 抖动**（error-state-shake 配方节拍 400ms）——「心灰了、颤了一下」，与 ❤️ 在形状/颜色/动效三轴全部区分。CSS 填充规则限定 `[data-kind="heart"]`；8 按钮补 `data-kind` 标记（首轮正则只匹配 cm.dbId，漏了 rp 行的 rp.dbId——已补）；粒子 JS 仅 heart 触发。
      验证：强制点亮探针实测——broken：fill 透明 + 描边 rgb(108,106,100) + animation **t-crack-shake** ✓；heart：fill rgb(212,84,122) ✓。37 套离线 0 fail + build 0 + page-smoke 9/9 + live-check 14/14。

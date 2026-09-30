@@ -180,9 +180,10 @@ function reload() {
  * 三道保险：回前台清一次 + 每次路由变更后延迟清一次（正常完成后是无操作）+ 轮询兜底。 */
 function scrubStuckFade() {
   document
-    .querySelectorAll(".fade-enter-active, .fade-leave-active, .fade-enter-from, .fade-leave-to")
+    .querySelectorAll(".fade-enter-active, .fade-leave-active, .fade-enter-from, .fade-leave-to, .page-enter-active, .page-leave-active, .page-enter-from, .page-leave-to")
     .forEach((el) => {
-      el.classList.remove("fade-enter-active", "fade-leave-active", "fade-enter-from", "fade-leave-to");
+      el.classList.remove("fade-enter-active", "fade-leave-active", "fade-enter-from", "fade-leave-to",
+        "page-enter-active", "page-leave-active", "page-enter-from", "page-leave-to");
     });
 }
 document.addEventListener("visibilitychange", () => {
@@ -264,7 +265,7 @@ onBeforeUnmount(() => { clearTimeout(scrubTimer); scrubTimer = 0; });
 
             <router-view v-else v-slot="{ Component, route }">
               <!-- 包一层 div 作为过渡元素：保证 <transition> 的节点始终是单一元素，避免视图多根节点导致白屏 -->
-              <transition name="fade" mode="out-in">
+              <transition name="page" mode="out-in">
                 <div :key="route.path" class="route-wrap">
                   <component :is="Component" />
                 </div>

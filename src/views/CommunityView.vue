@@ -1527,7 +1527,15 @@ watch(() => route.query.refresh, (v) => {
         <p v-if="signedIn" class="sub" style="margin: 4px 0 0">
           {{ t("community.postLeft", { n: postsLeft }) }}
         </p>
-        <p v-if="loadingCloud" class="notice">{{ t("community.loading") }}</p>
+        <div v-if="loadingCloud && !shownPage.length" class="sk-feed" aria-hidden="true">
+          <div class="sk-card" v-for="n in 2" :key="n">
+            <div class="sk-head"><span class="sk-circle"></span><span class="sk-line" style="width: 32%"></span></div>
+            <span class="sk-line" style="width: 94%"></span>
+            <span class="sk-line" style="width: 80%"></span>
+            <span class="sk-line" style="width: 42%"></span>
+          </div>
+        </div>
+        <p v-else-if="loadingCloud" class="notice">{{ t("community.loading") }}</p>
         <p v-if="posted" class="streak-note" style="color: var(--good); font-weight: 700">
           {{ t("community.postedThanks") }}
         </p>

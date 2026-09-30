@@ -267,6 +267,19 @@ function onWallScroll() {
   }
 }
 onMounted(() => window.addEventListener("scroll", onWallScroll, { passive: true }));
+/* 轮 126 · tabs-sliding：排序胶囊指示条（量 active 按钮 → 平移+定宽） */
+const sortWrap = ref(null);
+const sortBtns = {};
+const sortPillStyle = ref({ transform: "translateX(0px)", width: "0px", opacity: 0 });
+function setSortBtn(el, sm) { if (el) sortBtns[sm] = el; }
+function syncSortPill() {
+  const el = sortBtns[cmtSort.value];
+  if (!el || !sortWrap.value) return;
+  sortPillStyle.value = { transform: `translateX(${el.offsetLeft - 3}px)`, width: `${el.offsetWidth}px`, opacity: 1 };
+}
+watch(cmtSort, () => nextTick(syncSortPill));
+onMounted(() => { syncSortPill(); window.addEventListener("resize", syncSortPill); });
+onUnmounted(() => window.removeEventListener("resize", syncSortPill));
 onUnmounted(() => window.removeEventListener("scroll", onWallScroll));
 const repsOf = (cm) => comments.value.filter((c) => c.parentId === cm.id);
 /* 轮 50：与暖心墙同口径——二级回复默认显示前两条，>2 条点「N 条回复」展开全部 */
@@ -525,9 +538,10 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
             <span class="cmt-caret" :class="{ open: openCmt }">&#9662;</span>
           </div>
           <!-- 轮 87：评论排序「默认 / 最新」——默认 = 推荐模式（与暖心墙帖子排序同源） -->
-          <div class="cmt-sort">
+          <div class="cmt-sort t-tabs" ref="sortWrap">
+            <span class="sort-pill" :style="sortPillStyle" aria-hidden="true"></span>
             <button v-for="sm in SORT_MODES" :key="sm" class="sort-btn cmt-sort-btn"
-              :class="{ on: cmtSort === sm }" @click="cmtSort = sm">
+              :class="{ on: cmtSort === sm }" :ref="(el) => setSortBtn(el, sm)" @click="cmtSort = sm">
               {{ t(sm === "default" ? "comment.sortDefault" : "comment.sortNew") }}
             </button>
           </div>

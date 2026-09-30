@@ -156,9 +156,10 @@ button, input, textarea { font-family: inherit; }
 /* 页面切换过渡
  * 轮 36：缩短时长（原 0.15+0.3=0.45s，叠加网络等待就是「切页不跟手」的体感）；
  * out-in 模式下两段串行，总感知 ≈ 离场 + 入场。 */
-.fade-enter-active { transition: all .18s cubic-bezier(.2, .8, .3, 1); }
-.fade-leave-active { transition: all .08s ease; }
-.fade-enter-from { opacity: 0; transform: translateY(8px); }
+.page-enter-active { transition: opacity .22s cubic-bezier(.22, 1, .36, 1), transform .22s cubic-bezier(.22, 1, .36, 1); }
+.page-leave-active { transition: opacity .1s ease; }
+.page-enter-from { opacity: 0; transform: translateY(12px); filter: blur(3px); }
+.page-leave-to { opacity: 0; }
 .fade-leave-to { opacity: 0; }
 
 @media (max-width: 560px) {
@@ -1004,7 +1005,7 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
   transition: all .2s ease;
 }
 .sort-btn:hover { color: var(--accent-deep); background: var(--accent-soft); transform: translateY(-1px); }
-.sort-btn.on { color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent-deep)); }
+.sort-btn.on { color: #fff; background: var(--accent); }
 .sort-btn.on:hover { color: #fff; }
 
 /* ══════════ 轮 84：评论互动（…菜单 / 回应 / 时间位 / 排序 / 查看更多） ══════════ */
@@ -2062,4 +2063,65 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 @media (prefers-reduced-motion: reduce) {
   .t-like-icon, .t-like-particles i, .icon-badge, .tab-badge,
   .more-pop, .t-num-pop, .t-swap-enter-active, .t-swap-leave-active { animation: none !important; transition: none !important; }
+}
+
+/* ═══════════ 轮 126 · 动效库落地第二批（全站复查补齐） ═══════════ */
+/* 按压缩放（DESIGN.md 系统级微交互：所有可点元素 active = scale(.95)） */
+.btn:active, .ra:active, .mq:active, .chip:active, .nav a:active, .sort-btn:active,
+.cmt-react:active, .modal-btn:active, .lang-btn:active, .cmt-toggle:active, .replies-toggle:active { transform: scale(.95); }
+
+/* 首页 hero 入场错峰（texts-reveal 配方：升起+消模糊，加载一次） */
+.hero-copy > * { animation: t-rise .55s var(--like-ease) both; }
+.hero-copy > *:nth-child(2) { animation-delay: .07s; }
+.hero-copy > *:nth-child(3) { animation-delay: .14s; }
+.hero-copy > *:nth-child(n+4) { animation-delay: .21s; }
+@keyframes t-rise { from { opacity: 0; transform: translateY(12px); filter: blur(4px); } to { opacity: 1; transform: none; filter: none; } }
+
+/* 信息流骨架屏（skeleton-reveal 配方：冷脉冲，载完即时换内容） */
+.sk-feed { display: flex; flex-direction: column; gap: 14px; }
+.sk-card {
+  background: var(--card); border: 1px solid var(--hairline); border-radius: var(--r-lg);
+  padding: 20px; display: flex; flex-direction: column; gap: 10px;
+}
+.sk-line, .sk-circle { background: var(--accent-soft); border-radius: 99px; animation: t-skel-pulse 1.4s ease-in-out infinite; }
+.sk-line { display: block; height: 12px; }
+.sk-circle { width: 40px; height: 40px; border-radius: 50%; flex: none; }
+.sk-head { display: flex; align-items: center; gap: 10px; }
+@keyframes t-skel-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+
+/* 宠物通知浮层：横幅式滑入堆叠（banner-stacking 配方语法） */
+.notice-enter-active { transition: opacity .3s var(--like-ease), transform .3s var(--like-ease), filter .3s var(--like-ease); }
+.notice-enter-from { opacity: 0; transform: translateY(-10px) scale(.9); filter: blur(3px); }
+
+/* 分享卡 3D 指针倾斜 + 光泽（card-tilt 配方） */
+.share-canvas-box { touch-action: none; }
+.share-canvas-box .tilt-card {
+  transform: perspective(900px) rotateX(var(--tilt-rx, 0deg)) rotateY(var(--tilt-ry, 0deg));
+  transform-style: preserve-3d;
+  transition: transform .5s var(--like-ease);
+  will-change: transform;
+  position: relative;
+}
+.share-canvas-box .tilt-card.is-tilting { transition: transform 80ms linear; }
+.t-tilt-glare {
+  position: absolute; inset: 0; pointer-events: none; opacity: 0;
+  mix-blend-mode: screen;
+  background:
+    radial-gradient(circle 95px at var(--tilt-gx, 50%) var(--tilt-gy, 50%), rgba(255,255,255,.48), rgba(255,255,255,.06) 52%, rgba(255,255,255,0) 84%),
+    radial-gradient(circle 200px at var(--tilt-gx, 50%) var(--tilt-gy, 50%), rgba(255,255,255,.22), rgba(255,255,255,.04) 58%, rgba(255,255,255,0) 78%);
+  transition: opacity .4s var(--like-ease);
+}
+.share-canvas-box:hover .t-tilt-glare { opacity: 1; }
+
+/* 任务领取成功打勾（success-check 配方：描边绘制） */
+.t-check { display: inline-block; width: 15px; height: 15px; vertical-align: -2px; }
+.t-check path { stroke-dasharray: 24; stroke-dashoffset: 24; animation: t-check-draw .45s var(--like-ease) .05s forwards; }
+@keyframes t-check-draw { to { stroke-dashoffset: 0; } }
+
+/* 登录/表单错误抖动（error-state-shake 配方） */
+.notice.bad { animation: t-crack-shake 400ms ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-copy > *, .sk-line, .sk-circle, .notice-enter-active,
+  .t-tilt-glare, .t-check path, .notice.bad { animation: none !important; transition: none !important; }
 }
