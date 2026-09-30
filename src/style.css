@@ -1716,7 +1716,8 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 .dm-back:hover { color: var(--accent-deep); }
 
 /* 墙上主页的发私信按钮（与摸摸头/投喂同一排的视觉语言） */
-.waller-dm { display: flex; flex-direction: column; align-items: flex-start; margin-top: 10px; }
+.waller-dm { display: flex; flex-direction: row; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.waller-dm .sub { width: 100%; margin: 0; }
 
 /* ═══ T9 · 长词断行护栏（真机截图实证：无空格乱码把 grid 轨道撑爆、整页横向溢出）═══
    overflow-wrap: anywhere 参与 min-content 计算（break-word 不参与）→ 结构层 minmax(0,1fr)
