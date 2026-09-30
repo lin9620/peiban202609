@@ -231,7 +231,7 @@ onBeforeUnmount(() => { clearTimeout(scrubTimer); scrubTimer = 0; });
                 🌱 {{ streak }}
               </n-tag>
               <n-tag round size="small" :bordered="false" class="soft-tag">
-                 &#128176; {{ wallet.coins }}
+                 &#128176; <span :key="wallet.coins" class="t-num-pop">{{ wallet.coins }}</span>
               </n-tag>
               <!-- #24 云按钮已移除：与导航「我的」重复，登录态在「我的」页看 -->
               <!-- 私信 / 通知：只有登录后才显示（未登录没有收件人身份） -->

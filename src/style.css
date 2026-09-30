@@ -1979,3 +1979,74 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 .fw-sub { font-size: 13px; color: var(--ink-soft); margin: 0; }
 @keyframes fw-sway { 0%, 100% { transform: rotate(-10deg) translateY(0); } 50% { transform: rotate(10deg) translateY(-3px); } }
 @media (prefers-reduced-motion: reduce) { .fw-rod { animation: none; } }
+
+/* ═══════════ 轮 123 · 动效库落地（配方源：transitions/，t- 前缀隔离） ═══════════ */
+/* like-button（评论 ❤️/💔）：描边填充 + 过冲弹跳 + 8 粒粒子迸发；点亮才放粒子 */
+:root {
+  --like-color: #d4547a;
+  --like-fill: 150ms; --like-pop: 350ms;
+  --like-pop-ease: cubic-bezier(0.34, 1.96, 0.64, 1);
+  --like-particle-dur: 600ms;
+  --like-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+.cmt-react { position: relative; }
+.t-like-heart { color: currentColor; transition: color var(--like-fill) var(--like-ease); }
+.t-like-heart path {
+  fill: transparent; stroke: currentColor;
+  transition: fill var(--like-fill) var(--like-ease), stroke var(--like-fill) var(--like-ease);
+}
+.t-like[data-liked="true"] .t-like-heart { color: var(--like-color); }
+.t-like[data-liked="true"] .t-like-heart path { fill: currentColor; }
+/* 弹跳放在 HTML 包装层：直接 transform 内联 SVG 会让 Chromium 按 1× 栅格化（hi-DPI 发糊） */
+.t-like[data-liked="true"] .t-like-icon { display: inline-flex; animation: t-like-pop var(--like-pop) var(--like-pop-ease); }
+@keyframes t-like-pop { 0% { transform: scale(1); } 30% { transform: scale(.82); } 100% { transform: scale(1); } }
+.t-like-particles { position: absolute; left: 50%; top: 50%; width: 0; height: 0; pointer-events: none; color: var(--like-color); }
+.t-like-particles i {
+  position: absolute; left: -1.25px; top: -1.25px; width: 2.5px; height: 2.5px;
+  border-radius: 50%; background: currentColor; opacity: 0;
+}
+@keyframes t-like-burst {
+  0%   { opacity: 0; transform: translate(0, 0) scale(.4); }
+  20%  { opacity: 1; transform: translate(calc(var(--px) * .25), calc(var(--py) * .25)) scale(1); }
+  100% { opacity: 0; transform: translate(var(--px), var(--py)) scale(.6); }
+}
+.t-like.is-bursting .t-like-particles i {
+  animation: t-like-burst var(--pdur, 600ms) ease-out var(--pdelay, 0ms) forwards;
+}
+/* 8 粒预设向量（扇形撒开，错峰 0-60ms） */
+.t-like-particles i:nth-child(1) { --px: 16px;  --py: -8px;  --pdelay: 0ms; }
+.t-like-particles i:nth-child(2) { --px: 12px;  --py: 12px;  --pdelay: 15ms; }
+.t-like-particles i:nth-child(3) { --px: -6px;  --py: 16px;  --pdelay: 25ms; }
+.t-like-particles i:nth-child(4) { --px: -16px; --py: 4px;   --pdelay: 10ms; }
+.t-like-particles i:nth-child(5) { --px: -12px; --py: -12px; --pdelay: 30ms; }
+.t-like-particles i:nth-child(6) { --px: 4px;   --py: -16px; --pdelay: 45ms; }
+.t-like-particles i:nth-child(7) { --px: 18px;  --py: 6px;   --pdelay: 40ms; }
+.t-like-particles i:nth-child(8) { --px: -4px;  --py: -14px; --pdelay: 60ms; }
+
+/* notification-badge（消息红点）：对角滑入 + 弹簧定格 */
+@keyframes t-badge-in {
+  0%   { opacity: 0; transform: translate(-8px, 12px) scale(.5); filter: blur(2px); }
+  60%  { opacity: 1; transform: translate(0, 0) scale(1.15); filter: blur(0); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+.icon-badge, .tab-badge { animation: t-badge-in 500ms cubic-bezier(0.34, 1.36, 0.64, 1); }
+
+/* ⋯ 菜单/浮层：原点感知缩放入场（modal 配方语法） */
+@keyframes t-pop-in { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: scale(1); } }
+.more-pop { transform-origin: top right; animation: t-pop-in 160ms cubic-bezier(0.22, 1, 0.36, 1); }
+
+/* 文字换态（text-states-swap）：模糊 + 位移交叉换字 */
+.t-swap-enter-active, .t-swap-leave-active {
+  transition: transform 240ms var(--like-ease), filter 240ms var(--like-ease), opacity 240ms var(--like-ease);
+}
+.t-swap-enter-from { opacity: 0; transform: translateY(6px); filter: blur(3px); }
+.t-swap-leave-to   { opacity: 0; transform: translateY(-6px); filter: blur(3px); }
+
+/* number-pop-in（金币变化）：过冲弹跳一次 */
+@keyframes t-num-pop { 0% { transform: scale(1); } 40% { transform: scale(1.3); } 100% { transform: scale(1); } }
+.t-num-pop { display: inline-block; animation: t-num-pop 350ms cubic-bezier(0.34, 1.96, 0.64, 1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .t-like-icon, .t-like-particles i, .icon-badge, .tab-badge,
+  .more-pop, .t-num-pop, .t-swap-enter-active, .t-swap-leave-active { animation: none !important; transition: none !important; }
+}
