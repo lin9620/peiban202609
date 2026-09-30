@@ -1323,6 +1323,10 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **验证**：undef/tdz **0** + wall **34/34** + i18n **19/19** + build 0 + page-smoke **8/8**；已部署（live-check 14/14）+ APK 装机 Success。
      **待用户验收（亮屏）**：暖心墙下拉 → 「刷新中…」→ 换一批/新增提示正常、列表真的换内容；消息页无错误盒。
 
+  - **轮 127 · 修复从其它页进暖心墙评论数丢失（2026-09-29，已提交 `e1d65db` / 已部署 Version `5654f75a` / live-check 14/14 / **APK `E88AB4044FFB6924` 装机 + 冷启动确认** ✅）**：
+     用户实测「从其他页面进入暖心墙，评论的数量会丢失」。**真因**：轮 95 的离场存档 `savedFeedPos` 存了帖子/游标/高度表但**漏了评论数表 `cloudCmtTotal`**；返回时 `restoreFeed()` 原样恢复列表、又刻意不重拉数据（防位置漂移）→ 新组件实例里 `cloudCmtTotal = {}` → 全部帖子「0 条评论」。**修**：存档补存 `cmtTotal`、恢复时一并还原（老存档无此字段回落空表）。**教训**：给「离场存档→恢复」机制加新状态字段时，同步检查存档清单是否要跟着扩（同类风险点：myReacts 在 rows 快照里 ✓）。
+     验证：undef/tdz **0** + 37 套离线 **0 fail** + build 0 + page-smoke 9/9 + live-check 14/14（首轮 1 项 fetch failed 为本机网络抖动，复跑全过）。
+
   - **轮 126 · 动效库落地第二批：全站复查 + 十处补齐（2026-09-29，已提交 `ec1c48d` / 已部署 Version `0e8545f0` / live-check 14/14 + bundle 本地=线上 ✅；APK 需重打）**：
      用户反馈「动画没替换完/感觉没效果」→ 全面复查 + 把能上的全上（本轮 10 项）：① **按压缩放 scale(.95)** 全站可点元素（DESIGN.md 系统级微交互：btn/ra/mq/chip/nav/sort/cmt-react/modal-btn 等 :active）② **页面切换转场升级**：fade → slide-fade（上升+消模糊 220ms；App.vue transition 改名 page，scrubStuckFade 同步清理 page-* 类防冻结自愈失效）③ **首页 hero 入场错峰**（texts-reveal：标题/副题/按钮组依次升起消模糊，纯 CSS nth-child 延迟）④ **信息流骨架屏**（skeleton-reveal：首载无帖时 2 张脉冲骨架卡，刷新有帖仍走原提示）⑤ **宠物通知浮层**滑入堆叠（banner-stacking）⑥ **分享卡 3D 指针倾斜+光泽**（card-tilt：pointermove 换算 rx/ry + 双层 radial 光泽跟随，离开回平）⑦ **任务领取成功打勾**（success-check：描边绘制 24→0）⑧ **登录/表单错误抖动**（error-state-shake：notice.bad 复用 t-crack-shake）⑨ **详情页排序滑动胶囊**（tabs-sliding：量 active 按钮位移+定宽，切换/挂载/resize 三时同步；.sort-btn.on 残留渐变顺带平涂）⑩ reduced-motion 块扩展覆盖全部新动画。
      **复查结论**：轮 123 五项接线确认在位（like-button/红点/⋯菜单/文字换态/金币）；「没效果」体感主因 = ①动效多为状态触发（红点要新消息、金币要变化、提示要刷新才可见）②部分太细（160ms 菜单）。本轮补的全是高频可见位（每次切页/首屏/加载/领取/出错）。
