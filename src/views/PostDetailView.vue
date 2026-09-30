@@ -169,7 +169,7 @@ async function cmtReact(cm, kind) {
     /* 服务端权威计数覆盖乐观值；on 只描述本次点击的 kind（两种可同时点亮，与帖子回应同口径） */
     cm.reacts = { heart: res.hearts, broken: res.brokens };
     cm.myReacts = res.on ? [...new Set([...prevMine, kind])] : prevMine.filter((x) => x !== kind);
-    if (res.on) fireReactBurst(cm, kind);   /* 轮 123：点亮才放粒子，取消不放 */
+    if (res.on && kind === "heart") fireReactBurst(cm, kind);   /* 轮 125：粒子仅 ❤️；💔=抖动，无粒子 */
   } else {
     cm.reacts = prevReacts;
     cm.myReacts = prevMine;
@@ -565,10 +565,10 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
               <span class="cmt-time">{{ when(cm.ts) }}</span>
               <button v-if="signedIn" class="cmt-act" @click="startReply(cm, null, $event)">{{ t("comment.reply") }}</button>
               <!-- 轮 87：回应图标改空心灰内联 SVG（emoji 太艳丽；点亮 = 深一档灰） -->
-              <button v-if="cm.dbId != null" class="cmt-react t-like" :class="{ on: cmtReacted(cm, 'heart'), 'is-bursting': reactBurst(cm, 'heart') }" :data-liked="cmtReacted(cm, 'heart')"
+              <button v-if="cm.dbId != null" class="cmt-react t-like" data-kind="heart" :class="{ on: cmtReacted(cm, 'heart'), 'is-bursting': reactBurst(cm, 'heart') }" :data-liked="cmtReacted(cm, 'heart')"
                 :disabled="!!cmtReactBusy[cm.id]" :title="t('comment.likeT')" :aria-label="t('comment.likeT')"
                 @click="cmtReact(cm, 'heart')"><span class="t-like-icon"><svg class="rc-ico t-like-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.59.94 4.5 2.35C12.91 3.94 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z"/></svg></span><span class="t-like-particles" aria-hidden="true"><i v-for="n in 8" :key="n"></i></span><i>{{ reactCount(cm, "heart") }}</i></button>
-              <button v-if="cm.dbId != null" class="cmt-react t-like" :class="{ on: cmtReacted(cm, 'broken'), 'is-bursting': reactBurst(cm, 'broken') }" :data-liked="cmtReacted(cm, 'broken')"
+              <button v-if="cm.dbId != null" class="cmt-react t-like" data-kind="broken" :class="{ on: cmtReacted(cm, 'broken'), 'is-bursting': reactBurst(cm, 'broken') }" :data-liked="cmtReacted(cm, 'broken')"
                 :disabled="!!cmtReactBusy[cm.id]" :title="t('comment.brokenT')" :aria-label="t('comment.brokenT')"
                 @click="cmtReact(cm, 'broken')"><span class="t-like-icon"><svg class="rc-ico t-like-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.59.94 4.5 2.35C12.91 3.94 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z"/><path d="M12 6.8 10.4 9.4l2.4 1.5-1.5 2.4 1.1 1.8"/></svg></span><span class="t-like-particles" aria-hidden="true"><i v-for="n in 8" :key="n"></i></span><i>{{ reactCount(cm, "broken") }}</i></button>
               <!-- 轮 88：「N 条回复」按钮移到回复列表底部（见下方 replies-toggle），操作行只留时间/回复/回应 -->
@@ -604,10 +604,10 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
                   <!-- 轮 84：时间移到「回复」左侧 + 轮 87：回应图标改空心灰 -->
                   <span class="cmt-time">{{ when(rp.ts) }}</span>
                   <button v-if="signedIn" class="cmt-act" @click="startReply(cm, rp, $event)">{{ t("comment.reply") }}</button>
-                  <button v-if="rp.dbId != null" class="cmt-react t-like" :class="{ on: cmtReacted(rp, 'heart'), 'is-bursting': reactBurst(rp, 'heart') }" :data-liked="cmtReacted(rp, 'heart')"
+                  <button v-if="rp.dbId != null" class="cmt-react t-like" data-kind="heart" :class="{ on: cmtReacted(rp, 'heart'), 'is-bursting': reactBurst(rp, 'heart') }" :data-liked="cmtReacted(rp, 'heart')"
                     :disabled="!!cmtReactBusy[rp.id]" :title="t('comment.likeT')" :aria-label="t('comment.likeT')"
                     @click="cmtReact(rp, 'heart')"><span class="t-like-icon"><svg class="rc-ico t-like-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.59.94 4.5 2.35C12.91 3.94 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z"/></svg></span><span class="t-like-particles" aria-hidden="true"><i v-for="n in 8" :key="n"></i></span><i>{{ reactCount(rp, "heart") }}</i></button>
-                  <button v-if="rp.dbId != null" class="cmt-react t-like" :class="{ on: cmtReacted(rp, 'broken'), 'is-bursting': reactBurst(rp, 'broken') }" :data-liked="cmtReacted(rp, 'broken')"
+                  <button v-if="rp.dbId != null" class="cmt-react t-like" data-kind="broken" :class="{ on: cmtReacted(rp, 'broken'), 'is-bursting': reactBurst(rp, 'broken') }" :data-liked="cmtReacted(rp, 'broken')"
                     :disabled="!!cmtReactBusy[rp.id]" :title="t('comment.brokenT')" :aria-label="t('comment.brokenT')"
                     @click="cmtReact(rp, 'broken')"><span class="t-like-icon"><svg class="rc-ico t-like-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.59.94 4.5 2.35C12.91 3.94 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z"/><path d="M12 6.8 10.4 9.4l2.4 1.5-1.5 2.4 1.1 1.8"/></svg></span><span class="t-like-particles" aria-hidden="true"><i v-for="n in 8" :key="n"></i></span><i>{{ reactCount(rp, "broken") }}</i></button>
                 </div>

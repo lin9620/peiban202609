@@ -1995,14 +1995,24 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
   fill: transparent; stroke: currentColor;
   transition: fill var(--like-fill) var(--like-ease), stroke var(--like-fill) var(--like-ease);
 }
-.t-like[data-liked="true"] .t-like-heart { color: var(--like-color); }
-.t-like[data-liked="true"] .t-like-heart path { fill: currentColor; }
-/* 裂纹线是描边细节不是填充面：永不填充；点亮时用底色描边=真裂开（否则💔点亮变♥，用户实测抓到） */
-.t-like-heart .t-like-crack, .t-like[data-liked="true"] .t-like-heart .t-like-crack { fill: none !important; }
-.t-like[data-liked="true"] .t-like-heart .t-like-crack { stroke: var(--card, #efe9de); }
+/* ❤️ 点亮：填色 + 弹跳 + 粒子（仅心形按钮） */
+.t-like[data-kind="heart"][data-liked="true"] .t-like-heart { color: var(--like-color); }
+.t-like[data-kind="heart"][data-liked="true"] .t-like-heart path { fill: currentColor; }
+/* 裂纹线是描边细节不是填充面：永不填充 */
+.t-like-heart .t-like-crack { fill: none !important; }
 /* 弹跳放在 HTML 包装层：直接 transform 内联 SVG 会让 Chromium 按 1× 栅格化（hi-DPI 发糊） */
-.t-like[data-liked="true"] .t-like-icon { display: inline-flex; animation: t-like-pop var(--like-pop) var(--like-pop-ease); }
+.t-like[data-kind="heart"][data-liked="true"] .t-like-icon { display: inline-flex; animation: t-like-pop var(--like-pop) var(--like-pop-ease); }
 @keyframes t-like-pop { 0% { transform: scale(1); } 30% { transform: scale(.82); } 100% { transform: scale(1); } }
+/* 💔 点亮：不填充（轮 125：填色后💔=❤️）——心灰描边 + 裂纹抖动（error-shake 配方节拍），与 ❤️ 明显不同形 */
+.t-like[data-kind="broken"][data-liked="true"] .t-like-heart { color: var(--ink-soft); }
+.t-like[data-kind="broken"][data-liked="true"] .t-like-icon { display: inline-flex; animation: t-crack-shake 400ms ease-out; }
+@keyframes t-crack-shake {
+  0%   { transform: translateX(0) rotate(0); }
+  28%  { transform: translateX(1.6px) rotate(-3deg); }
+  57%  { transform: translateX(-1.6px) rotate(3deg); }
+  79%  { transform: translateX(1px) rotate(-2deg); }
+  100% { transform: translateX(0) rotate(0); }
+}
 .t-like-particles { position: absolute; left: 50%; top: 50%; width: 0; height: 0; pointer-events: none; color: var(--like-color); }
 .t-like-particles i {
   position: absolute; left: -1.25px; top: -1.25px; width: 2.5px; height: 2.5px;
