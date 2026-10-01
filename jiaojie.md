@@ -280,7 +280,7 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
 ## 二、现在在做什么
 
-- **当前任务**：无（轮 137 已交付：提交 `028bb13`+`db1d44e` / 部署 `97f1ab9d` / live-check 14/14 / bundle 本地=线上 ✅）。**待用户验收**：刷新网页看 /bottle、/settings、/compose、帖子详情、登录页内容盒是否铺满左导航与右栏之间。下一轮候选：同步 4 条旧断言漂移（`auth-test A95` / `privacy-test P5` / `app-shell-test T24`·`T34`）、清理 style.css 死规则 `.settings-page`、`/privacy` 是否也要铺满（现留 720 阅读栏）。见 F 区轮 137。
+- **当前任务**：轮 138（**桌面左导航展开（方案 A：🐾 = 开关，64 → 212px 与右栏同宽 + 行内文字）：改动完成、app-shell-test 50 项 + i18n 19/19 + 40 套离线 + undef/tdz 0 + build 0 + page-smoke 9/9 + 探针四档几何全过，待提交待部署——攒批**）。见 F 区轮 138。**待用户验收**：点左上角 🐾 展开/收起；刷新保持。
 - **上一批（历史）**：轮 114（**换域名 dale.de5.net → warmpaws.de5.net：改动完成、36 套离线全绿，待提交待部署——攒批；部署即自动绑新域，之后 APK 必须重打**）。22 文件 + `.env` 全量替换 + wrangler.jsonc `custom_domain` 自动建绑 + 旧域面板绑定保留双域并存；外部面板（Supabase Redirect URLs / Google Branding / GSC）待办清单见 F 区轮 114。**顺序红线：先 deploy 再打 APK**。
 - **上一批（已交付）**：轮 113（**上传 / 部署 / 打包 / 装机 四链路全部完成 ✅**）。用户发话「上传，部署，打包，装机」→ 把轮 107-112 的攒批一次性发出去：① 提交 `bf7b2c2`（轮 107 死代码清理）+ `c194df0`（轮 108-112 代码）+ `8fecc0f`（轮 108-112 测试与文档），**push 成功**（`HEAD == origin/main == 8fecc0f`，工作区干净）② 部署 Worker **Version `3a91942c`**（`wrangler deploy` EXIT=0，https://warm-paws.yi1614351.workers.dev）③ 线上验证 **LIVE ALL PASS (14)** + live-bundle-check **本地 dist = 线上**（入口 `index-C5pZNGVS.js`，SHA16 `c6dbdbad5170f85f` 两边一致、443181 字节、含 slug）④ `cap sync` EXIT=0（SEO 占位剥离 ×8）+ Gradle **BUILD SUCCESSFUL in 30s** → APK `apk/warm-paws-debug.apk` 5.21 MB，SHA16 **`A4852FA5763FAE05`**，包内入口 `index-C5pZNGVS.js` = 线上同一份 ⑤ `adb install -r` **Success**（`net.de5.dale`）+ 冷启动前台存活、`mWakefulness=Awake`、`logcat` 无 crash/FATAL + 截图确认渲染。**待用户真机/网页验收**。详见 F 区轮 113。
 - **上一轮（已交付）**：轮 112（**详情页一级评论回复框钉到「一级评论 ↔ 二级列表」之间（原在整条评论最底部），与暖心墙轮 110 同款同位；已随轮 113 批提交 `c194df0` / 部署 `3a91942c` / APK `A4852FA5763FAE05` 装机 ✅**）。用户原话：「帖子详细页面的一级评论输入框：把一级评论回复框点击后出现在一级评论下面，二级评论上面，你现在是一级评论最下面。二级评论输入框不改。app端不改」。详见 F 区轮 112。
@@ -1323,6 +1323,13 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **修法（一行）**：补 `const newestSeenTs = ref(0)`。undef/tdz 抓不到这类「运行时未声明引用」（非未导入符号），靠 page-smoke 真实挂载 + 真机验证兜住。
      **验证**：undef/tdz **0** + wall **34/34** + i18n **19/19** + build 0 + page-smoke **8/8**；已部署（live-check 14/14）+ APK 装机 Success。
      **待用户验收（亮屏）**：暖心墙下拉 → 「刷新中…」→ 换一批/新增提示正常、列表真的换内容；消息页无错误盒。
+
+  - **轮 138 · 桌面左导航展开（用户方案 A：🐾 = 开关，64 → 212px 与右栏同宽 + 行内文字）（2026-10-01，**改动完成、40 套离线 + page-smoke 9/9 + undef/tdz 0 + build 0 + 探针四档几何全过，待提交待部署——攒批**）**：
+     **需求（用户原话）**：「当点击左上角第一关按钮的时候，左边的侧边栏向右扩张，跟右边侧边栏相同宽度，添加文字」→ 先出方案，用户拍板 **方案 A**：🐾 只当开关（不再回首页）、回首页交给展开后的品牌行；附加拍板 ② 展开且视口 <1480 时会话三栏收两栏 ③ 记住展开状态。
+     **实现**：`uiStore` 加 `navOpen`（localStorage `wp-nav-open`，模块加载同步读 → 首帧即展开不闪）+ `setNavOpen/toggleNav`；`SideNav.vue` 🐾 由 `<router-link>` 改 `<button aria-expanded>`（tooltip 走新增键 `nav.expand/collapse`），顶部 `.sn-top` = 爪印开关 + `.sn-brand`「暖爪」回首页，每项加 `.sn-label`（收起 `display:none`，展开淡入），展开态整行胶囊 + 红点挪到行尾，栏宽 `transition: width .22s`（reduced-motion 关闭）；`App.vue` 壳挂 `shell--nav-open`；`style.css` 左让位改走 `--nav-w`（收起 92 / 展开 240，≥1600 居中公式同步换变量 + `margin-left` 过渡），并加「展开 + <1480 → `.dm-wrap` 两栏 + `.dm-info` 退场」。
+     **几何实测（无头 Edge，收起 → 展开 → 再收起三态）**：1440：侧栏 64→**212**（[14,226]，= 右栏宽度）、壳 [92,1200]→[240,1200]、内容 [118,1174]→[266,1174]、右栏 [1212,1424] 不动；1562：展开后壳 [240,1322]、内容 [266,1296]、右栏 [1334,1546]（**38px 零重叠**）；1920：超宽屏封顶 1440 保持（展开 [240,1680]，内容仍 1388）；1000：壳 [240,1000]（该区间无右栏）；再点收回后**全部逐值回到收起态**。`aria-expanded=true`、`wp-nav-open=1/0` 落盘正确；三栏降级实测 1440→`300px 1074px`（资料卡隐藏）、1562→`300px 918px 264px`（保留）；393 移动端：侧栏不渲染、壳 margin 0（**零影响**）。
+     **验证**：app-shell-test **50 项**（新增 T43–T49 全过：开关按钮化/212px/文字/`--nav-w`/记忆/降级/双语/减动效）+ i18n **19/19**（nav.expand·collapse zh/en 成对）+ 40 套离线（仍只有 3 套**旧**断言漂移）+ undef/tdz **0** + build **0** + page-smoke **9/9** + 截图目检（展开态：品牌行 + 六项文字 + 整行珊瑚激活胶囊）。
+     **待用户验收（亮屏）**：点左上角 🐾 → 左栏展开并显示文字；再点收回；刷新后保持上次状态。
 
   - **轮 137 · 全页面内容盒适配流式壳（2026-10-01，用户截图 /bottle：内容盒两侧大空洞 + 「按这张图改，每个页面都这样」；已提交 `028bb13`（代码）+ `db1d44e`（文档） / 已部署 Version **`97f1ab9d`** / live-check **14/14** + live-bundle-check **本地=线上**（入口 `index-JfT1XYzS.js`，SHA16 `f0fad616db81a2f8`，455575 字节，含 slug）✅；**桌面专属 CSS 改动，App 端零变化，APK 不需重打**）**：
      **真因**：轮 133 把 `.shell` 改成流式后，**只有自带 max-width 的页面容器**还停在窄盒居中——`.bottle-page` 900 / `.set-page` 860 / `.compose-page` 720 / `.pd` 640 / `.login-page` 560；其余页面（今天/宠物/暖心墙/私信/通知/我的/我的帖子/他人主页）早已铺满 → 观感不一致。
