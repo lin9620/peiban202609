@@ -1327,7 +1327,7 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      用户点名清单 #20。**新组件 `RpsGame.vue`** 挂宠物页「照顾」标签（pet-actions 之后）：三枚大按钮 ✊✌️✋，宠物按**性格加权出拳**（rpsRules.PET_MOVE_WEIGHTS：高冷爱出石头 55%、元气好斗、温柔手下留情、粘人随和——键对齐 pets.js）；赢 +2 / 平 +1 金币（与「陪它玩」同档经济）、**每日前 10 局有彩头**（localStorage 按天计数，超限可玩但无奖励）；玩一局计入「陪它玩一次」任务（markTask 导出给组件，同一本任务账）；宠物用 say() 台词回应胜负平。
      动效：出拳换手用 **icon-swap 配方**（缩放+模糊+微旋转浮现），结果牌 win/lose/draw 语义色，金币 +N 过冲弹跳；reduced-motion 关闭。**纯前端零数据库**——未登录也可玩。
      新增：`src/utils/rpsRules.js` / `tools/rps-test.mjs`（14 项：出拳合法性/权重分布（高冷石头>45%、温柔偏布）/九宫格裁定/金币档/上限边界/rng 注入复现）。**事故一次**：rps-test 首跑缺 import 崩溃 → `&&` 链短路跳过了 petStore 导出编辑 → 构建报 markTask 未导出——拆开跑编辑与测试，勿用 && 串联有失败可能的步骤。
-     验证：undef/tdz **0** + **38 套离线 0 fail**（worker-test 断言同步轮 129 新列名后 235/235）+ build 0 + page-smoke 9/9 + 探针实测（RPS 卡渲染、点击出拳、双方亮牌、计数 1/10）。
+     验证：undef/tdz **0** + **38 套离线 0 fail**（worker-test 断言同步轮 129 新列名后 234/234）+ build 0 + page-smoke 9/9 + 探针实测（RPS 卡渲染、点击出拳、双方亮牌、计数 1/10）。
 
   - **轮 130 · 对方主页按钮横排（2026-10-01，已提交 `3173b50` / 已部署 Version `bf97df59` / live-check 14/14 ✅；**APK `6FFA8C46DF02C2FF` 已重打待装机**——手机 USB 断开）**：
      用户截图反馈「进入对方空间，发私信/拉黑两个按钮位置不对，太丑」——`.waller-dm` 原是 column 竖排挤在头像右侧窄列。修：column→row + gap 8px + wrap；dmMsg/blockedTip 提示语 width:100% 换行到按钮下方。待装机验收。
