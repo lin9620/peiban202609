@@ -280,7 +280,8 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
 ## 二、现在在做什么
 
-- **当前任务**：轮 114（**换域名 dale.de5.net → warmpaws.de5.net：改动完成、36 套离线全绿，待提交待部署——攒批；部署即自动绑新域，之后 APK 必须重打**）。22 文件 + `.env` 全量替换 + wrangler.jsonc `custom_domain` 自动建绑 + 旧域面板绑定保留双域并存；外部面板（Supabase Redirect URLs / Google Branding / GSC）待办清单见 F 区轮 114。**顺序红线：先 deploy 再打 APK**。
+- **当前任务**：轮 137（**全页面内容盒适配流式壳：改动完成、40 套离线 + page-smoke 9/9 + undef/tdz 0 + build 0 + 探针几何实测全过，待提交待部署——攒批**）。见 F 区轮 137。
+- **上一批（历史）**：轮 114（**换域名 dale.de5.net → warmpaws.de5.net：改动完成、36 套离线全绿，待提交待部署——攒批；部署即自动绑新域，之后 APK 必须重打**）。22 文件 + `.env` 全量替换 + wrangler.jsonc `custom_domain` 自动建绑 + 旧域面板绑定保留双域并存；外部面板（Supabase Redirect URLs / Google Branding / GSC）待办清单见 F 区轮 114。**顺序红线：先 deploy 再打 APK**。
 - **上一批（已交付）**：轮 113（**上传 / 部署 / 打包 / 装机 四链路全部完成 ✅**）。用户发话「上传，部署，打包，装机」→ 把轮 107-112 的攒批一次性发出去：① 提交 `bf7b2c2`（轮 107 死代码清理）+ `c194df0`（轮 108-112 代码）+ `8fecc0f`（轮 108-112 测试与文档），**push 成功**（`HEAD == origin/main == 8fecc0f`，工作区干净）② 部署 Worker **Version `3a91942c`**（`wrangler deploy` EXIT=0，https://warm-paws.yi1614351.workers.dev）③ 线上验证 **LIVE ALL PASS (14)** + live-bundle-check **本地 dist = 线上**（入口 `index-C5pZNGVS.js`，SHA16 `c6dbdbad5170f85f` 两边一致、443181 字节、含 slug）④ `cap sync` EXIT=0（SEO 占位剥离 ×8）+ Gradle **BUILD SUCCESSFUL in 30s** → APK `apk/warm-paws-debug.apk` 5.21 MB，SHA16 **`A4852FA5763FAE05`**，包内入口 `index-C5pZNGVS.js` = 线上同一份 ⑤ `adb install -r` **Success**（`net.de5.dale`）+ 冷启动前台存活、`mWakefulness=Awake`、`logcat` 无 crash/FATAL + 截图确认渲染。**待用户真机/网页验收**。详见 F 区轮 113。
 - **上一轮（已交付）**：轮 112（**详情页一级评论回复框钉到「一级评论 ↔ 二级列表」之间（原在整条评论最底部），与暖心墙轮 110 同款同位；已随轮 113 批提交 `c194df0` / 部署 `3a91942c` / APK `A4852FA5763FAE05` 装机 ✅**）。用户原话：「帖子详细页面的一级评论输入框：把一级评论回复框点击后出现在一级评论下面，二级评论上面，你现在是一级评论最下面。二级评论输入框不改。app端不改」。详见 F 区轮 112。
 - **上一轮（待同批提交）**：轮 111（**详情页桌面主评论输入框挪到「浏览次数 ↔ 💬 N 条评论」之间（与暖心墙轮 109 同款同位），桌面悬浮底栏 cmt-bar-fixed 退役；改动完成、全量离线 0 fail + post-detail 16/16 + page-smoke 9/9 + build 0 + 运行时取证（放宽看已登录形态 + 还原后匿名/手机复验 + 截图）全过，**待提交待部署——攒批；APK 无需重打**（桌面专属）**）。详见 F 区轮 111。
@@ -1322,6 +1323,14 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **修法（一行）**：补 `const newestSeenTs = ref(0)`。undef/tdz 抓不到这类「运行时未声明引用」（非未导入符号），靠 page-smoke 真实挂载 + 真机验证兜住。
      **验证**：undef/tdz **0** + wall **34/34** + i18n **19/19** + build 0 + page-smoke **8/8**；已部署（live-check 14/14）+ APK 装机 Success。
      **待用户验收（亮屏）**：暖心墙下拉 → 「刷新中…」→ 换一批/新增提示正常、列表真的换内容；消息页无错误盒。
+
+  - **轮 137 · 全页面内容盒适配流式壳（2026-10-01，用户截图 /bottle：内容盒两侧大空洞 + 「按这张图改，每个页面都这样」；**改动完成、全量离线 + page-smoke + build + 探针几何全过，待提交待部署——攒批**）**：
+     **真因**：轮 133 把 `.shell` 改成流式后，**只有自带 max-width 的页面容器**还停在窄盒居中——`.bottle-page` 900 / `.set-page` 860 / `.compose-page` 720 / `.pd` 640 / `.login-page` 560；其余页面（今天/宠物/暖心墙/私信/通知/我的/我的帖子/他人主页）早已铺满 → 观感不一致。
+     **改法（各文件权威定义处，不在 style.css 另加一份）**：每处 base 规则保留（窄屏口径不变），紧跟一条 `@media (min-width: 900px) { … { max-width: none; } }` —— 桌面形态铺满左导航(92)与右栏(240)之间的整块宽度；**窄屏/App 形态零变化**（这些 max-width 在 <900px 视口本就触不到）。**为什么不写在 style.css**：轮 133 的教训（组件 `<style>` 注入晚于 style.css，同权重会反向压制；权威份必须留在定义文件）。
+     **有意保留**：`/privacy` 的 `.legal-page` 720 **不动**（该页口径是「给 Google 审核读得下去」，行宽 68ch 优先）；`.crash-box` 460 / `.pet-notice-stack` 520 / `.tabbar` 640 属组件自身尺寸，不在本次范围；`.settings-page` 640（style.css:943）是**死规则**（无模板引用，待清理）。
+     **验证**：undef **0** + tdz **0** + build **0**（seo 20 页 / env-guard ✓）+ **40 套离线**（唯一红：见下）+ page-smoke **9/9** + **探针实测**（`tools/web-probe.mjs --serve=dist --w=1562`，无头 Edge）：/bottle 容器 **[118,1296]（1178 宽）与 welcome 横幅逐像素对齐**，右缘距 rail(1334) 留 38px 零重叠；/settings、/compose、/login 同为 [118,1296]；截图目检两页（漂流瓶 guest 卡、设置页五段卡）铺满无空洞。
+     **附带发现（与本次无关 · 经 git stash 对照确认 HEAD 上同样失败）**：`auth-test A95`（断言旧 appId `net.de5.dale`，manifest 实为轮 116 的 `net.de5.warmpaws`）、`privacy-test P5`（断言旧域 `dale.de5.net` 的 sitemap 结构）、`app-shell-test T24`（断言「会话中心」旧文案 + 已删的桌面 `<BottleRecords>`）、`T34`（断言过渡类名 `fade-*`，App.vue 实为 `page-*`）——**4 条全是断言漂移，产品代码无问题**；待用户发话再修（纯测试文件）。
+     **待用户验收（亮屏）**：刷新网页看 /bottle、/settings、/compose、帖子详情、登录页——内容盒铺满左导航与右栏之间，不再两侧留白。
 
   - **轮 136 · 漂流瓶/设置页适配流式壳（2026-10-01，用户截图反馈两页窄容器靠左+右大空洞，已提交 `d27d539` / 已部署 Version `ddd214ff` / live-check 14/14 ✅）**：
      `.bottle-page` 640→**900**、`.set-page` 640→**860**，均 margin auto 居中——流式壳下不再靠左留大空洞。探针实测：/bottle 容器 900px 居中于 shell（150-1590）✓。
