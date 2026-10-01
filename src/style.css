@@ -49,18 +49,29 @@ button, input, textarea { font-family: inherit; }
 ::selection { background: var(--accent-soft); }
 
 .shell { max-width: 780px; margin: 0 auto; padding: 0 18px 48px; position: relative; z-index: 1; overflow-x: clip; }
-/* 轮 133 · 桌面壳改流式：内容铺满 SideNav(92) 与右栏(240) 之间，超宽屏封顶 1440 居中 */
+/* 轮 133 · 桌面壳改流式：内容铺满左导航与右栏(240) 之间，超宽屏封顶 1440 居中
+ * 轮 138：左让位改走 --nav-w（收起 92 / 展开 240），随左导航展开平滑过渡 */
 @media (min-width: 900px) {
-  .shell { max-width: none; width: auto; margin: 0 0 0 92px; padding: 0 26px 48px; }
+  .shell {
+    --nav-w: 92px;
+    max-width: none; width: auto;
+    margin: 0 0 0 var(--nav-w);
+    padding: 0 26px 48px;
+    transition: margin-left .22s ease;
+  }
+  .shell--nav-open { --nav-w: 240px; }
 }
 @media (min-width: 1100px) {
   .shell { margin-right: 240px; }
 }
 @media (min-width: 1600px) {
   .shell {
-    margin-left: calc(92px + (100vw - 92px - 240px - 1440px) / 2);
-    margin-right: calc(240px + (100vw - 92px - 240px - 1440px) / 2);
+    margin-left: calc(var(--nav-w) + (100vw - var(--nav-w) - 240px - 1440px) / 2);
+    margin-right: calc(240px + (100vw - var(--nav-w) - 240px - 1440px) / 2);
   }
+}
+@media (min-width: 900px) and (prefers-reduced-motion: reduce) {
+  .shell { transition: none; }
 }
 /* welcome 横幅（参考图 1 顶部）：衬线名字 + 欢迎语 + 金币 */
 .welcome-band {
@@ -1647,6 +1658,12 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
   .dm-thread { min-height: calc(100vh - 210px); }
   .dm-scroll { max-height: none; flex: 1; }
   .dm-list { max-height: calc(100vh - 236px); }
+}
+/* 轮 138 · 左导航展开（内容左让位 92 → 240）后窄桌面放不下三栏 → 收成两栏（右资料卡退场）。
+ * 阈值 1480 = 三栏舒适线（列表 300 + 聊天 ≥360 + 资料卡 264 + 间距）；列表|聊天 仍完整可用。 */
+@media (min-width: 900px) and (max-width: 1479px) {
+  .shell--nav-open .dm-wrap { grid-template-columns: 300px minmax(0, 1fr); }
+  .shell--nav-open .dm-info { display: none; }
 }
 /* 列表底部：当前用户（参考图 2 左下角） */
 .dm-me {

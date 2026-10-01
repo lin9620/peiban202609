@@ -9,7 +9,7 @@ import { t } from "./i18n.js";
 import SideRails from "./components/SideRails.vue";
 import SideNav from "./components/SideNav.vue";
 import TabBar from "./components/TabBar.vue";
-import { isApp, isMobileNav, runBack, tabbarSuppressed } from "./stores/uiStore.js";
+import { isApp, isMobileNav, runBack, tabbarSuppressed, navOpen } from "./stores/uiStore.js";
 import {
   wallet, moodStreak, petNotices, dismissPetNotice,
 } from "./stores/petStore.js";
@@ -213,7 +213,7 @@ onBeforeUnmount(() => { clearTimeout(scrubTimer); scrubTimer = 0; });
         <div class="orb orb-2"></div>
         <div class="orb orb-3"></div>
 
-        <div class="shell" :class="{ 'shell--mobile-nav': isMobileNav, 'shell--chat': inChat }">
+        <div class="shell" :class="{ 'shell--mobile-nav': isMobileNav, 'shell--chat': inChat, 'shell--nav-open': !isMobileNav && navOpen }">
           <header v-if="isMobileNav" class="topbar">
             <router-link to="/" class="brand">
               <span class="brand-paw">🐾</span>

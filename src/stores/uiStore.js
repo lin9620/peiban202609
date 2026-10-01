@@ -6,6 +6,7 @@ import { naiveThemeFor } from "../theme.js";
 import { THEMES } from "../data/themes.js";
 import { darkTheme } from "naive-ui";
 import { Capacitor } from "@capacitor/core";
+import { getItem, setItem } from "../utils/storage.js";
 
 /* ═══ 双形态检测（App 轨道 D8）═══
  * isApp：跑在 Capacitor 原生壳里（Android/iOS）→ 用 App 导航（底部 Tab）。
@@ -23,6 +24,17 @@ export const isMobileNav = computed(() => isApp || vw.value < 900);
  * 不用 z-index 硬盖：条在 route-wrap 内部、受父级堆叠上下文限制，z-index 压不过根级
  * tabbar（轮 103 弹窗被盖是同一陷阱）；聊天页 inChat 隐藏 tabbar 是同款先例。 */
 export const tabbarSuppressed = ref(false);
+
+/* ═══ 轮 138 · 桌面左导航展开态（🐾 开关：64 → 212px，与右栏同宽）═══
+ * 用户拍板方案 A：爪印只当开关，「回首页」交给展开后的品牌行。
+ * 记忆在 localStorage（模块加载时同步读取 → 首帧即展开，不闪一下）；仅桌面形态消费。 */
+const NAV_KEY = "wp-nav-open";
+export const navOpen = ref(getItem(NAV_KEY) === "1");
+export function setNavOpen(v) {
+  navOpen.value = !!v;
+  setItem(NAV_KEY, navOpen.value ? "1" : "0");
+}
+export function toggleNav() { setNavOpen(!navOpen.value); }
 
 const THEME_KEY = "wp-theme";
 function loadTheme() {

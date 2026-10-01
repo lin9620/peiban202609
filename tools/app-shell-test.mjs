@@ -224,6 +224,36 @@ ok("T42 轮110：网页端一级回复框在「本评论操作行」之下、「
   && cmt.includes('v-if="isReplyOpen(p, cm) && !isMobileNav && !(p.cloud && !signedIn)"')
   && cmt.includes('v-if="replyRpOf(p, cm) === rp.id'));
 
+/* ─── 轮 138 · 桌面左导航展开（方案 A：🐾 = 开关，64 → 212px，行内文字 + 品牌行回首页） ─── */
+const sn = read("src/components/SideNav.vue");
+const ui = read("src/stores/uiStore.js");
+ok("T43 轮138：🐾 从回首页链接改为开关按钮（type=button + aria-expanded + 中英 tooltip）",
+  sn.includes('class="sn-logo" type="button"') && sn.includes(':aria-expanded="navOpen"')
+  && sn.includes("t(navOpen ? 'nav.collapse' : 'nav.expand')")
+  && !sn.includes('<router-link to="/" class="sn-logo"'));
+ok("T44 轮138：展开 64 → 212px（= 右栏宽度）+ 每项行内文字 + 品牌行承担回首页",
+  sn.includes(".sidenav--open { width: 212px; }") && sn.includes('class="sn-label"')
+  && sn.includes('to="/" class="sn-brand"') && sn.includes(".sidenav--open .sn-item { width: 100%")
+  && sn.includes(".sn-label { display: none;"));
+ok("T45 轮138：内容左让位改走 --nav-w（收起 92 / 展开 240）+ 壳挂 shell--nav-open",
+  css.includes("--nav-w: 92px") && css.includes(".shell--nav-open { --nav-w: 240px; }")
+  && css.includes("margin: 0 0 0 var(--nav-w)") && css.includes("calc(var(--nav-w) +")
+  && app.includes("'shell--nav-open': !isMobileNav && navOpen"));
+ok("T46 轮138：展开态记忆在 localStorage（模块加载同步读，首帧不闪）",
+  ui.includes('const NAV_KEY = "wp-nav-open"')
+  && ui.includes('export const navOpen = ref(getItem(NAV_KEY) === "1")')
+  && ui.includes("export function toggleNav()") && ui.includes("setItem(NAV_KEY"));
+ok("T47 轮138：窄桌面（<1480）展开时会话三栏收两栏（资料卡退场）",
+  css.includes(".shell--nav-open .dm-wrap { grid-template-columns: 300px minmax(0, 1fr); }")
+  && css.includes(".shell--nav-open .dm-info { display: none; }"));
+ok("T48 轮138：nav.expand/collapse 两键 zh/en 成对 + 渲染不冒 key",
+  !!(messages.en.nav.expand && messages.en.nav.collapse && messages.zh.nav.expand && messages.zh.nav.collapse)
+  && t("nav.expand") !== "nav.expand" && t("nav.collapse") !== "nav.collapse");
+ok("T49 轮138：展开动画尊重 prefers-reduced-motion（栏宽/文字动画都关）",
+  sn.includes(".sidenav { transition: none !important; }")
+  && sn.includes(".sidenav--open .sn-item .sn-label { animation: none !important; }")
+  && css.includes("@media (min-width: 900px) and (prefers-reduced-motion: reduce)"));
+
 out.push("");
 out.push(`TOTAL ${pass + fail}  PASS ${pass}  FAIL ${fail}`);
 console.log(out.join("\n"));

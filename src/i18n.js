@@ -13,7 +13,7 @@ export const messages = {
   en: {
     brand: "Warm Paws",
     tagline: "A gentle place to be",
-    nav: { home: "Home", pet: "My Pet", community: "Warm Wall", bottle: "Drift bottles", profile: "Me" },
+    nav: { home: "Home", pet: "My Pet", community: "Warm Wall", bottle: "Drift bottles", profile: "Me", expand: "Expand menu", collapse: "Collapse menu" },
     /* App 轨道 T5：底部 Tab Bar（与顶部 nav 独立成组，zh/en 成对） */
     tab: {
       home: "Home", community: "Wall", messages: "Messages", profile: "Me",
@@ -762,7 +762,7 @@ export const messages = {
   zh: {
     brand: "暖爪",
     tagline: "一个温柔的地方",
-    nav: { home: "今天", pet: "我的宠物", community: "暖心墙", bottle: "漂流瓶", profile: "我的" },
+    nav: { home: "今天", pet: "我的宠物", community: "暖心墙", bottle: "漂流瓶", profile: "我的", expand: "展开导航", collapse: "收起导航" },
     /* App 轨道 T5：底部 Tab Bar（zh nav.home=「今天」，Tab 用「首页」更贴导航心智） */
     tab: {
       home: "首页", community: "暖心墙", messages: "消息", profile: "我的",
