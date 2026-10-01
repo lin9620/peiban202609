@@ -491,7 +491,7 @@ ok("A48b nickLong 的 {n} 真会被替换（昵称上限提示不留占位符）
 
   /* ⑤ Android 侧：intent-filter 缺了的话上面全白搭 */
   ok("A95 AndroidManifest 注册 net.de5.warmpaws://login（BROWSABLE + DEFAULT，配合 singleTask 拉回前台）",
-    /<intent-filter>[\s\S]*?BROWSABLE[\s\S]*?<data android:scheme="net.de5\.dale" android:host="login" \/>[\s\S]*?<\/intent-filter>/.test(manifest)
+    /<intent-filter>[\s\S]*?BROWSABLE[\s\S]*?<data android:scheme="net.de5\.warmpaws" android:host="login" \/>[\s\S]*?<\/intent-filter>/.test(manifest)
     && manifest.includes('android:launchMode="singleTask"'));
 
   /* ⑥ 真跑中转页脚本（vm + 假 location/document）—— 字符串断言看不出拼接有没有写错 */

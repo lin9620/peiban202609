@@ -75,7 +75,9 @@ t_("P4 隐私政策常驻入口（手机端 7：页脚挪到「设置」页；/p
 });
 t_("P5 sitemap 登记 /privacy", () => {
   assert.ok(sm.includes("<loc>https://warmpaws.de5.net/privacy</loc>"), "sitemap 未登记");
-  assert.ok(/<loc>https:\/\/dale\.de5\.net\/privacy<\/loc>[\s\S]{0,120}<\/url>/.test(sm), "url 项结构不完整");
+  /* 轮 139：站点域已换 warmpaws（轮 109/115），旧断言仍钉着 dale.de5.net → 同步；
+     本项本意是「url 项结构完整（loc 后有 </url>）」，域只是顺带口径 */
+  assert.ok(/<loc>https:\/\/warmpaws\.de5\.net\/privacy<\/loc>[\s\S]{0,120}<\/url>/.test(sm), "url 项结构不完整");
 });
 t_("P6 预渲染：/privacy 会生成独立静态 HTML", () => {
   assert.ok(/dir:\s*"privacy"/.test(vite), "vite.config.js 的 seoRoutes 缺少 privacy");
@@ -208,6 +210,11 @@ t_("P27 样式齐备（版面 + 页脚入口）", () => {
     assert.ok(css.includes(cls), `style.css 缺少 ${cls}`);
   }
   assert.ok(css.includes(".legal-list li::marker"), "列表符号未按主题着色");
+});
+t_("P28 轮139：桌面（≥900）政策页与其余页面同口径铺满流式壳（窄屏仍 720 阅读栏）", () => {
+  assert.ok(css.includes(".legal-page { max-width: 720px; margin: 0 auto; }"), "窄屏基准宽度丢了");
+  assert.ok(css.includes("@media (min-width: 900px) { .legal-page { max-width: none; } }"),
+    "缺少桌面铺满覆盖（轮 139 拍板）");
 });
 /* ═════════ ⑤ 构建产物（若已构建） ═════════ */
 if (exists("dist/privacy/index.html")) {

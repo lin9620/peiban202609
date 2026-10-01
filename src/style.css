@@ -950,10 +950,9 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 .bottle-chat { display: inline-block; margin-top: 8px; font-size: 12.5px; font-weight: 500; color: var(--accent-deep); }
 .bottle-pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 10px; }
 
-/* —— 设置页（#13）—— */
-.settings-page { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
-.settings-title { font-size: 22px; font-weight: 900; margin: 0 0 4px; }
-.set-block { margin-top: 14px; }
+/* —— 设置页（#13）——
+ * 轮 139 清理：.settings-page / .settings-title / .set-block（含 .dimmed）四条规则全仓无任何模板引用
+ * （设置页早已改用组件内的 .set-page / .set-row 体系），删掉免得下次改版又被误导。 */
 .set-opts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
 .set-opt {
   border: 1.5px solid var(--line); background: rgba(255, 255, 255, .6);
@@ -966,8 +965,6 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 /* 危险操作（删号 T3）：红调但仍是圆角胶囊，保持温柔语气里的「不可逆」提醒 */
 .set-opt.danger { border-color: rgba(239, 125, 106, .45); color: var(--low); }
 .set-opt.danger:hover:not(:disabled) { background: rgba(239, 125, 106, .12); border-color: var(--low); color: var(--low); }
-.set-block.dimmed { opacity: .6; }
-
 /* —— 改昵称（Google 首登提示 + 随时可改）：「我的」页与设置页共用这一行布局 —— */
 .nick-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 /* 输入框吃掉剩余宽度（naive-ui 的根元素是 .n-input，全局选择器才管得到） */
@@ -1537,7 +1534,10 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 /* ═══════════ 隐私政策页（/privacy） ═══════════
    这是给外部审核（Google OAuth 验证）看的页面，首要是「读得下去」：
    行宽限制在 68ch 左右、段间距松一点、列表有缩进点。 */
+/* 轮 139（用户拍板）：与轮 137 其余页面同口径 —— 桌面流式壳下也铺满左导航与右栏之间；
+ * 窄屏不变（720 在 <900px 视口本就触不到）。行宽变长是这次明确接受的口径。 */
 .legal-page { max-width: 720px; margin: 0 auto; }
+@media (min-width: 900px) { .legal-page { max-width: none; } }
 .legal-head { padding-bottom: 18px; }
 .legal-title { font-size: 22px; font-weight: 500; letter-spacing: .2px; margin-bottom: 8px; }
 .legal-head .sub { margin-bottom: 0; }
