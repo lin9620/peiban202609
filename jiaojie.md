@@ -280,7 +280,7 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
 ## 二、现在在做什么
 
-- **当前任务**：无（轮 138 已交付：提交 `7404ee7`+`ff36d73` / 部署 `bf3cc7fe` / live-check 14/14 / 入口 JS 与 CSS 均本地=线上 ✅）。**待用户验收**：点左上角 🐾 展开/收起（展开后显示文字与品牌行；刷新保持上次状态；<1480 时会话页三栏收两栏）。下一轮候选：同步 3 套旧断言漂移（`auth-test A95` / `privacy-test P5` / `app-shell-test T24`·`T34`）、清理 style.css 死规则 `.settings-page`、`/privacy` 是否也要铺满（现留 720 阅读栏）；**push 仍未做**（等「上传」发话）。见 F 区轮 138。
+- **当前任务**：轮 141（**右栏去掉「海边来信」（模板/逻辑/样式/i18n 四清）：改动完成，全量离线 40 项 0 fail + app-shell 56/56 + page-smoke 9/9 + 探针/截图复核，待提交待部署——攒批**）。见 F 区轮 141。轮 140（左导航默认展开+展开态透明+漂流瓶上移+桌面首页去漂流瓶）同批待发。
 - **上一批（历史）**：轮 114（**换域名 dale.de5.net → warmpaws.de5.net：改动完成、36 套离线全绿，待提交待部署——攒批；部署即自动绑新域，之后 APK 必须重打**）。22 文件 + `.env` 全量替换 + wrangler.jsonc `custom_domain` 自动建绑 + 旧域面板绑定保留双域并存；外部面板（Supabase Redirect URLs / Google Branding / GSC）待办清单见 F 区轮 114。**顺序红线：先 deploy 再打 APK**。
 - **上一批（已交付）**：轮 113（**上传 / 部署 / 打包 / 装机 四链路全部完成 ✅**）。用户发话「上传，部署，打包，装机」→ 把轮 107-112 的攒批一次性发出去：① 提交 `bf7b2c2`（轮 107 死代码清理）+ `c194df0`（轮 108-112 代码）+ `8fecc0f`（轮 108-112 测试与文档），**push 成功**（`HEAD == origin/main == 8fecc0f`，工作区干净）② 部署 Worker **Version `3a91942c`**（`wrangler deploy` EXIT=0，https://warm-paws.yi1614351.workers.dev）③ 线上验证 **LIVE ALL PASS (14)** + live-bundle-check **本地 dist = 线上**（入口 `index-C5pZNGVS.js`，SHA16 `c6dbdbad5170f85f` 两边一致、443181 字节、含 slug）④ `cap sync` EXIT=0（SEO 占位剥离 ×8）+ Gradle **BUILD SUCCESSFUL in 30s** → APK `apk/warm-paws-debug.apk` 5.21 MB，SHA16 **`A4852FA5763FAE05`**，包内入口 `index-C5pZNGVS.js` = 线上同一份 ⑤ `adb install -r` **Success**（`net.de5.dale`）+ 冷启动前台存活、`mWakefulness=Awake`、`logcat` 无 crash/FATAL + 截图确认渲染。**待用户真机/网页验收**。详见 F 区轮 113。
 - **上一轮（已交付）**：轮 112（**详情页一级评论回复框钉到「一级评论 ↔ 二级列表」之间（原在整条评论最底部），与暖心墙轮 110 同款同位；已随轮 113 批提交 `c194df0` / 部署 `3a91942c` / APK `A4852FA5763FAE05` 装机 ✅**）。用户原话：「帖子详细页面的一级评论输入框：把一级评论回复框点击后出现在一级评论下面，二级评论上面，你现在是一级评论最下面。二级评论输入框不改。app端不改」。详见 F 区轮 112。
@@ -1323,6 +1323,43 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **修法（一行）**：补 `const newestSeenTs = ref(0)`。undef/tdz 抓不到这类「运行时未声明引用」（非未导入符号），靠 page-smoke 真实挂载 + 真机验证兜住。
      **验证**：undef/tdz **0** + wall **34/34** + i18n **19/19** + build 0 + page-smoke **8/8**；已部署（live-check 14/14）+ APK 装机 Success。
      **待用户验收（亮屏）**：暖心墙下拉 → 「刷新中…」→ 换一批/新增提示正常、列表真的换内容；消息页无错误盒。
+
+  - **轮 141 · 右栏去掉「海边来信」（2026-10-01，用户点名，**改动完成：**全量离线 **40 项 0 fail**（app-shell **56/56**，含新 T55）+ page-smoke 9/9 + undef/tdz 0 + build 0 + 探针/截图复核，待提交待部署——攒批**）**：
+     **需求（用户原话）**：「右边侧边栏把海边来信内容去掉」。
+     **移除范围（模板/逻辑/样式/i18n **四清**，不留半套）**：
+       · **模板**：`SideRails.vue` 右栏「治愈角」卡片内 `<template v-if="signedIn">` 整块（`rail.bottleTitle` 小标题 + `.bt` 三行：`rail.bottleLeft` / `rail.bottleHeld` / `rail.bottleGo` 去海边看看链接）。
+       · **逻辑**：`signedIn` / `btLeft` / `btHeld` / `loadBottle()` / `onMounted(loadBottle)` / `watch(signedIn, loadBottle)` 全删（删后无其它引用）；连带清理导入 —— `import { cloud }`（supabase）、`bottleQuota/bottleHeld/BOTTLE_SEND_MAX/BOTTLE_FISH_MAX`（utils/bottle）、`bottleLeft`（railRules）、vue 的 `watch/onMounted`（该文件已无其它使用）。右栏从此**不再自己拉漂流瓶次数**（少一次登录态挂载请求）。
+       · **样式**：删死规则 `.bt` / `.bt-line` / `.bt-line.bt-warn` / `.bt-go`。
+       · **i18n**：删 4 键 × 中英各一（en `rail.bottleTitle/bottleLeft/bottleHeld/bottleGo`、zh 同四键），**成对删除**（i18n-test 19/19 仍绿）。
+     **保留**：`utils/railRules.js` 的 `bottleLeft()` 纯函数 + `rail-test` T27–T31 5 条单测（产品侧本轮后**暂无调用方**，属通用工具；若要一并清死代码可下轮发话）。右栏「治愈角」现为：今日温柔签 → 跟我呼吸 → 心情速记。
+     **新增断言**：`app-shell-test T55`（四清防回潮：模板无 `rail.bottleTitle`、无 `btLeft/btHeld/signedIn`、无 `.bt-line`、无 `bottleQuota/bottleHeld(` 调用，且 i18n 四键已不存在）。
+     **验证**：build **0**（seo 20 页 / env-guard ✓）+ **全量离线 40 项 0 fail**（app-shell 56/56、i18n 19/19、rail 31/31、bottle 69/69、uifix 24/24）+ page-smoke **9/9** + undef/tdz **0** + 探针（1562 `/` 与 `/pet`）：右栏 `.rail-head` 列表 = `[伙伴角, 今日温柔任务, 治愈角, 心情速记]`、全文无「海边来信 / 还能投 / 手里有」、无任何 `.bt*` 节点；截图目检治愈角卡片只剩签/呼吸/心情三块。
+     **待用户验收（亮屏）**：刷新任意桌面页 —— 右栏「治愈角」里不再出现「海边来信 / 还能投 N 封 · 回 M 封 / 手里有 N 封信 / 去海边看看」。**桌面专属改动，App 端零变化，APK 不需重打**。
+
+
+  - **轮 140 · 左导航默认展开+透明 / 漂流瓶上移 / 桌面首页去漂流瓶（2026-10-01，用户三项点名，**改动完成：**全量离线 **40 套 0 fail**（app-shell **55/55**）+ page-smoke 9/9 + undef/tdz 0 + build 0 + 探针四档 + 截图目检，待提交待部署——攒批**）**：
+     **需求（用户原话）**：「1.左边侧边框，设置成默认展开。且展开的时候不要那个框的背景，弄成跟右边一样的透明 2.今天页面把最下面的漂流瓶相关内容去掉 3.左边侧边框把漂流瓶往上移到暖心墙上面」。
+     **① 默认展开**：`uiStore` 判据由 `getItem(NAV_KEY) === "1"` 改 **`!== "0"`** —— 未存过 = 展开，只有用户**显式点过收起**才收起（否则「默认展开」会被上一次的 0 压住）。模块加载同步读，首帧即正确形态不闪。
+     **② 展开态透明（与右栏同口径）**：`.sidenav--open` 由「只改宽」改为 `width: 212px; background: transparent; border-color: transparent;` —— 右栏 `.rail` 容器本就无底（只有内部 `.rail-card` 有底），故左栏展开时同样只留内容、不留框；**收起态保留原卡片质感**。
+     **③ 导航顺序**：`items` 数组把 `{ to: "/bottle", ico: "🌊" }` 从暖心墙**之后**移到**之前** → 今天 | 我的宠物 | **漂流瓶** | 暖心墙 | 私信 | 设置（文字走既有 i18n 键，中英自动跟随）。
+     **④ 桌面首页去漂流瓶**：`HomeView.vue` 桌面分支删 `<BottleView />`（原「今日联 + 漂流瓶联」上下排列 → 只剩今日），底部那一大块漂流瓶卡片彻底消失；**手机三联里的「漂流瓶」联保持不动**（TabBar ＋ 钮 / `?tab=bottle` 深链仍直达），漂流瓶走 `/bottle` 独立页 + 左导航直达。
+     **同步的旧断言（产品代码无问题，纯口径搬移）**：`bottle-test`「HomeView 挂两处 BottleView」→ 改「只剩手机三联 1 处 + `/bottle` 页承载」；`home-panes-test T8`「桌面 TodayPane 后跟 BottleView」→ 改「桌面挂 TodayPane 且 **BottleView 必须不存在**（`assert.equal(bPos, -1)`，防回潮）」。
+     **新增断言**：`app-shell-test T52`（展开态 `background/border-color: transparent` 逐字钉住）、`T53`（导航顺序漂流瓶在暖心墙之前）、`T54`（桌面首页 `<BottleView>` 只允许手机那 1 处）；`T44`/`T46` 同步为默认展开新判据（`width: 212px;` 前缀匹配，避免整串钉死）。
+     **验证**：build **0**（seo 20 页 / env-guard ✓）+ **全量离线 40 套 0 fail**（app-shell 55/55）+ page-smoke **9/9** + undef/tdz **0** + 探针四档（1440/1562 桌面、393 移动端、`/bottle`）：**默认**（无 localStorage）`navOpen=true`、宽 **212**、`bg/border = rgba(0,0,0,0)`、labels `[今天,我的宠物,漂流瓶,暖心墙,私信,设置]`、shell 左让位 **240**、桌面首页 `.mail-card` **0**、「温暖漂流瓶」字样 **0**；393 移动端 `mobileNav=true`、侧栏不渲染、三联内漂流瓶联仍在（**零影响**）；`/bottle` 页同样默认展开且透明。截图目检：左栏无框、六项文字齐、品牌行「暖爪」在顶。
+     **待用户验收（亮屏）**：刷新首页 —— 左栏默认就是展开且**无卡片框**；漂流瓶在暖心墙之上；首页底部不再有漂流瓶。**桌面专属改动，App 端零变化，APK 不需重打**。
+
+
+  - **轮 139 · 旧断言三套同步 + style.css 死规则清理 + 政策页铺满（2026-10-01，用户发话「顺手同步」，**改动完成：**全量离线 **40 套首次 0 fail** + page-smoke 9/9 + undef/tdz 0 + build 0 + 政策页几何探针三档，待提交待部署——攒批**）**：
+     **① 旧断言同步（只动测试文件，产品代码零改）**：轮 137 认定的 4 条漂移一次性收口 ——
+       · `auth-test A95`：manifest scheme 断言还钉着 `net.de5.dale` → **`net.de5.warmpaws`**（轮 116 换 appId；先 grep AndroidManifest 确认现状再改，不瞎改断言）。
+       · `privacy-test P5`：sitemap 结构断言钉着旧域 `dale.de5.net` → **`warmpaws.de5.net`**（轮 109/115 换域）；本项本意是「loc 后有 `</url>`」的结构断言，域只是顺带口径。
+       · `app-shell-test T24`：删掉「桌面列表嵌 `<BottleRecords v-if="!isMobileNav">`」的过时子句，改为**反向断言** `!mv.includes('<BottleRecords v-if="!isMobileNav"')`（轮 134 决策：桌面列表不再嵌记录 → 钉住防回潮）；标题同步为实际顺序「漂流瓶|会话|通知」。
+       · `app-shell-test T34`：过渡类名从 fade 扩成「fade 组 + page 组一起扫」（过渡 `name` 改 page 后补的），断言同步为正则「两组都在」。
+     **② style.css 死规则清理**：删 `.settings-page` / `.settings-title` / `.set-block` / `.set-block.dimmed` —— 全仓**零模板引用**（设置页早已改用组件内 `.set-page`/`.set-row` 体系）；`.set-opts`/`.set-opt` 经查是**活的**（SettingsView 8 处）保留。
+     **③ `/privacy` 拉满（用户拍板）**：`.legal-page` 加 `@media (min-width: 900px) { .legal-page { max-width: none; } }`，与轮 137 其余五页同口径；**明确接受行宽变长**（原 720 是「给 Google 审核读得下去」的口径，现改为全站一致）。
+     **新增断言**：`privacy-test P28`（窄屏 720 基准 + 桌面铺满覆盖）、`app-shell-test T50`（死规则不得回潮）、`T51`（六个页面容器 ≥900 一律 `max-width:none` 的注册表式断言，覆盖轮 137 五处 + 政策页）。
+     **验证**：**全量离线 40 套首次 0 fail**（auth 130/130、privacy 34/34、app-shell 52/52）+ undef/tdz **0** + build **0**（seo 20 页 / env-guard ✓）+ page-smoke **9/9** + 政策页几何探针：1440 `[118,1174]`、1562 `[118,1296]`（与其余页面同口径，右栏 [1334,1546] 零重叠）、393 移动端 w357 / `max-width:720px` **零变化**。
+     **待用户验收（亮屏）**：刷新 `/privacy` —— 桌面下与其余页面同宽铺满；窄屏与 App 不变。
 
   - **轮 138 · 桌面左导航展开（用户方案 A：🐾 = 开关，64 → 212px 与右栏同宽 + 行内文字）（2026-10-01，已提交 `7404ee7`（代码）+ `ff36d73`（文档） / 已部署 Version **`bf3cc7fe`** / live-check **14/14** + live-bundle-check **本地=线上**（入口 `index-KA7Y5zAw.js`，SHA16 `47e71561710883fe`，456260 字节，含 slug）+ 线上入口 CSS **本地=线上**（`index-C6_pjsGo.css`，89610 字节，轮 138 十条规则逐项在位）✅；**桌面专属改动，App 端零变化，APK 不需重打**）**：
      **需求（用户原话）**：「当点击左上角第一关按钮的时候，左边的侧边栏向右扩张，跟右边侧边栏相同宽度，添加文字」→ 先出方案，用户拍板 **方案 A**：🐾 只当开关（不再回首页）、回首页交给展开后的品牌行；附加拍板 ② 展开且视口 <1480 时会话三栏收两栏 ③ 记住展开状态。
