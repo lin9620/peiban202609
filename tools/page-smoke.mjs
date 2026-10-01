@@ -14,7 +14,9 @@ import { fileURLToPath } from "node:url";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const serve = (process.argv.find((a) => a.startsWith("--serve=")) || "--serve=dist").slice(8);
-const PAGES = ["/", "/admin", "/community", "/login", "/profile", "/messages", "/post/1", "/u/xxx", "/zh/community"];
+const PAGES = ["/", "/admin", "/community", "/login", "/profile", "/messages", "/post/1", "/u/xxx", "/zh/community",
+  /* 轮 145 · 故事栏三页（含动态详情：web-probe 本地服务器有 SPA 回退） */
+  "/story", "/story/write", "/story/1"];
 
 const expr = path.join(root, "tools", "_page-smoke-expr.js");
 writeFileSync(expr, `(async () => {

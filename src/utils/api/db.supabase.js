@@ -296,6 +296,52 @@ export const db = {
     return unwrap(sb().rpc("bottle_quota"));
   },
 
+  /* ══════════ 故事栏（轮 145：投稿 / 故事流 / 四榜 / 点赞）══════════
+     全部走 story_* RPC（服务端权威：校验、限额、计数、随机榜种子都在 DB 里）。 */
+
+  /** 存草稿（宽容：标题可空；同表 status=draft） */
+  storySaveDraft(id, title, body, tags) {
+    return unwrap(sb().rpc("story_save_draft",
+      { p_id: id, p_title: title, p_body: body, p_tags: tags || [] }));
+  },
+
+  /** 发布（校验不过抛 story-bad-* 错误码，前端用 storyErrKey 归类） */
+  storyPublish(id, title, body, tags) {
+    return unwrap(sb().rpc("story_publish",
+      { p_id: id, p_title: title, p_body: body, p_tags: tags || [] }));
+  },
+
+  /** 赞 / 取消赞：返回 true=已赞 false=已取消 */
+  storyToggleLike(id) {
+    return unwrap(sb().rpc("story_toggle_like", { p_id: id }));
+  },
+
+  /** 记一次浏览（同人同篇同日只计一次） */
+  storyAddView(id) {
+    return unwrap(sb().rpc("story_add_view", { p_id: id }));
+  },
+
+  /** 四榜一条出：mode = random | latest | monthly | tag；tag 模式配 tag；period 'YYYY-MM' */
+  storyRank(mode, tag, period, limit, offset) {
+    const params = { p_mode: mode, p_limit: limit, p_offset: offset };
+    if (tag) params.p_tag = tag;
+    if (period) params.p_period = period;
+    return unwrap(sb().rpc("story_rank", params));
+  },
+
+  /** 单篇详情（未发布且非本人 → 空数组，前端按 404 处理） */
+  async storyGet(id) {
+    const data = await unwrap(sb().rpc("story_get", { p_id: id }));
+    return (data && data[0]) || null;
+  },
+
+  /** 我的投稿（status 省略 = 草稿 + 已发布） */
+  storyMine(status, limit = 30, offset = 0) {
+    const params = { p_limit: limit, p_offset: offset };
+    if (status) params.p_status = status;
+    return unwrap(sb().rpc("story_mine", params));
+  },
+
   /* ══════════ 宠物主页（展示镜像 + 计数独立列） ══════════ */
 
   /** 取宠物主页行（行不存在返回 null）；pats/feeds 列缺失（老库）时退回只读 data */

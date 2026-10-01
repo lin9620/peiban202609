@@ -504,6 +504,43 @@ async function getPostRow(env, request, id) {
   }
 }
 
+/** 轮 145 · /story/:id 取故事行（存在性 + 壳注入共用）：查无/上游挂 → null（宁可真 404 不发软 200）。
+ *  story_get 是 security definer：published 全员可读（含未登录 anon），未发布只有本人查得到。 */
+async function getStoryRow(env, request, id) {
+  const res = await rpc(env, request, "story_get", { p_id: Number(id) });
+  if (!res || !res.ok) return null;
+  try {
+    const rows = await res.json();
+    return Array.isArray(rows) && rows.length ? rows[0] : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/** 轮 145 · 把故事标题/正文/OG 注入 SPA 壳（口径同 postShellHtml）。
+ *  正文只注入前 INJECT_MAX 码点：壳是给不执行 JS 的抓取方读的，全文（≤3 万字）塞进去
+ *  会让每个深链的 HTML 涨到 ~100KB；截断后仍带真实标题/开头/发布时间，够收录与分享卡用。 */
+const STORY_INJECT_MAX = 4000;
+function storyShellHtml(shellHtml, row, origin) {
+  const full = String(row.body || "").trim();
+  const cut = [...full].slice(0, STORY_INJECT_MAX).join("");
+  const more = [...full].length > STORY_INJECT_MAX;
+  const flat = full.replace(/\s+/g, " ");
+  const t2 = escapeHtmlWorker(flat ? flat.slice(0, 60) : row.title || "A story");
+  const d = escapeHtmlWorker(flat ? flat.slice(0, 160) : String(row.title || "A gentle story on Warm Paws."));
+  const paras = cut ? cut.split(/\n+/).filter(Boolean).map((x) => `<p>${escapeHtmlWorker(x)}</p>`).join("") : "";
+  const content = `<div class="seo-static"><section class="card seo-hero"><h2 class="seo-title">${t2}</h2>${paras}${more ? "<p>…</p>" : ""}<p>${escapeHtmlWorker(row.nickname || "A gentle writer")}</p></section></div>`;
+  let h = shellHtml;
+  h = h.replace(/<title>[\s\S]*?<\/title>/, `<title>${t2} · Warm Paws</title>`);
+  h = h.replace(/<meta\s+name="description"[\s\S]*?\/>/, `<meta name="description" content="${d}" />`);
+  h = h.replace(/<link rel="canonical" href="[^"]*"/, `<link rel="canonical" href="${origin}/story/${row.id}"`);
+  h = h.replace(/<meta property="og:url" content="[^"]*"/, `<meta property="og:url" content="${origin}/story/${row.id}"`);
+  h = h.split(ROOT_TITLE_CONTENT).join(`content="${t2} · Warm Paws"`);
+  h = h.split(ROOT_DESC_CONTENT).join(`content="${d}"`);
+  h = h.replace(/<div class="seo-static">[\s\S]*?<\/section>\s*<\/div>/, content);
+  return h;
+}
+
 /* 与 vite.config.js seoRoutes 的 ROOT_DESC 同源（og:description / twitter:description 共用占位串）
  * —— 两处是复制粘贴的兄弟代码，改一处必改另一处（踩坑 #28 口径）。 */
 const ROOT_DESC_CONTENT = 'content="Care for a little pet, draw its food, share kindness with gentle people."';
@@ -670,6 +707,28 @@ export default {
             }
           }
           /* 查无此帖 / 上游挂 → 落到下面的真 404 */
+        }
+      }
+      /* 轮 145 · /story/:id 故事深链：同 post 口径 —— 先在 story_get 里确认存在（published 或本人），
+         查无/上游挂维持真 404（软 404 红线不动）；存在则回壳并注入标题/正文开头/OG。 */
+      if (res.status === 404 && path.startsWith("/story/")) {
+        const id = decodeSeg(decodeURIComponent(path.slice("/story/".length)).split("/")[0] || "");
+        if (id && /^[0-9]+$/.test(id)) {
+          const row = await getStoryRow(env, request, id);
+          if (row) {
+            const shell = await env.ASSETS.fetch(new URL("/", url.origin));
+            if (shell && shell.ok) {
+              try {
+                const html = await shell.text();
+                const headers = new Headers(shell.headers);
+                headers.delete("etag");
+                headers.delete("content-length");
+                return new Response(storyShellHtml(html, row, url.origin), { status: 200, headers });
+              } catch (e) {
+                return shell;
+              }
+            }
+          }
         }
       }
       return res;
@@ -975,6 +1034,72 @@ export default {
         if (seg[1] === "held" && seg.length === 2 && m === "GET") return rpc(env, request, "bottle_held", {});
         /* 轮 18：今日次数探针（服务端权威）——前端「还能捞 N 瓶」以它为准，跨端一致 */
         if (seg[1] === "quota" && seg.length === 2 && m === "GET") return rpc(env, request, "bottle_quota", {});
+      }
+
+      /* —— 故事栏（轮 145）：投稿 / 四榜 / 点赞，全部收口到 DB 里的 story_* RPC ——
+         字数(≤3万) / 标签(1~3) / 限额 / 计数 / 随机种子都在 RPC 里把关；Worker 只做入参体检。
+         字数用码点计数（[...s].length）与 PG 的 char_length 同口径，emoji 不会被算两次。 —— */
+      if (seg[0] === "story") {
+        /* POST /story/draft | /story/publish：{ id, title, body, tags } */
+        if ((seg[1] === "draft" || seg[1] === "publish") && seg.length === 2 && m === "POST") {
+          const b = await readJson(request);
+          if (b.err) return b.err;
+          const t = b.body || {};
+          const title = typeof t.title === "string" ? t.title.trim() : "";
+          const text = typeof t.body === "string" ? t.body : "";
+          const tags = Array.isArray(t.tags) ? t.tags.slice(0, 5) : [];
+          if ([...text].length > 30000) return fail(400, "story-too-long");
+          if (seg[1] === "publish") {
+            if (!title || [...title].length > 100) return fail(400, "story-bad-title");
+            if (![...text].length) return fail(400, "story-empty-body");
+            if (!tags.length) return fail(400, "story-bad-tags");
+          }
+          const rawId = t.id === null || t.id === undefined || t.id === "" ? null : Number(t.id);
+          if (rawId !== null && (!Number.isInteger(rawId) || rawId <= 0)) return fail(400, "bad-id");
+          return rpc(env, request, seg[1] === "draft" ? "story_save_draft" : "story_publish",
+            { p_id: rawId, p_title: title, p_body: text, p_tags: tags });
+        }
+        /* POST /story/like | /story/view：{ id } */
+        if ((seg[1] === "like" || seg[1] === "view") && seg.length === 2 && m === "POST") {
+          const b = await readJson(request);
+          if (b.err) return b.err;
+          const id = Number((b.body || {}).id);
+          if (!Number.isInteger(id) || id <= 0) return fail(400, "bad-id");
+          return rpc(env, request, seg[1] === "like" ? "story_toggle_like" : "story_add_view", { p_id: id });
+        }
+        /* GET /story/rank?mode=&tag=&period=&limit=&offset= —— 一条 RPC 出四榜 */
+        if (seg[1] === "rank" && seg.length === 2 && m === "GET") {
+          const mode = (q.get("mode") || "random").toLowerCase();
+          if (mode !== "random" && mode !== "latest" && mode !== "monthly" && mode !== "tag") {
+            return fail(400, "story-bad-mode");
+          }
+          const params = {
+            p_mode: mode,
+            p_period: q.get("period") || null,
+            p_limit: parseLimit(q.get("limit"), 20),
+            p_offset: parseOffset(q.get("offset")),
+          };
+          const tag = (q.get("tag") || "").trim();
+          if (tag) params.p_tag = tag.slice(0, 20);
+          return rpc(env, request, "story_rank", params);
+        }
+        /* GET /story/mine?status=&limit=&offset= —— 我的草稿箱 + 已发布 */
+        if (seg[1] === "mine" && seg.length === 2 && m === "GET") {
+          const status = (q.get("status") || "").toLowerCase();
+          const params = { p_limit: parseLimit(q.get("limit"), 30), p_offset: parseOffset(q.get("offset")) };
+          if (status === "draft" || status === "published") params.p_status = status;
+          return rpc(env, request, "story_mine", params);
+        }
+        /* GET /story/:id —— 未发布且非本人 → 200 null（与直连实现的 maybeSingle 同契约） */
+        if (seg.length === 2 && m === "GET") {
+          const id = Number(seg[1]);
+          if (!Number.isInteger(id) || id <= 0) return fail(400, "bad-id");
+          const res = await rpc(env, request, "story_get", { p_id: id });
+          if (!res.ok) return res;
+          let arr = null;
+          try { arr = await res.json(); } catch (e) { arr = null; }
+          return json(Array.isArray(arr) ? (arr[0] || null) : (arr || null), 200);
+        }
       }
 
       /* —— 举报（轮 33：帖子/评论；防刷限频与评论 ≥3 人自动隐藏都在 RPC 里） —— */

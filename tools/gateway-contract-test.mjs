@@ -307,6 +307,46 @@ setGatewayAuthProbe(() => true); /* 单测注入：auth 就绪（与 db.supabase
   }
 }
 
+/* ── 轮 145 · 故事栏（/api/story/* 七方法与 worker/api.js 路由一一对上） ── */
+{
+  const c = capture();
+  try {
+    await db.storySaveDraft(null, "", "草稿正文", ["治愈"]);
+    await db.storyPublish(7, "标题", "正文", ["深夜", "成长"]);
+    await db.storyToggleLike(7);
+    await db.storyAddView(7);
+    await db.storyRank("random", "", "2026-10", 20, 0);
+    await db.storyRank("tag", "深夜", null, 10, 5);
+    await db.storyGet(42);
+    await db.storyMine("published", 30, 0);
+    await db.storyMine();
+    const u = (i) => c.calls[i].url;
+    const m = (i) => c.calls[i].init.method || "GET";
+    const b = (i) => c.calls[i].init.body;
+    ok("storySaveDraft 端点+body（草稿宽容：标题可空、id 可空）",
+      u(0) === "/api/story/draft" && m(0) === "POST" &&
+      b(0) === JSON.stringify({ id: null, title: "", body: "草稿正文", tags: ["治愈"] }), u(0));
+    ok("storyPublish 端点+body（标签透传数组）",
+      u(1) === "/api/story/publish" && m(1) === "POST" &&
+      b(1) === JSON.stringify({ id: 7, title: "标题", body: "正文", tags: ["深夜", "成长"] }), u(1));
+    ok("storyToggleLike 端点+body",
+      u(2) === "/api/story/like" && m(2) === "POST" && b(2) === JSON.stringify({ id: 7 }), u(2));
+    ok("storyAddView 端点+body",
+      u(3) === "/api/story/view" && m(3) === "POST" && b(3) === JSON.stringify({ id: 7 }), u(3));
+    ok("storyRank 端点（random+period 排在 mode/limit/offset 后）",
+      u(4) === "/api/story/rank?mode=random&limit=20&offset=0&period=2026-10", u(4));
+    ok("storyRank 端点（tag 中文编码、无 period 不带参）",
+      u(5) === `/api/story/rank?mode=tag&limit=10&offset=5&tag=${enc("深夜")}`, u(5));
+    ok("storyGet 端点", u(6) === "/api/story/42" && m(6) === "GET", u(6));
+    ok("storyMine 端点（显式 status）",
+      u(7) === "/api/story/mine?limit=30&offset=0&status=published", u(7));
+    ok("storyMine 端点（省略 status = 草稿+已发布）",
+      u(8) === "/api/story/mine?limit=30&offset=0", u(8));
+  } finally {
+    c.restore();
+  }
+}
+
 setGatewayAuthProbe(null);
 setAuthTokenProvider(() => "");
 console.log(`gateway-contract: ${pass} pass, ${fails.length} fail`);

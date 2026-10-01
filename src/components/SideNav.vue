@@ -1,7 +1,7 @@
 <!-- 轮 132 · 桌面端左侧图标导航（参考图 1：窄 rail，图标 + 激活珊瑚胶囊 + 红点徽标）
  * 仅桌面（≥900px）渲染——移动端保持 TabBar + 顶栏不动。 -->
 <script setup>
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { t } from "../i18n.js";
 import { badge } from "../stores/badgeStore.js";
 import { navOpen, toggleNav } from "../stores/uiStore.js";
@@ -13,9 +13,21 @@ const items = [
   /* 轮 140（用户要求）：漂流瓶上移到暖心墙之上 */
   { to: "/bottle", ico: "🌊", key: "nav.bottle" },
   { to: "/community", ico: "💬", key: "nav.community" },
+  /* 轮 145（用户要求）：故事栏 —— 投稿 / 发现 / 我的（左栏三页签）+ 右栏排行榜 */
+  { to: "/story", ico: "📖", key: "nav.story" },
   { to: "/messages", ico: "✉️", key: "dm.title", badge: () => badge.dm + badge.requests },
 ];
 const isActive = (to) => (to === "/" ? route.path === "/" : route.path === to || route.path.startsWith(to + "/"));
+const router = useRouter();
+
+/* 轮144（用户口径）：左侧边点「暖心墙」——已在暖心墙页时再点 = 刷新（抄 TabBar 轮100 先例）：
+ * 同路径 push 会被 vue-router 忽略（点了没反应）→ 拦下默认导航，推带时间戳的 refresh query，
+ * CommunityView 的 watch(route.query.refresh) 强制取新第一页并回顶部。其它按钮/非本页不干预。 */
+function onNavClick(it, e) {
+  if (it.to !== "/community" || !isActive(it.to)) return;
+  e.preventDefault();
+  router.push({ path: "/community", query: { refresh: String(Date.now()) } }).catch(() => {});
+}
 </script>
 
 <template>
@@ -31,7 +43,8 @@ const isActive = (to) => (to === "/" ? route.path === "/" : route.path === to ||
     </div>
     <router-link
       v-for="it in items" :key="it.to" :to="it.to"
-      class="sn-item" :class="{ on: isActive(it.to) }" :title="t(it.key)">
+      class="sn-item" :class="{ on: isActive(it.to) }" :title="t(it.key)"
+      @click="onNavClick(it, $event)">
       <span class="sn-ico">{{ it.ico }}</span>
       <span class="sn-label">{{ t(it.key) }}</span>
       <span v-if="it.badge && it.badge()" class="sn-badge">{{ it.badge() > 99 ? "99+" : it.badge() }}</span>

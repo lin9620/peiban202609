@@ -12,6 +12,11 @@ export const router = createRouter({
     { path: "/community", alias: "/zh/community", name: "community", component: () => import("./views/CommunityView.vue") },
     /* 轮 133：漂流瓶独立页（桌面左导航直达；手机端仍走首页三联/消息段） */
     { path: "/bottle", name: "bottle", component: () => import("./views/BottlePageView.vue") },
+    /* 轮 145 · 故事栏（/story = 投稿|发现|我的 + 右栏四榜）；全屏写作必须排在 :id 之前，
+     * 详情页用数字约束（/story/12），否则 "write" 会被当成 id 吞掉。 */
+    { path: "/story", name: "story", component: () => import("./views/StoryView.vue") },
+    { path: "/story/write", name: "storyWrite", component: () => import("./views/StoryWriteView.vue") },
+    { path: "/story/:id(\\d+)", name: "storyDetail", component: () => import("./views/StoryDetailView.vue") },
     /* 手机端发帖：底部 ＋ → 独立大输入框页（桌面仍用暖心墙页顶发布框，不进这页） */
     { path: "/compose", name: "compose", component: () => import("./views/ComposeView.vue") },
     /* 我的帖子：暖心墙「我的」区点「更多」进来，10 条一页 + 下拉续载 */

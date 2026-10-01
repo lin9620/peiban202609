@@ -296,7 +296,7 @@ ok("T55 轮141：右栏「海边来信」整块移除且不留半套（模板/�
     && !/bottleTitle|bottleLeft:|bottleHeld:|bottleGo:/.test(i18);
 })());
 
-/* ─── 轮 142 · 私信页一体化（桌面两段：会话 | 漂流瓶；两段各自单开聊天框）；轮 143 · 右资料卡退役 → 头部右上角「…」菜单 + 瓶聊昵称进空间 ─── */
+/* ─── 轮 142 · 私信页一体化（桌面两段：会话 | 漂流瓶；两段各自单开聊天框）；轮 143 · 右资料卡退役 → 头部右上角「…」菜单 + 瓶聊昵称进空间；轮 144 · ⋯点空白关 + 左导航暖心墙页内刷新 ─── */
 const bcl = read("src/components/BottleChatList.vue");
 const bchat = read("src/components/BottleChat.vue");
 ok("T56 轮142：桌面分栏 = 会话 | 漂流瓶（通知不进桌面私信页；新键 zh/en 成对）", (() => {
@@ -356,6 +356,14 @@ ok("T61 轮143：漂流瓶聊天框点头像/昵称进对方空间（waller 路�
   && bchat.includes("function goUser(id)")
   && (bchat.split('@click="goUser(peerId)"').length - 1) >= 2
   && bchat.includes("dm-peer-link") && bchat.includes("dm-msg-avatar clickable"));
+ok("T62 轮144：聊天头「⋯」菜单点空白自动关（document pointerdown 兜底 + 命中 .dm-head-tools 不关 + 卸载移除）",
+  mv.includes('addEventListener("pointerdown", onDocPointerDown)')
+  && mv.includes('removeEventListener("pointerdown", onDocPointerDown)')
+  && mv.includes('closest(".dm-head-tools")'));
+ok("T63 轮144：左导航暖心墙 = 页内再点即刷新（TabBar 轮100 同款 refresh 时间戳 query；CommunityView 消费回顶）",
+  sn.includes("onNavClick") && sn.includes('@click="onNavClick(it, $event)"')
+  && sn.includes('refresh: String(Date.now())')
+  && read("src/views/CommunityView.vue").includes("route.query.refresh"));
 
 out.push("");
 out.push(`TOTAL ${pass + fail}  PASS ${pass}  FAIL ${fail}`);

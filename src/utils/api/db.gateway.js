@@ -257,6 +257,48 @@ export const db = {
     return call("/bottle/quota");
   },
 
+  /* ══════════ 故事栏（轮 145：Worker 收口 /api/story/*，同名 RPC 在 DB 里） ══════════ */
+
+  /** 存草稿（宽容：标题可空） */
+  storySaveDraft(id, title, body, tags) {
+    return call("/story/draft", { method: "POST", body: { id, title, body, tags: tags || [] } });
+  },
+
+  /** 发布（服务端校验 标题/正文≤3万/标签1~3） */
+  storyPublish(id, title, body, tags) {
+    return call("/story/publish", { method: "POST", body: { id, title, body, tags: tags || [] } });
+  },
+
+  /** 赞 / 取消赞：true=已赞 false=已取消 */
+  storyToggleLike(id) {
+    return call("/story/like", { method: "POST", body: { id } });
+  },
+
+  /** 记一次浏览（同人同篇同日只计一次） */
+  storyAddView(id) {
+    return call("/story/view", { method: "POST", body: { id } });
+  },
+
+  /** 四榜一条出：mode = random | latest | monthly | tag */
+  storyRank(mode, tag, period, limit, offset) {
+    const qs = [`mode=${enc(mode)}`, `limit=${enc(limit)}`, `offset=${enc(offset)}`];
+    if (tag) qs.push(`tag=${enc(tag)}`);
+    if (period) qs.push(`period=${enc(period)}`);
+    return call(`/story/rank?${qs.join("&")}`);
+  },
+
+  /** 单篇详情（未发布且非本人 → Worker 翻成 200 null） */
+  storyGet(id) {
+    return call(`/story/${enc(id)}`);
+  },
+
+  /** 我的投稿（status 省略 = 草稿 + 已发布） */
+  storyMine(status, limit = 30, offset = 0) {
+    const qs = [`limit=${enc(limit)}`, `offset=${enc(offset)}`];
+    if (status) qs.push(`status=${enc(status)}`);
+    return call(`/story/mine?${qs.join("&")}`);
+  },
+
   /* ══════════ 宠物主页（展示镜像 + 计数独立列） ══════════ */
 
   /** 取宠物主页行（行不存在返回 null）；pats/feeds 列缺失的兼容由 Worker 内部处理 */

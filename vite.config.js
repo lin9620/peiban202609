@@ -175,6 +175,17 @@ function seoRoutes() {
           desc: "Share a warm thought (and a picture) on the kindness wall.",
         },
         {
+          /* 轮 145 · 故事栏：投稿 / 发现 / 我的 + 四榜（推荐·最新·月赞·标签），单篇 ≤3 万字 */
+          dir: "story",
+          title: "Warm Paws · Story Hall",
+          desc: "Write a story of your own, read gentle ones from others, and see what people loved most this month.",
+        },
+        {
+          dir: "story/write",
+          title: "Warm Paws · Write a Story",
+          desc: "A quiet full-screen desk for your story — drafts save themselves as you go.",
+        },
+        {
           dir: "notifications",
           title: "Warm Paws · Notifications",
           desc: "Replies, reactions and gentle news from the wall.",

@@ -322,6 +322,94 @@ async function hit(script, path, init) {
     c.outbound[0].init.body === JSON.stringify({ p_owner: "o1", p_kind: "pat", p_viewer: "anon" }));
 }
 
+/* ─────────── 故事栏（轮 145）：Worker 入参体检 + story_* RPC 翻译 ─────────── */
+{
+  const { c } = await hit([{ body: { ok: true } }],
+    "/api/story/draft", { method: "POST", body: JSON.stringify({ id: null, title: "", body: "草稿", tags: ["治愈"] }) });
+  ok("storySaveDraft rpc URL + body（p_id null=新建草稿，草稿标题宽容）",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/story_save_draft` &&
+    c.outbound[0].init.body === JSON.stringify({ p_id: null, p_title: "", p_body: "草稿", p_tags: ["治愈"] }),
+    c.outbound[0] && c.outbound[0].init.body);
+}
+{
+  const { c } = await hit([{ body: { ok: true } }],
+    "/api/story/publish", { method: "POST", body: JSON.stringify({ id: 7, title: "标题", body: "正文", tags: ["深夜"] }) });
+  ok("storyPublish rpc URL + body（p_id 7=再编辑）",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/story_publish` &&
+    c.outbound[0].init.body === JSON.stringify({ p_id: 7, p_title: "标题", p_body: "正文", p_tags: ["深夜"] }),
+    c.outbound[0] && c.outbound[0].init.body);
+}
+{
+  /* Worker 入参体检（与 DB RPC 双保险）：不过检 0 出站 —— 垃圾请求绝不到上游 */
+  const { res, c } = await hit([], "/api/story/publish",
+    { method: "POST", body: JSON.stringify({ title: "t", body: "字".repeat(30001), tags: ["x"] }) });
+  ok("story 正文 30001 码点 → 400 story-too-long 且 0 出站",
+    res.status === 400 && c.outbound.length === 0);
+}
+{
+  const { res } = await hit([], "/api/story/publish",
+    { method: "POST", body: JSON.stringify({ title: "", body: "x", tags: ["t"] }) });
+  ok("story 空标题 → 400 story-bad-title",
+    res.status === 400 && (await res.json()).error === "story-bad-title");
+}
+{
+  const { res } = await hit([], "/api/story/publish",
+    { method: "POST", body: JSON.stringify({ title: "t", body: "", tags: ["t"] }) });
+  ok("story 空正文 → 400 story-empty-body",
+    res.status === 400 && (await res.json()).error === "story-empty-body");
+}
+{
+  const { res } = await hit([], "/api/story/publish",
+    { method: "POST", body: JSON.stringify({ title: "t", body: "x", tags: [] }) });
+  ok("story 零标签 → 400 story-bad-tags",
+    res.status === 400 && (await res.json()).error === "story-bad-tags");
+}
+{
+  const { c } = await hit([{ body: { ok: true } }],
+    "/api/story/like", { method: "POST", body: JSON.stringify({ id: 7 }) });
+  ok("storyToggleLike rpc URL + body",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/story_toggle_like` &&
+    c.outbound[0].init.body === JSON.stringify({ p_id: 7 }));
+}
+{
+  const { res, c } = await hit([], "/api/story/like", { method: "POST", body: JSON.stringify({}) });
+  ok("story 缺 id → 400 bad-id 且 0 出站", res.status === 400 && c.outbound.length === 0);
+}
+{
+  const { c } = await hit([{ body: [] }],
+    "/api/story/rank?mode=tag&limit=10&offset=5&period=2026-10&tag=%E6%B7%B1%E5%A4%9C");
+  ok("storyRank rpc URL + body（中文 tag 编码还原 + period 透传）",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/story_rank` &&
+    c.outbound[0].init.body === JSON.stringify({ p_mode: "tag", p_period: "2026-10", p_limit: 10, p_offset: 5, p_tag: "深夜" }),
+    c.outbound[0] && c.outbound[0].init.body);
+}
+{
+  const { res, c } = await hit([], "/api/story/rank?mode=bogus");
+  ok("story 非法 mode → 400 story-bad-mode 且 0 出站",
+    res.status === 400 && c.outbound.length === 0);
+}
+{
+  const { c } = await hit([{ body: [] }], "/api/story/mine?status=published&limit=30&offset=0");
+  ok("storyMine rpc URL + body（白名单 status 才带 p_status）",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/story_mine` &&
+    c.outbound[0].init.body === JSON.stringify({ p_limit: 30, p_offset: 0, p_status: "published" }),
+    c.outbound[0] && c.outbound[0].init.body);
+}
+{
+  const { c } = await hit([{ body: [] }], "/api/story/mine");
+  ok("storyMine 省略 status（非白名单 → 不带 p_status）",
+    c.outbound[0].init.body === JSON.stringify({ p_limit: 30, p_offset: 0 }),
+    c.outbound[0] && c.outbound[0].init.body);
+}
+{
+  const { res, c } = await hit([{ body: [] }], "/api/story/42");
+  ok("storyGet rpc URL + body，空数组 → 200 null",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/story_get` &&
+    c.outbound[0].init.body === JSON.stringify({ p_id: 42 }) &&
+    res.status === 200 && (await res.json()) === null,
+    c.outbound[0] && c.outbound[0].init.body);
+}
+
 /* ─────────── 宠物主页 ─────────── */
 {
   const { c } = await hit([{ body: { data: {}, pats: 1, feeds: 2 } }], "/api/pet/u1");
