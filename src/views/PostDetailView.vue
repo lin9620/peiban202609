@@ -699,7 +699,10 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
 </template>
 
 <style scoped>
+/* 轮 137：桌面流式壳（轮 133 起）下不再收窄居中——铺满左导航与右栏之间整块宽度；
+ * 窄屏/App 形态不受影响（640 的 max-width 在 <900px 视口本就触不到）。 */
 .pd { max-width: 640px; margin: 0 auto; }
+@media (min-width: 900px) { .pd { max-width: none; } }
 .pd-head { margin: 10px 0; }
 .pd-back, .pd-retry {
   -webkit-appearance: none; appearance: none; font: inherit; cursor: pointer;

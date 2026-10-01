@@ -167,13 +167,16 @@ async function submit() {
  * 现在按「整屏编辑器」排：sticky 顶栏（← 回墙）+ 中间一张大卡片（输入框撑满）
  *   + 底部动作条（图片 / 字数 / 发布）。App.vue 把 /compose 归到 shell--chat 形态，
  *   TabBar 与页脚一并让位 → 这页自己吃满 100dvh，底部留 safe-area。
- * 桌面形态也走同一页（窄屏居中 max-width 720），不会因为手机优先而崩。 */
+ * 桌面形态也走同一页（窄屏居中 max-width 720；桌面形态改为铺满流式壳，见下方轮 137 覆盖），不会因为手机优先而崩。 */
 .compose-page {
   display: flex; flex-direction: column; gap: 10px;
   min-height: 100dvh;
   max-width: 720px; margin: 0 auto;
   padding: 10px 14px calc(16px + env(safe-area-inset-bottom, 0px));
 }
+/* 轮 137：桌面流式壳（轮 133 起）下不再收窄居中——铺满左导航与右栏之间整块宽度；
+ * 窄屏/App 形态不受影响（720 的 max-width 在 <900px 视口本就触不到）。 */
+@media (min-width: 900px) { .compose-page { max-width: none; } }
 
 /* 顶栏 */
 .compose-head {

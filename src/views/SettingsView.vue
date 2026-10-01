@@ -362,7 +362,10 @@ onMounted(() => { loadPrefs(); });
 </template>
 
 <style scoped>
+/* 轮 137：桌面流式壳（轮 133 起）下不再收窄居中——铺满左导航与右栏之间的整块宽度；
+ * 窄屏/App 形态不受影响（860 的 max-width 在 <900px 视口本就触不到）。 */
 .set-page { max-width: 860px; margin: 0 auto; }
+@media (min-width: 900px) { .set-page { max-width: none; } }
 .set-top { display: flex; align-items: flex-start; gap: 10px; margin: 2px 0 12px; }
 .set-back {
   appearance: none; font: inherit; cursor: pointer;

@@ -318,7 +318,10 @@ function passHint(pass) {
 </template>
 
 <style scoped>
+/* 轮 137：桌面流式壳（轮 133 起）下不再收窄居中——铺满左导航与右栏之间整块宽度；
+ * 窄屏/App 形态不受影响（560 的 max-width 在 <900px 视口本就触不到）。 */
 .login-page { max-width: 560px; margin: 0 auto; }
+@media (min-width: 900px) { .login-page { max-width: none; } }
 .login-head { display: flex; align-items: center; gap: 10px; margin: 2px 0 6px; }
 .login-head h1 { font-size: 20px; margin: 0; flex: 1; }
 .login-back {

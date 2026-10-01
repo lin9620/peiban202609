@@ -28,6 +28,10 @@ function openBottleChat(id) {
 </template>
 
 <style>
+/* 轮 137（用户截图：内容盒窄、两侧大空洞）：桌面壳自轮 133 起是流式，
+ * 页面容器不该再自行收窄居中——铺满左导航(92)与右栏(240)之间整块宽度。
+ * 窄屏/App 形态不受影响（视口 <900px 时 900 的 max-width 本就触不到）。 */
 .bottle-page { max-width: 900px; margin: 0 auto; }
+@media (min-width: 900px) { .bottle-page { max-width: none; } }
 .bottle-guest { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 34px 20px; }
 </style>
