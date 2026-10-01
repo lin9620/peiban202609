@@ -49,9 +49,18 @@ button, input, textarea { font-family: inherit; }
 ::selection { background: var(--accent-soft); }
 
 .shell { max-width: 780px; margin: 0 auto; padding: 0 18px 48px; position: relative; z-index: 1; overflow-x: clip; }
-/* 轮 132 · 桌面壳：SideNav 占左 92px，内容在余下空间居中；SideNav ≥900 才渲染 */
+/* 轮 133 · 桌面壳改流式：内容铺满 SideNav(92) 与右栏(240) 之间，超宽屏封顶 1440 居中 */
 @media (min-width: 900px) {
-  .shell { margin-left: calc(92px + max(0px, (100vw - 92px - 780px) / 2)); }
+  .shell { max-width: none; width: auto; margin: 0 0 0 92px; padding: 0 26px 48px; }
+}
+@media (min-width: 1100px) {
+  .shell { margin-right: 240px; }
+}
+@media (min-width: 1600px) {
+  .shell {
+    margin-left: calc(92px + (100vw - 92px - 240px - 1440px) / 2);
+    margin-right: calc(240px + (100vw - 92px - 240px - 1440px) / 2);
+  }
 }
 /* welcome 横幅（参考图 1 顶部）：衬线名字 + 欢迎语 + 金币 */
 .welcome-band {
@@ -1618,7 +1627,7 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 }
 /* 轮 132 · 会话三栏（参考图 2）：列表 | 聊天 | 资料卡；聊天列撑满视口高 */
 @media (min-width: 900px) {
-  .dm-wrap { grid-template-columns: 276px minmax(0, 1fr) 232px; }
+  .dm-wrap { grid-template-columns: 300px minmax(0, 1fr) 264px; }
   .dm-thread { min-height: calc(100vh - 210px); }
   .dm-scroll { max-height: none; flex: 1; }
   .dm-list { max-height: calc(100vh - 236px); }

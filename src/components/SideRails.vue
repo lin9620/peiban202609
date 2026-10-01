@@ -268,11 +268,14 @@ watch(signedIn, loadBottle);
 </template>
 
 <style>
-/* 两侧玩法栏：≥1280px 宽屏显示，窄屏自动隐藏 */
-.rail { position: fixed; top: 92px; width: 212px; z-index: 60; display: none; }
-.rail-left { left: calc(50% - 622px); }
-.rail-right { right: calc(50% - 622px); }
-@media (min-width: 1280px) { .rail { display: block; } }
+/* 两侧玩法栏：轮 132 收拢为右缘一列（≥1100px 显示；组件内样式是权威份——style.css 里曾有一份拷贝导致双源漂移，已删） */
+.rail {
+  position: fixed; right: 16px; top: 14px; bottom: 14px; width: 212px; z-index: 60;
+  display: none; flex-direction: column; gap: 12px;
+  overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none;
+}
+.rail::-webkit-scrollbar { display: none; }
+@media (min-width: 1100px) { .rail { display: flex; } }
 
 .rail-card {
   background: var(--glass);
