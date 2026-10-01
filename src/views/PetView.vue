@@ -25,6 +25,7 @@ import {
 import { ACCESSORIES, seasonNow } from "../data/extras.js";
 import SeasonFx from "../components/SeasonFx.vue";
 import SnackRain from "../components/SnackRain.vue";
+import RpsGame from "../components/RpsGame.vue";
 import {
   wardrobe, accByKey, buyAccessory, wearAccessory, toggleFramed,
 } from "../stores/petStore.js";
@@ -466,6 +467,9 @@ function onToggleFramed(d) {
         <button class="act" @click="snackOn = true"><span>{{ "\u{1F36C}" }}</span>{{ t("pet.snack.btn") }}</button>
         <button class="act" @click="showShare = true"><span>🖼️</span>{{ t("home.share") }}</button>
       </div>
+
+      <!-- 轮 131 · 石头剪刀布 vs 宠物（清单 #20）：性格加权出拳，赢金币计入陪它玩任务 -->
+      <RpsGame />
 
       <div class="pet-stats">
         <div v-for="s in stats" :key="s.key" class="pstat">

@@ -157,6 +157,18 @@ export const messages = {
       progress: "{done}/{total} done",
     },
 
+    rps: {
+      title: "Rock-paper-scissors",
+      rock: "Rock", scissors: "Scissors", paper: "Paper",
+      win: "You win!", lose: "It wins this one", draw: "A tie!",
+      sayWin: "Hehe, I won! Again?", sayLose: "Aww, you got me.", sayDraw: "One more!",
+      coin: "+{n} coins",
+      plays: "{n}/{max} today",
+      limit: "Today's treats are all given out ({n} rounds) — come back tomorrow!",
+      hint: "Win +2 · tie +1 coins — first {max} rounds each day count.",
+      you: "You",
+    },
+
     fav: {
       add: "Save",
       remove: "Remove from favorites",
@@ -889,6 +901,18 @@ export const messages = {
       claim: "领取 💰{c}",
       claimed: "已领取 {c} 金币 ✨ 继续完成任务还能再领！",
       progress: "{done}/{total}",
+    },
+
+    rps: {
+      title: "石头剪刀布",
+      rock: "石头", scissors: "剪刀", paper: "布",
+      win: "你赢啦！", lose: "这局它赢了", draw: "平局！",
+      sayWin: "呜，你赢了～", sayLose: "嘿嘿，我赢啦！", sayDraw: "再来一次！",
+      coin: "+{n} 金币",
+      plays: "今天 {n}/{max} 局",
+      limit: "今天的彩头已经发完啦（{n} 局），明天再来～",
+      hint: "赢 +2 · 平 +1 金币，每天前 {max} 局有彩头。",
+      you: "你",
     },
 
     fav: {

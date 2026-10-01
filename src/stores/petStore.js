@@ -633,7 +633,7 @@ function saveTasks() {
   try { setItem(k(TASK_BASE), JSON.stringify(dailyTasks)); } catch (e) {}
 }
 
-function markTask(key) {
+export function markTask(key) {   /* 轮 131：导出给 RPS 小游戏（玩一局计入陪它玩） */
   if (dailyTasks.date !== todayKey()) return;
   if (!dailyTasks[key]) { dailyTasks[key] = true; saveTasks(); }
 }

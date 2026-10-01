@@ -1121,8 +1121,8 @@ function seoEnv() {
       res.status === 200 && c.outbound[0].url.includes("/wall_favorites?")
       && u.searchParams.get("order") === "created_at.desc"
       && u.searchParams.get("limit") === "50" && h.get("authorization") === "Bearer tok-fav");
-    ok("fav 列表：embed 帖子字段（created_at + post:wall_posts 白名单列）",
-      u.searchParams.get("select") === "created_at,post:wall_posts(id,user_id,name,text,img,created_at,views)");
+    ok("fav 列表：embed 帖子字段（轮 129 对齐真实列 author_name/body/image_path）",
+      u.searchParams.get("select") === "created_at,post:wall_posts(id,user_id,author_name,body,image_path,created_at,views)");
   } finally { c.restore(); }
 }
 {
