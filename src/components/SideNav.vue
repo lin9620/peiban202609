@@ -11,7 +11,7 @@ const items = [
   { to: "/pet", ico: "🐾", key: "nav.pet" },
   { to: "/community", ico: "💬", key: "nav.community" },
   { to: "/bottle", ico: "🌊", key: "nav.bottle" },
-  { to: "/notifications", ico: "🔔", key: "notif.title", badge: () => badge.notif },
+  { to: "/messages", ico: "✉️", key: "dm.title", badge: () => badge.dm + badge.requests },
 ];
 const isActive = (to) => (to === "/" ? route.path === "/" : route.path === to || route.path.startsWith(to + "/"));
 </script>

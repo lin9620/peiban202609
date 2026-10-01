@@ -260,9 +260,9 @@ onBeforeUnmount(() => { clearTimeout(scrubTimer); scrubTimer = 0; });
               </div>
               <div class="wb-right">
                 <span class="wb-coins">💰 {{ wallet.coins }}</span>
-                <router-link to="/messages" class="wb-round" :title="t('dm.title')">
-                  <span class="wb-ico">✉️</span>
-                  <span v-if="dmBadge" class="wb-badge">{{ dmBadge > 99 ? "99+" : dmBadge }}</span>
+                <router-link to="/notifications" class="wb-round" :title="t('notif.title')">
+                  <span class="wb-ico">🔔</span>
+                  <span v-if="badge.notif" class="wb-badge">{{ badge.notif > 99 ? "99+" : badge.notif }}</span>
                 </router-link>
                 <router-link to="/profile" class="wb-round wb-avatar" :title="t('nav.profile')">
                   {{ displayName.slice(0, 1).toUpperCase() }}
