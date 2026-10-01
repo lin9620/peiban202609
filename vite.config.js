@@ -210,6 +210,8 @@ function seoRoutes() {
         { dir: "pet", title: "暖爪 · 你的小宠物", desc: `${ZH.pet.subtitle}${ZH.pet.tip}`, html: hero(ZH.pet.subtitle, [ZH.pet.tip, ZH.home.companions.hall]) },
         { dir: "community", title: "暖爪 · 暖心墙", desc: `${ZH.community.subtitle}${ZH.community.cloudOn}`, html: hero(ZH.community.title, [ZH.community.subtitle, ZH.community.cloudOn, ZH.community.empty]) },
         { dir: "bottle", title: "暖爪 · 漂流瓶", desc: ZH.bottle.sub, html: hero(ZH.bottle.title, [ZH.bottle.sub]) },
+        /* 轮 145：故事栏是内容页（中文长尾价值），跟 pet/community/bottle/profile/privacy 同批进 zh */
+        { dir: "story", title: "暖爪 · " + ZH.story.title, desc: ZH.story.sub, html: hero(ZH.story.title, [ZH.story.sub]) },
         { dir: "profile", title: "暖爪 · 我的温柔角落", desc: ZH.profile.cloudReady, html: hero(ZH.home.heroTitle, [ZH.profile.cloudReady, ZH.home.companions.hall]) },
         { dir: "privacy", title: "暖爪 · 隐私政策", desc: ZH.privacy.intro, html: privacyStaticHtml("zh") },
       ];

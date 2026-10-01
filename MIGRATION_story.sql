@@ -85,8 +85,9 @@ create policy story_views_write on public.story_views for all
   to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 -- ── RPC 1：发布（校验字数/标签；draft ↔ published 双向；编辑 rev+1） ──
+-- 注意：p_id 不给默认值 —— PostgreSQL 42P13：有默认的参数之后不能跟无默认的。
 create or replace function public.story_publish(
-  p_id bigint default null, p_title text, p_body text, p_tags text[] default '{}'
+  p_id bigint, p_title text, p_body text, p_tags text[] default '{}'
 ) returns setof public.stories language plpgsql security definer set search_path = public as $$
 declare
   me uuid := auth.uid();
@@ -128,7 +129,7 @@ end $$;
 
 -- ── RPC 2：存草稿（停手自动存；与发布同一张表，status=draft） ──
 create or replace function public.story_save_draft(
-  p_id bigint default null, p_title text, p_body text, p_tags text[] default '{}'
+  p_id bigint, p_title text, p_body text, p_tags text[] default '{}'
 ) returns setof public.stories language plpgsql security definer set search_path = public as $$
 declare
   me uuid := auth.uid();

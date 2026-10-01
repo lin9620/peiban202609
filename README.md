@@ -89,8 +89,8 @@ node tools/pet-home-test.mjs   # 宠物主页云层纯函数单测（19 项：�
 node tools/pet-visual-test.mjs # 宠物形象与互动表情单测（163 项：五物种×六变体生成合法 Lottie / 表情随 mood 切换（弯弯眼·张嘴·星星·双心·Zzz）/ 贴纸描边·胡须·眉毛·曲线尾 / petMood 信号与缓存守卫）
 node tools/food-painter-test.mjs # 手绘食物画板单测（20 项：保存后清空画板与撤销栈 / 画笔与橡皮模式复位 / 异步撤销不回流旧画 / 食谱 7 份上限 / 48 小时过期边界）
 node tools/api-contract-test.mjs # 云端数据访问适配层契约测试（87 项：表名 / 过滤 / 排序 / RPC 参数 / Storage 桶与路径 / 降级查询形状 / upsert 只写 user_id+data+updated_at 的计数红线）
-node tools/gateway-contract-test.mjs # 网关模式前端侧契约测试（71 项：/api/* 端点形状 / 鉴权头 / 计数红线 / 错误上抛）
-node tools/worker-test.mjs    # API 网关 Worker 契约测试（224 项：/api/* → Supabase REST 翻译形状 / JWT 透传 / PGRST116→null / 路径穿越防护 / 图片边缘缓存 MISS→HIT 与降级 / 自助删号透传 / 轮84 评论回应三端点 / 轮85-86 /u noindex+/post存在性壳+标题正文OG注入+动态sitemap）
+node tools/gateway-contract-test.mjs # 网关模式前端侧契约测试（80 项：/api/* 端点形状 / 鉴权头 / 计数红线 / 错误上抛）
+node tools/worker-test.mjs    # API 网关 Worker 契约测试（247 项：/api/* → Supabase REST 翻译形状 / JWT 透传 / PGRST116→null / 路径穿越防护 / 图片边缘缓存 MISS→HIT 与降级 / 自助删号透传 / 轮84 评论回应三端点 / 轮85-86 /u noindex+/post存在性壳+标题正文OG注入+动态sitemap）
 node tools/dm-test.mjs        # 私信规则层单测（286 项：撤回窗口 / 未读计数 / 日期分隔 / 错误码→i18n 映射 / 迁移覆盖）
 node tools/notify-test.mjs    # 通知规则层单测（149 项：分栏白名单(私信已退出) / 聚合语义 / 点击落点 / 未读兜底）
 node tools/status-test.mjs    # 陪你大厅状态规则层单测（49 项：四键前后端一致 / 24h 窗口纯函数 / emoji 归文案不重复 / 两条链路契约 / 降级分支 / 迁移与文档覆盖）
