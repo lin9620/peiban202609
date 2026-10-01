@@ -274,8 +274,9 @@ ok("BottleView：不再用本机日键记账（跨天归零由服务端 UTC 日�
   !has(bottleView, "todayKey", "warm-paws-bottle-quota", "day: todayKey()"));
 ok("BottleView：未登录给登录提示（不再有本地宠物回信）",
   has(bottleView, 't("bottle.signInHint")') && !bottleView.includes("sendLetter"));
-ok("HomeView：抽件接线（桌面拼回 + 手机三联都挂同一 BottleView）",
-  (home.match(/<BottleView/g) || []).length === 2);
+ok("HomeView：抽件接线（轮 140：桌面不再嵌漂流瓶 → 只剩手机三联挂 BottleView，/bottle 独立页承载）",
+  (home.match(/<BottleView/g) || []).length === 1
+  && read("src/views/BottlePageView.vue").includes("BottleView"));
 
 /* ───────── 旧信箱清理（宠物回信 → 漂流瓶，不能留半套） ───────── */
 ok("petStore：旧信箱全部移除（mailbox/sendLetter/tickMailbox/initMailbox/MAIL_KEY）",

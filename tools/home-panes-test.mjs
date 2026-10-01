@@ -83,7 +83,7 @@ t("T7 宠物联手势守卫（画板/零食雨/按钮不抢；滑动边界按 HO
   assert.ok(css.includes("touch-action: pan-y"), "样式缺 touch-action: pan-y");
 });
 
-t("T8 桌面零变化：今日联+漂流瓶联顺序拼回；频道条只在手机分支", () => {
+t("T8 桌面只挂今日联（轮 140 去掉底部漂流瓶）；频道条只在手机分支", () => {
   const desktop = home.indexOf('v-if="!isMobileNav"');
   const chips = home.indexOf('class="home-chips"');
   const mobile = home.indexOf('v-else class="home3"');
@@ -91,7 +91,8 @@ t("T8 桌面零变化：今日联+漂流瓶联顺序拼回；频道条只在手�
   assert.ok(mobile > desktop, "手机分支应在桌面分支之后");
   const desktopBlock = home.slice(desktop, mobile);
   const tPos = desktopBlock.indexOf("<TodayPane"), bPos = desktopBlock.indexOf("<BottleView");
-  assert.ok(tPos >= 0 && bPos > tPos, "桌面应为 TodayPane 在前、BottleView 在后");
+  assert.ok(tPos >= 0, "桌面应挂 TodayPane");
+  assert.equal(bPos, -1, "桌面不应再嵌 BottleView（轮 140：漂流瓶走 /bottle 独立页）");
   /* 轮 19：手机轨道联序 = 宠物 | 今日 | 漂流瓶 */
   const track = home.slice(home.indexOf('class="home-track"'));
   const pPos = track.indexOf("home-pane--pet"), tPos2 = track.indexOf("<TodayPane"), bPos2 = track.indexOf("<BottleView");

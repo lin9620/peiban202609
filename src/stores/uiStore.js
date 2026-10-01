@@ -27,9 +27,10 @@ export const tabbarSuppressed = ref(false);
 
 /* ═══ 轮 138 · 桌面左导航展开态（🐾 开关：64 → 212px，与右栏同宽）═══
  * 用户拍板方案 A：爪印只当开关，「回首页」交给展开后的品牌行。
- * 记忆在 localStorage（模块加载时同步读取 → 首帧即展开，不闪一下）；仅桌面形态消费。 */
+ * 轮 140：**默认展开**（用户要求）——只有用户显式点过收起（存 "0"）才回到收起态；
+ * 模块加载同步读 → 首帧即正确形态，不闪一下。仅桌面形态消费。 */
 const NAV_KEY = "wp-nav-open";
-export const navOpen = ref(getItem(NAV_KEY) === "1");
+export const navOpen = ref(getItem(NAV_KEY) !== "0");
 export function setNavOpen(v) {
   navOpen.value = !!v;
   setItem(NAV_KEY, navOpen.value ? "1" : "0");

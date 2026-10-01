@@ -10,8 +10,9 @@ const route = useRoute();
 const items = [
   { to: "/", ico: "🌤️", key: "nav.home" },
   { to: "/pet", ico: "🐾", key: "nav.pet" },
-  { to: "/community", ico: "💬", key: "nav.community" },
+  /* 轮 140（用户要求）：漂流瓶上移到暖心墙之上 */
   { to: "/bottle", ico: "🌊", key: "nav.bottle" },
+  { to: "/community", ico: "💬", key: "nav.community" },
   { to: "/messages", ico: "✉️", key: "dm.title", badge: () => badge.dm + badge.requests },
 ];
 const isActive = (to) => (to === "/" ? route.path === "/" : route.path === to || route.path.startsWith(to + "/"));
@@ -54,9 +55,11 @@ const isActive = (to) => (to === "/" ? route.path === "/" : route.path === to ||
   width: 64px; display: flex; flex-direction: column; align-items: center;
   gap: 6px; padding: 10px 8px; overflow: hidden;
   background: var(--card); border: 1px solid var(--hairline); border-radius: 18px;
-  transition: width .22s ease;
+  transition: width .22s ease, background-color .22s ease, border-color .22s ease;
 }
-.sidenav--open { width: 212px; }
+/* 轮 140（用户要求）：展开态去掉「框」的背景与描边 —— 与右栏同口径
+ * （右栏 `.rail` 容器本身透明，只有内部卡片有底）；收起态仍保留原卡片质感 */
+.sidenav--open { width: 212px; background: transparent; border-color: transparent; }
 /* 顶部：爪印开关（收起时宽度自适应 = 仍由栏居中，与原样一致；展开时铺满行首） */
 .sn-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .sidenav--open .sn-top { width: 100%; }
