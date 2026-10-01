@@ -74,6 +74,22 @@ button, input, textarea { font-family: inherit; }
   letter-spacing: -.5px; line-height: 1.15; color: var(--ink);
 }
 .wb-coins { font-size: 15px; font-weight: 500; color: var(--ink); background: var(--card); border: 1px solid var(--hairline); border-radius: 999px; padding: 7px 14px; }
+.wb-right { display: flex; align-items: center; gap: 10px; }
+.wb-round {
+  position: relative; width: 42px; height: 42px; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--card); border: 1px solid var(--hairline); border-radius: 50%;
+  text-decoration: none; font-size: 17px;
+  transition: transform .15s var(--like-ease), border-color .15s ease;
+}
+.wb-round:hover { transform: translateY(-2px); border-color: var(--accent); }
+.wb-round:active { transform: scale(.95); }
+.wb-avatar { background: var(--accent); color: #fff; font-weight: 500; font-size: 15px; }
+.wb-badge {
+  position: absolute; top: -3px; right: -3px; min-width: 17px; height: 17px;
+  padding: 0 4px; border-radius: 999px; background: var(--low); color: #fff;
+  font-size: 10px; font-weight: 500; line-height: 17px; text-align: center;
+}
 
 /* 漂浮光斑装饰 */
 .orb { display: none; } /* 轮 120：DESIGN.md 平涂画布，去漂浮光斑装饰 */
