@@ -83,10 +83,11 @@ ok("T22 手机输入框用短占位符（桌面仍保留 Enter/Shift 说明）",
   && messages.zh.dm.placeholderMobile === "写点什么…"
   && messages.en.dm.placeholder.includes("Shift+Enter"));
 
-/* ─── ⑧ 消息 Tab 内分栏（T7：私信 | 通知，小红书同款） ─── */
-ok("T23 分栏条仅手机形态渲染，桌面零变化（桌面 template 恒渲染、通知组件不挂）",
+/* ─── ⑧ 消息 Tab 内分栏（T7 手机三段；轮 142 桌面两段） ─── */
+ok("T23 分栏条：手机 = 原样三段，桌面 = 轮142 两段（会话|漂流瓶）",
   mv.includes('<div v-if="isMobileNav" class="dm-seg" role="tablist">')
-  && mv.includes('v-if="!isMobileNav || seg === \'dm\'"')
+  && mv.includes('class="dm-seg dm-seg--desk"')
+  && mv.includes('v-if="seg === \'dm\'"')
   && mv.includes("v-else-if=\"seg === 'notif'\"")
   && mv.includes("seg.value = \"dm\";"));
 ok("T24 消息Tab三段（手机端：漂流瓶|会话|通知）+ 红点挂分段 + 通知复用 NotificationsView + 桌面列表不再嵌记录（轮134 移除）",
@@ -94,6 +95,7 @@ ok("T24 消息Tab三段（手机端：漂流瓶|会话|通知）+ 红点挂分�
   && mv.includes("const dmBadge = computed(() => badge.dm + badge.requests);")
   && mv.includes('v-if="badge.notif" class="notif-count"')
   && mv.includes("seg === 'bottle'")
+  /* 轮 142：手机端漂流瓶段仍是原卡片式 BottleRecords（桌面才换成行式列表） */
   && mv.includes('<BottleRecords v-else-if="seg === \'bottle\'" @open="openBottleChat" />')
   && !mv.includes('<BottleRecords v-if="!isMobileNav"')   /* 轮 134：桌面列表已不嵌记录，反向断言钉住 */
   && messages.en.tab.segDm === "Chats" && messages.en.tab.segBottle === "Bottle" && messages.en.tab.segNotif === "Alerts"
@@ -292,6 +294,47 @@ ok("T55 轮141：右栏「海边来信」整块移除且不留半套（模板/�
     && !rails.includes(".bt-line") && !rails.includes("signedIn")
     && !/bottleTitle|bottleLeft:|bottleHeld:|bottleGo:/.test(i18);
 })());
+
+/* ─── 轮 142 · 私信页一体化（桌面两段：会话 | 漂流瓶；两段各自单开聊天框） ─── */
+const bcl = read("src/components/BottleChatList.vue");
+const bchat = read("src/components/BottleChat.vue");
+ok("T56 轮142：桌面分栏 = 会话 | 漂流瓶（通知不进桌面私信页；新键 zh/en 成对）", (() => {
+  const desk = mv.slice(mv.indexOf('class="dm-seg dm-seg--desk"'));
+  const block = desk.slice(0, desk.indexOf("</div>"));
+  return block.indexOf('t("tab.segChat")') > 0
+    && block.indexOf('t("tab.segChat")') < block.indexOf('t("tab.segBottle")')
+    && !block.includes("segNotif") && !block.includes("seg = 'notif'")
+    && messages.zh.tab.segChat === "会话" && messages.en.tab.segChat === "Chats";
+})());
+ok("T57 轮142：两段各自单开聊天框（漂流瓶 = BottleChat 独立实例；手机端漂流瓶列表原样）",
+  mv.includes("<BottleChat") && mv.includes(':letter="bottleRow"')
+  && mv.includes('@accepted="onBottleAccepted"') && mv.includes('@peer="onBottlePeer"')
+  && mv.includes("<BottleChatList") && mv.includes('@select="pickBottle"')
+  && /const msgs = ref\(\[\]\)/.test(bchat)          /* 自己的消息状态，不与会话段共用 */
+  && bchat.includes('class="card dm-thread bchat"')
+  && bchat.includes("bottleChatDecide") && bchat.includes("dmApi.send")
+  && bcl.includes("bottleRecords(") && bcl.includes('class="bcl-row"'));
+ok("T58 轮142：列表底部「当前用户」条三清（模板 / 样式 / i18n + 死代码）",
+  !mv.includes('class="dm-me"') && !mv.includes("myInitial") && !mv.includes("myName")
+  && !mv.includes("getItem")
+  && !css.includes(".dm-me {") && !css.includes(".dm-online")
+  && !read("src/i18n.js").includes('online: "Online"') && !read("src/i18n.js").includes('online: "在线"'));
+ok("T59 轮142：一体外壳 + 三列等高底齐 + 滚动条隐藏（图 2「不要 / 往下对齐」）", (() => {
+  const i = css.indexOf(".dm-list, .dm-scroll, .dm-info, .bcl {");
+  return /\.dm-wrap \{[\s\S]*?align-items: stretch/.test(css)
+    && /\.dm-wrap \{[\s\S]*?overflow: hidden/.test(css)
+    && css.includes(".dm-wrap > .card {")
+    && css.includes(".dm-wrap > .dm-list { max-height: none; height: calc(100vh - 210px); }")
+    && css.includes(".dm-wrap > .dm-thread { min-height: calc(100vh - 210px); height: calc(100vh - 210px); }")
+    && i > 0 && css.slice(i, i + 140).includes("scrollbar-width: none")
+    && css.includes(".dm-list::-webkit-scrollbar, .dm-scroll::-webkit-scrollbar,");
+})());
+ok("T60 轮142：右列资料卡两段共用、随选中的人变（动作按有没有会话裁定）",
+  mv.includes('const curPeer = computed(() => (seg.value === "bottle" ? bottlePeer.value : dmPeer.value));')
+  && mv.includes('v-if="showInfo"') && mv.includes('@click="mutePeer"') && mv.includes('@click="blockPeer"')
+  && !!(messages.zh.bottle.noChatYet && messages.en.bottle.noChatYet)
+  && !!(messages.zh.bottle.peerFallback && messages.en.bottle.peerFallback)
+  && !!(messages.zh.bottle.chatPick && messages.en.bottle.chatPick));
 
 out.push("");
 out.push(`TOTAL ${pass + fail}  PASS ${pass}  FAIL ${fail}`);

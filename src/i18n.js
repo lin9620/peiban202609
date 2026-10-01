@@ -21,6 +21,8 @@ export const messages = {
       composePost: "Post to Wall", composePostSub: "Share a feeling with gentle people",
       /* App 轨道 T7：消息 Tab 内分栏（会话 | 漂流瓶 | 通知，小红书同款），zh/en 成对 */
       segDm: "Chats", segBottle: "Bottle", segNotif: "Alerts",
+      /* 轮 142 · 桌面私信页两段（会话 | 漂流瓶），zh/en 成对 */
+      segChat: "Chats",
     },
     langBtn: "中文",
 
@@ -277,6 +279,11 @@ export const messages = {
       stAnswered: "You replied", stWaitAgree: "Chat opens once they accept", stInHand: "In your hands", stReleased: "Thrown back",
       openChat: "Open chat",
       pageInfo: "Page {p}",
+      /* 轮 142 · 私信页漂流瓶段（桌面）：左列选信 / 兜底名 / 已开启聊天 / 尚无会话 */
+      peerFallback: "A friend from the sea",
+      chatPick: "Pick a letter on the left to read it or keep chatting.",
+      stAccepted: "Chat opened",
+      noChatYet: "No chat with them yet — accept the reply to start one.",
       notifyReply: "Your bottle received a reply: {preview}",
       notifyChat: "The writer accepted your reply and started a bottle chat.",
     },
@@ -506,7 +513,6 @@ export const messages = {
       sendFailed: "Not sent",
       recalled: "This message was recalled",
       recall: "Recall",
-      online: "Online",
       noMessages: "No messages yet — say something kind.",
       gateBlockedByMe: "You blocked them — unblock first to keep talking.",
       gateRequest: "This is a message request. Accept it to reply.",
@@ -766,6 +772,8 @@ export const messages = {
       composePost: "发暖心墙帖", composePostSub: "和温柔的人分享心情",
       /* App 轨道 T7：消息 Tab 内分栏（漂流瓶 | 会话中心 | 通知，小红书同款），zh/en 成对 */
       segDm: "会话中心", segBottle: "漂流瓶", segNotif: "通知",
+      /* 轮 142 · 桌面私信页两段（会话 | 漂流瓶），zh/en 成对 */
+      segChat: "会话",
     },
     langBtn: "English",
 
@@ -1022,6 +1030,11 @@ export const messages = {
       stAnswered: "你已回信", stWaitAgree: "待对方同意后可聊天", stInHand: "在你手里", stReleased: "已放回海里",
       openChat: "去聊天",
       pageInfo: "第 {p} 页",
+      /* 轮 142 · 私信页漂流瓶段（桌面）：左列选信 / 兜底名 / 已开启聊天 / 尚无会话 */
+      peerFallback: "海里的朋友",
+      chatPick: "左边选一封信，可以读原信，也可以继续聊。",
+      stAccepted: "已开启聊天",
+      noChatYet: "还没有和 TA 的会话——同意回信后就能开始聊。",
       notifyReply: "你的漂流瓶收到回信了：{preview}",
       notifyChat: "原信作者愿意继续交流，漂流瓶聊天已开启。",
     },
@@ -1248,7 +1261,6 @@ export const messages = {
       sendFailed: "发送失败",
       recalled: "这条消息已撤回",
       recall: "撤回",
-      online: "在线",
       noMessages: "还没有消息，说点什么吧。",
       gateBlockedByMe: "你已拉黑对方——先解除拉黑才能继续说话。",
       gateRequest: "这是对方发来的消息请求，同意后才能回复。",
