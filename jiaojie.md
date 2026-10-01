@@ -1323,7 +1323,7 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **验证**：undef/tdz **0** + wall **34/34** + i18n **19/19** + build 0 + page-smoke **8/8**；已部署（live-check 14/14）+ APK 装机 Success。
      **待用户验收（亮屏）**：暖心墙下拉 → 「刷新中…」→ 换一批/新增提示正常、列表真的换内容；消息页无错误盒。
 
-  - **轮 134 · 漂流瓶独立页 + 右上角私信/我的入口（2026-10-01，改动完成、37 套离线全绿，待提交待部署——攒批；APK 需重打）**：
+  - **轮 134 · 漂流瓶独立页 + 右上角私信/我的入口（2026-10-01，已提交 `376bf41`+`68eb5ba` / 已部署 Version `dde0206c` / live-check 复跑 14/14 + bundle 一致 / **/bottle 与 /zh/bottle 线上 200** ✅；APK 需重打。**补课一次**：首部署 /bottle 404——新路由没进 vite.config seoRoutes 预渲染清单（wrangler 404-page 架构下无预渲染文件的路径=真 404），补 en+zh 两条预渲染（20 页）重部署解决——**以后每加一个前端路由都必须同步 seoRoutes**）**：
      用户发话「漂流瓶单开一个页面放左边按钮；我的页面跟私信按钮放右上角」（对照参考图 1 右上角圆钮组）。**落地**：① 新路由 `/bottle` + `BottlePageView.vue`（复用 BottleView 全量；记录里已建立会话的信 → 跳 /messages/:id；未登录显示 bottle.needSignIn 引导卡）② SideNav 加 **🌊 漂流瓶**（暖心墙之后），**移除私信/我的两项**（挪右上角）③ welcome 横幅右侧改三件套：💰金币 + **✉️私信圆钮（红点徽标）** + **头像圆钮（我的，取 displayName 首字）**（wb-round 42px 圆钮组，hover 抬升/按压缩放）④ MessagesView 桌面列表移除 BottleRecords（手机端漂流瓶段不动）；i18n nav.bottle + bottle.needSignIn zh/en 成对。
      验证：undef/tdz **0** + 37 套离线 **0 fail**（i18n 19/19）+ build 0 + page-smoke 9/9 + 1440px 截图目检（左导航六项含 🌊、右上角三件套、guest 访问 /bottle 显示引导卡）。
 

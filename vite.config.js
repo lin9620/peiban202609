@@ -160,6 +160,11 @@ function seoRoutes() {
           desc: "Gentle direct messages, kind notes and drift-bottle replies.",
         },
         {
+          dir: "bottle",
+          title: "Warm Paws · Drift Bottles",
+          desc: "Write your heart down, seal it in a bottle and drop it into the warm sea.",
+        },
+        {
           dir: "my-posts",
           title: "Warm Paws · My Posts",
           desc: "All of your kindness-wall posts in one gentle list.",
@@ -193,6 +198,7 @@ function seoRoutes() {
       const zhRoutes = [
         { dir: "pet", title: "暖爪 · 你的小宠物", desc: `${ZH.pet.subtitle}${ZH.pet.tip}`, html: hero(ZH.pet.subtitle, [ZH.pet.tip, ZH.home.companions.hall]) },
         { dir: "community", title: "暖爪 · 暖心墙", desc: `${ZH.community.subtitle}${ZH.community.cloudOn}`, html: hero(ZH.community.title, [ZH.community.subtitle, ZH.community.cloudOn, ZH.community.empty]) },
+        { dir: "bottle", title: "暖爪 · 漂流瓶", desc: ZH.bottle.sub, html: hero(ZH.bottle.title, [ZH.bottle.sub]) },
         { dir: "profile", title: "暖爪 · 我的温柔角落", desc: ZH.profile.cloudReady, html: hero(ZH.home.heroTitle, [ZH.profile.cloudReady, ZH.home.companions.hall]) },
         { dir: "privacy", title: "暖爪 · 隐私政策", desc: ZH.privacy.intro, html: privacyStaticHtml("zh") },
       ];
