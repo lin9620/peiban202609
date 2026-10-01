@@ -89,13 +89,13 @@ ok("T23 分栏条仅手机形态渲染，桌面零变化（桌面 template 恒�
   && mv.includes('v-if="!isMobileNav || seg === \'dm\'"')
   && mv.includes("v-else-if=\"seg === 'notif'\"")
   && mv.includes("seg.value = \"dm\";"));
-ok("T24 消息Tab三段（手机端 1：会话|漂流瓶|通知）+ 红点挂分段 + 通知复用 NotificationsView",
+ok("T24 消息Tab三段（手机端：漂流瓶|会话|通知）+ 红点挂分段 + 通知复用 NotificationsView + 桌面列表不再嵌记录（轮134 移除）",
   mv.includes("defineAsyncComponent(() => import(\"./NotificationsView.vue\"))")
   && mv.includes("const dmBadge = computed(() => badge.dm + badge.requests);")
   && mv.includes('v-if="badge.notif" class="notif-count"')
   && mv.includes("seg === 'bottle'")
   && mv.includes('<BottleRecords v-else-if="seg === \'bottle\'" @open="openBottleChat" />')
-  && mv.includes('<BottleRecords v-if="!isMobileNav" @open="openBottleChat" />')
+  && !mv.includes('<BottleRecords v-if="!isMobileNav"')   /* 轮 134：桌面列表已不嵌记录，反向断言钉住 */
   && messages.en.tab.segDm === "Chats" && messages.en.tab.segBottle === "Bottle" && messages.en.tab.segNotif === "Alerts"
   && messages.zh.tab.segDm === "会话中心" && messages.zh.tab.segBottle === "漂流瓶" && messages.zh.tab.segNotif === "通知"
   /* 手机端 1（返工）：分栏顺序 = 左漂流瓶 · 中会话中心 · 右通知（按分栏按钮的点击绑定取序，避免被 class 绑定误判） */
@@ -162,7 +162,8 @@ ok("T34 冻结过渡自愈（后台/遮挡时路由过渡停在 opacity:0 → �
   && app.includes('document.addEventListener("visibilitychange"')
   && app.includes("setTimeout(scrubStuckFade, 120)")
   && app.includes("scrubTimer = setTimeout(scrubStuckFade, 700)")
-  && app.includes('querySelectorAll(".fade-enter-active, .fade-leave-active, .fade-enter-from, .fade-leave-to")'));
+  /* 轮 139：过渡名 fade → page 后清了「两组类名一起扫」，旧断言只钉 fade 组 → 同步 */
+  && /querySelectorAll\("\.fade-enter-active[\s\S]{0,180}\.page-leave-to"\)/.test(app));
 
 /* ─── 用户反馈返工（2026-09-20 第二批） ─── */
 const cv = read("src/views/ComposeView.vue");
@@ -232,16 +233,16 @@ ok("T43 轮138：🐾 从回首页链接改为开关按钮（type=button + aria-
   && sn.includes("t(navOpen ? 'nav.collapse' : 'nav.expand')")
   && !sn.includes('<router-link to="/" class="sn-logo"'));
 ok("T44 轮138：展开 64 → 212px（= 右栏宽度）+ 每项行内文字 + 品牌行承担回首页",
-  sn.includes(".sidenav--open { width: 212px; }") && sn.includes('class="sn-label"')
+  sn.includes(".sidenav--open { width: 212px;") && sn.includes('class="sn-label"')
   && sn.includes('to="/" class="sn-brand"') && sn.includes(".sidenav--open .sn-item { width: 100%")
   && sn.includes(".sn-label { display: none;"));
 ok("T45 轮138：内容左让位改走 --nav-w（收起 92 / 展开 240）+ 壳挂 shell--nav-open",
   css.includes("--nav-w: 92px") && css.includes(".shell--nav-open { --nav-w: 240px; }")
   && css.includes("margin: 0 0 0 var(--nav-w)") && css.includes("calc(var(--nav-w) +")
   && app.includes("'shell--nav-open': !isMobileNav && navOpen"));
-ok("T46 轮138：展开态记忆在 localStorage（模块加载同步读，首帧不闪）",
+ok("T46 轮138/140：展开态记忆在 localStorage，且**默认展开**（未存过=展开；显式收起才存 0）",
   ui.includes('const NAV_KEY = "wp-nav-open"')
-  && ui.includes('export const navOpen = ref(getItem(NAV_KEY) === "1")')
+  && ui.includes('export const navOpen = ref(getItem(NAV_KEY) !== "0")')
   && ui.includes("export function toggleNav()") && ui.includes("setItem(NAV_KEY"));
 ok("T47 轮138：窄桌面（<1480）展开时会话三栏收两栏（资料卡退场）",
   css.includes(".shell--nav-open .dm-wrap { grid-template-columns: 300px minmax(0, 1fr); }")
@@ -253,6 +254,44 @@ ok("T49 轮138：展开动画尊重 prefers-reduced-motion（栏宽/文字动画
   sn.includes(".sidenav { transition: none !important; }")
   && sn.includes(".sidenav--open .sn-item .sn-label { animation: none !important; }")
   && css.includes("@media (min-width: 900px) and (prefers-reduced-motion: reduce)"));
+
+/* ─── 轮 139 · 死规则清理 + 页面容器口径统一 ─── */
+ok("T50 轮139：设置页死规则已清（.settings-page / .settings-title / .set-block 不得回潮）",
+  !css.includes(".settings-page {") && !css.includes(".settings-title {")
+  && !css.includes(".set-block {") && !css.includes(".set-block.dimmed"));
+const PAGE_FILL = [
+  [".bottle-page", "src/views/BottlePageView.vue"],
+  [".set-page", "src/views/SettingsView.vue"],
+  [".compose-page", "src/views/ComposeView.vue"],
+  [".pd", "src/views/PostDetailView.vue"],
+  [".login-page", "src/views/LoginView.vue"],
+  [".legal-page", "src/style.css"],
+];
+const missingFill = PAGE_FILL.filter(([c, f]) =>
+  !(f === "src/style.css" ? css : read(f)).includes("@media (min-width: 900px) { " + c + " { max-width: none; } }"));
+ok("T51 轮139：六处页面容器桌面（≥900）一律铺满（轮137 五处 + 政策页）",
+  missingFill.length === 0, missingFill.map((x) => x[0]).join(","));
+
+/* ─── 轮 140 · 左导航默认展开 + 展开态透明 + 漂流瓶上移 + 首页去漂流瓶 ─── */
+ok("T52 轮140：展开态去掉卡片背景与描边（与右栏 `.rail` 同口径透明）",
+  sn.includes(".sidenav--open { width: 212px; background: transparent; border-color: transparent; }"));
+ok("T53 轮140：左导航顺序 = 今天|宠物|漂流瓶|暖心墙|私信（漂流瓶移到暖心墙之上）", (() => {
+  const iB = sn.indexOf('{ to: "/bottle"'), iC = sn.indexOf('{ to: "/community"');
+  return iB > 0 && iC > iB;
+})());
+ok("T54 轮140：桌面首页不再内联漂流瓶（只剩手机三联那一个 BottleView）",
+  (read("src/views/HomeView.vue").match(/<BottleView/g) || []).length === 1);
+
+/* ─── 轮 141 · 右栏去掉「海边来信」 ─── */
+ok("T55 轮141：右栏「海边来信」整块移除且不留半套（模板/逻辑/样式/i18n 四清）", (() => {
+  const rails = read("src/components/SideRails.vue");
+  const i18 = read("src/i18n.js");
+  return !rails.includes("rail.bottleTitle")
+    && !rails.includes("btLeft") && !rails.includes("btHeld")
+    && !rails.includes("bottleQuota") && !rails.includes("bottleHeld(")
+    && !rails.includes(".bt-line") && !rails.includes("signedIn")
+    && !/bottleTitle|bottleLeft:|bottleHeld:|bottleGo:/.test(i18);
+})());
 
 out.push("");
 out.push(`TOTAL ${pass + fail}  PASS ${pass}  FAIL ${fail}`);

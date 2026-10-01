@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from "vue";
+import { ref, computed, onUnmounted } from "vue";
 import { t, i18n } from "../i18n.js";
 import { SPECIES } from "../data/pets.js";
 import { todayKey } from "../utils/daily.js";
@@ -11,10 +11,8 @@ import {
 } from "../stores/petStore.js";
 import { visitorByKey } from "../data/adventure.js";
 import { GENTLE_SLIPS } from "../data/gentleSlips.js";
-import { slipFor, bumpSlipStreak, splitHm, bottleLeft } from "../utils/railRules.js";
-import { BOTTLE_SEND_MAX, BOTTLE_FISH_MAX, bottleQuota, bottleHeld } from "../utils/bottle.js";
+import { slipFor, bumpSlipStreak, splitHm } from "../utils/railRules.js";
 import { copyText } from "../utils/clipboard.js";
-import { cloud } from "../utils/supabase.js";
 
 /* —— 左栏：伙伴角 —— */
 const emoji = computed(() => {
@@ -155,20 +153,8 @@ async function copySlip() {
   }
 }
 
-/* —— 右栏：海边来信（漂流瓶小卡；服务端权威次数，与首页同一本账）—— */
-const signedIn = computed(() => !!(cloud.ready && cloud.user));
-const btLeft = ref({ send: 0, fish: 0 });
-const btHeld = ref(0);
-async function loadBottle() {
-  if (!signedIn.value) return;
-  try {
-    const [q, held] = await Promise.all([bottleQuota(), bottleHeld()]);
-    btLeft.value = bottleLeft(q, BOTTLE_SEND_MAX, BOTTLE_FISH_MAX);
-    btHeld.value = Array.isArray(held) ? held.length : 0;
-  } catch (e) { /* 静默：小卡片不弹错 */ }
-}
-onMounted(loadBottle);
-watch(signedIn, loadBottle);
+/* —— 右栏：海边来信 —— 轮 141 移除（用户要求：去掉右栏「海边来信」整块；
+ * 漂流瓶次数/手里信走 /bottle 独立页与左导航，右栏不再重复展示）—— */
 </script>
 
 <template>
@@ -237,15 +223,7 @@ watch(signedIn, loadBottle);
         </div>
       </div>
 
-      <!-- 轮 117：海边来信（漂流瓶次数与手里的信，与首页同一本账；未登录不渲染） -->
-      <template v-if="signedIn">
-        <div class="rail-head" style="margin-top: 14px">{{ t("rail.bottleTitle") }}</div>
-        <div class="bt">
-          <p class="bt-line">{{ t("rail.bottleLeft", { n: btLeft.send, m: btLeft.fish }) }}</p>
-          <p v-if="btHeld > 0" class="bt-line bt-warn">{{ t("rail.bottleHeld", { n: btHeld }) }}</p>
-          <router-link class="ra wide bt-go" to="/">{{ t("rail.bottleGo") }}</router-link>
-        </div>
-      </template>
+      <!-- 轮 141（用户要求）：海边来信整块移除（漂流瓶次数/手里的信见 /bottle 独立页） -->
 
       <div class="breathe" style="margin-top: 14px">
         <div class="b-circle" :class="breathing ? PH[phaseIdx].k : ''"></div>
@@ -367,9 +345,4 @@ watch(signedIn, loadBottle);
 }
 .slip-text { font-size: 12px; line-height: 1.75; font-weight: 500; color: var(--ink); }
 .slip-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 7px; }
-/* 海边来信 */
-.bt { margin-top: 8px; }
-.bt-line { font-size: 11.5px; font-weight: 500; color: var(--ink-soft); line-height: 1.6; }
-.bt-line.bt-warn { color: var(--accent-deep); }
-.bt-go { text-decoration: none; margin-top: 7px; }
 </style>
