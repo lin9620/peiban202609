@@ -1332,6 +1332,8 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **附带发现（与本次无关 · 经 git stash 对照确认 HEAD 上同样失败）**：`auth-test A95`（断言旧 appId `net.de5.dale`，manifest 实为轮 116 的 `net.de5.warmpaws`）、`privacy-test P5`（断言旧域 `dale.de5.net` 的 sitemap 结构）、`app-shell-test T24`（断言「会话中心」旧文案 + 已删的桌面 `<BottleRecords>`）、`T34`（断言过渡类名 `fade-*`，App.vue 实为 `page-*`）——**4 条全是断言漂移，产品代码无问题**；待用户发话再修（纯测试文件）。
      **待用户验收（亮屏）**：刷新网页看 /bottle、/settings、/compose、帖子详情、登录页——内容盒铺满左导航与右栏之间，不再两侧留白。
 
+     **线上复核（部署后追加）**：页面容器样式在**按路由分包**的 chunk CSS 里（懒加载视图，不在入口 CSS）——5 个分包（BottlePageView / SettingsView / ComposeView / PostDetailView / LoginView）线上与本地 `dist` **逐字节一致**，且各自含 `@media(min-width:900px){…{max-width:none}}`（如 `.bottle-page{max-width:none}`、`.set-page[data-v-f99c5453]{max-width:none}`）；入口 `index-DHxzSSNB.css`(88230B) 亦线上=本地。**教训（补坑）**：验证网页 CSS 改动时，入口 CSS 查不到 ≠ 改动没上线——懒加载视图的样式在分包里（首次探测就踩了这个假警报）。
+
   - **轮 136 · 漂流瓶/设置页适配流式壳（2026-10-01，用户截图反馈两页窄容器靠左+右大空洞，已提交 `d27d539` / 已部署 Version `ddd214ff` / live-check 14/14 ✅）**：
      `.bottle-page` 640→**900**、`.set-page` 640→**860**，均 margin auto 居中——流式壳下不再靠左留大空洞。探针实测：/bottle 容器 900px 居中于 shell（150-1590）✓。
      验证：build 0 + 截图目检（bottle/settings 双页平衡）。
