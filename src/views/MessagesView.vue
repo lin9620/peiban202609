@@ -522,9 +522,6 @@ function goSignIn() {
         </template>
 
         <p v-if="!normal.length && !requests.length && !loadingConvs" class="sub dm-empty">{{ t("dm.empty") }}</p>
-        <!-- 漂流瓶记录：桌面仍在会话列表底部（原位）；手机端 1 独立成「漂流瓶」段 -->
-        <BottleRecords v-if="!isMobileNav" @open="openBottleChat" />
-
         <!-- 轮 132 · 列表底部：当前用户（参考图 2 左下角） -->
         <div class="dm-me">
           <n-avatar round :size="34" class="post-avatar">{{ myInitial }}</n-avatar>

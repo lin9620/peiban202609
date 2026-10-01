@@ -10,8 +10,7 @@ const items = [
   { to: "/", ico: "🌤️", key: "nav.home" },
   { to: "/pet", ico: "🐾", key: "nav.pet" },
   { to: "/community", ico: "💬", key: "nav.community" },
-  { to: "/profile", ico: "🙂", key: "nav.profile" },
-  { to: "/messages", ico: "✉️", key: "dm.title", badge: () => badge.dm + badge.requests },
+  { to: "/bottle", ico: "🌊", key: "nav.bottle" },
   { to: "/notifications", ico: "🔔", key: "notif.title", badge: () => badge.notif },
 ];
 const isActive = (to) => (to === "/" ? route.path === "/" : route.path === to || route.path.startsWith(to + "/"));

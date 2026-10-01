@@ -13,7 +13,7 @@ export const messages = {
   en: {
     brand: "Warm Paws",
     tagline: "A gentle place to be",
-    nav: { home: "Home", pet: "My Pet", community: "Warm Wall", profile: "Me" },
+    nav: { home: "Home", pet: "My Pet", community: "Warm Wall", bottle: "Drift bottles", profile: "Me" },
     /* App 轨道 T5：底部 Tab Bar（与顶部 nav 独立成组，zh/en 成对） */
     tab: {
       home: "Home", community: "Wall", messages: "Messages", profile: "Me",
@@ -225,6 +225,7 @@ export const messages = {
     bottle: {
       title: "Warm Bottles",
       sub: "Write your heart down, seal it in a bottle, and drop it into the warm sea. Someone may pick it up and write back.",
+      needSignIn: "Sign in to throw and pick up bottles — an email is all it takes.",
       placeholder: "Something you'd say to a kind stranger…",
       leftSend: "{n} left to send today",
       quotaSyncing: "Syncing your quota…",
@@ -761,7 +762,7 @@ export const messages = {
   zh: {
     brand: "暖爪",
     tagline: "一个温柔的地方",
-    nav: { home: "今天", pet: "我的宠物", community: "暖心墙", profile: "我的" },
+    nav: { home: "今天", pet: "我的宠物", community: "暖心墙", bottle: "漂流瓶", profile: "我的" },
     /* App 轨道 T5：底部 Tab Bar（zh nav.home=「今天」，Tab 用「首页」更贴导航心智） */
     tab: {
       home: "首页", community: "暖心墙", messages: "消息", profile: "我的",
@@ -973,6 +974,7 @@ export const messages = {
     bottle: {
       title: "温暖漂流瓶",
       sub: "把心事写下来，封进瓶子投进温暖的海。会有人捞起它，回你一句话。",
+      needSignIn: "登录后才能投瓶和捞瓶——一个邮箱就够了。",
       placeholder: "今天有什么想说给陌生人的……",
       leftSend: "今天还能投 {n} 封",
       quotaSyncing: "次数同步中……",

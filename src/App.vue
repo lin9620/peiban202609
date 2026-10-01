@@ -258,7 +258,16 @@ onBeforeUnmount(() => { clearTimeout(scrubTimer); scrubTimer = 0; });
                 <span class="wb-label">{{ t("welcomeBack") }}</span>
                 <span class="wb-name">{{ displayName }}</span>
               </div>
-              <span class="wb-coins">💰 {{ wallet.coins }}</span>
+              <div class="wb-right">
+                <span class="wb-coins">💰 {{ wallet.coins }}</span>
+                <router-link to="/messages" class="wb-round" :title="t('dm.title')">
+                  <span class="wb-ico">✉️</span>
+                  <span v-if="dmBadge" class="wb-badge">{{ dmBadge > 99 ? "99+" : dmBadge }}</span>
+                </router-link>
+                <router-link to="/profile" class="wb-round wb-avatar" :title="t('nav.profile')">
+                  {{ displayName.slice(0, 1).toUpperCase() }}
+                </router-link>
+              </div>
             </div>
             <!-- 宠物系统通知浮层（#2：死亡哀悼 / 初始宠物降级 / 食物过期） -->
             <transition-group name="notice" tag="div" class="pet-notice-stack">

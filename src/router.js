@@ -10,6 +10,8 @@ export const router = createRouter({
     { path: "/", alias: "/zh", name: "home", component: HomeView },
     { path: "/pet", alias: "/zh/pet", name: "pet", component: () => import("./views/PetView.vue") },
     { path: "/community", alias: "/zh/community", name: "community", component: () => import("./views/CommunityView.vue") },
+    /* 轮 133：漂流瓶独立页（桌面左导航直达；手机端仍走首页三联/消息段） */
+    { path: "/bottle", name: "bottle", component: () => import("./views/BottlePageView.vue") },
     /* 手机端发帖：底部 ＋ → 独立大输入框页（桌面仍用暖心墙页顶发布框，不进这页） */
     { path: "/compose", name: "compose", component: () => import("./views/ComposeView.vue") },
     /* 我的帖子：暖心墙「我的」区点「更多」进来，10 条一页 + 下拉续载 */
