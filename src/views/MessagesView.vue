@@ -122,6 +122,13 @@ const curConv = computed(() =>
 /* 轮 143 · 中列头部右上角「…」菜单（原右列资料卡内容迁入，只在桌面渲染） */
 const headMenu = ref(false);
 watch(seg, () => { headMenu.value = false; });
+/* 轮144：点菜单外空白处自动关（菜单内各项点击已各自 headMenu=false；
+ * 文档级 pointerdown 兜住页面任意位置——列表/滚动区/输入框/另一侧都算“空白”） */
+function onDocPointerDown(e) {
+  if (!headMenu.value) return;
+  if (e.target && e.target.closest && e.target.closest(".dm-head-tools")) return;
+  headMenu.value = false;
+}
 
 /* 是否可以直接发：对方不是待处理请求、双方都没拉黑 */
 const canType = computed(() => {
@@ -429,6 +436,7 @@ function onVisible() {
 
 onMounted(async () => {
   pushBack(segBack);
+  document.addEventListener("pointerdown", onDocPointerDown);   /* 轮144：⋯菜单点空白关 */
   if (!signedIn.value) return;
   refreshBlocks();   /* 轮 34：进消息页同步拉黑名单（内容过滤与私信名单同源） */
   await loadConvs();
@@ -439,6 +447,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   popBack(segBack);
+  document.removeEventListener("pointerdown", onDocPointerDown);
   clearInterval(timer);
   if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVisible);
 });

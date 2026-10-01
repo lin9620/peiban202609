@@ -144,3 +144,12 @@ export function bottleChatState(row, userId) {
   if (row.status !== "answered") return "drifting";
   return row.user_id === userId ? "choose" : "waiting";
 }
+
+/* 轮 144 · 「我发布的」记录排序（电脑端漂流瓶页用户口径）：
+ * 待我处理的（收到回信 · 同意或拒绝聊天 = choose 态）置顶，其余维持服务端时间新→旧。
+ * Array.sort 是稳定的 → 同档内保持原时间序；只动内存顺序，不碰服务端分页与数据。 */
+export function sortBottleMine(rows, userId) {
+  const list = Array.isArray(rows) ? rows.slice() : [];
+  const rank = (l) => (bottleChatState(l, userId) === "choose" ? 0 : 1);
+  return list.sort((a, b) => rank(a) - rank(b));
+}

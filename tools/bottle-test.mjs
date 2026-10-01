@@ -16,7 +16,7 @@ import fs from "node:fs";
 import { messages } from "../src/i18n.js";
 import {
   BOTTLE_SEND_MAX, BOTTLE_FISH_MAX, BOTTLE_BODY_MAX, BOTTLE_HOLD_TTL_MS,
-  bottleErrKey, purgeLegacyBottleLocals,
+  bottleErrKey, purgeLegacyBottleLocals, sortBottleMine,
 } from "../src/utils/bottle.js";
 import { getItem, setItem } from "../src/utils/storage.js";
 
@@ -321,6 +321,23 @@ ok("轮49 stWaitAgree zh/en 成对 + BottleView held 分支接线（waiting → 
   has(read("src/components/BottleView.vue"), '"bottle.stWaitAgree"', 'bottleChatState(l, myId.value) === "waiting"')
     && messages.zh.bottle.stWaitAgree === "待对方同意后可聊天"
     && typeof messages.en.bottle.stWaitAgree === "string" && messages.en.bottle.stWaitAgree.length > 0);
+
+/* ─── 轮 144：「我发布的」待处理置顶（用户口径：优先待处理的（收到回信·同意或拒绝），然后才按时间排序） ─── */
+ok("轮144 utils排序：choose 置顶且同档保持原时间序，其余顺序不动（稳定排序，不碰服务端分页）", (() => {
+  const me = "u-me";
+  const rows = [
+    { id: 10, user_id: me, reply_by: null, status: "drifting", chat_decision: null, conv_id: null },
+    { id: 9, user_id: me, reply_by: "p1", status: "answered", chat_decision: null, conv_id: null },
+    { id: 8, user_id: me, reply_by: "p2", status: "answered", chat_decision: "accepted", conv_id: "c8" },
+    { id: 7, user_id: me, reply_by: "p3", status: "answered", chat_decision: null, conv_id: null },
+  ];
+  return sortBottleMine(rows, me).map((r) => r.id).join(",") === "9,7,10,8";
+})());
+ok("轮144 BottleView 接线：我发布的整批拉回（≤200）+ 置顶排序 + 本地分页（翻页不回源、失败清全量）",
+  has(bottleView, "sortBottleMine(Array.isArray(got) ? got : [], myId.value)",
+    "mine: true, limit: 200", "recAll.value = rows;",
+    "recRows.value = recAll.value.slice(next * REC_PAGE, next * REC_PAGE + REC_PAGE)",
+    "recAll.value = []"));
 
 console.log(`bottle-test: ${pass} pass, ${fails.length} fail`);
 for (const f of fails) console.log("FAIL  " + f);

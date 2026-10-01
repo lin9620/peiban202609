@@ -164,12 +164,15 @@ const seasonName = computed(() => season.name[i18n.locale] || season.name.en);
       </div>
       <p class="hall-line">{{ t("home.companions.hall") }}</p>
       <div class="chip-row">
-        <!-- 轮 35：改 secondary（有底色）——原来 quaternary 近乎纯文本，看不出能点 -->
+        <!-- 轮 35：改 secondary（有底色）——原来 quaternary 近乎纯文本，看不出能点
+             轮 144：第一排 = 唯一的状态设置入口（再点一次 = 清除，已选的按钮带 title 提示）；
+             第二排「此刻大厅里」改纯统计（见下），两排不再重复。 -->
         <n-button
           v-for="k in STATUS_KEYS" :key="k"
           round size="small" secondary
           :type="myStatus === k ? 'primary' : 'default'"
           :disabled="statusBusy"
+          :title="myStatus === k ? t('home.companions.toggleHint') : null"
           @click="setStatus(k)">
           {{ t("home.companions." + k) }}
         </n-button>
@@ -185,18 +188,19 @@ const seasonName = computed(() => season.name[i18n.locale] || season.name.en);
       </p>
       <p v-else-if="!isMember" class="streak-note">{{ t("home.companions.loginHint") }}</p>
 
-      <!-- 大厅仅展示分类人数；手机端 8：人数胶囊可点 —— 点了就把自己也设成同款状态（跟手反馈） -->
+      <!-- 轮 144 · 捋逻辑：「此刻大厅里」= 纯信息展示（各状态当前人数），不可点——
+           原来这排胶囊也能 setStatus（手机端 8 的跟手反馈），和上面的选择器职责重复，
+           上下两排长得一样、都能点，分不清谁管什么。我选中的状态在这排**联动点亮**（on），
+           两排从「两组重复按钮」变成「我选的 → 大厅的」对应关系。 -->
       <div v-if="statusCounts" class="hall-others">
         <span class="sec-label">{{ t("home.companions.othersTitle") }}</span>
         <div class="hall-pill-row">
-          <button
-            v-for="row in statusCounts" :key="row.status" type="button"
-            class="hall-pill hall-pill--tap" :class="{ on: myStatus === row.status }"
-            :disabled="statusBusy"
-            @click="setStatus(row.status)">
+          <div
+            v-for="row in statusCounts" :key="row.status"
+            class="hall-pill" :class="{ on: myStatus === row.status }">
             <span>{{ statusLabel(row.status) }}</span>
             <b>{{ t(row.count === 1 ? "home.companions.peopleCount1" : "home.companions.peopleCount", { n: row.count }) }}</b>
-          </button>
+          </div>
         </div>
       </div>
     </section>

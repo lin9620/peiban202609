@@ -12,6 +12,7 @@ import {
   bottleErrKey,
   bottleSend, bottleFish, bottleReply, bottleRelease, bottleHeld, bottleQuota,
   bottleRecords, bottleChatState, bottleChatDecide, purgeLegacyBottleLocals,
+  sortBottleMine,
 } from "../utils/bottle.js";
 import { relativeTime } from "../utils/dmRules.js";
 import { cloud } from "../utils/supabase.js";
@@ -234,6 +235,7 @@ const recRows = ref([]);
 const recPage = ref(0);
 const recDone = ref(false);
 const recLoading = ref(false);
+const recAll = ref([]);         /* 轮144：「我发布的」全量（待处理置顶排序后）——本地分页数据源（≤200 条） */
 
 async function loadRecords(reset = false) {
   if (!cloudSigned.value || recLoading.value) return;
@@ -243,15 +245,25 @@ async function loadRecords(reset = false) {
   /* 轮 37：记录列表也不再走本机快照（原来每栏第 0 页存一份 SWR 缓存，换号/换端会先闪
    * 别人的或过期的记录）——拉到的就是服务器此刻的记录，失败如实报错，不用旧快照假装成功。 */
   try {
-    const got = await bottleRecords(null, target * REC_PAGE, {
-      mine: recTab.value === "mine", limit: REC_PAGE,
-    });
-    const rows = Array.isArray(got) ? got : [];
-    recRows.value = rows;
-    recPage.value = target;
-    recDone.value = rows.length < REC_PAGE;
+    if (recTab.value === "mine") {
+      /* 轮144（用户口径）：「我发布的」整批拉回（≤200）——待我处理（收到回信·同意或拒绝）
+       * 客户端置顶、其余保持服务端时间新→旧，再本地分页切片；待处理的不再被时间序埋掉。 */
+      const got = await bottleRecords(null, 0, { mine: true, limit: 200 });
+      const rows = sortBottleMine(Array.isArray(got) ? got : [], myId.value);
+      recAll.value = rows;
+      recPage.value = 0;
+      recRows.value = rows.slice(0, REC_PAGE);
+      recDone.value = rows.length <= REC_PAGE;
+    } else {
+      const got = await bottleRecords(null, target * REC_PAGE, { mine: false, limit: REC_PAGE });
+      const rows = Array.isArray(got) ? got : [];
+      recRows.value = rows;
+      recPage.value = target;
+      recDone.value = rows.length < REC_PAGE;
+    }
   } catch (e) {
     recRows.value = [];
+    recAll.value = [];
     recDone.value = true;
     recErr.value = bottleErrKey(e);
   } finally {
@@ -265,6 +277,14 @@ function switchRecTab(x) {
 }
 function recPageGo(d) {
   const next = recPage.value + d;
+  if (recTab.value === "mine") {
+    /* 轮144：「我发布的」本地分页——数据已在 recAll，翻页不回源 */
+    if (next < 0 || (d > 0 && next * REC_PAGE >= recAll.value.length)) return;
+    recPage.value = next;
+    recRows.value = recAll.value.slice(next * REC_PAGE, next * REC_PAGE + REC_PAGE);
+    recDone.value = recAll.value.length <= (next + 1) * REC_PAGE;
+    return;
+  }
   if (next < 0 || (d > 0 && recDone.value)) return;
   recPage.value = next;
   loadRecords(false);
