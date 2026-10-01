@@ -362,7 +362,7 @@ onMounted(() => { loadPrefs(); });
 </template>
 
 <style scoped>
-.set-page { max-width: 640px; margin: 0 auto; }
+.set-page { max-width: 860px; margin: 0 auto; }
 .set-top { display: flex; align-items: flex-start; gap: 10px; margin: 2px 0 12px; }
 .set-back {
   appearance: none; font: inherit; cursor: pointer;

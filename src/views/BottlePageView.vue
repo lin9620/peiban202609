@@ -28,6 +28,6 @@ function openBottleChat(id) {
 </template>
 
 <style>
-.bottle-page { max-width: 640px; margin: 0 auto; }
+.bottle-page { max-width: 900px; margin: 0 auto; }
 .bottle-guest { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 34px 20px; }
 </style>
