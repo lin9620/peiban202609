@@ -16,6 +16,7 @@ import { t, i18n } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
 import * as dmApi from "../utils/dm.js";
 import { cacheKey, swr } from "../utils/cache.js";
+import { getItem } from "../utils/storage.js";
 import {
   previewText, sortConvs, filterConvs, withDayDividers, displayMsg,
   validateSend, sendErrKey, canRecall, relativeTime, rowView,
@@ -85,6 +86,11 @@ const activeConv = computed(() =>
   convs.value.find((c) => String(c.conv_id) === String(activeId.value)) || null);
 const title = computed(() =>
   (meta.value && meta.value.nickname) || (activeConv.value && activeConv.value.nickname) || "");
+
+/* 轮 132 · 会话改版辅助：对方首字母 / 我的名字（列表底部与气泡头像用） */
+const peerInitial = computed(() => ((activeConv.value && activeConv.value.nickname) || "?").slice(0, 1).toUpperCase());
+const myName = computed(() => cloud.nickname || getItem("wp-nickname") || "");
+const myInitial = computed(() => (myName.value || "?").slice(0, 1).toUpperCase());
 
 /* 是否可以直接发：对方不是待处理请求、双方都没拉黑 */
 const canType = computed(() => {
@@ -411,11 +417,6 @@ function goSignIn() {
 
 <template>
   <div class="dm-page">
-    <section v-if="!isMobileNav" class="card dm-head">
-      <h1 class="dm-title">💬 {{ t("dm.title") }}</h1>
-      <p class="sub">{{ t("dm.intro") }}</p>
-    </section>
-
     <section v-if="!signedIn" class="card dm-empty">
       <p class="sub">{{ t("dm.needSignIn") }}</p>
       <n-button type="primary" round @click="goSignIn">{{ t("profile.goSignIn") }}</n-button>
@@ -523,6 +524,15 @@ function goSignIn() {
         <p v-if="!normal.length && !requests.length && !loadingConvs" class="sub dm-empty">{{ t("dm.empty") }}</p>
         <!-- 漂流瓶记录：桌面仍在会话列表底部（原位）；手机端 1 独立成「漂流瓶」段 -->
         <BottleRecords v-if="!isMobileNav" @open="openBottleChat" />
+
+        <!-- 轮 132 · 列表底部：当前用户（参考图 2 左下角） -->
+        <div class="dm-me">
+          <n-avatar round :size="34" class="post-avatar">{{ myInitial }}</n-avatar>
+          <div class="dm-me-body">
+            <b>{{ myName || t("dm.someone") }}</b>
+            <span class="dm-online"><i></i>{{ t("dm.online") }}</span>
+          </div>
+        </div>
         </template>
         <BottleRecords v-else-if="seg === 'bottle'" @open="openBottleChat" />
         <NotificationsView v-else-if="seg === 'notif'" class="dm-seg-notif" />
@@ -533,15 +543,13 @@ function goSignIn() {
         <template v-if="activeId">
           <header class="dm-thread-head">
             <button v-if="isMobileNav" class="dm-thread-back" @click="backToList">←</button>
+            <n-avatar v-if="!isMobileNav" round :size="40" class="dm-msg-avatar">{{ peerInitial }}</n-avatar>
             <b class="dm-name dm-peer-link" :title="t('dm.viewHome')" @click="goUser(activeConv && activeConv.other_id)">{{ title || t("dm.someone") }}</b>
             <span v-if="activeConv && activeConv.muted" class="dm-muted">🔇 {{ t("dm.mutedTag") }}</span>
             <n-tag v-if="activeConv && activeConv.accepted === false" round size="small" :bordered="false" class="soft-tag">
               {{ t("dm.requestTag") }}
             </n-tag>
             <span class="dm-spacer"></span>
-            <button v-if="activeConv" class="dm-act" @click="toggleBlock(activeConv)">
-              {{ (activeConv.blocked) ? t("dm.unblock") : t("dm.block") }}
-            </button>
           </header>
 
           <!-- 消息流 -->
@@ -555,17 +563,20 @@ function goSignIn() {
             <template v-for="it in flow" :key="it.key">
               <div v-if="it.type === 'day'" class="dm-day"><span>{{ dayLabel(it.ts) }}</span></div>
               <div v-else class="dm-line" :class="{ mine: it.msg.sender === meId }">
-                <div class="dm-bubble" :class="{ recalled: it.msg.recalled, failed: it.msg.failed }">
-                  <p v-if="it.msg.recalled" class="dm-recalled">{{ t("dm.recalled") }}</p>
-                  <p v-else class="dm-text">{{ it.msg.body }}</p>
+                <n-avatar v-if="it.msg.sender !== meId" round :size="30" class="dm-msg-avatar">{{ peerInitial }}</n-avatar>
+                <div class="dm-msg-col">
+                  <div class="dm-bubble" :class="{ recalled: it.msg.recalled, failed: it.msg.failed }">
+                    <p v-if="it.msg.recalled" class="dm-recalled">{{ t("dm.recalled") }}</p>
+                    <p v-else class="dm-text">{{ it.msg.body }}</p>
+                  </div>
                   <span class="dm-stamp">
                     {{ it.msg.pending ? t("dm.sending") : it.msg.failed ? t("dm.sendFailed") : clock(it.msg.created_at) }}
+                    <button
+                      v-if="canRecall(it.msg, meId) && !it.msg.pending"
+                      class="dm-recall" :title="t('dm.recall')"
+                      @click="recall(it.msg)">{{ t("dm.recall") }}</button>
                   </span>
                 </div>
-                <button
-                  v-if="canRecall(it.msg, meId) && !it.msg.pending"
-                  class="dm-recall" :title="t('dm.recall')"
-                  @click="recall(it.msg)">{{ t("dm.recall") }}</button>
               </div>
             </template>
 
@@ -596,8 +607,23 @@ function goSignIn() {
 
         <p v-else class="sub dm-empty">{{ t("dm.pickOne") }}</p>
       </section>
-    </div>
 
-    <router-link v-if="!isMobileNav" class="dm-back" to="/">{{ "← " + t("nav.home") }}</router-link>
+      <!-- 轮 132 · 右侧资料卡（参考图 2 第三列）：TA 的资料 + 静音/拉黑收纳于此 -->
+      <aside v-if="!isMobileNav && activeId" class="card dm-info">
+        <n-avatar round :size="64" class="dm-info-avatar">{{ peerInitial }}</n-avatar>
+        <b class="dm-info-name">{{ title || t("dm.someone") }}</b>
+        <router-link class="dm-info-link" :to="'/u/' + (activeConv && activeConv.other_id)">
+          {{ t("dm.viewHome") }} →
+        </router-link>
+        <div class="dm-info-acts">
+          <button v-if="activeConv" class="dm-act" @click="toggleMute(activeConv)">
+            {{ activeConv.muted ? t("dm.unmute") : t("dm.mute") }}
+          </button>
+          <button v-if="activeConv" class="dm-act" @click="toggleBlock(activeConv)">
+            {{ activeConv.blocked ? t("dm.unblock") : t("dm.block") }}
+          </button>
+        </div>
+      </aside>
+    </div>
   </div>
 </template>

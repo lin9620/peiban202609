@@ -156,6 +156,7 @@ export const messages = {
       claimed: "Claimed {c} coins ✨ Keep going — more tasks can be claimed too!",
       progress: "{done}/{total} done",
     },
+      welcomeBack: "Welcome back",
 
     rps: {
       title: "Rock-paper-scissors",
@@ -508,6 +509,7 @@ export const messages = {
       sendFailed: "Not sent",
       recalled: "This message was recalled",
       recall: "Recall",
+      online: "Online",
       noMessages: "No messages yet — say something kind.",
       gateBlockedByMe: "You blocked them — unblock first to keep talking.",
       gateRequest: "This is a message request. Accept it to reply.",
@@ -902,6 +904,7 @@ export const messages = {
       claimed: "已领取 {c} 金币 ✨ 继续完成任务还能再领！",
       progress: "{done}/{total}",
     },
+      welcomeBack: "欢迎回来",
 
     rps: {
       title: "石头剪刀布",
@@ -1251,6 +1254,7 @@ export const messages = {
       sendFailed: "发送失败",
       recalled: "这条消息已撤回",
       recall: "撤回",
+      online: "在线",
       noMessages: "还没有消息，说点什么吧。",
       gateBlockedByMe: "你已拉黑对方——先解除拉黑才能继续说话。",
       gateRequest: "这是对方发来的消息请求，同意后才能回复。",

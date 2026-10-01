@@ -49,6 +49,22 @@ button, input, textarea { font-family: inherit; }
 ::selection { background: var(--accent-soft); }
 
 .shell { max-width: 780px; margin: 0 auto; padding: 0 18px 48px; position: relative; z-index: 1; overflow-x: clip; }
+/* 轮 132 · 桌面壳：SideNav 占左 92px，内容在余下空间居中；SideNav ≥900 才渲染 */
+@media (min-width: 900px) {
+  .shell { margin-left: calc(92px + max(0px, (100vw - 92px - 780px) / 2)); }
+}
+/* welcome 横幅（参考图 1 顶部）：衬线名字 + 欢迎语 + 金币 */
+.welcome-band {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 12px;
+  padding: 6px 4px 14px; margin-bottom: 4px;
+}
+.wb-left { display: flex; flex-direction: column; gap: 2px; }
+.wb-label { font-size: 12px; font-weight: 500; letter-spacing: 1.5px; text-transform: uppercase; color: var(--ink-faint); }
+.wb-name {
+  font-family: var(--font-display); font-size: 30px; font-weight: 500;
+  letter-spacing: -.5px; line-height: 1.15; color: var(--ink);
+}
+.wb-coins { font-size: 15px; font-weight: 500; color: var(--ink); background: var(--card); border: 1px solid var(--hairline); border-radius: 999px; padding: 7px 14px; }
 
 /* 漂浮光斑装饰 */
 .orb { display: none; } /* 轮 120：DESIGN.md 平涂画布，去漂浮光斑装饰 */
@@ -1600,6 +1616,33 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
   display: grid; grid-template-columns: minmax(260px, 340px) 1fr;
   gap: 14px; align-items: start;
 }
+/* 轮 132 · 会话三栏（参考图 2）：列表 | 聊天 | 资料卡；聊天列撑满视口高 */
+@media (min-width: 900px) {
+  .dm-wrap { grid-template-columns: 276px minmax(0, 1fr) 232px; }
+  .dm-thread { min-height: calc(100vh - 210px); }
+  .dm-scroll { max-height: none; flex: 1; }
+  .dm-list { max-height: calc(100vh - 236px); }
+}
+/* 列表底部：当前用户（参考图 2 左下角） */
+.dm-me {
+  display: flex; align-items: center; gap: 9px; margin-top: 10px;
+  padding: 9px 10px; border-radius: 14px; background: var(--accent-soft);
+}
+.dm-me-body { display: flex; flex-direction: column; line-height: 1.3; min-width: 0; }
+.dm-me-body b { font-size: 13px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dm-online { display: flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 500; color: var(--good); }
+.dm-online i { width: 7px; height: 7px; border-radius: 50%; background: var(--good); }
+/* 右侧资料卡 */
+.dm-info {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 22px 16px; text-align: center; position: sticky; top: 90px;
+}
+.dm-info-avatar { background: var(--accent-soft); }
+.dm-info-name { font-size: 15px; color: var(--ink); }
+.dm-info-link { font-size: 12.5px; font-weight: 500; color: var(--accent-deep); text-decoration: none; }
+.dm-info-link:hover { text-decoration: underline; }
+.dm-info-acts { display: flex; flex-direction: column; gap: 8px; width: 100%; margin-top: 8px; }
+.dm-info-acts .dm-act { width: 100%; }
 .dm-list {
   display: flex; flex-direction: column; gap: 6px;
   max-height: 68vh; overflow-y: auto; padding: 14px;
@@ -1679,22 +1722,25 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
   font-size: 11px; font-weight: 500; color: var(--ink-soft);
   background: rgba(255, 255, 255, .75); border-radius: 999px; padding: 3px 12px;
 }
-.dm-line { display: flex; align-items: flex-end; gap: 6px; }
+.dm-line { display: flex; align-items: flex-end; gap: 8px; }
 .dm-line.mine { flex-direction: row-reverse; }
+.dm-msg-avatar { flex: none; align-self: flex-end; }
+.dm-msg-col { display: flex; flex-direction: column; gap: 3px; max-width: min(74%, 460px); min-width: 0; }
+.dm-line.mine .dm-msg-col { align-items: flex-end; }
 .dm-bubble {
-  max-width: 74%; padding: 9px 13px; border-radius: 18px;
-  background: rgba(255, 255, 255, .88); border: 1.5px solid rgba(204, 120, 92, .22);
-  box-shadow: 0 2px 8px rgba(122, 90, 60, .06);
+  padding: 9px 13px; border-radius: 16px 16px 16px 4px;
+  background: var(--card); border: 1px solid var(--hairline);
 }
 .dm-line.mine .dm-bubble {
-  background: linear-gradient(135deg, #ffd9b3, #ffbe86);
-  border-color: transparent;
+  background: var(--accent); border-color: transparent;
+  border-radius: 16px 16px 4px 16px;
 }
+.dm-line.mine .dm-text { color: #fff; }
 .dm-bubble.recalled { opacity: .68; font-style: italic; }
 .dm-bubble.failed { border-color: #e08b86; }
 .dm-text { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--ink); white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
 .dm-recalled { margin: 0; font-size: 12.5px; color: var(--ink-soft); }
-.dm-stamp { display: block; margin-top: 3px; font-size: 10.5px; color: var(--ink-soft); text-align: right; }
+.dm-stamp { display: flex; align-items: center; gap: 8px; font-size: 10.5px; color: var(--ink-soft); }
 .dm-recall {
   border: none; background: transparent; cursor: pointer;
   font-size: 10.5px; font-weight: 500; color: var(--ink-faint); padding: 2px 4px;

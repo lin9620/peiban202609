@@ -1323,6 +1323,15 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **验证**：undef/tdz **0** + wall **34/34** + i18n **19/19** + build 0 + page-smoke **8/8**；已部署（live-check 14/14）+ APK 装机 Success。
      **待用户验收（亮屏）**：暖心墙下拉 → 「刷新中…」→ 换一批/新增提示正常、列表真的换内容；消息页无错误盒。
 
+  - **轮 132 · 桌面布局改版（参考图 1）+ 会话三栏（参考图 2）（2026-10-01，改动完成、37 套离线全绿，待提交待部署——攒批；**大改动已备份**：分支 `backup/pre-layout-redesign` + 标签 `rollback-before-132`，回退 = `git reset --hard rollback-before-132`；APK 需重打）**：
+     用户发话「整体布局换参考图 1、会话换参考图 2（Auroraqua-UI），UI 与动画不变，App 端不变，先备份」。**备份先行**：branch `backup/pre-layout-redesign` + tag `rollback-before-132`（当前 HEAD e6a42c8）。
+     **桌面壳（参考图 1，≥900px）**：① 新组件 `SideNav.vue`——左图标导航（64px 固定贴左：🐾logo + 今天/宠物/暖心墙/我的/消息(红点)/通知(红点) + 底部设置；激活=珊瑚胶囊；44px 热区；按压缩放）② 顶栏桌面隐藏（移动端不动：品牌/导航/金币/信封全保留）③ **welcome 横幅**（参考图 1 顶部）：welcomeBack 小字 + 衬线大名 + 金币胶囊（i18n welcomeBack zh/en；displayName=云昵称>本地昵称>访客；补 getItem 导入）④ **SideRails 收拢右缘一列**：伙伴角+治愈角两卡竖排（原按中线定位会在 1280 溢出 8px——SideNav 吃掉左侧 92px 后右余量只剩 204<212），fixed right:16px 上下贴边、内部滚动隐藏滚动条，显示断点 1280→1100。
+     **会话三栏（参考图 2，≥900px 登录后）**：`.dm-wrap` 276px|1fr|232px 三列：① 列表列=搜索+请求段+会话行+漂流瓶记录+**底部当前用户**（头像+名字+在线绿点——自己在线是事实，不违反诚实原则）② 聊天列=头部（对方头像+名字+静音/请求标签）+**气泡重排**（对方=左侧 30px 头像+奶油气泡+时间下置；我的=右对齐**珊瑚实底白字**+时间下置+召回钮同行；圆角定向 16/16/16/4）③ 右资料卡=大头像+名字+去TA主页+静音/拉黑（从聊天头部收纳于此，sticky）。dm-head 标题卡与 dm-back 链接桌面移除（SideNav 已覆盖导航）。
+     **移动端零改动**（全部改动 !isMobileNav 门禁；dm-seg/返回/backToList 原样）。
+     **事故一次**：i18n 键挂错组（home.welcomeBack→顶级 welcomeBack）+ App.vue 漏 import getItem——undef/i18n-test 抓到即修。会话模板重构锚点全部逐字核对后替换（轮 125 教训生效）。
+     验证：undef/tdz **0** + **37 套离线 0 fail**（i18n 19/19）+ build 0 + page-smoke 9/9 + 1440px 截图目检（桌面壳三段成形/移动端消息页未动/guest 登录引导正确）。
+     **待用户验收（部署后）**：桌面整体观感、会话三栏登录态气泡手感；不满意 = `git reset --hard rollback-before-132` 一键回退。
+
   - **轮 131 · 石头剪刀布 vs 宠物（清单 #20，2026-10-01，已提交 `8dd6d73` / 已部署 Version `7533b69d` ✅；**live-check 本机网络抖动**（三次试跑每次挂 1~3 项全是 ERR fetch failed、条目各不相同）→ 改用 **curl 全页实测 6 条路由全 200 + bundle 本地=线上（index-D2-IzbOu.js）** 判定部署成功；**APK 需重打**）**：
      用户点名清单 #20。**新组件 `RpsGame.vue`** 挂宠物页「照顾」标签（pet-actions 之后）：三枚大按钮 ✊✌️✋，宠物按**性格加权出拳**（rpsRules.PET_MOVE_WEIGHTS：高冷爱出石头 55%、元气好斗、温柔手下留情、粘人随和——键对齐 pets.js）；赢 +2 / 平 +1 金币（与「陪它玩」同档经济）、**每日前 10 局有彩头**（localStorage 按天计数，超限可玩但无奖励）；玩一局计入「陪它玩一次」任务（markTask 导出给组件，同一本任务账）；宠物用 say() 台词回应胜负平。
      动效：出拳换手用 **icon-swap 配方**（缩放+模糊+微旋转浮现），结果牌 win/lose/draw 语义色，金币 +N 过冲弹跳；reduced-motion 关闭。**纯前端零数据库**——未登录也可玩。

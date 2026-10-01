@@ -172,7 +172,7 @@ watch(signedIn, loadBottle);
 </script>
 
 <template>
-  <div class="rail rail-left">
+  <div class="rail rail-right">
     <div class="rail-card">
       <div class="rail-head">{{ t("rail.companion") }}</div>
       <template v-if="activePet">
@@ -224,10 +224,8 @@ watch(signedIn, loadBottle);
         <div class="ac-strip">🐾 {{ t("rail.companionTime", { t: companionText }) }}</div>
       </template>
     </div>
-  </div>
 
-  <div class="rail rail-right">
-    <div class="rail-card">
+    <div class="rail-card" style="margin-top: 12px">
       <div class="rail-head">{{ t("rail.healing") }}</div>
 
       <!-- 轮 117：今日温柔签（每天一签，连集天数 + 一键抄录） -->

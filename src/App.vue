@@ -7,6 +7,7 @@ import { useRoute, useRouter } from "vue-router";
 import { App as CapApp } from "@capacitor/app";
 import { t } from "./i18n.js";
 import SideRails from "./components/SideRails.vue";
+import SideNav from "./components/SideNav.vue";
 import TabBar from "./components/TabBar.vue";
 import { isApp, isMobileNav, runBack, tabbarSuppressed } from "./stores/uiStore.js";
 import {
@@ -16,6 +17,7 @@ import { cloud, initCloud, cloudHandleAppRedirect, isAppAuthRedirect } from "./u
 import { cloudFetchUserPosts } from "./utils/wall.js";
 import { setUserScope } from "./utils/userScope.js";
 import { cacheDrop, cacheKey, swr } from "./utils/cache.js";
+import { getItem } from "./utils/storage.js";
 import * as dmApi from "./utils/dm.js";
 import { bottleQuota, bottleHeld } from "./utils/bottle.js";
 import { badge, startBadge, stopBadge } from "./stores/badgeStore.js";
@@ -42,6 +44,8 @@ const inChat = computed(() => isMobileNav.value
 const dmBadge = computed(() => badge.dm + badge.requests);
 
 const streak = computed(() => moodStreak());
+/* 轮 132 · 桌面 welcome 横幅（参考图 1）：显示名 = 云昵称 > 本地昵称 > 访客 */
+const displayName = computed(() => cloud.nickname || getItem("wp-nickname") || t("common.guest"));
 
 /* —— 宠物登录通知（#2）：死亡哀悼 / 初始宠物降级 / 食物过期 —— 全局浮层 */
 const noticeIcon = { dead: "🕯️", decay: "📉", expired: "🥣" };
@@ -210,7 +214,7 @@ onBeforeUnmount(() => { clearTimeout(scrubTimer); scrubTimer = 0; });
         <div class="orb orb-3"></div>
 
         <div class="shell" :class="{ 'shell--mobile-nav': isMobileNav, 'shell--chat': inChat }">
-          <header class="topbar">
+          <header v-if="isMobileNav" class="topbar">
             <router-link to="/" class="brand">
               <span class="brand-paw">🐾</span>
               <span class="brand-text">
@@ -248,6 +252,14 @@ onBeforeUnmount(() => { clearTimeout(scrubTimer); scrubTimer = 0; });
           </header>
 
           <main>
+            <!-- 轮 132 · 桌面 welcome 横幅（参考图 1：Welcome back + 名字 + 金币） -->
+            <div v-if="!isMobileNav" class="welcome-band">
+              <div class="wb-left">
+                <span class="wb-label">{{ t("welcomeBack") }}</span>
+                <span class="wb-name">{{ displayName }}</span>
+              </div>
+              <span class="wb-coins">💰 {{ wallet.coins }}</span>
+            </div>
             <!-- 宠物系统通知浮层（#2：死亡哀悼 / 初始宠物降级 / 食物过期） -->
             <transition-group name="notice" tag="div" class="pet-notice-stack">
               <div v-for="(n, i) in petNotices" :key="n.kind + '-' + i" class="pet-notice">
@@ -278,6 +290,7 @@ onBeforeUnmount(() => { clearTimeout(scrubTimer); scrubTimer = 0; });
         </div>
 
         <!-- 轮 108：tabbarSuppressed —— 底部输入条打开时收起 tabbar（输入条直接贴键盘，图2） -->
+        <SideNav v-if="!isMobileNav" />
         <TabBar v-if="isMobileNav && !inChat && !tabbarSuppressed" />
         <SideRails v-if="!isMobileNav" />
       </n-dialog-provider>
