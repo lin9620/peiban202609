@@ -11,6 +11,7 @@
  */
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from "vue";
 import { NAvatar, NButton, NInput } from "naive-ui";
+import { useRouter } from "vue-router";
 import { t, i18n } from "../i18n.js";
 import { bottleChatState, bottleChatDecide, bottleErrKey } from "../utils/bottle.js";
 import * as dmApi from "../utils/dm.js";
@@ -23,6 +24,12 @@ const props = defineProps({
   peerName: { type: String, default: "" },   /* 父级解析好的对方昵称（取不到时已兜底） */
 });
 const emit = defineEmits(["accepted", "peer"]);   /* accepted(convId) / peer({user_id, nickname, ...meta}) */
+
+const router = useRouter();
+/* 轮 143 · 点头像/昵称进对方空间（与会话段聊天头 #15 同口径；没解析到对方时不动） */
+function goUser(id) {
+  if (id) router.push({ name: "waller", params: { id } });
+}
 
 const state = computed(() => bottleChatState(props.letter, props.meId));
 const peerId = computed(() => {
@@ -190,10 +197,12 @@ onBeforeUnmount(() => { clearInterval(timer); });
 
     <template v-else>
       <header class="dm-thread-head">
-        <n-avatar round :size="40" class="dm-msg-avatar">{{ peerInitial }}</n-avatar>
-        <b class="dm-name">{{ props.peerName || t("bottle.peerFallback") }}</b>
+        <n-avatar round :size="40" class="dm-msg-avatar clickable" :title="t('dm.viewHome')" @click="goUser(peerId)">{{ peerInitial }}</n-avatar>
+        <b class="dm-name dm-peer-link" :title="t('dm.viewHome')" @click="goUser(peerId)">{{ props.peerName || t("bottle.peerFallback") }}</b>
         <span class="bchat-tag">{{ t("bottle.title") }}</span>
         <span class="dm-spacer"></span>
+        <!-- 轮 143 · 右上角「…」菜单由父级（MessagesView）注入：与会话头同一份内容 -->
+        <slot name="headtools"></slot>
       </header>
 
       <!-- ② 待我决定 / 其它状态：原信 + 回信 + 说明（无输入框） -->

@@ -97,7 +97,7 @@ const bottleRow = ref(null);     // 左列选中的信（bottle_letters 行）
 const bottleName = ref("");      // 该信的对方昵称（左列解析后带回；空 = 走兜底文案）
 const bottleMeta = ref({});      // 已建会话时的会话元信息（免打扰/拉黑与会话段同源）
 
-/* 右列资料卡：随「当前段 + 当前选中的人」变（会话段看会话；漂流瓶段看这封信的人） */
+/* 头部「…」菜单的数据源：随「当前段 + 当前选中的人」变（会话段看会话；漂流瓶段看这封信的人） */
 const dmPeer = computed(() => {
   const c = activeConv.value || meta.value || {};
   return {
@@ -116,11 +116,12 @@ const bottlePeer = computed(() => {
 });
 const curPeer = computed(() => (seg.value === "bottle" ? bottlePeer.value : dmPeer.value));
 const peerInitial = computed(() => (curPeer.value.nickname || "?").slice(0, 1).toUpperCase());
-/* 资料卡的操作对象：会话段=当前会话；漂流瓶段=该信已建的会话（还没会话就不出按钮） */
+/* 菜单的操作对象：会话段=当前会话；漂流瓶段=该信已建的会话（还没会话就不出动作按钮） */
 const curConv = computed(() =>
   convs.value.find((c) => String(c.conv_id) === String(curPeer.value.conv_id)) || null);
-const showInfo = computed(() =>
-  !isMobileNav.value && (seg.value === "bottle" ? !!bottleRow.value : !!activeId.value));
+/* 轮 143 · 中列头部右上角「…」菜单（原右列资料卡内容迁入，只在桌面渲染） */
+const headMenu = ref(false);
+watch(seg, () => { headMenu.value = false; });
 
 /* 是否可以直接发：对方不是待处理请求、双方都没拉黑 */
 const canType = computed(() => {
@@ -222,6 +223,7 @@ function scrollBottom(smooth = false) {
 async function openConv(id) {
   seg.value = "dm";
   menuFor.value = "";
+  headMenu.value = false;
   const same = String(activeId.value) === String(id);
   activeId.value = String(id);
   /* 双形态导航（微信式）：
@@ -342,13 +344,14 @@ async function toggleBlock(c) {
   refreshBadge();
 }
 
-/* ─────────── 轮 142 · 漂流瓶段（桌面）：选中/同意/资料卡操作 ─────────── */
+/* ─────────── 轮 142/143 · 漂流瓶段（桌面）：选中/同意/头部菜单操作 ─────────── */
 
 /* 左列点一封信 → 中列 BottleChat 独立渲染（不碰会话段的 activeId） */
 function pickBottle(row, name) {
   bottleRow.value = row;
   bottleName.value = name || "";
   bottleMeta.value = {};
+  headMenu.value = false;
 }
 
 /* 同意聊天 → 数据库建会话：把新会话带进「会话」段列表 + 刷红点（中列继续停在漂流瓶聊天框） */
@@ -358,7 +361,7 @@ async function onBottleAccepted(convId) {
   refreshBadge();
 }
 
-/* BottleChat 回传的人/会话信息（convMeta 或兜底名字）——资料卡据此显示 */
+/* BottleChat 回传的人/会话信息（convMeta 或兜底名字）——头部「…」菜单据此显示 */
 function onBottlePeer(info) {
   if (!info) return;
   if (info.nickname) bottleName.value = info.nickname;
@@ -500,7 +503,7 @@ function goSignIn() {
       <n-button type="primary" round @click="goSignIn">{{ t("profile.goSignIn") }}</n-button>
     </section>
 
-    <div v-else class="dm-wrap" :class="{ 'dm-wrap--noinfo': !showInfo }">
+    <div v-else class="dm-wrap">
       <!-- 左列：会话列表（手机形态 = 微信式列表页；进入会话后整页让给聊天区） -->
       <aside
         v-show="!isMobileNav || !activeId"
@@ -623,7 +626,22 @@ function goSignIn() {
       <BottleChat
         v-if="!isMobileNav && seg === 'bottle'"
         :letter="bottleRow" :me-id="meId" :peer-name="bottleName"
-        @accepted="onBottleAccepted" @peer="onBottlePeer" />
+        @accepted="onBottleAccepted" @peer="onBottlePeer">
+        <!-- 轮 143 · 漂流瓶聊天头右上角同样出「…」菜单（内容与会话头同一份：curPeer 随段联动） -->
+        <template #headtools>
+          <div v-if="!isMobileNav" class="dm-head-tools">
+            <button type="button" class="dm-more dm-head-more" :title="t('dm.more')" :aria-expanded="headMenu" @click="headMenu = !headMenu">⋯</button>
+            <div v-if="headMenu" class="dm-menu dm-head-menu">
+              <button v-if="curPeer.user_id" class="dm-menu-item" @click="headMenu = false; goUser(curPeer.user_id)">{{ t("dm.viewHome") }} →</button>
+              <template v-if="curPeer.conv_id">
+                <button class="dm-menu-item" @click="headMenu = false; mutePeer()">{{ curPeer.muted ? t("dm.unmute") : t("dm.mute") }}</button>
+                <button class="dm-menu-item danger" @click="headMenu = false; blockPeer()">{{ curPeer.blocked ? t("dm.unblock") : t("dm.block") }}</button>
+              </template>
+              <p v-else class="sub dm-menu-note">{{ t("bottle.noChatYet") }}</p>
+            </div>
+          </div>
+        </template>
+      </BottleChat>
 
       <!-- 中列：当前会话（手机形态 = 微信式独立聊天页，带返回） -->
       <section v-else v-show="!isMobileNav || !!activeId" class="card dm-thread">
@@ -637,6 +655,19 @@ function goSignIn() {
               {{ t("dm.requestTag") }}
             </n-tag>
             <span class="dm-spacer"></span>
+            <!-- 轮 143 · 右上角「…」菜单：原右列资料卡内容（看主页 / 静音 / 拉黑 / 无会话说明）迁到这 -->
+            <div v-if="!isMobileNav" class="dm-head-tools">
+              <button type="button" class="dm-more dm-head-more" :title="t('dm.more')" :aria-expanded="headMenu" @click="headMenu = !headMenu">⋯</button>
+              <div v-if="headMenu" class="dm-menu dm-head-menu">
+                <button v-if="curPeer.user_id" class="dm-menu-item" @click="headMenu = false; goUser(curPeer.user_id)">{{ t("dm.viewHome") }} →</button>
+                <template v-if="curPeer.conv_id">
+                  <button class="dm-menu-item" @click="headMenu = false; mutePeer()">{{ curPeer.muted ? t("dm.unmute") : t("dm.mute") }}</button>
+                  <button class="dm-menu-item danger" @click="headMenu = false; blockPeer()">{{ curPeer.blocked ? t("dm.unblock") : t("dm.block") }}</button>
+                </template>
+                <!-- 漂流瓶还没建会话：没有可静音/拉黑的会话，如实说明（不摆空按钮） -->
+                <p v-else-if="seg === 'bottle'" class="sub dm-menu-note">{{ t("bottle.noChatYet") }}</p>
+              </div>
+            </div>
           </header>
 
           <!-- 消息流 -->
@@ -695,27 +726,6 @@ function goSignIn() {
         <p v-else class="sub dm-empty">{{ t("dm.pickOne") }}</p>
       </section>
 
-      <!-- 轮 132 · 右侧资料卡（参考图 2 第三列）：TA 的资料 + 静音/拉黑收纳于此
-           轮 142：两段共用同一张卡，随「当前选中的人」变（会话段=会话对象；漂流瓶段=这封信的人） -->
-      <aside v-if="showInfo" class="card dm-info">
-        <n-avatar round :size="64" class="dm-info-avatar">{{ peerInitial }}</n-avatar>
-        <b class="dm-info-name">{{ curPeer.nickname || t("dm.someone") }}</b>
-        <router-link v-if="curPeer.user_id" class="dm-info-link" :to="'/u/' + curPeer.user_id">
-          {{ t("dm.viewHome") }} →
-        </router-link>
-        <div class="dm-info-acts">
-          <template v-if="curPeer.conv_id">
-            <button class="dm-act" @click="mutePeer">
-              {{ curPeer.muted ? t("dm.unmute") : t("dm.mute") }}
-            </button>
-            <button class="dm-act" @click="blockPeer">
-              {{ curPeer.blocked ? t("dm.unblock") : t("dm.block") }}
-            </button>
-          </template>
-          <!-- 漂流瓶还没建会话：没有可静音/拉黑的会话，如实说明（不摆空按钮） -->
-          <span v-else-if="seg === 'bottle'" class="sub dm-info-note">{{ t("bottle.noChatYet") }}</span>
-        </div>
-      </aside>
     </div>
   </div>
 </template>

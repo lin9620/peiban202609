@@ -246,9 +246,10 @@ ok("T46 轮138/140：展开态记忆在 localStorage，且**默认展开**（未
   ui.includes('const NAV_KEY = "wp-nav-open"')
   && ui.includes('export const navOpen = ref(getItem(NAV_KEY) !== "0")')
   && ui.includes("export function toggleNav()") && ui.includes("setItem(NAV_KEY"));
-ok("T47 轮138：窄桌面（<1480）展开时会话三栏收两栏（资料卡退场）",
-  css.includes(".shell--nav-open .dm-wrap { grid-template-columns: 300px minmax(0, 1fr); }")
-  && css.includes(".shell--nav-open .dm-info { display: none; }"));
+ok("T47 轮143：右列资料卡整列退役（窄桌面收拢规则 / --noinfo 轨道 / .dm-info 样式族不得回潮）",
+  !css.includes(".shell--nav-open .dm-info") && !css.includes(".dm-wrap--noinfo")
+  && !css.includes(".dm-info {") && !css.includes(".dm-info-avatar")
+  && !mv.includes('class="card dm-info"') && !mv.includes("showInfo"));
 ok("T48 轮138：nav.expand/collapse 两键 zh/en 成对 + 渲染不冒 key",
   !!(messages.en.nav.expand && messages.en.nav.collapse && messages.zh.nav.expand && messages.zh.nav.collapse)
   && t("nav.expand") !== "nav.expand" && t("nav.collapse") !== "nav.collapse");
@@ -295,7 +296,7 @@ ok("T55 轮141：右栏「海边来信」整块移除且不留半套（模板/�
     && !/bottleTitle|bottleLeft:|bottleHeld:|bottleGo:/.test(i18);
 })());
 
-/* ─── 轮 142 · 私信页一体化（桌面两段：会话 | 漂流瓶；两段各自单开聊天框） ─── */
+/* ─── 轮 142 · 私信页一体化（桌面两段：会话 | 漂流瓶；两段各自单开聊天框）；轮 143 · 右资料卡退役 → 头部右上角「…」菜单 + 瓶聊昵称进空间 ─── */
 const bcl = read("src/components/BottleChatList.vue");
 const bchat = read("src/components/BottleChat.vue");
 ok("T56 轮142：桌面分栏 = 会话 | 漂流瓶（通知不进桌面私信页；新键 zh/en 成对）", (() => {
@@ -319,22 +320,42 @@ ok("T58 轮142：列表底部「当前用户」条三清（模板 / 样式 / i18
   && !mv.includes("getItem")
   && !css.includes(".dm-me {") && !css.includes(".dm-online")
   && !read("src/i18n.js").includes('online: "Online"') && !read("src/i18n.js").includes('online: "在线"'));
-ok("T59 轮142：一体外壳 + 三列等高底齐 + 滚动条隐藏（图 2「不要 / 往下对齐」）", (() => {
-  const i = css.indexOf(".dm-list, .dm-scroll, .dm-info, .bcl {");
-  return /\.dm-wrap \{[\s\S]*?align-items: stretch/.test(css)
-    && /\.dm-wrap \{[\s\S]*?overflow: hidden/.test(css)
+ok("T59 轮142/143：一体外壳 + 两列等高底齐 + 滚动条隐藏（143：右资料卡退役 → 两列）", (() => {
+  const i = css.indexOf(".dm-list, .dm-scroll, .bcl {");
+  /* 桌面 .dm-wrap 块（含 stretch/hidden/两轨声明）——用 indexOf 窗口找，避开正则字面量 */
+  let hit = false;
+  for (let p = css.indexOf(".dm-wrap {"); p > -1; p = css.indexOf(".dm-wrap {", p + 1)) {
+    const win = css.slice(p, p + 400);
+    if (win.includes("align-items: stretch") && win.includes("overflow: hidden")
+      && win.includes("grid-template-columns: 300px minmax(0, 1fr);")) { hit = true; break; }
+  }
+  return hit
     && css.includes(".dm-wrap > .card {")
+    && (css.split("300px minmax(0, 1fr);").length - 1) === 1   /* 只剩 .dm-wrap 这一条两轨声明（窄桌面收拢/--noinfo 规则已清） */
     && css.includes(".dm-wrap > .dm-list { max-height: none; height: calc(100vh - 210px); }")
     && css.includes(".dm-wrap > .dm-thread { min-height: calc(100vh - 210px); height: calc(100vh - 210px); }")
     && i > 0 && css.slice(i, i + 140).includes("scrollbar-width: none")
     && css.includes(".dm-list::-webkit-scrollbar, .dm-scroll::-webkit-scrollbar,");
 })());
-ok("T60 轮142：右列资料卡两段共用、随选中的人变（动作按有没有会话裁定）",
-  mv.includes('const curPeer = computed(() => (seg.value === "bottle" ? bottlePeer.value : dmPeer.value));')
-  && mv.includes('v-if="showInfo"') && mv.includes('@click="mutePeer"') && mv.includes('@click="blockPeer"')
-  && !!(messages.zh.bottle.noChatYet && messages.en.bottle.noChatYet)
-  && !!(messages.zh.bottle.peerFallback && messages.en.bottle.peerFallback)
-  && !!(messages.zh.bottle.chatPick && messages.en.bottle.chatPick));
+ok("T60 轮143：右列资料卡退役 → 内容迁进中列头部右上角「…」菜单（会话头直插 + 漂流瓶头 slot 注入，同一份 curPeer）", (() => {
+  const tools = (mv.match(/class="dm-head-tools"/g) || []).length;
+  return !mv.includes('class="card dm-info"') && !mv.includes("showInfo")
+    && tools >= 2 && mv.includes("<template #headtools>")
+    && mv.includes("headMenu = !headMenu") && mv.includes("goUser(curPeer.user_id)")
+    && mv.includes('t("bottle.noChatYet")') && mv.includes('@click="headMenu = false; mutePeer()"')
+    && mv.includes('@click="headMenu = false; blockPeer()"')
+    && bchat.includes('<slot name="headtools"></slot>')
+    && !!(messages.zh.bottle.noChatYet && messages.en.bottle.noChatYet)
+    && !!(messages.zh.dm.viewHome && messages.en.dm.viewHome)
+    && !!(messages.zh.dm.mute && messages.en.dm.mute && messages.zh.dm.block && messages.en.dm.block)
+    && !!(messages.zh.bottle.peerFallback && messages.en.bottle.peerFallback)
+    && !!(messages.zh.bottle.chatPick && messages.en.bottle.chatPick);
+})());
+ok("T61 轮143：漂流瓶聊天框点头像/昵称进对方空间（waller 路由，对齐会话段 #15 口径；两处可点 + 没对方不硬跳）",
+  bchat.includes("useRouter") && bchat.includes('name: "waller"')
+  && bchat.includes("function goUser(id)")
+  && (bchat.split('@click="goUser(peerId)"').length - 1) >= 2
+  && bchat.includes("dm-peer-link") && bchat.includes("dm-msg-avatar clickable"));
 
 out.push("");
 out.push(`TOTAL ${pass + fail}  PASS ${pass}  FAIL ${fail}`);
