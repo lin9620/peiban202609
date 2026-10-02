@@ -1455,6 +1455,10 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      `.bottle-page` 640→**900**、`.set-page` 640→**860**，均 margin auto 居中——流式壳下不再靠左留大空洞。探针实测：/bottle 容器 900px 居中于 shell（150-1590）✓。
      验证：build 0 + 截图目检（bottle/settings 双页平衡）。
 
+  - **轮 136 · 故事栏按钮对去重（2026-10-01，用户截图：App 与网页故事栏各出现两对排行榜/我的，已提交 `26ffa8f` / 已部署 Version `8b490429` / live-check 复跑 14/14 ✅）**：
+     **双份机制**：轮 148 给故事栏页头加了一对（StoryView story-acts），轮 149 又给联内补了一对（StoryFeed st-feed-nav）——两轮叠加 = 同屏两对。**修**：页头对限定桌面（!isMobileNav）、联内对限定手机（isMobileNav）——手机 /story 与桌面 /story 各只一对（探针双端实测）。story-test 160/160（平行会话套件与本次改动兼容）。
+     注意：本轮只动 StoryView/StoryFeed 两文件——工作区另有平行会话进行中的未提交改动（轮 150：storyBack/Story 两视图/TodayPane/style.css/测试），未触碰未提交。
+
   - **轮 135 · 入口改版修正（2026-10-01，用户指正「私信还在左边，通知移右上角」，已提交 `3761722` / 已部署 Version `fd1eecd4` / live-check 14/14 ✅）**：
      SideNav：**私信 ✉️ 回归**（带 dm+requests 红点）、通知移出；welcome 横幅右上圆钮：✉️私信 → **🔔通知**（badge.notif 红点）。漂流瓶 🌊/头像圆钮/金币胶囊不变。最终排布：**左导航 = 今天/宠物/暖心墙/漂流瓶/私信(+设置)；右上角 = 金币/通知/我的头像**。37 套 0 fail + 探针实测四项就位 + live-check 14/14。
 
@@ -1919,3 +1923,52 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
 - 频道条四联（宠物|今日|漂流瓶|故事）+ 横滑：轮 147/148 已有，本轮未动。
 - 验证：vite build EXIT=0 / story-test 157 pass 0 fail / 部署 Version 17270f46-e90a-452d-ab18-a451771ff038 / live-check 14 PASS / 线上 StoryFeed-1WYmgX4N.js 与本地 SHA16 同为 7F982DE30DC238F4、线上 CSS 含 st-feed-navbtn / cap sync 0 / Gradle 0 / APK 5.14MB SHA16 90B18F61E7536D1B / 装机 Success / 冷启动 PID 21573 CRASH_HITS=0。
 - 教训（用户第二次因同一问题发火）：用户截图即定稿，**不要自己重新设计联内布局**；要求一律先落进本文件再动手。
+
+## [2026-10-02] 轮 150（用户手机端截图定稿）· 已部署 + 装机
+**背景**：用户发来一张手机端首页截图，要求「今日联上半部分照这个改，不要太多文字」，心情打卡表情换更有设计感的。
+
+1. **顶部问候块（新增）**：原来手机端根本没有问候块（第一张就是大厅）。现按截图加 `today-hi`：问候语 + 一行微文案（`home.hiThere`）+ 右上描边心形钮（分享今日卡片）。原来的长句散文与金币/等级 chip 一并撤掉 —— 用户原话「不要太多文字了」。
+2. **此刻状态改 2×2 大卡**：`status-grid` / `status-card`，圆形 emoji 图标（圆形浅橘底）+ 状态名 + 一行短说明（新增 `companions.sub.*`）。选中态整卡染色 + 暖橘描边。i18n 按 `ico` / `name` / `sub` 三张子表拆开；emoji 只留在 `ico.*`，`name.*` 纯文字（列表更干净）。
+3. **大厅此刻四格统计**：原来的「此刻大厅里」胶囊行换成 `hall-now` 四格（数字在上、标签在下），仍只出各状态人数、不出个人；我选中的状态在这排联动点亮。
+4. **心情打卡表情重做**：emoji 胶囊 → `MoodFace.vue` 手绘线性脸（统一 24×24 视框、圆头描边、按情绪分眼/嘴/点缀）。选中态换成暖橘并轻微放大。修 `moodPicked` 只在初始化时赋值（点完不点亮）→ `moodPick` 里同步写；比较统一 `String()`（localStorage 存字符串，原 `=== f.legacyIndex` 永远不成立）。
+5. **清死键**：`companions.tag/hall/choose/youSet/toggleHint/othersTitle/peopleCount/peopleCount1` 已无引用，zh/en 同删。
+6. **测试同步**（都是有意重做后的断言更新，不是放松）：`status-test` 4 条 → 补 `ico/name/sub` 子表逐项覆盖断言（拼接 key 正则抓不到，必须单独验）；`uifix-test` T19 改为守「不谎报在线人数」本意。
+7. **故事联顶部两枚钮**（用户截图同批）：`st-feed-nav` 排行榜/我的 —— 轮 148 曾误撤，按截图恢复。
+
+**验证**：`vite build` EXIT=0；部署 Version `fb45c070-3fb0-4f82-9a47-d0cc198775bf`；线上 CSS 六项（status-grid/status-card/hall-now-cell/today-hi-heart/mood-svg/st-feed-navbtn）全 True、JS 三项全 True；status-test 56/0、i18n 19/0、uifix 24/0、mood 12/0、undef/tdz 0；39 套离线测试仅 uifix 一条失败（已修）；cap sync 0、Gradle 0、APK 5.14MB SHA16 `0E835174E5649287`、`adb install -r` Success、冷启动 PID 25610 CRASH_HITS=0。
+
+## [2026-10-02] 轮 151（用户手机端截图）· 点「+ 领养新伙伴」只剩一层模糊蒙层
+**症状**：手机端首页「宠物」页签，点「+ 领养新伙伴」后整页被 backdrop-filter 模糊，但弹窗本体不见了（截图只有蒙层）。
+
+**根因（CSS 包含块陷阱）**：手机端 PetView 被挂在 `.home-track` 里，而该轨道有**内联 transform**（HomeView.vue:128，`transform: translateX(idx * -100%)`）。CSS 规定 transform / filter / backdrop-filter 的元素会成为后代 `position:fixed` 的**包含块**，于是：
+- `.adopt-mask { position:fixed; inset:0 }` 不再相对视口，而是相对**宽 4 屏的轨道**定位
+- 轨道第 1 屏时轨道左边缘刚好在视口内 → 蒙层 `inset:0` 恰好盖住视口，所以「看得见蒙层」
+- 但 `.adopt-modal` 是 `position:absolute` 居中于这个 4 屏宽的轨道 → 被甩到屏幕外
+- 结果就是截图那个现象：**只看得见蒙层的 backdrop-filter 模糊，完全看不见弹窗**
+
+**修复**：PetView.vue 把 `.adopt-mask`、`ShareCard`、`SnackRain` 统一 `<Teleport to="body">`（第 648 行开 / 732 行闭），破掉 transform 包含块。CSS 变量（`--ink-soft` / `--accent-deep` / `--accent-soft` / `--shadow-sm`）定义在 `:root`（html 上），夜间主题选择器也是 `html[data-theme] .xxx` 形态，body 是 html 子孙 → Teleport 后样式与主题全部不受影响。
+
+**排查过但无需改**：`RpsGame` / `PostcardCard` / `FoodPainter` 虽然也渲染在轨道内，但三个组件都没有 `position:fixed|absolute`，是普通流式内容，不受影响。
+
+**回归测试**：新增 `tools/teleport-test.mjs`（5 项）静态扫描源码——① `.home-track` 内联 transform 仍在（陷阱存在，修复不能被回退）② PetView 的 fixed 弹层与 ShareCard/SnackRain 都在 Teleport 区块内 ③ 全 views 的 Teleport 标签成对 ④ 依赖变量仍在 `:root` ⑤ 复检领养弹层原始形态。
+> 踩坑：T1 一开始去 style.css 找 `.home-track{transform}` 没找到而 FAIL —— transform 是模板内联样式，不在 CSS 里。已改成扫 HomeView.vue。
+
+**验证**：`vite build` EXIT=0；40 套离线测试全绿（新增 teleport 5/0，原 39 套不受影响）。
+
+
+## [2026-10-02] 轮 152 · 修「点 + 领养新伙伴 只剩模糊蒙层」· 已部署 + 装机
+**症状**：手机端首页点「+ 领养新伙伴」后，整页被模糊蒙层罩住，但**弹窗内容不见了**，看起来像白屏/黑屏。
+**根因**：领养弹层 `.adopt-mask` 是 `position:fixed`，但它渲染在首页横滑轨道 `.home-track` 内部。`.home-track` 上带 `transform`（横滑用），**一旦祖先有 transform，fixed 定位就改为相对该祖先**，弹层被顶到轨道可视区之外，屏幕上只剩 `backdrop-filter: blur(3px)` 的那层蒙层。
+**修法**：给弹层包 `<Teleport to="body">`，脱离被 transform 的轨道（src/views/PetView.vue 644/648 开，732 闭）。
+**验证**：`tools/teleport-test.mjs` 5/5 通过；`vite build` EXIT=0；`wrangler deploy` 成功，Version `92845712-ad3f-444b-a8ad-271565b91062`；线上 `/assets/PetView-DWQoB2dc.js` 35295 字节，含 `adopt-mask` 且含 `to:"body"`（=Teleport 已进包）；`gradlew assembleDebug` EXIT=0；`adb install -r` → Success；`am start -n net.de5.warmpaws/net.de5.dale.MainActivity` → PID 15253、焦点已在主界面、**CRASH_HITS=0**。
+**踩坑备忘（重要）**：本项目 Android 真实 **包名 = `net.de5.warmpaws`，入口 Activity = `net.de5.dale.MainActivity`**（applicationId 与 namespace 不一致）。以后别再猜 `com.yi1614351.peiban/.MainActivity`，那是错的，会报 `Error type 3 / does not exist`。查法：`aapt2 dump packagename` + `aapt2 dump xmltree --file AndroidManifest.xml`。
+
+## [2026-10-02] 轮 153 · App 端「排行榜」「我的」两页去掉「发现」按钮（网页端不动）· 已部署 + 装机
+**要求**：app 端 首页→故事→排行榜 页面、以及 首页→故事→我的 页面，都去掉那枚「发现」按钮；**网页端不改**。
+**改法**：那枚按钮就是两页顶部操作条里唯一的 `<nav class="story-acts">`（内容是 `story.tabDiscover`，全仓只有这两处渲染它）。给整条 nav 挂 `v-if="!isMobileNav"`（src/views/StoryRankView.vue、src/views/StoryMineView.vue），并从 `../stores/uiStore.js` 引入开关。
+**为什么挂整条 nav**：条里只有这一枚钮，挂条即可不留空框；且不动桌面端（`isMobileNav = isApp || vw < 900`，`isApp = Capacitor.isNativePlatform()` → App 内恒 true 必藏；≥900px 桌面恒 false 必显）。
+**不会困死**：顶部四联频道条在 rank/mine 页照旧渲染（StoryShell），点「故事」联即 `router.push("/story")` 回发现页；且 `useStoryBack` 仍在接管物理返回键（`utils/storyBack.js` 的 storyBack 按钮退场不等于返回通路退场）。
+**副作用（已告知用户）**：手机浏览器窄屏（<900px）走的是同一套 App 布局判定，因此也会一起隐藏；这是双形态检测的既有口径（与 TabBar/SideRails 同源），不是额外改动。
+**测试**：`tools/story-test.mjs` 新增 3 条断言（story-test 160/0）：①两页 `<nav v-if="!isMobileNav" class="story-acts">` 且确实 import 了 uiStore 开关（漏 import 会让 v-if 恒 undefined → 按钮照样显示）②反面守点：桌面端按钮未被连带删掉 + 频道条「故事」联回 /story 的代码仍在 + mine 页 `useStoryBack(router)` 仍在。
+  > 写法坑：注释里也写着 `v-if="!isMobileNav"` 字样，断言必须走 `codeOnly()` 去注释，否则永远绿等于没测。
+**验证**：模拟回退（去掉 v-if）后断言立刻 false（证明非空转）；`vite build` EXIT=0；**40 套离线测试全绿**（story 160、app-shell 64、back-stack 9、undef 0）；`wrangler deploy` Version `1a849bae-5cf6-44f6-9387-d29d13ac76bd`；`live-check` **14/14**；`live-bundle-check` 本地=线上（index SHA16 `2d007669e92fa161`）；线上 chunk 反编译核对：`StoryRankView-*.js` / `StoryMineView-*.js` 均为 `unref(X) ? 空注释 : (nav)`，且导出表里 `He as X` = `He=X(()=>Is||li.value<900)`（即 isMobileNav）——**不依赖 HTML 静态匹配，直接从字节码确认开关挂上了**；APK 5.14MB SHA16 `130D32A8FD4A7978` → `adb install -r` Success，冷启动 PID 21188、CRASH_HITS=0。
