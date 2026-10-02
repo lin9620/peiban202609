@@ -101,11 +101,13 @@ watch(() => route.params.id, load);
       <p v-if="!String(row.body || '').trim()" class="st-hint">{{ t("story.emptyBody") }}</p>
 
       <footer class="st-read-foot">
-        <button class="st-btn" :class="{ 'st-btn--on': row.liked }" type="button" :disabled="liking || !signedIn" @click="like">
+        <!-- 这两个是「开关型」按钮：默认 ghost（透明底），操作过才实心。
+             原来直接用 st-btn → 未点赞也是实心橙，与「已点赞」只差一个色阶，视觉上分不出来。 -->
+        <button class="st-btn st-btn--ghost" :class="{ 'st-btn--on': row.liked }" type="button" :disabled="liking || !signedIn" @click="like">
           ♥ {{ row.liked ? t("story.liked") : t("story.like") }} {{ row.like_count }}
         </button>
         <button
-          class="st-btn st-btn--mark" :class="{ 'st-btn--on': row.marked }" type="button"
+          class="st-btn st-btn--ghost st-btn--mark" :class="{ 'st-btn--on': row.marked }" type="button"
           :disabled="marking || !signedIn" @click="mark"
         >★ {{ row.marked ? t("story.marked") : t("story.mark") }}</button>
         <span class="st-hint">{{ t("story.stats", { likes: row.like_count, views: row.view_count }) }}</span>

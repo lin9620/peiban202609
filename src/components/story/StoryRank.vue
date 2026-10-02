@@ -35,7 +35,10 @@ async function load() {
   try {
     pick(await storyRank({
       mode: mode.value,
-      tag: mode.value === "monthly" && activeTag.value ? activeTag.value : null,
+      /* 四榜主列表一律不按标签过滤；标签过滤只发生在 pickTag 的下钻请求里。
+         原来这里写的是 `mode === "monthly" && activeTag.value`，但切到 monthly 时
+         watch 已把 activeTag 清空 → 恒为 false，是一段永不生效的死条件。 */
+      tag: null,
       period: periodKey(),
       limit: PAGE,
       offset: mode.value === "tag" ? 0 : offset.value,
@@ -59,7 +62,10 @@ async function pickTag(tag) {
   tagRows.value = [];
   if (!activeTag.value) return;
   try {
-    const data = await storyRank({ mode: "monthly", tag: activeTag.value, period: periodKey(), limit: PAGE });
+    /* 档位口径：标签下钻要的是「这个标签下有哪些故事」，不是「这个标签下本月被赞过的故事」。
+       monthly 档在 SQL 里是 inner join story_likes + 当月过滤 → 一篇没被赞过的故事会整条消失，
+       点进去必然空列表。latest 档同样带 s.tags && array[p_tag] 过滤，且不受点赞数影响。 */
+    const data = await storyRank({ mode: "latest", tag: activeTag.value, limit: PAGE });
     tagRows.value = Array.isArray(data) ? data : [];
   } catch (e) { err.value = t(storyErrKey(e)); }
 }
@@ -84,8 +90,9 @@ load();
     <div v-if="mode === 'tag'" class="st-cloud">
       <button
         v-for="r in tagCloud" :key="r.title" class="st-cloud-tag"
-        :class="{ on: activeTag === r.title }" type="button" @click="pickTag(r.title)">
-        #{{ r.title }} <em>{{ r.like_count }}</em>
+        :class="{ on: activeTag === r.title }" type="button" :aria-pressed="activeTag === r.title"
+        @click="pickTag(r.title)">
+        #{{ r.title }} <em>{{ r.view_count }}</em>
       </button>
       <p v-if="!tagCloud.length && !loading" class="st-hint">{{ t("story.rankEmpty") }}</p>
     </div>

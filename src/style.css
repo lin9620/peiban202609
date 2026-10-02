@@ -2348,6 +2348,8 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 .st-btn--ghost { background: transparent; color: var(--accent-deep); }
 .st-btn--ghost:hover { background: var(--accent-soft); }
 .st-btn--on { background: var(--accent-deep); }
+/* 选中态的 hover 必须补：否则会命中下面 .st-btn--ghost:hover 的浅色底，点着反而「褪色」 */
+.st-btn--on:hover { background: var(--accent-deep); }
 .st-link { background: none; border: 0; cursor: pointer; color: var(--accent-deep); font-size: 13px; padding: 2px 0; }
 /* ── 发现流 / 我的 ── */
 .st-feed-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }

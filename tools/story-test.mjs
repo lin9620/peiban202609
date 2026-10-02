@@ -183,11 +183,23 @@ ok("编辑器用常量而非硬编码 3 万", editor.includes("BODY_MAX") && !ed
 ok("编辑器有停机自动存草稿", has(editor, "setTimeout(autosave, 3000)", "saveLocalDraft"));
 ok("编辑器有写/预览双页签", has(editor, "story.modeWrite", "story.modePreview", "renderLiteMd"));
 ok("榜页签四种模式齐", has(rankVue, "RANK_TABS", "story.rankShuffle", "periodKey"));
-ok("榜标签模式 → 该标签月赞排行", rankVue.includes('mode: "monthly", tag: activeTag.value'));
+// 标签下钻必须走 latest 档：monthly 档在 SQL 里 inner join 当月 story_likes，
+// 没被赞过的故事会整条消失 → 点标签必然空列表（这正是线上反馈的现象）。
+ok("榜标签下钻走 latest 档（非 monthly，避免无赞即空）",
+  rankVue.includes('mode: "latest", tag: activeTag.value')
+  && !rankVue.includes('mode: "monthly", tag: activeTag.value'));
+ok("标签云显示篇数而非赞数（view_count 装的是 count(*)）",
+  rankVue.includes("<em>{{ r.view_count }}</em>") && !rankVue.includes("<em>{{ r.like_count }}</em>"));
 ok("我的页签：草稿/已发布 + 数据面板", has(mineVue, 'storyMine("draft")', 'storyMine("published")', "storyMyStats")
   && mineVue.includes("total_likes") && mineVue.includes("bookmark_count"));
 ok("发现页签：搜索 + 载入更多", has(feedVue, "story.searchPh", "loadMore"));
 ok("主页三页签（投稿|发现|我的）", has(viewVue, "story.tabWrite", "story.tabDiscover", "story.tabMine", "StoryRank"));
+// 点赞/收藏是「开关型」按钮：必须默认 ghost（透明底），只靠 --on 上色。
+// 踩过的坑：直接用 st-btn（实心橙）→ 未点赞也是亮色，与已点赞只差一个色阶，等于没有状态区分。
+ok("详情页点赞/收藏为 ghost 开关按钮（未操作不亮）",
+  detailVue.includes('class="st-btn st-btn--ghost" :class="{ \'st-btn--on\': row.liked }"')
+  && detailVue.includes("st-btn--ghost st-btn--mark")
+  && css.includes(".st-btn--on:hover"));
 ok("阅读页：点赞 + 相关推荐 + 浏览计数", has(detailVue, "storyToggleLike", "storyAddView", "story.related"));
 ok("全屏写作可续写草稿", has(writeVue, "route.query.id", "storyGet", "full"));
 
