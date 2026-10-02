@@ -1460,6 +1460,10 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      验证：探针实测（切故事联 → 地址栏 ?tab=story ✓；模拟返回 → 故事联显示 ✓）+ 37 套离线 **0 fail** + build 0 + page-smoke 12/12 + live 部署 + APK 装机冷启动。
      **教训**：轮 154 修的是「返回去错页」的竞态；「回对了页但页面状态丢了」是另一层——**SPA 页面态要么进 URL 要么进 sessionStorage，只靠 ref 必在返回重建时丢失**。
 
+  - **轮 155 · 心情日历表情与打卡统一（2026-10-02，用户实测「日历里的心情跟改版后的表情不一样」，已提交 `7069945` / 已部署 Version `8bb00201` / live-check 14/14 / **APK `12BB9D43383F0C3E` 装机 + 冷启动确认** ✅）**：
+     **真因**：轮 150 打卡按钮换 MoodFace 手绘脸后，我的页**心情日历还在用旧系统 emoji 数组**（MOOD[🤩🙂😌🌧️😔] 按 legacyIndex 取）——两套表情并存。**修**：日历格子改用 MoodFace 组件渲染；`MOOD_KIND = [happy, steady, calm, low, tired]` 按 legacyIndex 映射（与 home.mood.faceOrder 同源：0=happy 1=steady 2=calm 3=low 4=tired）；旧 emoji 字段保留（loggedDays/brightDays 判断用）；格子内 MoodFace 20px 适配。探针 seed+reload 验证方式挂死（reload 杀评估上下文）已放弃——signed-in 渲染待用户真机验收（结构改动确定性高）。
+     验证：undef/tdz **0** + 37 套离线 **0 fail** + build 0 + page-smoke 12/12 + live-check 14/14 + APK 装机冷启动。
+
   - **轮 136 · 故事栏按钮对去重（2026-10-01，已提交 `26ffa8f` / 已部署 Version `8b490429` / live-check 复跑 14/14 ✅；**APK `4BFF248D660F30E9` 装机 Success + 冷启动确认**——包内含轮 128-136 全部（收藏夹/猜拳/换肤字体/故事栏去重），历史包 E88AB4044FFB6924 作废）**：
      **双份机制**：轮 148 给故事栏页头加了一对（StoryView story-acts），轮 149 又给联内补了一对（StoryFeed st-feed-nav）——两轮叠加 = 同屏两对。**修**：页头对限定桌面（!isMobileNav）、联内对限定手机（isMobileNav）——手机 /story 与桌面 /story 各只一对（探针双端实测）。story-test 160/160（平行会话套件与本次改动兼容）。
      注意：本轮只动 StoryView/StoryFeed 两文件——工作区另有平行会话进行中的未提交改动（轮 150：storyBack/Story 两视图/TodayPane/style.css/测试），未触碰未提交。
