@@ -4,6 +4,7 @@
 import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
 import { t } from "../../i18n.js";
+import { isMobileNav } from "../../stores/uiStore.js";
 import { storyErrKey } from "../../utils/storyRules.js";
 import { storyRank, storyFeatured } from "../../utils/story.js";
 
@@ -55,7 +56,7 @@ defineExpose({ load, loadFeatured });
   <section class="st-feed">
     <!-- 轮 149（用户截图定稿）：联内顶部两枚大钮 —— 排行榜 / 我的。
          轮 148 曾把联尾按钮整个撤掉（认为与底部 ＋ 和故事页重复），用户截图明确要这两枚，按截图恢复。 -->
-    <nav class="st-feed-nav">
+    <nav v-if="isMobileNav" class="st-feed-nav">
       <button type="button" class="st-feed-navbtn" @click="router.push('/story/rank')">
         {{ t("story.tabRank") }}
       </button>

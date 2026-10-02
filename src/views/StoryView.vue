@@ -22,8 +22,8 @@ const router = useRouter();
           <!-- 手机端不显示「故事栏」大标题：顶部四联频道条里「故事」已经高亮，
                再来一个 26px 标题是重复信息（用户要求去掉）。桌面端保留。 -->
           <h1 v-if="!isMobileNav" class="story-title">{{ t("story.title") }}</h1>
-          <nav class="story-acts">
-            <!-- 轮 148：投稿入口搬到底部 ＋ 第三瓣，纯阅读页里不再放发布按钮 -->
+          <!-- 轮 151：页头按钮对仅桌面——手机端 StoryFeed 联内自带这对（双份是用户截图抓到的重复） -->
+          <nav v-if="!isMobileNav" class="story-acts">
             <button class="st-btn st-btn--ghost st-btn--mark" type="button"
               @click="router.push('/story/rank')">{{ t("story.tabRank") }}</button>
             <button class="st-btn st-btn--ghost st-btn--mark" type="button"
