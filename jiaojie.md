@@ -1455,6 +1455,11 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      `.bottle-page` 640→**900**、`.set-page` 640→**860**，均 margin auto 居中——流式壳下不再靠左留大空洞。探针实测：/bottle 容器 900px 居中于 shell（150-1590）✓。
      验证：build 0 + 截图目检（bottle/settings 双页平衡）。
 
+  - **轮 152 · 修复故事联返回丢失联位置（2026-10-02，用户实测「故事-我的点返回跑到今日/漂流瓶」，已提交 `1cdc500` / 已部署 Version `ab0e4887` / **APK `47E38A370936F124` 装机 + 冷启动确认** ✅）**：
+     **真因**：首页联位置只存组件 ref、不进地址栏——从故事联进 /story/mine 后，任何返回路径（物理返回键的 ready 竞态回退到 history.back、或 App.vue 兜底）回首页时都按**默认联**重建 → 故事联位置丢失。轮 154 的 ready 窗口修复只收窄了竞态，兜底路径仍会丢。**修**：手机端 `setPane` 把 `?tab=` **replaceState 进地址栏**（不堆历史、切换/横滑即时同步）——回首页时按 `?tab=story` 重建 = 落回故事联继续（storyMounted 懒挂载重拉，滚动位置不保留——v1 可接受）。
+     验证：探针实测（切故事联 → 地址栏 ?tab=story ✓；模拟返回 → 故事联显示 ✓）+ 37 套离线 **0 fail** + build 0 + page-smoke 12/12 + live 部署 + APK 装机冷启动。
+     **教训**：轮 154 修的是「返回去错页」的竞态；「回对了页但页面状态丢了」是另一层——**SPA 页面态要么进 URL 要么进 sessionStorage，只靠 ref 必在返回重建时丢失**。
+
   - **轮 136 · 故事栏按钮对去重（2026-10-01，已提交 `26ffa8f` / 已部署 Version `8b490429` / live-check 复跑 14/14 ✅；**APK `4BFF248D660F30E9` 装机 Success + 冷启动确认**——包内含轮 128-136 全部（收藏夹/猜拳/换肤字体/故事栏去重），历史包 E88AB4044FFB6924 作废）**：
      **双份机制**：轮 148 给故事栏页头加了一对（StoryView story-acts），轮 149 又给联内补了一对（StoryFeed st-feed-nav）——两轮叠加 = 同屏两对。**修**：页头对限定桌面（!isMobileNav）、联内对限定手机（isMobileNav）——手机 /story 与桌面 /story 各只一对（探针双端实测）。story-test 160/160（平行会话套件与本次改动兼容）。
      注意：本轮只动 StoryView/StoryFeed 两文件——工作区另有平行会话进行中的未提交改动（轮 150：storyBack/Story 两视图/TodayPane/style.css/测试），未触碰未提交。
