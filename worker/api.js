@@ -1438,9 +1438,21 @@ export default {
 
     const res = await handleApi(request, env, ctx);
     if (res && res.ok && res.status === 200) {
-      const copy = res.clone();
+      /* 落盘前必须把 Set-Cookie 摘掉。
+       * Cloudflare 的机器人防护会往每个响应注入 `Set-Cookie: __cf_bm=...`，
+       * 而 Workers 的 Cache API 明确**拒绝**缓存带 Set-Cookie 的响应 ——
+       * put() 会在 waitUntil 里静默失败，缓存永远写不进去（实测 x-cache 恒为 MISS）。
+       * 这个 cookie 只服务 CF 自己，且带着 30 分钟过期，回放它没有任何意义。 */
+      const ph = new Headers(res.headers);
+      ph.delete("Set-Cookie");
+      /* 关键：必须 clone()。Response.body 是一次性 ReadableStream，
+       * 直接把 res.body 塞进 copy 会把流「用掉」，随后第二次读（返回给客户端那次）就抛错 → 500。
+       * 先clone() 拿一份独立副本，再用净化头包装它。 */
+      const copy = new Response(res.clone().body, { status: res.status, statusText: res.statusText, headers: ph });
       /* ctx.waitUntil 缺失时直接丢弃这次落盘（不影响本次响应，只是这请求没进缓存） */
-      if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(caches.default.put(key, copy));
+      if (ctx && typeof ctx.waitUntil === "function") {
+        ctx.waitUntil(caches.default.put(key, copy).catch(() => {}));
+      }
       const h = new Headers(res.headers);
       h.set("x-cache", "MISS");
       return new Response(res.body, { status: res.status, headers: h });
