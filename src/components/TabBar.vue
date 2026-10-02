@@ -48,6 +48,12 @@ function composePost() {
   /* 手机端 3：发布统一走独立发布页（大输入框，一次写完） */
   router.push("/compose").catch(() => {});
 }
+/* 轮 148：故事投稿从 /story 页里搬出来，改挂底部 ＋ 的第三瓣。
+ * 原来 /story 顶部操作条直接给「写故事」，等于纯阅读页里塞了个发布入口。 */
+function composeStory() {
+  close();
+  router.push("/story/write").catch(() => {});
+}
 </script>
 
 <template>
@@ -91,6 +97,13 @@ function composePost() {
         <span class="tabbar-opt-txt">
           <b>{{ t("tab.composePost") }}</b>
           <small>{{ t("tab.composePostSub") }}</small>
+        </span>
+      </button>
+    <button class="tabbar-opt" @click="composeStory">
+        <span class="tabbar-opt-ico">📖</span>
+        <span class="tabbar-opt-txt">
+          <b>{{ t("tab.composeStory") }}</b>
+          <small>{{ t("tab.composeStorySub") }}</small>
         </span>
       </button>
     </div>

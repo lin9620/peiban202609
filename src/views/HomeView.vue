@@ -141,11 +141,9 @@ onBeforeUnmount(() => { if (ro) ro.disconnect(); });
         <StoryPane v-if="storyMounted" />
         <div v-else class="home-pane-lazy"><span>📖</span></div>
         <div class="home-pane-foot">
-          <button class="st-btn st-btn--ghost" type="button" @click="router.push('/story/write')">
-            {{ t("story.writeStory") }}
-          </button>
-          <button class="st-btn st-btn--ghost" type="button" @click="router.push('/story')">
-            {{ t("story.openStory") }}
+          <!-- 轮 148：投稿统一走底部 ＋ 第三瓣，这里不再重复给「写故事」 -->
+          <button class="st-btn st-btn--ghost" type="button" @click="router.push('/story/rank')">
+            {{ t("story.tabRank") }}
           </button>
         </div>
       </div>

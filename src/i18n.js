@@ -19,6 +19,7 @@ export const messages = {
       home: "Home", community: "Wall", messages: "Messages", profile: "Me",
       composeBottle: "Send a Bottle", composeBottleSub: "A letter into the sea",
       composePost: "Post to Wall", composePostSub: "Share a feeling with gentle people",
+    composeStory: "Write a Story", composeStorySub: "Up to 30,000 words",
       /* App 轨道 T7：消息 Tab 内分栏（会话 | 漂流瓶 | 通知，小红书同款），zh/en 成对 */
       segDm: "Chats", segBottle: "Bottle", segNotif: "Alerts",
       /* 轮 142 · 桌面私信页两段（会话 | 漂流瓶），zh/en 成对 */
@@ -315,6 +316,8 @@ export const messages = {
       needBody: "Write something first",
     needMore: "Keep writing — {n} more characters to publish",
       needTag: "Add at least 1 tag (tap the box below, type, then press Enter)",
+      whyTitle: "Before you can publish:",
+      readyToPublish: "All set — tap Publish to post it.",
       tooLong: "Over the character limit",
       publishing2: "Publishing…",
       counter: "{n} / {max} characters · about {min} min read",
@@ -340,6 +343,8 @@ export const messages = {
       related: "More like this",
       continueWrite: "Keep writing", openStory: "Read",
       discoverSub: "Gentle stories from everyone here.",
+      mineSub: "Your drafts, published stories and saved shelf.",
+      rankSub: "Recommended, newest, most liked, popular tags.",
       errTitle: "Please give your story a title (up to 100 characters).",
       errLong: "Stories are limited to 30,000 characters.",
     errShort: "Stories need at least 100 characters before publishing.",
@@ -847,6 +852,7 @@ export const messages = {
       home: "首页", community: "暖心墙", messages: "消息", profile: "我的",
       composeBottle: "投漂流瓶", composeBottleSub: "把心事写进海里",
       composePost: "发暖心墙帖", composePostSub: "和温柔的人分享心情",
+    composeStory: "写故事", composeStorySub: "一个人慢慢写，最多 3 万字",
       /* App 轨道 T7：消息 Tab 内分栏（漂流瓶 | 会话中心 | 通知，小红书同款），zh/en 成对 */
       segDm: "会话中心", segBottle: "漂流瓶", segNotif: "通知",
       /* 轮 142 · 桌面私信页两段（会话 | 漂流瓶），zh/en 成对 */
@@ -1143,6 +1149,8 @@ export const messages = {
       needBody: "正文还是空的",
     needMore: "继续写，还差 {n} 字才能发布",
       needTag: "请至少加 1 个标签（点下方方框输入，再按回车）",
+      whyTitle: "发布前还需要：",
+      readyToPublish: "都齐了，点「发布」就能发出去。",
       tooLong: "超出字数上限",
       publishing2: "发布中…",
       counter: "{n} / {max} 字 · 约 {min} 分钟读完",
@@ -1168,6 +1176,8 @@ export const messages = {
       related: "相似的故事",
       continueWrite: "继续写", openStory: "阅读",
       discoverSub: "这里的故事，都出自和你一样的人。",
+      mineSub: "你的草稿、已发布的故事和收藏的书架。",
+      rankSub: "推荐、最新、本月最赞、热门标签。",
       errTitle: "给故事起个标题吧（不超过 100 字）。",
       errLong: "单篇最多 3 万字。",
     errShort: "正文至少要 100 字才能发布。",

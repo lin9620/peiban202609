@@ -44,17 +44,27 @@ const previewHtml = computed(() => renderLiteMd(body.value));
 const canPublish = computed(() => signedIn.value && !!title.value.trim()
   && chars.value >= BODY_MIN && !over.value && tags.value.length > 0 && !publishing.value);
 
-/* 禁用原因：灰按钮必须能说清「为什么灰」，否则用户只会看到「点了没反应」 */
+/* 禁用原因清单：灰按钮必须能说清「还差什么」。
+   原来只给第一条（whyDisabled 单串），用户补完第一条后又灰一次、提示却换了内容，
+   像是坏了 —— 一次性列全更省事。全满足时给一句确认，让用户敢按。 */
+const blockers = computed(() => {
+  const list = [];
+  if (!signedIn.value) list.push(t("story.needLogin"));
+  if (!title.value.trim()) list.push(t("story.needTitle"));
+  if (chars.value <= 0) list.push(t("story.needBody"));
+  else if (shortOf.value > 0) list.push(t("story.needMore", { n: shortOf.value }));
+  if (over.value) list.push(t("story.tooLong"));
+  if (!tags.value.length) list.push(t("story.needTag"));
+  return list;
+});
 const whyDisabled = computed(() => {
   if (publishing.value) return t("story.publishing2");
-  if (!signedIn.value) return t("story.needLogin");
-  if (!title.value.trim()) return t("story.needTitle");
-  if (over.value) return t("story.tooLong");
-  if (chars.value <= 0) return t("story.needBody");
-  if (shortOf.value > 0) return t("story.needMore", { n: shortOf.value });
-  if (!tags.value.length) return t("story.needTag");
-  return "";
+  return blockers.value[0] || "";
 });
+/* 只提示「本次编辑会话里刚被卡住的原因」，别一进页面就甩一屏未登录+缺标题 */
+const touched = ref(false);
+watch([title, body, tags], () => { touched.value = true; }, { deep: true });
+const showWhy = computed(() => !publishing.value && (touched.value || err.value));
 
 const snapshot = () => ({
   id: draftId.value,
@@ -213,7 +223,14 @@ onBeforeUnmount(() => {
         :aria-pressed="hasTag(pt)" @click="pickPreset(pt)">#{{ pt }}</button>
     </div>
     <p class="st-hint">{{ t("story.tagHint") }}</p>
-    <p v-if="whyDisabled && !publishing" class="st-why">{{ whyDisabled }}</p>
+    <!-- 发布条件清单：还差什么逐条列出；全满足时给一句确认（让用户敢按，而不是猜） -->
+    <div v-if="showWhy && blockers.length" class="st-why" role="status" aria-live="polite">
+      <p class="st-why-t">{{ t("story.whyTitle") }}</p>
+      <ul class="st-why-list">
+        <li v-for="(b, i) in blockers" :key="i" class="st-why-li">{{ b }}</li>
+      </ul>
+    </div>
+    <p v-else-if="showWhy && canPublish" class="st-why st-why--ok">{{ t("story.readyToPublish") }}</p>
 
     <footer class="st-ed-foot">
       <span class="st-count" :class="{ 'st-count--over': over }">

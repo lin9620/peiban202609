@@ -175,15 +175,27 @@ function seoRoutes() {
           desc: "Share a warm thought (and a picture) on the kindness wall.",
         },
         {
-          /* 轮 145 · 故事栏：投稿 / 发现 / 我的 + 四榜（推荐·最新·月赞·标签），单篇 ≤3 万字 */
+          /* 轮 148：/story 已改成纯阅读的发现页（不再是页签壳） */
           dir: "story",
           title: "Warm Paws · Story Hall",
-          desc: "Write a story of your own, read gentle ones from others, and see what people loved most this month.",
+          desc: "Read gentle stories from others — a daily pick and the newest ones, all in one place.",
         },
         {
           dir: "story/write",
           title: "Warm Paws · Write a Story",
           desc: "A quiet full-screen desk for your story — drafts save themselves as you go.",
+        },
+        {
+          /* 轮 148 新增：我的（草稿箱/书架/数据面板） */
+          dir: "story/mine",
+          title: "Warm Paws · My Stories",
+          desc: "Your drafts, published stories, saved shelf and writing numbers in one quiet place.",
+        },
+        {
+          /* 轮 148 新增：排行榜（推荐/最新/月赞/标签） */
+          dir: "story/rank",
+          title: "Warm Paws · Story Rankings",
+          desc: "Recommended, newest, most liked this month, and popular tags — see what readers loved.",
         },
         {
           dir: "notifications",
@@ -210,8 +222,11 @@ function seoRoutes() {
         { dir: "pet", title: "暖爪 · 你的小宠物", desc: `${ZH.pet.subtitle}${ZH.pet.tip}`, html: hero(ZH.pet.subtitle, [ZH.pet.tip, ZH.home.companions.hall]) },
         { dir: "community", title: "暖爪 · 暖心墙", desc: `${ZH.community.subtitle}${ZH.community.cloudOn}`, html: hero(ZH.community.title, [ZH.community.subtitle, ZH.community.cloudOn, ZH.community.empty]) },
         { dir: "bottle", title: "暖爪 · 漂流瓶", desc: ZH.bottle.sub, html: hero(ZH.bottle.title, [ZH.bottle.sub]) },
-        /* 轮 145：故事栏是内容页（中文长尾价值），跟 pet/community/bottle/profile/privacy 同批进 zh */
+        /* 轮 145：故事栏是内容页（中文长尾价值），跟 pet/community/bottle/profile/privacy 同批进 zh；
+         轮 148：/story 变纯阅读发现页，另加 mine / rank 两个独立页 */
         { dir: "story", title: "暖爪 · " + ZH.story.title, desc: ZH.story.sub, html: hero(ZH.story.title, [ZH.story.sub]) },
+        { dir: "story/mine", title: "暖爪 · 我的故事", desc: ZH.story.tabMine + " · " + ZH.story.mineSub, html: hero(ZH.story.tabMine, [ZH.story.mineSub]) },
+        { dir: "story/rank", title: "暖爪 · 故事排行榜", desc: ZH.story.tabRank + " · " + ZH.story.rankSub, html: hero(ZH.story.tabRank, [ZH.story.rankSub]) },
         { dir: "profile", title: "暖爪 · 我的温柔角落", desc: ZH.profile.cloudReady, html: hero(ZH.home.heroTitle, [ZH.profile.cloudReady, ZH.home.companions.hall]) },
         { dir: "privacy", title: "暖爪 · 隐私政策", desc: ZH.privacy.intro, html: privacyStaticHtml("zh") },
       ];

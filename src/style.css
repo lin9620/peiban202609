@@ -2284,24 +2284,22 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 .st-err { color: var(--low); font-size: 13px; margin-top: 8px; }
 .st-spring { flex: 1; }
 
-.story-wrap { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; }
+/* ── 轮 148：页签壳已废除（/story 现在是纯阅读发现页）。
+   原来的双栏 wrap / 排行榜右栏 side / 页签 tabs 三个类一并退役：
+   排行榜不再是右栏，改为独立页 /story/rank（<1100px 时右栏会被挤到主栏下方，滑到底才看见）。 ── */
 .story-main { background: var(--card); border: 1px solid var(--hairline); border-radius: 20px; padding: 14px; }
-.story-side { background: var(--card); border: 1px solid var(--hairline); border-radius: 20px; padding: 14px; }
-@media (min-width: 1100px) {
-  .story-page { max-width: none; }
-  .story-wrap {
-    grid-template-columns: minmax(0, 1fr) 340px; gap: 0; align-items: stretch;
-    background: var(--card); border: 1px solid var(--hairline); border-radius: 20px; overflow: hidden;
-  }
-  .story-main, .story-side { background: transparent; border: 0; border-radius: 0; }
-  .story-main { border-right: 1px solid var(--hairline); }
-}
+.story-main--solo { margin-top: 2px; }
+@media (min-width: 1100px) { .story-page--read, .story-page { max-width: 860px; margin: 0 auto; } }
 
-/* ── 左栏页签（投稿 | 发现 | 我的） ── */
-.st-tabs { display: flex; gap: 6px; padding-bottom: 12px; border-bottom: 1px solid var(--hairline); margin-bottom: 12px; }
-.st-tab { background: none; border: 0; cursor: pointer; padding: 6px 12px; border-radius: 999px; font-size: 14px; color: var(--ink-soft); transition: background-color .18s ease, color .18s ease; }
-.st-tab:hover { background: rgba(255, 255, 255, .55); }
-.st-tab.on { background: var(--accent); color: #fff; }
+/* 标题行 + 右侧操作条（手机纵向堆叠，不挤在一行） */
+.story-head-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.story-acts { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+.story-acts .st-btn { padding: 7px 14px; font-size: 14px; }
+@media (max-width: 640px) {
+  .story-head-row { gap: 8px; }
+  .story-acts { margin-left: 0; width: 100%; }
+  .story-acts .st-btn { flex: 1 1 auto; }
+}
 /* ── 编辑器 ── */
 .st-ed-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .st-ed-title { font-size: 16px; font-weight: 600; }
@@ -2329,7 +2327,14 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
   opacity: .2; transition: width .18s ease; }
 .st-minbar-txt { position: relative; display: block; line-height: 20px; text-align: center;
   font-size: 12px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
-.st-why { font-size: 12px; color: var(--low); margin-top: 6px; }
+/* 发布条件清单（原为单行红字，轮148 改为卡片式清单） */
+.st-why { margin-top: 10px; padding: 9px 11px; border-radius: 12px;
+  background: var(--accent-soft); border: 1px solid var(--hairline); font-size: 13px; color: var(--low); }
+.st-why-t { font-weight: 600; margin-bottom: 4px; }
+.st-why-list { margin: 0; padding-left: 18px; display: grid; gap: 3px; }
+.st-why-li { line-height: 1.5; }
+.st-why-li::marker { color: var(--low); }
+.st-why--ok { color: var(--accent-deep); }
 .st-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .st-preset { font-size: 12px; line-height: 1; cursor: pointer; color: var(--ink-soft);
   background: transparent; border: 1px solid var(--hairline); border-radius: 999px; padding: 5px 10px;
@@ -2354,9 +2359,10 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 .st-btn:disabled { opacity: .45; cursor: not-allowed; }
 .st-btn--ghost { background: transparent; color: var(--accent-deep); }
 .st-btn--ghost:hover { background: var(--accent-soft); }
-.st-btn--on { background: var(--accent-deep); }
-/* 选中态的 hover 必须补：否则会命中下面 .st-btn--ghost:hover 的浅色底，点着反而「褪色」 */
-.st-btn--on:hover { background: var(--accent-deep); }
+/* 选中态：ghost 是「深棕字 + 透明底」，--on 换成实心深棕底 → 文字必须同时翻白，
+   否则深底深字糊成一块色斑（轮 148 线上实测）。--on:hover 也要带上白字。 */
+.st-btn--on { background: var(--accent-deep); border-color: var(--accent-deep); color: #fff; }
+.st-btn--on:hover { background: var(--accent-deep); color: #fff; }
 .st-link { background: none; border: 0; cursor: pointer; color: var(--accent-deep); font-size: 13px; padding: 2px 0; }
 /* ── 发现流 / 我的 ── */
 .st-feed-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }

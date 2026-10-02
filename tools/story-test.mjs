@@ -45,6 +45,12 @@ const feedVue = read("src/components/story/StoryFeed.vue");
 const viewVue = read("src/views/StoryView.vue");
 const detailVue = read("src/views/StoryDetailView.vue");
 const writeVue = read("src/views/StoryWriteView.vue");
+const mineView = read("src/views/StoryMineView.vue");   /* 轮 148：从页签壳拆出的独立页 */
+const rankView = read("src/views/StoryRankView.vue");
+const routerJs = read("src/router.js");
+const viteCfg = read("vite.config.js");
+const tabBar = read("src/components/TabBar.vue");    /* 轮 148：投稿入口挂在底部 ＋ 第三瓣 */
+const homeVue = read("src/views/HomeView.vue");
 const sideNav = read("src/components/SideNav.vue");
 const i18nSrc = read("src/i18n.js");   /* 文案成对/插入位置检查用原始源码 */
 
@@ -177,7 +183,8 @@ ok("全屏写作排在 :id 之前（否则 write 被当 id）",
 ok("详情 id 限数字", router.includes('story/:id(\\\\d+)'));
 ok("seoRoutes 有 story 页（轮134 红线）", vite.includes('dir: "story"') && vite.includes('dir: "story/write"'));
 ok("侧栏有故事栏入口", sideNav.includes('{ to: "/story", ico: "📖", key: "nav.story" }'));
-ok("故事样式单一来源在 style.css", css.includes(".story-wrap") && css.includes(".st-rank-row"));
+// 轮 148：.story-wrap 双栏壳已退役，改锚 .story-main / .st-rank-row（.story-side 也一并退役）
+ok("故事样式单一来源在 style.css", css.includes(".story-main") && css.includes(".st-rank-row"));
 ok("组件内不重复写样式（防双源压制）", !editor.includes("<style") && !rankVue.includes("<style")
   && !mineVue.includes("<style") && !feedVue.includes("<style") && !viewVue.includes("<style")
   && !detailVue.includes("<style") && !writeVue.includes("<style"));
@@ -195,22 +202,61 @@ ok("标签云显示篇数而非赞数（view_count 装的是 count(*)）",
 ok("我的页签：草稿/已发布 + 数据面板", has(mineVue, 'storyMine("draft")', 'storyMine("published")', "storyMyStats")
   && mineVue.includes("total_likes") && mineVue.includes("bookmark_count"));
 ok("发现页签：搜索 + 载入更多", has(feedVue, "story.searchPh", "loadMore"));
-ok("主页页签：投稿|发现|我的（+ 手机端排行榜）", has(viewVue, "story.tabWrite", "story.tabDiscover", "story.tabMine", "story.tabRank", "StoryRank"));
-// 轮 148：默认页签必须是「发现」。原来默认 write，用户从首页/侧栏进 /story 看到的是空白投稿框，
-// 以为页面坏了 —— 与「按钮灰着没提示」同一类隐藏约束坑。
-ok("默认落在发现页（不再是空白投稿框）", viewVue.includes('const tab = ref("discover")')
-  && !viewVue.includes('const tab = ref("write")'));
-// 手机端排行榜曾是右栏，在 <1100px 时被挤到主栏下方（要滑到底才看见），故改为第4 页签紧邻「我的」。
-ok("手机端排行榜进页签（onlyMobile），桌面右栏不重复渲染",
-  viewVue.includes("onlyMobile: true") && viewVue.includes('v-if="!showRankTab" class="story-side"')
-  && viewVue.includes("tab === 'rank'"));
-ok("排行榜页签文案中英成对", !!(messages.en.story.tabRank && messages.zh.story.tabRank));
+// 轮 148 追加：/story 已废除页签壳，改成纯阅读发现页；投稿/我的/排行榜 拆成独立路由。
+ok("发现页：纯阅读，无页签壳", viewVue.includes("StoryFeed")
+  && !viewVue.includes("st-tabs") && !viewVue.includes("onlyMobile") && !viewVue.includes("story-wrap"));
+// 轮 148：发布条件从「只报第一条」改为「清单全报」+ 达标确认。
+ok("发布条件列出全部未满足项（blockers 清单）",
+  editor.includes("const blockers = computed") && editor.includes("list.push")
+  && editor.includes("v-for=\"(b, i) in blockers\""));
+ok("达标时给出确认提示（readyToPublish）",
+  editor.includes("readyToPublish") && editor.includes("st-why--ok"));
+ok("未动过编辑器不甩提示（touched 门控）", editor.includes("const showWhy = computed"));
+ok("whyDisabled 取 blockers 首条（按钮 title 仍用第一条）",
+  editor.includes("return blockers.value[0] || \"\""));
+ok("清单文案中英成对", !!(messages.en.story.whyTitle && messages.zh.story.whyTitle
+  && messages.en.story.readyToPublish && messages.zh.story.readyToPublish));
+ok("清单卡片有样式", css.includes(".st-why-list") && css.includes(".st-why--ok"));
+// 投稿入口统一到底部 ＋ 第三瓣；纯阅读页里不再放发布按钮。
+ok("底部 ＋ 有第三瓣「写故事」→ /story/write",
+  tabBar.includes("composeStory") && tabBar.includes('router.push("/story/write")')
+  && tabBar.includes('t("tab.composeStory")'));
+ok("投稿词条中英成对", !!(messages.en.tab.composeStory && messages.zh.tab.composeStory
+  && messages.en.tab.composeStorySub && messages.zh.tab.composeStorySub));
+// 只查模板区（<template> 之后），注释里提到 /story/write 不算
+const tpl = (s) => s.slice(s.indexOf("<template>"));
+ok("故事页不再直接给「写故事」按钮（纯阅读）",
+  !tpl(viewVue).includes("/story/write") && !tpl(viewVue).includes("story.writeStory"));
+ok("我的页也不给「写故事」按钮",
+  !tpl(mineView).includes("/story/write") && !tpl(mineView).includes("story.writeStory"));
+ok("首页故事联尾不再重复给「写故事」", !homeVue.includes('t("story.writeStory")'));
+ok("发现页不再直接嵌编辑器（投稿已独立成页）", !viewVue.includes("StoryEditor"));
+ok("新增路由 /story/mine 与 /story/rank", routerJs.includes('"/story/mine"') && routerJs.includes('"/story/rank"'));
+ok("子路由排在 /story/:id(\\d+) 之前（否则 mine 被当 id 吞掉）",
+  routerJs.indexOf('"/story/mine"') < routerJs.indexOf('"/story/:id(\\\\d+)"')
+  && routerJs.indexOf('"/story/rank"') < routerJs.indexOf('"/story/:id(\\\\d+)"'));
+// 轮 134 红线：新增路由没进 seoRoutes 就会线上真 404
+ok("seoRoutes 覆盖 story/mine 与 story/rank（中英各一份）",
+  (viteCfg.match(/dir: "story\/mine"/g) || []).length === 2
+  && (viteCfg.match(/dir: "story\/rank"/g) || []).length === 2);
+ok("我的页 = 独立视图，回退到发现页", mineView.includes("StoryMine") && mineView.includes("'/story'")
+  && mineView.includes("/story/write?id="));
+ok("排行榜页 = 独立视图，回退到发现页", rankView.includes("StoryRank") && rankView.includes("'/story'"));
+// 已退役样式不得复活（双栏右栏 + 页签）
+ok("页签/右栏样式已退役", !css.includes(".st-tabs") && !css.includes(".story-side")
+  && !css.includes(".story-wrap"));
 // 点赞/收藏是「开关型」按钮：必须默认 ghost（透明底），只靠 --on 上色。
 // 踩过的坑：直接用 st-btn（实心橙）→ 未点赞也是亮色，与已点赞只差一个色阶，等于没有状态区分。
 ok("详情页点赞/收藏为 ghost 开关按钮（未操作不亮）",
   detailVue.includes('class="st-btn st-btn--ghost" :class="{ \'st-btn--on\': row.liked }"')
   && detailVue.includes("st-btn--ghost st-btn--mark")
-  && css.includes(".st-btn--on:hover"));
+  && css.includes(".st-btn--on:hover")
+  /* 轮 148 实测 bug：ghost 是「深棕字 + 透明底」，--on 只把底色换成深棕 → 深底深字糊成
+     一块色斑，按钮看着比正常宽、文字消失。--on 必须同时翻白字（hover 态同理）。 */
+  && css.includes(".st-btn--on { background: var(--accent-deep); border-color: var(--accent-deep); color: #fff; }")
+  && css.includes(".st-btn--on:hover { background: var(--accent-deep); color: #fff; }"));
+// 操作条要有间距，否则糊成色斑时两个按钮视觉上粘成一块
+ok("阅读页操作条有间距（点赞/收藏不粘连）", /\.st-read-foot\s*\{[^}]*gap:\s*1\dpx/.test(css));
 ok("阅读页：点赞 + 相关推荐 + 浏览计数", has(detailVue, "storyToggleLike", "storyAddView", "story.related"));
 ok("全屏写作可续写草稿", has(writeVue, "route.query.id", "storyGet", "full"));
 
