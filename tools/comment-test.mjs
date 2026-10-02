@@ -1,13 +1,16 @@
 /* 评论系统逻辑单元测试（纯 Node，无需浏览器） */
 import assert from "node:assert/strict";
 import {
-  seedComments, listComments, countComments, addComment, removeComment,
-  canDelete, normalizeText, postKey, MAX_LEN, MAX_PER_POST, SEEDS,
+  /* 轮 146：示例帖下线，示范评论机制（seedComments/SEEDS/SEED_FLAG/SEED_META）整体移除。
+     下面只保留真实评论能力；示范机制「不得回潮」由 T1 断言钉住。 */
+  listComments, countComments, addComment, removeComment,
+  canDelete, normalizeText, postKey, MAX_LEN, MAX_PER_POST,
   topComments, repliesOf, replyCount, displayCount,
   /* 轮 84：评论回应 / 排序 / 墙内前 3 条 / 拷贝文本 */
   CMT_REACT_KINDS, WALL_TOP_LIMIT, SORT_MODES, reactCount, hasReacted, toggleReact,
   sortComments, wallTopComments, hasMoreComments, postCopyText, commentCopyText,
 } from "../src/utils/comments.js";
+import * as commentsMod from "../src/utils/comments.js";
 
 const out = [];
 let pass = 0, fail = 0;
@@ -23,29 +26,36 @@ function t(name, fn) {
   }
 }
 
-const EN = seedComments({}, "en");
+/* 轮 146：示例帖下线后，评论存储从空对象起步（过去靠 seedComments 注入示范评论） */
+const EN = {};
 
-t("T1 首次访问注入 3 条示范评论", () => {
-  assert.equal(Object.keys(SEEDS).length, 3);
-  for (const k of Object.keys(SEEDS)) assert.equal(listComments(EN, { id: k, sample: true }).length, 1);
+t("T1 示范评论机制已下线（防回潮）", () => {
+  assert.equal(commentsMod.seedComments, undefined, "seedComments 不应再导出");
+  assert.equal(commentsMod.SEEDS, undefined, "SEEDS 不应再导出");
+  assert.equal(commentsMod.SEED_FLAG, undefined, "SEED_FLAG 不应再导出");
+  assert.equal(commentsMod.SEED_META, undefined, "SEED_META 不应再导出");
+  // 空的帖子第一次访问就是空列表，不注入任何示范评论
+  assert.deepEqual(listComments({}, { id: "s1" }), []);
 });
 
-t("T2 注入幂等：重复调用不会重复添加", () => {
-  const again = seedComments(EN, "en");
-  for (const k of Object.keys(SEEDS)) assert.equal(listComments(again, { id: k, sample: true }).length, 1);
+t("T2 新用户首次访问：不注入任何示范评论", () => {
+  assert.deepEqual(listComments({}, { id: "fresh-post" }), []);
+  assert.equal(countComments({}, { id: "fresh-post" }), 0);
 });
 
-t("T3 中文环境注入中文评论", () => {
-  const zh = seedComments({}, "zh");
-  assert.equal(listComments(zh, { id: "s1", sample: true })[0].text, SEEDS.s1.zh);
+t("T3 空存储上添加真实评论即正常可见", () => {
+  const s = addComment({}, { id: "s1" }, { name: "A", text: "hello" }).store;
+  assert.equal(listComments(s, { id: "s1" }).length, 1);
+  assert.equal(listComments(s, { id: "s1" })[0].text, "hello");
 });
 
-t("T4 删除示范评论后重新 seed 不会复活（真实 bug 修复验证）", () => {
-  const seededComment = listComments(EN, { id: "s1", sample: true })[0];
-  const afterDel = removeComment(EN, { id: "s1", sample: true }, seededComment.id);
-  assert.equal(listComments(afterDel, { id: "s1", sample: true }).length, 0);
-  const reSeeded = seedComments(afterDel, "en");
-  assert.equal(listComments(reSeeded, { id: "s1", sample: true }).length, 0);
+t("T4 删除后不会自动复活（无 seed 可复活）", () => {
+  let s = addComment({}, { id: "s1" }, { name: "A", text: "real" }).store;
+  const c = listComments(s, { id: "s1" })[0];
+  s = removeComment(s, { id: "s1" }, c.id);
+  assert.equal(listComments(s, { id: "s1" }).length, 0);
+  // 再读一次仍是空（过去靠 re-seed 会复活示范评论）
+  assert.equal(listComments(s, { id: "s1" }).length, 0);
 });
 
 t("T5 空 / 纯空格输入被拒绝", () => {
@@ -68,11 +78,13 @@ t("T7 文本首尾空白被清理", () => {
 });
 
 t("T8 不同帖子的评论互不影响", () => {
-  let s = addComment(EN, { id: "s1", sample: true }, { name: "A", text: "one" }).store;
-  s = addComment(s, { id: "s2", sample: true }, { name: "A", text: "two" }).store;
-  assert.equal(listComments(s, { id: "s1", sample: true }).at(-1).text, "one");
-  assert.equal(listComments(s, { id: "s2", sample: true }).at(-1).text, "two");
-  assert.equal(countComments(s, { id: "s1", sample: true }), 2);
+  // 轮 146：用独立起点，避免与前面用例往EN 累积的评论相互干扰
+  let s = addComment({}, { id: "s1" }, { name: "A", text: "one" }).store;
+  s = addComment(s, { id: "s2" }, { name: "A", text: "two" }).store;
+  assert.equal(listComments(s, { id: "s1" }).at(-1).text, "one");
+  assert.equal(listComments(s, { id: "s2" }).at(-1).text, "two");
+  assert.equal(listComments(s, { id: "s1" }).length, 1, "s1 只应有自己那 1 条");
+  assert.equal(listComments(s, { id: "s2" }).length, 1, "s2 只应有自己那 1 条");
 });
 
 t("T9 删除只移除目标评论", () => {
@@ -110,10 +122,11 @@ t("T12 用户帖（数字 id）与示例帖键名一致可比", () => {
 });
 
 t("T13 不修改入参（纯函数）", () => {
-  const base = seedComments({}, "en");
+  // 轮 146：不再用 seedComments 起底，空对象起步（断言意图是「不写脏入参」）
+  const base = {};
   const snapshot = JSON.stringify(base);
-  addComment(base, { id: "s1", sample: true }, { name: "A", text: "z" });
-  removeComment(base, { id: "s1", sample: true }, "whatever");
+  addComment(base, { id: "s1" }, { name: "A", text: "z" });
+  removeComment(base, { id: "s1" }, "whatever");
   assert.equal(JSON.stringify(base), snapshot);
 });
 

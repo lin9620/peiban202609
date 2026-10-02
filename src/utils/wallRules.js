@@ -99,8 +99,15 @@ export const SORTS = [
 export const SORT_MODES = SORTS.map((s) => s.key);
 export const DEFAULT_SORT = "recommend";
 
-/** 推荐模式的时间窗口（天）：先 7 天，用户多了调小（5/3/2）即可，纯常数 */
+/**
+ * 推荐模式的时间窗口（天）：先 7 天，用户多了调小（5/3/2）即可，纯常数。
+ * 下面 RECOMMEND_WIDE_DAYS 是「7 天内不够时的第二级放宽窗口」。
+ */
 export const RECOMMEND_DAYS = 7;
+/** 7 天内不足 RECOMMEND_MIN_POOL 条时的第二级放宽窗口（30 天） */
+export const RECOMMEND_WIDE_DAYS = 30;
+/** 一页期望的条数：7 天内不足这个数就放宽窗口（避免「周末没人发帖 → 首页空」） */
+export const RECOMMEND_MIN_POOL = 10;
 
 /** 帖子某个回应的计数（缺字段/脏数据一律当 0） */
 export function reactCount(post, kind) {
@@ -335,18 +342,21 @@ export function rangeFor(sort, range) {
 
 const DAY_MS = 86400000;
 
+/** 「近 30 天」档的天数（轮 146：原为「当月 1 号起」，见 rangeStartTs 注释） */
+export const RANGE_MONTH_DAYS = 30;
+
 /**
  * 某个时间范围的起点时间戳。
- * month = 当前 UTC 月的 1 日 0 点 —— 全站判「天/月」都用 UTC，口径才不会和数据库错开。
+ * month = 最近 30 天（滚动窗口，不是「当月 1 号起」）。
+ *   轮 146 改口径：早先按「当月 1 日 0 点」判（YYYY-MM 比对），
+ *   但 1 号到月底窗口只有 1 天、月初又只剩当月，帖子量少时几乎必然筛空，
+ *   用户反馈「之前很多帖子现在加载不出来」。改成滚动 30 天，任何时候进得来。
  * 未知档位回退默认近两天（存档里存了老值也不会让列表变空）。
  */
 export function rangeStartTs(range, now = Date.now()) {
   const n = Number(now) || 0;
   if (range === "7d") return n - 7 * DAY_MS;
-  if (range === "month") {
-    const d = new Date(n);
-    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
-  }
+  if (range === "month") return n - RANGE_MONTH_DAYS * DAY_MS;
   return n - 2 * DAY_MS;
 }
 
@@ -362,7 +372,8 @@ export function inRange(post, range = DEFAULT_RANGE, now = Date.now()) {
   if (!post.ts) return false;
   if (range === RANGE_ALL) return true;
   const r = RANGE_KEYS.includes(range) ? range : DEFAULT_RANGE;
-  if (r === "month") return utcDay(post.ts).slice(0, 7) === utcDay(now).slice(0, 7);
+  /* 轮 146：month 原来在这里单独按 YYYY-MM 比对「当月」，现在统一走 rangeStartTs
+     的滚动 30 天窗口 —— 否则 rangeStartTs 与 inRange 两处口径会各说各话。 */
   return post.ts >= rangeStartTs(r, now);
 }
 
@@ -402,25 +413,76 @@ export function shuffleSeeded(list, seed, rand = null) {
 }
 
 /**
- * 推荐流：最近 RECOMMEND_DAYS（默认 7）天内的帖子随机排序。
+ * 按天均匀取样（轮 146）。
+ * 纯洗牌会让「某天发了 20 条」的那天霸占整页，其他天完全看不到；
+ * 这里先把池子按 UTC 天分桶、每天内部洗牌，再「新的一天先出、每天轮流出一条」交错。
+ * @param {Array} list 已过滤的帖子
+ * @param {string} seed 同一天内可复现
+ * @returns {Array} 新数组
+ */
+export function interleaveByDay(list, seed) {
+  const arr = Array.isArray(list) ? list : [];
+  if (!arr.length) return [];
+  const buckets = new Map();          // dayKey -> 该天的帖子（保持传入顺序）
+  for (const p of arr) {
+    const d = utcDay(p.ts);
+    if (!buckets.has(d)) buckets.set(d, []);
+    buckets.get(d).push(p);
+  }
+  // 天数多 → 每天内部各自洗牌（种子带天，避免所有天同序）
+  const keys = [...buckets.keys()].sort();            // 字典序 = 时间序（YYYY-MM-DD）
+  const queues = keys.map((k) => shuffleSeeded(buckets.get(k), `${seed}|${k}`));
+  // 新的天在前：把队列按「该天最早一帖的时间」倒序排
+  const order = keys
+    .map((k, i) => ({ i, first: Math.min(...buckets.get(k).map((p) => p.ts || 0)) }))
+    .sort((a, b) => b.first - a.first)
+    .map((x) => x.i);
+  const out = [];
+  let more = true;
+  while (more) {
+    more = false;
+    for (const i of order) {
+      const q = queues[i];
+      if (q.length) { out.push(q.shift()); more = true; }
+    }
+  }
+  return out;
+}
+
+/**
+ * 推荐流：先取最近 RECOMMEND_DAYS（7）天，不够 RECOMMEND_MIN_POOL 条就逐级放宽
+ *   —— 7 天 → 30 天 → 全部（轮 146：早先固定 7 天窗，站点发帖稀疏时整页空）。
  *   - 示例帖永远在（与 inRange 同口径：新用户一进来不能空无一物）
  *   - 同一天内顺序稳定（种子 = UTC 日），第二天自然换一批顺序
  *   - 未来帖（客户端时钟不准）不进推荐，宁可少一条
+ *   - 窗口内按天均匀取样（interleaveByDay），不让某一天霸屏
  * @param {Array} list
- * @param {{days?:number, now?:number, seed?:string}} [opts]
+ * @param {{days?:number, wideDays?:number, minPool?:number, now?:number, seed?:string}} [opts]
  * @returns {Array} 新数组
  */
 export function recommendPosts(list, opts = {}) {
   const days = Number(opts.days) > 0 ? Number(opts.days) : RECOMMEND_DAYS;
+  const wideDays = Number(opts.wideDays) > 0 ? Number(opts.wideDays) : RECOMMEND_WIDE_DAYS;
+  const minPool = Number(opts.minPool) >= 0 ? Math.floor(Number(opts.minPool)) : RECOMMEND_MIN_POOL;
   const now = Number(opts.now) || Date.now();
   const seed = opts.seed != null ? opts.seed : utcDay(now);
-  const since = now - days * DAY_MS;
-  const pool = (Array.isArray(list) ? list : []).filter((p) => {
-    if (!p) return false;
-    if (p.sample) return true;
-    return !!p.ts && p.ts <= now && p.ts >= since;
-  });
-  return shuffleSeeded(pool, seed);
+
+  const all = Array.isArray(list) ? list : [];
+  /* 示例帖单独拎出来：它们不参与「放宽窗口」的计数，但永远要出现在结果里 */
+  const samples = all.filter((p) => p && p.sample);
+  const dated = all.filter((p) => p && !p.sample && p.ts && p.ts <= now);
+
+  /* 分级放宽：7 天 → 30 天 → 全部。第一级就够数就不往后走（新鲜度优先）。 */
+  const levels = [days, Math.max(days, wideDays), Infinity];
+  let pool = [];
+  for (const w of levels) {
+    pool = w === Infinity ? dated.slice() : dated.filter((p) => p.ts >= now - w * DAY_MS);
+    if (pool.length >= minPool) break;
+  }
+
+  const picked = interleaveByDay(pool, seed);
+  if (!samples.length) return picked;
+  return picked.concat(samples);   // 示例帖追加在后（不占「真帖」的名额）
 }
 
 /* ══════════ 云操作失败原因 ══════════ */

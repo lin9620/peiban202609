@@ -16,7 +16,7 @@ import { cacheKey, cacheSet, swr } from "../utils/cache.js";
 /* 轮 84：墙内前 3 条 / 查看更多 / 评论回应 / 拷贝文本。
    注意：import 大括号内不要写注释 —— undef-check 的导入解析器会把注释与下一个名字粘连（踩过）。 */
 import {
-  CMT_KEY, seedComments, addComment, removeComment, displayCount,
+  CMT_KEY, addComment, removeComment, displayCount,
   canDelete, normalizeText, postKey, MAX_LEN,
   topComments, repliesOf, replyCount,
   wallTopComments, hasMoreComments, reactCount, toggleReact,
@@ -64,28 +64,6 @@ const REACTIONS = [
   { key: "hug", tk: "community.reactHug" },
   { key: "warm", tk: "community.reactWarm" },
   { key: "relate", tk: "community.reactRelate" },
-];
-
-/* 示例帖（双语） */
-const SAMPLES = [
-  {
-    id: "s1", sample: true, name: "Mochi 🍡", ts: Date.now() - 86400000 * 2,
-    en: "First day here. It already feels softer than the rest of the internet 🐾",
-    zh: "第一天来，感觉这里比互联网其他地方都柔软 🐾",
-    reacts: { hug: 12, warm: 20, relate: 5 },
-  },
-  {
-    id: "s2", sample: true, name: "Juno ☕", ts: Date.now() - 86400000,
-    en: "Failed an exam today. Sending a hug to everyone else having a rough week 🫂",
-    zh: "今天考试挂了。给同样难熬的这一周里所有人一个抱抱 🫂",
-    reacts: { hug: 34, warm: 18, relate: 27 },
-  },
-  {
-    id: "s3", sample: true, name: "Bean 🫘", ts: Date.now() - 3600000 * 5,
-    en: "Made soup, way too salty. My cat still sat with me the whole time. 10/10 day.",
-    zh: "炖的汤咸到不行，但我的猫还是全程陪着我。满分的一天。",
-    reacts: { hug: 6, warm: 15, relate: 9 },
-  },
 ];
 
 const posts = ref([]);
@@ -700,13 +678,10 @@ function hasReacted(post, kind) {
 }
 
 /* —— 评论系统 ——
-   逻辑全部在 src/utils/comments.js（纯函数，已通过 15 项 Node 单元测试） */
+   逻辑全部在 src/utils/comments.js（纯函数，已通过 Node 单元测试） */
 function loadComments() {
-  const raw = scopeGet(CMT_KEY, {}) || {};
-  const seeded = seedComments(raw, i18n.locale);
-  // 首次注入示范评论后立刻落盘：否则用户删掉它、刷新后又会冒出来
-  if (seeded.__seeded && !raw.__seeded) scopeSetRaw(CMT_KEY, JSON.stringify(seeded));
-  return seeded;
+  /* 轮 146：示例帖下线 → 不再注入示范评论，直接读本机存储 */
+  return scopeGet(CMT_KEY, {}) || {};
 }
 
 const comments = ref(loadComments());
@@ -1107,10 +1082,10 @@ async function delCmt(p, cm) {
   syncTotal(p);
 }
 
-/* 动态流：云端就绪且拉到帖子 → 真实帖子；否则回退本机帖子（不再凭空消失）；示例帖永远在 */
+/* 动态流：云端就绪且拉到帖子 → 真实帖子；否则回退本机帖子（不再凭空消失）。
+   轮 146：示例帖已下线（原 SAMPLES 常量），动态流只由真实帖组成。 */
 const all = computed(() => [
   ...(cloud.ready && cloudPosts.value.length ? cloudPosts.value : posts.value),
-  ...SAMPLES,
 ]);
 /* 展示用：推荐 = 最近 7 天按天随机（默认）；其余 = 按时间范围筛 + 排序 */
 const shown = computed(() => {
@@ -1635,7 +1610,7 @@ watch(() => route.query.refresh, (v) => {
           :class="{ clickable: canOpen(p) }"
           :title="canOpen(p) ? t('community.viewHome') : ''"
           @click="goProfile(p)">
-          {{ p.sample ? "🌼" : "🙂" }}
+          🙂
         </n-avatar>
         <div class="post-meta">
           <div class="post-name"
@@ -1644,9 +1619,7 @@ watch(() => route.query.refresh, (v) => {
             @click="goProfile(p)">{{ p.name }}</div>
           <div class="post-time">{{ when(p.ts) }}</div>
         </div>
-        <n-tag v-if="p.sample" round size="tiny" :bordered="false" class="soft-tag">
-          {{ i18n.locale === "zh" ? "示例" : "sample" }}
-        </n-tag>
+        <!-- 轮 146：示例帖下线，原「示例」角标（v-if="p.sample"）随之移除 -->
         <!-- 轮 84：帖子右上角 … 菜单（举报迁入 + 拷贝正文）；post-foot 里原举报按钮移除 -->
         <button class="more-btn" :title="t('comment.more')" :aria-label="t('comment.more')"
           @click.stop="togglePostMore(p)">⋯</button>

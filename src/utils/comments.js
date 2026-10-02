@@ -10,53 +10,15 @@ export const CMT_KEY = "warm-paws-comments-v1";
 export const MAX_LEN = 200;
 export const MAX_PER_POST = 100;
 
-/* 存储结构：{ __seeded: true, <postKey>: [comment, ...] }
-   __seeded 保证示例评论只写入一次 —— 否则用户删掉后刷新又会出现。 */
-const SEED_FLAG = "__seeded";
-const SEED_META = "__meta";
+/* 存储结构：{ <postKey>: [comment, ...] }
+   轮 146：示例帖下线，示范评论机制（seedComments/SEEDS/SEED_FLAG/SEED_META）整体移除。
+   老用户 localStorage 里若已存在 __seeded/__meta 与 s1..s3 残留条目，读侧无影响
+   （listComments 只按 postKey 取，残留键永远匹配不到任何真实帖 id），也不再主动清理。 */
 
-/* 示例帖的示范评论（首次访问时写入，之后可正常删除） */
-export const SEEDS = {
-  s1: {
-    en: "Welcome home! Softest corner of the internet indeed.",
-    zh: "欢迎回家！这里确实是互联网上最温柔的角落。",
-  },
-  s2: {
-    en: "Hug back. Next week will be kinder to you.",
-    zh: "抱抱你。下周一定会更温柔的。",
-  },
-  s3: {
-    en: "Soup too salty, but the company was just right.",
-    zh: "汤咸了没关系，陪伴刚刚好。",
-  },
-};
-
-/* 帖子主键：示例帖用字符串 id，用户帖用数字 id 的字符串形式 */
+/* 帖子主键：帖子 id 统一转字符串（用户帖是数字 id，示例帖下线后不再有字符串 id） */
 export function postKey(post) {
   if (!post) return "";
-  return post.sample ? String(post.id) : String(post.id);
-}
-
-/** 首次访问时注入示范评论；已注入过则原样返回（幂等） */
-export function seedComments(raw, locale = "en", now = Date.now()) {
-  const store = raw && typeof raw === "object" ? { ...raw } : {};
-  if (store[SEED_FLAG]) return store;
-
-  let i = 0;
-  for (const [pid, text] of Object.entries(SEEDS)) {
-    if (!Array.isArray(store[pid])) store[pid] = [];
-    store[pid].unshift({
-      id: pid + "-seed-" + i,
-      seed: true,
-      name: "Mochi",
-      ts: now - 43200000 - i * 3600000,
-      text: locale === "zh" ? text.zh : text.en,
-    });
-    i++;
-  }
-  store[SEED_FLAG] = true;
-  store[SEED_META] = { seededAt: now };
-  return store;
+  return String(post.id);
 }
 
 /**

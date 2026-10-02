@@ -14,6 +14,7 @@ import {
   DISLIKE_RATIO, REMOVAL_LOW_VIEWS, DISLIKE_MIN_COUNT, dislikeRatio, ratioPct, shouldRemove,
   isVisible, visibleOnly, postedOnDay, countPostedOnDay, dayCountFromStorage,
   canPostToday, postsLeftToday, WALL_POST_DAILY_LIMIT, errorKind, fmtWhen, fmtWhenSec,
+  recommendPosts, RECOMMEND_DAYS, RECOMMEND_WIDE_DAYS, RECOMMEND_MIN_POOL,
 } from "../src/utils/wallRules.js";
 import { messages } from "../src/i18n.js";
 
@@ -323,24 +324,33 @@ t("T25 时间范围：共 3 档，默认近两天，key 与 i18n 对齐", () => 
   for (const r of RANGES) assert.ok(r.tk.startsWith("community.range"), "i18n key: " + r.tk);
 });
 
-t("T26 rangeStartTs：近 2 天 / 近 7 天 / 本月 1 日 0 点（UTC）；未知档回退近两天", () => {
+t("T26 rangeStartTs：近 2 天 / 近 7 天 / 前 30 天（rolling，非本月 1 号）；未知档回退近两天", () => {
   const now = Date.parse("2026-03-06T12:00:00Z");
   assert.equal(rangeStartTs("2d", now), now - 2 * 86400000);
   assert.equal(rangeStartTs("7d", now), now - 7 * 86400000);
-  assert.equal(rangeStartTs("month", now), Date.UTC(2026, 2, 1), "3 月 → 2026-03-01T00:00:00Z");
+  // 「本月」= 往前推 30 天（滚动窗口），不是当月 1 号 —— 冷门月份也能看到东西
+  assert.equal(rangeStartTs("month", now), now - 30 * 86400000, "month = now - 30d");
+  assert.equal(
+    rangeStartTs("month", Date.parse("2026-03-31T23:59:59Z")),
+    Date.parse("2026-03-01T23:59:59Z"),
+    "3 月底看「本月」→ 窗口伸到 3/1 当天（若按 1 号 0 点算就只剩 30 天不到，不一致）"
+  );
   assert.equal(rangeStartTs("bogus", now), now - 2 * 86400000);
   assert.equal(rangeStartTs(undefined, now), now - 2 * 86400000);
 });
 
-t("T27 inRange：边界内外、跨月归 UTC 月、示例帖永在、无时间戳不显示", () => {
+t("T27 inRange：边界内外、跨月归 30 天滚动窗、示例帖永在、无时间戳不显示", () => {
   const now = Date.parse("2026-03-06T12:00:00Z");
   const p = (ts) => ({ id: 1, ts });
   assert.equal(inRange(p(now - 86400000), "2d", now), true, "1 天前 ∈ 近两天");
   assert.equal(inRange(p(now - 3 * 86400000), "2d", now), false, "3 天前 ∉ 近两天");
   assert.equal(inRange(p(now - 6 * 86400000), "7d", now), true, "6 天前 ∈ 近 7 天");
   assert.equal(inRange(p(now - 9 * 86400000), "7d", now), false, "9 天前 ∉ 近 7 天");
-  assert.equal(inRange(p(Date.parse("2026-03-01T00:00:00Z")), "month", now), true, "本月 1 日 ∈ 这个月");
-  assert.equal(inRange(p(Date.parse("2026-02-28T23:59:59Z")), "month", now), false, "上月末 ∉ 这个月");
+  assert.equal(inRange(p(now - 29 * 86400000), "month", now), true, "29 天前 ∈ 前 30 天");
+  assert.equal(inRange(p(now - 31 * 86400000), "month", now), false, "31 天前 ∉ 前 30 天");
+  // 跨月回归：3/6 看「本月」→ 2/4（30 天前）在窗内、2/3 在窗外（按日历月算会整月放行）
+  assert.equal(inRange(p(Date.parse("2026-02-04T12:00:00Z")), "month", now), true, "跨月：2/4 ∈ 前 30 天");
+  assert.equal(inRange(p(Date.parse("2026-02-03T11:59:59Z")), "month", now), false, "跨月：2/3 ∉ 前 30 天");
   assert.equal(inRange(p(now - 3 * 86400000), "bogus", now), false, "未知档回退近两天 → 3 天前不在");
   assert.equal(inRange(null, "2d", now), false);
   assert.equal(inRange({ id: 2 }, "2d", now), false, "没有时间戳不显示（不瞎猜）");
@@ -430,6 +440,85 @@ t("T31 端到端：切「最新」看全部并按时间倒序；切「同感最�
   assert.deepEqual(render("new", "2d"), [2, 1, 3], "最新：不筛时间，全按时间倒序（旧帖也在）");
   assert.deepEqual(render("relate", "2d"), [1, 2], "同感最多 + 近两天：40 天前的 99 个同感被窗口筛掉");
   assert.deepEqual(render("relate", "month"), [1, 2], "本月的也筛掉 40 天前那条");
+});
+
+t("T33 recommendPosts 分级放宽：7 天优先，不足 minPool 时依次放宽到 30 天 → 全部", () => {
+  const now = Date.parse("2026-03-10T12:00:00Z");
+  const d = (ago) => ({ id: ago, ts: now - ago * 86400000 });
+  const ids = (rows) => rows.map((r) => r.id);
+
+  /* 场景 A：近 7 天就有 12 条（≥ minPool=10）→ 只在 7 天窗口内取，不掺老帖 */
+  const fresh = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(d);
+  const old = [40, 60, 80].map(d);
+  const outA = recommendPosts([...fresh, ...old], { now, seed: "s" });
+  assert.equal(outA.length, 12, "A：7 天内够数 → 结果就是那 12 条");
+  assert.equal(
+    outA.some((r) => old.some((o) => o.id === r.id)),
+    false,
+    "A：7 天内够数时不该把 40/60/80 天前的老帖混进来（新鲜度优先）"
+  );
+
+  /* 场景 B：7 天内只有 3 条 → 放宽到 30 天；30 天窗内够 minPool 就停，40 天的仍不进 */
+  const few = [1, 2, 3, 20, 25, 26, 27, 28, 29, 29, 29, 29].map(d);   // 30 天窗内共 12 条 ≥ 10
+  const outB = recommendPosts([...few, ...old], { now, seed: "s" });
+  assert.equal(ids(outB).includes(20), true, "B：20 天前应在 30 天窗内");
+  assert.equal(ids(outB).includes(25), true, "B：25 天前应在 30 天窗内");
+  assert.equal(ids(outB).includes(40), false, "B：30 天窗已够数就停，40 天前不进来");
+  assert.equal(outB.length, 12, "B：结果就是 30 天窗内那 12 条");
+
+  /* 场景 C：7 天和 30 天都不够 → 放宽到「全部」，连 200 天前的老帖也上（正是用户要的效果） */
+  const sparse = [1, 5, 200].map(d);
+  const outC = recommendPosts(sparse, { now, seed: "s" });
+  assert.equal(ids(outC).includes(200), true, "C：都不足时兜底到全部 → 200 天前的帖也进池");
+  assert.equal(outC.length, 3, "C：全部三条都进");
+
+  /* 场景 D：显式 minPool=0 → 严格锁死 7 天窗，永不放宽（7 天内就那 7 条） */
+  const strict = recommendPosts([...fresh, ...old], { now, seed: "s", minPool: 0 });
+  assert.equal(strict.length, 7, "D：minPool=0 → 严格 7 天窗（1~7 天前那 7 条），不放宽");
+  assert.equal(strict.some((r) => old.some((o) => o.id === r.id)), false, "D：无老帖混入");
+  assert.equal(ids(strict).includes(8), false, "D：第 8 天那条也不在（7 天窗不含边界外一天）");
+});
+
+t("T34 recommendPosts 按天均匀取样：单日不霸屏 + 同种子稳定 + 未来帖不进", () => {
+  const now = Date.parse("2026-03-10T12:00:00Z");
+  /* 3/10 当天 8 条，3/9 3 条，3/8 1 条 —— 若按时间倒序取前 N，3/10 会整屏霸占 */
+  const mk = (day, n) => Array.from({ length: n }, (_, i) => ({ id: day * 100 + i, ts: Date.UTC(2026, 2, day, 6, i) }));
+  const list = [...mk(10, 8), ...mk(9, 3), ...mk(8, 1)];
+  const out = recommendPosts(list, { now, seed: "2026-03-10" });
+  const byDay = {};
+  for (const r of out) {
+    const d = new Date(r.ts).getUTCDate();
+    byDay[d] = (byDay[d] || 0) + 1;
+  }
+  assert.equal(Object.keys(byDay).length, 3, "三个有帖的日子都出现（不能只抽最近那天）");
+  /* 「不霸屏」指的是出场顺序：交错后前 3 条应各来自一天，
+     而不是「总数上把 8 条摊平」——总数本来就该等于池子大小。 */
+  const head3 = out.slice(0, 3).map((r) => new Date(r.ts).getUTCDate());
+  assert.equal(new Set(head3).size, 3, "页首 3 条来自 3 个不同的天：" + head3.join(","));
+  /* 轮询阶段的真实保证：前 8 条（= 3 天 × 3 轮）内相邻不来自同一天。
+     某天用尽后剩下的连续同日是必然的（池子就那么多），不该断言。 */
+  const days = out.map((r) => new Date(r.ts).getUTCDate());
+  const head8 = days.slice(0, 8);
+  const adjacentSame = head8.findIndex((d, i) => i > 0 && d === head8[i - 1]);
+  assert.equal(adjacentSame, -1, "轮询阶段（前 8 条）无连续同一天：" + head8.join(","));
+  assert.deepEqual(
+    recommendPosts(list, { now, seed: "2026-03-10" }).map((r) => r.id),
+    out.map((r) => r.id),
+    "同种子结果完全一致（刷新不变，顺序稳定）"
+  );
+  assert.equal(
+    JSON.stringify(recommendPosts(list, { now, seed: "2026-03-11" }).map((r) => r.id)) ===
+      JSON.stringify(out.map((r) => r.id)),
+    false,
+    "换种子（第二天）会换一批顺序"
+  );
+  /* 未来帖（客户端时钟超前）宁可少一条也不进 */
+  const future = [{ id: 999, ts: now + 3 * 86400000 }];
+  assert.equal(
+    recommendPosts([...list, ...future], { now, seed: "2026-03-10" }).some((r) => r.id === 999),
+    false,
+    "未来帖不进推荐"
+  );
 });
 
 t("T32 页面接线：范围行由 usesRange 显隐，筛选走 rangeFor 单一入口", () => {
