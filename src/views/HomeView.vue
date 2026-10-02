@@ -136,16 +136,12 @@ onBeforeUnmount(() => { if (ro) ro.disconnect(); });
       </div>
       <div class="home-pane" :ref="(el) => (paneEls[1] = el)"><TodayPane @go-pet="goPet" /></div>
       <div class="home-pane" :ref="(el) => (paneEls[2] = el)"><BottleView /></div>
-      <!-- 轮 147：故事联（紧邻漂流瓶，左滑一格到）—发现流 + 顶部「写故事」+ 底部「打开故事栏」进全站页 -->
+      <!-- 轮 147：故事联（紧邻漂流瓶，左滑一格到）—发现流。
+           轮 148：联尾按钮整个撤掉 —— 投稿走底部 ＋ 第三瓣，排行榜走故事页顶部操作条，
+           联内本身就是发现流，再挂按钮只会多出第三处重复入口。 -->
       <div class="home-pane" :ref="(el) => (paneEls[3] = el)">
         <StoryPane v-if="storyMounted" />
         <div v-else class="home-pane-lazy"><span>📖</span></div>
-        <div class="home-pane-foot">
-          <!-- 轮 148：投稿统一走底部 ＋ 第三瓣，这里不再重复给「写故事」 -->
-          <button class="st-btn st-btn--ghost" type="button" @click="router.push('/story/rank')">
-            {{ t("story.tabRank") }}
-          </button>
-        </div>
       </div>
     </div>
   </div>

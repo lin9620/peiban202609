@@ -3,6 +3,7 @@
 <script setup>
 import { useRouter } from "vue-router";
 import { t } from "../i18n.js";
+import StoryShell from "../components/story/StoryShell.vue";
 import StoryMine from "../components/story/StoryMine.vue";
 
 const router = useRouter();
@@ -12,19 +13,22 @@ function onEdit(row) {
 </script>
 
 <template>
-  <div class="story-page">
-    <header class="story-head">
-      <div class="story-head-row">
-        <h1 class="story-title">{{ t("story.tabMine") }}</h1>
-        <nav class="story-acts">
-          <button class="st-btn st-btn--ghost st-btn--mark" type="button"
-            @click="router.push('/story')">{{ t("story.tabDiscover") }}</button>
-        </nav>
-      </div>
-    </header>
+  <StoryShell active="mine">
+    <div class="story-page">
+      <header class="story-head">
+        <div class="story-head-row">
+          <h1 class="story-title">{{ t("story.tabMine") }}</h1>
+          <nav class="story-acts">
+            <button class="st-btn st-btn--ghost st-btn--mark" type="button"
+              @click="router.push('/story')">{{ t("story.tabDiscover") }}</button>
+          </nav>
+        </div>
+        <p class="st-sub">{{ t("story.mineSub") }}</p>
+      </header>
 
-    <section class="story-main story-main--solo">
-      <StoryMine @edit="onEdit" />
-    </section>
-  </div>
+      <section class="story-main story-main--solo">
+        <StoryMine @edit="onEdit" />
+      </section>
+    </div>
+  </StoryShell>
 </template>

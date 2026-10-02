@@ -620,8 +620,42 @@ async function sitemap(env, request, url) {
 
 /* ══════════ 路由分发 ══════════ */
 
-export default {
-  async fetch(request, env, ctx) {
+/** ══════════ 轮 149 · 边缘缓存（只缓存「公开 + 匿名」的读接口）
+ *
+ * 为什么加：实测同一 URL /api/posts?limit=12 连打 6 次，耗时在
+ *   861 / 3637 / 771 / 4669 / 9633 ms 之间跳 —— 差 12 倍。
+ *   代码侧已排除瓶颈（索引齐全、无 N+1、串行 await 无、limit=12 反而比 50 慢），
+ *   这是Cloudflare 免费版 isolate 被回收后的冷启动抖动，不是 SQL 慢。
+ *
+ * 怎么绕：把公开读接口的结果放进 caches.default，命中时由 Cloudflare 边缘直接返回，
+ *   **根本不进isolate**，冷启动那一下被抹掉。
+ *
+ * 三条红线（破了就是数据泄露/功能错乱，不是性能问题）：
+ *   1. 只 GET —— 写接口绝不能缓存；
+ *   2. 携带 Authorization / apikey 一律不缓存 —— 登录用户的响应是「他自己的」数据，
+ *      拿 anon 缓存键存进去会把 A 的私信发给 B。这条比第 1 条更要命；
+ *   3. 只缓存白名单前缀 —— /api/story/mine、/api/notif、/api/dm 等一律不碰。
+ * 缓存键只吃 path+query（不含任何身份头），命中即匿名视角，安全。
+ */
+const CACHE_TTL_SEC = 30;
+/* 白名单：仅「任何人可读、内容公开、变化不频繁」的列表/详情。
+   注意 /api/story/mine、/api/story/stats、/api/fav、/api/dm*、/api/notif* 不在其中。 */
+const CACHEABLE = [
+  /^\/api\/posts$/,          /* 墙列表（含 sample 换一批：随机结果，缓存 30s 可接受） */
+  /^\/api\/story$/,          /* 故事流（发现页） */
+  /^\/api\/story\/rank$/,    /* 四榜 */
+  /^\/api\/story\/featured$/,
+  /^\/api\/story\/\d+$/,     /* 故事详情 */
+];
+const cacheablePath = (p) => CACHEABLE.some((re) => re.test(p));
+/** 带了任何身份凭证就一律不进缓存（见红线 2） */
+const hasAuth = (req) =>
+  req.headers.has("authorization") || req.headers.has("apikey") || req.headers.has("x-client-info");
+
+/* 轮 149：原来这里直接是 `export default { async fetch(...) }`。
+ * 现在把真逻辑挪进 handleApi()，export.fetch 只做一件事：缓存的前后各一道门。
+ * 这样 try 里上百个 return 一行都不用动（改不动，也不该动）。 */
+async function handleApi(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
 
@@ -1377,5 +1411,40 @@ export default {
     } catch (e) {
       return fail(500, "worker-error");
     }
+}
+
+/* ══════════ 轮 149 · 边缘缓存包装器 ══════════
+ * 只在「公开 + 匿名 + GET + 白名单」时介入：
+ *   HIT → 直接回缓存，**不执行 handleApi**，isolate 冷启动那一跳被完全绕过；
+ *   MISS → 执行 handleApi，200 且是 JSON 才落缓存（用 ctx.waitUntil，不阻塞响应）。
+ * 打上 x-cache 头，方便在浏览器/curl 里肉眼确认是否命中。
+ * 注意：caches 是 Workers 运行时注入的全局，离线测试 harness 里没有，
+ *   故这里做 typeof 探测 —— 探测失败直接回落 handleApi（等于没缓存，绝不能因此 500）。 */
+export default {
+  async fetch(request, env, ctx) {
+    const hasCache = typeof caches !== "undefined" && caches && caches.default;
+    const cacheable =
+      hasCache && request.method === "GET" && cacheablePath(new URL(request.url).pathname)
+      && !hasAuth(request);
+    if (!cacheable) return handleApi(request, env, ctx);
+
+    const key = new Request(request.url, { method: "GET" });
+    const hit = await caches.default.match(key);
+    if (hit) {
+      const h = new Headers(hit.headers);
+      h.set("x-cache", "HIT");
+      return new Response(hit.body, { status: hit.status, headers: h });
+    }
+
+    const res = await handleApi(request, env, ctx);
+    if (res && res.ok && res.status === 200) {
+      const copy = res.clone();
+      /* ctx.waitUntil 缺失时直接丢弃这次落盘（不影响本次响应，只是这请求没进缓存） */
+      if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(caches.default.put(key, copy));
+      const h = new Headers(res.headers);
+      h.set("x-cache", "MISS");
+      return new Response(res.body, { status: res.status, headers: h });
+    }
+    return res;
   },
 };

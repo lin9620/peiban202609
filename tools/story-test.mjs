@@ -47,10 +47,11 @@ const detailVue = read("src/views/StoryDetailView.vue");
 const writeVue = read("src/views/StoryWriteView.vue");
 const mineView = read("src/views/StoryMineView.vue");   /* 轮 148：从页签壳拆出的独立页 */
 const rankView = read("src/views/StoryRankView.vue");
+const shellVue = read("src/components/story/StoryShell.vue");  /* 轮 148：频道条+横滑共享壳 */
+const tabBar = read("src/components/TabBar.vue");       /* 轮 148：＋ 第三瓣 = 写故事 */
+const homeVue = read("src/views/HomeView.vue");
 const routerJs = read("src/router.js");
 const viteCfg = read("vite.config.js");
-const tabBar = read("src/components/TabBar.vue");    /* 轮 148：投稿入口挂在底部 ＋ 第三瓣 */
-const homeVue = read("src/views/HomeView.vue");
 const sideNav = read("src/components/SideNav.vue");
 const i18nSrc = read("src/i18n.js");   /* 文案成对/插入位置检查用原始源码 */
 
@@ -239,7 +240,26 @@ ok("子路由排在 /story/:id(\\d+) 之前（否则 mine 被当 id 吞掉）",
 ok("seoRoutes 覆盖 story/mine 与 story/rank（中英各一份）",
   (viteCfg.match(/dir: "story\/mine"/g) || []).length === 2
   && (viteCfg.match(/dir: "story\/rank"/g) || []).length === 2);
-ok("我的页 = 独立视图，回退到发现页", mineView.includes("StoryMine") && mineView.includes("'/story'")
+// 轮 148：三个故事页必须套 StoryShell —— 独立路由不经过 HomeView 的 home3 容器，
+// 不套壳就会「顶层四个频道按钮消失」+「不能左滑」。
+ok("三页均套 StoryShell（补频道条与横滑）",
+  viewVue.includes("StoryShell") && mineView.includes("StoryShell") && rankView.includes("StoryShell"));
+ok("StoryShell 渲染四联频道条并复用 panes.js 手势判定",
+  shellVue.includes("HOME_PANES") && shellVue.includes("home-chips")
+  && shellVue.includes("swipeDir") && shellVue.includes('query: { tab: k }'));
+ok("StoryShell 子页(mine/rank)归到故事联高亮，不是第五联",
+  shellVue.includes('"mine"') && shellVue.includes('"rank"') && shellVue.includes('"story"'));
+// 投稿入口只在底部 ＋ 第三瓣，故事页与首页联内都不得再放。
+// 注意：只查「代码」不查注释 —— 两个文件的注释里都写了「投稿入口搬到底部 ＋ 第三瓣」这句话，
+// 直接 includes 会把注释当命中，断言永远绿/永远红都没意义。
+const codeOnly = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/<!--[\s\S]*?-->/g, "").split(/\r?\n/)
+  .filter((l) => !/^\s*(\/\/|\*|<!--)/.test(l)).join("\n");
+ok("投稿入口只在底部 ＋ 第三瓣",
+  tabBar.includes("composeStory") && tabBar.includes("composeStorySub")
+  && !codeOnly(viewVue).includes("/story/write")
+  && !codeOnly(homeVue).includes("/story/write"));
+ok("首页故事联尾不再挂按钮（避免第三处重复入口）", !homeVue.includes("home-pane-foot"));
+ok("我的页= 独立视图，回退到发现页", mineView.includes("StoryMine") && mineView.includes("'/story'")
   && mineView.includes("/story/write?id="));
 ok("排行榜页 = 独立视图，回退到发现页", rankView.includes("StoryRank") && rankView.includes("'/story'"));
 // 已退役样式不得复活（双栏右栏 + 页签）

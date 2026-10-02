@@ -7,29 +7,32 @@
 <script setup>
 import { useRouter } from "vue-router";
 import { t } from "../i18n.js";
+import StoryShell from "../components/story/StoryShell.vue";
 import StoryFeed from "../components/story/StoryFeed.vue";
 
 const router = useRouter();
 </script>
 
 <template>
-  <div class="story-page story-page--read">
-    <header class="story-head">
-      <div class="story-head-row">
-        <h1 class="story-title">{{ t("story.title") }}</h1>
-        <nav class="story-acts">
-          <!-- 轮 148：投稿入口搬到底部 ＋ 第三瓣，纯阅读页里不再放发布按钮 -->
-          <button class="st-btn st-btn--ghost st-btn--mark" type="button"
-            @click="router.push('/story/rank')">{{ t("story.tabRank") }}</button>
-          <button class="st-btn st-btn--ghost st-btn--mark" type="button"
-            @click="router.push('/story/mine')">{{ t("story.tabMine") }}</button>
-        </nav>
-      </div>
-      <p class="st-sub">{{ t("story.sub") }}</p>
-    </header>
+  <StoryShell active="story">
+    <div class="story-page story-page--read">
+      <header class="story-head">
+        <div class="story-head-row">
+          <h1 class="story-title">{{ t("story.title") }}</h1>
+          <nav class="story-acts">
+            <!-- 轮 148：投稿入口搬到底部 ＋ 第三瓣，纯阅读页里不再放发布按钮 -->
+            <button class="st-btn st-btn--ghost st-btn--mark" type="button"
+              @click="router.push('/story/rank')">{{ t("story.tabRank") }}</button>
+            <button class="st-btn st-btn--ghost st-btn--mark" type="button"
+              @click="router.push('/story/mine')">{{ t("story.tabMine") }}</button>
+          </nav>
+        </div>
+        <p class="st-sub">{{ t("story.sub") }}</p>
+      </header>
 
-    <section class="story-main story-main--solo">
-      <StoryFeed />
-    </section>
-  </div>
+      <section class="story-main story-main--solo">
+        <StoryFeed />
+      </section>
+    </div>
+  </StoryShell>
 </template>
