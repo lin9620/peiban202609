@@ -10,11 +10,12 @@ import { keys, removeItem, getItem, setItem } from "./storage.js";
 import {
   validatePublish, normalizeTags, storyErrKey,
   countChars, readMinutes, TITLE_MAX, BODY_MAX, TAGS_MAX, TAG_MAX, SORT_MODES, DEFAULT_MODE,
+  PRESET_TAGS,
 } from "./storyRules.js";
 
 export {
   storyErrKey, countChars, readMinutes, normalizeTags,
-  TITLE_MAX, BODY_MAX, TAGS_MAX, TAG_MAX, SORT_MODES, DEFAULT_MODE,
+  TITLE_MAX, BODY_MAX, TAGS_MAX, TAG_MAX, SORT_MODES, DEFAULT_MODE, PRESET_TAGS,
 };
 
 /** 故事栏要登录才能投稿/点赞；浏览公开内容不需要 */

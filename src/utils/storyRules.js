@@ -12,6 +12,14 @@ export const READ_CHARS_PER_MIN = 400;   /* 阅读时长：400 字/分钟（SQL 
 export const SORT_MODES = ["random", "latest", "monthly", "tag"];
 export const DEFAULT_MODE = "random";    /* 默认 = 随机推荐 */
 
+/* ── 预设热门标签（投稿区一键填充，省去「不知道打什么」的冷启动）
+   纯展示用：normalizeTags 会小写化 + 去 #，所以这里不要带 # 号。
+   全部 ≤TAG_MAX 字，与服务端 tag 校验口径一致。 ── */
+export const PRESET_TAGS = [
+  "日常", "陪伴", "故事", "心情", "碎碎念",
+  "求助", "经验", "萌宠", "新手",
+];
+
 /* ── 字数 ─────────────────────────────────────────── */
 export function countChars(s) {
   return [...String(s ?? "")].length;

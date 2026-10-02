@@ -7,7 +7,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { t } from "../../i18n.js";
 import {
-  BODY_MAX, TITLE_MAX, TAGS_MAX, TAG_MAX,
+  BODY_MAX, TITLE_MAX, TAGS_MAX, TAG_MAX, PRESET_TAGS,
   countChars, readMinutes, normalizeTags, canStory, storyErrKey,
   saveLocalDraft, loadLocalDraft, clearLocalDraft, storySaveDraft, storyPublish,
 } from "../../utils/story.js";
@@ -42,6 +42,17 @@ const titleLeft = computed(() => TITLE_MAX - countChars(title.value));
 const previewHtml = computed(() => renderLiteMd(body.value));
 const canPublish = computed(() => signedIn.value && !!title.value.trim() && chars.value > 0
   && !over.value && tags.value.length > 0 && !publishing.value);
+
+/* 禁用原因：灰按钮必须能说清「为什么灰」，否则用户只会看到「点了没反应」 */
+const whyDisabled = computed(() => {
+  if (publishing.value) return t("story.publishing2");
+  if (!signedIn.value) return t("story.needLogin");
+  if (!title.value.trim()) return t("story.needTitle");
+  if (over.value) return t("story.tooLong");
+  if (chars.value <= 0) return t("story.needBody");
+  if (!tags.value.length) return t("story.needTag");
+  return "";
+});
 
 const snapshot = () => ({
   id: draftId.value,
@@ -91,6 +102,15 @@ function onTagKey(e) {
   if (e.key === "Enter" || e.key === "," || e.key === "，") { e.preventDefault(); addTag(); }
   else if (e.key === "Backspace" && !tagInput.value && tags.value.length) removeTag(tags.value.length - 1);
 }
+
+/* 点预设标签：一键加入；已加/满 3 个则禁用，不做静默失败 */
+function pickPreset(tag) {
+  if (tags.value.length >= TAGS_MAX) return;
+  const norm = normalizeTags([tag])[0];
+  if (!norm || tags.value.includes(norm)) return;
+  tags.value = normalizeTags([...tags.value, norm]);
+}
+const hasTag = (tag) => tags.value.includes(normalizeTags([tag])[0] || tag);
 
 async function publish() {
   err.value = "";
@@ -167,6 +187,7 @@ onBeforeUnmount(() => {
     <div v-else class="st-preview" :class="{ 'st-preview--full': full }" v-html="previewHtml"></div>
 
     <div class="st-tags">
+      <span class="st-tag-lead">{{ t("story.tagLabel") }}</span>
       <span v-for="(tg, i) in tags" :key="tg" class="st-tag">
         #{{ tg }}
         <button class="st-tag-x" type="button" :aria-label="t('common.delete')" @click="removeTag(i)">×</button>
@@ -174,9 +195,17 @@ onBeforeUnmount(() => {
       <input
         v-model="tagInput" class="st-tag-in" type="text" :maxlength="TAG_MAX"
         :placeholder="tags.length >= TAGS_MAX ? t('story.tagHint') : t('story.tagsPh')"
+        :aria-label="t('story.tagLabel')"
         :disabled="tags.length >= TAGS_MAX" @keydown="onTagKey" @blur="addTag" />
     </div>
+    <div class="st-presets">
+      <button v-for="pt in PRESET_TAGS" :key="pt" type="button" class="st-preset"
+        :class="{ 'st-preset--on': hasTag(pt) }"
+        :disabled="tags.length >= TAGS_MAX || hasTag(pt)"
+        :aria-pressed="hasTag(pt)" @click="pickPreset(pt)">#{{ pt }}</button>
+    </div>
     <p class="st-hint">{{ t("story.tagHint") }}</p>
+    <p v-if="whyDisabled && !publishing" class="st-why">{{ whyDisabled }}</p>
 
     <footer class="st-ed-foot">
       <span class="st-count" :class="{ 'st-count--over': over }">
@@ -188,7 +217,8 @@ onBeforeUnmount(() => {
       </span>
       <span class="st-spring"></span>
       <button v-if="!full" class="st-btn st-btn--ghost" type="button" @click="autosave">{{ t("story.saveDraft") }}</button>
-      <button class="st-btn" type="button" :disabled="!canPublish" @click="publish">
+      <button class="st-btn" type="button" :disabled="!canPublish"
+        :title="canPublish ? '' : whyDisabled" :aria-disabled="!canPublish" @click="publish">
         {{ publishing ? t("story.publishing") : t("story.publish") }}
       </button>
     </footer>
