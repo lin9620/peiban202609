@@ -102,6 +102,12 @@ begin
   if p_body is null or char_length(p_body) = 0 or char_length(p_body) > 30000 then
     raise exception 'story-too-long';
   end if;
+  -- 正文下限 100 字（只卡发布；草稿 story_save_draft 不受此限）。
+  -- 注意：刻意不动表上的 check (char_length(body) between 1 and 30000) ——
+  -- 库里可能有 <100 字的存量故事，改约束会让它们一被编辑就撞约束报错。
+  if char_length(p_body) < 100 then
+    raise exception 'story-too-short';
+  end if;
   select coalesce(array_agg(distinct lower(trim(x))) filter (where length(trim(x)) between 1 and 20), '{}')
     into v_tags from unnest(coalesce(p_tags, '{}')) x;
   if array_length(v_tags, 1) is null or array_length(v_tags, 1) > 3 then

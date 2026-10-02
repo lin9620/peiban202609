@@ -4,6 +4,7 @@
  * 字数口径与 DB 同步：char_length = Unicode 码点 → [...s].length（扩展字符对不重复计数）。
  */
 export const TITLE_MAX = 100;
+export const BODY_MIN = 100;        /* 正文下限：发布 ≥100 字（SQL 同口径，RPC 层生效） */
 export const BODY_MAX = 30000;
 export const TAGS_MAX = 3;          /* 标签 1~3 个 */
 export const TAG_MAX = 20;          /* 单标签 ≤20 字（SQL 同口径） */
@@ -47,8 +48,10 @@ export function validatePublish({ title, body, tags } = {}) {
   if (!t) return "bad-title";
   if (countChars(t) > TITLE_MAX) return "bad-title";
   const b = String(body ?? "");
-  if (!countChars(b)) return "empty-body";
-  if (countChars(b) > BODY_MAX) return "too-long";
+  const bc = countChars(b);
+  if (!bc) return "empty-body";
+  if (bc < BODY_MIN) return "too-short";   /* <100 字：服务端也拦，双保险 */
+  if (bc > BODY_MAX) return "too-long";
   if (!normalizeTags(tags).length) return "bad-tags";
   return null;
 }
@@ -110,6 +113,7 @@ export const RANK_TABS = [
 export function storyErrKey(e) {
   const raw = String(e?.message ?? e ?? "");
   if (/story-bad-title|bad-title/.test(raw)) return "story.errTitle";
+  if (/story-too-short|too-short/.test(raw)) return "story.errShort";
   if (/story-too-long|too-long|30000/.test(raw)) return "story.errLong";
   if (/story-bad-tags/.test(raw)) return "story.errTags";
   if (/story-comment-empty/.test(raw)) return "story.errCommentEmpty";

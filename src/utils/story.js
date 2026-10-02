@@ -9,13 +9,13 @@ import { db } from "./api/db.js";
 import { keys, removeItem, getItem, setItem } from "./storage.js";
 import {
   validatePublish, normalizeTags, storyErrKey,
-  countChars, readMinutes, TITLE_MAX, BODY_MAX, TAGS_MAX, TAG_MAX, SORT_MODES, DEFAULT_MODE,
+  countChars, readMinutes, TITLE_MAX, BODY_MAX, BODY_MIN, TAGS_MAX, TAG_MAX, SORT_MODES, DEFAULT_MODE,
   PRESET_TAGS,
 } from "./storyRules.js";
 
 export {
   storyErrKey, countChars, readMinutes, normalizeTags,
-  TITLE_MAX, BODY_MAX, TAGS_MAX, TAG_MAX, SORT_MODES, DEFAULT_MODE, PRESET_TAGS,
+  TITLE_MAX, BODY_MAX, BODY_MIN, TAGS_MAX, TAG_MAX, SORT_MODES, DEFAULT_MODE, PRESET_TAGS,
 };
 
 /** 故事栏要登录才能投稿/点赞；浏览公开内容不需要 */
@@ -53,6 +53,7 @@ export async function storyPublish({ id = null, title = "", body = "", tags = []
     /* validate 短码 → 服务端错误码对齐，让 storyErrKey 归类同一套 i18n key */
     throw new Error(v === "bad-title" ? "story-bad-title"
       : v === "empty-body" ? "story-empty-body"
+      : v === "too-short" ? "story-too-short"
       : v === "too-long" ? "story-too-long" : "story-bad-tags");
   }
   return db.storyPublish(id, String(title).trim(), String(body), normalizeTags(tags));

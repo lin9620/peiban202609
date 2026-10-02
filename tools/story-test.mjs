@@ -13,7 +13,7 @@
 import fs from "node:fs";
 import { messages } from "../src/i18n.js";
 import {
-  TITLE_MAX, BODY_MAX, TAGS_MAX, TAG_MAX, READ_CHARS_PER_MIN,
+  TITLE_MAX, BODY_MAX, BODY_MIN, TAGS_MAX, TAG_MAX, READ_CHARS_PER_MIN,
   SORT_MODES, DEFAULT_MODE, RANK_TABS,
   countChars, readMinutes, normalizeTags, validatePublish,
   periodKey, periodKeyWeek, renderLiteMd, storyErrKey,
@@ -46,6 +46,7 @@ const viewVue = read("src/views/StoryView.vue");
 const detailVue = read("src/views/StoryDetailView.vue");
 const writeVue = read("src/views/StoryWriteView.vue");
 const sideNav = read("src/components/SideNav.vue");
+const i18nSrc = read("src/i18n.js");   /* 文案成对/插入位置检查用原始源码 */
 
 /* ───────── 常量口径（三处必须一致） ───────── */
 ok("正文上限 3 万字", BODY_MAX === 30000, String(BODY_MAX));
@@ -75,9 +76,10 @@ ok("空标题拦下", validatePublish({ title: " ", body: "x", tags: ["a"] }) ==
 ok("超长标题拦下", validatePublish({ title: "t".repeat(101), body: "x", tags: ["a"] }) === "bad-title");
 ok("空正文拦下", validatePublish({ title: "t", body: "", tags: ["a"] }) === "empty-body");
 ok("超 3 万字拦下", validatePublish({ title: "t", body: "x".repeat(30001), tags: ["a"] }) === "too-long");
-ok("无标签拦下", validatePublish({ title: "t", body: "x", tags: [] }) === "bad-tags");
+// 这两条的 body 需 ≥BODY_MIN(100)，否则会被「正文下限」先拦掉，测不到标签/正常稿的原意
+ok("无标签拦下", validatePublish({ title: "t", body: "x".repeat(100), tags: [] }) === "bad-tags");
 ok("刚好 3 万字放行", validatePublish({ title: "t", body: "x".repeat(30000), tags: ["a"] }) === null);
-ok("正常稿放行", validatePublish({ title: "潮汐书店", body: "那年夏天…", tags: ["治愈"] }) === null);
+ok("正常稿放行", validatePublish({ title: "潮汐书店", body: "那年夏天…".repeat(25), tags: ["治愈"] }) === null);
 
 /* ───────── 周期键：现在月榜，以后周榜 ───────── */
 ok("periodKey 形状 YYYY-MM", /^\d{4}-\d{2}$/.test(periodKey(new Date(2026, 9, 1))), periodKey(new Date(2026, 9, 1)));
@@ -193,7 +195,16 @@ ok("标签云显示篇数而非赞数（view_count 装的是 count(*)）",
 ok("我的页签：草稿/已发布 + 数据面板", has(mineVue, 'storyMine("draft")', 'storyMine("published")', "storyMyStats")
   && mineVue.includes("total_likes") && mineVue.includes("bookmark_count"));
 ok("发现页签：搜索 + 载入更多", has(feedVue, "story.searchPh", "loadMore"));
-ok("主页三页签（投稿|发现|我的）", has(viewVue, "story.tabWrite", "story.tabDiscover", "story.tabMine", "StoryRank"));
+ok("主页页签：投稿|发现|我的（+ 手机端排行榜）", has(viewVue, "story.tabWrite", "story.tabDiscover", "story.tabMine", "story.tabRank", "StoryRank"));
+// 轮 148：默认页签必须是「发现」。原来默认 write，用户从首页/侧栏进 /story 看到的是空白投稿框，
+// 以为页面坏了 —— 与「按钮灰着没提示」同一类隐藏约束坑。
+ok("默认落在发现页（不再是空白投稿框）", viewVue.includes('const tab = ref("discover")')
+  && !viewVue.includes('const tab = ref("write")'));
+// 手机端排行榜曾是右栏，在 <1100px 时被挤到主栏下方（要滑到底才看见），故改为第4 页签紧邻「我的」。
+ok("手机端排行榜进页签（onlyMobile），桌面右栏不重复渲染",
+  viewVue.includes("onlyMobile: true") && viewVue.includes('v-if="!showRankTab" class="story-side"')
+  && viewVue.includes("tab === 'rank'"));
+ok("排行榜页签文案中英成对", !!(messages.en.story.tabRank && messages.zh.story.tabRank));
 // 点赞/收藏是「开关型」按钮：必须默认 ghost（透明底），只靠 --on 上色。
 // 踩过的坑：直接用 st-btn（实心橙）→ 未点赞也是亮色，与已点赞只差一个色阶，等于没有状态区分。
 ok("详情页点赞/收藏为 ghost 开关按钮（未操作不亮）",
@@ -208,6 +219,56 @@ ok("network → errNetwork", storyErrKey(new Error("Failed to fetch")) === "stor
 ok("其它 → errGeneric", storyErrKey(new Error("???")) === "story.errGeneric");
 ok("story-comment-empty → errCommentEmpty", storyErrKey(new Error("story-comment-empty")) === "story.errCommentEmpty");
 ok("story-comment-long → errCommentLong", storyErrKey(new Error("story-comment-long")) === "story.errCommentLong");
+ok("story-too-short → errShort（须先于 too-long 命中，否则被长文分支吞掉）",
+  storyErrKey(new Error("story-too-short")) === "story.errShort");
+ok("story-too-long → errLong（未被 too-short 规则误捕）",
+  storyErrKey(new Error("story-too-long")) === "story.errLong");
+
+/* ───────── 正文下限 100 字（发布口径；草稿不受限） ───────── */
+{
+  const body100 = "字".repeat(100);
+  const okTags = ["日常"];
+  const base = { title: "标题", tags: okTags };
+  ok("正文 0 字 → empty-body（先判空，再判下限）",
+    validatePublish({ ...base, body: "" }) === "empty-body");
+  ok("正文 1 字 → too-short", validatePublish({ ...base, body: "字" }) === "too-short");
+  ok("正文 99 字 → too-short（差 1 字也拦）",
+    validatePublish({ ...base, body: "字".repeat(99) }) === "too-short");
+  ok("正文 100 字 → 通过（边界含端点）", validatePublish({ ...base, body: body100 }) === null);
+  ok("正文 101 字 → 通过", validatePublish({ ...base, body: "字".repeat(101) }) === null);
+  // 码点口径：100 个 emoji 仍算 100 字，不能因 UTF-16 双倍而误判超限
+  ok("正文 100 个 emoji → 通过（码点口径，非 UTF-16）",
+    validatePublish({ ...base, body: "🙂".repeat(100) }) === null);
+  ok("BODY_MIN 导出且为 100", BODY_MIN === 100);
+  // 校验顺序：标题 → 正文（空 → 太短 → 太长）→ 标签。逐步引导，一次只报一条。
+  ok("短文 + 无标签 → too-short（正文先判，先补字数再说标签）",
+    validatePublish({ title: "标题", body: "字".repeat(50), tags: [] }) === "too-short");
+  ok("够长 + 无标签 → bad-tags（字数达标后才轮到标签）",
+    validatePublish({ title: "标题", body: "字".repeat(100), tags: [] }) === "bad-tags");
+  ok("空正文 + 无标签 → empty-body（空判最前）",
+    validatePublish({ title: "标题", body: "", tags: [] }) === "empty-body");
+}
+ok("编辑器：发布门槛用 BODY_MIN 而非 >0",
+  editor.includes("chars.value >= BODY_MIN") && !editor.includes("chars.value > 0"));
+ok("编辑器：正文不足常驻提示还差多少字",
+  editor.includes("shortOf") && editor.includes("story.needMore") && editor.includes("st-minbar"));
+ok("SQL：story_publish 加正文下限且抛 story-too-short",
+  sql.includes("char_length(p_body) < 100") && sql.includes("story-too-short"));
+ok("SQL：表 check 约束不改下限（存量短文不该被约束连累）",
+  sql.includes("between 1 and 30000") && !/between 10\d and 30000/.test(sql));
+ok("Worker：仅 publish 分支校验下限，草稿不限",
+  worker.includes("story-too-short")
+  && /seg\[1\] === "publish"[\s\S]{0,400}story-too-short/.test(worker));
+ok("story.js 中转层转出 BODY_MIN（漏了只有 vite build 才炸：Rollup 报 not exported）",
+  /import\s*\{[^}]*BODY_MIN[^}]*\}\s*from\s*"\.\/storyRules\.js"/.test(storyJs)
+  && /export\s*\{[^}]*BODY_MIN[^}]*\}/.test(storyJs));
+ok("storyPublish 把 too-short 映射成 story-too-short（漏映射会误报 story-bad-tags）",
+  storyJs.includes('v === "too-short" ? "story-too-short"'));
+ok("i18n：needMore/errShort/minbar 中英成对",
+  i18nSrc.includes("needMore:") && i18nSrc.includes("errShort:") && i18nSrc.includes("minbar:")
+  && (i18nSrc.match(/needMore:/g) || []).length === 2
+  && (i18nSrc.match(/errShort:/g) || []).length === 2
+  && (i18nSrc.match(/minbar:/g) || []).length === 2);
 
 /* ───────── 结果 ───────── */
 if (fails.length) {

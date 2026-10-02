@@ -7,7 +7,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { t } from "../../i18n.js";
 import {
-  BODY_MAX, TITLE_MAX, TAGS_MAX, TAG_MAX, PRESET_TAGS,
+  BODY_MAX, BODY_MIN, TITLE_MAX, TAGS_MAX, TAG_MAX, PRESET_TAGS,
   countChars, readMinutes, normalizeTags, canStory, storyErrKey,
   saveLocalDraft, loadLocalDraft, clearLocalDraft, storySaveDraft, storyPublish,
 } from "../../utils/story.js";
@@ -38,10 +38,11 @@ const err = ref("");
 const chars = computed(() => countChars(body.value));
 const minutes = computed(() => readMinutes(body.value));
 const over = computed(() => chars.value > BODY_MAX);
+const shortOf = computed(() => Math.max(0, BODY_MIN - chars.value));   /* 还差几字 */
 const titleLeft = computed(() => TITLE_MAX - countChars(title.value));
 const previewHtml = computed(() => renderLiteMd(body.value));
-const canPublish = computed(() => signedIn.value && !!title.value.trim() && chars.value > 0
-  && !over.value && tags.value.length > 0 && !publishing.value);
+const canPublish = computed(() => signedIn.value && !!title.value.trim()
+  && chars.value >= BODY_MIN && !over.value && tags.value.length > 0 && !publishing.value);
 
 /* 禁用原因：灰按钮必须能说清「为什么灰」，否则用户只会看到「点了没反应」 */
 const whyDisabled = computed(() => {
@@ -50,6 +51,7 @@ const whyDisabled = computed(() => {
   if (!title.value.trim()) return t("story.needTitle");
   if (over.value) return t("story.tooLong");
   if (chars.value <= 0) return t("story.needBody");
+  if (shortOf.value > 0) return t("story.needMore", { n: shortOf.value });
   if (!tags.value.length) return t("story.needTag");
   return "";
 });
@@ -185,6 +187,12 @@ onBeforeUnmount(() => {
       v-if="mode === 'write'" v-model="body" class="st-body-in" :class="{ 'st-body-in--full': full }"
       :placeholder="t('story.bodyPh')" :aria-label="t('story.bodyPh')"></textarea>
     <div v-else class="st-preview" :class="{ 'st-preview--full': full }" v-html="previewHtml"></div>
+
+    <!-- 正文下限进度：不足100 字才显示，边写边收窄，直到达标自动消失 -->
+    <div v-if="shortOf > 0" class="st-minbar" role="status">
+      <div class="st-minbar-fill" :style="{ width: Math.min(100, (chars / BODY_MIN) * 100) + '%' }"></div>
+      <span class="st-minbar-txt">{{ t("story.minbar", { n: chars, need: shortOf }) }}</span>
+    </div>
 
     <div class="st-tags">
       <span class="st-tag-lead">{{ t("story.tagLabel") }}</span>

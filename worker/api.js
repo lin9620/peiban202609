@@ -1052,6 +1052,7 @@ export default {
           if (seg[1] === "publish") {
             if (!title || [...title].length > 100) return fail(400, "story-bad-title");
             if (![...text].length) return fail(400, "story-empty-body");
+            if ([...text].length < 100) return fail(400, "story-too-short");
             if (!tags.length) return fail(400, "story-bad-tags");
           }
           const rawId = t.id === null || t.id === undefined || t.id === "" ? null : Number(t.id);

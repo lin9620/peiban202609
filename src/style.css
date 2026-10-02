@@ -2322,6 +2322,13 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 .st-tag { background: var(--accent-soft); color: var(--accent-deep); border-radius: 999px; padding: 3px 8px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
 .st-tag-x { background: none; border: 0; cursor: pointer; color: inherit; font-size: 14px; line-height: 1; }
 .st-tag-lead { font-size: 12px; color: var(--ink-faint); flex: none; }
+/* 正文下限进度条：不足 100 字才出现，写达标即随 v-if 卸载 */
+.st-minbar { position: relative; height: 22px; margin-top: 8px; border-radius: 11px; overflow: hidden;
+  background: var(--card); border: 1px dashed var(--hairline); }
+.st-minbar-fill { position: absolute; inset: 0 auto 0 0; background: var(--accent);
+  opacity: .2; transition: width .18s ease; }
+.st-minbar-txt { position: relative; display: block; line-height: 20px; text-align: center;
+  font-size: 12px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
 .st-why { font-size: 12px; color: var(--low); margin-top: 6px; }
 .st-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .st-preset { font-size: 12px; line-height: 1; cursor: pointer; color: var(--ink-soft);

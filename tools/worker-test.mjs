@@ -333,10 +333,10 @@ async function hit(script, path, init) {
 }
 {
   const { c } = await hit([{ body: { ok: true } }],
-    "/api/story/publish", { method: "POST", body: JSON.stringify({ id: 7, title: "标题", body: "正文", tags: ["深夜"] }) });
+    "/api/story/publish", { method: "POST", body: JSON.stringify({ id: 7, title: "标题", body: "正文".repeat(50), tags: ["深夜"] }) });
   ok("storyPublish rpc URL + body（p_id 7=再编辑）",
     c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/story_publish` &&
-    c.outbound[0].init.body === JSON.stringify({ p_id: 7, p_title: "标题", p_body: "正文", p_tags: ["深夜"] }),
+    c.outbound[0].init.body === JSON.stringify({ p_id: 7, p_title: "标题", p_body: "正文".repeat(50), p_tags: ["深夜"] }),
     c.outbound[0] && c.outbound[0].init.body);
 }
 {
@@ -360,9 +360,29 @@ async function hit(script, path, init) {
 }
 {
   const { res } = await hit([], "/api/story/publish",
-    { method: "POST", body: JSON.stringify({ title: "t", body: "x", tags: [] }) });
-  ok("story 零标签 → 400 story-bad-tags",
+    { method: "POST", body: JSON.stringify({ title: "t", body: "字".repeat(100), tags: [] }) });
+  ok("story 零标签 → 400 story-bad-tags（正文先给足 100 字，否则会先被下限拦、报成 too-short）",
     res.status === 400 && (await res.json()).error === "story-bad-tags");
+}
+/* 正文下限 100 字：只卡 publish，草稿仍可只写几个字 */
+{
+  const { res, c } = await hit([], "/api/story/publish",
+    { method: "POST", body: JSON.stringify({ title: "t", body: "字".repeat(99), tags: ["x"] }) });
+  ok("story 正文 99 码点 → 400 story-too-short 且 0 出站",
+    res.status === 400 && (await res.json()).error === "story-too-short" && c.outbound.length === 0);
+}
+{
+  const { res, c } = await hit([{ body: { ok: true } }],
+    "/api/story/publish",
+    { method: "POST", body: JSON.stringify({ title: "t", body: "字".repeat(100), tags: ["x"] }) });
+  ok("story 正文 100 码点 → 放行到RPC（边界含端点）", res.status === 200 && c.outbound.length === 1);
+}
+{
+  const { res, c } = await hit([{ body: { ok: true } }],
+    "/api/story/draft",
+    { method: "POST", body: JSON.stringify({ id: null, title: "", body: "草", tags: [] }) });
+  ok("story 草稿不受 100 字下限约束（半成品随时能存）",
+    res.status === 200 && c.outbound[0].url.endsWith("/rpc/story_save_draft"));
 }
 {
   const { c } = await hit([{ body: { ok: true } }],
