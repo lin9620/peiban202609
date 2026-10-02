@@ -126,13 +126,13 @@ node tools/mood-test.mjs      # 心情打卡纯逻辑单测（12 项：连续天
 node tools/make-og.mjs        # 重新生成分享图与图标到 public/（改了品牌色或文案后可跑）
 node tools/uifix-test.mjs     # 修复项回归（24 项：评论字数上限/立绘上传校验/大厅文案/状态同步提示/安全头/浏览眼睛摘除/我的页帖子/角色名额口径）
 node tools/app-shell-test.mjs # App 外壳与手机形态回归（64 项：T5 顶栏/TabBar/页脚让位 · T7 私信↔通知分栏与红点 · 聊天整屏(align-items:stretch) · 桌面提示隐藏 · 系统返回键逐级返回/根视图最小化 · 我的页钱包 · 睡着了送行弹窗 · 我的食谱回原版 · 二级评论就地回复框 · 发帖页整屏样式 · 桌面零变化 · 轮142 私信页两段一体与漂流瓶独立聊天 · 轮143 两列化+头部⋯菜单+瓶聊昵称进空间 · 轮144 ⋯点空白关+暖心墙页内刷新）
-node tools/story-test.mjs  # 故事栏单测（97 项：3 万字/标题/标签边界 · 四种排序 · period_key 月→周榜预留 · 轮廓渲染 i18n 中英成对 · 三通道端点形状 · MIGRATION_story.sql 结构）
+node tools/story-test.mjs  # 故事栏单测（101 项：3 万字/标题/标签边界 · 四种排序 · period_key 月→周榜预留 · 轮廓渲染 i18n 中英成对 · 三通道端点形状 · MIGRATION_story.sql 结构 · 批2 评论/书架/精选/数据面板 SQL 结构）
 node tools/react-queue-test.mjs # 回应按钮连点收敛器单测（12 项：同键串行不并发 · 前一个失败不卡后一个 · 过期响应不回写 · 连点三下奇偶正确 · 单次点击照常回写；纯逻辑无网络）
 node tools/back-stack-test.mjs # 系统返回键拦截栈单测（9 项：空栈不吞键 / true 才算已处理 / 后进先出 / 顶层 false 下层接手 / 拦截器异常不吞键 / 卸载弹栈 / 陌生函数不误删）
 node tools/post-detail-test.mjs # 帖子详情页回归（15 项：/post/:id 路由与数据链单帖读取 / 评论两级展开与就地回复 / 与暖心墙同款结构）
 node tools/splash-test.mjs    # 启动页回归（18 项：静态层结构与加厚内容 / 2.5s 兜底放行 / 看门狗摘除 / 只在 App 壳保留 / 深色模式三道闸）
 node tools/userScope-test.mjs # 账号域单测（8 项：分域读写往返 / 老档迁移进 guest(幂等+触发reload) / 首次登录认领(不覆盖已有档·只认一次) / 换域 flush→reload 顺序 / 新注册账号必为全新档）
-node tools/page-smoke.mjs    # 页面挂载冒烟（9 条关键路由真实无头挂载：无崩溃盒 + 挂载成功；抓构建查不到的 TDZ/运行时崩溃）
+node tools/page-smoke.mjs    # 页面挂载冒烟（12 条关键路由真实无头挂载：无崩溃盒 + 挂载成功；抓构建查不到的 TDZ/运行时崩溃）
 node tools/report-test.mjs   # 举报/审核/拉黑契约（61 项：迁移与 SETUP 同源 / 三 RPC 与 Worker 路由 / db 双模式成对 / 错误码↔i18n 闭环 / 通知 reportDone 分支 / userBlocks 过滤与换域重置 / 三视图与管理端接线）
 node tools/web-probe.mjs      # 无头浏览器 + CDP 取真机等价实证（`--serve=dist --url=/messages --w=393 --h=852 --file=./expr.js`：真实构建产物 + 精确视口，量盒模型/命中规则；不依赖手机）
 node tools/cdp-eval.mjs       # 真机 WebView CDP 求值（`adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>` 后 `--file=./expr.js`；页面自动进入焦点模拟，息屏也能取数）
@@ -343,7 +343,7 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 | 体验 | `#/` 路由直接访问 `/pet` 会 404 | 迁移到 history 模式 + 每条路由独立静态 HTML + SPA 回退 | `router.js` / `vite.config.js` / `wrangler.jsonc` |
 | 体验 | 「在线陪伴数」是本地随机数，易误导 | 去掉虚构人数，改如实文案（路线图保留"等有真实统计再接"） | `views/HomeView.vue` / `i18n.js` |
 
-回归验证（全部本地可跑）：`wall-rules-test` 42 项 · `comment-test` 35 项 · `wall-test` 34 项 · `pet-home-test` 19 项 · `pet-visual-test` 163 项 · `food-painter-test` 20 项 · `uifix-test` 24 项 · `image-fit` 20 项 · `snack-test` 24 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 130 项 · `privacy-test` 34 项 · `arity-test` 8 项 · `seo-test` 50 项 · `dm-test` 286 项 · `notify-test` 149 项 · `status-test` 49 项 · `status-counts-test` 11 项 · `bottle-test` 71 项 · `bottle-chat-test` 94 项 · `api-contract-test` 87 项 · `gateway-contract-test` 80 项 · `worker-test` 247 项 · `cache-test` 12 项 · `home-panes-test` 9 项 · `app-shell-test` 64 项 · `react-queue-test` 12 项 · `back-stack-test` 9 项 · `post-detail-test` 17 项 · `splash-test` 21 项 · `userScope-test` 8 项 · `report-test` 61 项 · `feed-perf-test` 27 项 · `feed-window-test` 19 项 · `feed-window-live` 10 项（需 dev 服务器）· `web-refresh-test` 6 项 · `story-test` 97 项 · `rail-test` 31 项 · `rps-test` 14 项 · `page-smoke` 9 项 · `undef-check`（`--selftest` 10 项）· `tdz-check`。
+回归验证（全部本地可跑）：`wall-rules-test` 42 项 · `comment-test` 35 项 · `wall-test` 34 项 · `pet-home-test` 19 项 · `pet-visual-test` 163 项 · `food-painter-test` 20 项 · `uifix-test` 24 项 · `image-fit` 20 项 · `snack-test` 24 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 130 项 · `privacy-test` 34 项 · `arity-test` 8 项 · `seo-test` 50 项 · `dm-test` 286 项 · `notify-test` 149 项 · `status-test` 49 项 · `status-counts-test` 11 项 · `bottle-test` 71 项 · `bottle-chat-test` 94 项 · `api-contract-test` 87 项 · `gateway-contract-test` 80 项 · `worker-test` 247 项 · `cache-test` 12 项 · `home-panes-test` 9 项 · `app-shell-test` 64 项 · `react-queue-test` 12 项 · `back-stack-test` 9 项 · `post-detail-test` 17 项 · `splash-test` 21 项 · `userScope-test` 8 项 · `report-test` 61 项 · `feed-perf-test` 27 项 · `feed-window-test` 19 项 · `feed-window-live` 10 项（需 dev 服务器）· `web-refresh-test` 6 项 · `story-test` 101 项 · `rail-test` 31 项 · `rps-test` 14 项 · `page-smoke` 12 项 · `undef-check`（`--selftest` 10 项）· `tdz-check`。
 
 ## 🗺️ 路线图
 

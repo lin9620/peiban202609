@@ -280,7 +280,7 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
 ## 二、现在在做什么
 
-- **当前任务**：**轮 145 故事栏批 1 + 轮 144 四项修复，已提交（`35b10f5`/`a2efb88`/`dbb89f9` + 补丁）并部署（3 次 deploy，终版 Version `7717a367`，live-check 14/14 + story-live-check 终版复核 18/18 + bundle 本地=线上）**（2026-10-01）：轮145 双栏壳（左三页签 投稿/发现/我的 + 右四榜 推荐/最新/月赞/标签）+ 详情/写作页 + 数据层三通道 + SEO en/zh 预渲染 + `/story/*` Worker 回退；全量 41 项 0 fail。轮144：① 我发布的待处理置顶 ② ⋯菜单点空白关 ③ 暖心墙页内刷新 ④ 大厅两排去重+动效。**阻塞项（用户侧）：`MIGRATION_story.sql` 首执报 42P13（`p_id default` 后跟无默认参数）已修复（两处去 default + 7 函数机器校验 OK），事务已回滚 —— 需用户重新执行修后文件，否则故事栏写/读全 400**。**待用户验收（亮屏）**：轮144 四项 + 轮145 故事栏壳/四榜/3 万字拦截/发布链路。**批 2 待批 1 验收**：评论 UI（表已建）、书架、每日精选、我的数据面板。**下一轮待命**：可选清理 railRules.bottleLeft+T27-T31、轮140 左栏收起态透明口径。
+- **当前任务**：**轮 145 故事栏批 1+2（批 2 = 评论/书架/每日精选/数据面板）已提交待部署** —— 上线前置：用户需先在 Supabase 执行 `MIGRATION_story_b2.sql`；验收点：详情页发/删评论、⭐收藏、我的页数据面板与书架、发现页每日精选。
 - **上一批（历史）**：轮 114（**换域名 dale.de5.net → warmpaws.de5.net：改动完成、36 套离线全绿，待提交待部署——攒批；部署即自动绑新域，之后 APK 必须重打**）。22 文件 + `.env` 全量替换 + wrangler.jsonc `custom_domain` 自动建绑 + 旧域面板绑定保留双域并存；外部面板（Supabase Redirect URLs / Google Branding / GSC）待办清单见 F 区轮 114。**顺序红线：先 deploy 再打 APK**。
 - **上一批（已交付）**：轮 113（**上传 / 部署 / 打包 / 装机 四链路全部完成 ✅**）。用户发话「上传，部署，打包，装机」→ 把轮 107-112 的攒批一次性发出去：① 提交 `bf7b2c2`（轮 107 死代码清理）+ `c194df0`（轮 108-112 代码）+ `8fecc0f`（轮 108-112 测试与文档），**push 成功**（`HEAD == origin/main == 8fecc0f`，工作区干净）② 部署 Worker **Version `3a91942c`**（`wrangler deploy` EXIT=0，https://warm-paws.yi1614351.workers.dev）③ 线上验证 **LIVE ALL PASS (14)** + live-bundle-check **本地 dist = 线上**（入口 `index-C5pZNGVS.js`，SHA16 `c6dbdbad5170f85f` 两边一致、443181 字节、含 slug）④ `cap sync` EXIT=0（SEO 占位剥离 ×8）+ Gradle **BUILD SUCCESSFUL in 30s** → APK `apk/warm-paws-debug.apk` 5.21 MB，SHA16 **`A4852FA5763FAE05`**，包内入口 `index-C5pZNGVS.js` = 线上同一份 ⑤ `adb install -r` **Success**（`net.de5.dale`）+ 冷启动前台存活、`mWakefulness=Awake`、`logcat` 无 crash/FATAL + 截图确认渲染。**待用户真机/网页验收**。详见 F 区轮 113。
 - **上一轮（已交付）**：轮 112（**详情页一级评论回复框钉到「一级评论 ↔ 二级列表」之间（原在整条评论最底部），与暖心墙轮 110 同款同位；已随轮 113 批提交 `c194df0` / 部署 `3a91942c` / APK `A4852FA5763FAE05` 装机 ✅**）。用户原话：「帖子详细页面的一级评论输入框：把一级评论回复框点击后出现在一级评论下面，二级评论上面，你现在是一级评论最下面。二级评论输入框不改。app端不改」。详见 F 区轮 112。
@@ -1324,6 +1324,25 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **验证**：undef/tdz **0** + wall **34/34** + i18n **19/19** + build 0 + page-smoke **8/8**；已部署（live-check 14/14）+ APK 装机 Success。
      **待用户验收（亮屏）**：暖心墙下拉 → 「刷新中…」→ 换一批/新增提示正常、列表真的换内容；消息页无错误盒。
 
+  - **轮 145 · 故事栏批 2：评论区 / 书架 / 每日精选 / 我的数据面板（2026-10-01，用户「继续做后面的内容」后开工）**
+    - **前提**：批 1 的 `MIGRATION_story.sql` 已由用户在 Supabase SQL Editor 执行成功（首跑 42P13 整单回滚，修参数后通过）。
+    - **数据层**：新增 `MIGRATION_story_b2.sql` —— 表 `story_bookmarks`（复合主键防重复 + 级联删）、`stories.featured` 列（`add column if not exists`，单篇布尔不做多篇编排）、RLS 本人读写 + 8 个 RPC：
+      - 评论三件套：`story_comment_list`（published 全员可读，带 `mine` 标记）/ `story_add_comment`（≤1000 字；**非 published 先回滚插入再抛错**，保证 `comment_count` 与实际条数一致）/ `story_delete_comment`（评论作者或故事作者，`greatest(x-1,0)` 兜底）
+      - 收藏两件套：`story_toggle_bookmark`（返回 true=已收藏）/ `story_bookmark_list`（收藏时间倒序、只列仍在架）
+      - 精选两件套：`story_featured`（当前那篇或空）/ `story_set_featured`（**仅 `is_admin()`**，设新先全撤 → 同时只留一篇）
+      - 数据面板：`story_my_stats`（篇数/获赞/阅读/评论/收藏 + 最高赞一篇，单行汇总）
+    - **42P13 铁律落地**（批 1 翻车根因）：新增校验器逐行扫每个函数的参数默认值序列，**8 函数 0 违规**；另检函数名 vs 表名冲突（故用 `story_comment_list` 而非 `story_comments`，避开批 1 已建的表）、`as $`/$; 配对、`begin`/`commit` 收尾、幂等。**生成器改用 JS 拼装落盘**——编辑器直写会把 `$` 与换行转义掉（期间还因正则误伤把文件搞乱过一次，已整file 重写而非修补）。
+    - **三通道**（直连 `db.supabase.js` / 网关 `db.gateway.js` / Worker 各 8 个方法）：**Worker 路由顺序是本轮要点**——字面量子路径（`/story/featured`、`/story/stats`、`/story/bookmarks`、`/story/bookmark`、`/story/comments/:id`）必须排在通用 `/story/:id` **之前**，否则 `/story/featured` 会被当 id 掉进 bad-id；评论接口入参体检（坏 id / 空评论 / 超 1000 字 → 400 且**零出站**）。
+    - **前端**：新组件 `components/story/StoryComments.vue`（列表/发送/删除/登录引导，复用 `.st-*` 样式）；`StoryDetailView` 接入评论区 + ⭐收藏；`StoryFeed` 顶部每日精选卡（无精选显示引导文案）；`StoryMine` 数据面板 + 我的书架（可翻页、下架自动隐去）。
+    - **顺带修 3 个真 bug**：
+      1. `story-test` 4 条断言写在 `process.exit(1)` **之后**（轮 145 遗留死断言，永不执行也不计数）→ 移到结果判定之前；
+      2. `i18n.js` story 块 **6 个重复键**（JS 字面量后者覆盖前者，其中 `myBest` 被无占位符版本覆盖 → `{title}`/`{n}` 渲染不出来）→ 保留带占位符那版；
+      3. i18n 缩进错乱 3 行 + 补 `errCommentEmpty`/`errCommentLong`（`storyErrKey` 引用了但字典缺失 → 会显示裸 key）。修复脚本已改成**幂等**（首版非幂等，复查时又插了一遍，靠备份回滚纠正）。
+    - **验证**：全量 **39 套 0 fail**（story 101/101）+ undef 0 + tdz 0 + worker `node --check` 0 + `vite build` 0（4.94s）。
+         - **部署后追加修（上线前发现）**：`app-shell-test T25` 断言写法缺陷（正则 `[\s\S]*?` 跨出花括号，把文件别处的 `padding: 0;` 误配进来 → 报「缺 padding:0」假失败，限定在块内后过）；`i18n.js` `common.delete` 中英各多一处（编辑器把相邻行粘连所致，HEAD 只有 1 处）→ 删冗余并补全仓重复键扫描脚本，**重复键 0**。
+     - **部署记录（2026-10-02）**：代码 commit **`915ac97`**（14 文件 +711/−29，含 `MIGRATION_story_b2.sql` 与新组件 `StoryComments.vue`）；`vite build` **0**（4.91s）→ `wrangler deploy` **0** → Version **`9d555373`**（49 文件，Total 54.48 KiB / gzip 10.74 KiB）；live-check 首跑 2 项 `fetch failed`（`/pet`、`/favicon.png`，Cloudflare 网络抖动，单点重试即 200）→ 复跑 **LIVE ALL PASS (14)**；live-bundle-check 入口 `index-B9Ky-n3p.js` 463773 字节 SHA16 **`a54ef443d0a18fd0` 本地=线上**；批 2 线上复核脚本 **B2_LIVE 14/14**（4 个 Story 分包逐字节本地=线上、评论/书架/精选/面板四端点在位、`StoryComments` 已进 StoryDetailView 分包、`/story`+`/story/write`+`/zh/story` 200、轮144 死类未回潮）。
+     - **两课（探针）**：① db 层被 rollup 提进**入口 chunk**，不在 Story 分包里——只扫分包会漏判特征串（一度误报 3 项 FAIL），须入口+分包合并扫；② 线上 fetch 偶发 ConnectTimeout，探针须自带重试，否则把网络抖动误报成部署事故。
+     - **状态**：**已部署上线**（SQL 前置已由用户执行成功），待用户亮屏验收。
   - **轮 145 · 故事栏批 1：投稿/发现/榜单双栏壳 + 详情/写作独立页 + 数据层三通道（2026-10-01，用户点名「侧边栏增加一个按钮，故事栏，然后点击之后增加一几个页面，左边是投稿，右边是排行榜页面…3w字」，方案经用户拍板 **1A 三页签同居左栏 / 2A 轻 Markdown / 3 要评论（UI 批 2）/ 4 分批**；改动完成：**全量 41 项 0 fail** + build 0 + page-smoke 9/9，**已提交 `a2efb88` / 已部署（3 次 deploy 终版 Version `7717a367`，live-check 14/14）；上线前置：`MIGRATION_story.sql` 用户首执报 42P13 已修复、待重新执行**）：
      **导航/路由**：`SideNav` 新项 `{ to: "/story", ico: "📖" }`（暖心墙之后）；`router.js` 4 条懒加载 —— `/story`（双栏壳）`/story/write` `/story/edit/:id?` `/story/:id`（详情）；`vite.config.js` seoRoutes zh/en 成对 + `wrangler.jsonc` `run_worker_first` 加 story 段 + Worker 存在性回退（照 `/post/*` 惯例，详情页可被收录、查无真 404）。手机端 TabBar/三联零改动。
      **双栏壳（方案 1A，照私信页一体外壳惯例）**：`StoryView` = 左栏三页签 **投稿 | 发现 | 我的** + 右栏 340px **排行榜**四页签 **推荐 | 最新 | 月赞 | 标签**；手机端单栏（段签切换，不新增手机形态）。
