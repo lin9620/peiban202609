@@ -342,6 +342,50 @@ export const db = {
     return unwrap(sb().rpc("story_mine", params));
   },
 
+  /* ══════════ 故事栏批 2（轮 145：评论 / 书架 / 每日精选 / 数据面板）══════════ */
+
+  /** 评论列表（published 故事全员可读；mine 供前端标「我的」） */
+  storyCommentList(storyId, limit = 50) {
+    return unwrap(sb().rpc("story_comment_list", { p_story_id: storyId, p_limit: limit }));
+  },
+
+  /** 发评论（≤1000 字，服务端校验；返回新评论 id） */
+  storyAddComment(storyId, body) {
+    return unwrap(sb().rpc("story_add_comment", { p_story_id: storyId, p_body: body }));
+  },
+
+  /** 删评论（评论作者或故事作者） */
+  storyDeleteComment(id) {
+    return unwrap(sb().rpc("story_delete_comment", { p_id: id }));
+  },
+
+  /** 收藏/取消：true=已收藏 */
+  storyToggleBookmark(id) {
+    return unwrap(sb().rpc("story_toggle_bookmark", { p_id: id }));
+  },
+
+  /** 我的书架（收藏时间倒序） */
+  storyBookmarkList(limit = 30, offset = 0) {
+    return unwrap(sb().rpc("story_bookmark_list", { p_limit: limit, p_offset: offset }));
+  },
+
+  /** 每日精选（没有则空数组） */
+  async storyFeatured() {
+    const data = await unwrap(sb().rpc("story_featured"));
+    return (data && data[0]) || null;
+  },
+
+  /** 设/撤每日精选（仅管理员） */
+  storySetFeatured(id, on) {
+    return unwrap(sb().rpc("story_set_featured", { p_id: id, p_on: !!on }));
+  },
+
+  /** 我的数据面板（单行汇总） */
+  async storyMyStats() {
+    const data = await unwrap(sb().rpc("story_my_stats"));
+    return (data && data[0]) || null;
+  },
+
   /* ══════════ 宠物主页（展示镜像 + 计数独立列） ══════════ */
 
   /** 取宠物主页行（行不存在返回 null）；pats/feeds 列缺失（老库）时退回只读 data */

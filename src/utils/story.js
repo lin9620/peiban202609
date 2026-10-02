@@ -82,3 +82,46 @@ export function storyGet(id) {
 export function storyMine(status = null) {
   return db.storyMine(status);
 }
+
+/* ══════════ 批 2：评论 / 书架 / 每日精选 / 数据面板（RPC 8-15） ══════════ */
+
+/** 评论上限（与 SQL 端 story_add_comment 的 char_length>1000 同口径，前端先挡） */
+export const COMMENT_MAX = 1000;
+
+/** 评论列表（published 全员可读；mine 字段供前端标「我的」） */
+export function storyCommentList(id, limit = 50) {
+  return db.storyCommentList(id, limit);
+}
+
+/** 发评论：空白/超长前端先挡（省一趟往返），最终以服务端为准 */
+export function storyAddComment(id, body) {
+  const b = String(body ?? "").trim();
+  if (!b) throw new Error("story-comment-empty");
+  if (countChars(b) > COMMENT_MAX) throw new Error("story-comment-long");
+  return db.storyAddComment(id, b);
+}
+
+/** 删评论（评论作者或故事作者，服务端裁定） */
+export function storyDeleteComment(id) {
+  return db.storyDeleteComment(id);
+}
+
+/** 收藏/取消：true=已收藏 false=已取消 */
+export function storyToggleBookmark(id) {
+  return db.storyToggleBookmark(id);
+}
+
+/** 我的书架（收藏时间倒序） */
+export function storyBookmarkList(limit = 30, offset = 0) {
+  return db.storyBookmarkList(limit, offset);
+}
+
+/** 每日精选（没有则 null —— 空数组已归一成 null，调用方不用判两种形态） */
+export function storyFeatured() {
+  return db.storyFeatured();
+}
+
+/** 我的数据面板（篇数/获赞/阅读/评论/收藏 + 最高赞一篇；无则 null） */
+export function storyMyStats() {
+  return db.storyMyStats();
+}

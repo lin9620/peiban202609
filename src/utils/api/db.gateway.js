@@ -299,6 +299,43 @@ export const db = {
     return call(`/story/mine?${qs.join("&")}`);
   },
 
+  /* ══════════ 故事栏批 2（轮 145：评论 / 书架 / 每日精选 / 数据面板） ══════════ */
+
+  /** 评论列表 */
+  storyCommentList(storyId, limit = 50) {
+    return call(`/story/${enc(storyId)}/comments?limit=${enc(limit)}`);
+  },
+
+  /** 发评论（≤1000 字，服务端校验） */
+  storyAddComment(storyId, body) {
+    return call(`/story/${enc(storyId)}/comments`, { method: "POST", body: { body } });
+  },
+
+  /** 删评论 */
+  storyDeleteComment(id) {
+    return call(`/story/comments/${enc(id)}`, { method: "DELETE" });
+  },
+
+  /** 收藏/取消：true=已收藏 */
+  storyToggleBookmark(id) {
+    return call("/story/bookmark", { method: "POST", body: { id } });
+  },
+
+  /** 我的书架 */
+  storyBookmarkList(limit = 30, offset = 0) {
+    return call(`/story/bookmarks?limit=${enc(limit)}&offset=${enc(offset)}`);
+  },
+
+  /** 每日精选（无则 200 null） */
+  storyFeatured() {
+    return call("/story/featured");
+  },
+
+  /** 我的数据面板 */
+  storyMyStats() {
+    return call("/story/stats");
+  },
+
   /* ══════════ 宠物主页（展示镜像 + 计数独立列） ══════════ */
 
   /** 取宠物主页行（行不存在返回 null）；pats/feeds 列缺失的兼容由 Worker 内部处理 */

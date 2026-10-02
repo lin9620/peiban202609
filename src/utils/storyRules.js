@@ -104,6 +104,8 @@ export function storyErrKey(e) {
   if (/story-bad-title|bad-title/.test(raw)) return "story.errTitle";
   if (/story-too-long|too-long|30000/.test(raw)) return "story.errLong";
   if (/story-bad-tags/.test(raw)) return "story.errTags";
+  if (/story-comment-empty/.test(raw)) return "story.errCommentEmpty";
+  if (/story-comment-long/.test(raw)) return "story.errCommentLong";
   if (/story-not-found/.test(raw)) return "story.errNotFound";
   if (/story-auth|JWT|401|not authenticated/i.test(raw)) return "story.errAuth";
   if (/story-bad-mode/.test(raw)) return "story.errMode";

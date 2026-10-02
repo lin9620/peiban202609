@@ -184,11 +184,18 @@ ok("编辑器有停机自动存草稿", has(editor, "setTimeout(autosave, 3000)"
 ok("编辑器有写/预览双页签", has(editor, "story.modeWrite", "story.modePreview", "renderLiteMd"));
 ok("榜页签四种模式齐", has(rankVue, "RANK_TABS", "story.rankShuffle", "periodKey"));
 ok("榜标签模式 → 该标签月赞排行", rankVue.includes('mode: "monthly", tag: activeTag.value'));
-ok("我的页签：草稿/已发布 + 数据面板", has(mineVue, 'storyMine("draft")', 'storyMine("published")', "totalLikes"));
+ok("我的页签：草稿/已发布 + 数据面板", has(mineVue, 'storyMine("draft")', 'storyMine("published")', "storyMyStats")
+  && mineVue.includes("total_likes") && mineVue.includes("bookmark_count"));
 ok("发现页签：搜索 + 载入更多", has(feedVue, "story.searchPh", "loadMore"));
 ok("主页三页签（投稿|发现|我的）", has(viewVue, "story.tabWrite", "story.tabDiscover", "story.tabMine", "StoryRank"));
 ok("阅读页：点赞 + 相关推荐 + 浏览计数", has(detailVue, "storyToggleLike", "storyAddView", "story.related"));
 ok("全屏写作可续写草稿", has(writeVue, "route.query.id", "storyGet", "full"));
+
+/* ───────── 批 2：错误码归类 ───────── */
+ok("network → errNetwork", storyErrKey(new Error("Failed to fetch")) === "story.errNetwork");
+ok("其它 → errGeneric", storyErrKey(new Error("???")) === "story.errGeneric");
+ok("story-comment-empty → errCommentEmpty", storyErrKey(new Error("story-comment-empty")) === "story.errCommentEmpty");
+ok("story-comment-long → errCommentLong", storyErrKey(new Error("story-comment-long")) === "story.errCommentLong");
 
 /* ───────── 结果 ───────── */
 if (fails.length) {
@@ -198,6 +205,3 @@ if (fails.length) {
 }
 console.log(`story-test: ${pass} pass, 0 fail`);
 
-
-ok("network → errNetwork", storyErrKey(new Error("Failed to fetch")) === "story.errNetwork");
-ok("其它 → errGeneric", storyErrKey(new Error("???")) === "story.errGeneric");

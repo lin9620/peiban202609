@@ -103,12 +103,16 @@ ok("T24 消息Tab三段（手机端：漂流瓶|会话|通知）+ 红点挂分�
   /* 手机端 1（返工）：分栏顺序 = 左漂流瓶 · 中会话中心 · 右通知（按分栏按钮的点击绑定取序，避免被 class 绑定误判） */
   && mv.indexOf("@click=\"seg = 'bottle'\"") < mv.indexOf("@click=\"seg = 'dm'\"")
   && mv.indexOf("@click=\"seg = 'dm'\"") < mv.indexOf("@click=\"seg = 'notif'\""));
+/* 规则块内取值：[\s\S]*? 会跨出花括号误吞后面的 padding: 0;（轮 145 修）
+   所以先把 .dm-list--seg { ... } 的块体切出来，再在块内做断言。 */
+const dmSegBlock = (css.match(/\.dm-list--seg \{[^}]*\}/) || [""])[0];
 ok("T25 通知段避「卡中卡」（只去装饰、保留内缩，仅手机形态 + 仅通知段）",
   mv.includes("'dm-list--seg': isMobileNav && seg === 'notif'")
   && css.includes(".shell--mobile-nav .dm-list--seg {")
-  && /\.dm-list--seg \{[\s\S]*?background: transparent/.test(css)
-  && /\.dm-list--seg \{[\s\S]*?border-color: transparent/.test(css)
-  && !/\.dm-list--seg \{[\s\S]*?padding: 0;/.test(css)
+  && !!dmSegBlock
+  && /background:\s*transparent/.test(dmSegBlock)
+  && /border-color:\s*transparent/.test(dmSegBlock)
+  && !/padding:\s*0/.test(dmSegBlock)          /* 只去装饰、保留内缩 */
   && css.includes(".shell--mobile-nav .dm-seg-notif .notif-back { display: none; }"));
 ok("T26 系统返回键先退内部层级（拦截栈：通知段 → 私信段，再回退路由/最小化）",
   read("src/stores/uiStore.js").includes("export function pushBack(")

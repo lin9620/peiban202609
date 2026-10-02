@@ -6,14 +6,16 @@ import { useRoute, useRouter } from "vue-router";
 import { t } from "../i18n.js";
 import { renderLiteMd } from "../utils/storyRules.js";
 import {
-  storyGet, storyToggleLike, storyAddView, storyRank, canStory, storyErrKey,
+  storyGet, storyToggleLike, storyAddView, storyRank, canStory, storyErrKey, storyToggleBookmark,
 } from "../utils/story.js";
+import StoryComments from "../components/story/StoryComments.vue";
 
 const route = useRoute();
 const router = useRouter();
 const row = ref(null);
 const loading = ref(true);
 const liking = ref(false);
+const marking = ref(false);
 const err = ref("");
 const related = ref([]);
 
@@ -64,6 +66,19 @@ async function like() {
   }
 }
 
+/** 收藏/取消：服务端权威（主键防重），本地只翻转那颗星 */
+async function mark() {
+  if (!signedIn.value || !row.value || marking.value) return;
+  marking.value = true;
+  try {
+    row.value.marked = !!(await storyToggleBookmark(row.value.id));
+  } catch (e) {
+    err.value = t(storyErrKey(e));
+  } finally {
+    marking.value = false;
+  }
+}
+
 onMounted(load);
 watch(() => route.params.id, load);
 </script>
@@ -89,9 +104,15 @@ watch(() => route.params.id, load);
         <button class="st-btn" :class="{ 'st-btn--on': row.liked }" type="button" :disabled="liking || !signedIn" @click="like">
           ♥ {{ row.liked ? t("story.liked") : t("story.like") }} {{ row.like_count }}
         </button>
+        <button
+          class="st-btn st-btn--mark" :class="{ 'st-btn--on': row.marked }" type="button"
+          :disabled="marking || !signedIn" @click="mark"
+        >★ {{ row.marked ? t("story.marked") : t("story.mark") }}</button>
         <span class="st-hint">{{ t("story.stats", { likes: row.like_count, views: row.view_count }) }}</span>
       </footer>
       <p v-if="!signedIn" class="st-hint">{{ t("story.loginNeeded") }}</p>
+
+      <StoryComments v-if="row.status === 'published'" :story-id="row.id" />
     </article>
 
     <p v-else-if="!loading" class="st-hint">{{ t("story.notFound") }}</p>

@@ -1090,6 +1090,65 @@ export default {
           if (status === "draft" || status === "published") params.p_status = status;
           return rpc(env, request, "story_mine", params);
         }
+
+        /* ── 批 2：评论 / 书架 / 每日精选 / 数据面板 ──
+           顺序要紧：字面量子路径必须排在下面那条「/story/:id」通用分支之前，
+           否则 /story/featured 会被当成 id=NaN 掉进 bad-id。 */
+        /* GET /story/featured —— 每日精选那篇（无 → 200 null，与直连同契约） */
+        if (seg[1] === "featured" && seg.length === 2 && m === "GET") {
+          const res = await rpc(env, request, "story_featured", {});
+          if (!res.ok) return res;
+          let arr = null;
+          try { arr = await res.json(); } catch (e) { arr = null; }
+          return json(Array.isArray(arr) ? (arr[0] || null) : (arr || null), 200);
+        }
+        /* GET /story/stats —— 我的数据面板（单行汇总） */
+        if (seg[1] === "stats" && seg.length === 2 && m === "GET") {
+          const res = await rpc(env, request, "story_my_stats", {});
+          if (!res.ok) return res;
+          let arr = null;
+          try { arr = await res.json(); } catch (e) { arr = null; }
+          return json(Array.isArray(arr) ? (arr[0] || null) : (arr || null), 200);
+        }
+        /* GET /story/bookmarks?limit=&offset= —— 我的书架 */
+        if (seg[1] === "bookmarks" && seg.length === 2 && m === "GET") {
+          return rpc(env, request, "story_bookmark_list", {
+            p_limit: parseLimit(q.get("limit"), 30), p_offset: parseOffset(q.get("offset")),
+          });
+        }
+        /* POST /story/bookmark —— 收藏/取消（body: {id}） */
+        if (seg[1] === "bookmark" && seg.length === 2 && m === "POST") {
+          const b = await readJson(request);
+          if (b.err) return b.err;
+          const id = Number((b.body || {}).id);
+          if (!Number.isInteger(id) || id <= 0) return fail(400, "bad-id");
+          return rpc(env, request, "story_toggle_bookmark", { p_id: id });
+        }
+        /* DELETE /story/comments/:id —— 删评论（评论作者或故事作者） */
+        if (seg[1] === "comments" && seg.length === 3 && m === "DELETE") {
+          const id = Number(seg[2]);
+          if (!Number.isInteger(id) || id <= 0) return fail(400, "bad-id");
+          return rpc(env, request, "story_delete_comment", { p_id: id });
+        }
+        /* GET /story/:id/comments?limit= —— 评论列表 */
+        if (seg.length === 3 && seg[2] === "comments" && m === "GET") {
+          const id = Number(seg[1]);
+          if (!Number.isInteger(id) || id <= 0) return fail(400, "bad-id");
+          return rpc(env, request, "story_comment_list", {
+            p_story_id: id, p_limit: parseLimit(q.get("limit"), 50),
+          });
+        }
+        /* POST /story/:id/comments —— 发评论（body ≤1000 字，入参体检） */
+        if (seg.length === 3 && seg[2] === "comments" && m === "POST") {
+          const id = Number(seg[1]);
+          if (!Number.isInteger(id) || id <= 0) return fail(400, "bad-id");
+          const b = await readJson(request);
+          if (b.err) return b.err;
+          const body = typeof (b.body || {}).body === "string" ? b.body.body.trim() : "";
+          if (!body) return fail(400, "story-comment-empty");
+          if (body.length > 1000) return fail(400, "story-comment-long");
+          return rpc(env, request, "story_add_comment", { p_story_id: id, p_body: body });
+        }
         /* GET /story/:id —— 未发布且非本人 → 200 null（与直连实现的 maybeSingle 同契约） */
         if (seg.length === 2 && m === "GET") {
           const id = Number(seg[1]);
