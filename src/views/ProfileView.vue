@@ -5,6 +5,7 @@ import { NButton, NInput, NAvatar, NTag, NProgress } from "naive-ui";
 import { t } from "../i18n.js";
 import { getItem, setItem, removeItem } from "../utils/storage.js";
 import { cookbook, removeDish, moodLog, moodStreak, wallet } from "../stores/petStore.js";
+import MoodFace from "../components/MoodFace.vue";
 import { isMobileNav } from "../stores/uiStore.js";
 import { todayKey } from "../utils/daily.js";
 import {
@@ -21,7 +22,9 @@ import { cloudFetchUserPosts, cloudFavListMine, cloudFavRemove } from "../utils/
 import { cacheKey, swr } from "../utils/cache.js";
 
 /* 心情图标：一律用 Unicode 转义，避免源码中的 emoji 编码损坏 */
-const MOOD = ["\u{1F929}", "\u{1F642}", "\u{1F60C}", "\u{1F327}\uFE0F", "\u{1F614}"];
+/* 轮 155：日历表情与打卡统一——旧系统 emoji 数组退役，格子改用 MoodFace 手绘脸。
+ * legacyIndex → kind 映射与 home.mood.faceOrder 同源（0=happy 1=steady 2=calm 3=low 4=tired）。 */
+const MOOD_KIND = ["happy", "steady", "calm", "low", "tired"];
 const PAW = "\u{1F43E}";
 const HEART = "\u{1F497}";
 
@@ -246,7 +249,8 @@ const cells = computed(() => {
     out.push({
       key,
       idx: idx === undefined ? -1 : idx,
-      emoji: idx === undefined ? "" : MOOD[idx],
+      emoji: idx === undefined ? "" : MOOD_KIND[idx],
+      kind: idx === undefined ? "" : MOOD_KIND[idx],
       today: key === todayKey(),
     });
     d.setDate(d.getDate() + 1);
@@ -440,7 +444,7 @@ const brightRatio = computed(() => {
         <div
           v-for="c in cells" :key="c.key"
           class="mood-cell" :class="{ has: c.emoji, today: c.today }">
-          {{ c.emoji }}
+          <MoodFace v-if="c.kind" :kind="c.kind" />
         </div>
       </div>
       <p class="cal-legend">{{ t("profile.moodEmpty") }}</p>
