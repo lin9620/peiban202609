@@ -2391,6 +2391,18 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 .st-link { background: none; border: 0; cursor: pointer; color: var(--accent-deep); font-size: 13px; padding: 2px 0; }
 /* ── 发现流 / 我的 ── */
 .st-feed-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+/* 轮 149（用户手机端截图定稿）：联内顶部两枚大钮（排行榜 / 我的）—— 描边胶囊、暖橘字、两列等宽。 */
+.st-feed-nav { display: flex; gap: 10px; margin-bottom: 8px; }
+.st-feed-navbtn {
+  flex: 1; min-width: 0; cursor: pointer;
+  border: 1px solid var(--accent); border-radius: 999px;
+  background: rgba(255, 255, 255, .5); color: var(--accent-deep);
+  padding: 9px 8px; font-size: 15px; text-align: center;
+  transition: background-color .18s ease, color .18s ease;
+}
+.st-feed-navbtn:hover { background: rgba(255, 255, 255, .85); }
+.st-feed-navbtn:active { background: var(--accent-soft); }
+.st-feed-sub { margin: 0 0 10px; }
 .st-search { flex: 1; min-width: 160px; border: 1px solid var(--hairline); border-radius: 999px; background: rgba(255, 255, 255, .55); padding: 6px 12px; font-size: 13px; outline: none; }
 .st-card { border: 1px solid var(--hairline); border-radius: 14px; background: rgba(255, 255, 255, .5); padding: 12px 14px; margin-bottom: 8px; cursor: pointer; transition: transform .18s ease, border-color .18s ease; }
 .st-card:hover { transform: translateY(-1px); border-color: var(--accent); }

@@ -7,6 +7,7 @@
 <script setup>
 import { useRouter } from "vue-router";
 import { t } from "../i18n.js";
+import { isMobileNav } from "../stores/uiStore.js";
 import StoryShell from "../components/story/StoryShell.vue";
 import StoryFeed from "../components/story/StoryFeed.vue";
 
@@ -18,7 +19,9 @@ const router = useRouter();
     <div class="story-page story-page--read">
       <header class="story-head">
         <div class="story-head-row">
-          <h1 class="story-title">{{ t("story.title") }}</h1>
+          <!-- 手机端不显示「故事栏」大标题：顶部四联频道条里「故事」已经高亮，
+               再来一个 26px 标题是重复信息（用户要求去掉）。桌面端保留。 -->
+          <h1 v-if="!isMobileNav" class="story-title">{{ t("story.title") }}</h1>
           <nav class="story-acts">
             <!-- 轮 148：投稿入口搬到底部 ＋ 第三瓣，纯阅读页里不再放发布按钮 -->
             <button class="st-btn st-btn--ghost st-btn--mark" type="button"
