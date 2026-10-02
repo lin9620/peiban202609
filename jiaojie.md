@@ -1455,7 +1455,7 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      `.bottle-page` 640→**900**、`.set-page` 640→**860**，均 margin auto 居中——流式壳下不再靠左留大空洞。探针实测：/bottle 容器 900px 居中于 shell（150-1590）✓。
      验证：build 0 + 截图目检（bottle/settings 双页平衡）。
 
-  - **轮 136 · 故事栏按钮对去重（2026-10-01，用户截图：App 与网页故事栏各出现两对排行榜/我的，已提交 `26ffa8f` / 已部署 Version `8b490429` / live-check 复跑 14/14 ✅）**：
+  - **轮 136 · 故事栏按钮对去重（2026-10-01，已提交 `26ffa8f` / 已部署 Version `8b490429` / live-check 复跑 14/14 ✅；**APK `4BFF248D660F30E9` 装机 Success + 冷启动确认**——包内含轮 128-136 全部（收藏夹/猜拳/换肤字体/故事栏去重），历史包 E88AB4044FFB6924 作废）**：
      **双份机制**：轮 148 给故事栏页头加了一对（StoryView story-acts），轮 149 又给联内补了一对（StoryFeed st-feed-nav）——两轮叠加 = 同屏两对。**修**：页头对限定桌面（!isMobileNav）、联内对限定手机（isMobileNav）——手机 /story 与桌面 /story 各只一对（探针双端实测）。story-test 160/160（平行会话套件与本次改动兼容）。
      注意：本轮只动 StoryView/StoryFeed 两文件——工作区另有平行会话进行中的未提交改动（轮 150：storyBack/Story 两视图/TodayPane/style.css/测试），未触碰未提交。
 
