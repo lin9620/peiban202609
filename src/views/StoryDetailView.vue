@@ -4,11 +4,13 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { t } from "../i18n.js";
+import { useStoryBack } from "../utils/storyBack.js";
 import { renderLiteMd } from "../utils/storyRules.js";
 import {
   storyGet, storyToggleLike, storyAddView, storyRank, canStory, storyErrKey, storyToggleBookmark,
 } from "../utils/story.js";
 import StoryComments from "../components/story/StoryComments.vue";
+import StoryShell from "../components/story/StoryShell.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -79,13 +81,21 @@ async function mark() {
   }
 }
 
-onMounted(load);
+/* ── 返回：一律回发现页，不用router.back() ──
+ * 物理返回键在 App.vue 里对非ROOT_VIEWS 一律 router.back()，而/story 是独立路由
+ * （不在 ROOT_VIEWS 里），back() 会退回浏览历史的上一页 —— 往往是你之前待过的首页今日/漂流瓶联，
+ * 于是「详情页返回跑到了今日或漂流瓶」。这里改用共享的 useStoryBack：
+ * replace 到 /story，既修正落点，又不留多余历史记录（连按多次返回不会一层层回退）。
+ * mine / rank 页共用同一份逻辑，避免三处各写一遍监听、以后只改一处。 */
+const { storyBack: back } = useStoryBack(router, "/story");
+onMounted(() => { load(); });
 watch(() => route.params.id, load);
 </script>
 
 <template>
-  <div class="story-read">
-    <button class="st-link" type="button" @click="router.push('/story')">← {{ t("story.backToHall") }}</button>
+  <StoryShell active="story">
+    <div class="story-read">
+      <button class="st-link" type="button" @click="back">← {{ t("story.backToHall") }}</button>
 
     <article v-if="row" class="st-read-card">
       <h1 class="st-read-title">{{ row.title }}</h1>
@@ -133,5 +143,6 @@ watch(() => route.params.id, load);
     </section>
 
     <p v-if="err" class="st-err">{{ err }}</p>
-  </div>
+    </div>
+  </StoryShell>
 </template>

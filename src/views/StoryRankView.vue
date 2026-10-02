@@ -3,10 +3,12 @@
 <script setup>
 import { useRouter } from "vue-router";
 import { t } from "../i18n.js";
+import { useStoryBack } from "../utils/storyBack.js";
 import StoryShell from "../components/story/StoryShell.vue";
 import StoryRank from "../components/story/StoryRank.vue";
 
 const router = useRouter();
+const { storyBack } = useStoryBack(router);
 </script>
 
 <template>

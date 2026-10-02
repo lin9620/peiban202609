@@ -51,6 +51,7 @@ const shellVue = read("src/components/story/StoryShell.vue");  /* 轮 148：频�
 const tabBar = read("src/components/TabBar.vue");       /* 轮 148：＋ 第三瓣 = 写故事 */
 const homeVue = read("src/views/HomeView.vue");
 const routerJs = read("src/router.js");
+const backJs = read("src/utils/storyBack.js");   /* 轮 150：故事系页面共用返回逻辑 */
 const viteCfg = read("vite.config.js");
 const sideNav = read("src/components/SideNav.vue");
 const i18nSrc = read("src/i18n.js");   /* 文案成对/插入位置检查用原始源码 */
@@ -259,9 +260,29 @@ ok("投稿入口只在底部 ＋ 第三瓣",
   && !codeOnly(viewVue).includes("/story/write")
   && !codeOnly(homeVue).includes("/story/write"));
 ok("首页故事联尾不再挂按钮（避免第三处重复入口）", !homeVue.includes("home-pane-foot"));
-ok("我的页= 独立视图，回退到发现页", mineView.includes("StoryMine") && mineView.includes("'/story'")
-  && mineView.includes("/story/write?id="));
-ok("排行榜页 = 独立视图，回退到发现页", rankView.includes("StoryRank") && rankView.includes("'/story'"));
+// 回退不再用 router.push('/story')：mine/rank 的顶部操作条改走 storyBack（与物理返回键同一入口），
+// 见 utils/storyBack.js —— 否则 App.vue 对非 ROOT_VIEWS 一律 router.back()，会退到首页今日/漂流瓶联。
+ok("我的页 = 独立视图，回退用 storyBack", mineView.includes("StoryMine")
+  && mineView.includes("useStoryBack") && mineView.includes("/story/write?id="));
+ok("排行榜页 = 独立视图，回退用 storyBack",
+  rankView.includes("StoryRank") && rankView.includes("useStoryBack"));
+// 注意：详情页注释里出现过「router.back()」字样（说明为什么不用它），
+// 所以只能断言「没有实际调用」——即 router.back 后不接 .catch/() 的调用形态。
+ok("故事详情页返回不再 router.back()（会退到首页联）",
+  detailVue.includes("useStoryBack") && !/router\.back\(\)\s*[.)]/.test(detailVue));
+ok("storyBack 用 replace 而非 push（连按返回不堆历史）",
+  backJs.includes("router.replace(to)"));
+// 轮 150：/story、/story/mine、/story/rank 是独立路由，不走 HomeView 的 .home3 容器，
+// 频道条与手势必须由共享壳补上，否则「点进子页顶栏没了 / 不能左滑」。
+ok("共享壳 StoryShell：手机端渲染四联频道条，桌面直出内容",
+  shellVue.includes('v-if="isMobileNav"') && shellVue.includes("HOME_PANES")
+  && shellVue.includes("<slot v-else />"));
+ok("共享壳：横滑手势复用 panes.swipeDir，且到头不动",
+  shellVue.includes("swipeDir") && shellVue.includes("if (target) go(target.k)"));
+ok("共享壳：点某联跳首页对应 tab（独立页与首页联是两份 DOM，只能跳转）",
+  shellVue.includes("query: { tab: k }"));
+ok("三个故事页都套了共享壳", viewVue.includes("<StoryShell")
+  && mineView.includes("<StoryShell") && rankView.includes("<StoryShell"));
 // 轮 150：已发布的故事要能改。服务端 story_publish 的 else 分支本来就允许改已发布的
 // （status <> 'removed'，published_at 用 coalesce 保住原发布时间），这里只补 UI 入口。
 ok("已发布行有「修改」按钮（走 /story/write?id= 复用续写通路）",

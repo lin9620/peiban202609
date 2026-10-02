@@ -3,6 +3,7 @@
 <script setup>
 import { useRouter } from "vue-router";
 import { t } from "../i18n.js";
+import { useStoryBack } from "../utils/storyBack.js";
 import StoryShell from "../components/story/StoryShell.vue";
 import StoryMine from "../components/story/StoryMine.vue";
 
@@ -10,6 +11,8 @@ const router = useRouter();
 function onEdit(row) {
   router.push(row && row.id ? `/story/write?id=${row.id}` : "/story/write");
 }
+/* 物理返回键接管：见 utils/storyBack.js 的注释（否则会退回首页今日/漂流瓶联） */
+const { storyBack } = useStoryBack(router);
 </script>
 
 <template>
@@ -20,7 +23,7 @@ function onEdit(row) {
           <h1 class="story-title">{{ t("story.tabMine") }}</h1>
           <nav class="story-acts">
             <button class="st-btn st-btn--ghost st-btn--mark" type="button"
-              @click="router.push('/story')">{{ t("story.tabDiscover") }}</button>
+              @click="storyBack">{{ t("story.tabDiscover") }}</button>
           </nav>
         </div>
         <p class="st-sub">{{ t("story.mineSub") }}</p>
