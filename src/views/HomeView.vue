@@ -42,6 +42,12 @@ function setPane(k, scroll = true) {
   if (k === "story") storyMounted.value = true;
   if (pane.value === k) return;
   pane.value = k;
+  /* 轮 152：联位置同步进地址栏（replaceState 不堆历史）——否则从故事联进 /story/mine
+     再返回时，首页按默认联重建 = 「返回跑到今日/漂流瓶」（用户实测）。 */
+  if (isMobileNav.value) {
+    const q = { ...route.query, tab: k };
+    router.replace({ query: q }).catch(() => {});
+  }
   if (scroll) window.scrollTo(0, 0);
 }
 
