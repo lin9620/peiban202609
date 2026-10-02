@@ -2006,6 +2006,8 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 }
 .home-pane { flex: 0 0 100%; min-width: 100%; }
 .home-pane-lazy { display: grid; place-items: center; padding: 90px 0; font-size: 42px; }
+.home-pane-foot { display: flex; gap: 8px; flex-wrap: wrap; padding: 14px 0 8px; }
+.home-pane-foot .st-btn { flex: 1; min-width: 120px; text-align: center; }
 
 /* ═══ T7 · 消息 Tab 内分栏（私信 | 通知，小红书同款；仅手机形态渲染分段条）═══ */
 .dm-seg { display: flex; gap: 6px; padding: 2px 0 10px; }

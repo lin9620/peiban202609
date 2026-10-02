@@ -46,7 +46,7 @@ export const messages = {
       heroSub: "Take a breath. {n} is right here with you.",
       goPet: "Visit your companion",
       /* App 轨道 T6：首页三联频道条（今日 / 漂流瓶 / 宠物），zh/en 成对 */
-      paneToday: "Today", paneBottle: "Bottles", panePet: "Pet",
+      paneToday: "Today", paneBottle: "Bottles", panePet: "Pet", paneStory: "Stories",
       quoteLabel: "Today's little warmth",
       storyLabel: "Today's heartwarming story",
       storyTitle: "Today's heartwarming story",
@@ -320,6 +320,7 @@ export const messages = {
       modeWrite: "Write", modePreview: "Preview",
       saveDraft: "Save draft", savedAt: "Draft saved {t}", saving: "Saving…",
       publish: "Publish", publishing: "Publishing…", published: "Published — thank you for sharing 💛",
+      writeStory: "Write a story",
       fullscreen: "Full-screen writing", backToHall: "Back to Story Hall",
       badgeDraft: "Draft", badgePublished: "Published",
       myDrafts: "Drafts", myPublished: "Published",
@@ -870,7 +871,7 @@ export const messages = {
       heroSub: "深呼吸。{n} 就在这里陪着你。",
       goPet: "去看看你的伙伴",
       /* App 轨道 T6：首页三联频道条（今日 / 漂流瓶 / 宠物），zh/en 成对 */
-      paneToday: "今日", paneBottle: "漂流瓶", panePet: "宠物",
+      paneToday: "今日", paneBottle: "漂流瓶", panePet: "宠物", paneStory: "故事",
       quoteLabel: "今日份的小温暖",
       storyLabel: "今日暖心故事",
       storyTitle: "今日暖心故事",
@@ -1144,6 +1145,7 @@ export const messages = {
       modeWrite: "写", modePreview: "预览",
       saveDraft: "存草稿", savedAt: "草稿已存 {t}", saving: "存着…",
       publish: "发布", publishing: "发布中…", published: "已发布，谢谢你愿意分享 💛",
+      writeStory: "写故事",
       fullscreen: "全屏写作", backToHall: "回故事栏",
       badgeDraft: "草稿", badgePublished: "已发布",
       myDrafts: "草稿箱", myPublished: "已发布",

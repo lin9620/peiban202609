@@ -9,6 +9,8 @@ export const HOME_PANES = [
   { k: "pet", tk: "home.panePet" },
   { k: "today", tk: "home.paneToday" },
   { k: "bottle", tk: "home.paneBottle" },
+  /* 轮 147：故事联紧邻漂流瓶（排在最后 = 从漂流瓶再左滑一格就到） */
+  { k: "story", tk: "home.paneStory" },
 ];
 
 export const DEFAULT_PANE = "today";

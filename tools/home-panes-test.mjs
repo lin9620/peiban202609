@@ -20,9 +20,14 @@ function t(name, fn) {
   catch (e) { fail++; console.log("FAIL  " + name + "  → " + (e && e.message)); }
 }
 
-t("T1 联顺序（轮 19）：宠物 → 今日 → 漂流瓶；默认联 = 今日（开局秒开不吃云端延迟）", () => {
-  assert.deepEqual(HOME_PANES.map((p) => p.k), ["pet", "today", "bottle"]);
+t("T1 联顺序（轮 147）：宠物 → 今日 → 漂流瓶 → 故事；默认联 = 今日（开局秒开不吃云端延迟）", () => {
+  assert.deepEqual(HOME_PANES.map((p) => p.k), ["pet", "today", "bottle", "story"]);
   assert.equal(DEFAULT_PANE, "today");
+  /* 轮 147：故事必须紧邻漂流瓶（并列段落，用户口径「漂流瓶旁边」） */
+  assert.equal(
+    paneIndex("story"), paneIndex("bottle") + 1,
+    "故事联紧邻漂流瓶右侧"
+  );
 });
 
 t("T2 paneFromQuery：合法联直通，未知/缺省兜底默认", () => {
@@ -35,8 +40,8 @@ t("T2 paneFromQuery：合法联直通，未知/缺省兜底默认", () => {
   assert.equal(paneFromQuery(["bottle"]), "bottle");   /* route.query 可能是数组 */
 });
 
-t("T3 paneIndex：0/1/2 对应；未知联名回默认下标", () => {
-  assert.deepEqual(HOME_PANES.map((p) => paneIndex(p.k)), [0, 1, 2]);
+t("T3 paneIndex：0/1/2/3 对应；未知联名回默认下标", () => {
+  assert.deepEqual(HOME_PANES.map((p) => paneIndex(p.k)), [0, 1, 2, 3]);
   assert.equal(paneIndex("nope"), 1);
 });
 

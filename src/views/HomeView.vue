@@ -2,8 +2,10 @@
  * ------------------------------------------------------------
  * 桌面（≥900px）：只有「今日的暖爪」（轮 140 用户要求：底部漂流瓶整块去掉 —— 漂流瓶走
  *   /bottle 独立页，左导航直达）。
- * 手机 / App（T6 三联容器）：顶部频道条（今日 · 漂流瓶 · 宠物）+ 横滑三联，默认「漂流瓶」；
+ * 手机 / App（T6 三联容器）：顶部频道条（今日 · 漂流瓶 · 宠物 · 故事）+ 横滑四联，默认「今日」；
  *   TabBar ＋ 钮「投漂流瓶」跳 /?tab=bottle → 这里消费成初始联；宠物联禁滑动穿透（画板/零食雨手势优先）。
+ *   轮 147：故事联紧邻漂流瓶右侧（宠物 | 今日 | 漂流瓶 | 故事），卡片点进 /story/:id，
+ *   联尾两个钮分别去 /story/write（写）与 /story（全站页，含「我的」与四榜）。
 -->
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick, defineAsyncComponent } from "vue";
@@ -18,12 +20,17 @@ import BottleView from "../components/BottleView.vue";
  * 挂过就保留不卸载（避免来回切反复重建动画状态）。 */
 const PetView = defineAsyncComponent(() => import("./PetView.vue"));
 
+/* 故事联懒挂载：轮 147 加在漂流瓶右侧。StoryFeed 是网络件（要拉云端数据），
+ * 首次切到故事联才拉 chunk，挂过就保留（同宠物联口径）。 */
+const StoryPane = defineAsyncComponent(() => import("../components/story/StoryFeed.vue"));
+
 const route = useRoute();
 const router = useRouter();
 
 const pane = ref(paneFromQuery(route.query.tab));
 const idx = computed(() => paneIndex(pane.value));
 const petMounted = ref(pane.value === "pet");
+const storyMounted = ref(pane.value === "story");
 
 /* /?tab=xxx 变化（＋ 钮投瓶 / 深链）→ 切联；桌面忽略（不消费 query） */
 watch(() => route.query.tab, (v) => {
@@ -32,6 +39,7 @@ watch(() => route.query.tab, (v) => {
 
 function setPane(k, scroll = true) {
   if (k === "pet") petMounted.value = true;
+  if (k === "story") storyMounted.value = true;
   if (pane.value === k) return;
   pane.value = k;
   if (scroll) window.scrollTo(0, 0);
@@ -128,6 +136,19 @@ onBeforeUnmount(() => { if (ro) ro.disconnect(); });
       </div>
       <div class="home-pane" :ref="(el) => (paneEls[1] = el)"><TodayPane @go-pet="goPet" /></div>
       <div class="home-pane" :ref="(el) => (paneEls[2] = el)"><BottleView /></div>
+      <!-- 轮 147：故事联（紧邻漂流瓶，左滑一格到）—发现流 + 顶部「写故事」+ 底部「打开故事栏」进全站页 -->
+      <div class="home-pane" :ref="(el) => (paneEls[3] = el)">
+        <StoryPane v-if="storyMounted" />
+        <div v-else class="home-pane-lazy"><span>📖</span></div>
+        <div class="home-pane-foot">
+          <button class="st-btn st-btn--ghost" type="button" @click="router.push('/story/write')">
+            {{ t("story.writeStory") }}
+          </button>
+          <button class="st-btn st-btn--ghost" type="button" @click="router.push('/story')">
+            {{ t("story.openStory") }}
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
