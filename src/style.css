@@ -912,10 +912,35 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 .hero-season { margin-top: 10px; }
 .hero-stage { position: relative; }
 
-.mail-card { border: 1.5px solid rgba(183, 166, 232, .45); background: linear-gradient(170deg, #fbf8ff, #fffdf8); }
+/* 轮 150：漂流瓶并入全站玻璃拟态。
+ * 原来这里是全站唯一一套硬编码配色（紫 #b7a6e8 / 蓝 #94bbe9 渐变、虚线边框、1.5px 描边），
+ * 与故事栏等页面的 var(--hairline) 1px + rgba(255,255,255,.5) 玻璃卡对不上，
+ * 夹在页面里像另一个 App 贴上去的。现在一律改用 token，硬编码色值清零。
+ *
+ * 另外 naive-ui 的暖橘描边覆盖此前只绑在 .chip-row / .hall 两个容器上，
+ * 漂流瓶不在其中 → 它的 n-button / n-input 拿到的是组件库默认蓝，
+ * 在满屏暖橘里格外刺眼。这里补齐同口径（与 L2083 那组一致）。
+ * ⚠️ 放在 .card 之后、靠后位置：n-button__border 带了 !important，
+ *   重复选择器只按「后者胜」判定，必须后写才能压住前面的 hall 组。 */
+.mail-card .n-button .n-button__border,
+.mail-card .n-button .n-button__state-border {
+  border-color: rgba(245, 140, 80, .28) !important;
+}
+.mail-card .n-input .n-input-wrapper,
+.mail-card .n-input .n-input__textarea,
+.mail-card .n-input .n-input__border {
+  border-color: var(--hairline) !important;
+  background: rgba(255, 255, 255, .5) !important;
+}
+.mail-card .n-input .n-input__textarea { font-family: inherit; }
+.mail-card .n-button { font-weight: 500; }
+/* 轮 150：标题与内容之间加分隔，跟故事栏 / 我的页面一致（原为紧贴的一行 h2+p） */
+.bt-head { padding-bottom: 12px; margin-bottom: 4px; border-bottom: 1px solid var(--hairline); }
+.bt-title { font-family: var(--font-display); font-size: 24px; font-weight: 600; margin: 0; }
+.mail-card { border: 1px solid var(--hairline); background: rgba(255, 255, 255, .5); }
 .mail-send { display: flex; justify-content: flex-end; margin-top: 10px; }
-.mail-list { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
-.mail-item { border-radius: 16px; padding: 12px 14px; background: rgba(255, 255, 255, .75); border: 1px solid rgba(140, 128, 112, .1); }
+.mail-list { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--hairline); }
+.mail-item { border-radius: 14px; padding: 12px 14px; background: rgba(255, 255, 255, .5); border: 1px solid var(--hairline); transition: border-color .18s ease; }
 .m-q { font-size: 13px; color: var(--ink-soft); font-weight: 500; line-height: 1.6; }
 .m-a {
   margin-top: 10px; padding: 10px 12px; border-radius: 12px;
@@ -929,21 +954,21 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 /* —— 温暖漂流瓶（#6）：海 / 捞到的信 / 次数 —— */
 .bottle-sea {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  margin-top: 18px; padding: 12px 14px; border-radius: 16px;
-  background: linear-gradient(120deg, rgba(148, 187, 233, .18), rgba(183, 166, 232, .14));
-  border: 1px dashed rgba(120, 140, 200, .35);
+  margin-top: 18px; padding: 12px 14px; border-radius: 14px;
+  background: rgba(255, 255, 255, .5); border: 1px solid var(--hairline);
 }
 .bottle-tray {
-  margin-top: 12px; padding: 12px 14px; border-radius: 16px;
-  background: rgba(255, 255, 255, .78); border: 1.5px solid rgba(148, 187, 233, .5);
+  margin-top: 12px; padding: 12px 14px; border-radius: 14px;
+  background: rgba(255, 255, 255, .5); border: 1px solid var(--hairline);
 }
 .m-count { font-size: 12px; color: var(--ink-faint); font-weight: 500; margin-right: auto; }
 @keyframes mailPulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
 
 /* —— 漂流瓶记录（#17）：两类 tab / 时间与状态 / 分页 / 去聊天 —— */
 .bottle-tabs { display: flex; gap: 8px; margin: 4px 0 10px; }
+/* 轮 150：胶囊与全站 .st-tab 同口径（1px 描边 + .5 玻璃底），原为 1.5px 蓝紫描边 */
 .bottle-tab {
-  border: 1.5px solid rgba(120, 140, 200, .3); background: rgba(255, 255, 255, .6);
+  border: 1px solid var(--hairline); background: rgba(255, 255, 255, .5);
   border-radius: 999px; padding: 5px 14px; font-size: 12.5px; font-weight: 500;
   color: var(--ink-soft); cursor: pointer; transition: background-color .12s ease, color .12s ease, border-color .12s ease;
 }

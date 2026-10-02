@@ -113,6 +113,12 @@ defineExpose({ load });
             </span>
           </span>
           <span class="st-mine-go">{{ r.status === "published" || tab === 'shelf' ? t("story.openStory") : t("story.continueWrite") }}</span>
+          <!-- 轮 150：已发布的故事也要能改。服务端 story_publish 的 else 分支本来就允许改已发布的
+               （status <> 'removed'，且 published_at 用 coalesce 保住原发布时间），这里只补 UI 入口。
+               只给已发布行挂按钮：草稿行点整行就已进编辑器，再挂一个是重复入口。 -->
+          <button
+            v-if="tab === 'published'" class="st-btn st-btn--ghost st-btn--mark" type="button"
+            @click.stop="emit('edit', r)">{{ t("story.editStory") }}</button>
         </li>
         <li v-if="!rows.length && !loading" class="st-hint">
           {{ tab === "shelf" ? t("story.shelfEmpty") : t("story.mineEmpty") }}

@@ -262,6 +262,18 @@ ok("首页故事联尾不再挂按钮（避免第三处重复入口）", !homeVu
 ok("我的页= 独立视图，回退到发现页", mineView.includes("StoryMine") && mineView.includes("'/story'")
   && mineView.includes("/story/write?id="));
 ok("排行榜页 = 独立视图，回退到发现页", rankView.includes("StoryRank") && rankView.includes("'/story'"));
+// 轮 150：已发布的故事要能改。服务端 story_publish 的 else 分支本来就允许改已发布的
+// （status <> 'removed'，published_at 用 coalesce 保住原发布时间），这里只补 UI 入口。
+ok("已发布行有「修改」按钮（走 /story/write?id= 复用续写通路）",
+  codeOnly(mineVue).includes("tab === 'published'") && codeOnly(mineVue).includes("emit('edit', r)")
+  && mineView.includes("/story/write?id="));
+ok("草稿行不挂修改按钮（点整行本就进编辑器，重复入口）",
+  !codeOnly(mineVue).includes('v-if="tab !== \'shelf\'"'));
+ok("编辑器按 story.status 记住 published（改动走更新而非新建）",
+  codeOnly(editor).includes('props.story.status === "published"')
+  && codeOnly(editor).includes("draftId.value = props.story.id"));
+ok("已发布稿不被自动存偷偷改（autosave 只在草稿阶段上云）",
+  codeOnly(editor).includes('draftStatus.value !== "draft") return'));
 // 已退役样式不得复活（双栏右栏 + 页签）
 ok("页签/右栏样式已退役", !css.includes(".st-tabs") && !css.includes(".story-side")
   && !css.includes(".story-wrap"));

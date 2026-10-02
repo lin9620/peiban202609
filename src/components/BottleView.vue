@@ -339,8 +339,10 @@ async function decideRec(l, accept) {
 
 <template>
   <section class="card mail-card">
-    <h2>{{ t("bottle.title") }}</h2>
-    <p class="sub">{{ t("bottle.sub") }}</p>
+    <header class="bt-head">
+      <h2 class="bt-title">{{ t("bottle.title") }}</h2>
+      <p class="sub">{{ t("bottle.sub") }}</p>
+    </header>
 
     <template v-if="cloudSigned">
       <n-input

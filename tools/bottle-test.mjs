@@ -39,6 +39,7 @@ const gwAdapter = read("src/utils/api/db.gateway.js");
 const bottleJs = read("src/utils/bottle.js");
 const home = read("src/views/HomeView.vue");
 const bottleView = read("src/components/BottleView.vue");   /* T6 抽件：漂流瓶逻辑在这里 */
+const css = read("src/style.css");
 const petStore = read("src/stores/petStore.js");
 
 /* ───────── 常量 ───────── */
@@ -338,6 +339,26 @@ ok("轮144 BottleView 接线：我发布的整批拉回（≤200）+ 置顶排�
     "mine: true, limit: 200", "recAll.value = rows;",
     "recRows.value = recAll.value.slice(next * REC_PAGE, next * REC_PAGE + REC_PAGE)",
     "recAll.value = []"));
+
+/* 轮 150：漂流瓶并入全站玻璃拟态。
+ * 它此前是全站唯一一套硬编码配色（紫/蓝渐变 + 虚线 + 1.5px 描边），
+ * 且 naive-ui 的暖橘描边覆盖没覆盖到它 → 控件是组件库默认蓝，夹在暖橘页面里像另一个 App。 */
+const legacyChroma = ["183, 166, 232", "148, 187, 233", "120, 140, 200", "#fbf8ff"];
+ok("漂流瓶旧配色（紫/蓝渐变、虚线、1.5px 描边）已从样式表清除",
+  !legacyChroma.some((c) => css.includes(c))
+  && !/\.bottle-sea\s*\{[^}]*border:\s*1px dashed/.test(css)
+  && !/\.(mail-card|mail-item|bottle-tab|bottle-tray)\s*\{[^}]*1\.5px solid/.test(css));
+ok("漂流瓶卡片改用全站玻璃卡 token（--hairline + .5 白底 + 14px 圆角）",
+  /\.mail-card\s*\{[^}]*border:\s*1px solid var\(--hairline\)[^}]*rgba\(255,\s*255,\s*255,\s*\.5\)/.test(css));
+ok("漂流瓶容器补上暖橘 n-button 描边 + 玻璃 n-input（原先只有 .hall/.chip-row 有）",
+  css.includes(".mail-card .n-button .n-button__border")
+  && css.includes(".mail-card .n-input .n-input__textarea")
+  && css.includes("rgba(245, 140, 80, .28)"));
+ok("漂流瓶标题用 display 字体并与内容分隔（对齐故事栏页头）",
+  bottleView.includes('class="bt-title"') && css.includes(".bt-title")
+  && css.includes(".bt-head"));
+ok("同一条 .mail-list 只定义一次（避免后者覆盖前者）",
+  (css.match(/^\.mail-list \{/gm) || []).length === 1);
 
 console.log(`bottle-test: ${pass} pass, ${fails.length} fail`);
 for (const f of fails) console.log("FAIL  " + f);
