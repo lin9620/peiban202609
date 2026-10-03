@@ -1513,6 +1513,7 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
   - **轮 173c · 新消息落下改平滑滑入（2026-10-04，用户实测 /messages/7「还是会跳」——173b 的钉底在新消息落下一帧内瞬时重钉 = 视觉上仍是跳；另用户测试页可能跑的是旧 bundle，需强刷），未提交未部署——等发话**：
      **修**：fresh 有新消息（added）时——先停钉底（pinning=false，下一帧起不再瞬时重钉）→ msgs 更新 → nextTick 里 `scrollTo({ behavior: "smooth" })` **平滑滑到新底**：微任务先于绘制，无 snap 帧；无新消息时钉底照旧无任何变化；loadMessages 返回 smoothed，调用方（openConv/onLetter）只在未平滑时才瞬时收尾滚。BottleChat 同款。
      验证：undef 0 + **40 套离线 0 fail**（dm-test 324：added 平滑/停钉时序断言）+ build 0 + page-smoke 12/12。
+     **交付**：已提交 `4b27656` / **已部署 Version `dede6342`** / live-check 14/14 / **APK `5546E5BBB05D549B`(5.2M) 装机 Success + 冷启动 PID 21439 CRASH_HITS=0** ✅（同包含轮 174 聊天满幅 `ca316d1`）。
 
 
   - **轮 174 · App 聊天态满幅（2026-10-04，用户截图点单「难看，有这样设计的吗」——聊天卡内缩+左侧白边+与全屏表情 sheet 宽度错位，未提交未部署——等发话）**：
