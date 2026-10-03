@@ -1513,6 +1513,7 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **测试**：worker-test 262→261（wall/refresh 块按 RPC 透传重写：单上游 POST rpc/wall_feed_page+p_limit 透传/jsonb 原样回/上游挂 502；4 处 listPosts URL 断言与 sample select 断言换显式列）；api-contract 85→**87**（listPosts 形状与 removed 退回两断言换显式列口径）。**踩坑**：python 串里写 `+ COLS +` 拼接想在 JS 里求值——落盘成字面量，断言必挂；改用解析后的列名直接写。
      验证：undef 0 + **40 套离线 0 fail**（worker-test 261、gateway-contract 86、api-contract 87、i18n 19、privacy 34）+ build 0 + page-smoke 12/12。**部署项**：本次 Worker 部署 + **两个 SQL 迁移要用户在 Supabase 面板执行**（不执行时 /wall/refresh 会 404 函数 → 客户端退回旧两段式兜底）。
      **部署后实测（同日）**：合并包接口在迁移未跑时 400（函数不存在）→ worker `wallRefresh` 立即加**兜底**：RPC 非 200 自动退回旧四查询编排并打包成**同形响应**（latest/random 数组 + react 聚合——mine 用 JWT payload 的 uid（不验签，仅展示标记，安全由 RLS 管）+ commentCounts），迁移前后都能用；worker-test 补「RPC 挂→旧编排兜底同形成功」「上游全挂→502」两断言（262 不变）。**线上复测**：/api/wall/refresh **200、1.2~1.26s ×3**（迁移未跑、走兜底编排已把 10s 级打下来）；用户跑完两个 SQL 后 RPC 单查询更快。
+     **交付**：已提交 `49cf928`（166~170 主批 23 文件 +652/−154）+ `4ac8882`（兜底续）；**已部署 Version `24f04ecb`** / live-check 14/14 / 合并包线上 1.2~1.26s；**APK `F5CCFA17F53FAC9E`(5.2M) 装机 Success + 冷启动 PID 26066 CRASH_HITS=0** ✅。
 
   - **轮 168 · 表情按钮嵌进输入框（2026-10-04，用户截图点单「像我这个截图一样，把表情包按钮放进输入框里面」——微信式，未提交未部署——等发话）**：
      **结构**：9 处接入点的「n-input 自闭合 + EmojiPicker」统一包进 `.emo-in` 相对定位壳——表情按钮（.emo-root）绝对定位叠在输入框右缘内侧（right 8px、垂直居中、28px），textarea/input 加 padding-right:44px 让文本避让；发送键留在外面。naive 的 textarea 不支持 suffix 槽，只能叠放。**踩坑**：批量正则被 EmojiPicker 属性里的箭头函数 `=>` 坑了（`[^>]` 过不了 `>`），改 `.+?` 钉住 `" />"` 结尾后 9 处全中（私信 1/瓶聊 1/暖心墙 4/帖子详情 3）。picker 的光标插入逻辑不变（.emo-in 内查 textarea）。
