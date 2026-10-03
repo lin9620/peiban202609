@@ -1460,6 +1460,10 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      验证：探针实测（切故事联 → 地址栏 ?tab=story ✓；模拟返回 → 故事联显示 ✓）+ 37 套离线 **0 fail** + build 0 + page-smoke 12/12 + live 部署 + APK 装机冷启动。
      **教训**：轮 154 修的是「返回去错页」的竞态；「回对了页但页面状态丢了」是另一层——**SPA 页面态要么进 URL 要么进 sessionStorage，只靠 ref 必在返回重建时丢失**。
 
+  - **轮 156 · 英文四联文案瘦身（2026-10-02，用户实测 EN 满屏文字太丑，已提交 `57038b3` / 已部署 Version `5a42f22c` / live-check 复跑 14/14（首轮 1 项 fetch failed=本机网络抖动） / **APK `F5DB1A8E505C77AD` 装机 + 冷启动确认** ✅）**：
+     只动 **en 值**（zh 不变）七处：heroSub 8→4 词、mood.subtitle 8→3、bottle.sub 20→6、**bottle.rules 33→7**（规则细节收进 placeholder/title，行内只留 {w}/{f} 两数）、story.feedSub 11→6、pet.tip 12→6、pet.subtitle 15→8。目检方式：i18n 临时强制 en → 四联逐屏截图 → 还原（探针切语言会被 headless 丢存储，改码最可靠）。
+     验证：i18n **19/19**（键对称不动，只改值）+ 37 套 0 fail + build 0 + page-smoke 12/12 + EN 四联截图目检 + APK 装机冷启动。
+
   - **轮 155 · 心情日历表情与打卡统一（2026-10-02，用户实测「日历里的心情跟改版后的表情不一样」，已提交 `7069945` / 已部署 Version `8bb00201` / live-check 14/14 / **APK `12BB9D43383F0C3E` 装机 + 冷启动确认** ✅）**：
      **真因**：轮 150 打卡按钮换 MoodFace 手绘脸后，我的页**心情日历还在用旧系统 emoji 数组**（MOOD[🤩🙂😌🌧️😔] 按 legacyIndex 取）——两套表情并存。**修**：日历格子改用 MoodFace 组件渲染；`MOOD_KIND = [happy, steady, calm, low, tired]` 按 legacyIndex 映射（与 home.mood.faceOrder 同源：0=happy 1=steady 2=calm 3=low 4=tired）；旧 emoji 字段保留（loggedDays/brightDays 判断用）；格子内 MoodFace 20px 适配。探针 seed+reload 验证方式挂死（reload 杀评估上下文）已放弃——signed-in 渲染待用户真机验收（结构改动确定性高）。
      验证：undef/tdz **0** + 37 套离线 **0 fail** + build 0 + page-smoke 12/12 + live-check 14/14 + APK 装机冷启动。
