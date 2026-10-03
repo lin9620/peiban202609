@@ -1460,11 +1460,12 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      验证：探针实测（切故事联 → 地址栏 ?tab=story ✓；模拟返回 → 故事联显示 ✓）+ 37 套离线 **0 fail** + build 0 + page-smoke 12/12 + live 部署 + APK 装机冷启动。
      **教训**：轮 154 修的是「返回去错页」的竞态；「回对了页但页面状态丢了」是另一层——**SPA 页面态要么进 URL 要么进 sessionStorage，只靠 ref 必在返回重建时丢失**。
 
-  - **轮 159 · 暖心墙「刷新没有用 + 每个人出现的都一样」（2026-10-03，用户实测点单，未提交未部署——等发话）**：
+  - **轮 159 · 暖心墙「刷新没有用 + 每个人出现的都一样」（2026-10-03，用户实测点单，已提交 `4f232b2` / 已部署 Version `92f20d3f` / live-check 14/14 / **APK `3AF8916621ED769C`(5.2M) 装机 Success + 冷启动确认 PID 19616 CRASH_HITS=0** ✅）**：
      **双根因**：①轮 149 边缘缓存白名单 `/^\/api\/posts$/` 把 `sample=1` 随机批也缓存 30s——随机结果是按 URL（path+query）冻结的，同一边缘 POP 上**所有人拿到同一份「随机」**，30s 内刷新=原样回放（服务端明明是真随机：两端都是 `Math.random()` 起点，Worker samplePosts / supabase listPostsSample 均实锤）；②首屏挂载 fetcher 走的是**最新页**（确定性，latest-50 人人相同）——轮 66 注释声称「挂载也走随机批」但代码后来退回了最新页。
      **修**：①Worker 缓存闸门加 `searchParams.get("sample") !== "1"`——随机批每次回源（计数+随机起点两查，成本可接受），普通列表 30s 边缘缓存照旧（确定性内容，防冷启动抖动的初衷不变）；②CommunityView 挂载 fetcher 改 `cloudFetchPostsSample(FEED_PAGE)` 失败退回 `cloudFetchPosts(FEED_PAGE,0)` 兜底——首屏每人不同；触底续载照旧游标拉更早（loadMoreCloud 去重+跳页自愈，随机批与后续页交叠不会重复）；下拉刷新逻辑不动（有真新帖→最新页，否则→换一批，现在换一批真的会换了）。
      验证：undef 0 + **40 套离线 0 fail**（gateway-contract/feed-window 全绿）+ build 0 + page-smoke 12/12 + dist 断言（`sample=1` 在共享 chunk、worker 闸门 2 处 sample 探测）。
-  - **轮 158 · App 端全站加载优化（2026-10-03，用户再发 App 加载优化指南图点单「其他很多内容加载也很慢」，未提交未部署——等发话）**：
+     **装机环境备忘**：本机 shell 无 JAVA_HOME（gradle 直接报错）——JDK 在 `D:/00ruanjiananzhuang/jdk-21/jdk-21`，构建命令 `JAVA_HOME="D:/00ruanjiananzhuang/jdk-21/jdk-21" ./gradlew assembleDebug`；adb 不在 PATH，用 `C:/Users/lin/AppData/Local/Android/Sdk/platform-tools/adb.exe`。五轮合并单提交 `4f232b2`（15 文件 +634/−80）。
+  - **轮 158 · App 端全站加载优化（2026-10-03，用户再发 App 加载优化指南图点单「其他很多内容加载也很慢」，已提交 `4f232b2` / 已部署 Version `92f20d3f` / live-check 14/14 / **APK `3AF8916621ED769C`(5.2M) 装机 Success + 冷启动确认 PID 19616 CRASH_HITS=0** ✅）**：
      **盘点**（grep 全视图 SWR 覆盖面）：已有 SWR=暖心墙/通知/我的帖子/资料页/私信；**没有**=故事流（每次进联干等网络重拉首屏）、帖子详情（cloudFetchPost 每次裸拉）、他人主页（三路 RPC 排队）；启动只预热数据不预热路由 chunk（首次切联/切 tab 现下载）。
      **修**（按指南「本地缓存/骨架屏/预加载」三条）：①**StoryFeed** 首屏 SWR（`story:feed:latest`，公共内容不带用户域；翻页照旧拼尾；发布后父级调 load()=缓存先出新内容 fresh 纠正）+ 精选卡 SWR（`story:featured`）+ **骨架屏**（首访无缓存时三张 shimmer 卡，样式进 style.css 与 .st-hint 同源）；②**PostDetailView** 帖子主体 SWR（`wall:post:<uid>`——从墙/我的/主页点进来本地先出上次内容立刻能读；操作后 refetch 回写缓存；null=查无此帖保原 failed 口径）；③**WallerView** 资料+帖子+宠物家园三路聚合整体 SWR（`waller:home:<uid>`，二次进页零等待；两路全 null 仍走 failed）；④**App.vue** 首绘后 `requestIdleCallback`（4s 兜底）预热 6 个高频路由 chunk（社区/私信/我的/帖子详情/宠物/故事流）——切联/切 tab 不再现等 chunk 下载，不抢首屏带宽。
      **避让**：PetView/StoryRankView/StoryMineView/TodayPane 是平行会话未提交脏文件，本轮未动（它们的加载优化归并行会话）；漂流瓶托盘按轮 37 口径**故意不本地缓存**（手里的信必须以服务器为准），未改。
@@ -1473,7 +1474,7 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      只动 **en 值**（zh 不变）七处：heroSub 8→4 词、mood.subtitle 8→3、bottle.sub 20→6、**bottle.rules 33→7**（规则细节收进 placeholder/title，行内只留 {w}/{f} 两数）、story.feedSub 11→6、pet.tip 12→6、pet.subtitle 15→8。目检方式：i18n 临时强制 en → 四联逐屏截图 → 还原（探针切语言会被 headless 丢存储，改码最可靠）。
      验证：i18n **19/19**（键对称不动，只改值）+ 37 套 0 fail + build 0 + page-smoke 12/12 + EN 四联截图目检 + APK 装机冷启动。
 
-  - **轮 157 · 聊天页加载/卡顿优化（2026-10-03，用户发聊天性能指南四图点单：「尤其是聊天页面」，未提交未部署——等发话）**：
+  - **轮 157 · 聊天页加载/卡顿优化（2026-10-03，用户发聊天性能指南四图点单：「尤其是聊天页面」，已提交 `4f232b2` / 已部署 Version `92f20d3f` / live-check 14/14 / **APK `3AF8916621ED769C`(5.2M) 装机 Success + 冷启动确认 PID 19616 CRASH_HITS=0** ✅）**：
      **诊断（读码实证）**：①轮询每 5s 双请求——会话列表全量 200 行 + 消息尾 30 条，弱网下后台 chatter 跟用户操作抢带宽；②发送成功后 `loadMessages` 整段重载 30 条才把「发送中」转正——多一次往返；③「加载更早」prepend 后不补 scrollTop——内容凭空跳一页（指南第 3 条锚点缺失）；④轮询整段替换 `msgs=asc`——翻过的历史被冲掉（隐藏 bug）；⑤触顶只有手动按钮；⑥消息行无渲染减负。
      **修**（按指南落地）：①`mergeTail` 纯函数（dmRules）做尾部增量合并——已见行原位更新（撤回状态也能刷）、新行插到乐观临时消息之前、无变化同引用不重渲染；轮询消息尾 30→20 条、消息优先，会话列表降到每 3 拍（约 15s）一次、回前台当拍必刷、`tickBusy` 防弱网叠请求（双通道 RPC 形状已核对：dm_send 两条通道都回 `{msg_id, created_at}`）。②发送后就地落位：乐观行按 msg_id 直换正式行 + 首屏 SWR 缓存同步补条，异常网关无 msg_id 才回退整段重载。③锚点保持：prepend 前量 scrollHeight、下一帧 `scrollTop += 新旧差值`、临时关平滑滚动（BottleChat 同款）。④触顶 140px 自动翻历史：`@scroll.passive` + rAF 节流，「加载更早」按钮保留做可见 loading 兜底。⑤CSS：`.dm-line/.dm-day` `content-visibility:auto + contain-intrinsic-size`（离屏消息跳过布局/绘制）、`.dm-scroll` `overscroll-behavior:contain`。⑥openConv 从列表进入时不再单拉 conv_meta（列表行已带昵称/免打扰/拉黑/请求态），深链才拉——每次开聊天少一次 RPC。
      **改动面**：src/utils/dmRules.js（+mergeTail 纯函数）/ src/views/MessagesView.vue / src/components/BottleChat.vue（同款四件套）/ src/style.css（两条渲染规则）；i18n 零新键；双数据通道零改动（RPC 形状未动）。
@@ -1485,7 +1486,7 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **真因**：轮 150 打卡按钮换 MoodFace 手绘脸后，我的页**心情日历还在用旧系统 emoji 数组**（MOOD[🤩🙂😌🌧️😔] 按 legacyIndex 取）——两套表情并存。**修**：日历格子改用 MoodFace 组件渲染；`MOOD_KIND = [happy, steady, calm, low, tired]` 按 legacyIndex 映射（与 home.mood.faceOrder 同源：0=happy 1=steady 2=calm 3=low 4=tired）；旧 emoji 字段保留（loggedDays/brightDays 判断用）；格子内 MoodFace 20px 适配。探针 seed+reload 验证方式挂死（reload 杀评估上下文）已放弃——signed-in 渲染待用户真机验收（结构改动确定性高）。
      验证：undef/tdz **0** + 37 套离线 **0 fail** + build 0 + page-smoke 12/12 + live-check 14/14 + APK 装机冷启动。
 
-  - **轮 155b · 心情日历「实心黑点」修复（2026-10-03，用户截图「没改好啊」，未提交未部署——等发话）**：
+  - **轮 155b · 心情日历「实心黑点」修复（2026-10-03，用户截图「没改好啊」，已提交 `4f232b2` / 已部署 Version `92f20d3f` / live-check 14/14 / **APK `3AF8916621ED769C`(5.2M) 装机 Success + 冷启动确认 PID 19616 CRASH_HITS=0** ✅）**：
      **真因**：轮 155 只把日历格子换成 MoodFace 组件，但脸部件的描边样式（`.mf-ring/.mf-eye/.mf-mouth` 的 `fill:none + stroke`）全锁在 `.mood-face` 父类选择器下——那是轮 150 **打卡按钮**的容器类。日历格子直接渲染组件、没有该父类 → SVG path 落回浏览器默认**黑填充** = 每格一颗实心黑点。打卡按钮有 `.mood-face` 壳所以一直正常，两处同组件不同命。
      **修**：单源化——脸部件固有样式（fill/stroke/尺寸 34px 默认）搬进 **MoodFace.vue 自身 `<style>`**（独立 `.mood-svg .mf-*` 选择器，任何父级下都成立）；style.css 只留交互态（`.mood-face { --mf-ink }` 变量、`.is-on` 换强调色 + 放大）。日历 20px 适配靠 `.mood-cell .mood-svg`（特异性 0,2,0 > 组件 0,1,0）仍然赢。
      **教训**：组件固有外观必须随组件文件走——挂在「某个使用方的容器类」下的样式，第二个使用方一来就炸（轮 133 单源经验再次应验）。
