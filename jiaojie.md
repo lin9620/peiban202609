@@ -1472,6 +1472,25 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      验证：undef 0 + **40 套离线 0 fail**（gateway-contract 81→**85**：401→刷新→重试成功/重试带新 token/同端点原样重发/刷新失败原样上抛只打一发/匿名 401 不触发）+ build 0 + page-smoke 12/12。
 
   - **轮 161 · 主题换了配色不跟（故事栏 + 其他页面）（2026-10-03，用户实测点单「故事栏 UI 配色换主题不变、其他页面也没适配」，已提交 `697634b` / **已部署 Version `ae576162`** / live-check 14/14 / 线上 CSS 四主题块新变量+wash 71 处确认 ✅）**：
+
+  - **轮 162 · 暖心墙刷新 10s 之痛 + 刷新提示重做（2026-10-03，用户实测点单「点一次刷新要 10s」+「刷新成功√的图标和动画改一下」，未提交未部署——等发话）**：
+     **实测诊断（curl 线上）**：latest 2.3~**9.6s**（免费版 isolate 冷启动尖峰）、sample **9.6~15.8s 且频繁 502 upstream-unreachable**——sample 旧实现 = `count=exact`（墙表上 6s+）+ 随机 offset 页查询**两条串行上游查询**，慢查询窗口里一动就 502；顺带发现旧 sample 页面查询 `select=id` 只取 id 的暗病（网关换一批字段残缺）。轮 159 让 sample 绕开边缘缓存后每次回源，冷启动+慢计数全裸奔。
+     **修（worker 侧）**：①samplePosts 重写为**随机时间锚点单查**——7 天窗口内随机取一时刻，一条走 `created_at` 索引的查询取「该时刻之前 N 条」：免计数、单查、每次锚点毫秒级随机；`select=*` 修暗病；锚点落空（窗口头部没货）兜底拉最新一批（**踩坑：空判断读 body 后又 text() → "Body has already been read"，文本只读一次复用**）；②export default 挂 `scheduled` 自 ping（`/api/posts?limit=1`）+ wrangler.jsonc `triggers.crons ["* * * * *"]`——每分钟保活 isolate 压冷启动尖峰，免费额度 1440/10 万次每天。
+     **修（前端侧）**：③刷新/首屏批 50→**REFRESH_PAGE=20**（视口只露 16 张，50 条+两轮富化纯浪费；触底续载仍 50）；④刷新提示改**状态机** `""|busy|ok|batch|fail` + 新提示 UI；i18n 把 ✓ 移出文案；**手机下拉原来无条件显示「已刷新 ✓」**（失败也显示成功）——`loadCloud` 返回成败后如实提示。
+     **轮 162b（用户追单「尤其是手机端，动画跟图标也很丑」）**：提示升级为**暖爪可爱版小药丸**（`--wash` 底+发丝线圆角胶囊，浮入动画）——ok=**主题色爱心弹出（过冲回弹）+ 扑通一跳**（SVG Material heart，transform-origin 60%），batch=**四角星花旋入+两次闪**（twinkle），fail=软红 ！摇摆，busy=主题色转圈；通用的「绿色圆环打勾」弃用（用户嫌丑）。手机端与桌面同一条 Worker 链路，worker 三修复装新包即受益。CSS 小坑：keyframes 收尾帧误写 `scale(1.06) scale(1)` 双函数叠加，已归位。
+
+  - **轮 163 · 手机端横滑死区（2026-10-03，用户实测点单「故事页下方空白无法往左滑，消息页三个页面都有」，未提交未部署——等发话）**：
+     **根因**：横滑手势面 = 内容元素本身——①首页 `.home-track` 高度 = 当前联**内容高**（trackH 测的是 paneEls[idx].offsetHeight），故事联内容短 → track 下方空白在 track 外，touchstart 到不了；②私信页三段（漂流瓶/会话/通知）手势挂在 `aside.dm-list` 卡上，卡高随内容，空白同理。手指落在空白处 = 滑不动。
+     **修（把空白区纳进手势面，不改手势逻辑）**：①HomeView `measure()` 改为 `trackH = max(联内容高, 视口剩余高)`——`window.innerHeight - track顶缘(getBoundingClientRect().top) - 96`（78=底部导航预留与 `.shell--mobile-nav main` 的 padding-bottom 同源 + 呼吸位）；窗口 resize 重测（挂/卸监听）。附带好处：矮联之间切换时 track 高度不再跳变。②`.shell--mobile-nav .dm-list` 加 `min-height: calc(100dvh - 106px - env(safe-area-inset-bottom,0px))`——列表卡拉满一屏（聊天打开时卡 v-show 隐藏，天然不会把聊天页滑走，零 JS 改动零回归）。桌面不受影响（规则都在 mobile shell 作用域 / measure 拿不到 refs 空转）。
+     验证：undef 0 + **40 套离线 0 fail** + build 0 + page-smoke 12/12；真机横滑验收待装机。
+     验证：undef 0 + **40 套离线 0 fail**（worker-test 250→**256**：sample 单查免 count/select=*/锚点条件/空池兜底/两次锚点不同/cron 挂载）+ build 0 + page-smoke 12/12；线上耗时对比待部署后复测。
+
+  - **轮 164 · 评论框/私信框表情按钮（2026-10-03，用户截图点单「发送键左边加表情按钮，微信常用表情，评论框和消息会话框都要」，未提交未部署——等发话）**：
+     **新组件** `src/components/EmojiPicker.vue`：笑脸 SVG 按钮（发送键左侧）+ 弹出面板（**微信常用 Unicode 表情 64 个**：常用脸/爱心/爪印/生活物，免资产零体积；🫶 这类 Unicode14 新字被排除防老 WebView 豆腐块）。面板 **position:fixed + teleport 到 body**、按按钮实时 rect 定位——绕开 overflow 裁剪与 transform 包含块（home-track 陷阱同类）两类坑；z=260 盖过评论弹窗。插入逻辑内置：picker 在**同行内**找 textarea/input 的 `selectionStart` 光标处插入（拿不到就追加），插入后焦点+光标归位；点选不收面板可连选，点外/再点按钮收起。API = `:text` + `@update:text` 直改父级草稿，五处接入一行搞定。
+     **接入五处**：私信会话框（MessagesView）/ 漂流瓶聊天框（BottleChat）/ 帖子详情桌面评论框（PostDetail cmt-input-row）/ 暖心墙内联评论框（CommunityView）/ 手机评论底部输入条（CommunityView mainBar，**App 端评论就是它**）。**注意**：CommentComposer.vue 已被平行会话删除（评论输入统一为页内 mainBar 流），PostDetail 正被平行会话实时改动（本轮接入时文件从 1000+ 行缩到 767 行基线）——接入以当时盘面为准、带幂等保护。
+     **i18n**：顶层新增 `emoji.title`（zh 表情 / en Emoji），zh/en 对称（i18n-test 19/19）。
+     验证：undef 0 + **40 套离线 0 fail**（dm-test 308→**316**：光标插入/fixed+teleport/表情 ≥56 无重复/emoji.title/五处接入计数）+ build 0 + page-smoke 12/12 + dist 断言（EmojiPicker chunk 在包）。
+
      **根因（双层）**：①轮 120 换 Claude 设计体系时 `:root` 新增了 `--card/--hairline/--lilac/--sky` 新变量组、body/html 底色写死 `#faf9f5`，但**五个 data-theme 块只覆盖旧变量组**（--ink/--accent/--glass/--shadow）——切樱花/薄荷/薰衣草/夜色时主卡面（.card=var(--card)）和发丝线永远停在奶油体系；②全站 67 处卡片/输入框用写死的 `rgba(255,255,255,.x)` 白水洗底（故事栏 st-card/st-search 重灾区）——夜色下还是白底刺眼。
      **修**：①`:root` 新增主题感知组 `--page-bg`（html/body 兜底底色改 var）+ 白水洗三档 `--wash(.5)/--wash-mid(.72)/--wash-strong(.9)`；②四主题块补全：sakura(--card #fdeef4/--hairline #f0d9e3/--page-bg #fdf1f6)、mint(#ebf6ef/#d4e7da/#eefaf4)、lavender(#f2eef9/#e0d8ec/#f5f1fc)、**night(#262c52/发丝线 rgba 蓝 .25/#171a33 + 三档水洗换暗蓝 rgba(139,156,232,.12/.17/.24))**；③style.css 67 处 `background: rgba(255,255,255,.x)` 按透明度三档换 var(--wash*)（≤.55→wash、≤.78→wash-mid、其余→wash-strong；夜主题专属覆盖行/主题定义行/图片白描边/危险红/精选金不碰）+ 2 条白色渐变改 var；④BottleRecords 暖橘水洗标签改 --hairline+--wash；⑤夜色下故事流骨架屏换暗蓝 shimmer。
      **踩坑**：替换脚本的透明度桶函数把「.45」捕获成「45」当整数比较 → 全判 wash-strong；`git checkout -- src/style.css` 回滚重跑修正（捕获组拼回小数再比）。

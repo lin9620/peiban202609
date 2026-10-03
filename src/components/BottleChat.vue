@@ -19,6 +19,7 @@ import { displayMsg, withDayDividers, canRecall, validateSend, sendErrKey, merge
   dmMsgsKey, dmPeekWindow, dmCacheWindow, dmWin } from "../utils/dmRules.js";
 import { swr } from "../utils/cache.js";
 import { refreshBadge } from "../stores/badgeStore.js";
+import EmojiPicker from "./EmojiPicker.vue";   /* 轮 164：表情按钮 */
 
 const props = defineProps({
   letter: { type: Object, default: null },   /* 左列选中的漂流瓶记录行（bottle_letters.*） */
@@ -349,6 +350,7 @@ onBeforeUnmount(() => { clearInterval(timer); });
             <n-input
               v-model:value="body" type="textarea" :autosize="{ minRows: 1, maxRows: 6 }" :maxlength="2000"
               :placeholder="t('dm.placeholder')" @keydown.enter.exact.prevent="send" />
+            <EmojiPicker :text="body" @update:text="v => (body = v)" />
             <n-button type="primary" round size="small" :loading="sending" :disabled="!body.trim()" @click="send">
               {{ t("dm.send") }}
             </n-button>

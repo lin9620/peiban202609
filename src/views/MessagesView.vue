@@ -26,6 +26,7 @@ import { badge, refreshBadge } from "../stores/badgeStore.js";
  * 让「拉黑名单」的内容过滤缓存与私信名单始终是同一份 */
 import { blockUser, unblockUser, refreshBlocks } from "../utils/userBlocks.js";
 import BottleRecords from "../components/BottleRecords.vue";
+import EmojiPicker from "../components/EmojiPicker.vue";   /* 轮 164：表情按钮 */
 /* 轮 142 · 桌面「漂流瓶」段：行式列表（左列）+ 独立聊天框（中列）——与会话段的 dm-thread 各自单开 */
 import BottleChatList from "../components/BottleChatList.vue";
 import BottleChat from "../components/BottleChat.vue";
@@ -816,6 +817,7 @@ function goSignIn() {
                   v-model:value="body" type="textarea" :autosize="{ minRows: 1, maxRows: 6 }" :maxlength="2000"
                   :placeholder="isMobileNav ? t('dm.placeholderMobile') : t('dm.placeholder')"
                   @keydown.enter.exact.prevent="send" />
+                <EmojiPicker :text="body" @update:text="v => (body = v)" />
                 <n-button type="primary" round size="small" :loading="sending" :disabled="!body.trim()" @click="send">
                   {{ t("dm.send") }}
                 </n-button>

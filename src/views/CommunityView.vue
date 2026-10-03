@@ -47,6 +47,7 @@ import {
   recommendPosts, RECOMMEND_DAYS,
 } from "../utils/wallRules.js";
 import { isMobileNav, tabbarSuppressed } from "../stores/uiStore.js";
+import EmojiPicker from "../components/EmojiPicker.vue";   /* 轮 164：表情按钮 */
 /* 轮 33：举报弹窗 + 全站拉黑过滤（我拉黑的人，TA 的帖子/评论在我这里渲染前剔除） */
 import ReportDialog from "../components/ReportDialog.vue";
 import { filterBlocked, refreshBlocks } from "../utils/userBlocks.js";
@@ -113,10 +114,15 @@ watch(() => cloud.user && cloud.user.id, (uid) => {
    （offset 归 0、done=false、freshLanded=false），游标只认**本轮 fetch 的结果**
    （box.fromFetch）；快照亮完而 fresh 未落地前不翻页（防与第 1 页重复）。 */
 const FEED_PAGE = 50;
+const REFRESH_PAGE = 20;   /* 轮 162：刷新/首屏批瘦身——视口只露 16 张，拉 50 条+两轮富化纯浪费；触底续载仍 50 */
 const feedCursor = ref(null);   /* 轮 62：游标 = 已加载最后一条的 dbId（id 单调=发布序），取代 offset */
 const cloudDone = ref(false);
 const pageBusy = ref(false);
-const refreshNote = ref(false);
+const refreshNote = ref("");   /* 轮 162：刷新提示状态机 ""|busy|ok|batch|fail */
+const refreshText = computed(() => ({
+  busy: t("community.refreshing"), ok: t("community.refreshed"),
+  batch: t("community.refreshBatch"), fail: t("community.refreshFail"),
+}[refreshNote.value] || ""));
 const newestSeenTs = ref(0);   /* 轮 73：补上缺失声明（真新帖判定用） */
 const lastPulledRows = ref([]);   /* 轮 76：本次刷新拉到的批（评论数后台补齐用） */
 
@@ -154,8 +160,8 @@ async function loadCloud({ fresh = false } = {}) {
        随机批——7 天池随机起点，每人每次进来看到的都不一样（轮 66 注释早写了要这么做，
        代码后来退回了最新页）；随机批失败退回最新页兜底。触底续载照旧按游标拉更早的
        （loadMoreCloud 自带去重+跳页自愈，随机批与后续页少量交叠也不会重复）。 */
-    const rows = (await cloudFetchPostsSample(FEED_PAGE).catch(() => null))
-      || (await cloudFetchPosts(FEED_PAGE, 0).catch(() => null));
+    const rows = (await cloudFetchPostsSample(REFRESH_PAGE).catch(() => null))
+      || (await cloudFetchPosts(REFRESH_PAGE, 0).catch(() => null));
     if (!rows) return null;   /* 拉取失败 → 不覆盖、不回写缓存 */
     const counts = await cloudFetchCommentCounts(rows.map((r) => r.dbId)).catch(() => null);
     return { rows, counts: counts || {}, fromFetch: true };
@@ -165,12 +171,13 @@ async function loadCloud({ fresh = false } = {}) {
        consume → filterBlocked(null) 抛错 → loadingCloud 永久 true → 之后所有刷新被
        卫语句挡死。修：①帖数据必须是数组才进 consume（失败/超时如实提示并复位）；
        ②整函数 try/finally，loadingCloud 任何路径必复位；③评论数后台补不阻塞。 */
-    refreshNote.value = t("community.refreshing");
+    refreshNote.value = "busy";
+    let freshOk = true;
     const prevNewest = newestSeenTs.value;
     const key = cacheKey("wall:posts", (cloud.user && cloud.user.id) || "");
     const pull = Promise.all([
-      cloudFetchPosts(FEED_PAGE, 0).catch(() => null),
-      cloudFetchPostsSample(FEED_PAGE).catch(() => null),
+      cloudFetchPosts(REFRESH_PAGE, 0).catch(() => null),
+      cloudFetchPostsSample(REFRESH_PAGE).catch(() => null),
     ]).then(([posts, batch]) => ({
       posts: Array.isArray(posts) ? posts : null,
       batch: Array.isArray(batch) ? batch : null,
@@ -186,15 +193,16 @@ async function loadCloud({ fresh = false } = {}) {
       consume({ rows: box.posts, counts: {}, fromFetch: true });
       reveal.value = PAGE_SIZE;
       cacheSet(key, box);
-      refreshNote.value = t("community.refreshed");
+      refreshNote.value = "ok";
     } else if (box && batchOk) {
       lastPulledRows.value = box.batch;
       consume({ rows: box.batch, counts: {}, fromFetch: true });
       reveal.value = PAGE_SIZE;
       cacheSet(key, { rows: box.batch, counts: {}, fromFetch: true });
-      refreshNote.value = t("community.refreshBatch");
+      refreshNote.value = "batch";
     } else {
-      refreshNote.value = t("community.refreshFail");
+      refreshNote.value = "fail";
+      freshOk = false;
     }
     setTimeout(() => { refreshNote.value = false; }, 2500);
   } else {
@@ -223,6 +231,7 @@ async function loadCloud({ fresh = false } = {}) {
   } finally {
     loadingCloud.value = false;
   }
+  return freshOk;
 }
 
 /* 触底续载（轮 62 自愈版）：游标取下一页，**追加前去重**——缓存快照与游标页交叠、
@@ -504,9 +513,10 @@ async function te() {
   if (!pulling) return;
   pulling = false;
   if (pullDist.value >= 62) {
-    await loadCloud({ fresh: true });   /* 轮 56：下拉刷新 = 强制取新第 1 页（不再拿缓存装样子） */
-    refreshNote.value = true;
-    setTimeout(() => { refreshNote.value = false; }, 2500);
+    /* 轮 56：下拉刷新 = 强制取新第 1 页（不再拿缓存装样子）；轮 162：成败如实提示 */
+    const okPull = await loadCloud({ fresh: true });
+    refreshNote.value = okPull ? "ok" : "fail";
+    setTimeout(() => { refreshNote.value = ""; }, 2500);
   }
   pullDist.value = 0;
 }
@@ -1569,9 +1579,21 @@ watch(() => route.query.refresh, (v) => {
 
     <!-- 轮 60：「已刷新」提示放列表顶部（原来插在底部哨兵旁，下拉的人看不见） -->
     <transition name="t-swap" mode="out-in">
-      <p v-if="refreshNote" :key="String(refreshNote)" class="notice" style="text-align: center; color: var(--good); font-weight: 700">
-        {{ t("community.refreshed") }}
-      </p>
+      <div v-if="refreshNote" :key="refreshNote" class="refresh-note" :class="'rn-' + refreshNote">
+        <span v-if="refreshNote === 'ok'" class="rn-ic" aria-hidden="true">
+          <svg class="rn-heart" viewBox="0 0 24 24">
+            <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+          </svg>
+        </span>
+        <span v-else-if="refreshNote === 'batch'" class="rn-ic" aria-hidden="true">
+          <svg class="rn-spark" viewBox="0 0 24 24">
+            <path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z" />
+          </svg>
+        </span>
+        <span v-else-if="refreshNote === 'fail'" class="rn-ic rn-warnic" aria-hidden="true">!</span>
+        <span v-else class="rn-ic rn-busyic" aria-hidden="true"></span>
+        <span>{{ refreshText }}</span>
+      </div>
     </transition>
 
     <!-- 排序：默认最新；还有 同感最多 / 抱抱最多 / 暖暖最多 -->
@@ -1681,6 +1703,7 @@ watch(() => route.query.refresh, (v) => {
             :autosize="{ minRows: 1, maxRows: 4 }"
             :placeholder="t('comment.placeholder')"
             :maxlength="MAX_LEN" />
+          <EmojiPicker :text="cmtDraft[cmtKey(p)] || ''" @update:text="v => (cmtDraft[cmtKey(p)] = v)" />
           <n-button type="primary" size="small" round class="cmt-send" @click="sendTopCmt(p)">
             {{ t("common.send") }}
           </n-button>
@@ -1859,6 +1882,7 @@ watch(() => route.query.refresh, (v) => {
       <n-input ref="mainBarInput" v-model:value="mainBarDraft" type="textarea"
         :autosize="{ minRows: 1, maxRows: 4 }"
         :placeholder="mainBarPh" :maxlength="MAX_LEN" />
+      <EmojiPicker :text="mainBarDraft" @update:text="v => (mainBarDraft = v)" />
       <n-button type="primary" size="small" round @click="sendMainBar">{{ t("common.send") }}</n-button>
     </div>
 

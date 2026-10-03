@@ -27,6 +27,7 @@ export const messages = {
     },
     langBtn: "中文",
 
+    emoji: { title: "Emoji" },
     common: {
       send: "Send", save: "Save", cancel: "Cancel", delete: "Delete",
       close: "Close", guest: "Guest", signIn: "Sign in", signUp: "Sign up",
@@ -427,9 +428,9 @@ export const messages = {
       removed: "Thanks for telling us — this note is off the wall now 💛",
       noMore: "That's the latest for now — come back later for more 🐾",
       refreshBtn: "Refresh",
-      refreshed: "Refreshed ✓",
+      refreshed: "Refreshed",
       refreshFail: "Couldn't refresh — try again",
-      refreshBatch: "Refreshed ✓ · a new batch for you",
+      refreshBatch: "A new batch for you",
       refreshing: "Refreshing…",
       /* 轮 84：墙内评论超过 3 条时的「查看更多」→ 帖子详情页 */
       viewMore: "View more",
@@ -883,6 +884,7 @@ export const messages = {
     },
     langBtn: "English",
 
+    emoji: { title: "表情" },
     common: {
       send: "发送", save: "保存", cancel: "取消", delete: "删除",
       close: "关闭", guest: "访客", signIn: "登录", signUp: "注册",
@@ -1283,9 +1285,9 @@ export const messages = {
       removed: "谢谢你告诉我们——这条已经从墙上撤下了 💛",
       noMore: "就到这里啦——晚点再来看新的吧 🐾",
       refreshBtn: "刷新",
-      refreshed: "已刷新 ✓",
+      refreshed: "已刷新",
       refreshFail: "没刷出来，再试一次",
-      refreshBatch: "已刷新 ✓ 换了一批内容",
+      refreshBatch: "换了一批内容",
       refreshing: "刷新中…",
       /* 轮 84：墙内评论超过 3 条时的「查看更多」→ 帖子详情页 */
       viewMore: "查看更多",

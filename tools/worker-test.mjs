@@ -1297,6 +1297,37 @@ function seoEnv() {
   } finally { c.restore(); }
 }
 
+
+/* ── 轮 162：随机锚点换一批（免 count=exact 单查 + 空池兜底最新页 + 每次真随机） ── */
+{
+  const env = makeEnv();
+  const c1 = capture([{ body: [{ id: 1 }] }]);
+  const r1 = await worker.fetch(new Request("https://x/api/posts?sample=1&limit=20&since=2026-09-26T00%3A00%3A00Z"), env, {});
+  ok("sample：单条上游查询（免 count=exact）", c1.outbound.length === 1 && r1.status === 200);
+  const q1 = new URL(c1.outbound[0].url).searchParams;
+  ok("sample：select=* + created_at=lte 随机锚点 + 倒序 limit 无 offset",
+    q1.get("select") === "*" && String(q1.get("created_at") || "").startsWith("lte.")
+    && q1.get("order") === "created_at.desc" && q1.get("limit") === "20" && !q1.get("offset"));
+  ok("sample：不带 count=exact 的 Prefer", !(c1.outbound[0].init.headers.prefer || "").includes("count"));
+  c1.restore();
+  const c2 = capture([{ body: [] }, { body: [{ id: 9 }] }]);
+  const r2 = await worker.fetch(new Request("https://x/api/posts?sample=1&limit=20"), env, {});
+  const q2 = new URL(c2.outbound[1].url).searchParams;
+  ok("sample：锚点空结果 → 兜底最新一批（无 created_at 条件）",
+    c2.outbound.length === 2 && r2.status === 200 && q2.get("created_at") === null
+    && q2.get("order") === "created_at.desc");
+  c2.restore();
+  const c3 = capture([{ body: [{ id: 1 }] }, { body: [{ id: 2 }] }]);
+  await worker.fetch(new Request("https://x/api/posts?sample=1&limit=5"), env, {});
+  await worker.fetch(new Request("https://x/api/posts?sample=1&limit=5"), env, {});
+  const a1 = new URL(c3.outbound[0].url).searchParams.get("created_at");
+  const a2 = new URL(c3.outbound[1].url).searchParams.get("created_at");
+  ok("sample：两次锚点不同（每次真随机）", a1 !== a2);
+  c3.restore();
+  ok("cron 保活已挂（scheduled 处理器）", typeof worker.scheduled === "function");
+}
+
+
 console.log(`worker-test: ${pass} pass, ${fails.length} fail`);
 for (const f of fails) console.log("FAIL  " + f);
 if (fails.length) process.exit(1);

@@ -12,6 +12,9 @@
   "routes": [
     { "pattern": "warmpaws.de5.net", "custom_domain": true }
   ],
+  // 轮 162：每分钟 cron 触发 worker/api.js 的 scheduled 自 ping（压冷启动尖峰），
+  // 免费额度 10 万次/天，1440 次/天 余量充足；部署后 Cloudflare 面板可见 cron 绑定。
+  "triggers": { "crons": ["* * * * *"] },
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",

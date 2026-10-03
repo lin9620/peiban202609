@@ -24,6 +24,7 @@ import {
 import { fmtWhen } from "../utils/wallRules.js";
 import { cacheKey, swr, cacheSet } from "../utils/cache.js";   /* 轮 158：帖子主体 SWR */
 import { isMobileNav, tabbarSuppressed } from "../stores/uiStore.js";
+import EmojiPicker from "../components/EmojiPicker.vue";   /* 轮 164：表情按钮 */
 /* 轮 84：…菜单的「拷贝」（WebView 里 navigator.clipboard 缺失时 execCommand 兜底） */
 import { copyText } from "../utils/clipboard.js";
 /* 轮 33：举报弹窗 + 全站拉黑过滤（我拉黑的人，TA 的帖子/评论在我这里不显示） */
@@ -560,6 +561,7 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
           <div v-if="signedIn" class="cmt-input-row">
             <n-input v-model:value="cmtDraft" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }"
               :placeholder="t('comment.placeholder')" :maxlength="MAX_LEN" />
+            <EmojiPicker :text="cmtDraft" @update:text="v => (cmtDraft = v)" />
             <n-button type="primary" size="small" round class="cmt-send" @click="sendTopCmt()">{{ t("community.post") }}</n-button>
           </div>
           <router-link v-else class="bar-signin" to="/profile">{{ t("comment.barSignIn") }}</router-link>

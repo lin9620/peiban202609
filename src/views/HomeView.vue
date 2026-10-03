@@ -95,9 +95,19 @@ function onTouchEnd(e) {
 const paneEls = ref([]);
 const trackH = ref("");
 let ro = null;
+/* 轮 163：track 高度 = max(联内容高, 视口剩余高)——内容短的联（如故事）下方空白也要
+   进横滑手势面，不然手指落在空白处滑不动（用户实测：故事联下方空白滑不了）。
+   预留 78px 底部导航 + safe-area 与 .shell--mobile-nav main 的 padding-bottom 同源。 */
 function measure() {
   const el = paneEls.value[idx.value];
-  if (el) trackH.value = Math.max(120, Math.round(el.offsetHeight)) + "px";
+  if (!el) return;
+  let avail = 0;
+  try {
+    const host = el.parentElement;
+    const top = host ? host.getBoundingClientRect().top : 0;
+    avail = window.innerHeight - top - 96;
+  } catch (e) { /* 拿不到几何就维持内容高 */ }
+  trackH.value = Math.max(120, Math.round(Math.max(el.offsetHeight, avail))) + "px";
 }
 watch(idx, async () => { await nextTick(); measure(); });
 onMounted(() => {
@@ -106,8 +116,12 @@ onMounted(() => {
     ro = new ResizeObserver(measure);
     paneEls.value.forEach((el) => el && ro.observe(el));
   }
+  if (typeof window !== "undefined") window.addEventListener("resize", measure);
 });
-onBeforeUnmount(() => { if (ro) ro.disconnect(); });
+onBeforeUnmount(() => {
+  if (ro) ro.disconnect();
+  if (typeof window !== "undefined") window.removeEventListener("resize", measure);
+});
 </script>
 
 <template>

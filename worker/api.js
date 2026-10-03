@@ -184,15 +184,28 @@ async function objectOrPassthrough(res) {
 /* 轮 64：sample 随机一批（「换一批」）——先数 7 天池总量（count=exact + Range 0-0，微小查询），
    再随机起点取一页。两次微小上游调用，不用全表排序。 */
 async function samplePosts(env, request, limit, since) {
-  const base = ["select=id", "removed=eq.false"];
-  if (since) base.push(`created_at=gte.${encodeURIComponent(since)}`);
-  const c = await upstream(env, request, restUrl(env, TABLE.posts, [...base, "order=created_at.desc"].join("&")), { headers: { prefer: "count=exact", range: "0-0" } });
-  if (!c || !c.ok) return fail(502, "upstream-unreachable");
-  const total = parseInt(((c.headers.get("content-range") || "").split("/")[1] || "0"), 10) || 0;
-  const maxOff = Math.max(0, total - limit);
-  const off = Math.floor(Math.random() * (maxOff + 1));
-  const qs = [...base, "order=created_at.desc", `limit=${limit}`, off > 0 ? `offset=${off}` : ""].filter(Boolean).join("&");
-  const res = await upstream(env, request, restUrl(env, TABLE.posts, qs));
+  /* 轮 162：随机时间锚点替代「count=exact → 随机 offset」。线上实测旧实现 12~16s/次
+     还频繁 502：count=exact 在墙表上要 6s+（两次串行上游查询，慢查询窗口里一动就散）。
+     改为：在 7 天窗口内随机取一个时刻，单条走 created_at 索引的查询取「该时刻之前的
+     N 条」——免计数、单查、随机性照样每次不同（锚点毫秒级随机）；select=* 顺带修掉
+     旧实现页面查询只取 id 的暗病。锚点早于窗口内最老帖子（空结果）→ 兜底拉最新一批。 */
+  const now = Date.now();
+  const parsed = since ? Date.parse(since) : NaN;
+  const start = Number.isFinite(parsed) ? parsed : now - 7 * 86400000;
+  const anchor = new Date(start + Math.random() * Math.max(1000, now - start)).toISOString();
+  const base = ["select=*", "removed=eq.false", "order=created_at.desc", `limit=${limit}`];
+  const anchored = [...base, `created_at=lte.${encodeURIComponent(anchor)}`].join("&");
+  let res = await upstream(env, request, restUrl(env, TABLE.posts, anchored));
+  if (res && res.ok) {
+    const text = await res.text();   /* 只读一次：复用 text，别对同一 body 二次 text() */
+    let rows = null;
+    try { rows = JSON.parse(text); } catch (e) { rows = null; }
+    if (Array.isArray(rows) && rows.length > 0) {
+      return new Response(text, { status: res.status, headers: { "content-type": "application/json" } });
+    }
+    /* 锚点落空（窗口头部没货）→ 退最新一批，保证换一批永远有内容 */
+    res = await upstream(env, request, restUrl(env, TABLE.posts, base.join("&")));
+  }
   if (!res || !res.ok) return fail(502, "upstream-unreachable");
   return new Response(await res.text(), { status: res.status, headers: { "content-type": "application/json" } });
 }
@@ -1421,6 +1434,15 @@ async function handleApi(request, env, ctx) {
  * 注意：caches 是 Workers 运行时注入的全局，离线测试 harness 里没有，
  *   故这里做 typeof 探测 —— 探测失败直接回落 handleApi（等于没缓存，绝不能因此 500）。 */
 export default {
+  /* 轮 162：每分钟 cron 自 ping——免费版 isolate 回收造成冷启动尖峰（实测单查 2.3~9.6s
+     跳变），靠它压住：保活 isolate 的同时顺手热身。免费额度 10 万次/天，每分钟 1 次
+     = 1440 次，余量充足。wrangler.jsonc 里同步挂 triggers.crons。 */
+  async scheduled(controller, env, ctx) {
+    try {
+      const p = fetch("https://warmpaws.de5.net/api/posts?limit=1").catch(() => {});
+      if (ctx && ctx.waitUntil) ctx.waitUntil(p);
+    } catch (e) { /* 保活失败无所谓 */ }
+  },
   async fetch(request, env, ctx) {
     const hasCache = typeof caches !== "undefined" && caches && caches.default;
     const u0 = new URL(request.url);
