@@ -1473,19 +1473,19 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
 
   - **轮 161 · 主题换了配色不跟（故事栏 + 其他页面）（2026-10-03，用户实测点单「故事栏 UI 配色换主题不变、其他页面也没适配」，已提交 `697634b` / **已部署 Version `ae576162`** / live-check 14/14 / 线上 CSS 四主题块新变量+wash 71 处确认 ✅）**：
 
-  - **轮 162 · 暖心墙刷新 10s 之痛 + 刷新提示重做（2026-10-03，用户实测点单「点一次刷新要 10s」+「刷新成功√的图标和动画改一下」，未提交未部署——等发话）**：
+  - **轮 162 · 暖心墙刷新 10s 之痛 + 刷新提示重做（2026-10-03，用户实测点单「点一次刷新要 10s」+「刷新成功√的图标和动画改一下」+「尤其是手机端」，已提交 `8aa22e1` / 已部署 Version `54d13792` / live-check 14/14 / **线上复测 sample 9.6~15.8s→2.0~3.6s 全 200** / **APK `3DAD211A5C7F6157`(5.2M) 装机 Success + 冷启动 PID 12986 CRASH_HITS=0** ✅）**：
      **实测诊断（curl 线上）**：latest 2.3~**9.6s**（免费版 isolate 冷启动尖峰）、sample **9.6~15.8s 且频繁 502 upstream-unreachable**——sample 旧实现 = `count=exact`（墙表上 6s+）+ 随机 offset 页查询**两条串行上游查询**，慢查询窗口里一动就 502；顺带发现旧 sample 页面查询 `select=id` 只取 id 的暗病（网关换一批字段残缺）。轮 159 让 sample 绕开边缘缓存后每次回源，冷启动+慢计数全裸奔。
      **修（worker 侧）**：①samplePosts 重写为**随机时间锚点单查**——7 天窗口内随机取一时刻，一条走 `created_at` 索引的查询取「该时刻之前 N 条」：免计数、单查、每次锚点毫秒级随机；`select=*` 修暗病；锚点落空（窗口头部没货）兜底拉最新一批（**踩坑：空判断读 body 后又 text() → "Body has already been read"，文本只读一次复用**）；②export default 挂 `scheduled` 自 ping（`/api/posts?limit=1`）+ wrangler.jsonc `triggers.crons ["* * * * *"]`——每分钟保活 isolate 压冷启动尖峰，免费额度 1440/10 万次每天。
      **修（前端侧）**：③刷新/首屏批 50→**REFRESH_PAGE=20**（视口只露 16 张，50 条+两轮富化纯浪费；触底续载仍 50）；④刷新提示改**状态机** `""|busy|ok|batch|fail` + 新提示 UI；i18n 把 ✓ 移出文案；**手机下拉原来无条件显示「已刷新 ✓」**（失败也显示成功）——`loadCloud` 返回成败后如实提示。
      **轮 162b（用户追单「尤其是手机端，动画跟图标也很丑」）**：提示升级为**暖爪可爱版小药丸**（`--wash` 底+发丝线圆角胶囊，浮入动画）——ok=**主题色爱心弹出（过冲回弹）+ 扑通一跳**（SVG Material heart，transform-origin 60%），batch=**四角星花旋入+两次闪**（twinkle），fail=软红 ！摇摆，busy=主题色转圈；通用的「绿色圆环打勾」弃用（用户嫌丑）。手机端与桌面同一条 Worker 链路，worker 三修复装新包即受益。CSS 小坑：keyframes 收尾帧误写 `scale(1.06) scale(1)` 双函数叠加，已归位。
 
-  - **轮 163 · 手机端横滑死区（2026-10-03，用户实测点单「故事页下方空白无法往左滑，消息页三个页面都有」，未提交未部署——等发话）**：
+  - **轮 163 · 手机端横滑死区（2026-10-03，用户实测点单「故事页下方空白无法往左滑，消息页三个页面都有」，已提交 `8aa22e1` / 已部署 Version `54d13792` / **APK `3DAD211A5C7F6157` 装机 + 冷启动确认** ✅；真机横滑待用户验收）**：
      **根因**：横滑手势面 = 内容元素本身——①首页 `.home-track` 高度 = 当前联**内容高**（trackH 测的是 paneEls[idx].offsetHeight），故事联内容短 → track 下方空白在 track 外，touchstart 到不了；②私信页三段（漂流瓶/会话/通知）手势挂在 `aside.dm-list` 卡上，卡高随内容，空白同理。手指落在空白处 = 滑不动。
      **修（把空白区纳进手势面，不改手势逻辑）**：①HomeView `measure()` 改为 `trackH = max(联内容高, 视口剩余高)`——`window.innerHeight - track顶缘(getBoundingClientRect().top) - 96`（78=底部导航预留与 `.shell--mobile-nav main` 的 padding-bottom 同源 + 呼吸位）；窗口 resize 重测（挂/卸监听）。附带好处：矮联之间切换时 track 高度不再跳变。②`.shell--mobile-nav .dm-list` 加 `min-height: calc(100dvh - 106px - env(safe-area-inset-bottom,0px))`——列表卡拉满一屏（聊天打开时卡 v-show 隐藏，天然不会把聊天页滑走，零 JS 改动零回归）。桌面不受影响（规则都在 mobile shell 作用域 / measure 拿不到 refs 空转）。
      验证：undef 0 + **40 套离线 0 fail** + build 0 + page-smoke 12/12；真机横滑验收待装机。
      验证：undef 0 + **40 套离线 0 fail**（worker-test 250→**256**：sample 单查免 count/select=*/锚点条件/空池兜底/两次锚点不同/cron 挂载）+ build 0 + page-smoke 12/12；线上耗时对比待部署后复测。
 
-  - **轮 164 · 评论框/私信框表情按钮（2026-10-03，用户截图点单「发送键左边加表情按钮，微信常用表情，评论框和消息会话框都要」，未提交未部署——等发话）**：
+  - **轮 164 · 评论框/私信框表情按钮（2026-10-03，用户截图点单「发送键左边加表情按钮，微信常用表情，评论框和消息会话框都要」，已提交 `8aa22e1` / 已部署 Version `54d13792` / **APK `3DAD211A5C7F6157` 装机 + 冷启动确认** ✅）**：
      **新组件** `src/components/EmojiPicker.vue`：笑脸 SVG 按钮（发送键左侧）+ 弹出面板（**微信常用 Unicode 表情 64 个**：常用脸/爱心/爪印/生活物，免资产零体积；🫶 这类 Unicode14 新字被排除防老 WebView 豆腐块）。面板 **position:fixed + teleport 到 body**、按按钮实时 rect 定位——绕开 overflow 裁剪与 transform 包含块（home-track 陷阱同类）两类坑；z=260 盖过评论弹窗。插入逻辑内置：picker 在**同行内**找 textarea/input 的 `selectionStart` 光标处插入（拿不到就追加），插入后焦点+光标归位；点选不收面板可连选，点外/再点按钮收起。API = `:text` + `@update:text` 直改父级草稿，五处接入一行搞定。
      **接入五处**：私信会话框（MessagesView）/ 漂流瓶聊天框（BottleChat）/ 帖子详情桌面评论框（PostDetail cmt-input-row）/ 暖心墙内联评论框（CommunityView）/ 手机评论底部输入条（CommunityView mainBar，**App 端评论就是它**）。**注意**：CommentComposer.vue 已被平行会话删除（评论输入统一为页内 mainBar 流），PostDetail 正被平行会话实时改动（本轮接入时文件从 1000+ 行缩到 767 行基线）——接入以当时盘面为准、带幂等保护。
      **i18n**：顶层新增 `emoji.title`（zh 表情 / en Emoji），zh/en 对称（i18n-test 19/19）。
