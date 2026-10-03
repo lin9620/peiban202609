@@ -7,6 +7,7 @@ import { t } from "../../i18n.js";
 import { isMobileNav } from "../../stores/uiStore.js";
 import { storyErrKey } from "../../utils/storyRules.js";
 import { storyRank, storyFeatured } from "../../utils/story.js";
+import { swr, cacheKey } from "../../utils/cache.js";
 
 const PAGE = 12;
 const router = useRouter();
@@ -29,18 +30,30 @@ const more = computed(() => rows.value.length >= offset.value + PAGE);
 async function load() {
   loading.value = true;
   err.value = "";
-  try {
-    const data = await storyRank({ mode: "latest", limit: PAGE, offset: offset.value });
-    rows.value = offset.value === 0 ? (data || []) : rows.value.concat(data || []);
-  } catch (e) {
-    err.value = t(storyErrKey(e));
-  } finally {
-    loading.value = false;
-  }
+  const first = offset.value === 0;
+  /* 轮 158：首屏 SWR 本地直出——进故事联不再干等网络（故事流是公共内容，键不带用户域）；
+   * 翻页照旧不缓存、拼尾。发布后父级调 load() 刷新：缓存先出、新内容由 fresh 纠正。 */
+  await swr(
+    first ? cacheKey("story:feed:latest") : null,
+    {
+      cached: (data) => { rows.value = data || []; loading.value = false; },
+      fresh: (data) => { rows.value = first ? (data || []) : rows.value.concat(data || []); },
+      onError: (e) => { err.value = t(storyErrKey(e || new Error("network"))); },
+    },
+    () => storyRank({ mode: "latest", limit: PAGE, offset: offset.value }),
+  );
+  loading.value = false;
 }
 /** 精选取不到就整卡隐藏（不报错 —— 它是点缀，不是主功能） */
 async function loadFeatured() {
-  try { featured.value = await storyFeatured(); } catch (e) { featured.value = null; }
+  await swr(
+    cacheKey("story:featured"),
+    {
+      cached: (v) => { if (v) featured.value = v; },
+      fresh: (v) => { featured.value = v || null; },
+    },
+    () => storyFeatured().catch(() => null),
+  );
 }
 function loadMore() {
   offset.value += PAGE;
@@ -98,6 +111,10 @@ defineExpose({ load, loadFeatured });
       <p class="st-card-stats">{{ t("story.stats", { likes: r.like_count, views: r.view_count }) }}</p>
     </article>
 
+    <!-- 轮 158：首访无缓存时的骨架占位（三张 shimmer 卡），不再整块空白干等 -->
+    <div v-if="loading && !shown.length" class="st-skel" aria-hidden="true">
+      <div v-for="i in 3" :key="i" class="st-skel-card"></div>
+    </div>
     <p v-if="!shown.length && !loading" class="st-hint">{{ t("story.rankEmpty") }}</p>
     <button v-if="more" class="st-btn st-btn--ghost" type="button" :disabled="loading" @click="loadMore">
       {{ loading ? t("story.saving") : t("story.openStory") }}

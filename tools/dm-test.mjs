@@ -13,6 +13,7 @@ import {
   RECALL_WINDOW_MS, BODY_MAX, IMAGE_PLACEHOLDER, RECALLED_PLACEHOLDER,
   previewText, canRecall, displayMsg, unreadOf, sortConvs, filterConvs,
   dayKey, withDayDividers, relativeTime, validateSend, sendErrKey, rowView,
+  mergeTail, dmWin, dmMsgsKey, dmCacheWindow, dmPeekWindow, DM_WINDOW_CAP,
 } from "../src/utils/dmRules.js";
 import { messages } from "../src/i18n.js";
 
@@ -260,6 +261,62 @@ ok("设置页收拢皮肤/语言/总通知开关/四类偏好（#13）",
   sv.includes("themeOptions") && sv.includes("langOptions") && sv.includes("prefsSet") && sv.includes("toggleMaster"));
 const mvRouter = fs.readFileSync("src/router.js", "utf8");
 ok("/settings 路由已注册", mvRouter.includes('"/settings"'));
+
+/* ───────── 轮 157：轮询尾部增量合并 mergeTail ───────── */
+{
+  const a = { id: 1, sender: "o", body: "hi", created_at: iso(NOW - 60000) };
+  const b = { id: 2, sender: "me", body: "yo", created_at: iso(NOW - 30000) };
+  const tmp = { id: -999, sender: "me", body: "sending…", pending: true, created_at: iso(NOW - 1000) };
+  const none = mergeTail([a, b, tmp], [b]);
+  ok("合并：无新无变 → 返回同引用（不触发重渲染）", none.rows === undefined || none.rows.length === 3);
+  ok("合并：空尾部原样退回", mergeTail([a], []).added === false);
+  const upd = mergeTail([a, b], [{ ...a, deleted_at: iso(NOW) }]);
+  ok("合并：已见行字段变了 → 原位更新（撤回状态能刷进来）且不算新增",
+    upd.rows.length === 2 && upd.rows[0].deleted_at != null && upd.rows[1] === b && upd.added === false);
+  const c = { id: 3, sender: "o", body: "new", created_at: iso(NOW) };
+  const app = mergeTail([a, b, tmp], [b, c]);
+  ok("合并：新消息插到乐观临时消息之前（临时行仍压尾）",
+    app.added === true && app.rows.length === 4 && app.rows[2].id === 3 && app.rows[3] === tmp);
+  const plain = mergeTail([a], [b]);
+  ok("合并：无临时消息直接尾部追加", plain.added === true && plain.rows.length === 2 && plain.rows[1] === b);
+  ok("合并：非数组入参不炸", mergeTail(null, null).added === false);
+}
+
+/* ───────── 轮 157：聊天性能四件套接线（会话段 + 漂流瓶段） ───────── */
+{
+  const bc = fs.readFileSync("src/components/BottleChat.vue", "utf8");
+  ok("私信页：触顶自动翻历史（passive 滚动监听 + rAF 节流）",
+    mv.includes('@scroll.passive="onScrollTop"') && mv.includes("requestAnimationFrame"));
+  ok("私信页：翻历史锚点保持（scrollHeight 差值补偿）", mv.includes("el.scrollTop += el.scrollHeight - oldH"));
+  ok("私信页：轮询走 mergeTail 增量合并", mv.includes("mergeTail(msgs.value, asc)"));
+  ok("私信页：会话列表降频（每 3 拍一次，不再每 5s 全量拉 200 行）", mv.includes("tickN % 3 === 1"));
+  ok("私信页：发送后就地落位（msg_id 直换 + 窗口缓存补条）",
+    mv.includes("r.msg_id") && mv.includes("dmPeekWindow(meId.value, convId)"));
+  ok("私信页：首屏走窗口缓存（dm:msgs 键 + dmWin 归一）",
+    mv.includes("dmMsgsKey(meId.value, id)") && mv.includes("dmWin(v)"));
+  ok("私信页：翻过的历史并入缓存窗口", mv.includes("w.rows.concat(hit.rows)"));
+  ok("私信页：轮询防重叠（busy 门）", mv.includes("tickBusy"));
+  ok("漂流瓶聊天框：同款四件套",
+    bc.includes('@scroll.passive="onScrollTop"') &&
+    bc.includes("el.scrollTop += el.scrollHeight - oldH") &&
+    bc.includes("mergeTail(msgs.value, asc)") &&
+    bc.includes("r.msg_id"));
+}
+
+/* ───────── 轮 157b：消息窗口缓存（形状兼容 + 读写闭环） ───────── */
+{
+  const w30 = dmWin(Array.from({ length: 30 }, (_, i) => ({ id: i })));
+  ok("窗口缓存：旧纯数组快照兼容（30 条=还有更早）", !!w30 && w30.rows.length === 30 && w30.more === true);
+  ok("窗口缓存：新包装形状透出", dmWin({ rows: [{ id: 1 }], more: false }).more === false);
+  ok("窗口缓存：垃圾入参 → null", dmWin(null) === null && dmWin({}) === null && dmWin({ rows: "x" }) === null);
+  dmCacheWindow("u1", "c1", [{ id: 3 }, { id: 2 }, { id: 1 }], true);
+  const rt = dmPeekWindow("u1", "c1");
+  ok("窗口缓存：写入→读出闭环", !!rt && rt.rows.length === 3 && rt.rows[0].id === 3 && rt.more === true);
+  dmCacheWindow("u1", "c1", Array.from({ length: DM_WINDOW_CAP + 10 }, (_, i) => ({ id: i })), true);
+  ok("窗口缓存：超窗裁最旧（护栏生效）", dmPeekWindow("u1", "c1").rows.length === DM_WINDOW_CAP);
+  ok("窗口缓存：键带用户域（换账号不串）", dmMsgsKey("a", "c") !== dmMsgsKey("b", "c"));
+  ok("窗口缓存：两视图共用同一键规则", fs.readFileSync("src/components/BottleChat.vue", "utf8").includes("dmMsgsKey(props.meId, id)"));
+}
 
 console.log(`dm-test: ${pass} pass, ${fails.length} fail`);
 for (const f of fails) console.log("FAIL  " + f);

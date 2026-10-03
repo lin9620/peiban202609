@@ -150,7 +150,12 @@ async function loadCloud({ fresh = false } = {}) {
   /* 轮 66：挂载取数器也走「随机换一批」——不再固定拉最新页（那正是「A 复活」的根源：
      随机批不回写缓存 + 挂载永远拉最新页 → 重开/刷新总回到同一批）。 */
   const fetcher = async () => {
-    const rows = await cloudFetchPosts(FEED_PAGE, 0);
+    /* 轮 159（用户：「每个人暖心墙帖子出现的都一样，不能加个随机数吗」）：挂载改走
+       随机批——7 天池随机起点，每人每次进来看到的都不一样（轮 66 注释早写了要这么做，
+       代码后来退回了最新页）；随机批失败退回最新页兜底。触底续载照旧按游标拉更早的
+       （loadMoreCloud 自带去重+跳页自愈，随机批与后续页少量交叠也不会重复）。 */
+    const rows = (await cloudFetchPostsSample(FEED_PAGE).catch(() => null))
+      || (await cloudFetchPosts(FEED_PAGE, 0).catch(() => null));
     if (!rows) return null;   /* 拉取失败 → 不覆盖、不回写缓存 */
     const counts = await cloudFetchCommentCounts(rows.map((r) => r.dbId)).catch(() => null);
     return { rows, counts: counts || {}, fromFetch: true };

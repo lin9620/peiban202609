@@ -22,6 +22,7 @@ import {
   postCopyText, commentCopyText,
 } from "../utils/comments.js";
 import { fmtWhen } from "../utils/wallRules.js";
+import { cacheKey, swr, cacheSet } from "../utils/cache.js";   /* 轮 158：帖子主体 SWR */
 import { isMobileNav, tabbarSuppressed } from "../stores/uiStore.js";
 /* 轮 84：…菜单的「拷贝」（WebView 里 navigator.clipboard 缺失时 execCommand 兜底） */
 import { copyText } from "../utils/clipboard.js";
@@ -49,9 +50,17 @@ async function load() {
   loading.value = true;
   failed.value = false;
   gone.value = false;
-  const p = await cloudFetchPost(uid.value);
-  if (!p) { failed.value = true; loading.value = false; return; }
-  post.value = p;
+  /* 轮 158：帖子主体 SWR——从墙/我的/主页点进来，本地先出上次的帖子立刻能读，
+   * 后台拉新数据纠正（回应数/浏览数以 fresh 为准）。null = 查无此帖/网络挂 → 原failed口径 */
+  await swr(
+    cacheKey("wall:post", uid.value),
+    {
+      cached: (p) => { if (p) { post.value = p; loading.value = false; } },
+      fresh: (p) => { if (p) { post.value = p; loading.value = false; } },
+    },
+    () => cloudFetchPost(uid.value),
+  );
+  if (!post.value) { failed.value = true; loading.value = false; return; }
   loading.value = false;
   /* 浏览计数（浏览 RPC 幂等：同一人同一天只 +1），随后本地 +1 即时反馈 */
   if (p.dbId) {
@@ -111,6 +120,7 @@ async function refetch() {
   const p = await cloudFetchPost(uid.value);
   if (!p) { gone.value = true; post.value = null; return; }
   post.value = p;
+  cacheSet(cacheKey("wall:post", uid.value), p);   /* 轮 158：操作后的最新态回写缓存 */
 }
 async function react(k) {
   const p = post.value;

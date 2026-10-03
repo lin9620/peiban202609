@@ -1839,8 +1839,14 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 .dm-scroll {
   flex: 1; overflow-y: auto; max-height: 52vh;
   display: flex; flex-direction: column; gap: 8px; padding: 12px 2px;
+  overscroll-behavior: contain; /* 轮 157：聊天滚到底/顶不再连锁带动整页橡皮筋 */
 }
 .dm-topmore { display: flex; justify-content: center; padding-bottom: 6px; }
+/* 轮 157：长对话渲染减负——离屏消息行跳过布局/绘制（content-visibility: auto），
+ * contain-intrinsic-size 给近真实行高占位，滚动条不抖；行滚近视口即真实渲染。
+ * 会话段与漂流瓶聊天框共用 .dm-line/.dm-day 类，一处生效两处受益。 */
+.dm-line, .dm-day { content-visibility: auto; contain-intrinsic-size: auto 64px; }
+.dm-day { contain-intrinsic-size: auto 40px; }
 .dm-day { display: flex; justify-content: center; margin: 6px 0; }
 .dm-day span {
   font-size: 11px; font-weight: 500; color: var(--ink-soft);
@@ -2314,13 +2320,6 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 .mood-face.is-on .mood-face-txt { color: var(--accent-deep); font-weight: 600; }
 
 .mood-face { --mf-ink: #8d8378; }
-.mood-svg { width: 34px; height: 34px; display: block; transition: transform .18s ease; }
-.mood-face .mf-ring { fill: none; stroke: var(--mf-ink, #8d8378); stroke-width: 1.5; }
-.mood-face .mf-eye,
-.mood-face .mf-mouth { fill: none; stroke: var(--mf-ink, #8d8378); stroke-width: 1.6; stroke-linecap: round; }
-.mood-face .mf-blush { fill: #f0a9a0; opacity: .55; }
-.mood-face .mf-drop { fill: #9dc3d8; opacity: .8; }
-.mood-face .mf-z { fill: none; stroke: var(--mf-ink, #8d8378); stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
 .mood-face.is-on { --mf-ink: var(--accent); }
 .mood-face.is-on .mood-svg { transform: scale(1.1); }
 
@@ -2391,6 +2390,15 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 .story-title { font-family: var(--font-display); font-size: 26px; font-weight: 600; }
 .st-sub { color: var(--ink-soft); font-size: 13px; }
 .st-hint { color: var(--ink-faint); font-size: 12px; }
+/* 轮 158：故事流骨架屏（首访无缓存时占位，shimmer 动画）；warm 配色跟随主题墨色 */
+.st-skel { display: grid; gap: 10px; }
+.st-skel-card {
+  height: 88px; border-radius: 16px;
+  background: linear-gradient(100deg, rgba(141, 131, 120, .10) 40%, rgba(141, 131, 120, .18) 50%, rgba(141, 131, 120, .10) 60%);
+  background-size: 200% 100%;
+  animation: st-skel-shine 1.2s ease-in-out infinite;
+}
+@keyframes st-skel-shine { to { background-position: -200% 0; } }
 .st-err { color: var(--low); font-size: 13px; margin-top: 8px; }
 .st-spring { flex: 1; }
 

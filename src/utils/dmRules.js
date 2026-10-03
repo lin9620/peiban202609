@@ -5,6 +5,7 @@
  * 常量约定（与 MIGRATION_dm_notifications.sql 同源）：
  *   📷 = 纯图片消息的预览占位；⟲ = 最新一条被撤回后的预览占位。
  */
+import { cacheKey, cachePeek, cacheSet } from "./cache.js";
 
 export const RECALL_WINDOW_MS = 15 * 60 * 1000; // 撤回窗口：15 分钟（与 dm_recall 的 interval 一致）
 export const BODY_MAX = 2000;                   // 单条正文上限（与 dm_messages 约束一致）
@@ -84,6 +85,75 @@ export function withDayDividers(messages) {
     out.push({ type: "msg", key: `m${m.id}`, msg: m });
   }
   return out;
+}
+
+/** 轮 157：轮询尾部增量合并（替代「msgs = 尾部 N 条」的整段替换——那会把翻过的历史冲掉）
+ * ------------------------------------------------------------
+ * tailAsc：尾部若干条（旧→新）。规则：
+ *  ① 已见过的 id → 原位更新（撤回/失败标记等字段能刷进来）；字段没变就不动数组（不触发重渲染）；
+ *  ② 没见过的 id → 追加，插到乐观临时消息（id<0，发送中）之前——临时消息永远压尾部；
+ *  ③ 返回 { rows, added }：无变化时 rows 与入参同引用（Vue 不会重渲染）；added = 是否有新消息落地。
+ */
+export function mergeTail(existing, tailAsc) {
+  const cur = Array.isArray(existing) ? existing : [];
+  const tail = Array.isArray(tailAsc) ? tailAsc : [];
+  if (!tail.length) return { rows: cur, added: false };
+  const curIdx = new Map(cur.map((m, i) => [m.id, i]));
+  let rows = cur;
+  let copied = false;
+  let added = false;
+  for (const m of tail) {                       /* ① 原位更新 */
+    const i = curIdx.get(m.id);
+    if (i == null) continue;
+    if (rows[i] !== m && JSON.stringify(rows[i]) !== JSON.stringify(m)) {
+      if (!copied) { rows = cur.slice(); copied = true; }
+      rows[i] = m;
+    }
+  }
+  for (const m of tail) {                       /* ② 追加新行 */
+    if (curIdx.has(m.id)) continue;
+    if (!copied) { rows = cur.slice(); copied = true; }
+    const at = rows.findIndex((x) => x.id < 0);
+    if (at >= 0) rows.splice(at, 0, m); else rows.push(m);
+    added = true;
+  }
+  return { rows, added };
+}
+
+/* ──────── 轮 157b：会话消息「窗口缓存」 ────────
+ * 首屏 SWR 一直有（最近 30 条本地直出），但翻过的历史页不进缓存，且全局缓存护栏只有
+ * 60 条、会话一多聊天快照就被挤掉——用户要的是「下次打开聊天窗口，本地先把历史顶上来」。
+ * 这里把本次翻到的窗口整体缓存（rows 新→旧 + more 是否还有更早），旧版纯数组快照兼容读。
+ * 两个聊天视图（会话段 / 漂流瓶段）与发送补条都必须走这三个助手，形状才不会漂移。 */
+
+/** 服务端分页批量（首屏一次拉多少；dmWin 兼容判定按它认「还有更早」） */
+export const DM_PAGE = 30;
+/** 缓存窗口上限（条）：超窗裁最旧的，localStorage 不被撑爆 */
+export const DM_WINDOW_CAP = 60;
+
+/** dm:msgs 缓存键（带用户域，换账号不串数据） */
+export function dmMsgsKey(meId, convId) {
+  return cacheKey("dm:msgs", meId, convId);
+}
+
+/** 归一化缓存快照 → { rows 新→旧, more }；旧版纯数组兼容；垃圾入参返回 null */
+export function dmWin(v) {
+  if (Array.isArray(v)) return { rows: v, more: v.length === DM_PAGE };
+  if (v && Array.isArray(v.rows)) return { rows: v.rows, more: !!v.more };
+  return null;
+}
+
+/** 写窗口快照（裁到 WINDOW_CAP） */
+export function dmCacheWindow(meId, convId, rowsDesc, more) {
+  cacheSet(dmMsgsKey(meId, convId), {
+    rows: (Array.isArray(rowsDesc) ? rowsDesc : []).slice(0, DM_WINDOW_CAP),
+    more: !!more,
+  });
+}
+
+/** 读窗口快照（无 / 垃圾 → null） */
+export function dmPeekWindow(meId, convId) {
+  return dmWin(cachePeek(dmMsgsKey(meId, convId)));
 }
 
 /** 相对时间（列表时间戳）：刚刚 / N 分钟前 / N 小时前 / 昨天 / 具体日期 */

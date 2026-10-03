@@ -1423,9 +1423,15 @@ async function handleApi(request, env, ctx) {
 export default {
   async fetch(request, env, ctx) {
     const hasCache = typeof caches !== "undefined" && caches && caches.default;
+    const u0 = new URL(request.url);
     const cacheable =
-      hasCache && request.method === "GET" && cacheablePath(new URL(request.url).pathname)
-      && !hasAuth(request);
+      hasCache && request.method === "GET" && cacheablePath(u0.pathname)
+      && !hasAuth(request)
+      /* 轮 159（用户：「刷新没有用/每个人出现的都一样」）：随机批绝不进缓存——
+         sample 的随机结果被边缘缓存 30s = 同一 POP 上所有人拿到同一份「随机」，
+         刷新也只是原样回放。随机批每次回源（计数+随机起点两查，成本可接受）；
+         普通列表仍是确定性内容，30s 边缘缓存照旧保留。 */
+      && u0.searchParams.get("sample") !== "1";
     if (!cacheable) return handleApi(request, env, ctx);
 
     const key = new Request(request.url, { method: "GET" });

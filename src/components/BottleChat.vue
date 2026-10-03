@@ -15,7 +15,9 @@ import { useRouter } from "vue-router";
 import { t, i18n } from "../i18n.js";
 import { bottleChatState, bottleChatDecide, bottleErrKey } from "../utils/bottle.js";
 import * as dmApi from "../utils/dm.js";
-import { displayMsg, withDayDividers, canRecall, validateSend, sendErrKey } from "../utils/dmRules.js";
+import { displayMsg, withDayDividers, canRecall, validateSend, sendErrKey, mergeTail,
+  dmMsgsKey, dmPeekWindow, dmCacheWindow, dmWin } from "../utils/dmRules.js";
+import { swr } from "../utils/cache.js";
 import { refreshBadge } from "../stores/badgeStore.js";
 
 const props = defineProps({
@@ -49,6 +51,7 @@ const chatting = computed(() => state.value === "accepted" && !!convId.value);
 
 /* ─────────── 消息流（与会话段同款渲染口径，状态独立） ─────────── */
 const msgs = ref([]);
+let msgsConv = "";           /* msgs 现在装的是哪个会话（轮 157b：防跨会话误合并） */
 const body = ref("");
 const sending = ref(false);
 const sendErr = ref("");
@@ -77,19 +80,77 @@ function scrollBottom(smooth = false) {
   });
 }
 
+/* 轮 157：触顶自动翻历史（与会话段同款：rAF 节流 + passive 监听） */
+let topRaf = 0;
+function onScrollTop() {
+  if (topRaf) return;
+  topRaf = requestAnimationFrame(() => {
+    topRaf = 0;
+    const el = listEl.value;
+    if (!el || loadingMsgs.value || !hasMore.value || !oldestId.value || !convId.value) return;
+    if (el.scrollTop < 140) loadMessages(convId.value, { before: oldestId.value });
+  });
+}
+
 async function loadMessages(id, { before = null } = {}) {
   if (!id) return;
   loadingMsgs.value = true;
-  try {
-    const rows = (await dmApi.listMessages(id, { before, limit: 30 })) || [];
+  const applyRows = (rows, more) => {
     const asc = rows.slice().reverse();
-    if (before == null) msgs.value = asc;
-    else msgs.value = asc.concat(msgs.value);
-    hasMore.value = rows.length === 30;
+    if (before == null || msgsConv !== id) {
+      msgs.value = asc;
+    } else {
+      /* 轮 157：翻历史锚点保持（与会话段同款）——下一帧补 scrollTop 差值，视口不跳 */
+      const el = listEl.value;
+      const oldH = el ? el.scrollHeight : 0;
+      msgs.value = asc.concat(msgs.value);
+      if (el) requestAnimationFrame(() => {
+        const prevSb = el.style.scrollBehavior;
+        el.style.scrollBehavior = "auto";
+        el.scrollTop += el.scrollHeight - oldH;
+        el.style.scrollBehavior = prevSb || "";
+      });
+    }
+    msgsConv = id;
+    hasMore.value = more != null ? more : rows.length === 30;
     oldestId.value = msgs.value.length ? msgs.value[0].id : null;
-  } catch (e) {
-    if (before == null) msgs.value = [];
-  }
+  };
+  await swr(
+    before == null ? dmMsgsKey(props.meId, id) : null,
+    {
+      /* 轮 157b：与会话段共用 dm:msgs 窗口缓存——手机上聊过的，桌面瓶聊秒开同一份 */
+      cached: (v) => {
+        const w = dmWin(v);
+        if (!w || !w.rows.length) return;
+        applyRows(w.rows, w.more);
+        loadingMsgs.value = false;
+      },
+      fresh: (v) => {
+        const w = dmWin(v);
+        if (!w) return;
+        if (before != null) {
+          applyRows(w.rows, w.more);
+          const hit = dmPeekWindow(props.meId, id);
+          if (hit) dmCacheWindow(props.meId, id, w.rows.concat(hit.rows), w.more && hit.more);
+        } else if (msgsConv === id && msgs.value.some((m) => m.id < 0)) {
+          return;   /* 乐观消息在场：不动视图 */
+        } else if (msgsConv === id) {
+          const asc = w.rows.slice().reverse();
+          const { rows } = mergeTail(msgs.value, asc);
+          if (rows !== msgs.value) msgs.value = rows;
+          oldestId.value = msgs.value.length ? msgs.value[0].id : null;
+        } else {
+          applyRows(w.rows, w.more);
+        }
+        if (w.more === false) hasMore.value = false;
+      },
+      onError: () => { if (before == null && msgsConv !== id) { msgs.value = []; msgsConv = ""; } },
+    },
+    () => dmApi.listMessages(id, { before, limit: 30 }).then((rows) => {
+      rows = rows || [];
+      return before == null ? { rows, more: rows.length === 30 } : rows;
+    }),
+  );
   loadingMsgs.value = false;
 }
 
@@ -101,6 +162,7 @@ async function syncMeta() {
 /* 选中一封信 → 已建会话就拉消息并抬已读；其它状态只发一次 peer（资料卡用左列名字） */
 async function onLetter() {
   msgs.value = [];
+  msgsConv = "";
   body.value = "";
   sendErr.value = "";
   if (!props.letter) return;
@@ -146,8 +208,19 @@ async function send() {
   msgs.value = msgs.value.concat([temp]);
   scrollBottom(true);
   try {
-    await dmApi.send(id, text, null);
-    await loadMessages(id);
+    const r = await dmApi.send(id, text, null);
+    /* 轮 157：dm_send 回传 {msg_id, created_at} → 就地落位，免整段重载（与会话段同款） */
+    const mid = r && r.msg_id;
+    if (mid != null) {
+      const rowSrv = {
+        id: mid, sender: props.meId, body: text, image_path: null,
+        created_at: r.created_at || temp.created_at, deleted_at: null,
+      };
+      msgs.value = msgs.value.map((m) => (m.id === temp.id ? rowSrv : m));
+      oldestId.value = msgs.value.length ? msgs.value[0].id : null;
+    } else {
+      await loadMessages(id);
+    }
     scrollBottom(true);
     refreshBadge();
   } catch (e) {
@@ -170,22 +243,31 @@ async function recall(m) {
 
 /* 可见时 5s 轮询（与私信同节拍；只在本段已建会话时跑） */
 let timer = null;
+let tickBusy = false; /* 轮 157：上一拍没回来就跳过 */
 async function tick() {
+  if (tickBusy) return;
   if (typeof document !== "undefined" && document.hidden) return;
   if (!chatting.value) return;
-  const prev = msgs.value.length ? msgs.value[msgs.value.length - 1].id : null;
+  tickBusy = true;
   try {
-    const got = (await dmApi.listMessages(convId.value, { before: null, limit: 30 })) || [];
+    /* 轮 157：尾部增量合并（与会话段同款）——历史不再被轮询冲掉 */
+    const got = (await dmApi.listMessages(convId.value, { before: null, limit: 20 })) || [];
     const asc = got.slice().reverse();
-    if (asc.length && (!prev || asc[asc.length - 1].id !== prev)) {
-      const el = listEl.value;
-      const nearBottom = !el || (el.scrollHeight - el.scrollTop - el.clientHeight) < 120;
-      msgs.value = asc;
-      if (nearBottom) scrollBottom(true);
-      dmApi.markRead(convId.value).catch(() => {});
-      refreshBadge();
+    if (asc.length) {
+      const { rows, added } = mergeTail(msgs.value, asc);
+      if (rows !== msgs.value) {
+        const el = listEl.value;
+        const nearBottom = !el || (el.scrollHeight - el.scrollTop - el.clientHeight) < 120;
+        msgs.value = rows;
+        if (added) {
+          if (nearBottom) scrollBottom(true);
+          dmApi.markRead(convId.value).catch(() => {});
+          refreshBadge();
+        }
+      }
     }
   } catch (e) { /* 静默 */ }
+  finally { tickBusy = false; }
 }
 onMounted(() => { timer = setInterval(tick, 5000); });
 onBeforeUnmount(() => { clearInterval(timer); });
@@ -230,7 +312,7 @@ onBeforeUnmount(() => { clearInterval(timer); });
 
       <!-- ③ 已建会话：消息流 + 输入区（与「会话」段各自独立） -->
       <template v-else>
-        <div ref="listEl" class="dm-scroll">
+        <div ref="listEl" class="dm-scroll" @scroll.passive="onScrollTop">
           <div class="dm-topmore">
             <button v-if="hasMore && oldestId" class="dm-act" :disabled="loadingMsgs"
               @click="loadMessages(convId, { before: oldestId })">{{ t("dm.older") }}</button>

@@ -113,6 +113,18 @@ onMounted(async () => {
     .catch(() => { /* 预热失败不挡启动 */ });
   await Promise.race([boot, new Promise((r) => setTimeout(r, 2500))]);
   removeSplash();
+  /* 轮 158：首绘后空闲预热高频路由 chunk（社区/私信/我的/帖子详情/宠物/故事流）——
+   * 切联/切 tab 不再现等 chunk 下载；rIC 空闲才跑（4s 兜底），不抢首屏带宽 */
+  const warmChunks = () => {
+    import("./views/CommunityView.vue");
+    import("./views/MessagesView.vue");
+    import("./views/ProfileView.vue");
+    import("./views/PostDetailView.vue");
+    import("./views/PetView.vue");
+    import("./components/story/StoryFeed.vue");
+  };
+  if (typeof requestIdleCallback === "function") requestIdleCallback(warmChunks, { timeout: 4000 });
+  else setTimeout(warmChunks, 2500);
   if (!isApp) return; /* 浏览器里没有系统返回键 */
   try {
     backHandle = await CapApp.addListener("backButton", () => {

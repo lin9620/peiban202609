@@ -8,6 +8,7 @@ import {
   cloudFetchProfile, cloudFetchUserPosts, cloudGetPetHome, cloudPetInteract,
 } from "../utils/wall.js";
 import { visibleOnly, ANON_KEY, fmtWhen } from "../utils/wallRules.js";
+import { cacheKey, swr } from "../utils/cache.js";   /* 轮 158：主页聚合 SWR */
 import { scopeGetRaw } from "../utils/userScope.js";
 /* 轮 33：全站拉黑（复用 dm_blocks；拉黑后 TA 的内容在我这边隐藏） */
 import { blockUser, unblockUser, isBlocked, refreshBlocks } from "../utils/userBlocks.js";
@@ -128,14 +129,32 @@ async function interact(kind, dishName = "") {
 onMounted(async () => {
   if (!uid) { failed.value = true; loading.value = false; return; }
   refreshBlocks();   /* 轮 33：名单就绪（拉黑按钮的「已拉黑」态靠它） */
-  const [pf, ps, ph] = await Promise.all([
-    cloudFetchProfile(uid), cloudFetchUserPosts(uid), cloudGetPetHome(uid),
-  ]);
-  if (pf === null && ps === null) failed.value = true;
-  prof.value = pf || { nickname: "", created_at: null };
-  posts.value = visibleOnly(ps || []);
-  petHome.value = ph; /* null = 未迁移/查询失败 → 区块显示「准备中」；pet 为空 → 「还没带宠物来」 */
+  /* 轮 158：资料+帖子+宠物家园三路聚合整体走 SWR——二次进页本地直出，
+   * 不再干等三个 RPC 排队；拉黑名单刷新后 fresh 会把过滤后的帖子纠正回来 */
+  let applied = false;
+  const apply = ({ pf, ps, ph }) => {
+    prof.value = pf || { nickname: "", created_at: null };
+    posts.value = visibleOnly(ps || []);
+    petHome.value = ph; /* null = 未迁移/查询失败 → 区块显示「准备中」；pet 为空 → 「还没带宠物来」 */
+    applied = true;
+  };
+  await swr(
+    cacheKey("waller:home", uid),
+    {
+      cached: (d) => { apply(d); loading.value = false; },
+      fresh: apply,
+    },
+    async () => {
+      const [pf, ps, ph] = await Promise.all([
+        cloudFetchProfile(uid), cloudFetchUserPosts(uid), cloudGetPetHome(uid),
+      ]);
+      /* 原口径：资料与帖子都拿不到 = 查无此人/网络挂 → failed（null 让 swr 不覆盖不落缓存） */
+      if (pf === null && ps === null) return null;
+      return { pf, ps, ph };
+    },
+  );
   loading.value = false;
+  if (!applied) failed.value = true;
 });
 </script>
 

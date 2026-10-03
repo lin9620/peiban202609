@@ -18,7 +18,8 @@ import * as dmApi from "../utils/dm.js";
 import { cacheKey, swr } from "../utils/cache.js";
 import {
   previewText, sortConvs, filterConvs, withDayDividers, displayMsg,
-  validateSend, sendErrKey, canRecall, relativeTime, rowView,
+  validateSend, sendErrKey, canRecall, relativeTime, rowView, mergeTail,
+  dmMsgsKey, dmPeekWindow, dmCacheWindow, dmWin,
 } from "../utils/dmRules.js";
 import { badge, refreshBadge } from "../stores/badgeStore.js";
 /* 轮 34：拉黑已全站生效（私信拦截 + 暖心墙内容隐藏）——这里走 userBlocks 的包装，
@@ -44,6 +45,7 @@ const signedIn = computed(() => !!(cloud.ready && cloud.user));
 
 const activeId = ref(String(route.params.id || "")); // 当前会话（空串 = 只看列表）
 const msgs = ref([]);        // 当前会话消息（旧→新）
+let msgsConv = "";           // msgs 现在装的是哪个会话（轮 157b：防跨会话误合并）
 const body = ref("");
 const sending = ref(false);
 const sendErr = ref("");
@@ -197,23 +199,65 @@ async function loadMessages(id, { before = null } = {}) {
   const applyRows = (rows) => {
     /* 服务端返回新→旧：反转为旧→新（渲染顺序） */
     const asc = rows.slice().reverse();
-    if (before == null) msgs.value = asc;
-    else msgs.value = asc.concat(msgs.value);
-    hasMore.value = rows.length === 30;
+    if (before == null || msgsConv !== id) {
+      msgs.value = asc;
+    } else {
+      /* 轮 157：向上翻历史的锚点保持——先量高、插行、下一帧把 scrollTop 补上差值。
+       * 不补的话浏览器把视口钉在原 scrollTop 上，内容凭空「跳」一页；
+       * 临时关平滑滚动，防浏览器动画与人锚点打架。 */
+      const el = listEl.value;
+      const oldH = el ? el.scrollHeight : 0;
+      msgs.value = asc.concat(msgs.value);
+      if (el) requestAnimationFrame(() => {
+        const prevSb = el.style.scrollBehavior;
+        el.style.scrollBehavior = "auto";
+        el.scrollTop += el.scrollHeight - oldH;
+        el.style.scrollBehavior = prevSb || "";
+      });
+    }
+    msgsConv = id;
+    hasMore.value = more != null ? more : rows.length === 30;
     oldestId.value = msgs.value.length ? msgs.value[0].id : null;
   };
   await swr(
-    before == null ? cacheKey("dm:msgs", meId.value, id) : null,  /* 只缓存首屏；翻历史页不缓存 */
+    before == null ? dmMsgsKey(meId.value, id) : null,
     {
-      cached: (rows) => { applyRows(rows); loadingMsgs.value = false; scrollBottom(); },
-      fresh: (rows) => {
-        /* 刚发的乐观消息（负数临时 id）还在屏上 → 这轮先不覆盖，交给 5s 轮询 / send 后的重载 */
-        if (msgs.value.some((m) => m.id < 0)) return;
-        applyRows(rows);
+      /* 轮 157b：首屏先吃本地窗口（最多 60 条，含上次翻过的历史），立刻渲染不闪载入 */
+      cached: (v) => {
+        const w = dmWin(v);
+        if (!w || !w.rows.length) return;
+        applyRows(w.rows, w.more);
+        loadingMsgs.value = false;
+        scrollBottom();
       },
-      onError: () => applyRows([]),
+      fresh: (v) => {
+        const w = dmWin(v);
+        if (!w) return;
+        if (before != null) {
+          applyRows(w.rows, w.more);
+          /* 历史页并入缓存窗口（更旧的页拼前面）；本页拉不满 30 = 没有更早了 */
+          const hit = dmPeekWindow(meId.value, id);
+          if (hit) dmCacheWindow(meId.value, id, w.rows.concat(hit.rows), w.more && hit.more);
+        } else if (msgsConv === id && msgs.value.some((m) => m.id < 0)) {
+          return;   /* 乐观消息在场：不动视图，交给轮询 / send 收敛 */
+        } else if (msgsConv === id) {
+          /* 重开同一会话：尾部增量并入，保住已翻的历史窗口 */
+          const asc = w.rows.slice().reverse();
+          const { rows } = mergeTail(msgs.value, asc);
+          if (rows !== msgs.value) msgs.value = rows;
+          oldestId.value = msgs.value.length ? msgs.value[0].id : null;
+        } else {
+          applyRows(w.rows, w.more);
+        }
+        if (w.more === false) hasMore.value = false;
+      },
+      onError: () => { if (before == null && msgsConv !== id) applyRows([], false); },
     },
-    () => dmApi.listMessages(id, { before, limit: 30 }),
+    () => dmApi.listMessages(id, { before, limit: 30 }).then((rows) => {
+      rows = rows || [];
+      /* 首屏按「窗口快照」落缓存（swr 直接缓存本返回值） */
+      return before == null ? { rows, more: rows.length === 30 } : rows;
+    }),
   );
   loadingMsgs.value = false;
 }
@@ -224,6 +268,19 @@ function scrollBottom(smooth = false) {
     if (!el) return;
     if (smooth && el.scrollTo) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
     else el.scrollTop = el.scrollHeight;
+  });
+}
+
+/* 轮 157：触顶自动翻历史——rAF 节流 + passive 监听，滚到顶 140px 内自动拉上一批；
+ * 「加载更早」按钮保留（可见的 loading 态兜底）。 */
+let topRaf = 0;
+function onScrollTop() {
+  if (topRaf) return;
+  topRaf = requestAnimationFrame(() => {
+    topRaf = 0;
+    const el = listEl.value;
+    if (!el || loadingMsgs.value || !hasMore.value || !oldestId.value || !activeId.value) return;
+    if (el.scrollTop < 140) loadMessages(activeId.value, { before: oldestId.value });
   });
 }
 
@@ -243,7 +300,12 @@ async function openConv(id) {
     router.replace({ name: "messages", params: { id: String(id) } }).catch(() => {});
   }
   meta.value = null;
-  await Promise.all([loadMessages(activeId.value), loadMeta(activeId.value)]);
+  /* 轮 157：从会话列表点进来时 activeConv 行已带昵称/免打扰/拉黑/请求态——不再单拉
+   * conv_meta（每次开聊天少一次 RPC 往返）；深链直进（通知/瓶子记录）列表行缺失才拉。 */
+  if (!convs.value.some((c) => String(c.conv_id) === String(activeId.value))) {
+    await loadMeta(activeId.value);
+  }
+  await loadMessages(activeId.value);
   scrollBottom();
   dmApi.markRead(id).catch(() => {});
   refreshBadge();
@@ -278,8 +340,23 @@ async function send() {
   msgs.value = msgs.value.concat([temp]);
   scrollBottom(true);
   try {
-    await dmApi.send(convId, text, null);
-    await loadMessages(convId);
+    const r = await dmApi.send(convId, text, null);
+    /* 轮 157：dm_send 直接回传 {msg_id, created_at} → 就地把乐观行换成正式行，
+     * 不再整段重载 30 条（发送到「已发」少一次网络往返，弱网尤其明显） */
+    const mid = r && r.msg_id;
+    if (mid != null) {
+      const rowSrv = {
+        id: mid, sender: meId.value, body: text, image_path: null,
+        created_at: r.created_at || temp.created_at, deleted_at: null,
+      };
+      msgs.value = msgs.value.map((m) => (m.id === temp.id ? rowSrv : m));
+      oldestId.value = msgs.value.length ? msgs.value[0].id : null;
+      /* 首屏窗口缓存同步补上这条（不补的话 5s 内退出重进会先看到旧缓存少一条） */
+      const win = dmPeekWindow(meId.value, convId);
+      if (win) dmCacheWindow(meId.value, convId, [rowSrv].concat(win.rows), win.more);
+    } else {
+      await loadMessages(convId);   /* 兜底：拿不到 msg_id（异常网关）才走整段重载 */
+    }
     scrollBottom(true);
     const row = convs.value.find((c) => String(c.conv_id) === String(convId));
     if (row) { row.last_preview = text.slice(0, 80); row.last_message_at = new Date().toISOString(); }
@@ -403,24 +480,38 @@ async function blockPeer() {
 /* ─────────── 轮询（只在可见 + 有会话时跑） ─────────── */
 
 let timer = null;
+let tickN = 0;        /* 轮 157：轮询拍数 */
+let tickBusy = false; /* 轮 157：上一拍没回来就跳过，弱网下不叠请求 */
 async function tick() {
+  if (tickBusy) return;
   if (typeof document !== "undefined" && document.hidden) return;
   if (!signedIn.value) return;
-  await loadConvsImplicit();
-  if (!activeId.value) return;
-  const prev = msgs.value.length ? msgs.value[msgs.value.length - 1].id : null;
+  tickN++;
+  tickBusy = true;
   try {
-    const got = (await dmApi.listMessages(activeId.value, { before: null, limit: 30 })) || [];
-    const asc = got.slice().reverse();
-    if (asc.length && (!prev || asc[asc.length - 1].id !== prev)) {
-      const el = listEl.value;
-      const nearBottom = !el || (el.scrollHeight - el.scrollTop - el.clientHeight) < 120;
-      msgs.value = asc;
-      if (nearBottom) scrollBottom(true);
-      dmApi.markRead(activeId.value).catch(() => {});
-      refreshBadge();
+    if (activeId.value) {
+      /* 尾部增量合并（mergeTail）：已见行原位更新、新行追加——翻过的历史不再被轮询冲掉 */
+      const got = (await dmApi.listMessages(activeId.value, { before: null, limit: 20 })) || [];
+      const asc = got.slice().reverse();
+      if (asc.length) {
+        const { rows, added } = mergeTail(msgs.value, asc);
+        if (rows !== msgs.value) {
+          const el = listEl.value;
+          const nearBottom = !el || (el.scrollHeight - el.scrollTop - el.clientHeight) < 120;
+          msgs.value = rows;
+          if (added) {
+            if (nearBottom) scrollBottom(true);
+            dmApi.markRead(activeId.value).catch(() => {});
+            refreshBadge();
+          }
+        }
+      }
     }
+    /* 会话列表不再每拍全量拉 200 行：每 3 拍（约 15s）一次，未读/预览仍够新鲜；
+     * 后台 chatter 少 2/3，弱网下不跟用户操作抢带宽。消息轮询优先于列表刷新。 */
+    if (tickN % 3 === 1) await loadConvsImplicit();
   } catch (e) { /* 静默 */ }
+  finally { tickBusy = false; }
 }
 
 /* 轮询里的列表刷新：不动 loadingConvs，避免列表闪「载入中」 */
@@ -431,7 +522,7 @@ async function loadConvsImplicit() {
 }
 
 function onVisible() {
-  if (typeof document !== "undefined" && !document.hidden) tick();
+  if (typeof document !== "undefined" && !document.hidden) { tickN = 0; tick(); }
 }
 
 onMounted(async () => {
@@ -462,6 +553,7 @@ watch(() => route.params.id, (v) => {
   /* 回到列表：清空当前会话（手机形态下 .dm-list 立刻接管整屏）+ 回私信段 */
   activeId.value = "";
   msgs.value = [];
+  msgsConv = "";
   meta.value = null;
   fromList.value = false;
   seg.value = "dm";
@@ -680,7 +772,7 @@ function goSignIn() {
           </header>
 
           <!-- 消息流 -->
-          <div ref="listEl" class="dm-scroll">
+          <div ref="listEl" class="dm-scroll" @scroll.passive="onScrollTop">
             <div class="dm-topmore">
               <button v-if="hasMore && oldestId" class="dm-act" :disabled="loadingMsgs"
                 @click="loadMessages(activeId, { before: oldestId })">{{ t("dm.older") }}</button>
