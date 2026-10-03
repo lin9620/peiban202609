@@ -113,7 +113,8 @@ function onScrollTop() {
 }
 
 async function loadMessages(id, { before = null } = {}) {
-  if (!id) return;
+  if (!id) return false;
+  let smoothed = false;
   loadingMsgs.value = true;
   const applyRows = (rows, more) => {
     const asc = rows.slice().reverse();
@@ -156,8 +157,15 @@ async function loadMessages(id, { before = null } = {}) {
           return;   /* 乐观消息在场：不动视图 */
         } else if (msgsConv === id) {
           const asc = w.rows.slice().reverse();
-          const { rows } = mergeTail(msgs.value, asc);
-          if (rows !== msgs.value) msgs.value = rows;
+          const { rows, added } = mergeTail(msgs.value, asc);
+          if (added) {
+            pinning.value = false;
+            smoothed = true;
+            msgs.value = rows;
+            nextTick(() => { const el = listEl.value; if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }); });
+          } else if (rows !== msgs.value) {
+            msgs.value = rows;
+          }
           oldestId.value = msgs.value.length ? msgs.value[0].id : null;
         } else {
           applyRows(w.rows, w.more);
@@ -173,6 +181,7 @@ async function loadMessages(id, { before = null } = {}) {
   );
   loadingMsgs.value = false;
   if (before == null) pinning.value = false;
+  return smoothed;
 }
 
 async function syncMeta() {
@@ -190,8 +199,8 @@ async function onLetter() {
   if (peerId.value) emit("peer", { user_id: peerId.value, nickname: props.peerName });
   if (!chatting.value) return;
   pinning.value = true;
-  await Promise.all([loadMessages(convId.value), syncMeta()]);
-  scrollBottom();
+  const results = await Promise.all([loadMessages(convId.value), syncMeta()]);
+  if (!results[0]) scrollBottom();   /* 有新消息时已平滑滚过 */
   dmApi.markRead(convId.value).catch(() => {});
   refreshBadge();
 }

@@ -199,7 +199,8 @@ async function loadMeta(id) {
 }
 
 async function loadMessages(id, { before = null } = {}) {
-  if (!id) return;
+  if (!id) return false;
+  let smoothed = false;   /* 轮 173c：fresh 有新消息时已平滑滚到新底，调用方免再瞬时滚 */
   loadingMsgs.value = true;
   const applyRows = (rows) => {
     /* 服务端返回新→旧：反转为旧→新（渲染顺序） */
@@ -248,8 +249,16 @@ async function loadMessages(id, { before = null } = {}) {
         } else if (msgsConv === id) {
           /* 重开同一会话：尾部增量并入，保住已翻的历史窗口 */
           const asc = w.rows.slice().reverse();
-          const { rows } = mergeTail(msgs.value, asc);
-          if (rows !== msgs.value) msgs.value = rows;
+          const { rows, added } = mergeTail(msgs.value, asc);
+          if (added) {
+            /* 轮 173c：新消息落下 → 停钉底 + 平滑滑到新底（不再瞬间跳） */
+            pinning.value = false;
+            smoothed = true;
+            msgs.value = rows;
+            nextTick(() => { const el = listEl.value; if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }); });
+          } else if (rows !== msgs.value) {
+            msgs.value = rows;
+          }
           oldestId.value = msgs.value.length ? msgs.value[0].id : null;
         } else {
           applyRows(w.rows, w.more);
@@ -266,6 +275,7 @@ async function loadMessages(id, { before = null } = {}) {
   );
   loadingMsgs.value = false;
   if (before == null) pinning.value = false;   /* 首屏落定，追底收兵（剩 20 帧收尾） */
+  return smoothed;
 }
 
 function scrollBottom(smooth = false) {
@@ -327,8 +337,8 @@ async function openConv(id) {
     await loadMeta(activeId.value);
   }
   pinning.value = true;   /* 轮 173b：进会话钉底，直到首屏数据落定 */
-  await loadMessages(activeId.value);
-  scrollBottom();
+  const smoothed = await loadMessages(activeId.value);
+  if (!smoothed) scrollBottom();   /* 有新消息时已平滑滚过，不再瞬时跳 */
   dmApi.markRead(id).catch(() => {});
   refreshBadge();
 }
