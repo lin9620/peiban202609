@@ -36,8 +36,8 @@ async function load() {
   await swr(
     first ? cacheKey("story:feed:latest") : null,
     {
-      cached: (data) => { rows.value = data || []; loading.value = false; },
-      fresh: (data) => { rows.value = first ? (data || []) : rows.value.concat(data || []); },
+      cached: (data) => { rows.value = data || []; err.value = ""; loading.value = false; },
+      fresh: (data) => { rows.value = first ? (data || []) : rows.value.concat(data || []); err.value = ""; },
       onError: (e) => { err.value = t(storyErrKey(e || new Error("network"))); },
     },
     () => storyRank({ mode: "latest", limit: PAGE, offset: offset.value }),

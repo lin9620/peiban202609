@@ -13,8 +13,18 @@
  * 契约测试：tools/gateway-contract-test.mjs（前端侧形状）——
  * 换后端实现时先跑它 + tools/worker-test.mjs（Worker 侧形状），两端都对上才算没跑偏。
  */
-import { getClient } from "../supabase.js";
+import { getClient, refreshAccessToken } from "../supabase.js";
 import { getAuthToken } from "./authToken.js";
+
+/* 轮 160：单测可注入的「刷新会话」替身；生产走 supabase.js 的 refreshAccessToken */
+let refresher = null;
+export function setGatewayTokenRefresher(fn) {
+  refresher = typeof fn === "function" ? fn : null;
+}
+async function refreshTokenOnce() {
+  if (refresher) return refresher();
+  return refreshAccessToken();
+}
 
 const BASE = "/api";
 
@@ -35,33 +45,50 @@ function authHeaders(extra = {}) {
   return h;
 }
 
-/** 一次网关调用：非 2xx → throw（消息取错误体的 message/error），2xx 空 body → null */
+/** 一次网关调用：非 2xx → throw（消息取错误体的 message/error），2xx 空 body → null。
+ * 轮 160：带身份的请求吃 401 时——本地会话大概率是「后台刷新失败后一直揣着过期 JWT」
+ * （顶栏已显示登录、接口却 401 的假登录态）——强制刷新一次会话（单飞）再重试本请求；
+ * 只重试一次（刷新失败 / 仍 401 都按原错误上抛），绝不循环。 */
 async function call(path, { method = "GET", body, headers } = {}) {
   if (!authReady()) throw new Error("cloud-not-ready");
-  let res;
+  const hadAuth = !!getAuthToken();
+  const attempt = async () => {
+    let res;
+    try {
+      const isBytes = body instanceof ArrayBuffer || body instanceof Uint8Array;
+      res = await fetch(BASE + path, {
+        method,
+        headers: authHeaders({
+          ...(body !== undefined && !isBytes ? { "content-type": "application/json" } : {}),
+          ...(headers || {}),
+        }),
+        body: body === undefined ? undefined : isBytes ? body : JSON.stringify(body),
+      });
+    } catch (e) {
+      throw new Error("gateway-unreachable");
+    }
+    const text = await res.text();
+    let data = null;
+    if (text) {
+      try { data = JSON.parse(text); } catch (e) { data = null; }
+    }
+    if (!res.ok) {
+      const msg = (data && (data.message || data.error)) || `HTTP ${res.status}`;
+      const err = new Error(String(msg));
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  };
   try {
-    const isBytes = body instanceof ArrayBuffer || body instanceof Uint8Array;
-    res = await fetch(BASE + path, {
-      method,
-      headers: authHeaders({
-        ...(body !== undefined && !isBytes ? { "content-type": "application/json" } : {}),
-        ...(headers || {}),
-      }),
-      body: body === undefined ? undefined : isBytes ? body : JSON.stringify(body),
-    });
+    return await attempt();
   } catch (e) {
-    throw new Error("gateway-unreachable");
+    if (e && e.status === 401 && hadAuth) {
+      const t = await refreshTokenOnce();
+      if (t) return await attempt();   /* authHeaders 每次现取 token → 重试必带新 JWT */
+    }
+    throw e;
   }
-  const text = await res.text();
-  let data = null;
-  if (text) {
-    try { data = JSON.parse(text); } catch (e) { data = null; }
-  }
-  if (!res.ok) {
-    const msg = (data && (data.message || data.error)) || `HTTP ${res.status}`;
-    throw new Error(String(msg));
-  }
-  return data;
 }
 
 const enc = encodeURIComponent;

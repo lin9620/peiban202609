@@ -147,8 +147,8 @@ onBeforeUnmount(() => {
 .bottle-record-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; }
 .br-tabs { display: flex; gap: 8px; margin: 8px 0 10px; }
 .br-tab {
-  border: 1px solid rgba(245, 140, 80, .28); background: rgba(245, 140, 80, .08);
-  color: #7c4a24; font-family: inherit; font-weight: 500; font-size: 12.5px;
+  border: 1px solid var(--hairline); background: var(--wash);
+  color: var(--ink-soft); font-family: inherit; font-weight: 500; font-size: 12.5px;
   padding: 5px 14px; border-radius: 999px; cursor: pointer; transition: all .15s ease;
 }
 .br-tab.on {

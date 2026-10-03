@@ -96,6 +96,34 @@ async function refreshSession(session) {
   cloud.nickname = cloud.user ? await loadProfile(cloud.user) : "";
 }
 
+/* 轮 160：401 自愈用的「强制刷新会话」。
+ * 背景：轮 36 ready 提前后，boot 用【本地存储的会话】立刻点亮登录态（顶栏/头像马上有），
+ * 但那个 access_token 可能已过期——autoRefreshToken 的后台刷新若失败（/sb 代理链路抖、
+ * 长时间挂起后回来），后续所有带身份请求一直 401：故事栏挂「请先登录」、顶栏却是登录态。
+ * 这里给网关层一个可调用的强制刷新：单飞（并发 401 共享同一次刷新），成功后【直接落位
+ * accessToken】——不等 onAuthStateChange 事件回调，重试请求拿到的必是新 token。 */
+let refreshing = null;
+export async function refreshAccessToken() {
+  if (!sb) return "";
+  if (refreshing) return refreshing;
+  refreshing = (async () => {
+    try {
+      const { data, error } = await sb.auth.refreshSession();
+      if (error) return "";
+      const s = data && data.session;
+      if (!s || !s.access_token) return "";
+      accessToken = s.access_token;
+      cloud.user = s.user || cloud.user;
+      return accessToken;
+    } catch (e) {
+      return "";
+    } finally {
+      refreshing = null;
+    }
+  })();
+  return refreshing;
+}
+
 /* —— 邮件链接落地的两个信号（重置密码 / 链接失效） ——
  * 必须在 createClient 之前读：supabase-js 解析完会话会把地址栏参数清掉，
  * 之后就读不到了。

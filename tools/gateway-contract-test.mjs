@@ -7,7 +7,7 @@
  * 与 tools/worker-test.mjs（Worker 侧）成对：两端形状都对上，端到端才通。
  * 运行：node tools/gateway-contract-test.mjs
  */
-import { db, setGatewayAuthProbe } from "../src/utils/api/db.gateway.js";
+import { db, setGatewayAuthProbe, setGatewayTokenRefresher } from "../src/utils/api/db.gateway.js";
 import { setAuthTokenProvider } from "../src/utils/api/authToken.js";
 
 let pass = 0;
@@ -347,8 +347,47 @@ setGatewayAuthProbe(() => true); /* 单测注入：auth 就绪（与 db.supabase
   }
 }
 
-setGatewayAuthProbe(null);
-setAuthTokenProvider(() => "");
+/* ── 轮 160：401 自愈（带身份请求 401 → 强制刷新会话 → 换新 token 重试一次） ── */
+{
+  setGatewayAuthProbe(() => true);
+  /* 契约：refresher 刷新成功必须【同步更新 token 源】（生产= supabase.js 的 accessToken 闭包） */
+  let cur = "expired-token";
+  setAuthTokenProvider(() => cur);
+  const real = globalThis.fetch;
+  const calls = [];
+  let n = 0;
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push({ url: String(url), init });
+    n++;
+    if (n === 1) return new Response(JSON.stringify({ code: "PGRST301", message: "JWT expired" }),
+      { status: 401, headers: { "content-type": "application/json" } });
+    return new Response("[]", { status: 200, headers: { "content-type": "application/json" } });
+  };
+  let refreshed = 0;
+  setGatewayTokenRefresher(async () => { refreshed++; cur = "fresh-token"; return cur; });
+  const rows = await db.listPosts(5, {});
+  ok("401 → 刷新会话后重试成功", Array.isArray(rows) && n === 2 && refreshed === 1);
+  ok("重试请求带的是新 token", String(calls[1].init.headers.authorization || "").includes("fresh-token"));
+  ok("重试是同一端点原样重发", calls[1].url === calls[0].url);
+  /* 刷新失败（拿不到新 token）→ 原错误上抛，绝不循环 */
+  n = 0;
+  setGatewayTokenRefresher(async () => "");
+  let threw = "";
+  try { await db.listPosts(5, {}); } catch (e) { threw = String(e.message || e); }
+  ok("刷新失败 → 原样上抛只打一发", n === 1 && /JWT expired/.test(threw));
+  /* 未带身份（匿名）401 不触发刷新重试 */
+  setGatewayTokenRefresher(async () => { refreshed++; return "x"; });
+  setAuthTokenProvider(() => "");
+  n = 0;
+  threw = "";
+  try { await db.listPosts(5, {}); } catch (e) { threw = String(e.message || e); }
+  ok("匿名 401 → 不刷新不重试", n === 1 && refreshed === 1 && /JWT expired/.test(threw));
+  setGatewayTokenRefresher(null);
+  setGatewayAuthProbe(null);
+  setAuthTokenProvider(() => "");
+  globalThis.fetch = real;
+}
+
 console.log(`gateway-contract: ${pass} pass, ${fails.length} fail`);
 for (const f of fails) console.log("FAIL  " + f);
 if (fails.length) process.exit(1);

@@ -348,8 +348,8 @@ ok("漂流瓶旧配色（紫/蓝渐变、虚线、1.5px 描边）已从样式表
   !legacyChroma.some((c) => css.includes(c))
   && !/\.bottle-sea\s*\{[^}]*border:\s*1px dashed/.test(css)
   && !/\.(mail-card|mail-item|bottle-tab|bottle-tray)\s*\{[^}]*1\.5px solid/.test(css));
-ok("漂流瓶卡片改用全站玻璃卡 token（--hairline + .5 白底 + 14px 圆角）",
-  /\.mail-card\s*\{[^}]*border:\s*1px solid var\(--hairline\)[^}]*rgba\(255,\s*255,\s*255,\s*\.5\)/.test(css));
+ok("漂流瓶卡片改用全站玻璃卡 token（--hairline + 主题水洗底 var(--wash) + 14px 圆角）",
+  /\.mail-card\s*\{[^}]*border:\s*1px solid var\(--hairline\)[^}]*background:\s*var\(--wash\)/.test(css));
 ok("漂流瓶容器补上暖橘 n-button 描边 + 玻璃 n-input（原先只有 .hall/.chip-row 有）",
   css.includes(".mail-card .n-button .n-button__border")
   && css.includes(".mail-card .n-input .n-input__textarea")
