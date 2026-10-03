@@ -3,6 +3,7 @@
 <script setup>
 import { ref, computed, watch } from "vue";
 import { NButton, NTag } from "naive-ui";
+import MoodFace from "./MoodFace.vue";
 import { t, i18n } from "../i18n.js";
 import { stories } from "../data/stories.js";
 import { dayIndex, todayKey } from "../utils/daily.js";
@@ -91,14 +92,21 @@ watch(() => [cloud.ready, cloud.user && cloud.user.id], () => {
 }, { immediate: true });
 
 /* —— 心情打卡 —— */
-const checkedToday = ref(getItem("wp-mood-" + todayKey()) !== null);
 const justDone = ref(false);
 const streak = computed(() => moodStreak());
+/* —— 心情打卡 —— */
+/* 轮 150：按钮从 emoji 胶囊换成 MoodFace 手绘线性脸。显示顺序 = i18n home.mood.faceOrder，
+ * 每项带 legacyIndex —— 打卡写入的仍是**旧序号**（0~4），历史记录不会因为调顺序而错位。
+ * moodPicked 存的是字符串（localStorage 里就是字符串），比较时统一按字符串比。 */
+const moodFaces = computed(() => t("home.mood.faceOrder"));
+const moodPicked = ref(getItem("wp-mood-" + todayKey()));
+const checkedToday = ref(moodPicked.value !== null);
 
 function moodPick(i) {
   if (checkedToday.value) return;
   if (checkInMood(i)) {
     setItem("wp-mood-" + todayKey(), String(i));
+    moodPicked.value = String(i);   // 轮 150：立刻点亮选中的那张脸
     checkedToday.value = true;
     justDone.value = true;
     /* 轮 51 的「打卡完跳去宠物」已被轮 53 撤销——用户真正要的跳转方向相反：
@@ -154,32 +162,44 @@ const seasonName = computed(() => season.name[i18n.locale] || season.name.en);
       </div>
     </section>
 
-    <!-- ═══ 陪你大厅 ═══ -->
+    <!-- ═══ 顶部问候 ═══
+         轮 150（用户手机端截图定稿）：只留「问候 + 一行微文案 + 右上心形钮」。
+         原先的长句散文与金币/等级 chip 撤掉 —— 用户原话「不要太多文字了」。
+         心形钮 = 分享今日卡片（原来藏在 chip 堆里的入口提到右上角）。 -->
+    <header class="card today-hi">
+      <div class="today-hi-row">
+        <div class="today-hi-txt">
+          <h1 class="today-hi-title">{{ greeting }}</h1>
+          <p class="today-hi-sub">{{ t("home.hiThere") }}</p>
+        </div>
+        <button type="button" class="today-hi-heart" :title="t('home.share')" @click="showShare = true">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M12 20.3s-7.4-4.6-7.4-9.5A4.2 4.2 0 0 1 12 7.9a4.2 4.2 0 0 1 7.4 2.9c0 4.9-7.4 9.5-7.4 9.5z" />
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- ═══ 此刻状态 ═══
+         轮 150（截图定稿）：四个状态从「一排小胶囊」改成 2×2 大卡（圆形图标 + 名称 + 一行短说明），
+         选中态整卡染色 + 暖橘描边。短说明补上了原先缺的「我这会儿在干什么」。 -->
     <section class="card hall">
       <div class="row-between">
-        <span class="sec-label">{{ t("home.companions.title") }}</span>
-        <n-tag round size="small" :bordered="false" class="soft-tag">
-          {{ t("home.companions.tag") }}
-        </n-tag>
+        <h2 class="hall-title">{{ t("home.companions.title") }}</h2>
+        <span class="sec-label">{{ t("home.companions.pickHint") }}</span>
       </div>
-      <p class="hall-line">{{ t("home.companions.hall") }}</p>
-      <div class="chip-row">
-        <!-- 轮 35：改 secondary（有底色）——原来 quaternary 近乎纯文本，看不出能点
-             轮 144：第一排 = 唯一的状态设置入口（再点一次 = 清除，已选的按钮带 title 提示）；
-             第二排「此刻大厅里」改纯统计（见下），两排不再重复。 -->
-        <n-button
+      <div class="status-grid">
+        <button
           v-for="k in STATUS_KEYS" :key="k"
-          round size="small" secondary
-          :type="myStatus === k ? 'primary' : 'default'"
+          type="button" class="status-card"
+          :class="{ 'is-on': myStatus === k }"
           :disabled="statusBusy"
-          :title="myStatus === k ? t('home.companions.toggleHint') : null"
           @click="setStatus(k)">
-          {{ t("home.companions." + k) }}
-        </n-button>
+          <span class="status-ico">{{ t("home.companions.ico." + k) }}</span>
+          <span class="status-name">{{ t("home.companions.name." + k) }}</span>
+          <span class="status-sub">{{ t("home.companions.sub." + k) }}</span>
+        </button>
       </div>
-      <p v-if="myStatus" class="streak-note">
-        {{ t("home.companions.youSet", { s: statusLabel(myStatus) }) }}
-      </p>
       <p v-if="myStatusHint === 'setup'" class="streak-note hall-warn">
         {{ t("home.companions.syncNeedSetup") }}
       </p>
@@ -188,41 +208,46 @@ const seasonName = computed(() => season.name[i18n.locale] || season.name.en);
       </p>
       <p v-else-if="!isMember" class="streak-note">{{ t("home.companions.loginHint") }}</p>
 
-      <!-- 轮 144 · 捋逻辑：「此刻大厅里」= 纯信息展示（各状态当前人数），不可点——
-           原来这排胶囊也能 setStatus（手机端 8 的跟手反馈），和上面的选择器职责重复，
-           上下两排长得一样、都能点，分不清谁管什么。我选中的状态在这排**联动点亮**（on），
-           两排从「两组重复按钮」变成「我选的 → 大厅的」对应关系。 -->
-      <div v-if="statusCounts" class="hall-others">
-        <span class="sec-label">{{ t("home.companions.othersTitle") }}</span>
-        <div class="hall-pill-row">
+      <!-- 大厅此刻 = 纯统计（各状态当前人数），不可点；我选中的状态在这排联动点亮。 -->
+      <div v-if="statusCounts && statusCounts.length" class="hall-now">
+        <div class="row-between">
+          <span class="sec-label">{{ t("home.companions.nowTitle") }}</span>
+          <span class="sec-label">{{ t("home.companions.nowSub") }}</span>
+        </div>
+        <div class="hall-now-row">
           <div
             v-for="row in statusCounts" :key="row.status"
-            class="hall-pill" :class="{ on: myStatus === row.status }">
+            class="hall-now-cell" :class="{ on: myStatus === row.status }">
+            <b>{{ row.count }}</b>
             <span>{{ statusLabel(row.status) }}</span>
-            <b>{{ t(row.count === 1 ? "home.companions.peopleCount1" : "home.companions.peopleCount", { n: row.count }) }}</b>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- ═══ 心情打卡（今天过得怎么样：紧跟「不止你一个人」） ═══ -->
-    <section class="card">
+    <!-- ═══ 心情打卡 ═══
+         轮 150（用户截图）：标题右侧只留一个极短说明（记录此刻的你），
+         五个按钮从「emoji + 文案」胶囊改成「手绘线性脸 + 下方小字」的圆形格，
+         emoji 全部退场（emoji 在不同系统差别太大，也谈不上设计感）。 -->
+    <section class="card mood-card">
       <div class="row-between">
         <h2>{{ t("home.mood.title") }}</h2>
         <n-tag v-if="streak > 0" round size="small" :bordered="false" class="soft-tag">
           {{ t("home.mood.streak", { n: streak }) }}
         </n-tag>
+        <span v-else class="sec-label">{{ t("home.mood.hintShort") }}</span>
       </div>
-      <p class="sub">{{ t("home.mood.subtitle") }}</p>
-      <div class="chip-row">
-        <!-- 轮 35：改 secondary（有底色）；打卡完成后整排变淡并禁用 -->
-        <n-button
-          v-for="(m, i) in t('home.mood.options')" :key="i"
-          round size="medium" :disabled="checkedToday"
-          :secondary="!checkedToday"
-          @click="moodPick(i)">
-          {{ m }}
-        </n-button>
+      <div class="mood-row">
+        <button
+          v-for="f in moodFaces" :key="f.kind"
+          type="button" class="mood-face"
+          :class="{ 'is-on': String(moodPicked) === String(f.legacyIndex) }"
+          :disabled="checkedToday"
+          :title="t('home.mood.faces.' + f.kind)"
+          @click="moodPick(f.legacyIndex)">
+          <MoodFace :kind="f.kind" />
+          <span class="mood-face-txt">{{ t("home.mood.faces." + f.kind) }}</span>
+        </button>
       </div>
       <p v-if="justDone" class="streak-note" style="color: var(--good); font-weight: 700">
         {{ t("home.mood.done") }}
@@ -246,7 +271,12 @@ const seasonName = computed(() => season.name[i18n.locale] || season.name.en);
       </section>
     </div>
 
-    <ShareCard v-if="showShare" :quote="quote" :pet="pet" @close="showShare = false" />
+    <!-- 轮 175：Teleport to body——ShareCard 遮罩是 position:fixed，而今日联在带 transform 的
+         .home-track 里（首页横滑），fixed 会以轨道为定位基准：遮罩罩满整条轨道=今日/宠物两联
+         一起变黑，卡片本体飞出屏外（与轮 151/152 领养弹窗同陷阱）。Teleport 出去即正常居中。 -->
+    <teleport to="body">
+      <ShareCard v-if="showShare" :quote="quote" :pet="pet" @close="showShare = false" />
+    </teleport>
 
   </div>
 </template>

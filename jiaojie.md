@@ -1514,6 +1514,10 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **真因**：`.shell { padding: 0 18px }` + `.dm-thread` 的 `.card` 描边/圆角在手机聊天态原样保留 → 聊天是张内缩圆角卡（左侧露一条页面底色），而表情 sheet 是 fixed 全屏宽——一窄一宽错位散架。**修**：`.shell--mobile-nav.shell--chat` 壳与 main 横向 padding 归零；`.dm-thread` 去描边/圆角/阴影、背景改 var(--page-bg)、横向 padding 归零（头部/消息区/输入行各自内缩 12~14px）——聊天满幅，表情 sheet 同宽对齐；emoji 面板滚动条隐藏。**踩坑**：新规则先插后改，独立 dm-thread 块缺 width:100% 抢了 T20 正则的第一匹配 → 断言挂；合并进 T20 匹配的原块解决（app-shell 64/0）。
      验证：undef 0 + **40 套离线 0 fail**（app-shell 64/0）+ build 0 + page-smoke 12/12；真机待装机验收。
 
+  - **轮 175 · 点红心整页变黑（2026-10-04，用户截图点单「点红心按钮页面就变黑，宠物页面也黑」，未提交未部署——等发话）**：
+     **真因**：今日联右上角红心 = ShareCard 分享卡入口，而 ShareCard 的遮罩是 `position:fixed`，TodayPane 又渲染在带 transform 的 `.home-track` 里（首页横滑）——fixed 以轨道为定位基准：遮罩罩满整条轨道（今日+宠物两联一起黑，用户实测），卡片本体飞出屏外。与轮 151/152 领养弹窗是**同一个 transform 包含块陷阱的第三处**。**修**：TodayPane 的 ShareCard 包 `<teleport to="body">`（ShareCard 全局样式不受影响）。至此三处（PetView 弹层、SnackRain/ShareCard、TodayPane ShareCard）全部 Teleport 出轨。
+     验证：浏览器 390×844 实测——点红心分享卡居中弹出、遮罩轻蒙、宠物与语录在卡上 ✓；undef 0 + **40 套离线 0 fail**（teleport 成对断言不受影响）+ build 0 + page-smoke 12/12。
+
      EmojiPicker 手机端（<640px）从「浮在输入框上方」改为**贴屏幕底的 sheet**：占键盘的位置、上圆角、safe-area 底垫、max-height 46vh；打开时顺手 blur 活动元素**把键盘收掉**（微信同款：面板与键盘互斥）；**选完表情不拉起键盘**（setSelectionRange 记录光标但不 focus，面板不被压住，用户点输入框才回键盘）；桌面（≥640px）保持按钮上方锚定不动。dm-test 表情断言同步（321 依旧全绿）。
 
   - **轮 169 · 暖心墙刷新请求合并（2026-10-04，用户追打「点刷新还是 10s，别的主流 app 很快」，未提交未部署——等发话）**：
