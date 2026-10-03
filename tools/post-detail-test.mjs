@@ -73,7 +73,7 @@ ok("PostDetailView：删自己的评论（云端比对 userId；删一级连回�
   has(detail, "cm.cloud && myId.value && cm.userId === myId.value")
     && has(detail, "c.id !== cm.id && c.parentId !== cm.id"));
 ok("PostDetailView：进页计一次浏览（cloudAddView 幂等）+ 返回上一页",
-  has(detail, "await cloudAddView(p.dbId, myId.value)")
+  has(detail, "await cloudAddView(post.value.dbId, myId.value)")   /* 轮 172：p → post.value */
     && has(detail, "function goBack()") && has(detail, "router.back()"));
 
 /* ── 单帖数据链（wall → db 两适配器 → worker） ── */

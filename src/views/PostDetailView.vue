@@ -63,10 +63,12 @@ async function load() {
   );
   if (!post.value) { failed.value = true; loading.value = false; return; }
   loading.value = false;
-  /* 浏览计数（浏览 RPC 幂等：同一人同一天只 +1），随后本地 +1 即时反馈 */
-  if (p.dbId) {
+  /* 浏览计数（浏览 RPC 幂等：同一人同一天只 +1），随后本地 +1 即时反馈
+   * 轮 172 修：轮 158 改 swr 后旧变量 p 已不存在（p.dbId → ReferenceError 炸整页），
+   * 统一从 post.value 取——与 freshOk 同类的「改写后遗留旧引用」雷 */
+  if (post.value.dbId) {
     try {
-      await cloudAddView(p.dbId, myId.value);
+      await cloudAddView(post.value.dbId, myId.value);
       post.value = { ...post.value, views: (post.value.views || 0) + 1 };
     } catch (e) { /* 计数失败不影响阅读 */ }
   }
