@@ -1344,10 +1344,26 @@ function seoEnv() {
   ok("合并包：RPC jsonb 原样透传（latest/react/comment 键在）",
     Array.isArray(j.latest) && Array.isArray(j.random) && typeof j.react === "object" && typeof j.comment === "object");
   c.restore();
-  const c2 = capture([{ throw: true }]);
-  const r2 = await worker.fetch(new Request("https://x/api/wall/refresh?limit=20"), env, {});
-  ok("合并包：上游挂 → 502", r2.status === 502);
-  c2.restore();
+  /* 轮 170：RPC 挂（迁移未跑）→ 旧四查询编排兜底，打包同形响应 */
+  const c3 = capture([
+    { throw: true },
+    { body: [{ id: 1, body: "a" }] },
+    { body: [{ id: 3, body: "b" }] },
+    { body: [{ post_id: 1, kind: "hug", user_id: "u1" }] },
+    { body: [{ post_id: 1 }] },
+  ]);
+  const r3 = await worker.fetch(new Request("https://x/api/wall/refresh?limit=20"), env, {});
+  const j3 = await r3.json();
+  ok("合并包：RPC 挂 → 旧编排兜底同形成功",
+    r3.status === 200 && Array.isArray(j3.latest) && j3.latest[0].id === 1
+    && Array.isArray(j3.random) && j3.random[0].id === 3
+    && j3.react["1"].hug === 1 && j3.comment["1"] === 1);
+  c3.restore();
+  /* 上游全挂 → 502 */
+  const c4 = capture([{ throw: true }, { throw: true }, { throw: true }, { throw: true }, { throw: true }, { throw: true }]);
+  const r4 = await worker.fetch(new Request("https://x/api/wall/refresh?limit=20"), env, {});
+  ok("合并包：上游全挂 → 502", r4.status === 502);
+  c4.restore();
 }
 
 

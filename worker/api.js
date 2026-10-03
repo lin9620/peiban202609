@@ -284,10 +284,62 @@ const REACT_SEL = `select=${encodeURIComponent("post_id,user_id,kind")}`;
  * 每个 RTT 在手机 4G 上都是 1s+。这里在 Worker 内并行打上游、打包一次回给客户端：
  * 手机只剩 1 个来回。响应 = { posts(最新4钉顶+随机批去重), reactions(明细,客户端聚合
  * 出计数与 mine), commentCounts({post_id: n}) }。随机+含用户身份混合 → 不进边缘缓存。 */
+/** 从 JWT 里取 uid（只解 payload 不验签——仅用于「我点过哪些」的展示标记，安全由 RLS 管） */
+function jwtUid(request) {
+  const t = (request.headers.get("authorization") || "").replace(/^Bearer /, "");
+  const parts = t.split(".");
+  if (parts.length < 2) return "";
+  try {
+    const p = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return p && p.sub ? p.sub : "";
+  } catch (e) { return ""; }
+}
+
 async function wallRefresh(env, request, limit) {
-  /* 轮 170：改走 SQL RPC（wall_feed_page）——最新/随机/回应计数/评论数在一条 SQL 里
-   * CTE + GROUP BY JOIN 聚合成型，一个上游查询出整个合并包（此前 4 查询的编排挪进数据库）。 */
-  return rpc(env, request, "wall_feed_page", { p_limit: limit });
+  /* 轮 170：首选 RPC（wall_feed_page——一条 SQL 出合并包）；迁移还没跑（函数 404）时
+   * 自动退回旧四查询编排并打包成同形响应，保证迁移前后都能用。 */
+  const rpcRes = await rpc(env, request, "wall_feed_page", { p_limit: limit });
+  if (rpcRes && rpcRes.ok) return rpcRes;
+  return wallRefreshLegacy(env, request, limit);
+}
+
+async function wallRefreshLegacy(env, request, limit) {
+  const now = Date.now();
+  const anchor = new Date(now - 7 * 86400000 + Math.random() * 7 * 86400000).toISOString();
+  const base = ["select=*", "removed=eq.false", "order=created_at.desc", `limit=${limit}`];
+  const [a, b] = await Promise.all([
+    upstream(env, request, restUrl(env, TABLE.posts, base.join("&"))),
+    upstream(env, request, restUrl(env, TABLE.posts, [...base, `created_at=lte.${encodeURIComponent(anchor)}`].join("&"))),
+  ]);
+  if (!a || !a.ok) return fail(502, "upstream-unreachable");
+  let latest = [], batch = [];
+  try { latest = JSON.parse(await a.text()) || []; } catch (e) { latest = []; }
+  if (b && b.ok) { try { batch = JSON.parse(await b.text()) || []; } catch (e) { batch = []; } }
+  const seen = new Set();
+  const merged = [];
+  for (const r of latest.slice(0, 4)) if (r && r.id != null && !seen.has(r.id)) { seen.add(r.id); merged.push(r); }
+  for (const r of batch) if (r && r.id != null && !seen.has(r.id)) { seen.add(r.id); merged.push(r); }
+  for (const r of latest) if (r && r.id != null && !seen.has(r.id)) { seen.add(r.id); merged.push(r); }
+  const ids = merged.map((r) => r.id).filter((x) => x != null);
+  const [rk, cm] = await Promise.all([
+    ids.length ? listReactionsByPosts(env, request, ids) : null,
+    ids.length ? listCommentPostIds(env, request, ids, 2000) : null,
+  ]);
+  let reactions = [], cmtRows = [];
+  if (rk && rk.ok) { try { reactions = JSON.parse(await rk.text()) || []; } catch (e) { reactions = []; } }
+  if (cm && cm.ok) { try { cmtRows = JSON.parse(await cm.text()) || []; } catch (e) { cmtRows = []; } }
+  /* 打包成与 RPC 同形：latest/random 数组 + react 聚合（mine 用 JWT uid）+ 评论计数 */
+  const uid = jwtUid(request);
+  const react = {};
+  for (const r of reactions) {
+    if (!r || r.post_id == null) continue;
+    const o = react[r.post_id] || (react[r.post_id] = { hug: 0, warm: 0, relate: 0, mine: {} });
+    if (o[r.kind] !== undefined) o[r.kind]++;
+    if (uid && r.user_id === uid && o[r.kind] !== undefined) o[r.kind] = true;
+  }
+  const commentCounts = {};
+  for (const c of cmtRows) if (c && c.post_id != null) commentCounts[c.post_id] = (commentCounts[c.post_id] || 0) + 1;
+  return json({ latest: latest, random: batch, react, comment: commentCounts });
 }
 
 async function listReactionsByPosts(env, request, ids) {
