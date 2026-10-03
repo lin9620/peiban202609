@@ -29,11 +29,16 @@ const pos = ref({ left: "8px", bottom: "200px" });
 function toggle() {
   if (open.value) { open.value = false; return; }
   const r = root.value.getBoundingClientRect();
-  const bottom = Math.max(8, window.innerHeight - r.top + 8) + "px";
   if (window.innerWidth < 640) {
-    /* 轮 165：手机端贴底全宽（微信式），不再按按钮位置浮在半空挡内容 */
-    pos.value = { left: "8px", right: "8px", width: "auto", bottom };
+    /* 轮 172b（用户截图：微信表情面板在输入栏下面）：手机端面板贴屏幕底、
+     * 占键盘的位置——打开时顺手把键盘收掉（失焦），不再浮在输入框上方挡对话。
+     * sheet 底 = 输入行底缘之下（r.bottom 以下），贴着屏幕底。 */
+    const sheetBottom = Math.max(0, Math.round(window.innerHeight - r.bottom - 2));
+    pos.value = { left: "0", right: "0", width: "auto", bottom: sheetBottom + "px" };
+    const ae = document.activeElement;
+    if (ae && ae !== document.body && ae.blur) ae.blur();
   } else {
+    const bottom = Math.max(8, window.innerHeight - r.top + 8) + "px";
     const left = Math.min(Math.max(8, r.left), Math.max(8, window.innerWidth - 304));
     pos.value = { left: left + "px", bottom };
   }
@@ -57,7 +62,12 @@ function pick(e) {
   emit("update:text", out);
   nextTick(() => {
     if (!el) return;
-    try { el.focus(); el.setSelectionRange(caret, caret); } catch (err) { /* 部分环境不支持 */ }
+    try {
+      el.setSelectionRange(caret, caret);
+      /* 手机端面板占着键盘位——选完不 focus（一 focus 键盘就弹起把面板压住）；
+       * 光标位置已记录，用户点输入框时从这里继续 */
+      if (window.innerWidth >= 640) el.focus();
+    } catch (err) { /* 部分环境不支持 */ }
   });
 }
 
@@ -115,4 +125,11 @@ onBeforeUnmount(() => document.removeEventListener("pointerdown", onDoc));
 .emo-cell:active { transform: scale(.86); }
 .emo-pop-enter-active, .emo-pop-leave-active { transition: opacity .16s ease, transform .16s ease; }
 .emo-pop-enter-from, .emo-pop-leave-to { opacity: 0; transform: translateY(8px) scale(.96); }
+@media (max-width: 640px) {
+  .emo-panel {
+    border-radius: 18px 18px 0 0; border-bottom: none;
+    max-height: 46vh;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+}
 </style>
