@@ -54,6 +54,9 @@ const loadingMsgs = ref(false);
 const hasMore = ref(true);
 const oldestId = ref(null);
 const listEl = ref(null);
+const userScrolling = ref(false);   /* 轮 173：用户手动上滑标记——追底停手 */
+function onListTouch() { userScrolling.value = true; }
+function onListWheel() { userScrolling.value = true; }
 const meta = ref(null);      // 当前会话元信息（昵称 / 免打扰 / 拉黑 / 消息请求）
 const menuFor = ref("");     // 展开操作菜单的会话 id
 const fromList = ref(false); // 手机形态：本会话是从会话列表点进来的（← 用 router.back 回列表）
@@ -267,8 +270,20 @@ function scrollBottom(smooth = false) {
   nextTick(() => {
     const el = listEl.value;
     if (!el) return;
+    /* 轮 173：落地后连续几帧追钉底部——字体/内容晚到会把已排好的消息撑高，
+     * 只滚一次会停在「中间」（用户实测：记录多了进会话落在半截）。
+     * 用户一旦上滑（触摸/滚轮）立即停追，不打扰回看。 */
+    userScrolling.value = false;
+    const set = () => { el.scrollTop = el.scrollHeight; };
+    set();
+    let frames = 0;
+    const chase = () => {
+      if (frames++ > 20 || userScrolling.value) return;
+      set();
+      requestAnimationFrame(chase);
+    };
     if (smooth && el.scrollTo) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-    else el.scrollTop = el.scrollHeight;
+    requestAnimationFrame(chase);
   });
 }
 
@@ -773,7 +788,8 @@ function goSignIn() {
           </header>
 
           <!-- 消息流 -->
-          <div ref="listEl" class="dm-scroll" @scroll.passive="onScrollTop">
+          <div ref="listEl" class="dm-scroll" @scroll.passive="onScrollTop"
+            @touchstart.passive="onListTouch" @wheel.passive="onListWheel">
             <div class="dm-topmore">
               <button v-if="hasMore && oldestId" class="dm-act" :disabled="loadingMsgs"
                 @click="loadMessages(activeId, { before: oldestId })">{{ t("dm.older") }}</button>

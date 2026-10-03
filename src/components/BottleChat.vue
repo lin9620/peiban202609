@@ -60,6 +60,9 @@ const loadingMsgs = ref(false);
 const hasMore = ref(true);
 const oldestId = ref(null);
 const listEl = ref(null);
+const userScrolling = ref(false);   /* 轮 173：用户手动上滑标记——追底停手 */
+function onListTouch() { userScrolling.value = true; }
+function onListWheel() { userScrolling.value = true; }
 const busyDecide = ref(false);
 
 const flow = computed(() => withDayDividers(msgs.value.map(displayMsg)));
@@ -76,8 +79,20 @@ function scrollBottom(smooth = false) {
   nextTick(() => {
     const el = listEl.value;
     if (!el) return;
+    /* 轮 173：落地后连续几帧追钉底部——字体/内容晚到会把已排好的消息撑高，
+     * 只滚一次会停在「中间」（用户实测：记录多了进会话落在半截）。
+     * 用户一旦上滑（触摸/滚轮）立即停追，不打扰回看。 */
+    userScrolling.value = false;
+    const set = () => { el.scrollTop = el.scrollHeight; };
+    set();
+    let frames = 0;
+    const chase = () => {
+      if (frames++ > 20 || userScrolling.value) return;
+      set();
+      requestAnimationFrame(chase);
+    };
     if (smooth && el.scrollTo) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-    else el.scrollTop = el.scrollHeight;
+    requestAnimationFrame(chase);
   });
 }
 
@@ -313,7 +328,8 @@ onBeforeUnmount(() => { clearInterval(timer); });
 
       <!-- ③ 已建会话：消息流 + 输入区（与「会话」段各自独立） -->
       <template v-else>
-        <div ref="listEl" class="dm-scroll" @scroll.passive="onScrollTop">
+        <div ref="listEl" class="dm-scroll" @scroll.passive="onScrollTop"
+          @touchstart.passive="onListTouch" @wheel.passive="onListWheel">
           <div class="dm-topmore">
             <button v-if="hasMore && oldestId" class="dm-act" :disabled="loadingMsgs"
               @click="loadMessages(convId, { before: oldestId })">{{ t("dm.older") }}</button>

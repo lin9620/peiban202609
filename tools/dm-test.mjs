@@ -285,6 +285,10 @@ ok("/settings 路由已注册", mvRouter.includes('"/settings"'));
 /* ───────── 轮 157：聊天性能四件套接线（会话段 + 漂流瓶段） ───────── */
 {
   const bc = fs.readFileSync("src/components/BottleChat.vue", "utf8");
+  ok("聊天落地追钉底部：rAF 连帧追 + 用户上滑停手（字体晚到不再停在半截）",
+    mv.includes("requestAnimationFrame(chase)") && mv.includes("userScrolling.value = true")
+    && bc.includes("requestAnimationFrame(chase)")
+    && mv.includes('@touchstart.passive="onListTouch"') && bc.includes('@touchstart.passive="onListTouch"'));
   ok("私信页：触顶自动翻历史（passive 滚动监听 + rAF 节流）",
     mv.includes('@scroll.passive="onScrollTop"') && mv.includes("requestAnimationFrame"));
   ok("私信页：翻历史锚点保持（scrollHeight 差值补偿）", mv.includes("el.scrollTop += el.scrollHeight - oldH"));
