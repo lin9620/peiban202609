@@ -57,6 +57,7 @@ const listEl = ref(null);
 const userScrolling = ref(false);   /* 轮 173：用户手动上滑标记——追底停手 */
 const listRevealed = ref(true);     /* 轮 176：进会话先隐藏消息区，钉底稳定后再显示——
     首帧 fallback 字体排版 → webfont 换装撑高内容 = 落点错位闪现（用户实测跳闪） */
+let scrollGen = 0;                  /* 轮 176b：滚动链代数——平滑滚动接管时作废旧追帧链 */
 const pinning = ref(false);         /* 轮 173b：进会话钉底中（直到首屏数据落定） */
 function onListTouch() { userScrolling.value = true; }
 function onListWheel() { userScrolling.value = true; }
@@ -253,11 +254,24 @@ async function loadMessages(id, { before = null } = {}) {
           const asc = w.rows.slice().reverse();
           const { rows, added } = mergeTail(msgs.value, asc);
           if (added) {
-            /* 轮 173c：新消息落下 → 停钉底 + 平滑滑到新底（不再瞬间跳） */
+            /* 轮 173c/176b：新消息落下 → 作废追帧链（防瞬时重钉顶掉平滑）+ 平滑滑到新底 */
             pinning.value = false;
+            scrollGen++;
             smoothed = true;
             msgs.value = rows;
-            nextTick(() => { const el = listEl.value; if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }); });
+            nextTick(() => {
+              const el = listEl.value;
+              if (!el) return;
+              el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+              /* 轮 178：平滑落定（gap<4）才显示；空闲期消息区隐藏，看不到顶部/中间帧 */
+              const waitPin = () => {
+                if (listRevealed.value) return;
+                if (el.scrollHeight - el.scrollTop - el.clientHeight < 4) { listRevealed.value = true; return; }
+                requestAnimationFrame(waitPin);
+              };
+              requestAnimationFrame(waitPin);
+              setTimeout(() => { if (!listRevealed.value) listRevealed.value = true; }, 1500);
+            });
           } else if (rows !== msgs.value) {
             msgs.value = rows;
           }
@@ -288,15 +302,18 @@ function scrollBottom(smooth = false) {
      * 只滚一次会停在「中间」（用户实测：记录多了进会话落在半截）。
      * 用户一旦上滑（触摸/滚轮）立即停追，不打扰回看。 */
     userScrolling.value = false;
+    const gen = ++scrollGen;   /* 轮 176b：新滚动链作废旧链——平滑滚动时不被追帧的瞬时重钉顶掉 */
     const set = () => {
       el.scrollTop = el.scrollHeight;
-      if (!listRevealed.value) listRevealed.value = true;
+      /* 轮 178：钉稳（gap<4）才显示——揭示过早会露出未滚到位的中间态 */
+      if (!listRevealed.value && el.scrollHeight - el.scrollTop - el.clientHeight < 4) listRevealed.value = true;
     };
     set();
     let frames = 0;
     /* 轮 173b：进会话期间持续钉底（pinning）——旧缓存先落底、网络回来新消息把底撑下去，
        就会出现「停在中间一下再跳底部」的两段式落地；钉住后新消息落进来视线跟着走，无停顿 */
     const chase = () => {
+      if (gen !== scrollGen) return;                   /* 已有新链（如平滑滚动）接管 */
       if (userScrolling.value) return;                 /* 用户上滑：立即停，不打扰回看 */
       if (frames++ > 20 && !pinning.value) return;     /* 钉底期间不受 20 帧上限约束 */
       set();

@@ -88,7 +88,8 @@ function scrollBottom(smooth = false) {
     userScrolling.value = false;
     const set = () => {
       el.scrollTop = el.scrollHeight;
-      if (!listRevealed.value) listRevealed.value = true;
+      /* 轮 178：钉稳（gap<4）才显示——揭示过早会露出未滚到位的中间态 */
+      if (!listRevealed.value && el.scrollHeight - el.scrollTop - el.clientHeight < 4) listRevealed.value = true;
     };
     set();
     let frames = 0;
@@ -164,10 +165,24 @@ async function loadMessages(id, { before = null } = {}) {
           const asc = w.rows.slice().reverse();
           const { rows, added } = mergeTail(msgs.value, asc);
           if (added) {
+            /* 轮 176b：作废追帧链（防瞬时重钉顶掉平滑滚动） */
+            scrollGen++;
             pinning.value = false;
             smoothed = true;
             msgs.value = rows;
-            nextTick(() => { const el = listEl.value; if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }); });
+            nextTick(() => {
+              const el = listEl.value;
+              if (!el) return;
+              el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+              /* 轮 178：平滑落定（gap<4）才显示；空闲期消息区隐藏，看不到顶部/中间帧 */
+              const waitPin = () => {
+                if (listRevealed.value) return;
+                if (el.scrollHeight - el.scrollTop - el.clientHeight < 4) { listRevealed.value = true; return; }
+                requestAnimationFrame(waitPin);
+              };
+              requestAnimationFrame(waitPin);
+              setTimeout(() => { if (!listRevealed.value) listRevealed.value = true; }, 1500);
+            });
           } else if (rows !== msgs.value) {
             msgs.value = rows;
           }
