@@ -289,6 +289,11 @@ ok("/settings 路由已注册", mvRouter.includes('"/settings"'));
     mv.includes("requestAnimationFrame(chase)") && mv.includes("userScrolling.value = true")
     && bc.includes("requestAnimationFrame(chase)")
     && mv.includes('@touchstart.passive="onListTouch"') && bc.includes('@touchstart.passive="onListTouch"'));
+  ok("进会话钉底：开钉到首屏落定（旧缓存落底→新消息落下不再两段式停顿）",
+    mv.includes("pinning.value = true;") && mv.includes("if (before == null) pinning.value = false;")
+    && bc.includes("pinning.value = true;") && bc.includes("pinning.value = false;")
+    && mv.includes("if (userScrolling.value) return;") && bc.includes("if (userScrolling.value) return;")
+    && mv.includes("&& !pinning.value") && bc.includes("&& !pinning.value"));
   ok("私信页：触顶自动翻历史（passive 滚动监听 + rAF 节流）",
     mv.includes('@scroll.passive="onScrollTop"') && mv.includes("requestAnimationFrame"));
   ok("私信页：翻历史锚点保持（scrollHeight 差值补偿）", mv.includes("el.scrollTop += el.scrollHeight - oldH"));

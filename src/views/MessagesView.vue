@@ -55,6 +55,7 @@ const hasMore = ref(true);
 const oldestId = ref(null);
 const listEl = ref(null);
 const userScrolling = ref(false);   /* 轮 173：用户手动上滑标记——追底停手 */
+const pinning = ref(false);         /* 轮 173b：进会话钉底中（直到首屏数据落定） */
 function onListTouch() { userScrolling.value = true; }
 function onListWheel() { userScrolling.value = true; }
 const meta = ref(null);      // 当前会话元信息（昵称 / 免打扰 / 拉黑 / 消息请求）
@@ -264,6 +265,7 @@ async function loadMessages(id, { before = null } = {}) {
     }),
   );
   loadingMsgs.value = false;
+  if (before == null) pinning.value = false;   /* 首屏落定，追底收兵（剩 20 帧收尾） */
 }
 
 function scrollBottom(smooth = false) {
@@ -277,8 +279,11 @@ function scrollBottom(smooth = false) {
     const set = () => { el.scrollTop = el.scrollHeight; };
     set();
     let frames = 0;
+    /* 轮 173b：进会话期间持续钉底（pinning）——旧缓存先落底、网络回来新消息把底撑下去，
+       就会出现「停在中间一下再跳底部」的两段式落地；钉住后新消息落进来视线跟着走，无停顿 */
     const chase = () => {
-      if (frames++ > 20 || userScrolling.value) return;
+      if (userScrolling.value) return;                 /* 用户上滑：立即停，不打扰回看 */
+      if (frames++ > 20 && !pinning.value) return;     /* 钉底期间不受 20 帧上限约束 */
       set();
       requestAnimationFrame(chase);
     };
@@ -321,6 +326,7 @@ async function openConv(id) {
   if (!convs.value.some((c) => String(c.conv_id) === String(activeId.value))) {
     await loadMeta(activeId.value);
   }
+  pinning.value = true;   /* 轮 173b：进会话钉底，直到首屏数据落定 */
   await loadMessages(activeId.value);
   scrollBottom();
   dmApi.markRead(id).catch(() => {});
