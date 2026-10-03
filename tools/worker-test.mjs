@@ -106,7 +106,7 @@ async function hit(script, path, init) {
   const { res, c } = await hit([{ body: row }], "/api/posts?limit=200");
   ok("listPosts 200", res.status === 200);
   ok("listPosts 出站 URL",
-    c.outbound[0].url === `${ORIGIN}/rest/v1/wall_posts?select=*&removed=eq.false&order=created_at.desc&limit=200`,
+    c.outbound[0].url === `${ORIGIN}/rest/v1/wall_posts?select=id%2Cuser_id%2Cauthor_name%2Cbody%2Cimage_path%2Ccreated_at%2Cviews%2Cdislikes%2Cremoved&removed=eq.false&order=created_at.desc&limit=200`,
     c.outbound[0].url);
   const h = hdr(c.outbound[0].init);
   ok("listPosts apikey=anon / 匿名不带 JWT", h.get("apikey") === ANON && !h.get("authorization"));
@@ -115,14 +115,14 @@ async function hit(script, path, init) {
 {
   const { res, c } = await hit([{ body: row }], "/api/posts?limit=50&before_id=623");
   ok("listPosts before_id 游标（轮62）", res.status === 200
-    && c.outbound[0].url === `${ORIGIN}/rest/v1/wall_posts?select=*&id=lt.623&removed=eq.false&order=created_at.desc&limit=50`,
+    && c.outbound[0].url === `${ORIGIN}/rest/v1/wall_posts?select=id%2Cuser_id%2Cauthor_name%2Cbody%2Cimage_path%2Ccreated_at%2Cviews%2Cdislikes%2Cremoved&id=lt.623&removed=eq.false&order=created_at.desc&limit=50`,
     c.outbound[0].url);
 }
 {
   const { res, c } = await hit([{ status: 400, body: { code: "42703" } }, { body: row }], "/api/posts?limit=200");
   ok("removed 缺列 → 退回查询仍 200", res.status === 200);
   ok("退回查询不带 removed",
-    c.outbound[1].url === `${ORIGIN}/rest/v1/wall_posts?select=*&order=created_at.desc&limit=200`,
+    c.outbound[1].url === `${ORIGIN}/rest/v1/wall_posts?select=id%2Cuser_id%2Cauthor_name%2Cbody%2Cimage_path%2Ccreated_at%2Cviews%2Cdislikes%2Cremoved&order=created_at.desc&limit=200`,
     c.outbound[1].url);
 }
 {
@@ -132,7 +132,7 @@ async function hit(script, path, init) {
 {
   const { c } = await hit([{ body: [] }], "/api/users/u9/posts?limit=50");
   ok("listPostsByUser 出站 URL",
-    c.outbound[0].url === `${ORIGIN}/rest/v1/wall_posts?select=*&user_id=eq.u9&removed=eq.false&order=created_at.desc&limit=50`,
+    c.outbound[0].url === `${ORIGIN}/rest/v1/wall_posts?select=id%2Cuser_id%2Cauthor_name%2Cbody%2Cimage_path%2Ccreated_at%2Cviews%2Cdislikes%2Cremoved&user_id=eq.u9&removed=eq.false&order=created_at.desc&limit=50`,
     c.outbound[0].url);
 }
 {
@@ -1306,7 +1306,7 @@ function seoEnv() {
   ok("sample：单条上游查询（免 count=exact）", c1.outbound.length === 1 && r1.status === 200);
   const q1 = new URL(c1.outbound[0].url).searchParams;
   ok("sample：select=* + created_at=lte 随机锚点 + 倒序 limit 无 offset",
-    q1.get("select") === "*" && String(q1.get("created_at") || "").startsWith("lte.")
+    q1.get("select") === "id,user_id,author_name,body,image_path,created_at,views,dislikes,removed" && String(q1.get("created_at") || "").startsWith("lte.")
     && q1.get("order") === "created_at.desc" && q1.get("limit") === "20" && !q1.get("offset"));
   ok("sample：不带 count=exact 的 Prefer", !(c1.outbound[0].init.headers.prefer || "").includes("count"));
   c1.restore();
@@ -1325,6 +1325,29 @@ function seoEnv() {
   ok("sample：两次锚点不同（每次真随机）", a1 !== a2);
   c3.restore();
   ok("cron 保活已挂（scheduled 处理器）", typeof worker.scheduled === "function");
+}
+
+
+
+/* ── 轮 169：刷新合并包 /api/wall/refresh（最新钉顶+随机去重+回应明细+评论数计数） ── */
+{
+  const env = makeEnv();
+  const pack = { latest: [{ id: 1 }], random: [{ id: 3 }], react: { 1: { hug: 1, mine: {} } }, comment: { 1: 2 } };
+  const c = capture([{ body: pack }]);
+  const r = await worker.fetch(new Request("https://x/api/wall/refresh?limit=20"), env, {});
+  ok("合并包：单次上游 RPC（wall_feed_page），200", r.status === 200 && c.outbound.length === 1);
+  const u1 = c.outbound[0].url;
+  ok("合并包：打到 rpc/wall_feed_page", u1.includes("/rest/v1/rpc/wall_feed_page"));
+  ok("合并包：POST + p_limit 参数透传",
+    c.outbound[0].init.method === "POST" && JSON.parse(c.outbound[0].init.body).p_limit === 20);
+  const j = await r.json();
+  ok("合并包：RPC jsonb 原样透传（latest/react/comment 键在）",
+    Array.isArray(j.latest) && Array.isArray(j.random) && typeof j.react === "object" && typeof j.comment === "object");
+  c.restore();
+  const c2 = capture([{ throw: true }]);
+  const r2 = await worker.fetch(new Request("https://x/api/wall/refresh?limit=20"), env, {});
+  ok("合并包：上游挂 → 502", r2.status === 502);
+  c2.restore();
 }
 
 

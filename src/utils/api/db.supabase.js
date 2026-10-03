@@ -74,7 +74,8 @@ export const db = {
     const off = Number(opts.offset) > 0 ? Number(opts.offset) : 0;
     const bid = Number(opts.beforeId) > 0 ? Number(opts.beforeId) : 0;
     const q = (withRemoved) => {
-      let base = sb().from(T.posts).select("*");
+      /* 轮 170：显式列，不再 select *（rowsToPosts 消费字段全覆盖） */
+      let base = sb().from(T.posts).select("id,user_id,author_name,body,image_path,created_at,views,dislikes,removed");
       if (withRemoved) base = base.eq("removed", false);
       if (bid) base = base.lt("id", bid);
       base = base.order("created_at", { ascending: false });
@@ -193,6 +194,11 @@ export const db = {
   /* ══════════ 回应（抱抱 / 暖暖 / 同感 / 厌恶） ══════════ */
 
   /** 一次取多帖的回应（动态流用；只查当前窗口内的帖子） */
+  /** 轮 170：暖心墙刷新合并包——直连模式也走 RPC（一条 SQL 出整个合并包） */
+  async wallRefresh(limit) {
+    return unwrap(sb().rpc("wall_feed_page", { p_limit: limit }));
+  },
+
   listReactionsByPosts(postIds) {
     return unwrap(sb().from(T.reactions).select("post_id,user_id,kind").in("post_id", postIds));
   },

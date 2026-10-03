@@ -99,15 +99,10 @@ let ro = null;
    进横滑手势面，不然手指落在空白处滑不动（用户实测：故事联下方空白滑不了）。
    预留 78px 底部导航 + safe-area 与 .shell--mobile-nav main 的 padding-bottom 同源。 */
 function measure() {
+  /* 轮 166b：track 恢复内容高（stretch 方案撤了——长空白难看）。手势面在 home3，
+     内容以下的空白照样能滑，track 高度不再需要撑屏 */
   const el = paneEls.value[idx.value];
-  if (!el) return;
-  let avail = 0;
-  try {
-    const host = el.parentElement;
-    const top = host ? host.getBoundingClientRect().top : 0;
-    avail = window.innerHeight - top - 96;
-  } catch (e) { /* 拿不到几何就维持内容高 */ }
-  trackH.value = Math.max(120, Math.round(Math.max(el.offsetHeight, avail))) + "px";
+  if (el) trackH.value = Math.max(120, Math.round(el.offsetHeight)) + "px";
 }
 watch(idx, async () => { await nextTick(); measure(); });
 onMounted(() => {
@@ -116,11 +111,9 @@ onMounted(() => {
     ro = new ResizeObserver(measure);
     paneEls.value.forEach((el) => el && ro.observe(el));
   }
-  if (typeof window !== "undefined") window.addEventListener("resize", measure);
 });
 onBeforeUnmount(() => {
   if (ro) ro.disconnect();
-  if (typeof window !== "undefined") window.removeEventListener("resize", measure);
 });
 </script>
 
@@ -132,7 +125,10 @@ onBeforeUnmount(() => {
   </div>
 
   <!-- 手机 / App：频道条 + 三联横滑 -->
-  <div v-else class="home3">
+  <div v-else class="home3"
+    @touchstart.passive="onTouchStart"
+    @touchmove.passive="onTouchMove"
+    @touchend.passive="onTouchEnd">
     <div class="home-chips" role="tablist">
       <button
         v-for="p in HOME_PANES" :key="p.k" type="button" role="tab"
@@ -145,10 +141,7 @@ onBeforeUnmount(() => {
 
     <div
       class="home-track"
-      :style="{ transform: 'translateX(' + idx * -100 + '%)', height: trackH }"
-      @touchstart.passive="onTouchStart"
-      @touchmove.passive="onTouchMove"
-      @touchend.passive="onTouchEnd">
+      :style="{ transform: 'translateX(' + idx * -100 + '%)', height: trackH }">
       <!-- 轮 19 联序：宠物 | 今日 | 漂流瓶（默认停今日：纯本地秒开，漂流瓶不吃开局延迟） -->
       <div class="home-pane home-pane--pet" :ref="(el) => (paneEls[0] = el)">
         <PetView v-if="petMounted" />

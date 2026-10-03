@@ -280,6 +280,26 @@ export async function cloudInsertComment(dbPostId, text, name, { parentId = null
  * @param {number[]} dbPostIds
  * @returns {Promise<Object|null>} { [postId]: n }
  */
+/** 轮 169/170：刷新合并包——一个请求拿全（最新+随机+回应计数+我的回应+评论数）。
+ * RPC 已在 SQL 里按帖聚合好（wall_feed_page），客户端只做「最新 4 条钉顶 + 随机批去重」。 */
+export async function cloudFetchWallRefresh(limit = 20) {
+  if (!canReadWall()) return null;
+  try {
+    const pack = await db.wallRefresh(Number(limit) > 0 ? Number(limit) : 20);
+    if (!pack || !Array.isArray(pack.latest) || !Array.isArray(pack.random)) return null;
+    const seen = new Set();
+    const merged = [];
+    for (const r of pack.latest.slice(0, 4)) if (r && r.id != null && !seen.has(r.id)) { seen.add(r.id); merged.push(r); }
+    for (const r of pack.random) if (r && r.id != null && !seen.has(r.id)) { seen.add(r.id); merged.push(r); }
+    for (const r of pack.latest) if (r && r.id != null && !seen.has(r.id)) { seen.add(r.id); merged.push(r); }
+    const rows = rowsToPosts(merged, pack.react || {}, publicUrl);
+    return { rows, counts: pack.comment || {} };
+  } catch (e) {
+    console.warn("[cloud] wallRefresh:", e);
+    return null;
+  }
+}
+
 export async function cloudFetchCommentCounts(dbPostIds) {
   if (!canReadWall()) return null;
   const ids = Array.isArray(dbPostIds) ? dbPostIds.filter((x) => x != null) : [];

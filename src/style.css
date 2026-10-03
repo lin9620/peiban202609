@@ -2033,7 +2033,12 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 /* ═══ T6 · 首页三联容器（仅手机形态渲染；桌面零规则零变化）═══
  * .home3 用 overflow: clip（不创建滚动容器）→ 频道条 sticky 仍相对视口生效；
  * 老内核回退 overflow: hidden（频道条不吸附，功能不受影响）。 */
-.home3 { overflow: hidden; overflow: clip; }
+.home3 {
+  overflow: hidden; overflow: clip;
+  /* 轮 166b：home3 拉满一屏（减页顶 14 + 底部导航 78 + safe-area）——它背景透明，
+     视觉与原来完全一致，但内容以下的空白都在 home3 手势面里，横滑不再有死区 */
+  min-height: calc(100dvh - 96px - env(safe-area-inset-bottom, 0px));
+}
 .home-chips {
   position: sticky; top: 0; z-index: 6;
   display: flex; gap: 6px; justify-content: center; align-items: center;
@@ -2049,7 +2054,9 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 }
 .home-chip.on { color: var(--accent-deep); background: var(--accent-soft); border-color: var(--accent); }
 .home-track {
-  display: flex; align-items: flex-start;
+  display: flex; align-items: flex-start;   /* 轮 166b：回到内容高——stretch 会把联内的卡片区
+    拉出一长条空白（用户实测「去打卡后今日页下面那么长的空白」）。手势面已上移 home3，
+    联盒不再承担手势职责 */
   transition: transform .28s cubic-bezier(.22, .61, .36, 1), height .28s cubic-bezier(.22, .61, .36, 1);
   touch-action: pan-y;   /* 纵向滚动手势交还页面，横向归 JS（宠物联手势守卫见 HomeView） */
 }
@@ -2419,6 +2426,21 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 html[data-theme="night"] .st-skel-card {
   background: linear-gradient(100deg, rgba(139, 156, 232, .10) 40%, rgba(139, 156, 232, .20) 50%, rgba(139, 156, 232, .10) 60%);
   background-size: 200% 100%;
+}
+/* 轮 168：表情按钮嵌进输入框右缘（微信式）——naive 的 textarea 不支持 suffix 槽，
+   用相对定位壳叠在输入框右侧；文本自动避让（padding-right） */
+.emo-in { position: relative; flex: 1 1 auto; min-width: 0; }
+.emo-in .emo-root { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); z-index: 1; }
+.emo-in .emo-btn { width: 28px; height: 28px; }
+.emo-in .emo-btn svg { width: 20px; height: 20px; }
+.emo-in .n-input .n-input__textarea-el, .emo-in .n-input .n-input__input-el { padding-right: 44px; }
+/* 轮 166：输入行挤压——输入框弹性占满剩余宽（min-width:0 防撑破），表情/发送按钮收紧靠右；
+   手机端表情按钮略缩（30px），给正文让宽 */
+.cmt-main-bar .n-input, .dm-input-row .n-input { flex: 1 1 auto; min-width: 0; }
+.cmt-input-row .emo-root, .cmt-main-bar .emo-root, .dm-input-row .emo-root { flex: none; align-self: center; }
+@media (max-width: 640px) {
+  .cmt-input-row .emo-btn, .cmt-main-bar .emo-btn, .dm-input-row .emo-btn { width: 30px; height: 30px; }
+  .cmt-input-row .emo-btn svg, .cmt-main-bar .emo-btn svg, .dm-input-row .emo-btn svg { width: 19px; height: 19px; }
 }
 /* 轮 162b：刷新结果小药丸（暖爪可爱版）——爱心弹出扑通一跳 / 星花旋闪 / 摇摆！/ 转圈 */
 .refresh-note {

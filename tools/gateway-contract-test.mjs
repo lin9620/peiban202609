@@ -388,6 +388,15 @@ setGatewayAuthProbe(() => true); /* 单测注入：auth 就绪（与 db.supabase
   globalThis.fetch = real;
 }
 
+/* ── 轮 169：wallRefresh 合并包端点 ── */
+{
+  setGatewayAuthProbe(() => true);   /* 160 块结尾把探针清了，这里重新点亮 */
+  const cap = capture();
+  const pack = await db.wallRefresh(20);
+  ok("wallRefresh：GET /wall/refresh?limit=20", cap.calls[0].url.includes("/wall/refresh?limit=20") && Array.isArray(pack));
+  cap.restore();
+}
+
 console.log(`gateway-contract: ${pass} pass, ${fails.length} fail`);
 for (const f of fails) console.log("FAIL  " + f);
 if (fails.length) process.exit(1);

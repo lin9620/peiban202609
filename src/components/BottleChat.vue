@@ -347,10 +347,12 @@ onBeforeUnmount(() => { clearInterval(timer); });
           <p class="sub dm-hint">{{ t("dm.hint") }}</p>
           <p v-if="sendErr" class="sub dm-err">{{ sendErr }}</p>
           <div class="dm-input-row">
+            <div class="emo-in">
             <n-input
               v-model:value="body" type="textarea" :autosize="{ minRows: 1, maxRows: 6 }" :maxlength="2000"
               :placeholder="t('dm.placeholder')" @keydown.enter.exact.prevent="send" />
             <EmojiPicker :text="body" @update:text="v => (body = v)" />
+            </div>
             <n-button type="primary" round size="small" :loading="sending" :disabled="!body.trim()" @click="send">
               {{ t("dm.send") }}
             </n-button>

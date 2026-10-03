@@ -88,12 +88,14 @@ const rows = [{ id: 1 }, { id: 2 }];
 /* ─────────── 帖子 ─────────── */
 {
   const { fake, out } = await run([{ data: rows }], () => db.listPosts(200));
-  ok("listPosts 形状", fake.calls[0] === "from:wall_posts|select:*|eq:removed:false|order:created_at:desc|limit:200", fake.calls[0]);
+  ok("listPosts 形状（轮 170 显式列，去 select *）",
+    fake.calls[0] === "from:wall_posts|select:id,user_id,author_name,body,image_path,created_at,views,dislikes,removed|eq:removed:false|order:created_at:desc|limit:200", fake.calls[0]);
   ok("listPosts 返回行", JSON.stringify(out) === JSON.stringify(rows));
 }
 {
   const { fake, out } = await run([{ error: { code: "42703" } }, { data: rows }], () => db.listPosts(200));
-  ok("listPosts 无 removed 列 → 退回查询不带该过滤", fake.calls[1] === "from:wall_posts|select:*|order:created_at:desc|limit:200", fake.calls[1]);
+  ok("listPosts 无 removed 列 → 退回查询不带该过滤",
+    fake.calls[1] === "from:wall_posts|select:id,user_id,author_name,body,image_path,created_at,views,dislikes,removed|order:created_at:desc|limit:200", fake.calls[1]);
   ok("listPosts 降级仍返回行", out && out.length === 2);
 }
 {

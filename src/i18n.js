@@ -698,6 +698,8 @@ export const messages = {
       title: "Welcome back to Warm Paws",
       sub: "Sign in and your posts, comments and pet stay in step on every device.",
       guestTitle: "Continue as a guest",
+      agreePre: "By continuing you agree to our",
+      agreeLink: "Terms & Privacy Policy",
     },
     /* 设置页（/settings，#13）：皮肤 / 语言 / 总通知开关 / 通知四类偏好 */
     settings: {
@@ -745,7 +747,7 @@ export const messages = {
       back: "Back to Home",
 
       s1t: "Who we are",
-      s1p1: "Warm Paws (this website, warmpaws.de5.net) is a personal, non-commercial pet & kindness corner. This policy covers everything you do on this site. It does not cover other sites you reach by leaving us.",
+      s1p1: "Warm Paws (this website, warmpaws.de5.net) is a personal, non-commercial pet & kindness corner. This policy covers everything you do on this site and in our Android app, which is a wrapper around the same service and stores data only on your device and in your Warm Paws account. It does not cover other sites or apps you reach by leaving us.",
 
       s2t: "What we collect",
       s2p1: "We only collect what the site needs to work. There is no profiling, no advertising and no data broker involved.",
@@ -784,7 +786,7 @@ export const messages = {
       s6p1: "We do not run our own servers. Accounts, posts, comments and images live with Supabase (database, authentication and image storage). Images are served from Supabase Storage. There are no advertising networks, no tracking pixels and no social-media embeds on this site.",
 
       s7t: "What stays on your device",
-      s7p1: "Some things never leave your browser: your language, theme, nickname, the time-range and sorting you picked, an anonymous id used to count views once per day, and your sign-in session token. These live in your browser's local storage — clearing site data removes them. We do not use advertising cookies.",
+      s7p1: "Some things never leave your device: your language, theme, nickname, the time-range and sorting you picked, an anonymous id used to count views once per day, and your sign-in session token. On the web they live in your browser's local storage; in the Android app they live in the app's own private storage on your phone. Clearing site/app data removes them. We do not use advertising cookies.",
       s7note: "This site uses no cookies for tracking or advertising.",
 
       s8t: "Sharing and public content",
@@ -1552,6 +1554,8 @@ export const messages = {
       title: "欢迎回到暖爪",
       sub: "登录之后，帖子、评论和宠物都会在各个设备间保持一致。",
       guestTitle: "以访客身份继续",
+      agreePre: "登录即代表同意",
+      agreeLink: "用户协议与隐私政策",
     },
     /* 设置页（/settings，#13）：皮肤 / 语言 / 总通知开关 / 通知四类偏好 —— 与 en 键一一对应 */
     settings: {
@@ -1600,7 +1604,7 @@ export const messages = {
       back: "回到首页",
 
       s1t: "我们是谁",
-      s1p1: "暖爪（本站 warmpaws.de5.net）是一个个人性质、非商业的小角落。这份政策管的是你在本站的所作所为；你从本站跳出去访问的其他网站，不归它管。",
+      s1p1: "暖爪（本站 warmpaws.de5.net）是一个个人性质、非商业的小角落。这份政策管的是你在本站和暖爪安卓 App 里的所作所为——App 是同一套服务的手机壳，数据只存在你的设备和你的暖爪账号里。你从本站跳出去访问的其他网站或应用，不归它管。",
 
       s2t: "我们收集什么",
       s2p1: "只收集让站点能跑起来的那点东西。没有画像、没有广告、也没有把数据卖给数据商这回事。",
@@ -1639,7 +1643,7 @@ export const messages = {
       s6p1: "我们自己没有服务器。账号、帖子、评论和图片都在 Supabase（数据库、登录认证、图片存储）那边；图片由 Supabase Storage 提供。本站没有广告联盟、没有追踪像素、也没有嵌入任何社交平台组件。",
 
       s7t: "留在这台设备上的东西",
-      s7p1: "有些东西从不离开你的浏览器：语言、主题、昵称、你选的时间范围与排序、用于「同一天只记一次浏览」的匿名标识，以及登录会话令牌。它们都放在浏览器本地存储里——清掉站点数据就没了。我们不使用广告 Cookie。",
+      s7p1: "有些东西从不离开你的设备：语言、主题、昵称、你选的时间范围与排序、用于「同一天只记一次浏览」的匿名标识，以及登录会话令牌。网页端它们放在浏览器本地存储里；App 端放在手机上 App 自己的私有存储里。清掉站点/App 数据就没了。我们不使用广告 Cookie。",
       s7note: "本站不使用任何用于追踪或广告的 Cookie。",
 
       s8t: "分享与公开内容",

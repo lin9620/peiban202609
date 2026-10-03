@@ -271,12 +271,12 @@ const PAGE_FILL = [
   [".set-page", "src/views/SettingsView.vue"],
   [".compose-page", "src/views/ComposeView.vue"],
   [".pd", "src/views/PostDetailView.vue"],
-  [".login-page", "src/views/LoginView.vue"],
+  /* .login-page 轮 167 起豁免：登录页改为居中窄列（正常 App 登录形态，用户定调），不再铺满 */
   [".legal-page", "src/style.css"],
 ];
 const missingFill = PAGE_FILL.filter(([c, f]) =>
   !(f === "src/style.css" ? css : read(f)).includes("@media (min-width: 900px) { " + c + " { max-width: none; } }"));
-ok("T51 轮139：六处页面容器桌面（≥900）一律铺满（轮137 五处 + 政策页）",
+ok("T51 轮139：五处页面容器桌面（≥900）一律铺满（轮137 四处 + 政策页；登录页轮167豁免改居中）",
   missingFill.length === 0, missingFill.map((x) => x[0]).join(","));
 
 /* ─── 轮 140 · 左导航默认展开 + 展开态透明 + 漂流瓶上移 + 首页去漂流瓶 ─── */

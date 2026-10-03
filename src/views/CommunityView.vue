@@ -32,7 +32,7 @@ import { cloud } from "../utils/supabase.js";
 import { createWriteQueue } from "../utils/reactQueue.js";
 /* 轮 84：评论回应（mine 拉取 + 切换）—— 大括号内不写注释，同上 */
 import {
-  cloudFetchPosts, cloudFetchPostsSample, cloudInsertPost, cloudFetchComments, cloudInsertComment,
+  cloudFetchPosts, cloudFetchPostsSample, cloudFetchWallRefresh, cloudInsertPost, cloudFetchComments, cloudInsertComment,
   cloudDeleteComment, cloudSetReaction, cloudFetchCommentCounts, canUseWall, canReadWall,
   cloudAddView, cloudToggleDislike,
   cloudFetchMyCommentReactions, cloudToggleCommentReaction,
@@ -128,6 +128,8 @@ const lastPulledRows = ref([]);   /* 轮 76：本次刷新拉到的批（评论�
 
 async function loadCloud({ fresh = false } = {}) {
   loadingCloud.value = true;
+  let freshOk = true;   /* 轮 165 修：必须声明在函数作用域——上一轮写进了 if(fresh) 块内，
+                           而函数尾 return freshOk 在块外 → ReferenceError 直接把整页炸成错误卡 */
   /* 本地优先（SWR）：缓存「帖 + 每帖评论数」整包 → 二次进页不闪「载入中」，评论数也是真的 */
   const consume = (box) => {
     /* 轮 33：全站拉黑 —— 我拉黑的人的帖子在渲染前剔除（对方不知情） */
@@ -156,12 +158,13 @@ async function loadCloud({ fresh = false } = {}) {
   /* 轮 66：挂载取数器也走「随机换一批」——不再固定拉最新页（那正是「A 复活」的根源：
      随机批不回写缓存 + 挂载永远拉最新页 → 重开/刷新总回到同一批）。 */
   const fetcher = async () => {
-    /* 轮 159（用户：「每个人暖心墙帖子出现的都一样，不能加个随机数吗」）：挂载改走
-       随机批——7 天池随机起点，每人每次进来看到的都不一样（轮 66 注释早写了要这么做，
-       代码后来退回了最新页）；随机批失败退回最新页兜底。触底续载照旧按游标拉更早的
-       （loadMoreCloud 自带去重+跳页自愈，随机批与后续页少量交叠也不会重复）。 */
-    const rows = (await cloudFetchPostsSample(REFRESH_PAGE).catch(() => null))
-      || (await cloudFetchPosts(REFRESH_PAGE, 0).catch(() => null));
+    /* 轮 169：首屏也走合并包（一个请求：最新+随机+回应+评论数），弱网少 4 个来回；
+       失败退回旧两段式（最新页）兜底。触底续载照旧按游标拉更早的。 */
+    const pack = await cloudFetchWallRefresh(REFRESH_PAGE).catch(() => null);
+    if (pack && Array.isArray(pack.rows) && pack.rows.length) {
+      return { rows: pack.rows, counts: pack.counts || {}, fromFetch: true };
+    }
+    const rows = await cloudFetchPosts(REFRESH_PAGE, 0).catch(() => null);
     if (!rows) return null;   /* 拉取失败 → 不覆盖、不回写缓存 */
     const counts = await cloudFetchCommentCounts(rows.map((r) => r.dbId)).catch(() => null);
     return { rows, counts: counts || {}, fromFetch: true };
@@ -172,34 +175,23 @@ async function loadCloud({ fresh = false } = {}) {
        卫语句挡死。修：①帖数据必须是数组才进 consume（失败/超时如实提示并复位）；
        ②整函数 try/finally，loadingCloud 任何路径必复位；③评论数后台补不阻塞。 */
     refreshNote.value = "busy";
-    let freshOk = true;
     const prevNewest = newestSeenTs.value;
     const key = cacheKey("wall:posts", (cloud.user && cloud.user.id) || "");
-    const pull = Promise.all([
-      cloudFetchPosts(REFRESH_PAGE, 0).catch(() => null),
-      cloudFetchPostsSample(REFRESH_PAGE).catch(() => null),
-    ]).then(([posts, batch]) => ({
-      posts: Array.isArray(posts) ? posts : null,
-      batch: Array.isArray(batch) ? batch : null,
-    }));
+    /* 轮 169：刷新只有一个请求了——worker 打包「最新+随机+回应+评论数」一次回；
+       新帖必现（最新 4 条钉顶），其余随机换一批。 */
+    const pull = cloudFetchWallRefresh(REFRESH_PAGE).catch(() => null).then((pack) =>
+      pack && Array.isArray(pack.rows) ? { rows: pack.rows, counts: pack.counts || {} } : null);
     const box = await Promise.race([pull, new Promise((res) => setTimeout(() => res(null), 8000))]).catch(() => null);
     /* 轮 79（关键取舍修复）：最新页里**有真新帖**（比见过的最新 ts 还新）→ 用最新页；
        **没有** → 用随机批（换一批）——此前随机批取了但永远不用，内容自然「不刷新」。
        两个分支都回写缓存；都失败/超时 → 如实提示并保留旧列表。 */
-    const hasNew = box && Array.isArray(box.posts) && box.posts.some((p) => (p.ts || 0) > prevNewest);
-    const batchOk = box && Array.isArray(box.batch) && box.batch.length > 0;
-    if (box && Array.isArray(box.posts) && box.posts.length && (hasNew || !batchOk)) {
-      lastPulledRows.value = box.posts;
-      consume({ rows: box.posts, counts: {}, fromFetch: true });
+    const hasNew = box && box.rows.some((p) => (p.ts || 0) > prevNewest);
+    if (box && box.rows.length) {
+      lastPulledRows.value = box.rows;
+      consume({ rows: box.rows, counts: box.counts || {}, fromFetch: true });
       reveal.value = PAGE_SIZE;
-      cacheSet(key, box);
-      refreshNote.value = "ok";
-    } else if (box && batchOk) {
-      lastPulledRows.value = box.batch;
-      consume({ rows: box.batch, counts: {}, fromFetch: true });
-      reveal.value = PAGE_SIZE;
-      cacheSet(key, { rows: box.batch, counts: {}, fromFetch: true });
-      refreshNote.value = "batch";
+      cacheSet(key, { rows: box.rows, counts: box.counts || {}, fromFetch: true });
+      refreshNote.value = hasNew ? "ok" : "batch";
     } else {
       refreshNote.value = "fail";
       freshOk = false;
@@ -938,6 +930,7 @@ const mainBarPh = computed(() => {
 function mainBarDocClose(e) {
   const tgt = e.target;
   if (mainBarEl.value && mainBarEl.value.contains(tgt)) return;   /* 条内（输入框/发送键）不关 */
+  if (document.querySelector(".emo-panel")) return;   /* 轮 165：表情面板开着时点外只收面板，别把评论条一并收了 */
   /* 占位条与回复触发点（评论正文/回复钮）不关——它们自己管开条/切换/收起；
    * 否则点「回复」先开条、同一击冒泡到 document 又把它关掉（真机实测条闪没） */
   if (tgt && tgt.closest && tgt.closest(".cmt-entry, .bar-reply-tap")) return;
@@ -1697,6 +1690,7 @@ watch(() => route.query.refresh, (v) => {
       <div v-if="!isMobileNav && (!p.cloud || signedIn)" :id="'cmtmain-' + cmtKey(p)"
         class="cmt-input cmt-input-top">
         <div class="cmt-input-row">
+          <div class="emo-in">
           <n-input
             v-model:value="cmtDraft[cmtKey(p)]"
             type="textarea"
@@ -1704,6 +1698,7 @@ watch(() => route.query.refresh, (v) => {
             :placeholder="t('comment.placeholder')"
             :maxlength="MAX_LEN" />
           <EmojiPicker :text="cmtDraft[cmtKey(p)] || ''" @update:text="v => (cmtDraft[cmtKey(p)] = v)" />
+          </div>
           <n-button type="primary" size="small" round class="cmt-send" @click="sendTopCmt(p)">
             {{ t("common.send") }}
           </n-button>
@@ -1778,12 +1773,15 @@ watch(() => route.query.refresh, (v) => {
             v-if="isReplyOpen(p, cm) && !isMobileNav && !(p.cloud && !signedIn)" class="cmt-input cmt-input-rep">
             <!-- 轮 97：统一输入条样式 -->
             <div class="cmt-input-row">
+              <div class="emo-in">
               <n-input
                 v-model:value="repDraft[repKey(p, cm)]"
                 type="textarea"
                 :autosize="{ minRows: 1, maxRows: 4 }"
                 :placeholder="repPlaceholder(p, cm)"
                 :maxlength="MAX_LEN" />
+              <EmojiPicker :text="repDraft[repKey(p, cm)] || ''" @update:text="v => (repDraft[repKey(p, cm)] = v)" />
+              </div>
               <n-button type="primary" size="small" round @click="sendCmt(p, cm)">
                 {{ t("common.send") }}
               </n-button>
@@ -1831,12 +1829,15 @@ watch(() => route.query.refresh, (v) => {
                 class="cmt-input cmt-input-rep-in">
                 <!-- 轮 97：回复框同样统一（发送在右 + 自动扩行） -->
                 <div class="cmt-input-row">
+                  <div class="emo-in">
                   <n-input
                     v-model:value="repDraft[repKey(p, cm)]"
                     type="textarea"
                     :autosize="{ minRows: 1, maxRows: 4 }"
                     :placeholder="repPlaceholder(p, cm, rp)"
                     :maxlength="MAX_LEN" />
+                  <EmojiPicker :text="repDraft[repKey(p, cm)] || ''" @update:text="v => (repDraft[repKey(p, cm)] = v)" />
+                  </div>
                   <n-button type="primary" size="small" round @click="sendCmt(p, cm)">
                     {{ t("common.send") }}
                   </n-button>
@@ -1879,10 +1880,12 @@ watch(() => route.query.refresh, (v) => {
 
     <!-- 轮 108：手机端主评论底部输入条（图2样式：发送在右；贴键盘；点空白收起；一次只服务一条帖） -->
     <div v-if="isMobileNav && mainBarPost" ref="mainBarEl" class="cmt-main-bar">
+      <div class="emo-in">
       <n-input ref="mainBarInput" v-model:value="mainBarDraft" type="textarea"
         :autosize="{ minRows: 1, maxRows: 4 }"
         :placeholder="mainBarPh" :maxlength="MAX_LEN" />
       <EmojiPicker :text="mainBarDraft" @update:text="v => (mainBarDraft = v)" />
+      </div>
       <n-button type="primary" size="small" round @click="sendMainBar">{{ t("common.send") }}</n-button>
     </div>
 

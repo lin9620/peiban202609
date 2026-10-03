@@ -103,19 +103,32 @@ async function refreshSession(session) {
  * 这里给网关层一个可调用的强制刷新：单飞（并发 401 共享同一次刷新），成功后【直接落位
  * accessToken】——不等 onAuthStateChange 事件回调，重试请求拿到的必是新 token。 */
 let refreshing = null;
+/** 轮 165：刷新令牌「真死」（失效/被吊销/会话缺失）→ 清掉本地僵尸会话：
+ *  顶栏不再假显示已登录，页面按未登录渲染，用户重新登录即可恢复。
+ *  仅网络类失败（Failed to fetch / 超时）不清理——弱网误登出比多 401 一次更伤。 */
+async function deadSessionSignOut(err) {
+  const msg = String((err && (err.message || err.code)) || err || "");
+  if (!/session missing|invalid refresh|refresh token|invalid grant|401|403/i.test(msg)) return;
+  try {
+    accessToken = "";
+    cloud.user = null;
+    await sb.auth.signOut();
+  } catch (e) { /* 清理失败下次再清 */ }
+}
 export async function refreshAccessToken() {
   if (!sb) return "";
   if (refreshing) return refreshing;
   refreshing = (async () => {
     try {
       const { data, error } = await sb.auth.refreshSession();
-      if (error) return "";
+      if (error) { await deadSessionSignOut(error); return ""; }
       const s = data && data.session;
-      if (!s || !s.access_token) return "";
+      if (!s || !s.access_token) { await deadSessionSignOut(error); return ""; }
       accessToken = s.access_token;
       cloud.user = s.user || cloud.user;
       return accessToken;
     } catch (e) {
+      await deadSessionSignOut(e);
       return "";
     } finally {
       refreshing = null;

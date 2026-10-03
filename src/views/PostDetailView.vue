@@ -559,9 +559,11 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
              App 端不渲染——手机端走轮 108 续4 的卡内占位条 + 底部输入条；未登录仍是登录入口（原底栏同款 bar-signin）。 -->
         <div v-if="!isMobileNav" id="detail-cmtmain" class="cmt-input cmt-input-top">
           <div v-if="signedIn" class="cmt-input-row">
+            <div class="emo-in">
             <n-input v-model:value="cmtDraft" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }"
               :placeholder="t('comment.placeholder')" :maxlength="MAX_LEN" />
             <EmojiPicker :text="cmtDraft" @update:text="v => (cmtDraft = v)" />
+            </div>
             <n-button type="primary" size="small" round class="cmt-send" @click="sendTopCmt()">{{ t("community.post") }}</n-button>
           </div>
           <router-link v-else class="bar-signin" to="/profile">{{ t("comment.barSignIn") }}</router-link>
@@ -629,8 +631,11 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
                  二级就地框（本评论内 cmt-input-in 的上一个分支）与手机端底部输入条都不受影响。 -->
             <div v-if="!isMobileNav && repActive === cm.id" class="cmt-input cmt-input-in">
               <div class="cmt-input-row">
+                <div class="emo-in">
                 <n-input v-model:value="repDraft[cm.id]" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }"
                   :placeholder="repPlaceholder(cm)" :maxlength="MAX_LEN" />
+                <EmojiPicker :text="repDraft[cm.id] || ''" @update:text="v => (repDraft[cm.id] = v)" />
+                </div>
                 <n-button type="primary" size="small" round @click="sendCmt(cm)">{{ t("common.send") }}</n-button>
                 </div>
             </div>
@@ -663,8 +668,11 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
                 <!-- 轮 97：统一输入条样式（发送在右 + 自动扩行） -->
                 <div v-if="!isMobileNav && repActive === cm.id + ':' + rp.id" class="cmt-input cmt-input-in">
                   <div class="cmt-input-row">
+                    <div class="emo-in">
                     <n-input v-model:value="repDraft[cm.id]" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }"
                       :placeholder="repPlaceholder(cm, rp)" :maxlength="MAX_LEN" />
+                    <EmojiPicker :text="repDraft[cm.id] || ''" @update:text="v => (repDraft[cm.id] = v)" />
+                    </div>
                     <n-button type="primary" size="small" round @click="sendCmt(cm, rp)">{{ t("common.send") }}</n-button>
                     </div>
                 </div>

@@ -7,7 +7,7 @@ import { useRoute, useRouter } from "vue-router";
 import { NButton, NInput } from "naive-ui";
 import { t } from "../i18n.js";
 import { getItem, setItem } from "../utils/storage.js";
-import { isApp } from "../stores/uiStore.js";
+import { isApp, tabbarSuppressed } from "../stores/uiStore.js";
 import {
   cloud, cloudSignUp, cloudSignIn,
   cloudResetPassword, cloudUpdatePassword, cloudSignInWithGoogle, cloudClearRecovery,
@@ -16,6 +16,10 @@ import { MIN_PASSWORD, emailProblem, passwordProblem } from "../utils/authRules.
 
 const route = useRoute();
 const router = useRouter();
+/* 轮 167b：登录页压掉底部 TabBar（全屏登录形态，像正经 App） */
+import { onMounted, onBeforeUnmount } from "vue";
+onMounted(() => { tabbarSuppressed.value = true; });
+onBeforeUnmount(() => { tabbarSuppressed.value = false; });
 const cloudSigned = computed(() => !!(cloud.ready && cloud.user));
 
 /* —— 登录成功后的回跳 ——
@@ -70,6 +74,13 @@ function clearAuthMsg() { authMsg.value = ""; authOk.value = false; }
 
 function switchAuthMode() {
   authMode.value = authMode.value === "signin" ? "signup" : "signin";
+  forgot.value = false;
+  clearAuthMsg();
+}
+/* 轮 167：分段登录/注册切换（指定目标态；切走时一并清错误与忘记密码态） */
+function setMode(m) {
+  if (authMode.value === m) { forgot.value = false; clearAuthMsg(); return; }
+  authMode.value = m;
   forgot.value = false;
   clearAuthMsg();
 }
@@ -197,46 +208,49 @@ function passHint(pass) {
 
 <template>
   <div class="login-page">
-    <header class="login-head">
-      <button class="login-back" aria-label="back" @click="goBack">&#8592;</button>
-      <h1>{{ t("login.title") }}</h1>
-    </header>
-    <p class="sub login-sub">{{ t("login.sub") }}</p>
+    <button class="login-back" aria-label="back" @click="goBack">&#8592;</button>
+
+    <div class="login-wrap">
+    <div class="login-paw anim d0" aria-hidden="true">
+      <svg viewBox="0 0 64 64">
+        <g fill="var(--accent)">
+          <ellipse cx="23" cy="19" rx="6.2" ry="8.2" transform="rotate(-16 23 19)" />
+          <ellipse cx="41" cy="19" rx="6.2" ry="8.2" transform="rotate(16 41 19)" />
+          <ellipse cx="10.5" cy="30" rx="5.4" ry="7" transform="rotate(-38 10.5 30)" />
+          <ellipse cx="53.5" cy="30" rx="5.4" ry="7" transform="rotate(38 53.5 30)" />
+          <path d="M32 29.5c8.6 0 15.6 5.8 15.6 13 0 6.8-5.9 11.9-15.6 11.9S16.4 49.3 16.4 42.5c0-7.2 7-13 15.6-13z" />
+        </g>
+      </svg>
+    </div>
+    <h1 class="login-title anim d0">{{ t("login.title") }}</h1>
+    <p class="login-sub anim d1">{{ t("login.sub") }}</p>
 
     <!-- 重置邮件失效（链接被用过 / 已过期）：如实说明，并给一条重新发的路 -->
-    <section v-if="cloud.ready && !cloudSigned && cloud.recoveryErr && !cloud.recovery" class="card auth-card">
-      <h2>{{ t("profile.resetLinkBad") }}</h2>
+    <section v-if="cloud.ready && !cloudSigned && cloud.recoveryErr && !cloud.recovery" class="login-box anim d3">
+      <h2 class="login-card-title">{{ t("profile.resetLinkBad") }}</h2>
       <p class="notice">{{ t("profile.resetLinkBadWhy", { r: cloud.recoveryErr }) }}</p>
-      <div style="margin-top: 12px">
-        <n-button type="primary" round @click="startForgot">{{ t("profile.forgotTitle") }}</n-button>
-      </div>
+      <n-button type="primary" round block @click="startForgot">{{ t("profile.forgotTitle") }}</n-button>
     </section>
 
     <!-- 重置链接已生效：设置新密码（保存后即为登录状态） -->
-    <section v-else-if="cloud.ready && cloud.recovery" class="card auth-card">
-      <h2>{{ t("profile.setPassTitle") }}</h2>
+    <section v-else-if="cloud.ready && cloud.recovery" class="login-box anim d3">
+      <h2 class="login-card-title">{{ t("profile.setPassTitle") }}</h2>
       <p class="notice">{{ t("profile.setPassHint") }}</p>
-      <div class="q-input" style="margin-top: 12px">
-        <n-input v-model:value="newPass" type="password" round size="large" show-password-on="click"
-          :placeholder="t('profile.newPass')" @keyup.enter="doSetPassword" />
-      </div>
-      <div class="auth-actions">
-        <n-button type="primary" round size="large" :loading="passBusy" @click="doSetPassword">
-          {{ t("profile.savePass") }}
-        </n-button>
-        <n-button quaternary round @click="leaveRecovery">{{ t("profile.backToSignIn") }}</n-button>
+      <n-input v-model:value="newPass" type="password" round size="large" show-password-on="click"
+        :placeholder="t('profile.newPass')" @keyup.enter="doSetPassword" />
+      <n-button type="primary" class="auth-cta" round size="large" block :loading="passBusy" @click="doSetPassword">
+        {{ t("profile.savePass") }}
+      </n-button>
+      <div class="auth-links">
+        <button type="button" class="auth-link" @click="leaveRecovery">{{ t("profile.backToSignIn") }}</button>
       </div>
       <p v-if="passMsg" class="notice bad">{{ passMsg }}</p>
     </section>
 
     <!-- 云端登录 / 注册 -->
-    <section v-else-if="cloud.ready && !cloudSigned" class="card auth-card">
-      <div class="row-between">
-        <h2>{{ t("profile.authTitle") }}</h2>
-        <n-button v-if="!forgot" quaternary size="small" @click="switchAuthMode">
-          {{ authMode === "signin" ? t("profile.toSignUp") : t("profile.toSignIn") }}
-        </n-button>
-      </div>
+    <section v-else-if="cloud.ready && !cloudSigned" class="anim d2">
+      <!-- 分段：登录 | 注册（忘记密码态收起，让位给说明标题） -->
+      <h2 v-if="forgot" class="login-box-title">{{ t("profile.forgotTitle") }}</h2>
 
       <!-- Google 一键登录（忘记密码时先不需要它，避免歧义）。
            轮 63：Google 禁止 WebView 内登录（防钓鱼），App 内最佳形态是 Chrome Custom Tabs，
@@ -250,87 +264,152 @@ function passHint(pass) {
         <p v-if="isApp" class="oauth-hint">{{ t("profile.googleAppHint") }}</p>
         <p class="or-line"><span>{{ t("profile.orEmail") }}</span></p>
       </template>
+      <p v-if="forgot" class="notice">{{ t("profile.forgotHint") }}</p>
 
-      <!-- 忘记密码：只发链接，别让人以为密码已经改了 -->
-      <template v-if="forgot">
-        <h2 class="auth-sub">{{ t("profile.forgotTitle") }}</h2>
-        <p class="notice" style="margin-top: 4px">{{ t("profile.forgotHint") }}</p>
-      </template>
-
-      <div class="q-input" :style="forgot ? 'margin-top: 12px' : ''">
-        <n-input v-model:value="authEmail" round size="large"
-          :placeholder="t('profile.authEmail')" @keyup.enter="forgot ? doForgot() : doAuth()" />
-      </div>
+      <n-input v-model:value="authEmail" round size="large"
+        :placeholder="t('profile.authEmail')" @keyup.enter="forgot ? doForgot() : doAuth()" />
 
       <template v-if="!forgot">
-        <div class="q-input" style="margin-top: 8px">
-          <n-input v-model:value="authPass" type="password" round size="large" show-password-on="click"
-            :placeholder="t('profile.authPass')" @keyup.enter="doAuth" />
+        <n-input v-model:value="authPass" type="password" round size="large" show-password-on="click"
+          :placeholder="t('profile.authPass')" @keyup.enter="doAuth" />
+        <n-input v-if="authMode === 'signup'" v-model:value="authNick" round size="large"
+          :placeholder="t('common.nickname')" @keyup.enter="doAuth" />
+        <n-button type="primary" class="auth-cta" round size="large" block :loading="authBusy" @click="doAuth">
+          {{ authMode === "signin" ? t("common.signIn") : t("common.signUp") }}
+        </n-button>
+        <div v-if="authMode === 'signin'" class="auth-links">
+          <button type="button" class="auth-link" @click="startForgot">{{ t("profile.forgot") }}</button>
         </div>
-        <div v-if="authMode === 'signup'" class="q-input" style="margin-top: 8px">
-          <n-input v-model:value="authNick" round size="large"
-            :placeholder="t('common.nickname')" @keyup.enter="doAuth" />
-        </div>
-        <div class="auth-actions">
-          <n-button type="primary" round size="large" :loading="authBusy" @click="doAuth">
-            {{ authMode === "signin" ? t("common.signIn") : t("common.signUp") }}
-          </n-button>
-          <n-button v-if="authMode === 'signin'" quaternary round @click="startForgot">
-            {{ t("profile.forgot") }}
-          </n-button>
-        </div>
-        <p class="notice" :class="{ bad: authMsg && !authOk, good: authOk }">
-          {{ authMsg || t("common.localMode") }}
-        </p>
+        <p v-if="authMsg" class="notice" :class="{ bad: !authOk, good: authOk }">{{ authMsg }}</p>
         <p class="hint-min">{{ t("profile.passRule", { n: MIN_PASSWORD }) }}</p>
       </template>
 
       <template v-else>
-        <div class="auth-actions">
-          <n-button type="primary" round size="large" :loading="forgotBusy" @click="doForgot">
-            {{ t("profile.forgotSend") }}
-          </n-button>
-          <n-button quaternary round @click="cancelForgot">{{ t("common.cancel") }}</n-button>
+        <n-button type="primary" class="auth-cta" round size="large" block :loading="forgotBusy" @click="doForgot">
+          {{ t("profile.forgotSend") }}
+        </n-button>
+        <div class="auth-links">
+          <button type="button" class="auth-link" @click="cancelForgot">{{ t("common.cancel") }}</button>
         </div>
-        <p class="notice" :class="{ bad: forgotMsg && !forgotOk, good: forgotOk }">
-          {{ forgotMsg || t("profile.forgotHint2") }}
-        </p>
+        <p v-if="forgotMsg" class="notice" :class="{ bad: !forgotOk, good: forgotOk }">{{ forgotMsg }}</p>
       </template>
 
       <p v-if="googleMsg" class="notice bad">{{ googleMsg }}</p>
     </section>
 
     <!-- 本地模式（云端未就绪）：起个访客昵称继续玩 -->
-    <section v-if="!cloud.ready" class="card">
-      <h2>{{ t("login.guestTitle") }}</h2>
-      <div class="q-input" style="margin-top: 12px">
-        <n-input
-          v-model:value="draftNick" round size="large"
-          :placeholder="t('common.nickname')"
-          @keyup.enter="continueAsGuest" />
-        <n-button type="primary" round size="large" @click="continueAsGuest">
-          {{ t("common.save") }}
-        </n-button>
-      </div>
-      <p class="notice">{{ t("common.localMode") }}</p>
+    <section v-if="!cloud.ready" class="login-box anim d3">
+      <h2 class="login-card-title">{{ t("login.guestTitle") }}</h2>
+      <n-input v-model:value="draftNick" round size="large"
+        :placeholder="t('common.nickname')" @keyup.enter="continueAsGuest" />
+      <n-button type="primary" class="auth-cta" round size="large" block @click="continueAsGuest">
+        {{ t("common.save") }}
+      </n-button>
     </section>
+
+    <div v-if="cloud.ready && !cloudSigned && !cloud.recovery" class="auth-switch anim d3">
+      <span>{{ authMode === "signin" ? t("profile.toSignUp") : t("profile.toSignIn") }}</span>
+      <button type="button" class="auth-switch-btn"
+        @click="setMode(authMode === 'signin' ? 'signup' : 'signin')">
+        {{ authMode === "signin" ? t("common.signUp") : t("common.signIn") }}
+      </button>
+    </div>
+    <p class="login-agree anim d3">
+      {{ t("login.agreePre") }}
+      <router-link to="/privacy" class="agree-link">{{ t("login.agreeLink") }}</router-link>
+    </p>
+    </div>
   </div>
 </template>
 
 <style scoped>
-/* 轮 137：桌面流式壳（轮 133 起）下不再收窄居中——铺满左导航与右栏之间整块宽度；
- * 窄屏/App 形态不受影响（560 的 max-width 在 <900px 视口本就触不到）。 */
-.login-page { max-width: 560px; margin: 0 auto; }
-@media (min-width: 900px) { .login-page { max-width: none; } }
-.login-head { display: flex; align-items: center; gap: 10px; margin: 2px 0 6px; }
-.login-head h1 { font-size: 20px; margin: 0; flex: 1; }
+/* 轮 167d：登录页终稿——纯白极简（用户定调）：白底 + 超大黑粗标题 + 一抹珊瑚色。
+ * 没有卡片壳：表单直接落在白底上，靠间距分组；输入框极淡灰填充。 */
+.login-page {
+  max-width: 400px; margin: 0 auto; position: relative;
+  min-height: calc(100dvh - 120px);
+  display: flex; flex-direction: column; justify-content: center;
+  padding: 48px 24px 28px;
+}
 .login-back {
+  position: absolute; top: 12px; left: 8px; z-index: 2;
   appearance: none; font: inherit; cursor: pointer;
   min-width: 40px; min-height: 40px; border-radius: 999px;
-  border: 1px solid rgba(160, 110, 60, .2); background: rgba(255, 255, 255, .7);
-  font-weight: 500; font-size: 16px;
+  border: none; background: #f4f4f2;
+  font-weight: 500; font-size: 16px; color: var(--ink);
+  transition: transform .15s ease, background-color .15s ease;
 }
-.login-sub { margin: 0 2px 14px; }
-.auth-sub { margin: 6px 0 0; }
-</style>
+.login-back:hover { background: #ececea; }
+.login-back:active { transform: scale(.94); }
+html[data-theme="night"] .login-back { background: rgba(139, 156, 232, .14); }
 
+/* 极小爪印：一行品牌暗示，不做大徽章 */
+.login-paw { display: flex; justify-content: center; margin-bottom: 12px; }
+.login-paw svg { width: 30px; height: 30px; }
+
+/* 超大黑粗标题 */
+.login-title {
+  font-size: 28px; font-weight: 800; letter-spacing: -.015em;
+  color: var(--ink); text-align: center; margin: 0 0 10px;
+}
+.login-sub {
+  margin: 0 6px 28px; text-align: center;
+  color: var(--ink-soft); font-size: 13.5px; line-height: 1.65;
+}
+
+/* 表单分组：不画卡，靠间距；输入框极淡灰填充 */
+.login-page .n-input { --n-border-radius: 14px; background: #f6f6f5; }
+html[data-theme="night"] .login-page .n-input { background: rgba(139, 156, 232, .12); }
+.n-input + .n-input, .n-input + .n-button, .n-button + .n-input { margin-top: 10px; }
+
+/* 主按钮：珊瑚色实底 + 14px 圆角 + 粗字 */
+.login-page .n-button--primary-type {
+  border-radius: 14px !important; font-weight: 700;
+  background-color: var(--accent-deep) !important;
+}
+.login-page .n-button--primary-type:hover { background-color: var(--accent) !important; }
+
+.auth-links { display: flex; justify-content: center; margin-top: 2px; }
+.auth-link {
+  appearance: none; border: none; background: none; font: inherit; cursor: pointer;
+  color: var(--ink-soft); font-size: 13px; padding: 2px 8px; border-radius: 8px;
+  transition: color .15s ease;
+}
+.auth-link:hover { color: var(--accent-deep); }
+.hint-min { margin: 2px 2px 0; font-size: 11.5px; color: var(--ink-faint); text-align: center; }
+.login-agree { margin: 22px 10px 0; text-align: center; font-size: 12px; color: var(--ink-faint); }
+.agree-link { color: var(--ink-soft); text-decoration: underline; text-underline-offset: 2px; }
+.agree-link:hover { color: var(--accent-deep); }
+.login-page .oauth-google { width: 100%; }
+
+/* 底部切换：一句话 + 高亮动作词 */
+.auth-switch {
+  margin-top: 20px; text-align: center; font-size: 13.5px; color: var(--ink-soft);
+  display: flex; justify-content: center; align-items: center; gap: 6px;
+}
+.auth-switch-btn {
+  appearance: none; border: none; background: none; font: inherit; cursor: pointer;
+  color: var(--accent-deep); font-weight: 700; padding: 2px 4px;
+}
+.auth-switch-btn:hover { text-decoration: underline; }
+
+/* 细线盒（重置密码等低频态）：极淡边框，不抢戏 */
+.login-box {
+  border: 1px solid var(--hairline); border-radius: 18px; padding: 18px 16px 14px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.login-box-title { font-size: 16px; font-weight: 700; color: var(--ink); margin: 0 0 2px; }
+
+/* 入场：整块轻浮入，不抢戏 */
+.anim { animation: login-in .45s cubic-bezier(.22, .61, .36, 1) both; }
+.d1 { animation-delay: .07s; }
+.d2 { animation-delay: .13s; }
+.d3 { animation-delay: .19s; }
+@keyframes login-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .login-page .anim { animation: none !important; }
+}
+</style>

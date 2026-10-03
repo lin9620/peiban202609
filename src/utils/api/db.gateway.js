@@ -107,6 +107,11 @@ export const db = {
 
   /** 最近 limit 条（新→旧）；removed 兼容由 Worker 内部处理。
    *  轮 56：offset 分页（0/缺省不附参数，契约不变）。轮 62：beforeId 游标——万帖级深翻页成本恒定，优先用它。 */
+  /** 轮 169：暖心墙刷新合并包（最新+随机+回应明细+评论数一次回） */
+  async wallRefresh(limit) {
+    return call(`/wall/refresh?limit=${enc(limit)}`);
+  },
+
   async listPosts(limit, opts = {}) {
     const off = Number(opts.offset) > 0 ? Number(opts.offset) : 0;
     const bid = Number(opts.beforeId) > 0 ? Number(opts.beforeId) : 0;

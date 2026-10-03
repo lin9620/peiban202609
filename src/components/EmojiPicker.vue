@@ -29,8 +29,14 @@ const pos = ref({ left: "8px", bottom: "200px" });
 function toggle() {
   if (open.value) { open.value = false; return; }
   const r = root.value.getBoundingClientRect();
-  const left = Math.min(Math.max(8, r.left), Math.max(8, window.innerWidth - 304));
-  pos.value = { left: left + "px", bottom: Math.max(8, window.innerHeight - r.top + 8) + "px" };
+  const bottom = Math.max(8, window.innerHeight - r.top + 8) + "px";
+  if (window.innerWidth < 640) {
+    /* 轮 165：手机端贴底全宽（微信式），不再按按钮位置浮在半空挡内容 */
+    pos.value = { left: "8px", right: "8px", width: "auto", bottom };
+  } else {
+    const left = Math.min(Math.max(8, r.left), Math.max(8, window.innerWidth - 304));
+    pos.value = { left: left + "px", bottom };
+  }
   open.value = true;
 }
 
@@ -94,7 +100,7 @@ onBeforeUnmount(() => document.removeEventListener("pointerdown", onDoc));
 .emo-btn:hover, .emo-btn.on { color: var(--accent-deep); background: var(--accent-soft); }
 .emo-panel {
   position: fixed; z-index: 260;
-  width: 296px; max-width: calc(100vw - 16px); max-height: 40vh; overflow-y: auto;
+  width: 296px; max-width: calc(100vw - 16px); max-height: 42vh; overflow-y: auto;
   overscroll-behavior: contain;
   display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; padding: 10px;
   background: var(--glass-strong); border: 1px solid var(--hairline); border-radius: 16px;

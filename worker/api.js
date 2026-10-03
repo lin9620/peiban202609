@@ -193,7 +193,7 @@ async function samplePosts(env, request, limit, since) {
   const parsed = since ? Date.parse(since) : NaN;
   const start = Number.isFinite(parsed) ? parsed : now - 7 * 86400000;
   const anchor = new Date(start + Math.random() * Math.max(1000, now - start)).toISOString();
-  const base = ["select=*", "removed=eq.false", "order=created_at.desc", `limit=${limit}`];
+  const base = [`select=${POST_COLS_ENC}`, "removed=eq.false", "order=created_at.desc", `limit=${limit}`];
   const anchored = [...base, `created_at=lte.${encodeURIComponent(anchor)}`].join("&");
   let res = await upstream(env, request, restUrl(env, TABLE.posts, anchored));
   if (res && res.ok) {
@@ -210,8 +210,11 @@ async function samplePosts(env, request, limit, since) {
   return new Response(await res.text(), { status: res.status, headers: { "content-type": "application/json" } });
 }
 
+/* 轮 170：feed/列表用显式列（rowsToPosts 消费字段全覆盖），不再 select * */
+const POST_COLS_ENC = encodeURIComponent("id,user_id,author_name,body,image_path,created_at,views,dislikes,removed");
+
 async function listPosts(env, request, uid, limit, offset, beforeId = 0) {
-  const base = ["select=*"];
+  const base = [`select=${POST_COLS_ENC}`];
   if (uid) base.push(`user_id=eq.${encodeURIComponent(uid)}`);
   /* 轮 62：before_id 游标（keyset）——offset 深翻页要扫过并丢弃前面所有行，万帖级线性变慢；
      id 是串行主键（单调递增=发布顺序），id<游标 走主键索引，任意深度成本恒定。 */
@@ -275,6 +278,17 @@ async function listCommentPostIds(env, request, ids, limit) {
 }
 
 const REACT_SEL = `select=${encodeURIComponent("post_id,user_id,kind")}`;
+
+/** ═══ 轮 169 · 暖心墙刷新合并包 ═══
+ * 弱网真凶：刷新要串行跑 4~5 个网络来回（最新页→它的回应→随机批→它的回应→评论数），
+ * 每个 RTT 在手机 4G 上都是 1s+。这里在 Worker 内并行打上游、打包一次回给客户端：
+ * 手机只剩 1 个来回。响应 = { posts(最新4钉顶+随机批去重), reactions(明细,客户端聚合
+ * 出计数与 mine), commentCounts({post_id: n}) }。随机+含用户身份混合 → 不进边缘缓存。 */
+async function wallRefresh(env, request, limit) {
+  /* 轮 170：改走 SQL RPC（wall_feed_page）——最新/随机/回应计数/评论数在一条 SQL 里
+   * CTE + GROUP BY JOIN 聚合成型，一个上游查询出整个合并包（此前 4 查询的编排挪进数据库）。 */
+  return rpc(env, request, "wall_feed_page", { p_limit: limit });
+}
 
 async function listReactionsByPosts(env, request, ids) {
   const inList = encodeURIComponent(`in.(${ids.map((x) => `"${x}"`).join(",")})`);
@@ -845,6 +859,12 @@ async function handleApi(request, env, ctx) {
           return json({ ids: rows.map((r) => r.post_id) });
         }
         return fail(404, "not-found");
+      }
+
+      /* —— 暖心墙刷新合并包（轮 169）—— */
+      if (seg[0] === "wall" && seg[1] === "refresh") {
+        if (m === "GET") return wallRefresh(env, request, parseLimit(q.get("limit"), 20));
+        return fail(405, "bad-method");
       }
 
       /* —— 帖子 —— */
