@@ -55,6 +55,8 @@ const hasMore = ref(true);
 const oldestId = ref(null);
 const listEl = ref(null);
 const userScrolling = ref(false);   /* 轮 173：用户手动上滑标记——追底停手 */
+const listRevealed = ref(true);     /* 轮 176：进会话先隐藏消息区，钉底稳定后再显示——
+    首帧 fallback 字体排版 → webfont 换装撑高内容 = 落点错位闪现（用户实测跳闪） */
 const pinning = ref(false);         /* 轮 173b：进会话钉底中（直到首屏数据落定） */
 function onListTouch() { userScrolling.value = true; }
 function onListWheel() { userScrolling.value = true; }
@@ -286,7 +288,10 @@ function scrollBottom(smooth = false) {
      * 只滚一次会停在「中间」（用户实测：记录多了进会话落在半截）。
      * 用户一旦上滑（触摸/滚轮）立即停追，不打扰回看。 */
     userScrolling.value = false;
-    const set = () => { el.scrollTop = el.scrollHeight; };
+    const set = () => {
+      el.scrollTop = el.scrollHeight;
+      if (!listRevealed.value) listRevealed.value = true;
+    };
     set();
     let frames = 0;
     /* 轮 173b：进会话期间持续钉底（pinning）——旧缓存先落底、网络回来新消息把底撑下去，
@@ -337,6 +342,7 @@ async function openConv(id) {
     await loadMeta(activeId.value);
   }
   pinning.value = true;   /* 轮 173b：进会话钉底，直到首屏数据落定 */
+  listRevealed.value = false;   /* 轮 176：消息区先隐，钉底稳了再显示（防首帧错位跳闪） */
   const smoothed = await loadMessages(activeId.value);
   if (!smoothed) scrollBottom();   /* 有新消息时已平滑滚过，不再瞬时跳 */
   dmApi.markRead(id).catch(() => {});
@@ -804,7 +810,8 @@ function goSignIn() {
           </header>
 
           <!-- 消息流 -->
-          <div ref="listEl" class="dm-scroll" @scroll.passive="onScrollTop"
+          <div ref="listEl" class="dm-scroll" :style="{ visibility: listRevealed ? 'visible' : 'hidden' }"
+            @scroll.passive="onScrollTop"
             @touchstart.passive="onListTouch" @wheel.passive="onListWheel">
             <div class="dm-topmore">
               <button v-if="hasMore && oldestId" class="dm-act" :disabled="loadingMsgs"

@@ -1513,6 +1513,10 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
   - **轮 173c · 新消息落下改平滑滑入（2026-10-04，用户实测 /messages/7「还是会跳」——173b 的钉底在新消息落下一帧内瞬时重钉 = 视觉上仍是跳；另用户测试页可能跑的是旧 bundle，需强刷），未提交未部署——等发话**：
      **修**：fresh 有新消息（added）时——先停钉底（pinning=false，下一帧起不再瞬时重钉）→ msgs 更新 → nextTick 里 `scrollTo({ behavior: "smooth" })` **平滑滑到新底**：微任务先于绘制，无 snap 帧；无新消息时钉底照旧无任何变化；loadMessages 返回 smoothed，调用方（openConv/onLetter）只在未平滑时才瞬时收尾滚。BottleChat 同款。
      验证：undef 0 + **40 套离线 0 fail**（dm-test 324：added 平滑/停钉时序断言）+ build 0 + page-smoke 12/12。
+
+  - **轮 176 · 进会话「一瞬间跳闪」修复（2026-10-04，用户实测 APK 5546E5BB「一瞬间还是有跳闪」，未提交未部署——等发话）**：
+     **真因**：首帧用 fallback 字体排版（LXGW WenKai webfont 晚到）→ 换装后内容撑高 → 落点错位闪现。轮 173 的追帧修正会追，但**错位的那几帧已经画出去了**。**修**：进会话先把消息区 `visibility: hidden`（占位照常、滚动可操作），追底第一帧钉稳后恢复显示——**错位的帧永远不被看见**；数据落定（fresh）即显示兜底。MV/BC 同款（listRevealed 旗标 + set() 内揭示）。
+     验证：undef 0 + **40 套离线 0 fail** + build 0 + page-smoke 12/12。
      **交付**：已提交 `4b27656` / **已部署 Version `dede6342`** / live-check 14/14 / **APK `5546E5BBB05D549B`(5.2M) 装机 Success + 冷启动 PID 21439 CRASH_HITS=0** ✅（同包含轮 174 聊天满幅 `ca316d1`）。
 
 
