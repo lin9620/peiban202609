@@ -42,9 +42,11 @@ export const messages = {
     home: {
       morning: "Good morning ☀️", afternoon: "Good afternoon 🌤️", evening: "Good evening 🌙",
       nightOwl: "Still awake? I'm here with you 🌙",
+      /* 轮 150：顶部问候的微文案行（截图里那行小字）。刻意写得很短 —— 用户要求「不要太多文字」。 */
+      hiThere: "Glad you're here.",
       quoteTitle: "Today's little warmth",
       heroTitle: "A soft place to land",
-      heroSub: "Take a breath. {n} is right here with you.",
+      heroSub: "{n} is right here.",
       goPet: "Visit your companion",
       /* App 轨道 T6：首页三联频道条（今日 / 漂流瓶 / 宠物），zh/en 成对 */
       paneToday: "Today", paneBottle: "Bottles", panePet: "Pet", paneStory: "Stories",
@@ -57,17 +59,25 @@ export const messages = {
       shareFail: "Couldn't share the card. Please try again.",
       companions: {
         title: "You're not alone here",
-        tag: "always on",
-        hall: "This room keeps its light on, day and night — sit down whenever you like.",
-        choose: "What are you up to?",
         working: "Working 💻", studying: "Studying 📚",
         sleepless: "Can't sleep 🌙", chilling: "Just chilling ☕",
-        youSet: "You're here — {s}",
-        toggleHint: "Click again to clear",
-        othersTitle: "Around you right now",
+        /* 轮 150：状态改成 2×2 大卡后，图/名/短说明拆开三组键；
+           卡片区与「大厅此刻」统计一律用 name（无 emoji），emoji 版 working/sleepless 保留给
+           侧栏徽章等仍需要彩色图标的旧位置。
+           同时清死键：tag / hall / othersTitle / choose / youSet / toggleHint / peopleCount
+           / peopleCount1 已无任何视图引用（顶部问候与大厅统计块重做后不再渲染），删掉免得下轮又被误用。 */
+        ico: { working: "💻", studying: "📚", sleepless: "🌙", chilling: "☕" },
+        name: { working: "Working", studying: "Studying", sleepless: "Up late", chilling: "Chilling" },
+        sub: {
+          working: "Head down, replying slowly",
+          studying: "One more chapter",
+          sleepless: "Company in the quiet",
+          chilling: "No agenda at all",
+        },
+        pickHint: "Pick your state",
+        nowTitle: "In the hall right now",
+        nowSub: "Everyone's here",
         anon: "Someone",
-        peopleCount: "{n} people",
-        peopleCount1: "1 person",
         loginHint: "Sign in to leave your status here.",
         syncFail: "Cloud sync didn't go through — your status stays on this device.",
         syncNeedSetup: "Cloud status isn't switched on yet — the site owner needs to run one database update 🔧",
@@ -75,9 +85,20 @@ export const messages = {
       },
       mood: {
         title: "How was your day?",
-        subtitle: "One tiny check-in. Your pet can feel it too.",
-        options: ["Amazing 🤩", "Good 🙂", "Okay 😌", "A bit low 🌧️", "Rough 😔"],
+        subtitle: "A tiny check-in.",
+        /* 轮 150：表情换成 MoodFace.vue 的手绘线性脸，emoji 从文案里拿掉（只留词）；
+           数组按**画面从左到右**排：低落 疲惫 平静 开心 很稳。
+           注意：存储用的是 legacyIndex（历史 0~4 的旧序号），换顺序不会错位读旧记录。 */
+        faces: { low: "Low", tired: "Tired", calm: "Calm", happy: "Happy", steady: "Steady" },
+        faceOrder: [
+          { kind: "low", legacyIndex: 3 },
+          { kind: "tired", legacyIndex: 4 },
+          { kind: "calm", legacyIndex: 2 },
+          { kind: "happy", legacyIndex: 0 },
+          { kind: "steady", legacyIndex: 1 },
+        ],
         done: "Logged with love. See you tomorrow 💛",
+        hintShort: "Log how you feel",
         again: "You already checked in today. Your pet is proud of you.",
         streak: "Gentle streak: {n} day(s) 🌱",
       },
@@ -85,7 +106,7 @@ export const messages = {
 
     pet: {
       title: "Mandarin",
-      subtitle: "Your little companion. Feed, play, rest — and draw its food with your own hand.",
+      subtitle: "Feed, play, rest — and draw its food.",
       coins: "coins", level: "Lv", stats: { hunger: "Food", mood: "Mood", clean: "Clean", energy: "Energy" },
       actions: { feed: "Feed", play: "Play", pet: "Pet", clean: "Bathe", sleep: "Sleep", wake: "Wake up", desktop: "Desktop mode" },
       snack: {
@@ -146,7 +167,7 @@ export const messages = {
       onlyOne: "Keep at least one companion!",
       tabAdopt: "Preset friends",
       tabCustom: "My character",
-      tip: "Tap the stage to pet it. Feed it with the food you drew.",
+      tip: "Tap the stage to pet it.",
     },
 
     tasks: {
@@ -228,7 +249,7 @@ export const messages = {
     },
     bottle: {
       title: "Warm Bottles",
-      sub: "Write your heart down, seal it in a bottle, and drop it into the warm sea. Someone may pick it up and write back.",
+      sub: "Seal a thought. Send it to sea.",
       needSignIn: "Sign in to throw and pick up bottles — an email is all it takes.",
       placeholder: "Something you'd say to a kind stranger…",
       leftSend: "{n} left to send today",
@@ -238,7 +259,7 @@ export const messages = {
       seaTitle: "The warm sea",
       fish: "Fish one out",
       leftFish: "{n} left to fish today",
-      rules: "Up to {w} letters a day · a bottle only counts once you've replied to it ({f} a day) · throw it back if you don't feel like replying · replies are visible only to the writer.",
+      rules: "{w} letters a day · {f} replies a day.",
       fromSea: "A letter from the sea",
       replyPlaceholder: "Say something back to the writer…",
       reply: "Reply",
@@ -344,7 +365,7 @@ export const messages = {
       continueWrite: "Keep writing", openStory: "Read",
       editStory: "Edit",
       discoverSub: "Gentle stories from everyone here.",
-      feedSub: "Write your own, read someone else's. Up to 30,000 characters each.",
+      feedSub: "Write a story. Read gentle ones.",
       mineSub: "Your drafts, published stories and saved shelf.",
       rankSub: "Recommended, newest, most liked, popular tags.",
       errTitle: "Please give your story a title (up to 100 characters).",
@@ -877,6 +898,8 @@ export const messages = {
     home: {
       morning: "早上好 ☀️", afternoon: "下午好 🌤️", evening: "晚上好 🌙",
       nightOwl: "还没睡吗？我陪着你 🌙",
+      /* 轮 150：顶部问候的微文案行（截图里那行小字）。刻意写得很短 —— 用户要求「不要太多文字」。 */
+      hiThere: "此刻，很高兴你在这儿。",
       quoteTitle: "今日份的小温暖",
       heroTitle: "一个可以安心落脚的地方",
       heroSub: "深呼吸。{n} 就在这里陪着你。",
@@ -892,17 +915,25 @@ export const messages = {
       shareFail: "分享没有成功，请再试一次。",
       companions: {
         title: "这里不止你一个人",
-        tag: "一直亮着",
-        hall: "这里的灯一直亮着，白天夜里都在——想坐下来就坐下来吧。",
-        choose: "你现在在做什么？",
         working: "工作中 💻", studying: "学习里 📚",
         sleepless: "睡不着 🌙", chilling: "随便待着 ☕",
-        youSet: "你在这里 —— {s}",
-        toggleHint: "再点一次可清除",
-        othersTitle: "此刻大厅里",
+        /* 轮 150：状态改成 2×2 大卡后，图/名/短说明拆开三组键；
+           卡片区与「大厅此刻」统计一律用 name（无 emoji），emoji 版 working/sleepless 保留给
+           侧栏徽章等仍需要彩色图标的旧位置。
+           同时清死键：tag / hall / othersTitle / choose / youSet / toggleHint / peopleCount
+           / peopleCount1 已无任何视图引用（顶部问候与大厅统计块重做后不再渲染），删掉免得下轮又被误用。 */
+        ico: { working: "💻", studying: "📚", sleepless: "🌙", chilling: "☕" },
+        name: { working: "工作中", studying: "学习里", sleepless: "睡不着", chilling: "随便待着" },
+        sub: {
+          working: "先安静一会儿，回得慢",
+          studying: "再看一章就睡",
+          sleepless: "有人陪你一起醒着",
+          chilling: "没什么计划，就是待着",
+        },
+        pickHint: "选一个此刻状态",
+        nowTitle: "大厅此刻",
+        nowSub: "大家都在这里",
         anon: "一位小伙伴",
-        peopleCount: "{n} 人",
-        peopleCount1: "1 人",
         loginHint: "登录后可以在这里留下此刻的状态。",
         syncFail: "云端同步没成功 —— 状态先留在本机。",
         syncNeedSetup: "云端状态还没开启 —— 站点主人需要先执行一次数据库更新 🔧",
@@ -911,8 +942,19 @@ export const messages = {
       mood: {
         title: "今天过得怎么样？",
         subtitle: "一次小小的打卡，你的宠物也感觉得到。",
-        options: ["棒极了 🤩", "不错 🙂", "一般 😌", "有点低落 🌧️", "很难熬 😔"],
+        /* 轮 150：表情换成 MoodFace.vue 的手绘线性脸，emoji 从文案里拿掉（只留词）；
+           数组按**画面从左到右**排：低落 疲惫 平静 开心 很稳。
+           注意：存储用的是 legacyIndex（历史 0~4 的旧序号），换顺序不会错位读旧记录。 */
+        faces: { low: "低落", tired: "疲惫", calm: "平静", happy: "开心", steady: "很稳" },
+        faceOrder: [
+          { kind: "low", legacyIndex: 3 },
+          { kind: "tired", legacyIndex: 4 },
+          { kind: "calm", legacyIndex: 2 },
+          { kind: "happy", legacyIndex: 0 },
+          { kind: "steady", legacyIndex: 1 },
+        ],
         done: "已记下，带着爱意。明天见 💛",
+        hintShort: "记录此刻的你",
         again: "今天已经打过卡啦，你的宠物为你骄傲。",
         streak: "温柔连续打卡：{n} 天 🌱",
       },
