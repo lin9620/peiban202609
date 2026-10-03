@@ -357,9 +357,9 @@ ok("/settings 路由已注册", mvRouter.includes('"/settings"'));
       && sb.includes("invalid grant") && sb.includes('accessToken = "";'));
   ok("僵尸会话自清：清空本地 token 与 user 再 signOut", sb.includes('accessToken = "";') && sb.includes("cloud.user = null;"));
   const picker = fs.readFileSync("src/components/EmojiPicker.vue", "utf8");
-  ok("表情面板：手机端贴底 sheet 占键盘位（<640px 全宽 + 打开时收键盘）",
-    picker.includes("window.innerWidth < 640") && picker.includes("sheetBottom")
-    && picker.includes("ae.blur()"));
+  ok("表情面板：手机端输入行骑在面板头上（推开输入行+面板钉行底+贴屏幕底）",
+    picker.includes("marginBottom = \"34vh\"") && picker.includes('top: Math.round(r.bottom + 2)')
+    && picker.includes('bottom: "0"'));
   ok("表情面板：手机端选完表情不拉起键盘（面板不被压住）",
     picker.includes("window.innerWidth >= 640") && picker.includes("setSelectionRange(caret, caret)"));
   ok("表情面板开着时点外不连带收评论条", cv.includes('document.querySelector(".emo-panel")'));

@@ -26,17 +26,26 @@ const open = ref(false);
 const root = ref(null);
 const pos = ref({ left: "8px", bottom: "200px" });
 
+let rowEl = null;   /* 被面板顶起来的输入行（微信式：输入栏骑在面板头上） */
+function clearRowShift() {
+  if (rowEl) { rowEl.style.marginBottom = ""; rowEl = null; }
+}
 function toggle() {
-  if (open.value) { open.value = false; return; }
-  const r = root.value.getBoundingClientRect();
+  if (open.value) { open.value = false; clearRowShift(); return; }
   if (window.innerWidth < 640) {
-    /* 轮 172b（用户截图：微信表情面板在输入栏下面）：手机端面板贴屏幕底、
-     * 占键盘的位置——打开时顺手把键盘收掉（失焦），不再浮在输入框上方挡对话。
-     * sheet 底 = 输入行底缘之下（r.bottom 以下），贴着屏幕底。 */
-    const sheetBottom = Math.max(0, Math.round(window.innerHeight - r.bottom - 2));
-    pos.value = { left: "0", right: "0", width: "auto", bottom: sheetBottom + "px" };
+    /* 轮 172c（用户实测：输入栏必须留在面板上面，面板向下拉、列表收短可滚）：
+     * 打开时把所在输入行向上推 34vh（行骑在面板头上），面板上缘钉在行底缘、
+     * 下缘贴屏幕底，高度=行到屏幕底那一段，内容超出面板内滚动。顺手收键盘。 */
+    open.value = true;
+    rowEl = root.value.closest(".dm-compose, .cmt-main-bar, .cmt-input-row, .dm-input-row");
+    if (rowEl) rowEl.style.marginBottom = "34vh";
     const ae = document.activeElement;
     if (ae && ae !== document.body && ae.blur) ae.blur();
+    const r = root.value.getBoundingClientRect();   /* 推行后强制同步布局再量 */
+    pos.value = {
+      left: "0", right: "0", width: "auto",
+      top: Math.round(r.bottom + 2) + "px", bottom: "0",
+    };
   } else {
     const bottom = Math.max(8, window.innerHeight - r.top + 8) + "px";
     const left = Math.min(Math.max(8, r.left), Math.max(8, window.innerWidth - 304));
@@ -72,10 +81,10 @@ function pick(e) {
 }
 
 function onDoc(e) {
-  if (open.value && root.value && !root.value.contains(e.target)) open.value = false;
+  if (open.value && root.value && !root.value.contains(e.target)) { open.value = false; clearRowShift(); }
 }
 onMounted(() => document.addEventListener("pointerdown", onDoc));
-onBeforeUnmount(() => document.removeEventListener("pointerdown", onDoc));
+onBeforeUnmount(() => { document.removeEventListener("pointerdown", onDoc); clearRowShift(); });
 </script>
 
 <template>
@@ -128,8 +137,10 @@ onBeforeUnmount(() => document.removeEventListener("pointerdown", onDoc));
 @media (max-width: 640px) {
   .emo-panel {
     border-radius: 18px 18px 0 0; border-bottom: none;
-    max-height: 46vh;
+    /* 高度由 top/bottom 内联样式钉死（输入栏以下整段），列表短一些、面板内滚动 */
+    max-height: none;
     padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
   }
+  .emo-panel .emo-cell { font-size: 20px; padding: 4px 0; }
 }
 </style>
