@@ -1555,6 +1555,10 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **修（entryReady 门控）**：进会话 `entryReady=false` + 消息区隐藏；**缓存渲染期保持隐藏**（不再作为可见的中间态）；fresh 落定（applyRows/merge added）→ `entryReady=true` → 平滑滑到新底 → **平滑落定（gap<4）才揭示**；2s 兜底只揭示已落定的（数据没到就继续隐藏加载）；追底揭示同样加 entryReady 门控。**用户看到的全过程**：聊天框（头部+输入行）→ 消息一次性出现在最新位置，无中间态。
      **踩坑**：本轮锚点连续失配三次——①178 已在 added 分支加了 waitPin 块（我以为没有）②176b 注释带「滚动」尾字 ③BottleChat 缺 scrollGen 声明（176b 补丁部分应用，undef-check 抓不到局部变量）。**教训**：连续多轮补丁后，锚点必须先 sed 实读再写；脚本变量名（p/BC）写错一次。
      验证：undef 0 + **40 套离线 0 fail** + build 0 + page-smoke 12/12；逐帧复测待装机（本轮 entryReady 门控未部署）。
+  - **轮 190 · 会话列表左滑操作（Vant SwipeCell）+ Vant Field 全量（2026-10-05，用户点单「继续改 App 端其他组件」，已提交，未部署——等发话）**：
+     **轮 189（输入框全量）**：**31 处 n-input → van-field**（10 文件），main.js 全局注册 Vant 4.10.2 + lib/index.css；样式接管（van-cell 去壳/van-field__control 统一 wash 圆角 14px/emo-in 避让 44px）；浏览器端到端实测——Vant 输入框打字 → **Enter 键透传发送成功** → 表情面板连选三个插入正常 ✓（Vant 的 textarea 与光标体系天然兼容）。**轮 190（会话列表左滑）**：普通会话行包 `van-swipe-cell`，右滑出「免打扰/隐藏」两个操作钮（复用 toggleMute/hideConv 现有逻辑），桌面同构（无触摸时滑动钮收起不碍事）；样式 .dm-swipe-act（主题色/危险色两枚）。**踩坑**：vant 按需样式路径是 `vant/es/xxx/style`（不带 /index.css）；style.css 注释里混入 `<style>` 字面量导致 CSS minify 解析警告（改为「style 标签」措辞）。
+     验证：undef 0 + **40 套离线 0 fail**（app-shell/auth 130/privacy 34 全绿）+ build 0 + page-smoke 12/12 + 浏览器截图（会话列表 Vant 化渲染正常）。
+
      **交付**：已提交 `bdef882` / **已部署 Version `bdccdffb`** / live-check 14/14 / **APK `99F8488F36339111`(5.2M) 装机 Success + 冷启动 PID 2481 CRASH_HITS=0** ✅（同包含轮 179~187 表情体系 `656611c`）。
 
 

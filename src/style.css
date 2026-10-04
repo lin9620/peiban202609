@@ -2416,7 +2416,7 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 .hall-now-cell span { font-size: 11px; color: var(--ink-faint); white-space: nowrap; }
 .hall-now-cell.on { background: var(--accent-soft); }
 .hall-now-cell.on b, .hall-now-cell.on span { color: var(--accent-deep); }
-   单一来源：故事样式全在这段（组件内不再写 <style>，避免同权重双源互相压制）。
+   单一来源：故事样式全在这段（组件内不再写 style 标签，避免同权重双源互相压制）。
    布局照私信页轮 142 的一体化惯例：桌面单卡 + 内部分隔线，窄屏上下堆叠。 */
 .story-page { max-width: 900px; margin: 0 auto; }
 .story-head { padding: 2px 2px 12px; }
@@ -2443,6 +2443,14 @@ html[data-theme="night"] .st-skel-card {
 .emo-in .emo-btn { width: 28px; height: 28px; }
 .emo-in .emo-btn svg { width: 20px; height: 20px; }
 .emo-in .van-field__control { padding-right: 44px; }
+/* 轮 190：会话左滑操作钮（SwipeCell right） */
+.dm-swipe-act {
+  appearance: none; border: none; cursor: pointer;
+  width: 64px; height: 100%; display: flex; align-items: center; justify-content: center;
+  background: var(--accent-soft); color: var(--accent-deep); font-size: 12.5px; font-weight: 600;
+}
+.dm-swipe-act.danger { background: #f3d9d3; color: #b04a3a; }
+.dm-swipe-act.on { background: var(--accent-soft); color: var(--ink-soft); }
 /* 轮 189：Vant Field 接管输入控件后的统一观感——去 cell 壳、控件走 wash 圆角 */
 .dm-compose .van-cell, .dm-input-row .van-cell, .cmt-input-row .van-cell,
 .cmt-main-bar .van-cell, .emo-in .van-cell, .q-input .van-cell {

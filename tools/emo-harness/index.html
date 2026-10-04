@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh">
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>emoji harness</title>
+<style>
+  html,body{margin:0;padding:0}
+  /* 复刻 style.css 里 .cmt-main-bar / .dm-input-row 的关键几何（贴屏底 fixed 条）。
+   * ⚠️ translateZ(0) 不是装饰：它让 .stage 成为 fixed 子元素的包含块 ——
+   * 真机 Android WebView 是 adjustResize（键盘弹起时布局视口整个变矮，fixed 底条跟着升），
+   * headless 里改不了真视口，只能用这个包含块把 fixed 的参照系换成可缩的 .stage，
+   * 否则底条永远停在真实屏底，所有「输入框有没有被顶出去」的读数全是假的。 */
+  .stage{position:relative;transform:translateZ(0);height:100vh;background:#eee;
+    display:flex;flex-direction:column}
+  .stage-scroll{flex:1 1 auto;min-height:0;overflow:auto}
+  .cmt-main-bar{position:fixed;left:0;right:0;bottom:0;z-index:150;display:flex;align-items:flex-end;gap:10px;
+    padding:10px 12px;background:#fff7ee;border-top:1px solid rgba(140,128,112,.14)}
+  .dm-compose{position:fixed;left:0;right:0;bottom:0}
+  .dm-input-row{display:flex;align-items:flex-end;gap:8px;padding:8px 10px}
+  .emo-in{position:relative;flex:1 1 auto;min-width:0}
+  .emo-in .emo-root{position:absolute;right:8px;top:50%;transform:translateY(-50%);z-index:1}
+  .emo-in .n-input .n-input__textarea-el{padding-right:44px}
+  .emo-root{flex:none;align-self:center}
+  .emo-btn{width:30px;height:30px;border:0;background:#eee;border-radius:50%}
+  /* 复刻组件的 sheet 外观（圆角贴底、满宽），否则量出来的高度和真机不是一回事 */
+  .emo-panel.emo-sheet{max-height:none;border-radius:18px 18px 0 0;border-bottom:none}
+  /* 关掉进出场动画：v-transition 中途量 getBoundingClientRect 会带上 scale(.96)，
+     310 被量成 299 —— 这是轮 183 第一个假阴性的来源。量几何必须等动画结束。 */
+  .emo-pop-enter-active,.emo-pop-leave-active{transition:none !important}
+</style>
+</head>
+<body><div id="app"></div><script type="module" src="./main.js"></script></body>
+</html>
