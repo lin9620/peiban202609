@@ -337,7 +337,8 @@ ok("/settings 路由已注册", mvRouter.includes('"/settings"'));
     && picker.includes("selectionStart") && picker.includes("setSelectionRange"));
   ok("表情面板：fixed 定位 + teleport 到 body（防 overflow 裁剪/transform 陷阱）",
     picker.includes("position: fixed") && picker.includes('to="body"'));
-  ok("表情面板：表情足量（≥56 格）且无重复", emojiCells.length >= 56 && uniq.size === emojiCells.length);
+  ok("表情面板：自研格子已移除，网格交给 emoji-picker-element（成熟组件）",
+    !picker.includes("const EMOJIS") && !picker.includes("emo-cell"));
   ok("表情面板：i18n 键 emoji.title 在用", /t\(['"]emoji\.title['"]\)/.test(picker));
   const cases = [
     ["私信会话框", "src/views/MessagesView.vue", 1],

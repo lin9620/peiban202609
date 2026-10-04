@@ -176,10 +176,10 @@ ok("脏输入不炸（空对象 → 全是有穷数字）",
 
   /* ───────── ⑧ 轮 182：表情按钮是切换键，收起时把焦点还给输入框 ───────── */
   const picker2 = read("src/components/EmojiPicker.vue");
-  ok("表情按钮/表情格子都 mousedown.prevent —— 按键不许抢走输入框焦点（轮 187 真机实测：activeElement=BUTTON.emo-btn）",
-    (picker2.match(/@mousedown\.prevent/g) || []).length === 2
+  ok("表情按钮 mousedown.prevent（格子已随 emoji-picker-element 移除，轮 188）",
+    (picker2.match(/@mousedown\.prevent/g) || []).length === 1
     && /class="emo-btn"[\s\S]{0,200}@mousedown\.prevent/.test(picker2)
-    && /class="emo-cell"[^>]*@mousedown\.prevent/.test(picker2));
+    && !picker2.includes("class=\"emo-cell\""));
   ok("还焦点走 applyCaret（唯一入口：focus + 对齐值 + 定光标）",
     /function closeSheet\(restoreFocus\)[\s\S]*?applyCaret\(el, caret\)/.test(picker2));
   /* 轮 186 真机教训：光标复位有四个时机 —— v-model 异步刷值、rAF 布局、

@@ -9,17 +9,7 @@ import { ref, nextTick, onMounted, onBeforeUnmount } from "vue";
 import { t } from "../i18n.js";
 import { isApp } from "../stores/uiStore.js";
 import { emojiSheetMode, sheetLayout, keyboardHeight, isEmojiHit } from "../utils/emojiSheetRules.js";
-
-const EMOJIS = [
-  "😊", "😄", "😁", "😆", "😅", "😂", "🤣", "🙂",
-  "🥰", "😍", "😘", "🤗", "🥺", "😳", "😋", "🤩",
-  "😎", "🥳", "😏", "😌", "🤔", "🙄", "😴", "🥱",
-  "😔", "😢", "😭", "😤", "😠", "😡", "😱", "🤯",
-  "😇", "😉", "💪", "👏", "🙏", "🤝", "✌️", "👋",
-  "🌹", "💐", "🌸", "🍀", "🌈", "⭐", "✨", "🔥",
-  "🍬", "🍰", "☕", "💤", "❤️", "💕", "💖", "💯",
-  "🎉", "🎁", "🐱", "🐶", "🐾", "👀", "🙈", "💬",
-];
+import "emoji-picker-element";   /* 轮 188：成熟开源组件（MIT）——搜索/分类/皮肤色阶全套，替换自研格子 */
 
 const props = defineProps({ text: { type: String, default: "" } });
 const emit = defineEmits(["update:text"]);
@@ -204,6 +194,10 @@ function openSheet() {
  * 表情按钮是**切换键**（键盘 ↔ 面板），不是单向开关。
  */
 function closeSheet(restoreFocus) {
+  if (typeof window !== "undefined") {
+    window.__wpLog = window.__wpLog || [];
+    window.__wpLog.push({ ev: "closeSheet", restoreFocus: restoreFocus === true });
+  }
   open.value = false;
   const el = restoreFocus ? inputEl() : null;
   /* 轮 186（真机复验）：还焦点会被**按钮自己**覆盖 ——
@@ -256,31 +250,30 @@ function toggle() {
   open.value = true;
 }
 
-function pick(e) {
-  /* 输入元素 = 按钮所在输入行里的第一个 textarea/input（每行只有一个） */
+/* 轮 188：emoji-picker-element 的 emoji-click 落到这里的插入逻辑（光标体系沿用轮 183/185/187） */
+function onEmojiClick(ev) {
+  const uni = ev && ev.detail && ev.detail.unicode;
+  if (!uni) return;
   const el = inputEl();
   trackCaret(el);
   const base = String(props.text || "");
   let out, caret;
-  /* 轮 183/185：面板开着时元素是失焦的，selectionStart 已被 v-model 改写复位 → 不可信。
-   * 一律用「记下来的光标」，插完再递推，面板开多久都不会漂。 */
   const s0 = caretMem != null ? caretMem
     : (el && typeof el.selectionStart === "number" ? el.selectionStart : null);
   if (el && s0 != null) {
     const en = el.selectionEnd == null ? s0 : el.selectionEnd;
-    const lo = Math.min(s0, en), hi = Math.max(s0, en);   /* 选区存在时整段替换 */
-    out = base.slice(0, lo) + e + base.slice(hi);
-    caret = lo + e.length;
+    const lo = Math.min(s0, en), hi = Math.max(s0, en);
+    out = base.slice(0, lo) + uni + base.slice(hi);
+    caret = lo + uni.length;
   } else {
-    out = base + e;
+    out = base + uni;
     caret = out.length;
   }
-  caretMem = caret;   /* 递推下一步的位置 —— 全组件唯一的真相源 */
+  caretMem = caret;
   emit("update:text", out);
   nextTick(() => {
     if (!el) return;
-    /* 轮 187：连选模式——选完**绝不 focus**（一 focus 输入框，onFocusIn 就把面板关了，
-     * 用户实测「点表情后面板收了」）；光标已记在 caretMem，点输入框/收面板时接着用 */
+    /* 面板开着时不 focus（否则 focusin 让位键盘把面板关了）；光标已记录 */
     applyCaret(el, caret, false);
   });
 }
@@ -335,7 +328,7 @@ onBeforeUnmount(() => {
              pointerdown.stop 拦不住 click，两处都要。 -->
         <div v-if="open" class="emo-panel" :class="{ 'emo-sheet': sheetOn }" :style="pos"
              @pointerdown.stop @click.stop>
-          <button v-for="e in EMOJIS" :key="e" type="button" class="emo-cell" @mousedown.prevent @click="pick(e)">{{ e }}</button>
+          <emoji-picker @emoji-click="onEmojiClick"></emoji-picker>
         </div>
       </transition>
     </teleport>
@@ -354,19 +347,23 @@ onBeforeUnmount(() => {
 .emo-btn:hover, .emo-btn.on { color: var(--accent-deep); background: var(--accent-soft); }
 .emo-panel {
   position: fixed; z-index: 260;
-  width: 296px; max-width: calc(100vw - 16px); max-height: 42vh; overflow-y: auto;
-  overscroll-behavior: contain;
-  display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; padding: 10px;
-  background: var(--glass-strong); border: 1px solid var(--hairline); border-radius: 16px;
+  width: 320px; max-width: calc(100vw - 8px);
+  overflow: hidden;
+  background: var(--glass-strong); border: 1px solid var(--hairline); border-radius: 18px;
   box-shadow: var(--shadow-lg, 0 12px 34px rgba(20, 20, 19, .16));
+  padding: 0;
 }
-.emo-cell {
-  appearance: none; border: none; background: none; cursor: pointer;
-  font-size: 21px; line-height: 1; padding: 5px 0; border-radius: 9px;
-  transition: transform .12s ease, background-color .12s ease;
+/* emoji-picker-element（Web Component）：尺寸/主题走它的 shadow CSS 变量 */
+.emo-panel emoji-picker {
+  display: block; width: 100%; height: 100%;
+  --num-columns: 8;
+  --emoji-padding: 5px;
+  --emoji-size: 24px;
+  --background: var(--glass-strong);
+  --border-color: transparent;
+  --category-emoji-size: 24px;
+  --indicator-color: var(--accent);
 }
-.emo-cell:hover { background: var(--wash); }
-.emo-cell:active { transform: scale(.86); }
 .emo-pop-enter-active, .emo-pop-leave-active { transition: opacity .16s ease, transform .16s ease; }
 .emo-pop-enter-from, .emo-pop-leave-to { opacity: 0; transform: translateY(8px) scale(.96); }
 /* 轮 179：手机/App 表情面板 = 贴屏底的 sheet（面板在输入框下面）。
@@ -380,5 +377,4 @@ onBeforeUnmount(() => {
   max-height: none;
   padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
 }
-.emo-panel.emo-sheet .emo-cell { font-size: 20px; padding: 4px 0; }
 </style>

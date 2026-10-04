@@ -385,7 +385,10 @@ function envGuard() {
 }
 
 export default defineConfig({
-  plugins: [vue(), seoSitemap(), seoRoutes(), envGuard()],
+  plugins: [vue({
+    /* 轮 188：emoji-picker-element 是 Web Component（自定义元素），别让 Vue 当组件解析 */
+    template: { compilerOptions: { isCustomElement: (tag) => tag === "emoji-picker" } },
+  }), seoSitemap(), seoRoutes(), envGuard()],
   server: {
     port: 5173,
     open: true,

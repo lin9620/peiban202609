@@ -20,8 +20,10 @@
     "@capacitor/core": "8.5.2",
     "@iconify/vue": "^5.0.1",
     "@supabase/supabase-js": "^2.45.0",
+    "emoji-picker-element": "^1.29.1",
     "lottie-web": "^5.13.0",
     "naive-ui": "^2.45.3",
+    "vant": "^4.10.2",
     "vue": "^3.5.0",
     "vue-router": "^4.4.0"
   },
