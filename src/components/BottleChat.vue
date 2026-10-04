@@ -64,6 +64,7 @@ const userScrolling = ref(false);   /* 轮 173：用户手动上滑标记——�
 const listRevealed = ref(true);     /* 轮 176：进会话先隐藏消息区，钉底稳定后再显示——
     首帧 fallback 字体排版 → webfont 换装撑高内容 = 落点错位闪现（用户实测跳闪） */
 let scrollGen = 0;                  /* 轮 176b：滚动链代数——平滑滚动接管时作废旧追帧链 */
+const entryReady = ref(false);      /* 轮 180：首屏（fresh）数据落定才允许显示 */
 function fontsOk() {                /* 轮 178b：webfont 没在加载中 = 排版稳定（每帧实时判定，
     fonts.ready 有「触发过早误放行」的坑，弃用）；加载失败也会落到 loaded，不会永藏 */
   return !(document.fonts && document.fonts.status === "loading");
@@ -108,7 +109,7 @@ function scrollBottom(smooth = false) {
       if (frames > 300) return;                        /* 硬上限 ~5s，防异常环境永转 */
       if (frames++ > 20 && !pinning.value && fontsOk()) return;
       set();
-      if (fontsOk() && !listRevealed.value
+      if (fontsOk() && entryReady.value && !listRevealed.value
         && el.scrollHeight - el.scrollTop - el.clientHeight < 4) listRevealed.value = true;
       requestAnimationFrame(chase);
     };
@@ -180,19 +181,20 @@ async function loadMessages(id, { before = null } = {}) {
             scrollGen++;
             pinning.value = false;
             smoothed = true;
+            entryReady.value = true;
             msgs.value = rows;
             nextTick(() => {
               const el = listEl.value;
               if (!el) return;
               el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-              /* 轮 178：平滑落定（gap<4）才显示；空闲期消息区隐藏，看不到顶部/中间帧 */
+              /* 轮 180：平滑落定（gap<4）才显示；空闲期消息区隐藏 */
               const waitPin = () => {
                 if (listRevealed.value) return;
-                if (el.scrollHeight - el.scrollTop - el.clientHeight < 4) { listRevealed.value = true; return; }
+                if (entryReady.value && el.scrollHeight - el.scrollTop - el.clientHeight < 4) { listRevealed.value = true; return; }
                 requestAnimationFrame(waitPin);
               };
               requestAnimationFrame(waitPin);
-              setTimeout(() => { if (!listRevealed.value) listRevealed.value = true; }, 1500);
+              setTimeout(() => { entryReady.value = true; listRevealed.value = true; }, 1500);
             });
           } else if (rows !== msgs.value) {
             msgs.value = rows;
@@ -200,6 +202,7 @@ async function loadMessages(id, { before = null } = {}) {
           oldestId.value = msgs.value.length ? msgs.value[0].id : null;
         } else {
           applyRows(w.rows, w.more);
+          entryReady.value = true;
         }
       },
       onError: () => { if (before == null && msgsConv !== id) { msgs.value = []; msgsConv = ""; } },
@@ -230,7 +233,7 @@ async function onLetter() {
   if (!chatting.value) return;
   pinning.value = true;
   listRevealed.value = false;
-  setTimeout(() => { if (!listRevealed.value) listRevealed.value = true; }, 2000);   /* 轮 178b：字体异常挂起的揭示兜底 */
+  setTimeout(() => { if (entryReady.value && !listRevealed.value) listRevealed.value = true; }, 2000);   /* 轮 180：兜底只揭示已落定的 */
   const results = await Promise.all([loadMessages(convId.value), syncMeta()]);
   if (!results[0]) scrollBottom();   /* 有新消息时已平滑滚过 */
   dmApi.markRead(convId.value).catch(() => {});

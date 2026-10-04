@@ -57,6 +57,8 @@ const listEl = ref(null);
 const userScrolling = ref(false);   /* 轮 173：用户手动上滑标记——追底停手 */
 const listRevealed = ref(true);     /* 轮 176：进会话先隐藏消息区，钉底稳定后再显示——
     首帧 fallback 字体排版 → webfont 换装撑高内容 = 落点错位闪现（用户实测跳闪） */
+const entryReady = ref(false);      /* 轮 180：首屏（fresh）数据落定才允许显示——
+    缓存窗口与 fresh 窗口高度不同，缓存先渲染再被替换 = ±千px 可见跳变（逐帧采样实锤） */
 function fontsOk() {                /* 轮 178b：webfont 没在加载中 = 排版稳定（每帧实时判定，
     fonts.ready 有「触发过早误放行」的坑，弃用）；加载失败也会落到 loaded，不会永藏 */
       return !(document.fonts && document.fonts.status === "loading");
@@ -262,6 +264,7 @@ async function loadMessages(id, { before = null } = {}) {
             pinning.value = false;
             scrollGen++;
             smoothed = true;
+            entryReady.value = true;
             msgs.value = rows;
             nextTick(() => {
               const el = listEl.value;
@@ -270,11 +273,11 @@ async function loadMessages(id, { before = null } = {}) {
               /* 轮 178：平滑落定（gap<4）才显示；空闲期消息区隐藏，看不到顶部/中间帧 */
               const waitPin = () => {
                 if (listRevealed.value) return;
-                if (el.scrollHeight - el.scrollTop - el.clientHeight < 4) { listRevealed.value = true; return; }
+                if (entryReady.value && el.scrollHeight - el.scrollTop - el.clientHeight < 4) { listRevealed.value = true; return; }
                 requestAnimationFrame(waitPin);
               };
               requestAnimationFrame(waitPin);
-              setTimeout(() => { if (!listRevealed.value) listRevealed.value = true; }, 1500);
+              setTimeout(() => { entryReady.value = true; listRevealed.value = true; }, 1500);
             });
           } else if (rows !== msgs.value) {
             msgs.value = rows;
@@ -282,6 +285,7 @@ async function loadMessages(id, { before = null } = {}) {
           oldestId.value = msgs.value.length ? msgs.value[0].id : null;
         } else {
           applyRows(w.rows, w.more);
+          entryReady.value = true;   /* 轮 180：首屏数据落定，才允许显示（钉稳门控） */
         }
         if (w.more === false) hasMore.value = false;
       },
@@ -323,7 +327,7 @@ function scrollBottom(smooth = false) {
       if (frames > 300) return;                        /* 硬上限 ~5s，防异常环境永转 */
       if (frames++ > 20 && !pinning.value && fontsOk()) return;
       set();
-      if (fontsOk() && !listRevealed.value
+      if (fontsOk() && entryReady.value && !listRevealed.value
         && el.scrollHeight - el.scrollTop - el.clientHeight < 4) listRevealed.value = true;
       requestAnimationFrame(chase);
     };
@@ -368,7 +372,21 @@ async function openConv(id) {
   }
   pinning.value = true;   /* 轮 173b：进会话钉底，直到首屏数据落定 */
   listRevealed.value = false;   /* 轮 176：消息区先隐，钉底稳了再显示（防首帧错位跳闪） */
-  setTimeout(() => { if (!listRevealed.value) listRevealed.value = true; }, 2000);   /* 轮 178b：字体异常挂起的揭示兜底 */
+  entryReady.value = false;     /* 轮 180：显示门控重置——等 fresh 数据落定 */
+  /* 轮 179 调试（临时）：真机落地轨迹采样——分析完即移除 */
+  if (typeof window !== "undefined") {
+    let n = 0;
+    const tLog = () => {
+      const el = listEl.value;
+      if (el && n < 90) {
+        console.log("[wp-entry]", JSON.stringify({ n, top: Math.round(el.scrollTop), h: el.scrollHeight, ch: el.clientHeight, f: (document.fonts && document.fonts.status) || "?", v: listRevealed.value ? 1 : 0 }));
+        n++;
+        requestAnimationFrame(tLog);
+      }
+    };
+    requestAnimationFrame(tLog);
+  }
+  setTimeout(() => { if (entryReady.value && !listRevealed.value) listRevealed.value = true; }, 2000);   /* 轮 180：兜底只揭示已落定的 */
   const smoothed = await loadMessages(activeId.value);
   if (!smoothed) scrollBottom();   /* 有新消息时已平滑滚过，不再瞬时跳 */
   dmApi.markRead(id).catch(() => {});
