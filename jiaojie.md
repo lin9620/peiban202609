@@ -1553,6 +1553,8 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **修（entryReady 门控）**：进会话 `entryReady=false` + 消息区隐藏；**缓存渲染期保持隐藏**（不再作为可见的中间态）；fresh 落定（applyRows/merge added）→ `entryReady=true` → 平滑滑到新底 → **平滑落定（gap<4）才揭示**；2s 兜底只揭示已落定的（数据没到就继续隐藏加载）；追底揭示同样加 entryReady 门控。**用户看到的全过程**：聊天框（头部+输入行）→ 消息一次性出现在最新位置，无中间态。
      **踩坑**：本轮锚点连续失配三次——①178 已在 added 分支加了 waitPin 块（我以为没有）②176b 注释带「滚动」尾字 ③BottleChat 缺 scrollGen 声明（176b 补丁部分应用，undef-check 抓不到局部变量）。**教训**：连续多轮补丁后，锚点必须先 sed 实读再写；脚本变量名（p/BC）写错一次。
      验证：undef 0 + **40 套离线 0 fail** + build 0 + page-smoke 12/12；逐帧复测待装机（本轮 entryReady 门控未部署）。
+     **交付**：已提交 `bdef882` / **已部署 Version `bdccdffb`** / live-check 14/14 / **APK `99F8488F36339111`(5.2M) 装机 Success + 冷启动 PID 2481 CRASH_HITS=0** ✅（同包含轮 179~187 表情体系 `656611c`）。
+
 
   - **轮 179~186 · 表情面板几何/光标/收起体系重构（平行会话完成，代码在场未提交；本轮 187 由本会话收尾修复「点表情后面板收了」并一起入库）**：
      **轮 179（用户原话「表情展开还是很长……纳入输入框下面」）**：面板几何重写——高度改**显式 px 贴屏底**（绝不写 bottom：键盘收起视口拉高会把面板拉成整屏，实测 197→507），视口变化即重排（resize+visualViewport）；**轮 182（用户「表情包高度跟输入法高度不一致」）**：实测键盘高（restH−innerH，带防误判护栏）→ 面板与键盘**同高互换**，输入框零位移；**轮 183（用户「光标变回首个」）**：光标跟踪体系——selectionchange+keyup/input/pointerup/focus/select 持续记录，v-model 异步刷值后三重保险补 setSelectionRange；**轮 184（真机 CDP 实测「点表情直接隐藏输入框」）**：「面板开着就不关条」的保险不能现查 DOM（Vue 微任务渲染晚于 document click 冒泡）→ 改 **isEmojiHit 静态标记**（.emo-btn/.emo-panel/.emo-root），emojiSheetRules.js 承载全部纯函数（tools/emoji-sheet-test.mjs 84 断言）；**轮 185**：面板 @click.stop 必需（pointerdown.stop 拦不住 click 冒泡）、光标跟踪时机修正（点按钮那刻已被 blur）；**轮 186（真机复验）**：closeSheet 还焦点被按钮自己抢 → 先同步 blur 按钮再还焦点。
