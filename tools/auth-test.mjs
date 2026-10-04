@@ -360,8 +360,8 @@ ok("A48b nickLong 的 {n} 真会被替换（昵称上限提示不留占位符）
   ok("A51 谷歌用户跳过旧密码直接设新密码（provider 判定）",
     sb.includes('provider === "google"'));
   ok("A52 设置页有密码区（旧/新/确认 + isGoogle 分支 + 保存按钮）",
-    sv.includes('t("settings.pwRow")') && sv.includes("v-model:value=\"pwOld\"")
-      && sv.includes("v-model:value=\"pwConfirm\"") && sv.includes("isGoogle") && sv.includes("savePw"));
+    sv.includes('t("settings.pwRow")') && sv.includes('v-model="pwOld"')
+      && sv.includes('v-model="pwConfirm"') && sv.includes("isGoogle") && sv.includes("savePw"));
   ok("A53 两次不一致与缺旧密码在本地就拦下（不惊动服务器）",
     sv.includes("pwNew.value !== pwConfirm.value") && sv.includes("t(\"settings.pwNeedOld\")"));
   for (const lang of ["zh", "en"]) {
