@@ -1548,6 +1548,11 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **逐帧采样数据**（390×844 进 /messages/7）：t=2186 消息首帧渲染（**font: loading**，fallback 字体排版，视口在顶部）；t=2196 webfont 换装、内容 -746px；t=2196~2481 用户盯着错误排版看了 **~295ms**；t=2481 瞬跳到底。176 的 visibility 方案失效根因：**揭示条件（追帧第一次 set）早于字体换装完成**。**修**：揭示与追底收兵改双条件门控——`fontsOk()`（`document.fonts.status !== "loading"` **每帧实时判定**，弃用 fonts.ready「触发过早误放行」）+ 视口钉稳（gap<4）；追底在字体加载期间不收兵（穿过换装持续钉底）；硬上限 300 帧（~5s）+ 2s 超时揭示兜底（字体异常挂起不永藏）。**踩坑**：176b 的生成令牌补丁部分应用——BottleChat 缺 `scrollGen` 声明与 `const gen` 赋值（undef-check 没抓到局部变量），逐帧验证前先补齐。
      验证：undef 0 + **40 套离线 0 fail** + build 0 + page-smoke 12/12；真机待装机验收。
      **交付**：已提交 `04a0b6c` / **已部署 Version `da78249c`** / live-check 14/14 / **APK `783CE8DD33AAFC20`(5.2M) 装机 Success + 冷启动 PID 32747 CRASH_HITS=0** ✅（同包含轮 178 落地先隐后显）。
+  - **轮 179~186 · 表情面板几何/光标/收起体系重构（平行会话完成，代码在场未提交；本轮 187 由本会话收尾修复「点表情后面板收了」并一起入库）**：
+     **轮 179（用户原话「表情展开还是很长……纳入输入框下面」）**：面板几何重写——高度改**显式 px 贴屏底**（绝不写 bottom：键盘收起视口拉高会把面板拉成整屏，实测 197→507），视口变化即重排（resize+visualViewport）；**轮 182（用户「表情包高度跟输入法高度不一致」）**：实测键盘高（restH−innerH，带防误判护栏）→ 面板与键盘**同高互换**，输入框零位移；**轮 183（用户「光标变回首个」）**：光标跟踪体系——selectionchange+keyup/input/pointerup/focus/select 持续记录，v-model 异步刷值后三重保险补 setSelectionRange；**轮 184（真机 CDP 实测「点表情直接隐藏输入框」）**：「面板开着就不关条」的保险不能现查 DOM（Vue 微任务渲染晚于 document click 冒泡）→ 改 **isEmojiHit 静态标记**（.emo-btn/.emo-panel/.emo-root），emojiSheetRules.js 承载全部纯函数（tools/emoji-sheet-test.mjs 84 断言）；**轮 185**：面板 @click.stop 必需（pointerdown.stop 拦不住 click 冒泡）、光标跟踪时机修正（点按钮那刻已被 blur）；**轮 186（真机复验）**：closeSheet 还焦点被按钮自己抢 → 先同步 blur 按钮再还焦点。
+     **轮 187（本会话，用户实测「点表情后面板收了」）**：**真因 = applyCaret 无条件 `el.focus()`**（轮 183 引入的光标落位）→ focusin 被 onFocusIn 接住 → closeSheet——「点回输入框让位键盘」的正确路径被「选完表情的落位 focus」误触。**修**：applyCaret 加 `allowFocus` 开关，pick 连选时传 false（不 focus=面板保持，光标记在 caretMem）；closeSheet 恢复焦点路径不受影响。**实测**（真实事件序列 pointerdown/up+click 连点两个表情）：😊😄 连续插入、面板全程保持打开 ✓。
+     验证：undef 0 + **40 套离线 0 fail**（emoji-sheet 84、dm-test 328：断言随轮 187 口径更新）+ build 0 + page-smoke 12/12。
+
 
 
   - **轮 171 · App 端今日/宠物联去网页卡片感（2026-10-04，用户点单「太像网页端了，不适合 app 端」，未提交未部署——等发话）**：

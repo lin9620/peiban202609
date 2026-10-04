@@ -92,6 +92,31 @@ ok("worker：GET /posts/:id 单帖路由（objectOrPassthrough 翻译行不存�
     && has(worker, "return objectOrPassthrough(res);")
     && has(worker, '"&removed=eq.false" : ""'));
 
+/* ─── 轮 180 · 表情按钮覆盖（用户：「帖子详情页下面的评论输入框右边没有表情按钮，
+ *          一级跟二级评论都没有」）——App 端一级评论/二级回复共用 detailBar 这一条底部输入条，
+ *          之前这条漏了 EmojiPicker（桌面三个就地框都有）。下面按「每个输入框都必须带表情按钮」
+ *          逐处断言：n-input 出现次数 === emo-in 包裹次数 === EmojiPicker 次数。─── */
+{
+  const emoBlocks = (detail.match(/<EmojiPicker/g) || []).length;
+  ok("PostDetailView 轮180：桌面三个就地输入框都带表情按钮（主评论 + 一级回复 + 二级回复）",
+    has(detail, '<EmojiPicker :text="cmtDraft"', '<EmojiPicker :text="repDraft[cm.id] || \'\'"')
+      && (detail.match(/<EmojiPicker/g) || []).length >= 3);
+  ok("PostDetailView 轮180：App 端底部输入条（主评论+二级回复共用）也带表情按钮 —— 本次修复",
+    has(detail, 'v-if="isMobileNav && detailBar"', 'class="cmt-main-bar"',
+      '<EmojiPicker :text="detailBarDraft" @update:text="v => (detailBarDraft = v)"')
+      && detail.includes("import EmojiPicker"));
+  ok("PostDetailView 轮180：底部条输入框已用 emo-in 包裹（按钮绝对定位在框内右侧，与暖心墙同款）",
+    (() => {
+      const i = detail.indexOf('class="cmt-main-bar"');
+      const j = detail.indexOf('ref="detailBarInput"');
+      const k = detail.indexOf('<EmojiPicker :text="detailBarDraft"');
+      return i >= 0 && i < j && j < k && detail.lastIndexOf('<div class="emo-in">', j) > i;
+    })());
+  /* 兜底：n-input(评论/回复/草稿) 与 EmojiPicker 数量对得上，防止以后新增输入位又忘加按钮 */
+  ok("PostDetailView 轮180：输入框数量与表情按钮数量一致（新增输入位必须同时加按钮）",
+    emoBlocks === 4, "found=" + emoBlocks);
+}
+
 console.log(`post-detail-test: ${pass} pass, ${fails.length} fail`);
 for (const f of fails) console.log("FAIL  " + f);
 if (fails.length) process.exit(1);

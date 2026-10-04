@@ -48,6 +48,7 @@ import {
 } from "../utils/wallRules.js";
 import { isMobileNav, tabbarSuppressed } from "../stores/uiStore.js";
 import EmojiPicker from "../components/EmojiPicker.vue";   /* 轮 164：表情按钮 */
+import { isEmojiHit } from "../utils/emojiSheetRules.js";  /* 轮 184：点表情不许收起评论条 */
 /* 轮 33：举报弹窗 + 全站拉黑过滤（我拉黑的人，TA 的帖子/评论在我这里渲染前剔除） */
 import ReportDialog from "../components/ReportDialog.vue";
 import { filterBlocked, refreshBlocks } from "../utils/userBlocks.js";
@@ -927,10 +928,16 @@ const mainBarPh = computed(() => {
 });
 /* 输入条开着 = tabbar 收起（贴键盘，图2）+ 点页面空白处即收起（用户反馈）。
  * 组件卸载必须复位/摘监听，否则 tabbar 在别的页消失、document 挂着死监听 */
+/* 轮 184（真机 CDP 实测）：点表情按钮会把整条评论条从 DOM 里摘掉。
+ * 「面板开着就不关条」这道保险**在同一击里查不到面板**——表情按钮的 @click 把 open 置 true，
+ * 面板由 Vue 在微任务里渲染，而 mainBarDocClose 是 document 上的 click 监听，冒泡到底时
+ * DOM 还没更新，`querySelector(".emo-panel")` 仍是 null → 直接 closeMainBar()，
+ * 用户看到的就是「点表情 → 输入框消失」。面板还在 <teleport to="body"> 里，本就不在条内，
+ * contains() 拦不住。修法：改查**静态标记** isEmojiHit()，不查面板在不在 DOM。 */
 function mainBarDocClose(e) {
   const tgt = e.target;
   if (mainBarEl.value && mainBarEl.value.contains(tgt)) return;   /* 条内（输入框/发送键）不关 */
-  if (document.querySelector(".emo-panel")) return;   /* 轮 165：表情面板开着时点外只收面板，别把评论条一并收了 */
+  if (isEmojiHit(tgt)) return;   /* 点在表情按钮/面板上：只让面板自己收，不动评论条 */
   /* 占位条与回复触发点（评论正文/回复钮）不关——它们自己管开条/切换/收起；
    * 否则点「回复」先开条、同一击冒泡到 document 又把它关掉（真机实测条闪没） */
   if (tgt && tgt.closest && tgt.closest(".cmt-entry, .bar-reply-tap")) return;

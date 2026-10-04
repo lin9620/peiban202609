@@ -25,6 +25,7 @@ import { fmtWhen } from "../utils/wallRules.js";
 import { cacheKey, swr, cacheSet } from "../utils/cache.js";   /* 轮 158：帖子主体 SWR */
 import { isMobileNav, tabbarSuppressed } from "../stores/uiStore.js";
 import EmojiPicker from "../components/EmojiPicker.vue";   /* 轮 164：表情按钮 */
+import { isEmojiHit } from "../utils/emojiSheetRules.js";  /* 轮 184：点表情不许收起评论条 */
 /* 轮 84：…菜单的「拷贝」（WebView 里 navigator.clipboard 缺失时 execCommand 兜底） */
 import { copyText } from "../utils/clipboard.js";
 /* 轮 33：举报弹窗 + 全站拉黑过滤（我拉黑的人，TA 的帖子/评论在我这里不显示） */
@@ -401,9 +402,13 @@ const repLeft = computed(() => {
 const detailBar = ref(false);
 const detailBarInput = ref(null);
 const detailBarEl = ref(null);
+/* 轮 184：与暖心墙 mainBarDocClose 同款真因——「面板开着就不关条」不能靠现查 DOM
+ *（面板由 Vue 微任务渲染，click 冒泡那一刻还查不到 → 误判成点外 → 收起评论条）。
+ * 这里原本连这道保险都没有，点表情必定把条关掉；现统一走静态标记 isEmojiHit()。 */
 function detailBarDocClose(e) {
   const tgt = e.target;
   if (detailBarEl.value && detailBarEl.value.contains(tgt)) return;   /* 条内（输入/发送）不关 */
+  if (isEmojiHit(tgt)) return;                                        /* 表情按钮/面板：只收面板，不关条 */
   if (tgt && tgt.closest && tgt.closest(".cmt-entry")) return;        /* 占位条点击归 toggle 管 */
   detailBar.value = false;
 }
@@ -708,9 +713,14 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
     <!-- 轮 108 续5：手机端回复输入条（reply-bar）已退役——回复统一走下方 cmt-main-bar 底部输入条 -->
     <!-- 轮 108 续5：手机端底部输入条（主评论+回复共用，与暖心墙同款：贴键盘、tabbar 收起、点空白收起） -->
     <div v-if="isMobileNav && detailBar" ref="detailBarEl" class="cmt-main-bar">
+      <!-- 轮 180：补表情按钮——一级评论与二级回复都走这条底部条，之前只有暖心墙有，帖子详情漏了。
+           emo-in 让按钮绝对定位在输入框内右侧（同 style.css 里的 .emo-in 规则，与暖心墙同款）。 -->
+      <div class="emo-in">
       <n-input ref="detailBarInput" v-model:value="detailBarDraft" type="textarea"
         :autosize="{ minRows: 1, maxRows: 4 }"
         :placeholder="detailBarPh" :maxlength="MAX_LEN" />
+      <EmojiPicker :text="detailBarDraft" @update:text="v => (detailBarDraft = v)" />
+      </div>
       <n-button type="primary" size="small" round @click="sendDetailBar">{{ t("common.send") }}</n-button>
     </div>
 
