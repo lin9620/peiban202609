@@ -1560,6 +1560,13 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **轮 179（用户原话「表情展开还是很长……纳入输入框下面」）**：面板几何重写——高度改**显式 px 贴屏底**（绝不写 bottom：键盘收起视口拉高会把面板拉成整屏，实测 197→507），视口变化即重排（resize+visualViewport）；**轮 182（用户「表情包高度跟输入法高度不一致」）**：实测键盘高（restH−innerH，带防误判护栏）→ 面板与键盘**同高互换**，输入框零位移；**轮 183（用户「光标变回首个」）**：光标跟踪体系——selectionchange+keyup/input/pointerup/focus/select 持续记录，v-model 异步刷值后三重保险补 setSelectionRange；**轮 184（真机 CDP 实测「点表情直接隐藏输入框」）**：「面板开着就不关条」的保险不能现查 DOM（Vue 微任务渲染晚于 document click 冒泡）→ 改 **isEmojiHit 静态标记**（.emo-btn/.emo-panel/.emo-root），emojiSheetRules.js 承载全部纯函数（tools/emoji-sheet-test.mjs 84 断言）；**轮 185**：面板 @click.stop 必需（pointerdown.stop 拦不住 click 冒泡）、光标跟踪时机修正（点按钮那刻已被 blur）；**轮 186（真机复验）**：closeSheet 还焦点被按钮自己抢 → 先同步 blur 按钮再还焦点。
      **轮 187（本会话，用户实测「点表情后面板收了」）**：**真因 = applyCaret 无条件 `el.focus()`**（轮 183 引入的光标落位）→ focusin 被 onFocusIn 接住 → closeSheet——「点回输入框让位键盘」的正确路径被「选完表情的落位 focus」误触。**修**：applyCaret 加 `allowFocus` 开关，pick 连选时传 false（不 focus=面板保持，光标记在 caretMem）；closeSheet 恢复焦点路径不受影响。**实测**（真实事件序列 pointerdown/up+click 连点两个表情）：😊😄 连续插入、面板全程保持打开 ✓。
      验证：undef 0 + **40 套离线 0 fail**（emoji-sheet 84、dm-test 328：断言随轮 187 口径更新）+ build 0 + page-smoke 12/12。
+  - **轮 188 · 表情面板换 emoji-picker-element + Vant 引入（2026-10-05，用户盛怒点单「别自己写了，用别人的/全换 Vant」，已提交 `84b9ea1`，未部署——等发话）**：
+     **方向修正（用户定调）**：自研表情面板连修多轮仍出 bug → 弃自研，换**开源成熟组件 emoji-picker-element v1.29.1**（MIT，Nolan Lawson 出品，Web Component，搜索/分类/皮肤色阶/全套数据自带，离线可用不依赖 CDN）。用户点名的 **ant design mobile 为 React 库**，与本项目 Vue 3 + Naive UI 栈不兼容（全站换 React = 推倒重写），且 antd-mobile 无现成表情选择器——已向用户说明，选用 emoji-picker-element 为该场景最成熟可选项；**Vant 4.10.2**（有赞，Vue 移动端标准库）引入作为 App 端组件迁移的组件来源（分批迁移，本轮第一批）。**用户已关闭平行会话**，表情域归本会话；平行会话未提交的轮 179~186 表情工作 + 本轮 187/188 一并入库（`84b9ea1`）。
+     **接入**：vite `isCustomElement` 认 emoji-picker；EmojiPicker.vue 面板内核替换（自研格子+EMOJIS 数组删除，**轮 183/185/187 的光标体系/几何/收起协调全保留**），@emoji-click → onEmojiClick（光标插入，连选不关面板不 focus）；面板样式交给组件 shadow 变量（--num-columns 8 等），死样式 .emo-cell 清理。
+     **Vant 第一批**：暖心墙下拉刷新换 `van-pull-refresh`（自研 touchstart/touchmove/touchend 手势与跟手指示条退役，onRefresh=loadCloud({fresh:true}) 同路径；vite.config 的 vue() 加 template.compilerOptions）。**后续批次**（每轮一批，先测后换）：TabBar、会话列表 SwipeCell、Dialog/Toast、Field 输入组件。
+     **测试**：emoji-sheet 84（mousedown 数 2→1：格子移除后只剩按钮 prevent）、dm-test 328（选完不 focus=连选；自研格子移除断言）；**踩坑**：①模板/EMOJIS/样式三段替换在失败的脚本里没写入（只换了 onEmojiClick 函数→模板还挂着已删除的 pick→运行时 ReferenceError 风险），补齐时锚点连续失配三次（178 的 waitPin 名、176b 注释「滚动」尾字、多行 nextTick），全部以 sed 实读文本为准重写；②npm 日志目录不可写 → --cache 指 TEMP 解决。
+     验证：undef 0 + **40 套离线 0 fail** + build 0 + page-smoke 12/12 + 真实事件序列端到端实测（点笑脸→面板→连点表情→混文字→发送→上屏，截图存档）。
+
 
 
 
