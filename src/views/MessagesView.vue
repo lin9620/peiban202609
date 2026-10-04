@@ -373,19 +373,7 @@ async function openConv(id) {
   pinning.value = true;   /* 轮 173b：进会话钉底，直到首屏数据落定 */
   listRevealed.value = false;   /* 轮 176：消息区先隐，钉底稳了再显示（防首帧错位跳闪） */
   entryReady.value = false;     /* 轮 180：显示门控重置——等 fresh 数据落定 */
-  /* 轮 179 调试（临时）：真机落地轨迹采样——分析完即移除 */
-  if (typeof window !== "undefined") {
-    let n = 0;
-    const tLog = () => {
-      const el = listEl.value;
-      if (el && n < 90) {
-        console.log("[wp-entry]", JSON.stringify({ n, top: Math.round(el.scrollTop), h: el.scrollHeight, ch: el.clientHeight, f: (document.fonts && document.fonts.status) || "?", v: listRevealed.value ? 1 : 0 }));
-        n++;
-        requestAnimationFrame(tLog);
-      }
-    };
-    requestAnimationFrame(tLog);
-  }
+
   setTimeout(() => { if (entryReady.value && !listRevealed.value) listRevealed.value = true; }, 2000);   /* 轮 180：兜底只揭示已落定的 */
   const smoothed = await loadMessages(activeId.value);
   if (!smoothed) scrollBottom();   /* 有新消息时已平滑滚过，不再瞬时跳 */

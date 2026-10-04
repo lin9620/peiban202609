@@ -1566,6 +1566,7 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **Vant 第一批**：暖心墙下拉刷新换 `van-pull-refresh`（自研 touchstart/touchmove/touchend 手势与跟手指示条退役，onRefresh=loadCloud({fresh:true}) 同路径；vite.config 的 vue() 加 template.compilerOptions）。**后续批次**（每轮一批，先测后换）：TabBar、会话列表 SwipeCell、Dialog/Toast、Field 输入组件。
      **测试**：emoji-sheet 84（mousedown 数 2→1：格子移除后只剩按钮 prevent）、dm-test 328（选完不 focus=连选；自研格子移除断言）；**踩坑**：①模板/EMOJIS/样式三段替换在失败的脚本里没写入（只换了 onEmojiClick 函数→模板还挂着已删除的 pick→运行时 ReferenceError 风险），补齐时锚点连续失配三次（178 的 waitPin 名、176b 注释「滚动」尾字、多行 nextTick），全部以 sed 实读文本为准重写；②npm 日志目录不可写 → --cache 指 TEMP 解决。
      验证：undef 0 + **40 套离线 0 fail** + build 0 + page-smoke 12/12 + 真实事件序列端到端实测（点笑脸→面板→连点表情→混文字→发送→上屏，截图存档）。
+     **交付**：已提交 `84b9ea1`+`e7469ee`+`5206031`/`bdef882`/`32d890a` 等（详见各轮）；**已部署 Version `966a8f73`** / live-check 14/14 / 临时轨迹采样探针已移除（轮 179 调试用毕）/ 40 套离线复跑全绿。**装机受阻**：adb 报 no devices（手机 USB 断开，kill-server/start-server 重试仍无设备）——APK `12D04FD546CAF245`(5.2M) 已构建待装，重连 USB 后一条 `adb install -r` 即可补装；网页端（预览+线上）已全部生效可先行验证表情组件。
 
 
 
