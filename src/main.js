@@ -1,4 +1,6 @@
 import { createApp } from "vue";
+import Vant from "vant";
+import "vant/lib/index.css";
 import { Capacitor } from "@capacitor/core";
 import App from "./App.vue";
 import { router } from "./router.js";
@@ -28,11 +30,8 @@ try {
   console.error("[Warm Paws] 初始化宠物数据失败：", e);
 }
 
-import Vant from "vant";
-import "vant/lib/index.css";
-
 const app = createApp(App);
-app.use(Vant);   /* 轮 189：App 端组件全量换 Vant（移动端标准件） */
+app.use(Vant);   /* 轮 191：App 端组件全量 Vant */   /* 轮 189：App 端组件全量换 Vant（移动端标准件） */
 
 /* 兜底错误处理：记录日志，避免未捕获异常导致整页白屏 */
 app.config.errorHandler = (err, instance, info) => {

@@ -1925,6 +1925,15 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 }
 
 /* ═══════════ App 轨道 T5：底部 Tab Bar（仅 isApp/窄屏渲染；桌面 ≥900px 零变化） ═══════════ */
+/* 轮 191：Vant Tabbar 接管——主题变量映射到暖爪色板，观感与旧版一致 */
+.tabbar.van-tabbar {
+  --van-tabbar-background: var(--glass-strong, rgba(255, 255, 255, .92));
+  --van-tabbar-item-text-color: var(--ink-soft);
+  --van-tabbar-item-active-color: var(--accent-deep);
+  --van-tabbar-item-active-background: transparent;
+  max-width: 640px; margin: 0 auto;
+}
+.tabbar .van-tabbar-item { background: transparent; }
 .tabbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 140;
   display: flex; justify-content: space-around; align-items: stretch;

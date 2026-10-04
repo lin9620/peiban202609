@@ -4,6 +4,8 @@
  * 红点口径与桌面顶栏一致：消息 = 私信未读 + 好友申请（badgeStore 30s 轮询）。 */
 import { ref, computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { Tabbar as VanTabbar, TabbarItem as VanTabbarItem } from "vant";
+import "vant/es/tabbar/style/index";
 import { t } from "../i18n.js";
 import { badge } from "../stores/badgeStore.js";
 
@@ -24,14 +26,22 @@ function isActive(item) {
   return route.path === item.path || route.path.startsWith(item.path + "/");
 }
 
+/* 轮 191：Vant Tabbar 的 active 下标（路由驱动；点击由 v-model 联动） */
+const activeIdx = computed(() => {
+  const i = TABS.findIndex((it) => isActive(it));
+  return i < 0 ? 0 : i;
+});
+
 /* 轮 100：App 端再点当前页的 tab = 刷新该页（用户口径：暖心墙 tab 点击就是刷新）。
  * 已在本页时拦下默认导航（同路径 push 会被 vue-router 忽略 = 之前点了没反应），
  * 改推一个带时间戳的 refresh query —— CommunityView 监听它强制取新第一页并回顶部。 */
-function onTabClick(item, e) {
-  if (item.path !== "/community") return;
-  if (route.path !== "/community" && !route.path.startsWith("/community/")) return;
-  e.preventDefault();
-  router.push({ path: "/community", query: { refresh: String(Date.now()) } }).catch(() => {});
+function goItem(item) {
+  /* 轮 100：App 端再点当前页的 tab = 刷新该页（仅暖心墙） */
+  if (item.path === "/community" && (route.path === "/community" || route.path.startsWith("/community/"))) {
+    router.push({ path: "/community", query: { refresh: String(Date.now()) } }).catch(() => {});
+    return;
+  }
+  router.push(item.path).catch(() => {});
 }
 
 /* —— 中间 ＋ 钮：上弹两瓣（投漂流瓶 / 发暖心墙帖）—— */
@@ -57,13 +67,12 @@ function composeStory() {
 </script>
 
 <template>
-  <nav class="tabbar" aria-label="App">
-    <router-link
+  <van-tabbar v-model="activeIdx" class="tabbar" :placeholder="false" :safe-area-inset-bottom="false" :fixed="true">
+    <van-tabbar-item
       v-for="item in TABS.slice(0, 2)" :key="item.path"
-      :to="item.path" class="tab-item" :class="{ active: isActive(item) }"
-      @click="onTabClick(item, $event)">
+      :class="{ active: isActive(item) }" @click="goItem(item)">
       <span class="tab-label">{{ t(item.key) }}</span>
-    </router-link>
+    </van-tabbar-item>
 
     <button class="tab-compose" :class="{ open }" aria-label="+" @click="toggle">
       <span class="tab-compose-x">
@@ -75,12 +84,13 @@ function composeStory() {
       </span>
     </button>
 
-    <router-link
+    <van-tabbar-item
       v-for="item in TABS.slice(2)" :key="item.path"
-      :to="item.path" class="tab-item" :class="{ active: isActive(item) }">
+      :class="{ active: isActive(item) }"
+      :badge="item.badge && dmBadge ? (dmBadge > 99 ? '99+' : String(dmBadge)) : ''"
+      @click="goItem(item)">
       <span class="tab-label">{{ t(item.key) }}</span>
-      <span v-if="item.badge && dmBadge" class="tab-badge">{{ dmBadge > 99 ? "99+" : dmBadge }}</span>
-    </router-link>
+    </van-tabbar-item>
 
     <!-- ＋ 弹层：遮罩点击关闭，两瓣创作入口 -->
     <div v-if="open" class="tabbar-mask" @click="close"></div>
@@ -107,5 +117,5 @@ function composeStory() {
         </span>
       </button>
     </div>
-  </nav>
+  </van-tabbar>
 </template>
