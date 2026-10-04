@@ -1548,6 +1548,11 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **逐帧采样数据**（390×844 进 /messages/7）：t=2186 消息首帧渲染（**font: loading**，fallback 字体排版，视口在顶部）；t=2196 webfont 换装、内容 -746px；t=2196~2481 用户盯着错误排版看了 **~295ms**；t=2481 瞬跳到底。176 的 visibility 方案失效根因：**揭示条件（追帧第一次 set）早于字体换装完成**。**修**：揭示与追底收兵改双条件门控——`fontsOk()`（`document.fonts.status !== "loading"` **每帧实时判定**，弃用 fonts.ready「触发过早误放行」）+ 视口钉稳（gap<4）；追底在字体加载期间不收兵（穿过换装持续钉底）；硬上限 300 帧（~5s）+ 2s 超时揭示兜底（字体异常挂起不永藏）。**踩坑**：176b 的生成令牌补丁部分应用——BottleChat 缺 `scrollGen` 声明与 `const gen` 赋值（undef-check 没抓到局部变量），逐帧验证前先补齐。
      验证：undef 0 + **40 套离线 0 fail** + build 0 + page-smoke 12/12；真机待装机验收。
      **交付**：已提交 `04a0b6c` / **已部署 Version `da78249c`** / live-check 14/14 / **APK `783CE8DD33AAFC20`(5.2M) 装机 Success + 冷启动 PID 32747 CRASH_HITS=0** ✅（同包含轮 178 落地先隐后显）。
+  - **轮 191 · 底部 TabBar 换 Vant Tabbar（2026-10-05，用户「继续，换别的」，已提交 `c8f77a3`，未部署——等发话）**：
+     **转换**：`van-tabbar v-model="activeIdx"` + 4 个 `van-tabbar-item`（class="tab-item" 保留旧排版 CSS），**＋ 钮与三瓣创作弹层原样保留**（T2 断言钉着）；消息角标改走 Vant 的 badge prop（99+ 封顶不变）；**active 下标路由驱动**（computed isActive——Vant 的 route 模式不支持 /messages/1 前缀高亮，弃用）；**轮 100 的「再点暖心墙=刷新」逻辑保留**（goItem 内拦截）；safe-area 交给 App.vue 的既有补偿。**样式**：主题变量映射（--van-tabbar-background/item-active-color → 暖爪色板），vant css 提到 main.js 最前（防 vant 内置覆盖我们的 .tabbar 规则）。
+     **实测**（390×844）：4 个 tab 渲染正确（首页/暖心墙/消息/我的）→ 点消息跳 /messages ✓ → ＋ 弹层开 ✓ 三瓣选项 ✓ → 点「发暖心墙帖」跳 /compose ✓。全链路通。
+     验证：undef 0 + **40 套离线 0 fail**（app-shell T2/T48/T15/T41/T179 全绿）+ build 0 + page-smoke 12/12。
+
   - **轮 180 续 · SQL 迁移已跑 + RPC 实测（同日）**：用户在 Supabase 执行两个迁移（索引 + wall_feed_page RPC）✅。**线上实测**：`/api/wall/refresh` 200、**1.37~3.21s ×3**（RPC 单查询路径生效；响应形状 {latest, random, react, comment} 全对：latest 3 + random 3 + react 2 帖 + comment 1 帖，首帖 11 字段含显式列）。对比最初 12~16s、近期兜底编排 1.2~3.2s——**RPC 生效后波动收敛，均值进一步下探**。装机 APK 12D04FD546CAF245 补装 Success + 冷启动 PID 25513 CRASH_HITS=0（SQL 跑完后补装的这包已含全部链路）。
 
   - **轮 180 · 进会话显示门控改「fresh 数据落定才允许显示」（2026-10-05，用户实测 APK 783CE8DD「长记录一瞬间还是有跳闪」——178b 的字体门控没治干净，未提交未部署——等发话）**：
