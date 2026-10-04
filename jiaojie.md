@@ -1525,6 +1525,7 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
   - **轮 174 · App 聊天态满幅（2026-10-04，用户截图点单「难看，有这样设计的吗」——聊天卡内缩+左侧白边+与全屏表情 sheet 宽度错位，未提交未部署——等发话）**：
      **真因**：`.shell { padding: 0 18px }` + `.dm-thread` 的 `.card` 描边/圆角在手机聊天态原样保留 → 聊天是张内缩圆角卡（左侧露一条页面底色），而表情 sheet 是 fixed 全屏宽——一窄一宽错位散架。**修**：`.shell--mobile-nav.shell--chat` 壳与 main 横向 padding 归零；`.dm-thread` 去描边/圆角/阴影、背景改 var(--page-bg)、横向 padding 归零（头部/消息区/输入行各自内缩 12~14px）——聊天满幅，表情 sheet 同宽对齐；emoji 面板滚动条隐藏。**踩坑**：新规则先插后改，独立 dm-thread 块缺 width:100% 抢了 T20 正则的第一匹配 → 断言挂；合并进 T20 匹配的原块解决（app-shell 64/0）。
      验证：undef 0 + **40 套离线 0 fail**（app-shell 64/0）+ build 0 + page-smoke 12/12；真机待装机验收。
+     **交付（191+188+190 合并）**：已提交 `c8f77a3`/`84b9ea1`/`06b3f12` / **已部署 Version `01959654`** / live-check 14/14 / **APK `9C263CB354EF8B67`(5.3M) 装机 Success + 冷启动 PID 10325 CRASH_HITS=0** ✅——本包含：TabBar 换 Vant Tabbar、31 处输入框换 Vant Field、会话列表 SwipeCell 左滑、emoji-picker-element 成熟组件（含连选不关面板）、聊天满幅、进会话无闪无跳（entryReady 门控+字体状态实时判定）、详情页/登录页修复。
 
   - **轮 175 · 点红心整页变黑（2026-10-04，用户截图点单「点红心按钮页面就变黑，宠物页面也黑」，未提交未部署——等发话）**：
      **真因**：今日联右上角红心 = ShareCard 分享卡入口，而 ShareCard 的遮罩是 `position:fixed`，TodayPane 又渲染在带 transform 的 `.home-track` 里（首页横滑）——fixed 以轨道为定位基准：遮罩罩满整条轨道（今日+宠物两联一起黑，用户实测），卡片本体飞出屏外。与轮 151/152 领养弹窗是**同一个 transform 包含块陷阱的第三处**。**修**：TodayPane 的 ShareCard 包 `<teleport to="body">`（ShareCard 全局样式不受影响）。至此三处（PetView 弹层、SnackRain/ShareCard、TodayPane ShareCard）全部 Teleport 出轨。
