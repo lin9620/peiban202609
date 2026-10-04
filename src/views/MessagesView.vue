@@ -57,6 +57,10 @@ const listEl = ref(null);
 const userScrolling = ref(false);   /* 轮 173：用户手动上滑标记——追底停手 */
 const listRevealed = ref(true);     /* 轮 176：进会话先隐藏消息区，钉底稳定后再显示——
     首帧 fallback 字体排版 → webfont 换装撑高内容 = 落点错位闪现（用户实测跳闪） */
+function fontsOk() {                /* 轮 178b：webfont 没在加载中 = 排版稳定（每帧实时判定，
+    fonts.ready 有「触发过早误放行」的坑，弃用）；加载失败也会落到 loaded，不会永藏 */
+      return !(document.fonts && document.fonts.status === "loading");
+    }
 let scrollGen = 0;                  /* 轮 176b：滚动链代数——平滑滚动接管时作废旧追帧链 */
 const pinning = ref(false);         /* 轮 173b：进会话钉底中（直到首屏数据落定） */
 function onListTouch() { userScrolling.value = true; }
@@ -315,8 +319,12 @@ function scrollBottom(smooth = false) {
     const chase = () => {
       if (gen !== scrollGen) return;                   /* 已有新链（如平滑滚动）接管 */
       if (userScrolling.value) return;                 /* 用户上滑：立即停，不打扰回看 */
-      if (frames++ > 20 && !pinning.value) return;     /* 钉底期间不受 20 帧上限约束 */
+      /* 轮 178b：字体没稳定前不收兵——追底穿过字体换装，落点始终钉在真底部 */
+      if (frames > 300) return;                        /* 硬上限 ~5s，防异常环境永转 */
+      if (frames++ > 20 && !pinning.value && fontsOk()) return;
       set();
+      if (fontsOk() && !listRevealed.value
+        && el.scrollHeight - el.scrollTop - el.clientHeight < 4) listRevealed.value = true;
       requestAnimationFrame(chase);
     };
     if (smooth && el.scrollTo) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
@@ -360,6 +368,7 @@ async function openConv(id) {
   }
   pinning.value = true;   /* 轮 173b：进会话钉底，直到首屏数据落定 */
   listRevealed.value = false;   /* 轮 176：消息区先隐，钉底稳了再显示（防首帧错位跳闪） */
+  setTimeout(() => { if (!listRevealed.value) listRevealed.value = true; }, 2000);   /* 轮 178b：字体异常挂起的揭示兜底 */
   const smoothed = await loadMessages(activeId.value);
   if (!smoothed) scrollBottom();   /* 有新消息时已平滑滚过，不再瞬时跳 */
   dmApi.markRead(id).catch(() => {});

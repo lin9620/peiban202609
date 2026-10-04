@@ -63,6 +63,11 @@ const listEl = ref(null);
 const userScrolling = ref(false);   /* 轮 173：用户手动上滑标记——追底停手 */
 const listRevealed = ref(true);     /* 轮 176：进会话先隐藏消息区，钉底稳定后再显示——
     首帧 fallback 字体排版 → webfont 换装撑高内容 = 落点错位闪现（用户实测跳闪） */
+let scrollGen = 0;                  /* 轮 176b：滚动链代数——平滑滚动接管时作废旧追帧链 */
+function fontsOk() {                /* 轮 178b：webfont 没在加载中 = 排版稳定（每帧实时判定，
+    fonts.ready 有「触发过早误放行」的坑，弃用）；加载失败也会落到 loaded，不会永藏 */
+  return !(document.fonts && document.fonts.status === "loading");
+}
 const pinning = ref(false);         /* 轮 173b：进会话钉底中（直到首屏数据落定） */
 function onListTouch() { userScrolling.value = true; }
 function onListWheel() { userScrolling.value = true; }
@@ -86,6 +91,7 @@ function scrollBottom(smooth = false) {
      * 只滚一次会停在「中间」（用户实测：记录多了进会话落在半截）。
      * 用户一旦上滑（触摸/滚轮）立即停追，不打扰回看。 */
     userScrolling.value = false;
+    const gen = ++scrollGen;   /* 轮 176b：新滚动链作废旧链——平滑滚动时不被追帧的瞬时重钉顶掉 */
     const set = () => {
       el.scrollTop = el.scrollHeight;
       /* 轮 178：钉稳（gap<4）才显示——揭示过早会露出未滚到位的中间态 */
@@ -96,9 +102,14 @@ function scrollBottom(smooth = false) {
     /* 轮 173b：进会话期间持续钉底（pinning）——旧缓存先落底、网络回来新消息把底撑下去，
        就会出现「停在中间一下再跳底部」的两段式落地；钉住后新消息落进来视线跟着走，无停顿 */
     const chase = () => {
+      if (gen !== scrollGen) return;                   /* 已有新链（如平滑滚动）接管 */
       if (userScrolling.value) return;                 /* 用户上滑：立即停，不打扰回看 */
-      if (frames++ > 20 && !pinning.value) return;     /* 钉底期间不受 20 帧上限约束 */
+      /* 轮 178b：字体没稳定前不收兵——追底穿过字体换装，落点始终钉在真底部 */
+      if (frames > 300) return;                        /* 硬上限 ~5s，防异常环境永转 */
+      if (frames++ > 20 && !pinning.value && fontsOk()) return;
       set();
+      if (fontsOk() && !listRevealed.value
+        && el.scrollHeight - el.scrollTop - el.clientHeight < 4) listRevealed.value = true;
       requestAnimationFrame(chase);
     };
     if (smooth && el.scrollTo) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
@@ -219,6 +230,7 @@ async function onLetter() {
   if (!chatting.value) return;
   pinning.value = true;
   listRevealed.value = false;
+  setTimeout(() => { if (!listRevealed.value) listRevealed.value = true; }, 2000);   /* 轮 178b：字体异常挂起的揭示兜底 */
   const results = await Promise.all([loadMessages(convId.value), syncMeta()]);
   if (!results[0]) scrollBottom();   /* 有新消息时已平滑滚过 */
   dmApi.markRead(convId.value).catch(() => {});
