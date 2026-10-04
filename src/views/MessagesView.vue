@@ -61,6 +61,19 @@ const listRevealed = ref(true);     /* 轮 176：进会话先隐藏消息区，�
     首帧 fallback 字体排版 → webfont 换装撑高内容 = 落点错位闪现（用户实测跳闪） */
 const entryReady = ref(false);      /* 轮 180：首屏（fresh）数据落定才允许显示——
     缓存窗口与 fresh 窗口高度不同，缓存先渲染再被替换 = ±千px 可见跳变（逐帧采样实锤） */
+/* 轮 193 调试（临时）：揭示来源追踪 */
+watch(listRevealed, (v) => {
+  if (typeof window === "undefined") return;
+  window.__wpRev = window.__wpRev || [];
+  const el = listEl.value;
+  window.__wpRev.push({
+    v, t: Math.round(performance.now() % 1e7),
+    top: el ? Math.round(el.scrollTop) : -1,
+    h: el ? Math.round(el.scrollHeight) : -1,
+    font: (document.fonts && document.fonts.status) || "?",
+    entryReady: entryReady.value,
+  });
+});
 function fontsOk() {                /* 轮 178b：webfont 没在加载中 = 排版稳定（每帧实时判定，
     fonts.ready 有「触发过早误放行」的坑，弃用）；加载失败也会落到 loaded，不会永藏 */
       return !(document.fonts && document.fonts.status === "loading");
@@ -268,18 +281,13 @@ async function loadMessages(id, { before = null } = {}) {
             smoothed = true;
             entryReady.value = true;
             msgs.value = rows;
+            /* 轮 193b：进会话路径消息区还在隐藏态——平滑滑入没人看见还引发揭示后晃动，
+             * 改瞬时钉底+立即揭示（单一定格，无动画无闪）；观看中的实时新消息（tick）仍走平滑 */
             nextTick(() => {
               const el = listEl.value;
               if (!el) return;
-              el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-              /* 轮 178：平滑落定（gap<4）才显示；空闲期消息区隐藏，看不到顶部/中间帧 */
-              const waitPin = () => {
-                if (listRevealed.value) return;
-                if (entryReady.value && el.scrollHeight - el.scrollTop - el.clientHeight < 4) { listRevealed.value = true; return; }
-                requestAnimationFrame(waitPin);
-              };
-              requestAnimationFrame(waitPin);
-              setTimeout(() => { entryReady.value = true; listRevealed.value = true; }, 1500);
+              el.scrollTop = el.scrollHeight;
+              listRevealed.value = true;
             });
           } else if (rows !== msgs.value) {
             msgs.value = rows;

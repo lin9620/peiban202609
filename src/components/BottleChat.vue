@@ -183,18 +183,12 @@ async function loadMessages(id, { before = null } = {}) {
             smoothed = true;
             entryReady.value = true;
             msgs.value = rows;
+            /* 轮 193b：进会话隐藏态——瞬时钉底+揭示，无动画无晃动 */
             nextTick(() => {
               const el = listEl.value;
               if (!el) return;
-              el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-              /* 轮 180：平滑落定（gap<4）才显示；空闲期消息区隐藏 */
-              const waitPin = () => {
-                if (listRevealed.value) return;
-                if (entryReady.value && el.scrollHeight - el.scrollTop - el.clientHeight < 4) { listRevealed.value = true; return; }
-                requestAnimationFrame(waitPin);
-              };
-              requestAnimationFrame(waitPin);
-              setTimeout(() => { entryReady.value = true; listRevealed.value = true; }, 1500);
+              el.scrollTop = el.scrollHeight;
+              listRevealed.value = true;
             });
           } else if (rows !== msgs.value) {
             msgs.value = rows;
