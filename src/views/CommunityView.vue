@@ -1528,8 +1528,8 @@ watch(() => route.query.refresh, (v) => {
       <p v-if="!isMobileNav" class="sub">{{ t("community.subtitle") }}</p>
 
       <div v-if="!isMobileNav" class="composer">
-        <n-input
-          v-model:value="draft"
+        <van-field
+          v-model="draft"
           type="textarea"
           :rows="3"
           :placeholder="t('community.placeholder')" />
@@ -1698,10 +1698,10 @@ watch(() => route.query.refresh, (v) => {
         class="cmt-input cmt-input-top">
         <div class="cmt-input-row">
           <div class="emo-in">
-          <n-input
-            v-model:value="cmtDraft[cmtKey(p)]"
+          <van-field
+            v-model="cmtDraft[cmtKey(p)]"
             type="textarea"
-            :autosize="{ minRows: 1, maxRows: 4 }"
+            rows="1" autosize
             :placeholder="t('comment.placeholder')"
             :maxlength="MAX_LEN" />
           <EmojiPicker :text="cmtDraft[cmtKey(p)] || ''" @update:text="v => (cmtDraft[cmtKey(p)] = v)" />
@@ -1781,10 +1781,10 @@ watch(() => route.query.refresh, (v) => {
             <!-- 轮 97：统一输入条样式 -->
             <div class="cmt-input-row">
               <div class="emo-in">
-              <n-input
-                v-model:value="repDraft[repKey(p, cm)]"
+              <van-field
+                v-model="repDraft[repKey(p, cm)]"
                 type="textarea"
-                :autosize="{ minRows: 1, maxRows: 4 }"
+                rows="1" autosize
                 :placeholder="repPlaceholder(p, cm)"
                 :maxlength="MAX_LEN" />
               <EmojiPicker :text="repDraft[repKey(p, cm)] || ''" @update:text="v => (repDraft[repKey(p, cm)] = v)" />
@@ -1837,10 +1837,10 @@ watch(() => route.query.refresh, (v) => {
                 <!-- 轮 97：回复框同样统一（发送在右 + 自动扩行） -->
                 <div class="cmt-input-row">
                   <div class="emo-in">
-                  <n-input
-                    v-model:value="repDraft[repKey(p, cm)]"
+                  <van-field
+                    v-model="repDraft[repKey(p, cm)]"
                     type="textarea"
-                    :autosize="{ minRows: 1, maxRows: 4 }"
+                    rows="1" autosize
                     :placeholder="repPlaceholder(p, cm, rp)"
                     :maxlength="MAX_LEN" />
                   <EmojiPicker :text="repDraft[repKey(p, cm)] || ''" @update:text="v => (repDraft[repKey(p, cm)] = v)" />
@@ -1888,8 +1888,8 @@ watch(() => route.query.refresh, (v) => {
     <!-- 轮 108：手机端主评论底部输入条（图2样式：发送在右；贴键盘；点空白收起；一次只服务一条帖） -->
     <div v-if="isMobileNav && mainBarPost" ref="mainBarEl" class="cmt-main-bar">
       <div class="emo-in">
-      <n-input ref="mainBarInput" v-model:value="mainBarDraft" type="textarea"
-        :autosize="{ minRows: 1, maxRows: 4 }"
+      <van-field ref="mainBarInput" v-model="mainBarDraft" type="textarea"
+        rows="1" autosize
         :placeholder="mainBarPh" :maxlength="MAX_LEN" />
       <EmojiPicker :text="mainBarDraft" @update:text="v => (mainBarDraft = v)" />
       </div>

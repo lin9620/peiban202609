@@ -236,7 +236,7 @@ function passHint(pass) {
     <section v-else-if="cloud.ready && cloud.recovery" class="login-box anim d3">
       <h2 class="login-card-title">{{ t("profile.setPassTitle") }}</h2>
       <p class="notice">{{ t("profile.setPassHint") }}</p>
-      <n-input v-model:value="newPass" type="password" round size="large" show-password-on="click"
+      <van-field v-model="newPass" type="password" show-password-on="click"
         :placeholder="t('profile.newPass')" @keyup.enter="doSetPassword" />
       <n-button type="primary" class="auth-cta" round size="large" block :loading="passBusy" @click="doSetPassword">
         {{ t("profile.savePass") }}
@@ -266,13 +266,13 @@ function passHint(pass) {
       </template>
       <p v-if="forgot" class="notice">{{ t("profile.forgotHint") }}</p>
 
-      <n-input v-model:value="authEmail" round size="large"
+      <van-field v-model="authEmail"
         :placeholder="t('profile.authEmail')" @keyup.enter="forgot ? doForgot() : doAuth()" />
 
       <template v-if="!forgot">
-        <n-input v-model:value="authPass" type="password" round size="large" show-password-on="click"
+        <van-field v-model="authPass" type="password" show-password-on="click"
           :placeholder="t('profile.authPass')" @keyup.enter="doAuth" />
-        <n-input v-if="authMode === 'signup'" v-model:value="authNick" round size="large"
+        <van-field v-if="authMode === 'signup'" v-model="authNick"
           :placeholder="t('common.nickname')" @keyup.enter="doAuth" />
         <n-button type="primary" class="auth-cta" round size="large" block :loading="authBusy" @click="doAuth">
           {{ authMode === "signin" ? t("common.signIn") : t("common.signUp") }}
@@ -300,7 +300,7 @@ function passHint(pass) {
     <!-- 本地模式（云端未就绪）：起个访客昵称继续玩 -->
     <section v-if="!cloud.ready" class="login-box anim d3">
       <h2 class="login-card-title">{{ t("login.guestTitle") }}</h2>
-      <n-input v-model:value="draftNick" round size="large"
+      <van-field v-model="draftNick"
         :placeholder="t('common.nickname')" @keyup.enter="continueAsGuest" />
       <n-button type="primary" class="auth-cta" round size="large" block @click="continueAsGuest">
         {{ t("common.save") }}

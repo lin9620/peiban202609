@@ -709,7 +709,7 @@ function goSignIn() {
         </div>
 
         <template v-if="seg === 'dm'">
-        <n-input v-model:value="q" size="small" round clearable :placeholder="t('dm.search')" class="dm-search" />
+        <van-field v-model="q" clearable :placeholder="t('dm.search')" class="dm-search" />
 
         <!-- #19 已拉黑：集中查看 / 解除（拉黑与解除都不通知对方） -->
         <div class="dm-blocked-bar">
@@ -885,8 +885,8 @@ function goSignIn() {
               <!-- 轮 68：微信式输入行——单行起、随内容长高（1~6 行），发送键在框右侧 -->
               <div class="dm-input-row">
                 <div class="emo-in">
-                <n-input
-                  v-model:value="body" type="textarea" :autosize="{ minRows: 1, maxRows: 6 }" :maxlength="2000"
+                <van-field
+                  v-model="body" type="textarea" rows="1" autosize :maxlength="2000"
                   :placeholder="isMobileNav ? t('dm.placeholderMobile') : t('dm.placeholder')"
                   @keydown.enter.exact.prevent="send" />
                 <EmojiPicker :text="body" @update:text="v => (body = v)" />

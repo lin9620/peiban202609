@@ -2436,13 +2436,28 @@ html[data-theme="night"] .st-skel-card {
   background: linear-gradient(100deg, rgba(139, 156, 232, .10) 40%, rgba(139, 156, 232, .20) 50%, rgba(139, 156, 232, .10) 60%);
   background-size: 200% 100%;
 }
-/* 轮 168：表情按钮嵌进输入框右缘（微信式）——naive 的 textarea 不支持 suffix 槽，
-   用相对定位壳叠在输入框右侧；文本自动避让（padding-right） */
+/* 轮 168/189：表情按钮嵌进输入框右缘（微信式）——相对定位壳叠放；
+   输入控件已换 Vant Field（van-field__control），避让 padding 同步更新 */
 .emo-in { position: relative; flex: 1 1 auto; min-width: 0; }
 .emo-in .emo-root { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); z-index: 1; }
 .emo-in .emo-btn { width: 28px; height: 28px; }
 .emo-in .emo-btn svg { width: 20px; height: 20px; }
-.emo-in .n-input .n-input__textarea-el, .emo-in .n-input .n-input__input-el { padding-right: 44px; }
+.emo-in .van-field__control { padding-right: 44px; }
+/* 轮 189：Vant Field 接管输入控件后的统一观感——去 cell 壳、控件走 wash 圆角 */
+.dm-compose .van-cell, .dm-input-row .van-cell, .cmt-input-row .van-cell,
+.cmt-main-bar .van-cell, .emo-in .van-cell, .q-input .van-cell {
+  padding: 0; background: transparent;
+}
+.van-cell:after { display: none; }
+.dm-compose .van-field__control, .dm-input-row .van-field__control,
+.cmt-input-row .van-field__control, .cmt-main-bar .van-field__control,
+.q-input .van-field__control, .emo-in .van-field__control {
+  background: var(--wash); border-radius: 14px; padding: 10px 12px;
+  color: var(--ink); font-size: 14.5px;
+}
+.van-field__control::placeholder { color: var(--ink-faint); }
+.dm-input-row .van-field__control { border-radius: 14px; }
+.cmt-main-bar .van-cell { align-items: flex-end; }
 /* 轮 166：输入行挤压——输入框弹性占满剩余宽（min-width:0 防撑破），表情/发送按钮收紧靠右；
    手机端表情按钮略缩（30px），给正文让宽 */
 .cmt-main-bar .n-input, .dm-input-row .n-input { flex: 1 1 auto; min-width: 0; }

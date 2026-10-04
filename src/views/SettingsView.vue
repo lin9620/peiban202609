@@ -240,8 +240,8 @@ onMounted(() => { loadPrefs(); });
         </div>
         <div v-if="isOpen('nick')" class="set-panel">
           <div class="set-opts wrap nick-row">
-            <n-input
-              v-model:value="nickDraft" :placeholder="cloud.nickname || t('profile.needNick')"
+            <van-field
+              v-model="nickDraft" :placeholder="cloud.nickname || t('profile.needNick')"
               :maxlength="NICK_MAX" :disabled="nickBusy" @keyup.enter="saveNick" />
             <button class="set-opt" :disabled="nickBusy" @click="saveNick">
               {{ t("profile.nickSave") }}
@@ -259,15 +259,15 @@ onMounted(() => { loadPrefs(); });
         </div>
         <div v-if="isOpen('pw')" class="set-panel">
           <div class="set-opts wrap pw-row">
-            <n-input
+            <van-field
               v-if="!isGoogle"
-              v-model:value="pwOld" type="password" show-password-on="click"
+              v-model="pwOld" type="password" show-password-on="click"
               :placeholder="t('settings.pwOld')" :disabled="pwBusy" />
-            <n-input
-              v-model:value="pwNew" type="password" show-password-on="click"
+            <van-field
+              v-model="pwNew" type="password" show-password-on="click"
               :placeholder="t('settings.pwNew', { n: MIN_PASSWORD })" :disabled="pwBusy" />
-            <n-input
-              v-model:value="pwConfirm" type="password" show-password-on="click"
+            <van-field
+              v-model="pwConfirm" type="password" show-password-on="click"
               :placeholder="t('settings.pwConfirm')" :disabled="pwBusy" />
             <button class="set-opt" :disabled="pwBusy" @click="savePw">
               {{ t("settings.pwSave") }}

@@ -350,8 +350,8 @@ const brightRatio = computed(() => {
       </div>
       <p class="sub">{{ nickAuto ? t("profile.nickAutoHint") : t("profile.nickHint") }}</p>
       <div v-if="nickEdit" class="nick-row">
-        <n-input
-          v-model:value="nickDraft" :placeholder="displayName"
+        <van-field
+          v-model="nickDraft" :placeholder="displayName"
           :maxlength="NICK_MAX" :disabled="nickBusy" @keyup.enter="saveNick" />
         <n-button type="primary" :loading="nickBusy" @click="saveNick">
           {{ t("profile.nickSave") }}
@@ -377,7 +377,7 @@ const brightRatio = computed(() => {
       <h2>{{ t("profile.setPassTitle") }}</h2>
       <p class="notice">{{ t("profile.setPassHint") }}</p>
       <div class="q-input" style="margin-top: 12px">
-        <n-input v-model:value="newPass" type="password" round size="large" show-password-on="click"
+        <van-field v-model="newPass" type="password" show-password-on="click"
           :placeholder="t('profile.newPass')" @keyup.enter="doSetPassword" />
       </div>
       <div class="auth-actions">
@@ -407,8 +407,8 @@ const brightRatio = computed(() => {
     <section v-if="!cloud.ready && !signedIn" class="card">
       <h2>{{ t("profile.setNick") }}</h2>
       <div class="q-input" style="margin-top: 12px">
-        <n-input
-          v-model:value="draftNick" round size="large"
+        <van-field
+          v-model="draftNick"
           :placeholder="t('common.nickname')"
           @keyup.enter="continueAsGuest" />
         <n-button type="primary" round size="large" @click="continueAsGuest">

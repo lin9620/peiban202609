@@ -345,9 +345,9 @@ async function decideRec(l, accept) {
     </header>
 
     <template v-if="cloudSigned">
-      <n-input
-        v-model:value="mailDraft"
-        type="textarea" :autosize="{ minRows: 3, maxRows: 10 }" :maxlength="BOTTLE_BODY_MAX"
+      <van-field
+        v-model="mailDraft"
+        type="textarea" rows="3" autosize :maxlength="BOTTLE_BODY_MAX"
         :placeholder="t('bottle.placeholder')" />
       <div class="mail-send">
         <span class="m-count">{{ mailDraft.length }}/{{ BOTTLE_BODY_MAX }} · {{ sendText(sendLeft) }}</span>
@@ -372,9 +372,9 @@ async function decideRec(l, accept) {
       <div v-for="l in pending" :key="l.id" class="bottle-tray">
         <div class="m-q">{{ l.body }}</div>
         <span class="m-who">{{ t("bottle.fromSea") }}</span>
-        <n-input
-          v-model:value="replyDrafts[l.id]"
-          type="textarea" :autosize="{ minRows: 2, maxRows: 6 }" :maxlength="BOTTLE_BODY_MAX"
+        <van-field
+          v-model="replyDrafts[l.id]"
+          type="textarea" rows="2" autosize :maxlength="BOTTLE_BODY_MAX"
           :placeholder="t('bottle.replyPlaceholder')" />
         <div class="mail-send">
           <n-button type="primary" size="small" round
@@ -423,9 +423,9 @@ async function decideRec(l, accept) {
             </n-button>
           </div>
           <div v-if="replyOpen === l.id && recTab === 'held' && l.status === 'held'" class="mail-send" style="flex-direction: column; align-items: stretch; gap: 6px" @click.stop>
-            <n-input
-              v-model:value="replyDrafts[l.id]"
-              type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" :maxlength="BOTTLE_BODY_MAX"
+            <van-field
+              v-model="replyDrafts[l.id]"
+              type="textarea" rows="3" autosize :maxlength="BOTTLE_BODY_MAX"
               :placeholder="t('bottle.replyPlaceholder')" />
             <n-button type="primary" size="small" round
               :disabled="busyId === l.id || !String(replyDrafts[l.id] || '').trim()"
@@ -483,9 +483,9 @@ async function decideRec(l, accept) {
       <template v-else-if="fishPop.mode === 'got' && fishPop.letter">
         <div class="m-q" style="font-size: 16px; line-height: 1.6">{{ fishPop.letter.body }}</div>
         <span class="m-who">{{ t("bottle.fromSea") }}</span>
-        <n-input
-          v-model:value="replyDrafts[fishPop.letter.id]"
-          type="textarea" :autosize="{ minRows: 3, maxRows: 8 }" :maxlength="BOTTLE_BODY_MAX"
+        <van-field
+          v-model="replyDrafts[fishPop.letter.id]"
+          type="textarea" rows="3" autosize :maxlength="BOTTLE_BODY_MAX"
           :placeholder="t('bottle.replyPlaceholder')" style="margin-top: 10px" />
         <div class="mail-send" style="margin-top: 8px">
           <n-button type="primary" round

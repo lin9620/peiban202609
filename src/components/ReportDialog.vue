@@ -74,8 +74,8 @@ async function submit() {
       <n-radio v-for="r in REASONS" :key="r.key" :value="r.key">{{ t(r.tk) }}</n-radio>
     </n-radio-group>
 
-    <n-input
-      v-model:value="detail" type="textarea" :rows="2" :maxlength="200"
+    <van-field
+      v-model="detail" type="textarea" :rows="2" :maxlength="200"
       :placeholder="t('report.detailPh')" style="margin-top: 12px" />
 
     <p v-if="msg" class="report-msg">{{ msg }}</p>

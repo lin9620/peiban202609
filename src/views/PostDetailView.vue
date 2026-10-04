@@ -567,7 +567,7 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
         <div v-if="!isMobileNav" id="detail-cmtmain" class="cmt-input cmt-input-top">
           <div v-if="signedIn" class="cmt-input-row">
             <div class="emo-in">
-            <n-input v-model:value="cmtDraft" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }"
+            <van-field v-model="cmtDraft" type="textarea" rows="1" autosize
               :placeholder="t('comment.placeholder')" :maxlength="MAX_LEN" />
             <EmojiPicker :text="cmtDraft" @update:text="v => (cmtDraft = v)" />
             </div>
@@ -639,7 +639,7 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
             <div v-if="!isMobileNav && repActive === cm.id" class="cmt-input cmt-input-in">
               <div class="cmt-input-row">
                 <div class="emo-in">
-                <n-input v-model:value="repDraft[cm.id]" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }"
+                <van-field v-model="repDraft[cm.id]" type="textarea" rows="1" autosize
                   :placeholder="repPlaceholder(cm)" :maxlength="MAX_LEN" />
                 <EmojiPicker :text="repDraft[cm.id] || ''" @update:text="v => (repDraft[cm.id] = v)" />
                 </div>
@@ -676,7 +676,7 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
                 <div v-if="!isMobileNav && repActive === cm.id + ':' + rp.id" class="cmt-input cmt-input-in">
                   <div class="cmt-input-row">
                     <div class="emo-in">
-                    <n-input v-model:value="repDraft[cm.id]" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }"
+                    <van-field v-model="repDraft[cm.id]" type="textarea" rows="1" autosize
                       :placeholder="repPlaceholder(cm, rp)" :maxlength="MAX_LEN" />
                     <EmojiPicker :text="repDraft[cm.id] || ''" @update:text="v => (repDraft[cm.id] = v)" />
                     </div>
@@ -716,8 +716,8 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
       <!-- 轮 180：补表情按钮——一级评论与二级回复都走这条底部条，之前只有暖心墙有，帖子详情漏了。
            emo-in 让按钮绝对定位在输入框内右侧（同 style.css 里的 .emo-in 规则，与暖心墙同款）。 -->
       <div class="emo-in">
-      <n-input ref="detailBarInput" v-model:value="detailBarDraft" type="textarea"
-        :autosize="{ minRows: 1, maxRows: 4 }"
+      <van-field ref="detailBarInput" v-model="detailBarDraft" type="textarea"
+        rows="1" autosize
         :placeholder="detailBarPh" :maxlength="MAX_LEN" />
       <EmojiPicker :text="detailBarDraft" @update:text="v => (detailBarDraft = v)" />
       </div>

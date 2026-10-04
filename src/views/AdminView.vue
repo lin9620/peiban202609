@@ -353,8 +353,8 @@ const recentUsers = computed(() => (Array.isArray(ov.value && ov.value.recent_us
           <section class="card" style="margin-bottom: 0">
             <h2>{{ t("admin.broadcast.title") }}</h2>
             <p class="sub">{{ t("admin.broadcast.hint") }}</p>
-            <n-input
-              v-model:value="announce" type="textarea" :rows="3" :maxlength="1000"
+            <van-field
+              v-model="announce" type="textarea" :rows="3" :maxlength="1000"
               :placeholder="t('admin.broadcast.ph')" />
             <div class="row-between" style="margin-top: 10px">
               <span class="sub" style="margin: 0">{{ t("admin.broadcast.count", { n: announce.length }) }}</span>
@@ -503,7 +503,7 @@ const recentUsers = computed(() => (Array.isArray(ov.value && ov.value.recent_us
             </span>
           </div>
           <template v-if="r.status === 'pending'">
-            <n-input v-model:value="r._note" size="tiny" style="max-width: 150px"
+            <van-field v-model="r._note" style="max-width: 150px"
               :placeholder="t('admin.reports.notePh')" />
             <div class="admin-actions">
               <n-button v-if="r.target_type === 'post' && !r.removed" size="tiny" quaternary type="error"
