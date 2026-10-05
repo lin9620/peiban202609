@@ -157,13 +157,7 @@ async function loadMessages(id, { before = null } = {}) {
   await swr(
     before == null ? dmMsgsKey(props.meId, id) : null,
     {
-      /* 轮 157b：与会话段共用 dm:msgs 窗口缓存——手机上聊过的，桌面瓶聊秒开同一份 */
-      cached: (v) => {
-        const w = dmWin(v);
-        if (!w || !w.rows.length) return;
-        applyRows(w.rows, w.more);
-        loadingMsgs.value = false;
-      },
+      /* 轮 193c：同主会话口径——不渲染缓存中间态（单次渲染无跳闪）*/
       fresh: (v) => {
         const w = dmWin(v);
         if (!w) return;
