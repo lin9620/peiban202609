@@ -100,6 +100,7 @@ function layoutSheet() {
  *     不再存在「v-model 回写把 selection 复位」的整类问题）；
  *   - 失焦插入一律用 caretAt（夹紧），只在元素真的焦点内才信实时选区。 */
 let caretAt = null;   /* 打开面板那一刻（输入框尚在焦点）的真实光标位置 */
+let panelOpenedAt = 0;/* 轮 201：本次面板打开的时刻（假 keyboardWillShow 防自关窗） */
 
 /** 本次输入行里的输入元素（插入表情、收起面板后把焦点还回去都用它） */
 function inputEl() {
@@ -153,11 +154,13 @@ function openSheet() {
    * 旧法「视口差估算」随打开时机量出 0 / 310 两种值 = 用户实测「两个不同的高度框」。
    * 估算仅在没有 OS 值时兜底；超宽值（物理像素口径）按脏数据弃用。 */
   const osH = lastKbH > 0 && lastKbH < restH * 0.7 ? lastKbH : 0;
-  sheetH = osH || keyboardHeight({ innerH: window.innerHeight, restH }) || 0;
+  /* 轮 201（用户定案）：208 平底兜底删除——无 OS 值时按屏幕比例自适应（随设备），永不写死高度。 */
+  sheetH = osH || keyboardHeight({ innerH: window.innerHeight, restH }) || Math.round(restH * 0.38);
   layoutSheet();   /* 先算好再渲染：面板一出现就在正确位置，不会先闪一下默认坐标 */
   /* 轮 199 · 抄原生 App（B站/知乎/小红书）：收键盘**不 blur 输入框**——原生应用的输入框在
    * 表情面板弹出时从不失焦，光标原地钉住，插入永远落在真实位置。网页里对应的能力就是
    * Capacitor Keyboard.hide()：只收 IME 窗口，DOM 焦点不动。网页环境（无插件）才退回 blur。 */
+  panelOpenedAt = performance.now();   /* 轮 201：hide() 后个别 IME 会回敬假 keyboardWillShow，防自关 */
   if (kb()) {
     kb().hide().catch(() => {});
   } else {
@@ -221,6 +224,7 @@ function toggle() {
     const left = Math.min(Math.max(8, r.left), Math.max(8, window.innerWidth - 304));
     pos.value = { left: left + "px", bottom };
   }
+  panelOpenedAt = performance.now();
   open.value = true;
 }
 
@@ -299,7 +303,9 @@ function onDoc(e) {
 /* 轮 199 · 抄原生 App 的互斥：App 内面板开着时输入框仍是焦点，用户再点它系统会把键盘
  * 弹回来（已焦点不再发 focusin）——监听原生 keyboardWillShow，键盘起 = 面板让位。 */
 function onNativeKeyboardShow() {
-  if (open.value) closeSheet(false);
+  /* 轮 201：kb().hide() 后个别 IME 会回敬一记假 keyboardWillShow——刚打开 400ms 内不认，
+   * 否则面板开了又秒关（用户实测「第一次有用第二次又关闭」）。 */
+  if (open.value && performance.now() - panelOpenedAt > 400) closeSheet(false);
 }
 onMounted(() => {
   rememberRest();

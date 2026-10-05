@@ -94,7 +94,8 @@ export function sheetLayout({ viewportH, rowBottomNatural, anchored, baseMargin 
   /* 高度：优先用实测键盘高（面板与键盘同高互换，输入框纹丝不动）；没测到就用默认兜底。
    * 上限按收起态视口算 —— 万一键盘异常高，不能把上方内容全挤没。 */
   const ceiling = Math.max(vh, Math.round(Number(restH) || 0));
-  const want = Math.round(Number(sheetH) || 0) || EMOJI_SHEET_H;
+  /* 轮 201（用户定案）：平底 208 兜底删除——没拿到键盘高时按屏幕比例自适应，永不写死。 */
+  const want = Math.round(Number(sheetH) || 0) || Math.round(ceiling * 0.38);
   const height = Math.max(EMOJI_SHEET_MIN_H, Math.min(want, ceiling - 132));
   /* 贴底行：行底恒等于「当前」布局视口底 —— adjustResize 下它就是视觉底。
    * 键盘弹着（vh 已矮）与收起（vh 变高）两态各自算各自的，面板始终紧贴输入行下方。 */

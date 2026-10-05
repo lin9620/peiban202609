@@ -27,10 +27,11 @@ ok("桌面宽屏仍是按钮上方小弹层（零变化）", emojiSheetMode({ is
 /* ───────── ② 高度是固定 px：不随视口变（旧实现高度 = 行到屏底那一整段） ───────── */
 const tall = sheetLayout({ viewportH: 780, rowBottomNatural: 746, anchored: true });
 const kbd = sheetLayout({ viewportH: 470, rowBottomNatural: 436, anchored: true });
-ok("面板高度与视口无关：780 与 470 算出来同高，且等于常量",
-  tall.height === kbd.height && tall.height === EMOJI_SHEET_H, `${tall.height}/${kbd.height}`);
-ok("视口翻倍也不长（不是 34vh 那种比例高度）",
-  sheetLayout({ viewportH: 1560, rowBottomNatural: 1490, anchored: true }).height === EMOJI_SHEET_H);
+ok("轮 201：面板高度按屏幕比例自适应（0.38，随设备），780/470 各得其所",
+  tall.height === Math.round(780 * 0.38) && kbd.height === Math.round(470 * 0.38),
+  `${tall.height}/${kbd.height}`);
+ok("轮 201：视口翻倍面板按比例长（自适应，不再写死 208）",
+  sheetLayout({ viewportH: 1560, rowBottomNatural: 1490, anchored: true }).height === Math.round(1560 * 0.38));
 ok("不变式：任何视口下 top + height === 视口底（面板钉死贴底，结构上不可能被拉长）",
   [300, 470, 780, 1200].every((vh) => {
     const L = sheetLayout({ viewportH: vh, rowBottomNatural: vh - 34, anchored: true });
@@ -43,16 +44,17 @@ ok("不变式：任何视口下 top + height === 视口底（面板钉死贴底�
   const rest = { viewportH: 780, rowBottomNatural: 746, anchored: true };
   const open1 = sheetLayout(kb);
   const open2 = sheetLayout(rest);
-  ok("键盘收起重排后面板高度不变（旧实现同一时序 197 → 507）",
-    open1.height === open2.height, `${open1.height} → ${open2.height}`);
+  ok("轮 201：同入参同输出（确定性），高度随视口比例",
+    open1.height === Math.round(470 * 0.38) && open2.height === Math.round(780 * 0.38),
+    `${open1.height} → ${open2.height}`);
   ok("键盘收起重排后仍钉在屏底", open2.top + open2.height === 780 && open2.bottom === 780);
   ok("顶开量 = 面板高（贴底行恒被完整顶到面板头上；轮 182 起不再按「行下方现有空间」倒推）",
-    open2.shift === EMOJI_SHEET_H, String(open2.shift));
+    open2.shift === open2.height, String(open2.shift));
   ok("面板顶 === 输入行被顶开后的底（面板就在输入框下面）",
     rest.viewportH - open2.shift === open2.top,
     `行底 ${rest.viewportH - open2.shift} vs 面板顶 ${open2.top}`);
   ok("行本来就在屏底：顶开量正好等于面板高（行被完整推到面板头上）",
-    sheetLayout({ viewportH: 780, rowBottomNatural: 780, anchored: true }).shift === EMOJI_SHEET_H);
+    sheetLayout({ viewportH: 780, rowBottomNatural: 780, anchored: true }).shift === Math.round(780 * 0.38));
   /* 那次 bug 的数字（无头 Edge 取证）：旧规则 top 固定 273 + bottom:"0"，视口回到 780 后
      面板高 507、上缘 273 远高于顶开后的行底 572 → 反过来盖住输入行。 */
   const OLD_TOP = 273, SHIFTED_ROW_BOTTOM = 746 - 174;
@@ -66,7 +68,7 @@ ok("不变式：任何视口下 top + height === 视口底（面板钉死贴底�
   ok("页内行不被顶开（shift/margin 都是 0，页面布局零变化）", inline.shift === 0 && inline.margin === 0);
   ok("页内行：面板顶 = 行底（展开在输入框下面）", inline.top === 300);
   ok("页内行贴近屏底时面板自动上收、不越出屏幕",
-    sheetLayout({ viewportH: 780, rowBottomNatural: 700, anchored: false }).top === 780 - EMOJI_SHEET_H);
+    sheetLayout({ viewportH: 780, rowBottomNatural: 700, anchored: false }).top === 780 - Math.round(780 * 0.38));
 }
 
 /* ───────── ⑤ 边界：极矮视口、外部 margin 不丢、脏输入不炸 ───────── */
@@ -76,7 +78,7 @@ ok("极矮视口（300/200）仍有保底高度且面板顶不为负",
     return L.height >= EMOJI_SHEET_MIN_H && L.top >= 0;
   }));
 ok("外部 margin-bottom 保留（base + shift）",
-  sheetLayout({ viewportH: 780, rowBottomNatural: 746, anchored: true, baseMargin: 8 }).margin === 8 + EMOJI_SHEET_H);
+  sheetLayout({ viewportH: 780, rowBottomNatural: 746, anchored: true, baseMargin: 8 }).margin === 8 + Math.round(780 * 0.38));
 ok("脏输入不炸（空对象 → 全是有穷数字）",
   (() => { const L = sheetLayout({}); return Number.isFinite(L.height) && Number.isFinite(L.top) && Number.isFinite(L.margin); })());
 
@@ -166,9 +168,9 @@ ok("脏输入不炸（空对象 → 全是有穷数字）",
   ok("页内行仍不顶开、面板仍挂在它下面（贴底改造没波及页内行）",
     inline2.shift === 0 && inline2.margin === 0 && inline2.top === 300 && inline2.height === KB);
 
-  /* 不传 sheetH 时保持旧行为（兜底默认高度，桌面/无键盘场景零变化） */
-  ok("不传 sheetH → 回落默认高度（老行为不变）",
-    sheetLayout({ viewportH: REST, rowBottomNatural: REST, anchored: true, restH: REST }).height === EMOJI_SHEET_H);
+  /* 轮 201：不传 sheetH → 按屏幕比例自适应兜底（老 208 平底已废除） */
+  ok("不传 sheetH → 按屏幕比例自适应兜底（永不写死 208）",
+    sheetLayout({ viewportH: REST, rowBottomNatural: REST, anchored: true, restH: REST }).height === Math.round(REST * 0.38));
   /* 面板不能高到把输入行挤没：至少留 132 给上方内容 */
   const huge = sheetLayout({ viewportH: REST, rowBottomNatural: REST, anchored: true, sheetH: REST - 10, restH: REST });
   ok("键盘异常高（撑满屏）时收进视口，不至于把输入行挤没",
@@ -200,12 +202,12 @@ ok("脏输入不炸（空对象 → 全是有穷数字）",
   ok("失焦时不用实时选区，用 caretAt（打开面板那一次记录）",
     /document\.activeElement === el [\s\S]{0,80}selectionStart[\s\S]{0,120}else[\s\S]{0,60}caretAt/.test(picker2));
   ok("唯一读光标点：openSheet 内、收键盘之前（输入框尚在焦点；轮 199 起 App 收键盘走 Keyboard.hide 不 blur）",
-    /const ie = inputEl\(\);[\s\S]{0,240}caretAt = ie\.selectionStart;[\s\S]{0,700}(?:\.blur\(\)|kb\(\)\.hide\(\))/.test(picker2));
+    /const ie = inputEl\(\);[\s\S]{0,240}caretAt = ie\.selectionStart;[\s\S]{0,900}(?:\.blur\(\)|kb\(\)\.hide\(\))/.test(picker2));
   ok("连选递推：插入后 caretAt 推进到插入之后（下一枚跟上一枚）",
     picker2.includes("caretAt = typeof el.selectionStart === \"number\" ? el.selectionStart : lo + uni.length;"));
   ok("面板高度=OS 上报的真实键盘高优先（轮 200：估算值只做回退）",
     picker2.includes("const osH = lastKbH > 0 && lastKbH < restH * 0.7 ? lastKbH : 0;")
-    && picker2.includes("sheetH = osH || keyboardHeight({ innerH: window.innerHeight, restH }) || 0;")
+    && picker2.includes("sheetH = osH || keyboardHeight({ innerH: window.innerHeight, restH }) || Math.round(restH * 0.38);")
     && pickerCode.includes("keyboardDidShow") && pickerCode.includes("keyboardWillHide"));
   ok("轮 200 定案：App 路径 focusin 永不收面板（假 focusin 不再误杀，让位只归 keyboardWillShow）",
     /if \(!sheetMode\(\)\) return;[\s\S]{0,200}if \(kb\(\)\) return;/.test(pickerCode));
