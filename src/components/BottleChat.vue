@@ -15,9 +15,8 @@ import { useRouter } from "vue-router";
 import { t, i18n } from "../i18n.js";
 import { bottleChatState, bottleChatDecide, bottleErrKey } from "../utils/bottle.js";
 import * as dmApi from "../utils/dm.js";
-import { displayMsg, withDayDividers, canRecall, validateSend, sendErrKey, mergeTail,
-  dmMsgsKey, dmPeekWindow, dmCacheWindow, dmWin } from "../utils/dmRules.js";
-import { swr } from "../utils/cache.js";
+import { displayMsg, withDayDividers, canRecall, validateSend, sendErrKey, mergeTail } from "../utils/dmRules.js";
+import { dmStoreLoad, dmStoreSave } from "../utils/dmStore.js";
 import { refreshBadge } from "../stores/badgeStore.js";
 import EmojiPicker from "./EmojiPicker.vue";   /* 轮 164：表情按钮 */
 
@@ -159,52 +158,53 @@ async function loadMessages(id, { before = null } = {}) {
     hasMore.value = more != null ? more : rows.length === 30;
     oldestId.value = msgs.value.length ? msgs.value[0].id : null;
   };
-  await swr(
-    before == null ? dmMsgsKey(props.meId, id) : null,
-    {
-      /* 轮 193c：同主会话口径——不渲染缓存中间态（单次渲染无跳闪）*/
-      fresh: (v) => {
-        const w = dmWin(v);
-        if (!w) return;
-        if (before != null) {
-          applyRows(w.rows, w.more);
-          const hit = dmPeekWindow(props.meId, id);
-          if (hit) dmCacheWindow(props.meId, id, w.rows.concat(hit.rows), w.more && hit.more);
-        } else if (msgsConv === id && msgs.value.some((m) => m.id < 0)) {
-          return;   /* 乐观消息在场：不动视图 */
-        } else if (msgsConv === id) {
-          const asc = w.rows.slice().reverse();
-          const { rows, added } = mergeTail(msgs.value, asc);
-          if (added) {
-            /* 轮 176b：作废追帧链（防瞬时重钉顶掉平滑滚动） */
-            scrollGen++;
-            pinning.value = false;
-            smoothed = true;
-            entryReady.value = true;
-            msgs.value = rows;
-            /* 轮 193b：进会话隐藏态——瞬时钉底+揭示，无动画无晃动 */
-            nextTick(() => {
-              const el = listEl.value;
-              if (!el) return;
-              el.scrollTop = el.scrollHeight;
-              listRevealed.value = true;
-            });
-          } else if (rows !== msgs.value) {
-            msgs.value = rows;
-          }
-          oldestId.value = msgs.value.length ? msgs.value[0].id : null;
-        } else {
-          applyRows(w.rows, w.more);
-          entryReady.value = true;
-        }
-      },
-      onError: () => { if (before == null && msgsConv !== id) { msgs.value = []; msgsConv = ""; } },
-    },
-    () => dmApi.listMessages(id, { before, limit: 30 }).then((rows) => {
-      rows = rows || [];
-      return before == null ? { rows, more: rows.length === 30 } : rows;
-    }),
-  );
+  /* ── 轮 194：本地库秒开（同 MessagesView 口径）——进会话瞬间渲染本地完整历史── */
+  if (before == null) {
+    const local = dmStoreLoad(props.meId, id);
+    if (local.msgs.length) {
+      applyRows(local.msgs.slice().reverse(), local.more);
+      entryReady.value = true;
+      scrollBottom();
+      loadingMsgs.value = false;
+    }
+  }
+  /* ── 网络：增量拉取后合并（不替换渲染中的列表）── */
+  try {
+    const rows = (await dmApi.listMessages(id, { before, limit: 30 })) || [];
+    const asc = rows.slice().reverse();
+    if (before != null) {
+      applyRows(rows, rows.length === 30);
+    } else if (msgsConv === id && !msgs.value.some((m) => m.id < 0)) {
+      /* 重开/刷新同会话：尾部增量并入（保住已翻历史），不整窗替换 */
+      const { rows: merged, added } = mergeTail(msgs.value, asc);
+      if (added) {
+        /* 轮 176b：作废追帧链（防瞬时重钉顶掉平滑滚动） */
+        scrollGen++;
+        pinning.value = false;
+        smoothed = true;
+        entryReady.value = true;
+        msgs.value = merged;
+        nextTick(() => {
+          const el = listEl.value;
+          if (!el) return;
+          el.scrollTop = el.scrollHeight;
+          listRevealed.value = true;
+        });
+      } else if (merged !== msgs.value) {
+        /* 无新增但有原位更新（如对方撤回）：落回响应式数组。
+         * 注意必须比对 mergeTail 的返回值——比对原始 rows 会把服务端倒序窗口塞进列表（轮194实测bug）。 */
+        msgs.value = merged;
+      }
+      oldestId.value = msgs.value.length ? msgs.value[0].id : null;
+    } else {
+      applyRows(rows, rows.length === 30);
+      entryReady.value = true;   /* 轮 194：首进无本地库，网络落定即开揭示门控 */
+    }
+    /* 本地库同步（全量落盘） */
+    dmStoreSave(props.meId, id, msgs.value, hasMore.value);
+  } catch (e) {
+    if (before == null && msgsConv !== id) { msgs.value = []; msgsConv = ""; }
+  }
   loadingMsgs.value = false;
   if (before == null) pinning.value = false;
   return smoothed;
@@ -277,6 +277,8 @@ async function send() {
       };
       msgs.value = msgs.value.map((m) => (m.id === temp.id ? rowSrv : m));
       oldestId.value = msgs.value.length ? msgs.value[0].id : null;
+      /* 轮 194：本地库同步补上这条（不补的话退出重进会先看到本地库少一条） */
+      dmStoreSave(props.meId, id, msgs.value, hasMore.value);
     } else {
       await loadMessages(id);
     }
@@ -294,6 +296,7 @@ async function recall(m) {
     await dmApi.recall(m, props.meId);
     msgs.value = msgs.value.map((x) =>
       (x.id === m.id ? { ...x, deleted_at: new Date().toISOString(), body: "", image_path: null } : x));
+    dmStoreSave(props.meId, convId.value, msgs.value, hasMore.value);   /* 轮 194：撤回落盘 */
   } catch (e) {
     const late = e && String(e.message || e).includes("too-late");
     sendErr.value = t(late ? "dm.errTooLate" : "dm.errNetwork");

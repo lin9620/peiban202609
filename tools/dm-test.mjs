@@ -300,11 +300,12 @@ ok("/settings 路由已注册", mvRouter.includes('"/settings"'));
   ok("私信页：翻历史锚点保持（scrollHeight 差值补偿）", mv.includes("el.scrollTop += el.scrollHeight - oldH"));
   ok("私信页：轮询走 mergeTail 增量合并", mv.includes("mergeTail(msgs.value, asc)"));
   ok("私信页：会话列表降频（每 3 拍一次，不再每 5s 全量拉 200 行）", mv.includes("tickN % 3 === 1"));
-  ok("私信页：发送后就地落位（msg_id 直换 + 窗口缓存补条）",
-    mv.includes("r.msg_id") && mv.includes("dmPeekWindow(meId.value, convId)"));
-  ok("私信页：首屏走窗口缓存（dm:msgs 键 + dmWin 归一）",
-    mv.includes("dmMsgsKey(meId.value, id)") && mv.includes("dmWin(v)"));
-  ok("私信页：翻过的历史并入缓存窗口", mv.includes("w.rows.concat(hit.rows)"));
+  ok("私信页：发送后就地落位（msg_id 直换 + 本地库补条）",
+    mv.includes("r.msg_id") && mv.includes("dmStoreSave(meId.value, convId, msgs.value, hasMore.value)"));
+  ok("私信页：进会话本地库秒开（无网络先渲染）",
+    mv.includes("dmStoreLoad(meId.value, id)") && mv.includes("applyRows(local.msgs.slice().reverse(), local.more)"));
+  ok("私信页：网络回来全量落盘本地库", mv.includes("dmStoreSave(meId.value, id, msgs.value, hasMore.value)"));
+  ok("私信页：删会话/拒请求清本地库", mv.includes("dmStoreDrop(meId.value, c.conv_id)"));
   ok("私信页：轮询防重叠（busy 门）", mv.includes("tickBusy"));
   ok("漂流瓶聊天框：同款四件套",
     bc.includes('@scroll.passive="onScrollTop"') &&
@@ -325,7 +326,38 @@ ok("/settings 路由已注册", mvRouter.includes('"/settings"'));
   dmCacheWindow("u1", "c1", Array.from({ length: DM_WINDOW_CAP + 10 }, (_, i) => ({ id: i })), true);
   ok("窗口缓存：超窗裁最旧（护栏生效）", dmPeekWindow("u1", "c1").rows.length === DM_WINDOW_CAP);
   ok("窗口缓存：键带用户域（换账号不串）", dmMsgsKey("a", "c") !== dmMsgsKey("b", "c"));
-  ok("窗口缓存：两视图共用同一键规则", fs.readFileSync("src/components/BottleChat.vue", "utf8").includes("dmMsgsKey(props.meId, id)"));
+  ok("本地消息库：两视图共用同一 store（BottleChat 同款读写）",
+    (() => {
+      const bc = fs.readFileSync("src/components/BottleChat.vue", "utf8");
+      return bc.includes("dmStoreLoad(props.meId, id)") && bc.includes("dmStoreSave(props.meId, id, msgs.value, hasMore.value)");
+    })());
+}
+
+/* ───────── 轮 194：本地消息库（dmStore.js 读写闭环） ───────── */
+{
+  const { dmStoreLoad, dmStoreSave, dmStoreMerge, dmStoreDrop } = await import("../src/utils/dmStore.js");
+  const U = "u194", C = "c194";
+  dmStoreDrop(U, C);
+  ok("本地消息库：空库 → 空数组 + more=true", (() => {
+    const e = dmStoreLoad(U, C);
+    return e.msgs.length === 0 && e.more === true;
+  })());
+  dmStoreSave(U, C, [{ id: 2, body: "b" }, { id: 1, body: "a" }], true);
+  ok("本地消息库：写入→按 id 升序读出", (() => {
+    const r = dmStoreLoad(U, C);
+    return r.msgs.length === 2 && r.msgs[0].id === 1 && r.msgs[1].id === 2 && r.more === true;
+  })());
+  dmStoreSave(U, C, Array.from({ length: 450 }, (_, i) => ({ id: i + 1 })), false);
+  ok("本地消息库：超 400 条裁最旧（护栏生效）", dmStoreLoad(U, C).msgs.length === 400);
+  ok("本地消息库：合并去重保序", (() => {
+    const m = dmStoreMerge([{ id: 3 }, { id: 1 }], [{ id: 2 }, { id: 1, body: "dup" }]);
+    return JSON.stringify(m.map((x) => x.id)) === "[1,2,3]";
+  })());
+  dmStoreDrop(U, C);
+  ok("本地消息库：删除→读回空库", dmStoreLoad(U, C).msgs.length === 0);
+  dmStoreSave("ua", "c", [{ id: 1 }], true);
+  ok("本地消息库：键带用户域（换账号不串）", dmStoreLoad("ub", "c").msgs.length === 0);
+  dmStoreDrop("ua", "c");
 }
 
 /* ───────── 轮 164：表情按钮接线（评论框/私信框五处 + 组件本身） ───────── */

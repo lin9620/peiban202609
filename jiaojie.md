@@ -1569,6 +1569,12 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
   - **轮 193c 续 · 进会话不再渲染缓存中间态（同日，用户实测 APK 99F8488F 仍跳闪 → 逐帧复测跳变仍在 → **根因升级**：不止字体/门控——**SWR 缓存窗口（1879px 含旧页）先渲染可见，fresh（更小窗口）到达后替换 = ±1144px 可见跳变**。180 的 entryReady 门控管了「何时揭示」，没管「缓存渲染本身」）**：**修**：进会话（before==null）**去掉 cached 渲染钩子**——单次渲染：等 fresh 落定一次成型、瞬时钉在最新位置、揭示。缓存仍写入（离线/异常兜底）；平滑滑入仅保留给观看中的实时新消息（tick）。MV/BC 同款。
      验证：undef 0 + **40 套离线 0 fail** + build 0 + page-smoke 12/12。**已部署 Version `34e8975e`** / live-check 14/14 / **APK `921A20607741AAA9` 补装 Success + 冷启动 PID 3418 CRASH_HITS=0** ✅。
 
+  - **轮 194 · 私信消息管线重做：本地消息库秒开（2026-10-05，用户「把相关代码全删了，重做行不行」——193c 去掉缓存渲染后首进会话要等网络，用户实测 ~10s 空白）**：
+     **架构（微信式本地库）**：新增 `src/utils/dmStore.js`——每会话一份 localStorage 消息库（键 `wp-dm-store:{me}:{conv}`，走 storage.js 隐私模式自动降级内存；上限 400 条裁最旧；dmStoreLoad 升序/dmStoreSave 全量替换/dmStoreMerge 去重/dmStoreDrop 清库）。**MV/BC loadMessages 重写**：进会话**同步读本地库先渲染**（零网络等待）→ 后台拉增量 mergeTail 并入（只追加不替换）→ 全量落盘；本地渲染即开 entryReady（揭示门控不等网络）；发送就地落位后补落盘、撤回落盘、删会话/拒请求清库。轮 157b 的窗口缓存（dmWin/dmMsgsKey/dmCacheWindow）退出消息管线（dmRules 函数保留，dm-test 纯函数块仍在）。**dm-test 断言换新口径**（3 条旧窗口缓存断言 → 本地库断言 + dmStore.js 读写闭环 7 条单测，335 断言）。
+     **浏览器端到端实测抓出三个真 bug（全部修复）**：① dmStore 存裸对象——storage.setItem 不做序列化，读回全空（改 getJSON/setJSON，单测钉死）；② 轮 194 重写把 `let smoothed` 声明弄丢——进会话即 ReferenceError 白屏崩（补回）；③ **变量遮蔽乱序污染**：`mergeTail` 无变化返回原数组引用时，`rows !== msgs.value` 恒真 → **服务端原始倒序窗口整段塞进 msgs.value** → oldestId 变最新 id → 翻历史拉出重叠窗口拼成 60 条乱序并落盘污染本地库（localStorage 写入观测探针三步实锤：干净进=30 升序✓ → 重进=30 **降序**✗ → 翻历史=60 乱序✗；修复=比对 `merged` 而非 `rows`，MV/BC 同修；复测 30 升序 → 30 升序 → 35 升序 ✓）。
+     **实测数据（390×844，wp-u194 双测试号 35 条种子）**：重进会话气泡与路由跳转**同帧出现（±3ms）**=本地库秒开实锤；37 条（含实测发出的文字+表情组合消息）升序无重复；滚动 gap=1px 钉底；翻历史并库 35 条升序 more=false；截图版面正常。
+     验证：undef 0 + dm-test 335/0 + build 0。**交付**：**已部署 Version `6096b145`** / live-check 14/14 / live-bundle-check 本地=线上（入口 SHA16 `9e03b7c0df19aef9`）/ **APK `1CCFA2B5FD697721`(5.5M) 构建完成，adb no devices（USB 断开）待补装**。
+
 
 
   - **轮 179~186 · 表情面板几何/光标/收起体系重构（平行会话完成，代码在场未提交；本轮 187 由本会话收尾修复「点表情后面板收了」并一起入库）**：

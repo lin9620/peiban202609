@@ -16,10 +16,10 @@ import { t, i18n } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
 import * as dmApi from "../utils/dm.js";
 import { cacheKey, swr } from "../utils/cache.js";
+import { dmStoreLoad, dmStoreSave, dmStoreDrop } from "../utils/dmStore.js";
 import {
   previewText, sortConvs, filterConvs, withDayDividers, displayMsg,
   validateSend, sendErrKey, canRecall, relativeTime, rowView, mergeTail,
-  dmMsgsKey, dmPeekWindow, dmCacheWindow, dmWin,
 } from "../utils/dmRules.js";
 import { badge, refreshBadge } from "../stores/badgeStore.js";
 /* 轮 34：拉黑已全站生效（私信拦截 + 暖心墙内容隐藏）——这里走 userBlocks 的包装，
@@ -226,7 +226,7 @@ async function loadMessages(id, { before = null } = {}) {
   if (!id) return false;
   let smoothed = false;   /* 轮 173c：fresh 有新消息时已平滑滚到新底，调用方免再瞬时滚 */
   loadingMsgs.value = true;
-  const applyRows = (rows) => {
+  const applyRows = (rows, more) => {
     /* 服务端返回新→旧：反转为旧→新（渲染顺序） */
     const asc = rows.slice().reverse();
     if (before == null || msgsConv !== id) {
@@ -249,61 +249,50 @@ async function loadMessages(id, { before = null } = {}) {
     hasMore.value = more != null ? more : rows.length === 30;
     oldestId.value = msgs.value.length ? msgs.value[0].id : null;
   };
-  await swr(
-    before == null ? dmMsgsKey(meId.value, id) : null,
-    {
-      /* 轮 193c：进会话**不再渲染缓存中间态**——缓存窗口与 fresh 窗口高度不同，
-       * 先渲染缓存再被 fresh 替换 = ±千px 可见跳闪（用户三轮实测未消）。
-       * 单次渲染：等 fresh 落定一次成型、直接钉在最新位置。缓存仍写入（离线兜底用）。 */
-      fresh: (v) => {
-        const w = dmWin(v);
-        if (!w) return;
-        if (before != null) {
-          applyRows(w.rows, w.more);
-          /* 历史页并入缓存窗口（更旧的页拼前面）；本页拉不满 30 = 没有更早了 */
-          const hit = dmPeekWindow(meId.value, id);
-          if (hit) dmCacheWindow(meId.value, id, w.rows.concat(hit.rows), w.more && hit.more);
-        } else if (msgsConv === id && msgs.value.some((m) => m.id < 0)) {
-          return;   /* 乐观消息在场：不动视图，交给轮询 / send 收敛 */
-        } else if (msgsConv === id) {
-          /* 重开同一会话：尾部增量并入，保住已翻的历史窗口 */
-          const asc = w.rows.slice().reverse();
-          const { rows, added } = mergeTail(msgs.value, asc);
-          if (added) {
-            /* 轮 173c/176b：新消息落下 → 作废追帧链（防瞬时重钉顶掉平滑）+ 平滑滑到新底 */
-            pinning.value = false;
-            scrollGen++;
-            smoothed = true;
-            entryReady.value = true;
-            msgs.value = rows;
-            /* 轮 193b：进会话路径消息区还在隐藏态——平滑滑入没人看见还引发揭示后晃动，
-             * 改瞬时钉底+立即揭示（单一定格，无动画无闪）；观看中的实时新消息（tick）仍走平滑 */
-            nextTick(() => {
-              const el = listEl.value;
-              if (!el) return;
-              el.scrollTop = el.scrollHeight;
-              listRevealed.value = true;
-            });
-          } else if (rows !== msgs.value) {
-            msgs.value = rows;
-          }
-          oldestId.value = msgs.value.length ? msgs.value[0].id : null;
-        } else {
-          applyRows(w.rows, w.more);
-          entryReady.value = true;   /* 轮 180：首屏数据落定，才允许显示（钉稳门控） */
-        }
-        if (w.more === false) hasMore.value = false;
-      },
-      onError: () => { if (before == null && msgsConv !== id) applyRows([], false); },
-    },
-    () => dmApi.listMessages(id, { before, limit: 30 }).then((rows) => {
-      rows = rows || [];
-      /* 首屏按「窗口快照」落缓存（swr 直接缓存本返回值） */
-      return before == null ? { rows, more: rows.length === 30 } : rows;
-    }),
-  );
+  /* ── 轮 194：本地库秒开——进会话瞬间渲染本地完整历史（零网络等待、零闪跳）──
+   * 193c 去掉缓存中间态后首次进入要等网络（用户实测 ~10s 空白）——
+   * 正解是微信式本地库：localStorage 持久存每会话全量消息，进会话同步读取渲染。 */
+  if (before == null) {
+    const local = dmStoreLoad(meId.value, id);
+    if (local.msgs.length) {
+      applyRows(local.msgs.slice().reverse(), local.more);
+      entryReady.value = true;   /* 轮 194：本地数据已落定，揭示门控即刻可开 */
+      scrollBottom();
+      loadingMsgs.value = false;
+    }
+  }
+  /* ── 网络：增量拉取后合并（不替换渲染中的列表）── */
+  try {
+    const rows = (await dmApi.listMessages(id, { before, limit: 30 })) || [];
+    const asc = rows.slice().reverse();
+    if (before != null) {
+      applyRows(rows, rows.length === 30);
+    } else if (msgsConv === id && !msgs.value.some((m) => m.id < 0)) {
+      /* 重开/刷新同会话：尾部增量并入（保住已翻历史），不整窗替换 */
+      const { rows: merged, added } = mergeTail(msgs.value, asc);
+      if (added) {
+        pinning.value = false;
+        scrollGen++;
+        smoothed = true;
+        msgs.value = merged;
+        nextTick(() => { const el = listEl.value; if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }); });
+      } else if (merged !== msgs.value) {
+        /* 无新增但有原位更新（如对方撤回）：落回响应式数组。
+         * 注意必须比对 mergeTail 的返回值——比对原始 rows 会把服务端倒序窗口塞进列表（轮194实测bug）。 */
+        msgs.value = merged;
+      }
+      oldestId.value = msgs.value.length ? msgs.value[0].id : null;
+    } else {
+      applyRows(rows, rows.length === 30);
+      entryReady.value = true;   /* 轮 194：首进无本地库，网络落定即开揭示门控 */
+    }
+    /* 本地库同步（全量落盘） */
+    dmStoreSave(meId.value, id, msgs.value, hasMore.value);
+  } catch (e) {
+    if (before == null && msgsConv !== id) applyRows([], false);
+  }
   loadingMsgs.value = false;
-  if (before == null) pinning.value = false;   /* 首屏落定，追底收兵（剩 20 帧收尾） */
+  if (before == null) pinning.value = false;
   return smoothed;
 }
 
@@ -432,9 +421,8 @@ async function send() {
       };
       msgs.value = msgs.value.map((m) => (m.id === temp.id ? rowSrv : m));
       oldestId.value = msgs.value.length ? msgs.value[0].id : null;
-      /* 首屏窗口缓存同步补上这条（不补的话 5s 内退出重进会先看到旧缓存少一条） */
-      const win = dmPeekWindow(meId.value, convId);
-      if (win) dmCacheWindow(meId.value, convId, [rowSrv].concat(win.rows), win.more);
+      /* 轮 194：本地库同步补上这条（不补的话退出重进会先看到本地库少一条） */
+      dmStoreSave(meId.value, convId, msgs.value, hasMore.value);
     } else {
       await loadMessages(convId);   /* 兜底：拿不到 msg_id（异常网关）才走整段重载 */
     }
@@ -454,6 +442,7 @@ async function recall(m) {
     await dmApi.recall(m, meId.value);
     msgs.value = msgs.value.map((x) =>
       (x.id === m.id ? { ...x, deleted_at: new Date().toISOString(), body: "", image_path: null } : x));
+    dmStoreSave(meId.value, activeId.value, msgs.value, hasMore.value);   /* 轮 194：撤回落盘 */
   } catch (e) {
     const late = e && String(e.message || e).includes("too-late");
     sendErr.value = t(late ? "dm.errTooLate" : "dm.errNetwork");
@@ -476,6 +465,7 @@ async function acceptReq(c) {
 async function rejectReq(c) {
   try { await dmApi.hide(c.conv_id); } catch (e) { /* 静默 */ }
   convs.value = convs.value.filter((x) => x.conv_id !== c.conv_id);
+  dmStoreDrop(meId.value, c.conv_id);   /* 轮 194：会话移出列表即清本地库 */
   refreshBadge();
 }
 
@@ -489,6 +479,7 @@ async function toggleMute(c) {
 async function hideConv(c) {
   try { await dmApi.hide(c.conv_id); } catch (e) { /* 静默 */ }
   convs.value = convs.value.filter((x) => x.conv_id !== c.conv_id);
+  dmStoreDrop(meId.value, c.conv_id);   /* 轮 194：会话移出列表即清本地库 */
   if (String(activeId.value) === String(c.conv_id)) {
     activeId.value = "";
     router.replace({ name: "messagesList" }).catch(() => {});
