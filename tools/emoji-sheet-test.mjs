@@ -209,8 +209,10 @@ ok("脏输入不炸（空对象 → 全是有穷数字）",
     picker2.includes("const osH = lastKbH > 0 && lastKbH < restH * 0.7 ? lastKbH : 0;")
     && picker2.includes("sheetH = osH || keyboardHeight({ innerH: window.innerHeight, restH }) || Math.round(restH * 0.38);")
     && pickerCode.includes("keyboardDidShow") && pickerCode.includes("keyboardWillHide"));
-  ok("轮 200 定案：App 路径 focusin 永不收面板（假 focusin 不再误杀，让位只归 keyboardWillShow）",
-    /if \(!sheetMode\(\)\) return;[\s\S]{0,200}if \(kb\(\)\) return;/.test(pickerCode));
+  ok("轮 201 定案：App 路径 focusin 永不收面板；面板让位 = 用户点输入框（pointerdown，不靠键盘事件）",
+    /if \(!sheetMode\(\)\) return;[\s\S]{0,200}if \(kb\(\)\) return;/.test(pickerCode)
+    && pickerCode.includes("bindInputYield()") && pickerCode.includes("unbindInputYield()")
+    && !pickerCode.includes("keyboardWillShow"));
   ok("面板定位传当前视口+实测高度（restH 只作高度上限传参）",
     picker2.includes("sheetH,") && picker2.includes("restH,"));
   ok("restH 只增不减（仅作高度上限的基准）",
@@ -219,7 +221,7 @@ ok("脏输入不炸（空对象 → 全是有穷数字）",
     /Math\.min\(caretAt, el\.value\.length\)/.test(picker2));
   ok("轮 199：App 内收键盘不 blur 输入框（Keyboard.hide——抄原生 App，光标钉在原地）",
     pickerCode.includes("kb().hide()") && pickerCode.includes("kb().show()")
-    && /keyboardWillShow[\s\S]{0,120}closeSheet\(false\)/.test(picker2));
+    && pickerCode.includes("bindInputYield()"));
   ok("收起面板有统一入口 closeSheet(restoreFocus)", picker2.includes("function closeSheet(restoreFocus)"));
   ok("再点表情按钮 → 收起并把焦点还给输入框（用户不必重新点输入框）",
     picker2.includes("if (open.value) { closeSheet(true); return; }")

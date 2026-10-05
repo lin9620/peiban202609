@@ -100,7 +100,6 @@ function layoutSheet() {
  *     不再存在「v-model 回写把 selection 复位」的整类问题）；
  *   - 失焦插入一律用 caretAt（夹紧），只在元素真的焦点内才信实时选区。 */
 let caretAt = null;   /* 打开面板那一刻（输入框尚在焦点）的真实光标位置 */
-let panelOpenedAt = 0;/* 轮 201：本次面板打开的时刻（假 keyboardWillShow 防自关窗） */
 
 /** 本次输入行里的输入元素（插入表情、收起面板后把焦点还回去都用它） */
 function inputEl() {
@@ -149,6 +148,7 @@ function openSheet() {
    * 读一次真实光标位置——这是全程唯一一次读它，之后插入/恢复全用这个数（夹紧使用）。 */
   const ie = inputEl();
   if (ie && typeof ie.selectionStart === "number") caretAt = ie.selectionStart;
+  bindInputYield();   /* 轮 201：用户点输入框 = 面板让位（确定性事件，不靠键盘事件猜） */
   /* 轮 200 · 定案：面板高度**永远优先用 OS 上报的真实键盘高**（keyboardDidShow/WillHide
    * 事件自带 keyboardHeight，与用户键盘实际高度同源——原生 App 同款做法）。
    * 旧法「视口差估算」随打开时机量出 0 / 310 两种值 = 用户实测「两个不同的高度框」。
@@ -160,7 +160,6 @@ function openSheet() {
   /* 轮 199 · 抄原生 App（B站/知乎/小红书）：收键盘**不 blur 输入框**——原生应用的输入框在
    * 表情面板弹出时从不失焦，光标原地钉住，插入永远落在真实位置。网页里对应的能力就是
    * Capacitor Keyboard.hide()：只收 IME 窗口，DOM 焦点不动。网页环境（无插件）才退回 blur。 */
-  panelOpenedAt = performance.now();   /* 轮 201：hide() 后个别 IME 会回敬假 keyboardWillShow，防自关 */
   if (kb()) {
     kb().hide().catch(() => {});
   } else {
@@ -193,6 +192,7 @@ function closeSheet(restoreFocus) {
   if (ae && ae !== el && ae !== document.body && typeof ae.blur === "function") {
     try { ae.blur(); } catch (e) { /* 忽略 */ }
   }
+  unbindInputYield();
   clearRowShift();
   if (el) {
     /* 轮 198：还焦点 + 把光标放回记住的位置（夹紧到当前长度）。原生路径下不存在
@@ -224,7 +224,6 @@ function toggle() {
     const left = Math.min(Math.max(8, r.left), Math.max(8, window.innerWidth - 304));
     pos.value = { left: left + "px", bottom };
   }
-  panelOpenedAt = performance.now();
   open.value = true;
 }
 
@@ -300,25 +299,40 @@ function onDoc(e) {
   const zone = (root.value && root.value.closest(".dm-input-row, .cmt-input-row, .cmt-main-bar")) || root.value;
   if (open.value && zone && !zone.contains(e.target) && !isEmojiHit(e.target)) closeSheet(false);
 }
-/* 轮 199 · 抄原生 App 的互斥：App 内面板开着时输入框仍是焦点，用户再点它系统会把键盘
- * 弹回来（已焦点不再发 focusin）——监听原生 keyboardWillShow，键盘起 = 面板让位。 */
-function onNativeKeyboardShow() {
-  /* 轮 201：kb().hide() 后个别 IME 会回敬一记假 keyboardWillShow——刚打开 400ms 内不认，
-   * 否则面板开了又秒关（用户实测「第一次有用第二次又关闭」）。 */
-  if (open.value && performance.now() - panelOpenedAt > 400) closeSheet(false);
+/* 轮 201 定案 · 面板让位 = **用户点输入框**（pointerdown，确定事件），不再听键盘事件——
+ * 键盘事件分不清「我们自己 hide 的余波」和「用户真要点输入框」（真机截图实锤：两者混在
+ * 一起时面板和键盘同屏）。App 内输入框在面板打开期间保持焦点、不会发 focusin，
+ * 所以必须在输入框上挂 pointerdown：用户点它 = 要打字 = 面板让位（键盘由系统弹出）。 */
+let inputYieldBind = null;
+let inputYieldFn = null;
+function bindInputYield() {
+  const el = inputEl();
+  if (!el || inputYieldBind === el) return;
+  unbindInputYield();
+  const onPd = () => { if (open.value) closeSheet(false); };
+  el.addEventListener("pointerdown", onPd, true);
+  inputYieldBind = el;
+  inputYieldFn = onPd;
+}
+function unbindInputYield() {
+  if (inputYieldBind && inputYieldFn) {
+    try { inputYieldBind.removeEventListener("pointerdown", inputYieldFn, true); } catch (e) { /* 忽略 */ }
+  }
+  inputYieldBind = null;
+  inputYieldFn = null;
 }
 onMounted(() => {
   rememberRest();
   document.addEventListener("pointerdown", onDoc);
   document.addEventListener("focusin", onFocusIn, true);
   /* 轮 200：键盘互斥 + 真实键盘高缓存（kbOn 双形态兜住 addListener 返回值） */
-  kbOn("keyboardWillShow", onNativeKeyboardShow);
   kbOn("keyboardDidShow", onKbHeight);
   kbOn("keyboardWillHide", onKbHeight);
 });
 onBeforeUnmount(() => {
   document.removeEventListener("pointerdown", onDoc);
   document.removeEventListener("focusin", onFocusIn, true);
+  unbindInputYield();
   for (const h of kbHandles) { try { h.remove(); } catch (e) { /* 忽略 */ } }
   kbHandles.length = 0;
   clearRowShift();
