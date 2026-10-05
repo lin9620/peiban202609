@@ -360,33 +360,6 @@ ok("/settings 路由已注册", mvRouter.includes('"/settings"'));
   dmStoreDrop("ua", "c");
 }
 
-/* ───────── 轮 164：表情按钮接线（评论框/私信框五处 + 组件本身） ───────── */
-{
-  const picker = fs.readFileSync("src/components/EmojiPicker.vue", "utf8");
-  const emojiCells = (picker.match(/"[^"]*[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}][^"]*"/gu) || []);
-  const uniq = new Set(emojiCells);
-  ok("表情面板：按钮同行找 textarea 光标插入（拿不到就追加）",
-    picker.includes('parentElement.querySelector("textarea, input")')
-    && picker.includes("selectionStart") && picker.includes("setSelectionRange"));
-  ok("表情面板：fixed 定位 + teleport 到 body（防 overflow 裁剪/transform 陷阱）",
-    picker.includes("position: fixed") && picker.includes('to="body"'));
-  ok("表情面板：自研格子已移除，网格交给 emoji-picker-element（成熟组件）",
-    !picker.includes("const EMOJIS") && !picker.includes("emo-cell"));
-  ok("表情面板：i18n 键 emoji.title 在用", /t\(['"]emoji\.title['"]\)/.test(picker));
-  const cases = [
-    ["私信会话框", "src/views/MessagesView.vue", 1],
-    ["漂流瓶聊天框", "src/components/BottleChat.vue", 1],
-    ["帖子详情评论框", "src/views/PostDetailView.vue", 1],
-    ["暖心墙（内联框+底部输入条）", "src/views/CommunityView.vue", 2],
-  ];
-  for (const [name, f, need] of cases) {
-    const c = fs.readFileSync(f, "utf8");
-    const used = (c.match(/<EmojiPicker /g) || []).length;
-    const wired = c.includes('from "../components/EmojiPicker.vue"') || c.includes('from "./EmojiPicker.vue"');
-    ok("表情按钮接入：" + name, used >= need && wired);
-  }
-}
-
 /* ───────── 轮 165：刷新炸页/僵尸会话/表情贴底回归 ───────── */
 {
   const cv = fs.readFileSync("src/views/CommunityView.vue", "utf8");
@@ -399,36 +372,6 @@ ok("/settings 路由已注册", mvRouter.includes('"/settings"'));
     sb.includes("async function deadSessionSignOut") && sb.includes("session missing")
       && sb.includes("invalid grant") && sb.includes('accessToken = "";'));
   ok("僵尸会话自清：清空本地 token 与 user 再 signOut", sb.includes('accessToken = "";') && sb.includes("cloud.user = null;"));
-  const picker = fs.readFileSync("src/components/EmojiPicker.vue", "utf8");
-  /* 轮 184：isEmojiHit 静态标记的真身在规则层，两个评论条（暖心墙/详情页）共用 */
-  const pdv = fs.readFileSync("src/views/PostDetailView.vue", "utf8");
-  const rules = fs.readFileSync("src/utils/emojiSheetRules.js", "utf8");
-  /* 轮 179 返工（用户实测：先点输入再点表情面板还是很长）：高度改显式 px + 视口变化重排。
-   * 旧写法（34vh + bottom:"0"）会被键盘收起把布局视口拉高而拉长、并盖住输入行。
-   * 几何细节的单测在 tools/emoji-sheet-test.mjs；这里只钉「旧写法没回来」。 */
-  ok("表情面板：手机端输入行骑在面板头上（显式高度 + 推进行 + 贴屏底）",
-    picker.includes("sheetLayout(") && picker.includes("rowEl.style.marginBottom")
-    && picker.includes('height: Math.round(L.height) + "px"') && !picker.includes('bottom: "0"'));
-  ok("表情面板：键盘弹起/收起会重排（resize + visualViewport——「先点输入再点表情」那条路径的正解）",
-    picker.includes('window[fn]("resize", onViewportChange)') && picker.includes("window.visualViewport[fn]"));
-  ok("表情面板：连选不关面板 + 光标递推（轮 198 原生 setRangeText 体系）",
-    picker.includes("el.setRangeText(uni, lo, hi, \"end\")")
-    && picker.includes("caretAt = typeof el.selectionStart === \"number\" ? el.selectionStart : lo + uni.length;"));
-  /* 轮 184 真机实测（用户：「暖心墙点表情直接隐藏输入框」）：
-   * 「面板开着就不关条」这道保险**不能用 document.querySelector(".emo-panel") 现查 DOM**——
-   * 表情按钮的 @click 把 open 置 true，面板由 Vue 微任务渲染，document click 冒泡那一刻
-   * 面板还没进 DOM，querySelector 仍是 null → 误判成「点外」→ 收起整条评论条。
-   * 面板还 teleport 到 body，本就不在条内，contains() 也拦不住。
-   * 正解：改查**静态标记** isEmojiHit()（面板和按钮都带 emo-panel / emo-btn 类名）。 */
-  ok("表情面板开着时点外不连带收评论条：查静态标记 isEmojiHit，不现查 DOM",
-    cv.includes("isEmojiHit(tgt)")
-    && !cv.includes('document.querySelector(".emo-panel")')
-    && /function mainBarDocClose\(e\)[\s\S]*?isEmojiHit\(tgt\)\)\s*return;/.test(cv));
-  ok("表情按钮/面板带静态标记 isEmojiHit 才认得（emo-btn / emo-panel 两个类名都查）",
-    rules.includes("emo-panel") && rules.includes("emo-btn")
-    && rules.includes("export function isEmojiHit"));
-  ok("详情页评论条同款保险（轮 184：详情页原本连这道保险都没有，点表情必关条）",
-    pdv.includes("isEmojiHit(tgt)") && /function detailBarDocClose\(e\)[\s\S]*?isEmojiHit/.test(pdv));
   ok("条内点击与占位条点击仍归各自逻辑管（占位条归 toggle，别被 document 抢先关掉）",
     /function mainBarDocClose\(e\)[\s\S]*?closest\("\.cmt-entry, \.bar-reply-tap"\)/.test(cv));
 }

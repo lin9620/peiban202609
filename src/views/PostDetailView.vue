@@ -24,8 +24,6 @@ import {
 import { fmtWhen } from "../utils/wallRules.js";
 import { cacheKey, swr, cacheSet } from "../utils/cache.js";   /* 轮 158：帖子主体 SWR */
 import { isMobileNav, tabbarSuppressed } from "../stores/uiStore.js";
-import EmojiPicker from "../components/EmojiPicker.vue";   /* 轮 164：表情按钮 */
-import { isEmojiHit } from "../utils/emojiSheetRules.js";  /* 轮 184：点表情不许收起评论条 */
 /* 轮 84：…菜单的「拷贝」（WebView 里 navigator.clipboard 缺失时 execCommand 兜底） */
 import { copyText } from "../utils/clipboard.js";
 /* 轮 33：举报弹窗 + 全站拉黑过滤（我拉黑的人，TA 的帖子/评论在我这里不显示） */
@@ -408,7 +406,6 @@ const detailBarEl = ref(null);
 function detailBarDocClose(e) {
   const tgt = e.target;
   if (detailBarEl.value && detailBarEl.value.contains(tgt)) return;   /* 条内（输入/发送）不关 */
-  if (isEmojiHit(tgt)) return;                                        /* 表情按钮/面板：只收面板，不关条 */
   if (tgt && tgt.closest && tgt.closest(".cmt-entry")) return;        /* 占位条点击归 toggle 管 */
   detailBar.value = false;
 }
@@ -566,11 +563,8 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
              App 端不渲染——手机端走轮 108 续4 的卡内占位条 + 底部输入条；未登录仍是登录入口（原底栏同款 bar-signin）。 -->
         <div v-if="!isMobileNav" id="detail-cmtmain" class="cmt-input cmt-input-top">
           <div v-if="signedIn" class="cmt-input-row">
-            <div class="emo-in">
             <van-field v-model="cmtDraft" type="textarea" rows="1" autosize
               :placeholder="t('comment.placeholder')" :maxlength="MAX_LEN" />
-            <EmojiPicker :text="cmtDraft" @update:text="v => (cmtDraft = v)" />
-            </div>
             <n-button type="primary" size="small" round class="cmt-send" @click="sendTopCmt()">{{ t("community.post") }}</n-button>
           </div>
           <router-link v-else class="bar-signin" to="/profile">{{ t("comment.barSignIn") }}</router-link>
@@ -638,11 +632,8 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
                  二级就地框（本评论内 cmt-input-in 的上一个分支）与手机端底部输入条都不受影响。 -->
             <div v-if="!isMobileNav && repActive === cm.id" class="cmt-input cmt-input-in">
               <div class="cmt-input-row">
-                <div class="emo-in">
                 <van-field v-model="repDraft[cm.id]" type="textarea" rows="1" autosize
                   :placeholder="repPlaceholder(cm)" :maxlength="MAX_LEN" />
-                <EmojiPicker :text="repDraft[cm.id] || ''" @update:text="v => (repDraft[cm.id] = v)" />
-                </div>
                 <n-button type="primary" size="small" round @click="sendCmt(cm)">{{ t("common.send") }}</n-button>
                 </div>
             </div>
@@ -675,11 +666,8 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
                 <!-- 轮 97：统一输入条样式（发送在右 + 自动扩行） -->
                 <div v-if="!isMobileNav && repActive === cm.id + ':' + rp.id" class="cmt-input cmt-input-in">
                   <div class="cmt-input-row">
-                    <div class="emo-in">
                     <van-field v-model="repDraft[cm.id]" type="textarea" rows="1" autosize
                       :placeholder="repPlaceholder(cm, rp)" :maxlength="MAX_LEN" />
-                    <EmojiPicker :text="repDraft[cm.id] || ''" @update:text="v => (repDraft[cm.id] = v)" />
-                    </div>
                     <n-button type="primary" size="small" round @click="sendCmt(cm, rp)">{{ t("common.send") }}</n-button>
                     </div>
                 </div>
@@ -715,12 +703,9 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
     <div v-if="isMobileNav && detailBar" ref="detailBarEl" class="cmt-main-bar">
       <!-- 轮 180：补表情按钮——一级评论与二级回复都走这条底部条，之前只有暖心墙有，帖子详情漏了。
            emo-in 让按钮绝对定位在输入框内右侧（同 style.css 里的 .emo-in 规则，与暖心墙同款）。 -->
-      <div class="emo-in">
       <van-field ref="detailBarInput" v-model="detailBarDraft" type="textarea"
         rows="1" autosize
         :placeholder="detailBarPh" :maxlength="MAX_LEN" />
-      <EmojiPicker :text="detailBarDraft" @update:text="v => (detailBarDraft = v)" />
-      </div>
       <n-button type="primary" size="small" round @click="sendDetailBar">{{ t("common.send") }}</n-button>
     </div>
 

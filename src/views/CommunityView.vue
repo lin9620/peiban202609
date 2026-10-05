@@ -47,8 +47,6 @@ import {
   recommendPosts, RECOMMEND_DAYS,
 } from "../utils/wallRules.js";
 import { isMobileNav, tabbarSuppressed } from "../stores/uiStore.js";
-import EmojiPicker from "../components/EmojiPicker.vue";   /* 轮 164：表情按钮 */
-import { isEmojiHit } from "../utils/emojiSheetRules.js";  /* 轮 184：点表情不许收起评论条 */
 /* 轮 33：举报弹窗 + 全站拉黑过滤（我拉黑的人，TA 的帖子/评论在我这里渲染前剔除） */
 import ReportDialog from "../components/ReportDialog.vue";
 import { filterBlocked, refreshBlocks } from "../utils/userBlocks.js";
@@ -937,7 +935,6 @@ const mainBarPh = computed(() => {
 function mainBarDocClose(e) {
   const tgt = e.target;
   if (mainBarEl.value && mainBarEl.value.contains(tgt)) return;   /* 条内（输入框/发送键）不关 */
-  if (isEmojiHit(tgt)) return;   /* 点在表情按钮/面板上：只让面板自己收，不动评论条 */
   /* 占位条与回复触发点（评论正文/回复钮）不关——它们自己管开条/切换/收起；
    * 否则点「回复」先开条、同一击冒泡到 document 又把它关掉（真机实测条闪没） */
   if (tgt && tgt.closest && tgt.closest(".cmt-entry, .bar-reply-tap")) return;
@@ -1697,15 +1694,12 @@ watch(() => route.query.refresh, (v) => {
       <div v-if="!isMobileNav && (!p.cloud || signedIn)" :id="'cmtmain-' + cmtKey(p)"
         class="cmt-input cmt-input-top">
         <div class="cmt-input-row">
-          <div class="emo-in">
           <van-field
             v-model="cmtDraft[cmtKey(p)]"
             type="textarea"
             rows="1" autosize
             :placeholder="t('comment.placeholder')"
             :maxlength="MAX_LEN" />
-          <EmojiPicker :text="cmtDraft[cmtKey(p)] || ''" @update:text="v => (cmtDraft[cmtKey(p)] = v)" />
-          </div>
           <n-button type="primary" size="small" round class="cmt-send" @click="sendTopCmt(p)">
             {{ t("common.send") }}
           </n-button>
@@ -1780,15 +1774,12 @@ watch(() => route.query.refresh, (v) => {
             v-if="isReplyOpen(p, cm) && !isMobileNav && !(p.cloud && !signedIn)" class="cmt-input cmt-input-rep">
             <!-- 轮 97：统一输入条样式 -->
             <div class="cmt-input-row">
-              <div class="emo-in">
               <van-field
                 v-model="repDraft[repKey(p, cm)]"
                 type="textarea"
                 rows="1" autosize
                 :placeholder="repPlaceholder(p, cm)"
                 :maxlength="MAX_LEN" />
-              <EmojiPicker :text="repDraft[repKey(p, cm)] || ''" @update:text="v => (repDraft[repKey(p, cm)] = v)" />
-              </div>
               <n-button type="primary" size="small" round @click="sendCmt(p, cm)">
                 {{ t("common.send") }}
               </n-button>
@@ -1836,15 +1827,12 @@ watch(() => route.query.refresh, (v) => {
                 class="cmt-input cmt-input-rep-in">
                 <!-- 轮 97：回复框同样统一（发送在右 + 自动扩行） -->
                 <div class="cmt-input-row">
-                  <div class="emo-in">
                   <van-field
                     v-model="repDraft[repKey(p, cm)]"
                     type="textarea"
                     rows="1" autosize
                     :placeholder="repPlaceholder(p, cm, rp)"
                     :maxlength="MAX_LEN" />
-                  <EmojiPicker :text="repDraft[repKey(p, cm)] || ''" @update:text="v => (repDraft[repKey(p, cm)] = v)" />
-                  </div>
                   <n-button type="primary" size="small" round @click="sendCmt(p, cm)">
                     {{ t("common.send") }}
                   </n-button>
@@ -1887,12 +1875,9 @@ watch(() => route.query.refresh, (v) => {
 
     <!-- 轮 108：手机端主评论底部输入条（图2样式：发送在右；贴键盘；点空白收起；一次只服务一条帖） -->
     <div v-if="isMobileNav && mainBarPost" ref="mainBarEl" class="cmt-main-bar">
-      <div class="emo-in">
       <van-field ref="mainBarInput" v-model="mainBarDraft" type="textarea"
         rows="1" autosize
         :placeholder="mainBarPh" :maxlength="MAX_LEN" />
-      <EmojiPicker :text="mainBarDraft" @update:text="v => (mainBarDraft = v)" />
-      </div>
       <n-button type="primary" size="small" round @click="sendMainBar">{{ t("common.send") }}</n-button>
     </div>
 

@@ -18,7 +18,6 @@ import * as dmApi from "../utils/dm.js";
 import { displayMsg, withDayDividers, canRecall, validateSend, sendErrKey, mergeTail } from "../utils/dmRules.js";
 import { dmStoreLoad, dmStoreSave } from "../utils/dmStore.js";
 import { refreshBadge } from "../stores/badgeStore.js";
-import EmojiPicker from "./EmojiPicker.vue";   /* 轮 164：表情按钮 */
 
 const props = defineProps({
   letter: { type: Object, default: null },   /* 左列选中的漂流瓶记录行（bottle_letters.*） */
@@ -416,12 +415,9 @@ onBeforeUnmount(() => { clearInterval(timer); });
           <p class="sub dm-hint">{{ t("dm.hint") }}</p>
           <p v-if="sendErr" class="sub dm-err">{{ sendErr }}</p>
           <div class="dm-input-row">
-            <div class="emo-in">
             <van-field
               v-model="body" type="textarea" rows="1" autosize :maxlength="2000"
               :placeholder="t('dm.placeholder')" @keydown.enter.exact.prevent="send" />
-            <EmojiPicker :text="body" @update:text="v => (body = v)" />
-            </div>
             <n-button type="primary" round size="small" :loading="sending" :disabled="!body.trim()" @click="send">
               {{ t("dm.send") }}
             </n-button>

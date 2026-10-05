@@ -1601,6 +1601,11 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      ① **setRangeText 不派发 input 事件**（轮 198 的错误假设）——v-model 永远停留在旧值，任意一次重渲染 van-field 就把旧值写回 DOM = 「打完字点几个表情，一点输入框表情全消失」（值改写拦截器抓到唯一写入栈来自 van-field 渲染函数）。**修**：setRangeText 后手动 `dispatchEvent(new Event("input", {bubbles:true}))` 同步 v-model。
      ② **App 内 Keyboard.hide() 引发系统焦点抖动** → 输入框收到「假 focusin」→ 被 focusin 收面板规则误杀 = 「打字中点 ☺ 键盘收了面板不出」「第一次有用第二次又关闭」（时序竞态）。**修（定案）**：**App 路径 focusin 永不收面板**，面板让位只归 keyboardWillShow 原生事件管（与原生 App 同一套互斥）；网页回退路径保留 focusin。
      ③ **面板高度 = 视口差估算**，随打开时机量出 0 / 310 两种值 = 「两个不同的高度框」。**修（定案）**：面板高度**永远优先用 OS 上报的真实键盘高**（keyboardDidShow/WillHide 事件自带 keyboardHeight，缓存 lastKbH；>restH×0.7 视为物理像素口径弃用），估算只做无 OS 值时的兜底。
+
+  - **轮 202 · 表情面板功能整体移除（2026-10-06，用户终裁：「不能写就把表情包功能删了」——轮 164~201 共 38 轮的表情输入链路就此终止）**：
+     **删**：EmojiPicker 组件（组件文件 + emojiSheetRules.js + emoji-sheet-test.mjs 三个文件删除）、四处视图的全部用法（MessagesView 私信、BottleChat 瓶聊、CommunityView 暖心墙评论/回复/底栏、PostDetailView 详情评论/回复/底栏，共 10 处 + .emo-in 包装 + import + style.css 相关死规则保留无害）。**保留**：输入框纯文字；**用户发表情走输入法自带表情**（搜狗等工具条自带 emoji，零实现成本零 bug 面）。
+     **踩坑**：批量正则摘 .emo-in 包装时把合法 `</div>` 一并误杀（前一行以 `/>` 结尾的自闭合元素很常见）——回滚两文件重做，改用「读结构 → 精准摘三行（开标签/picker 行/闭标签）」的包装级正则。
+     验证：dm-test 321/0（摘 14 条表情断言）+ post-detail 17/0 + app-shell 64/0 + story 160/0 + i18n 19/0 + mood 12/0 + undef 0 + build 0。**交付**：**已部署 Version `22ed78cf`** / **APK `07B98028FDD3F71F` 装机 Success + 冷启动 PID 13844** ✅ / 真机截图确认私信输入条仅剩 输入框+发送键（☺ 已消失）。
      验证：emoji-sheet 86/0（新增 dispatchEvent 补发/OS 高度优先/App focusin 永不收面板 三枚回归锁）+ dm-test 335/0 + undef 0 + build 0。**交付**：**已部署 Version `835f4615`** / **APK `FEF17FC865B92148` 装机 Success**（用户随即真机实测中）。
      **教训（钉死）**：①`setRangeText` 无 input 事件——程序改值必须自己派发，v-model 才认；②Capacitor 键盘隐藏伴随 WebView 焦点抖动，App 内不能依赖 focusin 做面板互斥，要用原生键盘事件；③键盘高度以 OS 事件上报值为唯一权威，视口推算是估算不是事实。
 

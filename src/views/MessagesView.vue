@@ -26,7 +26,6 @@ import { badge, refreshBadge } from "../stores/badgeStore.js";
  * 让「拉黑名单」的内容过滤缓存与私信名单始终是同一份 */
 import { blockUser, unblockUser, refreshBlocks } from "../utils/userBlocks.js";
 import BottleRecords from "../components/BottleRecords.vue";
-import EmojiPicker from "../components/EmojiPicker.vue";   /* 轮 164：表情按钮 */
 /* 轮 142 · 桌面「漂流瓶」段：行式列表（左列）+ 独立聊天框（中列）——与会话段的 dm-thread 各自单开 */
 import BottleChatList from "../components/BottleChatList.vue";
 import BottleChat from "../components/BottleChat.vue";
@@ -895,13 +894,10 @@ function goSignIn() {
               <p v-if="sendErr" class="sub dm-err">{{ sendErr }}</p>
               <!-- 轮 68：微信式输入行——单行起、随内容长高（1~6 行），发送键在框右侧 -->
               <div class="dm-input-row">
-                <div class="emo-in">
                 <van-field
                   v-model="body" type="textarea" rows="1" autosize :maxlength="2000"
                   :placeholder="isMobileNav ? t('dm.placeholderMobile') : t('dm.placeholder')"
                   @keydown.enter.exact.prevent="send" />
-                <EmojiPicker :text="body" @update:text="v => (body = v)" />
-                </div>
                 <n-button type="primary" round size="small" :loading="sending" :disabled="!body.trim()" @click="send">
                   {{ t("dm.send") }}
                 </n-button>
