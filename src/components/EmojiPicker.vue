@@ -15,6 +15,22 @@ import "emoji-picker-element";   /* 轮 188：成熟开源组件（MIT）——�
 /* 轮 199 · 抄原生 App 的键盘协作：原生应用收/起键盘而输入框不失焦（B站/知乎/小红书皆此法）。
  * Capacitor Keyboard 插件只在 App 内有（网页走 blur 回退），hide/show 即原生 IME 窗口控制。 */
 const kb = () => (isApp && Capacitor.Plugins.Keyboard) || null;
+/* 轮 200 · 键盘真实高度（插件事件上报，OS 权威值）——视口差估算法在「面板开着键盘收」
+ * 等时序下会量错，用户实测面板 217px vs 键盘 287px 不等高。 */
+let lastKbH = 0;
+const kbHandles = [];
+function kbOn(ev, fn) {
+  if (!kb() || !kb().addListener) return;
+  try {
+    const h = kb().addListener(ev, fn);
+    if (h && typeof h.then === "function") h.then((hh) => { kbHandles.push(hh); }).catch(() => {});
+    else kbHandles.push(h);
+  } catch (e) { /* 忽略 */ }
+}
+const onKbHeight = (info) => {
+  const h = info && typeof info.keyboardHeight === "number" ? info.keyboardHeight : 0;
+  if (h > 60) lastKbH = h;   /* 低于 60px 视为微抖，不采信 */
+};
 
 const props = defineProps({ text: { type: String, default: "" } });
 const emit = defineEmits(["update:text"]);
@@ -132,7 +148,12 @@ function openSheet() {
    * 读一次真实光标位置——这是全程唯一一次读它，之后插入/恢复全用这个数（夹紧使用）。 */
   const ie = inputEl();
   if (ie && typeof ie.selectionStart === "number") caretAt = ie.selectionStart;
-  sheetH = keyboardHeight({ innerH: window.innerHeight, restH }) || 0;
+  /* 轮 200 · 定案：面板高度**永远优先用 OS 上报的真实键盘高**（keyboardDidShow/WillHide
+   * 事件自带 keyboardHeight，与用户键盘实际高度同源——原生 App 同款做法）。
+   * 旧法「视口差估算」随打开时机量出 0 / 310 两种值 = 用户实测「两个不同的高度框」。
+   * 估算仅在没有 OS 值时兜底；超宽值（物理像素口径）按脏数据弃用。 */
+  const osH = lastKbH > 0 && lastKbH < restH * 0.7 ? lastKbH : 0;
+  sheetH = osH || keyboardHeight({ innerH: window.innerHeight, restH }) || 0;
   layoutSheet();   /* 先算好再渲染：面板一出现就在正确位置，不会先闪一下默认坐标 */
   /* 轮 199 · 抄原生 App（B站/知乎/小红书）：收键盘**不 blur 输入框**——原生应用的输入框在
    * 表情面板弹出时从不失焦，光标原地钉住，插入永远落在真实位置。网页里对应的能力就是
@@ -223,6 +244,10 @@ function onEmojiClick(ev) {
   hi = Math.max(lo, Math.min(hi, len));
   try {
     el.setRangeText(uni, lo, hi, "end");
+    /* 轮 200（真机 CDP 侦讯实锤）：setRangeText **不会派发 input 事件**——v-model 一直停在
+     * 旧值，任意一次重渲染 van-field 就把旧值写回 DOM = 用户实测「打完字点几个表情，
+     * 一点输入框表情全消失」。必须手动补发 input 让 v-model 同步到现值。 */
+    el.dispatchEvent(new Event("input", { bubbles: true }));
     caretAt = typeof el.selectionStart === "number" ? el.selectionStart : lo + uni.length;
   } catch (e) { /* 极老内核无 setRangeText：保底不炸 */ }
 }
@@ -252,6 +277,11 @@ function onFocusIn(e) {
   /* 轮 199 · 抄知乎桌面：**桌面弹层不因打字收起**——面板开着也能继续打字，来回切零步骤。
    * 只有手机 sheet（键盘要跟面板换位）才在焦点进输入框时收面板。 */
   if (!sheetMode()) return;
+  /* 轮 200 · 定案：**App 路径 focusin 永不收面板**。Keyboard.hide() 会引发系统焦点抖动，
+   * 输入框收到「假 focusin」——第一次打开没赶上、第二次赶上了就被自己关掉（用户实测
+   * 「第一次有用第二次又关闭」）。App 的面板让位**只归 keyboardWillShow 事件管**（与原生
+   * App 同一套互斥），focusin 收面板只保留在网页回退路径。 */
+  if (kb()) return;
   const el = inputEl();
   if (el && (e.target === el || (el.contains && el.contains(e.target)))) closeSheet(false);
 }
@@ -268,7 +298,6 @@ function onDoc(e) {
 }
 /* 轮 199 · 抄原生 App 的互斥：App 内面板开着时输入框仍是焦点，用户再点它系统会把键盘
  * 弹回来（已焦点不再发 focusin）——监听原生 keyboardWillShow，键盘起 = 面板让位。 */
-let kbShowHandle = null;
 function onNativeKeyboardShow() {
   if (open.value) closeSheet(false);
 }
@@ -276,19 +305,16 @@ onMounted(() => {
   rememberRest();
   document.addEventListener("pointerdown", onDoc);
   document.addEventListener("focusin", onFocusIn, true);
-  if (kb() && kb().addListener) {
-    /* 轮 199 修复：不同 Capacitor 版本 addListener 的返回不一（同步句柄 / Promise），两种都兜住 */
-    try {
-      const h = kb().addListener("keyboardWillShow", onNativeKeyboardShow);
-      if (h && typeof h.then === "function") h.then((hh) => { kbShowHandle = hh; }).catch(() => {});
-      else kbShowHandle = h;
-    } catch (e) { /* 忽略 */ }
-  }
+  /* 轮 200：键盘互斥 + 真实键盘高缓存（kbOn 双形态兜住 addListener 返回值） */
+  kbOn("keyboardWillShow", onNativeKeyboardShow);
+  kbOn("keyboardDidShow", onKbHeight);
+  kbOn("keyboardWillHide", onKbHeight);
 });
 onBeforeUnmount(() => {
   document.removeEventListener("pointerdown", onDoc);
   document.removeEventListener("focusin", onFocusIn, true);
-  if (kbShowHandle) { try { kbShowHandle.remove(); } catch (e) { /* 忽略 */ } kbShowHandle = null; }
+  for (const h of kbHandles) { try { h.remove(); } catch (e) { /* 忽略 */ } }
+  kbHandles.length = 0;
   clearRowShift();
 });
 </script>

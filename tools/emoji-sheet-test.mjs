@@ -191,20 +191,24 @@ ok("脏输入不炸（空对象 → 全是有穷数字）",
     !pickerCode.includes("trackCaret") && !pickerCode.includes("caretMem")
     && !pickerCode.includes("applyCaret") && !pickerCode.includes("rememberCaret")
     && !pickerCode.includes("untrackCaret"));
-  ok("插入走原生 setRangeText（范围替换+浏览器落光标+input 事件同步 v-model）",
-    picker2.includes("el.setRangeText(uni, lo, hi, \"end\")"));
+  ok("插入走原生 setRangeText（范围替换+浏览器落光标）+ 手动补 input 事件同步 v-model（轮 200：不补 = 重渲染表情消失）",
+    picker2.includes("el.setRangeText(uni, lo, hi, \"end\")")
+    && /setRangeText[\s\S]{0,400}dispatchEvent\(new Event\("input", \{ bubbles: true \}\)\)/.test(picker2));
   ok("插入范围两端夹紧到当前长度（脏选区删不掉内容）",
     /lo = Math\.max\(0, Math\.min\(lo, len\)\)/.test(picker2)
     && /hi = Math\.max\(lo, Math\.min\(hi, len\)\)/.test(picker2));
   ok("失焦时不用实时选区，用 caretAt（打开面板那一次记录）",
     /document\.activeElement === el [\s\S]{0,80}selectionStart[\s\S]{0,120}else[\s\S]{0,60}caretAt/.test(picker2));
   ok("唯一读光标点：openSheet 内、收键盘之前（输入框尚在焦点；轮 199 起 App 收键盘走 Keyboard.hide 不 blur）",
-    /const ie = inputEl\(\);[\s\S]{0,120}caretAt = ie\.selectionStart;[\s\S]{0,420}(?:\.blur\(\)|kb\(\)\.hide\(\))/.test(picker2));
+    /const ie = inputEl\(\);[\s\S]{0,240}caretAt = ie\.selectionStart;[\s\S]{0,700}(?:\.blur\(\)|kb\(\)\.hide\(\))/.test(picker2));
   ok("连选递推：插入后 caretAt 推进到插入之后（下一枚跟上一枚）",
     picker2.includes("caretAt = typeof el.selectionStart === \"number\" ? el.selectionStart : lo + uni.length;"));
-  ok("组件实测键盘高并锁成本次面板高度（openSheet 内、blur 之前）",
-    picker2.includes("keyboardHeight({ innerH: window.innerHeight, restH })")
-    && picker2.includes("sheetH = keyboardHeight("));
+  ok("面板高度=OS 上报的真实键盘高优先（轮 200：估算值只做回退）",
+    picker2.includes("const osH = lastKbH > 0 && lastKbH < restH * 0.7 ? lastKbH : 0;")
+    && picker2.includes("sheetH = osH || keyboardHeight({ innerH: window.innerHeight, restH }) || 0;")
+    && pickerCode.includes("keyboardDidShow") && pickerCode.includes("keyboardWillHide"));
+  ok("轮 200 定案：App 路径 focusin 永不收面板（假 focusin 不再误杀，让位只归 keyboardWillShow）",
+    /if \(!sheetMode\(\)\) return;[\s\S]{0,200}if \(kb\(\)\) return;/.test(pickerCode));
   ok("面板定位传当前视口+实测高度（restH 只作高度上限传参）",
     picker2.includes("sheetH,") && picker2.includes("restH,"));
   ok("restH 只增不减（仅作高度上限的基准）",

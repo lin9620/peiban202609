@@ -1596,6 +1596,15 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **测试**：emoji-sheet-test 断言换新口径（84/0：旧体系标识符零残留 + setRangeText/夹紧/唯一读点/连选递推八枚回归锁）+ dm-test 335/0 + app-shell 64/0 + undef 0 + build 0。**线上序列复现（warmpaws.de5.net，登录态）**：打 34 字 → 4 轮「☺→选表情→收起→打字」→ 长度 34→35→37→38→40→41→43→44 **严格单调**，每个表情接在上一个之后、每个字跟在表情后，零删除零跳位；连选递推、收起还焦点均 ✓。
      验证后**部署 Version `57eb104a`** / **APK `28338A1277AD6538` 装机 Success（USB 在）+ 冷启动 PID 6151 + CRASH_HITS=0** ✅——等用户真机复测原序列。
 
+  - **轮 200 · 表情真机两连 bug 根因实锤（真机 CDP 侦讯）+ 修复（2026-10-06，用户真机实测：「打字中点 ☺ 面板关闭而不是展开」「第一次有用第二次又关闭」「面板两个不同的高度框」「表情插了又消失」）**：
+     **真机 CDP 侦讯（adb forward + webview devtools，tools/_r200-cdp*.mjs）抓到三个独立真因**：
+     ① **setRangeText 不派发 input 事件**（轮 198 的错误假设）——v-model 永远停留在旧值，任意一次重渲染 van-field 就把旧值写回 DOM = 「打完字点几个表情，一点输入框表情全消失」（值改写拦截器抓到唯一写入栈来自 van-field 渲染函数）。**修**：setRangeText 后手动 `dispatchEvent(new Event("input", {bubbles:true}))` 同步 v-model。
+     ② **App 内 Keyboard.hide() 引发系统焦点抖动** → 输入框收到「假 focusin」→ 被 focusin 收面板规则误杀 = 「打字中点 ☺ 键盘收了面板不出」「第一次有用第二次又关闭」（时序竞态）。**修（定案）**：**App 路径 focusin 永不收面板**，面板让位只归 keyboardWillShow 原生事件管（与原生 App 同一套互斥）；网页回退路径保留 focusin。
+     ③ **面板高度 = 视口差估算**，随打开时机量出 0 / 310 两种值 = 「两个不同的高度框」。**修（定案）**：面板高度**永远优先用 OS 上报的真实键盘高**（keyboardDidShow/WillHide 事件自带 keyboardHeight，缓存 lastKbH；>restH×0.7 视为物理像素口径弃用），估算只做无 OS 值时的兜底。
+     验证：emoji-sheet 86/0（新增 dispatchEvent 补发/OS 高度优先/App focusin 永不收面板 三枚回归锁）+ dm-test 335/0 + undef 0 + build 0。**交付**：**已部署 Version `835f4615`** / **APK `FEF17FC865B92148` 装机 Success**（用户随即真机实测中）。
+     **教训（钉死）**：①`setRangeText` 无 input 事件——程序改值必须自己派发，v-model 才认；②Capacitor 键盘隐藏伴随 WebView 焦点抖动，App 内不能依赖 focusin 做面板互斥，要用原生键盘事件；③键盘高度以 OS 事件上报值为唯一权威，视口推算是估算不是事实。
+     测试脚本 tools/_r200-cdp*.mjs（一次性侦讯，用完删）。
+
   - **轮 199 · 抄原生 App 键盘协作 + 知乎桌面连贯流（2026-10-06，用户两连点单：「找 B站/知乎/小红书怎么实现的给我抄」「点 ☺ 收起面板后不能直接打字不连贯——跟知乎学」）**：
      **抄原生 App 的核心**：B站/知乎/小红书/微信的输入框是**原生控件**，表情面板弹出时键盘收起但输入框**从不失焦**、光标原地钉住——网页里所有光标 bug 的总根源就是「收键盘 = blur」。Capacitor 等价物 = `@capacitor/keyboard` 插件（新装 8.0.6 + cap sync）：**openSheet 用 `Keyboard.hide()` 收键盘（DOM 焦点不动），网页环境退回 blur**；面板收起 `Keyboard.show()` 键盘自动回位（App 内打字零步骤衔接）；**keyboardWillShow 监听做面板↔键盘互斥**（App 内输入框始终焦点、再点它系统弹键盘时面板让位——已焦点不再发 focusin，必须监听原生事件）。
      **真机炸点（用户秒抓，截图实锤「ni(...).addListener(...).then is not a function」）**：Capacitor 8 的 `addListener` 返回**同步句柄**（只有 .remove()），我当 Promise 链了 .then → 挂载即崩。**修**：try/catch + 同步句柄/Promise 双形态兜住。**踩坑**：用户手机崩在旧 APK 上却跑出 199 的代码——手机端内容有在线加载通路，网页修复即刻到达真机（不用等装机）。
