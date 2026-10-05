@@ -411,8 +411,9 @@ ok("/settings 路由已注册", mvRouter.includes('"/settings"'));
     && picker.includes('height: Math.round(L.height) + "px"') && !picker.includes('bottom: "0"'));
   ok("表情面板：键盘弹起/收起会重排（resize + visualViewport——「先点输入再点表情」那条路径的正解）",
     picker.includes('window[fn]("resize", onViewportChange)') && picker.includes("window.visualViewport[fn]"));
-  ok("表情面板：选完表情不 focus=连选不关面板（轮 187）+ 光标仍记录",
-    picker.includes("applyCaret(el, caret, false)") && picker.includes("setSelectionRange(caret, caret)"));
+  ok("表情面板：连选不关面板 + 光标递推（轮 198 原生 setRangeText 体系）",
+    picker.includes("el.setRangeText(uni, lo, hi, \"end\")")
+    && picker.includes("caretAt = typeof el.selectionStart === \"number\" ? el.selectionStart : lo + uni.length;"));
   /* 轮 184 真机实测（用户：「暖心墙点表情直接隐藏输入框」）：
    * 「面板开着就不关条」这道保险**不能用 document.querySelector(".emo-panel") 现查 DOM**——
    * 表情按钮的 @click 把 open 置 true，面板由 Vue 微任务渲染，document click 冒泡那一刻

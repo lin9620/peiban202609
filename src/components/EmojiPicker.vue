@@ -5,7 +5,7 @@
  * 插入在 textarea/input 光标处（picker 自己在同行内找输入元素），插入后焦点+光标归位。
  * 点选不收面板（可连选），点面板外/再点按钮收起。 -->
 <script setup>
-import { ref, nextTick, onMounted, onBeforeUnmount } from "vue";
+import { ref, onMounted, onBeforeUnmount } from "vue";
 import { t } from "../i18n.js";
 import { isApp } from "../stores/uiStore.js";
 import { emojiSheetMode, sheetLayout, keyboardHeight, isEmojiHit } from "../utils/emojiSheetRules.js";
@@ -64,78 +64,25 @@ function layoutSheet() {
   };
 }
 
+/* ═══ 轮 198 · 光标体系整体退役，换浏览器原生 API ═══
+ * 旧体系（轮 183/185/187 的 trackCaret 持续跟踪 + caretMem 递推 + applyCaret 三重定时器）
+ * 在真机上翻车的两个实锤：
+ *   ① 插入位置读了**失焦元素**的实时选区——手机上失焦输入框的选区是脏的（输入法选词/旧值
+ *      残留），拿比文本长度还大的脏位置切片 = 「前面输入全删了只剩一个表情」；
+ *   ② 失焦期间 selectionchange 还在喂 caretMem——v-model 改写会把选区清零，被记成当前位置
+ *      = 「表情跳到第一个前面」。
+ * 新做法（全原生，无监听器、无定时器）：
+ *   - 唯一一次读光标：openSheet 里**输入框还焦点时**（桌面 ☺ 按钮有 mousedown.prevent 不抢
+ *     焦点；手机点按钮不转移焦点）记下位置，存 caretAt；
+ *   - 插入用 el.setRangeText(uni, lo, hi, "end")：范围两端夹紧到当前长度（脏位置删不掉内容），
+ *     浏览器自己把光标落在插入之后，并触发原生 input 事件 → v-model 自动同步（无二次写值，
+ *     不再存在「v-model 回写把 selection 复位」的整类问题）；
+ *   - 失焦插入一律用 caretAt（夹紧），只在元素真的焦点内才信实时选区。 */
+let caretAt = null;   /* 打开面板那一刻（输入框尚在焦点）的真实光标位置 */
+
 /** 本次输入行里的输入元素（插入表情、收起面板后把焦点还回去都用它） */
 function inputEl() {
   return root.value ? root.value.parentElement.querySelector("textarea, input") : null;
-}
-
-/* 轮 183 · 自己记光标，别去问一个「已经失焦」的元素。
- * 病根：面板开着时输入框是 blur 的（键盘被面板顶掉），这时 v-model 一改写，
- * 元素自己的 selectionStart/End 会被复位到 0 —— 收起面板时再读它，
- * 光标就「跳回首字」，正是用户第三次报的那条。所以：
- *   ① 收键盘**之前**把当时的光标位置存下来（那一刻它是准的）；
- *   ② 每插一个表情按插完的位置递推；
- *   ③ 收起时用存下来的值恢复，不读元素。
- * 面板开着时用户无法打字，光标只由「插入表情」这一个动作推进，所以递推是可靠的。
- *
- * 轮 185（真机复验又报「点表情按钮 → 光标变成首个」）：上面 ① 的时机也不够。
- * 用户点按钮的那一刻，**输入框已经被按钮的这次点击 blur 了** —— openSheet 里
- * rememberCaret() 读到的 selectionStart 已经是失焦后的值（浏览器复位成 0）。
- * 正确做法是**持续跟踪**：输入框获得焦点期间（打字/移动光标/选中/粘贴）一直记，
- * 于是任何时刻点按钮拿到的都是真位置，而不是「点按钮那一刻的残值」。
- */
-let caretMem = null;
-let caretBound = null;   /* 当前绑定的输入元素（换行/换草稿时解绑重绑） */
-
-function rememberCaret() {
-  const el = inputEl();
-  if (el && typeof el.selectionStart === "number") caretMem = el.selectionStart;
-}
-
-/** 输入框在焦点内时的任何光标变化都记下来（打字/方向键/拖选/粘贴/长按菜单） */
-function trackCaret(el) {
-  if (!el || caretBound === el) return;
-  untrackCaret();
-  caretBound = el;
-  const onEvt = () => {
-    const t = caretBound;
-    if (!t || !t.isConnected) return;
-    if (typeof t.selectionStart === "number") caretMem = t.selectionStart;
-  };
-  /* selectionchange 是浏览器统一口径（覆盖点击定位、拖选、程序改selection）；
-   * keyup/input/pointerup 兜住个别内核不发 selectionchange 的情况。 */
-  for (const n of ["keyup", "input", "pointerup", "focus", "select"]) el.addEventListener(n, onEvt, true);
-  document.addEventListener("selectionchange", onEvt);
-  caretUnbind = () => {
-    for (const n of ["keyup", "input", "pointerup", "focus", "select"]) el.removeEventListener(n, onEvt, true);
-    document.removeEventListener("selectionchange", onEvt);
-  };
-}
-let caretUnbind = null;
-function untrackCaret() {
-  if (caretUnbind) { try { caretUnbind(); } catch (e) { /* 忽略 */ } }
-  caretUnbind = null;
-  caretBound = null;
-}
-
-/**
- * 轮 185：把记好的光标**真正落到元素上**。
- * 必须 focus →（值没跟上就先补值）→ setSelectionRange → 下一帧再按一次同一位置。
- * 最后那一次是关键：v-model 是异步写值，值刷进来会把 selection 复位到 0，
- * 只在 nextTick 里设一次等于白设（这正是「光标变成首个」的真凶）。
- * 全程**不回读**元素的位置，只用 caretMem —— 它是唯一可信的真相。
- */
-function applyCaret(el, caret, allowFocus = true) {
-  if (!el || !el.isConnected || caret == null) return;
-  try {
-    /* 轮 187：allowFocus=false 用于「面板开着连选」——一 focus 输入框，
-       focusin 就被 onFocusIn 接住 → 面板被关（用户实测「点表情后面板收了」）。
-       光标位置照样记录，用户点输入框时从这里继续。 */
-    if (allowFocus && document.activeElement !== el) el.focus({ preventScroll: true });
-    /* 值还没被Vue 刷进来时，光标下标是按旧串算的 —— 先对齐值再定位 */
-    if (typeof props.text === "string" && el.value !== props.text) el.value = props.text;
-    el.setSelectionRange(caret, caret);
-  } catch (e) { /* 无光标环境（detached / 不支持）忽略 */ }
 }
 
 /* 视口一变就重排：键盘弹起/收起、旋屏、原生键盘动画结束都会走这里 ——
@@ -176,8 +123,10 @@ function openSheet() {
    * 键盘占着的时候视口正是矮的，这一刻量到的差值就是键盘真高；锁死之后
    * 键盘收起导致视口变高也不会改面板高 —— 面板与键盘等高互换，输入框不位移。 */
   rememberRest();
-  trackCaret(inputEl());   /* 轮 185：先接管光标跟踪，再 blur —— 之后怎么改都不会丢位置 */
-  rememberCaret();
+  /* 轮 198：趁输入框还在焦点内（桌面 ☺ 有 mousedown.prevent 不抢焦点；手机点按钮不转移焦点）
+   * 读一次真实光标位置——这是全程唯一一次读它，之后插入/恢复全用这个数（夹紧使用）。 */
+  const ie = inputEl();
+  if (ie && typeof ie.selectionStart === "number") caretAt = ie.selectionStart;
   sheetH = keyboardHeight({ innerH: window.innerHeight, restH }) || 0;
   layoutSheet();   /* 先算好再渲染：面板一出现就在正确位置，不会先闪一下默认坐标 */
   const ae = document.activeElement;
@@ -208,26 +157,16 @@ function closeSheet(restoreFocus) {
   if (ae && ae !== el && ae !== document.body && typeof ae.blur === "function") {
     try { ae.blur(); } catch (e) { /* 忽略 */ }
   }
-  /* 轮 185：只用记下来的光标，绝不回读元素（失焦 + v-model 改写后读出来是 0） */
-  const caret = caretMem;
   clearRowShift();
   if (el) {
-    trackCaret(el);
-    const run = () => {
-      /* 再防御一次：万一浏览器又把焦点给了按钮/别处，抢回来 */
-      if (document.activeElement !== el && document.activeElement &&
-          document.activeElement !== document.body &&
-          typeof document.activeElement.blur === "function") {
-        try { document.activeElement.blur(); } catch (e) { /* 忽略 */ }
-      }
-      applyCaret(el, caret);
-    };
-    nextTick(run);
-    /* 值刷进来会复位 selection —— 再补一帧；键盘动画前后各一次，三重保险 */
-    requestAnimationFrame(run);
-    clearSettle();
-    /* 最后一发放在 click 默认行为（浏览器给按钮 focus）之后，确保我们赢 */
-    settleTimers = [0, 120, 320, 520].map((ms) => setTimeout(run, ms));
+    /* 轮 198：还焦点 + 把光标放回记住的位置（夹紧到当前长度）。原生路径下不存在
+     * 「v-model 二次写值把 selection 复位」的问题（setRangeText 的 input 事件同步的
+     * 就是 DOM 现值），一次落位即稳，不再需要三重定时器抢焦点。 */
+    try {
+      el.focus({ preventScroll: true });
+      const at = caretAt != null ? Math.min(caretAt, el.value.length) : el.value.length;
+      el.setSelectionRange(at, at);
+    } catch (e) { /* 无光标环境忽略 */ }
   }
 }
 
@@ -250,32 +189,28 @@ function toggle() {
   open.value = true;
 }
 
-/* 轮 188：emoji-picker-element 的 emoji-click 落到这里的插入逻辑（光标体系沿用轮 183/185/187） */
+/* 轮 198：插入全走原生 setRangeText——范围替换 + 浏览器落光标 + 原生 input 事件同步 v-model。
+ * 选区只信「焦点内」的实时值；失焦（面板开着）一律用 caretAt 且两端夹紧到当前长度——
+ * 手机上失焦输入框的选区是脏的，直接切片 = 用户实测「前面的输入全删了只剩一个表情」。 */
 function onEmojiClick(ev) {
   const uni = ev && ev.detail && ev.detail.unicode;
   if (!uni) return;
   const el = inputEl();
-  trackCaret(el);
-  const base = String(props.text || "");
-  let out, caret;
-  const s0 = caretMem != null ? caretMem
-    : (el && typeof el.selectionStart === "number" ? el.selectionStart : null);
-  if (el && s0 != null) {
-    const en = el.selectionEnd == null ? s0 : el.selectionEnd;
-    const lo = Math.min(s0, en), hi = Math.max(s0, en);
-    out = base.slice(0, lo) + uni + base.slice(hi);
-    caret = lo + uni.length;
+  if (!el) return;
+  const len = el.value.length;
+  let lo, hi;
+  if (document.activeElement === el && typeof el.selectionStart === "number") {
+    lo = el.selectionStart;
+    hi = el.selectionEnd == null ? lo : el.selectionEnd;
   } else {
-    out = base + uni;
-    caret = out.length;
+    lo = hi = caretAt != null ? caretAt : len;
   }
-  caretMem = caret;
-  emit("update:text", out);
-  nextTick(() => {
-    if (!el) return;
-    /* 面板开着时不 focus（否则 focusin 让位键盘把面板关了）；光标已记录 */
-    applyCaret(el, caret, false);
-  });
+  lo = Math.max(0, Math.min(lo, len));
+  hi = Math.max(lo, Math.min(hi, len));
+  try {
+    el.setRangeText(uni, lo, hi, "end");
+    caretAt = typeof el.selectionStart === "number" ? el.selectionStart : lo + uni.length;
+  } catch (e) { /* 极老内核无 setRangeText：保底不炸 */ }
 }
 
 /* 轮 195：点表情不再抢输入框焦点——emoji-picker 的按钮是原生 button，mousedown 默认行为
@@ -319,7 +254,6 @@ onMounted(() => {
 onBeforeUnmount(() => {
   document.removeEventListener("pointerdown", onDoc);
   document.removeEventListener("focusin", onFocusIn, true);
-  untrackCaret();   /* 轮 185：document 上的 selectionchange 监听必须解，否则元素换了还跟着旧元素记 */
   clearRowShift();
 });
 </script>

@@ -180,13 +180,28 @@ ok("脏输入不炸（空对象 → 全是有穷数字）",
     (picker2.match(/@mousedown\.prevent/g) || []).length === 1
     && /class="emo-btn"[\s\S]{0,200}@mousedown\.prevent/.test(picker2)
     && !picker2.includes("class=\"emo-cell\""));
-  ok("还焦点走 applyCaret（唯一入口：focus + 对齐值 + 定光标）",
-    /function closeSheet\(restoreFocus\)[\s\S]*?applyCaret\(el, caret\)/.test(picker2));
-  /* 轮 186 真机教训：光标复位有四个时机 —— v-model 异步刷值、rAF 布局、
-   * 浏览器在click 之后把焦点给按钮、键盘弹出动画收尾。必须多帧补按，
-   * 且最后一次要排在 click 默认行为之后（0ms + 动画收尾两档）。 */
-  ok("还焦点有多次补按（v-model 异步刷值 / rAF / 按钮抢焦点 / 键盘动画，四时机全覆盖）",
-    /closeSheet\(restoreFocus\)[\s\S]*?nextTick\(run\)[\s\S]*?requestAnimationFrame\(run\)[\s\S]*?settleTimers = \[0, 120, 320, 520\]/.test(picker2));
+  /* 轮 198：自研光标体系（trackCaret/caretMem/applyCaret/三重定时器）整体退役，换原生
+   * setRangeText。真机实锤两类脏数据：①失焦元素实时选区（输入法选词/旧值残留）当插入位置
+   * →「前面输入全删了只剩一个表情」；②失焦期间 selectionchange 喂 caretMem → v-model 清零
+   * 被记成当前位置 →「表情跳到第一个前面」。新体系：唯一读点=openSheet 焦点内一次；
+   * 插入=setRangeText 范围夹紧；恢复=focus+setSelectionRange 夹紧，无监听器无定时器。 */
+  /* 轮 198 回归锁（去注释后判定——文档注释里允许提旧名说明史） */
+  const pickerCode = picker2.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
+  ok("旧光标体系删干净（trackCaret/caretMem/applyCaret/rememberCaret 不得残留）",
+    !pickerCode.includes("trackCaret") && !pickerCode.includes("caretMem")
+    && !pickerCode.includes("applyCaret") && !pickerCode.includes("rememberCaret")
+    && !pickerCode.includes("untrackCaret"));
+  ok("插入走原生 setRangeText（范围替换+浏览器落光标+input 事件同步 v-model）",
+    picker2.includes("el.setRangeText(uni, lo, hi, \"end\")"));
+  ok("插入范围两端夹紧到当前长度（脏选区删不掉内容）",
+    /lo = Math\.max\(0, Math\.min\(lo, len\)\)/.test(picker2)
+    && /hi = Math\.max\(lo, Math\.min\(hi, len\)\)/.test(picker2));
+  ok("失焦时不用实时选区，用 caretAt（打开面板那一次记录）",
+    /document\.activeElement === el [\s\S]{0,80}selectionStart[\s\S]{0,120}else[\s\S]{0,60}caretAt/.test(picker2));
+  ok("唯一读光标点：openSheet 内、blur 之前（输入框尚在焦点）",
+    /const ie = inputEl\(\);[\s\S]{0,120}caretAt = ie\.selectionStart;[\s\S]{0,420}\.blur\(\)/.test(picker2));
+  ok("连选递推：插入后 caretAt 推进到插入之后（下一枚跟上一枚）",
+    picker2.includes("caretAt = typeof el.selectionStart === \"number\" ? el.selectionStart : lo + uni.length;"));
   ok("组件实测键盘高并锁成本次面板高度（openSheet 内、blur 之前）",
     picker2.includes("keyboardHeight({ innerH: window.innerHeight, restH })")
     && picker2.includes("sheetH = keyboardHeight("));
@@ -194,28 +209,14 @@ ok("脏输入不炸（空对象 → 全是有穷数字）",
     picker2.includes("sheetH,") && picker2.includes("restH,"));
   ok("restH 只增不减（仅作高度上限的基准）",
     picker2.includes("if (h > restH) restH = h;"));
-  /* 轮 183/184：光标必须自己记，不能去问一个已失焦的元素 */
-  ok("自己记光标 caretMem（不读失焦元素的 selectionStart）",
-    picker2.includes("let caretMem = null;") && picker2.includes("function rememberCaret()")
-    && picker2.includes("caretMem = el.selectionStart"));
-  ok("收键盘（blur）之前就记下光标 —— 之后元素读数不可信",
-    /rememberCaret\(\);[\s\S]*?ae\.blur\(\)/.test(picker2)
-    || /rememberCaret\(\);[\s\S]*?\.blur\(\)/.test(picker2));
-  ok("恢复光标用自己记的 caretMem，不是读失焦元素（用户报：光标跳回首字）",
-    picker2.includes("caretMem != null ? caretMem") && picker2.includes("el.setSelectionRange(caret, caret)")
-    && picker2.includes("caretMem = caret;"));
-  /* 轮 184回归锁：一旦改回「读元素自己的 selectionStart」，这里就false */
-  ok("收起时不读元素光标（正则兜住任何 el.selectionStart 直读）",
-    !/closeSheet[\s\S]{0,400}?el\.selectionStart/.test(picker2));
+  ok("恢复光标夹紧到当前长度（旧值/短文本不越界）",
+    /Math\.min\(caretAt, el\.value\.length\)/.test(picker2));
   ok("收起面板有统一入口 closeSheet(restoreFocus)", picker2.includes("function closeSheet(restoreFocus)"));
   ok("再点表情按钮 → 收起并把焦点还给输入框（用户不必重新点输入框）",
     picker2.includes("if (open.value) { closeSheet(true); return; }")
     && picker2.includes("el.focus({ preventScroll: true })"));
-  ok("还焦点时保住光标位置（不让用户从头选）",
-    picker2.includes("el.setSelectionRange(caret, caret)"));
-  ok("还焦点前先把 margin 复位（closeSheet 里先 clearRowShift，还焦点走 applyCaret）",
-    /function closeSheet\(restoreFocus\)[\s\S]*?clearRowShift\(\);[\s\S]*?applyCaret\(el, caret\)/.test(picker2)
-    && /function applyCaret\(el, caret, allowFocus = true\)[\s\S]*?el\.focus/.test(picker2));
+  ok("还焦点前先把 margin 复位（closeSheet 里先 clearRowShift 再还焦点）",
+    /function closeSheet\(restoreFocus\)[\s\S]*?clearRowShift\(\);[\s\S]*?el\.focus\(\{ preventScroll: true \}\)/.test(picker2));
   ok("面板开着时点回输入框要打字 → 收起面板让位给键盘（focusin 兜底）",
     picker2.includes('document.addEventListener("focusin", onFocusIn, true)')
     && picker2.includes("removeEventListener(\"focusin\", onFocusIn, true)")
@@ -262,9 +263,9 @@ ok("脏输入不炸（空对象 → 全是有穷数字）",
       !s.includes("mainBarDocClose2") && !s.includes("EMO_HIT ="));
   }
 }
-  ok("桌面零变化：小弹层分支仍在（选完表情不 focus=连选，轮 187）",
+  ok("桌面零变化：小弹层分支仍在（连选=caretAt 随每次插入推进，轮 198）",
     picker2.includes("const bottom = Math.max(8, window.innerHeight - r.top + 8) + \"px\";")
-    && picker2.includes("applyCaret(el, caret, false)"));
+    && picker2.includes("el.setRangeText(uni, lo, hi, \"end\")"));
   ok("贴底行几何不依赖实测坐标（键盘收那一帧不会把顶开量算两遍）",
     /const rowBottomRest = anchored \? rest : rowB;/.test(read("src/utils/emojiSheetRules.js")));
 }
