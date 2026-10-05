@@ -102,15 +102,20 @@ function scrollBottom(smooth = false) {
     let frames = 0;
     /* 轮 173b：进会话期间持续钉底（pinning）——旧缓存先落底、网络回来新消息把底撑下去，
        就会出现「停在中间一下再跳底部」的两段式落地；钉住后新消息落进来视线跟着走，无停顿 */
+    /* 轮 193d：确定性状态机（同主会话）——隐藏期每帧钉底；
+     * 「字体完成 + 高度连续 3 帧不变」双条件同时满足才揭示 */
+    let stableFrames = 0;
+    let lastH = -1;
     const chase = () => {
-      if (gen !== scrollGen) return;                   /* 已有新链（如平滑滚动）接管 */
-      if (userScrolling.value) return;                 /* 用户上滑：立即停，不打扰回看 */
-      /* 轮 178b：字体没稳定前不收兵——追底穿过字体换装，落点始终钉在真底部 */
-      if (frames > 300) return;                        /* 硬上限 ~5s，防异常环境永转 */
-      if (frames++ > 20 && !pinning.value && fontsOk()) return;
+      if (gen !== scrollGen) return;
+      if (userScrolling.value) return;
+      if (frames > 600) { listRevealed.value = true; return; }
       set();
-      if (fontsOk() && entryReady.value && !listRevealed.value
-        && el.scrollHeight - el.scrollTop - el.clientHeight < 4) listRevealed.value = true;
+      const settled = fontsOk() && entryReady.value && el.scrollHeight === lastH;
+      lastH = el.scrollHeight;
+      if (settled) stableFrames++; else stableFrames = 0;
+      if (stableFrames >= 3 && !listRevealed.value) listRevealed.value = true;
+      frames++;
       requestAnimationFrame(chase);
     };
     if (smooth && el.scrollTo) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
