@@ -198,8 +198,8 @@ ok("脏输入不炸（空对象 → 全是有穷数字）",
     && /hi = Math\.max\(lo, Math\.min\(hi, len\)\)/.test(picker2));
   ok("失焦时不用实时选区，用 caretAt（打开面板那一次记录）",
     /document\.activeElement === el [\s\S]{0,80}selectionStart[\s\S]{0,120}else[\s\S]{0,60}caretAt/.test(picker2));
-  ok("唯一读光标点：openSheet 内、blur 之前（输入框尚在焦点）",
-    /const ie = inputEl\(\);[\s\S]{0,120}caretAt = ie\.selectionStart;[\s\S]{0,420}\.blur\(\)/.test(picker2));
+  ok("唯一读光标点：openSheet 内、收键盘之前（输入框尚在焦点；轮 199 起 App 收键盘走 Keyboard.hide 不 blur）",
+    /const ie = inputEl\(\);[\s\S]{0,120}caretAt = ie\.selectionStart;[\s\S]{0,420}(?:\.blur\(\)|kb\(\)\.hide\(\))/.test(picker2));
   ok("连选递推：插入后 caretAt 推进到插入之后（下一枚跟上一枚）",
     picker2.includes("caretAt = typeof el.selectionStart === \"number\" ? el.selectionStart : lo + uni.length;"));
   ok("组件实测键盘高并锁成本次面板高度（openSheet 内、blur 之前）",
@@ -211,6 +211,9 @@ ok("脏输入不炸（空对象 → 全是有穷数字）",
     picker2.includes("if (h > restH) restH = h;"));
   ok("恢复光标夹紧到当前长度（旧值/短文本不越界）",
     /Math\.min\(caretAt, el\.value\.length\)/.test(picker2));
+  ok("轮 199：App 内收键盘不 blur 输入框（Keyboard.hide——抄原生 App，光标钉在原地）",
+    pickerCode.includes("kb().hide()") && pickerCode.includes("kb().show()")
+    && /keyboardWillShow[\s\S]{0,120}closeSheet\(false\)/.test(picker2));
   ok("收起面板有统一入口 closeSheet(restoreFocus)", picker2.includes("function closeSheet(restoreFocus)"));
   ok("再点表情按钮 → 收起并把焦点还给输入框（用户不必重新点输入框）",
     picker2.includes("if (open.value) { closeSheet(true); return; }")

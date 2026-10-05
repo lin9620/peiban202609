@@ -8,8 +8,13 @@
 import { ref, onMounted, onBeforeUnmount } from "vue";
 import { t } from "../i18n.js";
 import { isApp } from "../stores/uiStore.js";
+import { Capacitor } from "@capacitor/core";
 import { emojiSheetMode, sheetLayout, keyboardHeight, isEmojiHit } from "../utils/emojiSheetRules.js";
 import "emoji-picker-element";   /* 轮 188：成熟开源组件（MIT）——搜索/分类/皮肤色阶全套，替换自研格子 */
+
+/* 轮 199 · 抄原生 App 的键盘协作：原生应用收/起键盘而输入框不失焦（B站/知乎/小红书皆此法）。
+ * Capacitor Keyboard 插件只在 App 内有（网页走 blur 回退），hide/show 即原生 IME 窗口控制。 */
+const kb = () => (isApp && Capacitor.Plugins.Keyboard) || null;
 
 const props = defineProps({ text: { type: String, default: "" } });
 const emit = defineEmits(["update:text"]);
@@ -129,8 +134,15 @@ function openSheet() {
   if (ie && typeof ie.selectionStart === "number") caretAt = ie.selectionStart;
   sheetH = keyboardHeight({ innerH: window.innerHeight, restH }) || 0;
   layoutSheet();   /* 先算好再渲染：面板一出现就在正确位置，不会先闪一下默认坐标 */
-  const ae = document.activeElement;
-  if (ae && ae !== document.body && ae.blur) ae.blur();   /* 收键盘：面板占键盘位，两者互斥 */
+  /* 轮 199 · 抄原生 App（B站/知乎/小红书）：收键盘**不 blur 输入框**——原生应用的输入框在
+   * 表情面板弹出时从不失焦，光标原地钉住，插入永远落在真实位置。网页里对应的能力就是
+   * Capacitor Keyboard.hide()：只收 IME 窗口，DOM 焦点不动。网页环境（无插件）才退回 blur。 */
+  if (kb()) {
+    kb().hide().catch(() => {});
+  } else {
+    const ae = document.activeElement;
+    if (ae && ae !== document.body && ae.blur) ae.blur();   /* 收键盘：面板占键盘位，两者互斥 */
+  }
   listenViewport(true);
   /* 安全网：个别内核收键盘只改 visualViewport 且不发 resize —— 补排两次（幂等，不闪） */
   clearSettle();
@@ -161,12 +173,14 @@ function closeSheet(restoreFocus) {
   if (el) {
     /* 轮 198：还焦点 + 把光标放回记住的位置（夹紧到当前长度）。原生路径下不存在
      * 「v-model 二次写值把 selection 复位」的问题（setRangeText 的 input 事件同步的
-     * 就是 DOM 现值），一次落位即稳，不再需要三重定时器抢焦点。 */
+     * 就是 DOM 现值），一次落位即稳，不再需要三重定时器抢焦点。
+     * 轮 199：App 内输入框全程没失焦（Keyboard.hide 不动 DOM 焦点），再把键盘叫回来即可。 */
     try {
       el.focus({ preventScroll: true });
       const at = caretAt != null ? Math.min(caretAt, el.value.length) : el.value.length;
       el.setSelectionRange(at, at);
     } catch (e) { /* 无光标环境忽略 */ }
+    if (kb()) kb().show().catch(() => {});   /* 抄原生：面板收起 = 键盘回位（输入框还在焦点） */
   }
 }
 
@@ -235,6 +249,9 @@ function onPanelMouseDown(e) {
  */
 function onFocusIn(e) {
   if (!open.value) return;
+  /* 轮 199 · 抄知乎桌面：**桌面弹层不因打字收起**——面板开着也能继续打字，来回切零步骤。
+   * 只有手机 sheet（键盘要跟面板换位）才在焦点进输入框时收面板。 */
+  if (!sheetMode()) return;
   const el = inputEl();
   if (el && (e.target === el || (el.contains && el.contains(e.target)))) closeSheet(false);
 }
@@ -243,17 +260,35 @@ function onDoc(e) {
   /* 点面板/按钮以外的地方收起：**不还焦点** —— 用户是去点别处了，强行弹键盘会抢焦点。
    * 轮 185：输入条的「点外收起」也挂在 document 上，两边必须用**同一套命中判定**，
    * 否则会出现「面板点得好好的，评论条却被收起」。统一走 utils 的 isEmojiHit()，
-   * 它认的是静态标记（.emo-btn/.emo-panel/.emo-root），不依赖面板此刻在不在 DOM 里。 */
-  if (open.value && root.value && !root.value.contains(e.target) && !isEmojiHit(e.target)) closeSheet(false);
+   * 它认的是静态标记（.emo-btn/.emo-panel/.emo-root），不依赖面板此刻在不在 DOM 里。
+   * 轮 199 · 抄知乎桌面：**输入行本身也算面板区**——打字/点发送不收面板，桌面才连贯；
+   * 手机 sheet 交给 focusin 换位逻辑（点输入框 → 面板收、键盘起）。 */
+  const zone = (root.value && root.value.closest(".dm-input-row, .cmt-input-row, .cmt-main-bar")) || root.value;
+  if (open.value && zone && !zone.contains(e.target) && !isEmojiHit(e.target)) closeSheet(false);
+}
+/* 轮 199 · 抄原生 App 的互斥：App 内面板开着时输入框仍是焦点，用户再点它系统会把键盘
+ * 弹回来（已焦点不再发 focusin）——监听原生 keyboardWillShow，键盘起 = 面板让位。 */
+let kbShowHandle = null;
+function onNativeKeyboardShow() {
+  if (open.value) closeSheet(false);
 }
 onMounted(() => {
   rememberRest();
   document.addEventListener("pointerdown", onDoc);
   document.addEventListener("focusin", onFocusIn, true);
+  if (kb() && kb().addListener) {
+    /* 轮 199 修复：不同 Capacitor 版本 addListener 的返回不一（同步句柄 / Promise），两种都兜住 */
+    try {
+      const h = kb().addListener("keyboardWillShow", onNativeKeyboardShow);
+      if (h && typeof h.then === "function") h.then((hh) => { kbShowHandle = hh; }).catch(() => {});
+      else kbShowHandle = h;
+    } catch (e) { /* 忽略 */ }
+  }
 });
 onBeforeUnmount(() => {
   document.removeEventListener("pointerdown", onDoc);
   document.removeEventListener("focusin", onFocusIn, true);
+  if (kbShowHandle) { try { kbShowHandle.remove(); } catch (e) { /* 忽略 */ } kbShowHandle = null; }
   clearRowShift();
 });
 </script>
