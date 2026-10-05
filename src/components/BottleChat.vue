@@ -17,6 +17,7 @@ import { bottleChatState, bottleChatDecide, bottleErrKey } from "../utils/bottle
 import * as dmApi from "../utils/dm.js";
 import { displayMsg, withDayDividers, canRecall, validateSend, sendErrKey, mergeTail } from "../utils/dmRules.js";
 import { dmStoreLoad, dmStoreSave } from "../utils/dmStore.js";
+import { idbMerge } from "../utils/dmIdb.js";
 import { refreshBadge } from "../stores/badgeStore.js";
 
 const props = defineProps({
@@ -216,6 +217,7 @@ async function loadMessages(id, { before = null } = {}) {
     }
     /* 本地库同步（全量落盘） */
     dmStoreSave(props.meId, id, msgs.value, hasMore.value);
+    idbMerge(id, msgs.value);   /* 轮 204：镜像全量库 */
   } catch (e) {
     if (before == null && msgsConv !== id) { msgs.value = []; msgsConv = ""; }
   }
@@ -293,6 +295,7 @@ async function send() {
       oldestId.value = msgs.value.length ? msgs.value[0].id : null;
       /* 轮 194：本地库同步补上这条（不补的话退出重进会先看到本地库少一条） */
       dmStoreSave(props.meId, id, msgs.value, hasMore.value);
+      idbMerge(id, msgs.value);   /* 轮 204：发送镜像全量库 */
     } else {
       await loadMessages(id);
     }
@@ -311,6 +314,7 @@ async function recall(m) {
     msgs.value = msgs.value.map((x) =>
       (x.id === m.id ? { ...x, deleted_at: new Date().toISOString(), body: "", image_path: null } : x));
     dmStoreSave(props.meId, convId.value, msgs.value, hasMore.value);   /* 轮 194：撤回落盘 */
+    idbMerge(convId.value, msgs.value);   /* 轮 204：撤回镜像全量库 */
   } catch (e) {
     const late = e && String(e.message || e).includes("too-late");
     sendErr.value = t(late ? "dm.errTooLate" : "dm.errNetwork");

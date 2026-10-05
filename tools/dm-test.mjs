@@ -360,6 +360,20 @@ ok("/settings 路由已注册", mvRouter.includes('"/settings"'));
   dmStoreDrop("ua", "c");
 }
 
+/* ───────── 轮 204：全量库（IndexedDB）合并逻辑（纯函数部分） ───────── */
+{
+  const { mergeRows } = await import("../src/utils/dmIdb.js");
+  ok("全量库合并：去重保序升序", (() => {
+    const m = mergeRows([{ id: 3, b: "x" }, { id: 1 }], [{ id: 2 }, { id: 3, b: "y" }]);
+    return JSON.stringify(m.map((x) => x.id)) === "[1,2,3]" && m[2].b === "y";
+  })());
+  ok("全量库合并：超软上限裁最旧", (() => {
+    const m = mergeRows(Array.from({ length: 60 }, (_, i) => ({ id: i })), [], 50);
+    return m.length === 50 && m[0].id === 10;
+  })());
+  ok("全量库合并：空行不炸", mergeRows(null, null).length === 0);
+}
+
 /* ───────── 轮 165：刷新炸页/僵尸会话/表情贴底回归 ───────── */
 {
   const cv = fs.readFileSync("src/views/CommunityView.vue", "utf8");

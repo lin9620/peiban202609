@@ -17,6 +17,7 @@ import { cloud } from "../utils/supabase.js";
 import * as dmApi from "../utils/dm.js";
 import { cacheKey, swr } from "../utils/cache.js";
 import { dmStoreLoad, dmStoreSave, dmStoreDrop } from "../utils/dmStore.js";
+import { idbMerge, idbOlderThan, idbServerDone, idbDrop } from "../utils/dmIdb.js";
 import {
   previewText, sortConvs, filterConvs, withDayDividers, displayMsg,
   validateSend, sendErrKey, canRecall, relativeTime, rowView, mergeTail,
@@ -260,10 +261,21 @@ async function loadMessages(id, { before = null } = {}) {
   }
   /* ── 网络：增量拉取后合并（不替换渲染中的列表）── */
   try {
+    if (before != null) {
+      /* 轮 204：翻历史优先吃本地全量库（IndexedDB）——本地有就直接补页，零网络零等待 */
+      const idbRows = await idbOlderThan(id, before, 30);
+      if (idbRows.length >= 5) {
+        applyRows(idbRows, true);   /* 本地页假设还有更早（网络层仍有则后续再补） */
+        dmStoreSave(meId.value, id, msgs.value, hasMore.value);
+        loadingMsgs.value = false;
+        return smoothed;
+      }
+    }
     const rows = (await dmApi.listMessages(id, { before, limit: 30 })) || [];
     const asc = rows.slice().reverse();
     if (before != null) {
       applyRows(rows, rows.length === 30);
+      idbMerge(id, rows, { older: true });   /* 轮 204：网络历史页镜像进全量库 */
     } else if (msgsConv === id && !msgs.value.some((m) => m.id < 0)) {
       /* 重开/刷新同会话：尾部增量并入（保住已翻历史），不整窗替换 */
       const { rows: merged, added } = mergeTail(msgs.value, asc);
@@ -285,12 +297,37 @@ async function loadMessages(id, { before = null } = {}) {
     }
     /* 本地库同步（全量落盘） */
     dmStoreSave(meId.value, id, msgs.value, hasMore.value);
+    idbMerge(id, msgs.value);   /* 轮 204：镜像进全量库 */
+    if (before == null) backfillOlder(id);   /* 轮 204：静默回填更早历史（只写库不进 UI） */
   } catch (e) {
     if (before == null && msgsConv !== id) applyRows([], false);
   }
   loadingMsgs.value = false;
   if (before == null) pinning.value = false;
   return smoothed;
+}
+
+/* ── 轮 204 · 后台回填：把该会话服务器侧的更早历史分页拉全、只写 IndexedDB（不进 UI）。
+ * 断点：backfilledTo（已回填到的最旧 id）；跑完置 serverDone=true 永久跳过。
+ * 节流：每页 sleep 120ms；单次进会话最多 40 页（防失控），没拉完下次进会话续传。 */
+const backfillBusy = new Set();
+async function backfillOlder(convId) {
+  if (backfillBusy.has(String(convId))) return;
+  backfillBusy.add(String(convId));
+  try {
+    if (await idbServerDone(convId)) return;
+    let watermark = null;
+    for (let page = 0; page < 40; page++) {
+      if (String(activeId.value) !== String(convId) && msgsConv !== convId) return;   /* 已离开该会话 */
+      const rows = (await dmApi.listMessages(convId, { before: watermark, limit: 50 })) || [];
+      if (!rows.length) { await idbMerge(convId, [], { serverDone: true }); return; }
+      await idbMerge(convId, rows, { older: true });
+      watermark = rows[rows.length - 1].id;   /* rows 新→旧，末条最旧 */
+      if (rows.length < 50) { await idbMerge(convId, [], { serverDone: true }); return; }
+      await new Promise((r) => setTimeout(r, 120));
+    }
+  } catch (e) { /* 静默：下次进会话续传 */ }
+  finally { backfillBusy.delete(String(convId)); }
 }
 
 function scrollBottom(smooth = false) {
@@ -439,6 +476,7 @@ async function send() {
       oldestId.value = msgs.value.length ? msgs.value[0].id : null;
       /* 轮 194：本地库同步补上这条（不补的话退出重进会先看到本地库少一条） */
       dmStoreSave(meId.value, convId, msgs.value, hasMore.value);
+      idbMerge(convId, msgs.value);   /* 轮 204：发送镜像全量库 */
     } else {
       await loadMessages(convId);   /* 兜底：拿不到 msg_id（异常网关）才走整段重载 */
     }
@@ -459,6 +497,7 @@ async function recall(m) {
     msgs.value = msgs.value.map((x) =>
       (x.id === m.id ? { ...x, deleted_at: new Date().toISOString(), body: "", image_path: null } : x));
     dmStoreSave(meId.value, activeId.value, msgs.value, hasMore.value);   /* 轮 194：撤回落盘 */
+    idbMerge(activeId.value, msgs.value);   /* 轮 204：撤回镜像全量库 */
   } catch (e) {
     const late = e && String(e.message || e).includes("too-late");
     sendErr.value = t(late ? "dm.errTooLate" : "dm.errNetwork");
@@ -482,6 +521,7 @@ async function rejectReq(c) {
   try { await dmApi.hide(c.conv_id); } catch (e) { /* 静默 */ }
   convs.value = convs.value.filter((x) => x.conv_id !== c.conv_id);
   dmStoreDrop(meId.value, c.conv_id);   /* 轮 194：会话移出列表即清本地库 */
+  idbDrop(c.conv_id);   /* 轮 204：全量库同清 */
   refreshBadge();
 }
 
@@ -496,6 +536,7 @@ async function hideConv(c) {
   try { await dmApi.hide(c.conv_id); } catch (e) { /* 静默 */ }
   convs.value = convs.value.filter((x) => x.conv_id !== c.conv_id);
   dmStoreDrop(meId.value, c.conv_id);   /* 轮 194：会话移出列表即清本地库 */
+  idbDrop(c.conv_id);   /* 轮 204：全量库同清 */
   if (String(activeId.value) === String(c.conv_id)) {
     activeId.value = "";
     router.replace({ name: "messagesList" }).catch(() => {});
