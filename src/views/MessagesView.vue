@@ -26,8 +26,6 @@ import { badge, refreshBadge } from "../stores/badgeStore.js";
  * 让「拉黑名单」的内容过滤缓存与私信名单始终是同一份 */
 import { blockUser, unblockUser, refreshBlocks } from "../utils/userBlocks.js";
 import BottleRecords from "../components/BottleRecords.vue";
-import { SwipeCell as VanSwipeCell } from "vant";
-import "vant/es/swipe-cell/style";   /* 轮 190：会话左滑操作（微信式） */
 import EmojiPicker from "../components/EmojiPicker.vue";   /* 轮 164：表情按钮 */
 /* 轮 142 · 桌面「漂流瓶」段：行式列表（左列）+ 独立聊天框（中列）——与会话段的 dm-thread 各自单开 */
 import BottleChatList from "../components/BottleChatList.vue";
@@ -768,8 +766,10 @@ function goSignIn() {
 
         <template v-if="normal.length">
           <div class="dm-sec"><span class="sec-label">{{ t("dm.conversations") }}</span></div>
-          <van-swipe-cell v-for="c in normal" :key="c.conv_id">
+          <!-- 轮 197：用户点单——撤掉微信式左滑（轮 190 的 SwipeCell），操作全走 ⋯ 菜单
+           * （打开 / 免打扰 / 隐藏会话 / 拉黑，本来就在里面），恢复以前的纯行样式 -->
           <div
+            v-for="c in normal" :key="c.conv_id"
             class="dm-row" :class="{ on: String(c.conv_id) === String(activeId) }"
             @click="openConv(c.conv_id)">
             <n-avatar round :size="38" class="post-avatar clickable" :title="t('dm.viewHome')" @click.stop="goUser(c.other_id)">{{ (c.nickname || "?").slice(0, 1).toUpperCase() }}</n-avatar>
@@ -792,11 +792,6 @@ function goSignIn() {
               <button class="dm-menu-item danger" @click.stop="toggleBlock(c)">{{ t("dm.block") }}</button>
             </div>
           </div>
-          <template #right>
-            <button class="dm-swipe-act" :class="{ on: c.muted }" @click.stop="toggleMute(c)">{{ c.muted ? t("dm.unmute") : t("dm.mute") }}</button>
-            <button class="dm-swipe-act danger" @click.stop="hideConv(c)">{{ t("dm.hide") }}</button>
-          </template>
-          </van-swipe-cell>
         </template>
 
         <p v-if="!normal.length && !requests.length && !loadingConvs" class="sub dm-empty">{{ t("dm.empty") }}</p>
