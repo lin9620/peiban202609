@@ -31,9 +31,12 @@ export const router = createRouter({
     /* 登录页：手机 + 网页共用；?redirect=/x 登录后回跳（Google 往返用 sessionStorage 兜底） */
     { path: "/login", name: "login", component: () => import("./views/LoginView.vue") },
     { path: "/u/:id", name: "waller", component: () => import("./views/WallerView.vue") },
-    /* 私信：列表与具体会话同页（/messages/:id 可直链，通知点击跳这里） */
-    { path: "/messages", name: "messagesList", component: () => import("./views/MessagesView.vue") },
-    { path: "/messages/:id", name: "messages", component: () => import("./views/MessagesView.vue") },
+    /* 私信：列表与具体会话同页（/messages/:id 可直链，通知点击跳这里）。
+     * 轮 196：meta.grp = 路由过渡 key 分组——同一组件的两条路由必须同 key，
+     * 否则 out-in 每次点开会话都整页拆掉重挂（懒加载组件每次导航都是新对象，
+     * 按组件身份做 key 救不了：线上逐帧实测 key 序列 c1→c2→c3），= 用户反复报的进会话跳闪。 */
+    { path: "/messages", name: "messagesList", meta: { grp: "messages" }, component: () => import("./views/MessagesView.vue") },
+    { path: "/messages/:id", name: "messages", meta: { grp: "messages" }, component: () => import("./views/MessagesView.vue") },
     /* 通知中心 */
     { path: "/notifications", name: "notifications", component: () => import("./views/NotificationsView.vue") },
 { path: "/settings", name: "settings", component: () => import("./views/SettingsView.vue") },

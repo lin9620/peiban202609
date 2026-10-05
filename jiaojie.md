@@ -1581,6 +1581,16 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **实测（硬断言，1280×800 桌面弹层 + 390×844 手机 sheet 双形态）**：①桌面全新进入两轮首pick——焦点全程在输入框（activeElement=textarea）、零 focusin、零 closeSheet、emoji 精确插在光标处、面板保持可连选（😊→😇 连续插入 val="😊😇"）✓；②面板内搜索框输 thumbsup 过滤出 11 个结果（未误伤）✓；③手机 sheet——开面板失焦（设计内）→ 点表情焦点不进面板 → 点回输入框面板让位 → cua.type 打字 "A😊BXY" 衔接正常 ✓。**踩坑**：①Playwright `press("X")` 合成键盘事件在 IAB 里不产文本（cua.type 真实管道能进）——差点误判成输入框坏了；②`document.activeElement` 跨 shadow 边界返回宿主 emoji-picker 而非内层 input，断言要按宿主比对。
      验证：emoji-sheet-test 84/0 + undef 0 + build 0。**交付**：已提交 / **已部署 Version `fbd9f11c`** / live-check 14/14 / live-bundle-check 本地=线上（入口 SHA16 `f9555bc8167b7105`）/ **APK `454FE8ECE8625C66`(5.5M) 构建完成，adb no devices 待补装**（连轮 194 的 `1CCFA2B5` 一起，重连 USB 各一条 `adb install -r`）。
 
+  - **轮 196 · 「进会话跳闪」真因实锤 + 三层修复（2026-10-05，用户盛怒「194 轮你跟我说解决了？」——用户完全正确：194 的验证全是瞬间快照（±3ms、gap=1px、截图），**截图和单时刻采样根本测不出跳变序列**。本轮换成 rAF 逐帧追踪（每帧记录 vis/scrollTop/scrollHeight/最新消息视口位置/元素指纹）才算真正看见跳闪）**：
+     **逐帧实锤的三层根因（线上 warmpaws.de5.net，390×844 热进）**：
+     ① **App.vue 路由 out-in 整页重挂（主因）**：`<router-view>` 的 `<transition mode="out-in">` 包 `:key="route.path"`——/messages 与 /messages/:id 是**同一个组件的两条路由**，key 每次都变 → 每次点开会话 = 旧页（含已秒开的本地内容）整页淡出拆毁 → 新实例 msgs 空 → 等待 loadConvs 网络（线上 0.5~3.2s **可见空白**）→ 内容回填又顶部闪帧 → 钉底。铁证：给组件对象发 WeakMap 身份证，线上实测 key 序列 c1→c2→c3——**懒加载组件每次导航都是新对象，按组件身份/名字做 key 全都救不了**（__name 在懒加载解析期还会短暂 undefined，曾崩「Cannot read properties of undefined (reading '__name')」）。**修**：router.js 两条消息路由加 `meta: { grp: "messages" }`，App.vue key = `route.meta.grp || route.name || route.path`——列表↔会话同 key 原地切换（openConv/返回 watcher 本就支持），跨页面过渡保留。
+     ② **onScrollTop 布局竞态误触发翻历史**：入场布局未定型时 scrollTop 短暂=0 → 「触顶自动翻历史」误开 → 1~2s 后网络回来全列表重渲染 = **第二波可见跳变**（逐帧实测 t≈+1.0~1.7s，与第一波同形）。**修**：入场机期间（pinning/未揭示）不自动翻历史（MV/BC 同款）。
+     ③ **揭示门控被「矮平台」骗过**：挂载初期内容恰好装满容器（gap=0、高度稳定），set() 的 gap<4 立即揭示 → ~30ms 后内容 4 倍展开 = **可见顶部闪帧**。**修**：前 40 帧矮平台（sh ≤ clientH+24）不认定稳定，set() 与 settled 双路都堵；真短会话靠 40 帧上限 + 2s 兜底揭示。
+     **修复后逐帧判定（同口径）**：元素创建 **1**（无重挂）+ 空白窗 **0** + **可见跳变 >4px = 0**（二次复跑同样 0）；消息 93ms 入 DOM、**127ms 揭示即已钉在底部**（可见的第一帧就是最终位置）；跨页回归（/ → /community → /messages）全通。
+     验证：dm-test 335/0 + app-shell 64/0 + undef 0 + build 0。**交付**：**已部署 Version `44c06495`** / live-check 14/14 / live-bundle-check 本地=线上（入口 SHA16 `55e0345cc1efd2b4`）/ **APK `A1B0EA963933365C`(5.5M) 已构建（含 194 本地库 + 195 焦点 + 196 跳闪修复全部），adb no devices 待补装**。
+     **教训（钉死）**：①跳闪这类时序 bug 唯一有效的取证是**逐帧序列**，截图/单时刻采样/架构推理一律不算数——194 轮的「秒开±3ms」实测是真的，但测的是错误的东西；②修一行就要复测一轮逐帧，不能攒（本轮 name-key 和 WeakMap-key 两次无效修复就是没当场复测）；③改 App.vue 路由层要立即深链冷启验证（__name 崩溃就是没先测）。
+
+
 
 
   - **轮 179~186 · 表情面板几何/光标/收起体系重构（平行会话完成，代码在场未提交；本轮 187 由本会话收尾修复「点表情后面板收了」并一起入库）**：

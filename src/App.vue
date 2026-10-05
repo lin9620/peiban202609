@@ -297,9 +297,14 @@ onBeforeUnmount(() => { clearTimeout(scrubTimer); scrubTimer = 0; });
             </div>
 
             <router-view v-else v-slot="{ Component, route }">
-              <!-- 包一层 div 作为过渡元素：保证 <transition> 的节点始终是单一元素，避免视图多根节点导致白屏 -->
+              <!-- 包一层 div 作为过渡元素：保证 <transition> 的节点始终是单一元素，避免视图多根节点导致白屏。
+               * 轮 196：key 用 route.meta.grp（路由分组，见 router.js 私信两条）——同一组件的列表/会话
+               * 两条路由同 key → out-in 不再整页拆掉重挂（用户反复报的进会话跳闪，逐帧实测定位）。
+               * 没有 grp 的页面回落 name/path：行为与旧版一致（按页过渡）。
+               * 不能按组件对象/组件名做 key：懒加载路由每次导航 Component 都是新对象（线上实测 key 序列
+               * c1→c2→c3），__name 取值还会在解析期短暂 undefined（崩过一次）。 -->
               <transition name="page" mode="out-in">
-                <div :key="route.path" class="route-wrap">
+                <div :key="(route.meta && route.meta.grp) || route.name || route.path" class="route-wrap">
                   <component :is="Component" />
                 </div>
               </transition>

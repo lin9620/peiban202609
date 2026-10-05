@@ -91,14 +91,15 @@ function scrollBottom(smooth = false) {
      * 只滚一次会停在「中间」（用户实测：记录多了进会话落在半截）。
      * 用户一旦上滑（触摸/滚轮）立即停追，不打扰回看。 */
     userScrolling.value = false;
-    const gen = ++scrollGen;   /* 轮 176b：新滚动链作废旧链——平滑滚动时不被追帧的瞬时重钉顶掉 */
+    const gen = ++scrollGen;
+    let frames = 0;
+    /* 轮 196：矮平台不当稳定（同主会话——防挂载初期揭示后内容展开闪顶部帧） */
+    const plateau = () => el.scrollHeight <= el.clientHeight + 24 && frames < 40;
     const set = () => {
       el.scrollTop = el.scrollHeight;
-      /* 轮 178：钉稳（gap<4）才显示——揭示过早会露出未滚到位的中间态 */
-      if (!listRevealed.value && el.scrollHeight - el.scrollTop - el.clientHeight < 4) listRevealed.value = true;
+      if (!listRevealed.value && !plateau() && el.scrollHeight - el.scrollTop - el.clientHeight < 4) listRevealed.value = true;
     };
     set();
-    let frames = 0;
     /* 轮 173b：进会话期间持续钉底（pinning）——旧缓存先落底、网络回来新消息把底撑下去，
        就会出现「停在中间一下再跳底部」的两段式落地；钉住后新消息落进来视线跟着走，无停顿 */
     /* 轮 193d：确定性状态机（同主会话）——隐藏期每帧钉底；
@@ -110,7 +111,10 @@ function scrollBottom(smooth = false) {
       if (userScrolling.value) return;
       if (frames > 600) { listRevealed.value = true; return; }
       set();
-      const settled = fontsOk() && entryReady.value && el.scrollHeight === lastH;
+      const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
+      /* 轮 196：矮平台不当稳定（同主会话——防挂载初期揭示后内容展开闪顶部帧） */
+      const plateau = el.scrollHeight <= el.clientHeight + 24 && frames < 40;
+      const settled = fontsOk() && entryReady.value && el.scrollHeight === lastH && !plateau && gap < 4;
       lastH = el.scrollHeight;
       if (settled) stableFrames++; else stableFrames = 0;
       if (stableFrames >= 3 && !listRevealed.value) listRevealed.value = true;
@@ -128,6 +132,8 @@ function onScrollTop() {
   if (topRaf) return;
   topRaf = requestAnimationFrame(() => {
     topRaf = 0;
+    /* 轮 196：入场期间不自动翻历史（同主会话——防布局竞态误触发+二次跳变） */
+    if (pinning.value || !listRevealed.value) return;
     const el = listEl.value;
     if (!el || loadingMsgs.value || !hasMore.value || !oldestId.value || !convId.value) return;
     if (el.scrollTop < 140) loadMessages(convId.value, { before: oldestId.value });

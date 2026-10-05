@@ -305,13 +305,17 @@ function scrollBottom(smooth = false) {
      * 用户一旦上滑（触摸/滚轮）立即停追，不打扰回看。 */
     userScrolling.value = false;
     const gen = ++scrollGen;   /* 轮 176b：新滚动链作废旧链——平滑滚动时不被追帧的瞬时重钉顶掉 */
+    let frames = 0;
+    /* 轮 196：挂载初期容器/内容高度未定型，会出现「内容恰好装满容器」的矮平台
+     * （gap=0、高度稳定）——按旧条件会立即揭示，随后内容数倍展开 = 可见顶部闪帧
+     * （线上逐帧实测 t≈+30ms 一帧）。前 40 帧不把平台当稳定；真短会话靠硬上限兜底。 */
+    const plateau = () => el.scrollHeight <= el.clientHeight + 24 && frames < 40;
     const set = () => {
       el.scrollTop = el.scrollHeight;
-      /* 轮 178：钉稳（gap<4）才显示——揭示过早会露出未滚到位的中间态 */
-      if (!listRevealed.value && el.scrollHeight - el.scrollTop - el.clientHeight < 4) listRevealed.value = true;
+      /* 轮 178：钉稳（gap<4）才显示——揭示过早会露出未滚到位的中间态；平台期不显示 */
+      if (!listRevealed.value && !plateau() && el.scrollHeight - el.scrollTop - el.clientHeight < 4) listRevealed.value = true;
     };
     set();
-    let frames = 0;
     /* 轮 173b：进会话期间持续钉底（pinning）——旧缓存先落底、网络回来新消息把底撑下去，
        就会出现「停在中间一下再跳底部」的两段式落地；钉住后新消息落进来视线跟着走，无停顿 */
     /* 轮 193d：确定性状态机——隐藏期每帧钉底；「字体完成 + 高度连续 3 帧不变」
@@ -324,7 +328,8 @@ function scrollBottom(smooth = false) {
       if (userScrolling.value) return;                 /* 用户上滑：立即停，不打扰回看 */
       if (frames > 600) { listRevealed.value = true; return; }   /* 硬上限 ~10s，防异常永藏 */
       set();
-      const settled = fontsOk() && entryReady.value && el.scrollHeight === lastH;
+      const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
+      const settled = fontsOk() && entryReady.value && el.scrollHeight === lastH && !plateau() && gap < 4;
       lastH = el.scrollHeight;
       if (settled) stableFrames++; else stableFrames = 0;
       if (stableFrames >= 3 && !listRevealed.value) listRevealed.value = true;
@@ -343,6 +348,10 @@ function onScrollTop() {
   if (topRaf) return;
   topRaf = requestAnimationFrame(() => {
     topRaf = 0;
+    /* 轮 196：入场布局竞态会有一瞬 scrollTop=0——那不是用户在回看，是钉底还没落。
+     * 入场机（追底中/未揭示）期间不自动翻历史，否则每次进会话都误跑一趟翻历史，
+     * 网络回来再全列表重渲染 = 第二次可见跳变（逐帧实测 t≈+1.4s 第二波闪）。 */
+    if (pinning.value || !listRevealed.value) return;
     const el = listEl.value;
     if (!el || loadingMsgs.value || !hasMore.value || !oldestId.value || !activeId.value) return;
     if (el.scrollTop < 140) loadMessages(activeId.value, { before: oldestId.value });
