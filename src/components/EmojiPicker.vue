@@ -278,6 +278,21 @@ function onEmojiClick(ev) {
   });
 }
 
+/* 轮 195：点表情不再抢输入框焦点——emoji-picker 的按钮是原生 button，mousedown 默认行为
+ * 会把焦点从输入框挪进面板（桌面端=输入框失焦、光标丢；实测 Playwright fill 直接报
+ * 「Active element is no longer the expected input target」）。只拦 emoji 格子/收藏按钮的
+ * mousedown preventDefault——选中靠 click 照常触发；面板自己的搜索框(input.search)等
+ * 仍保留原生聚焦。shadow 内元素的事件 target 在外层被重定向成宿主，必须走 composedPath。 */
+function onPanelMouseDown(e) {
+  const path = typeof e.composedPath === "function" ? e.composedPath() : [];
+  for (const n of path) {
+    if (n && n.tagName === "BUTTON" && n.classList && n.classList.contains("emoji")) {
+      e.preventDefault();
+      return;
+    }
+  }
+}
+
 /**
  * 面板开着时用户点回输入框要打字 —— 必须让位给键盘。
  * 轮 182：只收起面板、**不调focus**（系统是用户自己点的，键盘自然弹起；程序再focus 一次会闪）。
@@ -327,7 +342,7 @@ onBeforeUnmount(() => {
              冒泡到底就会被判成「点了外面」→ 输入框整条消失（用户实测必现）。
              pointerdown.stop 拦不住 click，两处都要。 -->
         <div v-if="open" class="emo-panel" :class="{ 'emo-sheet': sheetOn }" :style="pos"
-             @pointerdown.stop @click.stop>
+             @pointerdown.stop @mousedown="onPanelMouseDown" @click.stop>
           <emoji-picker @emoji-click="onEmojiClick"></emoji-picker>
         </div>
       </transition>

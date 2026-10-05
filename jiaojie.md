@@ -1575,6 +1575,12 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **实测数据（390×844，wp-u194 双测试号 35 条种子）**：重进会话气泡与路由跳转**同帧出现（±3ms）**=本地库秒开实锤；37 条（含实测发出的文字+表情组合消息）升序无重复；滚动 gap=1px 钉底；翻历史并库 35 条升序 more=false；截图版面正常。
      验证：undef 0 + dm-test 335/0 + build 0。**交付**：**已部署 Version `6096b145`** / live-check 14/14 / live-bundle-check 本地=线上（入口 SHA16 `9e03b7c0df19aef9`）/ **APK `1CCFA2B5FD697721`(5.5M) 构建完成，adb no devices（USB 断开）待补装**。
 
+  - **轮 195 · 表情/文字输入冲突根治：面板 mousedown 焦点收口（2026-10-05，用户「表情包输入跟文字输入老是有冲突，有没有一体的组件」——结论：Vue3 移动端无现成一体组件（整包 IM UIKit 绑自家 SDK、vue-advanced-chat 整房替换代价过大，已向用户说明并给对比）；真正残留冲突只剩一个可根治点）**：
+     **根因（实测定位）**：emoji-picker-element 的格子/收藏按钮是原生 button，点击的 **mousedown 默认行为把焦点从输入框挪进面板**——桌面弹层模式下输入框失焦、光标丢（Playwright fill 直接报「Active element is no longer the expected input target」）；手机 sheet 模式因开面板本就 blur（轮 182 键盘互斥）而显得症状不同。
+     **修**（EmojiPicker.vue 一处）：`.emo-panel` 加 `@mousedown="onPanelMouseDown"`——**composedPath 只认 `button.emoji`**（格子+收藏）才 preventDefault，选中靠 click 照常触发；面板自己的搜索框（shadow 内 input.search）与皮肤色阶等保留原生聚焦。shadow 内事件的 target 在外层被重定向成宿主，必须走 composedPath 判定。
+     **实测（硬断言，1280×800 桌面弹层 + 390×844 手机 sheet 双形态）**：①桌面全新进入两轮首pick——焦点全程在输入框（activeElement=textarea）、零 focusin、零 closeSheet、emoji 精确插在光标处、面板保持可连选（😊→😇 连续插入 val="😊😇"）✓；②面板内搜索框输 thumbsup 过滤出 11 个结果（未误伤）✓；③手机 sheet——开面板失焦（设计内）→ 点表情焦点不进面板 → 点回输入框面板让位 → cua.type 打字 "A😊BXY" 衔接正常 ✓。**踩坑**：①Playwright `press("X")` 合成键盘事件在 IAB 里不产文本（cua.type 真实管道能进）——差点误判成输入框坏了；②`document.activeElement` 跨 shadow 边界返回宿主 emoji-picker 而非内层 input，断言要按宿主比对。
+     验证：emoji-sheet-test 84/0 + undef 0 + build 0。**交付**：已提交 / **已部署 Version `fbd9f11c`** / live-check 14/14 / live-bundle-check 本地=线上（入口 SHA16 `f9555bc8167b7105`）/ **APK `454FE8ECE8625C66`(5.5M) 构建完成，adb no devices 待补装**（连轮 194 的 `1CCFA2B5` 一起，重连 USB 各一条 `adb install -r`）。
+
 
 
   - **轮 179~186 · 表情面板几何/光标/收起体系重构（平行会话完成，代码在场未提交；本轮 187 由本会话收尾修复「点表情后面板收了」并一起入库）**：
