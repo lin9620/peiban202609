@@ -309,8 +309,9 @@ function scrollBottom(smooth = false) {
     const plateau = () => el.scrollHeight <= el.clientHeight + 24 && frames < 40;
     const set = () => {
       el.scrollTop = el.scrollHeight;
-      /* 轮 178：钉稳（gap<4）才显示——揭示过早会露出未滚到位的中间态；平台期不显示 */
-      if (!listRevealed.value && !plateau() && el.scrollHeight - el.scrollTop - el.clientHeight < 4) listRevealed.value = true;
+      /* 轮 203：set() 只钉底、**永不揭示**——布局震荡期的瞬态钉稳（gap<4）会骗过即时揭示，
+       * 随后内容继续重排 = 可见跳变（真机逐帧实测 sh 六段震荡 524→2682→1611→2659→2600→1786→1706）。
+       * 揭示唯一通道 = chase 里「稳定持续 300ms」。 */
     };
     set();
     /* 轮 173b：进会话期间持续钉底（pinning）——旧缓存先落底、网络回来新消息把底撑下去，
@@ -320,6 +321,7 @@ function scrollBottom(smooth = false) {
      * 用户可见的第一帧必然已在最新位置。 */
     let stableFrames = 0;
     let lastH = -1;
+    let stableSince = 0;
     const chase = () => {
       if (gen !== scrollGen) return;                   /* 已有新链（如平滑滚动）接管 */
       if (userScrolling.value) return;                 /* 用户上滑：立即停，不打扰回看 */
@@ -329,7 +331,15 @@ function scrollBottom(smooth = false) {
       const settled = fontsOk() && entryReady.value && el.scrollHeight === lastH && !plateau() && gap < 4;
       lastH = el.scrollHeight;
       if (settled) stableFrames++; else stableFrames = 0;
-      if (stableFrames >= 3 && !listRevealed.value) listRevealed.value = true;
+      if (settled && !stableSince) stableSince = performance.now();
+      if (!settled) stableSince = 0;
+      if (stableSince && performance.now() - stableSince >= 300 && !listRevealed.value) listRevealed.value = true;
+      /* 轮 203：字体内换装/资源就位会让布局**分段**落定（真机逐帧实测 sh 2659→2600→1786→1706
+       * 四段、每段都是一次可见跳变）——3 帧稳定挡不住后段位移。首稳后再撑满 300ms 才揭示，
+       * 把全部后段位移吞进隐藏期；代价是揭示晚 ~0.3s，换来「可见的第一帧=最终帧」。 */
+      if (settled && !stableSince) stableSince = performance.now();
+      if (!settled) stableSince = 0;
+      if (stableSince && performance.now() - stableSince >= 300 && !listRevealed.value) listRevealed.value = true;
       frames++;
       requestAnimationFrame(chase);
     };

@@ -96,7 +96,7 @@ function scrollBottom(smooth = false) {
     const plateau = () => el.scrollHeight <= el.clientHeight + 24 && frames < 40;
     const set = () => {
       el.scrollTop = el.scrollHeight;
-      if (!listRevealed.value && !plateau() && el.scrollHeight - el.scrollTop - el.clientHeight < 4) listRevealed.value = true;
+      /* 轮 203：set() 只钉底、永不揭示（同主会话）——揭示唯一通道 = chase 里稳定持续 300ms。 */
     };
     set();
     /* 轮 173b：进会话期间持续钉底（pinning）——旧缓存先落底、网络回来新消息把底撑下去，
@@ -105,6 +105,7 @@ function scrollBottom(smooth = false) {
      * 「字体完成 + 高度连续 3 帧不变」双条件同时满足才揭示 */
     let stableFrames = 0;
     let lastH = -1;
+    let stableSince = 0;
     const chase = () => {
       if (gen !== scrollGen) return;
       if (userScrolling.value) return;
@@ -116,7 +117,15 @@ function scrollBottom(smooth = false) {
       const settled = fontsOk() && entryReady.value && el.scrollHeight === lastH && !plateau && gap < 4;
       lastH = el.scrollHeight;
       if (settled) stableFrames++; else stableFrames = 0;
-      if (stableFrames >= 3 && !listRevealed.value) listRevealed.value = true;
+      if (settled && !stableSince) stableSince = performance.now();
+      if (!settled) stableSince = 0;
+      if (stableSince && performance.now() - stableSince >= 300 && !listRevealed.value) listRevealed.value = true;
+      /* 轮 203：字体内换装/资源就位会让布局**分段**落定（真机逐帧实测 sh 2659→2600→1786→1706
+       * 四段、每段都是一次可见跳变）——3 帧稳定挡不住后段位移。首稳后再撑满 300ms 才揭示，
+       * 把全部后段位移吞进隐藏期；代价是揭示晚 ~0.3s，换来「可见的第一帧=最终帧」。 */
+      if (settled && !stableSince) stableSince = performance.now();
+      if (!settled) stableSince = 0;
+      if (stableSince && performance.now() - stableSince >= 300 && !listRevealed.value) listRevealed.value = true;
       frames++;
       requestAnimationFrame(chase);
     };
