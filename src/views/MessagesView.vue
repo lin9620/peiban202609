@@ -252,14 +252,9 @@ async function loadMessages(id, { before = null } = {}) {
   await swr(
     before == null ? dmMsgsKey(meId.value, id) : null,
     {
-      /* 轮 157b：首屏先吃本地窗口（最多 60 条，含上次翻过的历史），立刻渲染不闪载入 */
-      cached: (v) => {
-        const w = dmWin(v);
-        if (!w || !w.rows.length) return;
-        applyRows(w.rows, w.more);
-        loadingMsgs.value = false;
-        scrollBottom();
-      },
+      /* 轮 193c：进会话**不再渲染缓存中间态**——缓存窗口与 fresh 窗口高度不同，
+       * 先渲染缓存再被 fresh 替换 = ±千px 可见跳闪（用户三轮实测未消）。
+       * 单次渲染：等 fresh 落定一次成型、直接钉在最新位置。缓存仍写入（离线兜底用）。 */
       fresh: (v) => {
         const w = dmWin(v);
         if (!w) return;
