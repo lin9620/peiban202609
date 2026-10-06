@@ -1,7 +1,9 @@
 <script>
 /* 轮 95：模块级存档 —— 离开暖心墙时保存浏览位置（script setup 的变量是每实例一份，
- * 离开组件就没了；这里必须跨实例存活，返回时才恢复得了）。 */
+ * 离开组件就没了；这里必须跨实例存活，返回时才恢复得了）。
+ * 轮 215：再落盘 localStorage——App 重启/页面刷新也要回到原位置（用户实测「每次过去都要往下拉」）。 */
 let savedFeedPos = null;
+const FEED_ARCHIVE_KEY = "wp-feed-archive";
 </script>
 
 <script setup>
@@ -9,7 +11,7 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { NButton, NInput, NAvatar, NTag } from "naive-ui";
 import { t, i18n } from "../i18n.js";
-import { getItem, setItem } from "../utils/storage.js";
+import { getItem, setItem, removeItem } from "../utils/storage.js";
 /* 轮 32：个人数据键按账号分域（游客账/各登录账号互不串），读写走 scopeGet/scopeSet */
 import { scopeGet, scopeSet, scopeGetRaw, scopeSetRaw } from "../utils/userScope.js";
 import { cacheKey, cacheSet, swr } from "../utils/cache.js";
@@ -87,9 +89,17 @@ const signedIn = computed(() => !!(cloud.ready && cloud.user));
 onMounted(() => {
   posts.value = scopeGet(POSTS_KEY, []) || [];
   myReacts.value = scopeGet(REACTS_KEY, {}) || {};
-  /* 轮 95：有离场存档 → 整份列表原样恢复（含已加载的更深处页），不被第一页覆盖 */
+  /* 轮 95：有离场存档 → 整份列表原样恢复（含已加载的更深处页），不被第一页覆盖。
+   * 轮 215：模块级存档没有（App 重启/刷新）→ 从 localStorage 恢复——浏览位置跨重启保留。 */
   if (savedFeedPos) restoreFeed();
-  else if (cloud.ready) loadCloud();
+  else {
+    try {
+      const saved = getItem(FEED_ARCHIVE_KEY);
+      if (saved) { savedFeedPos = JSON.parse(saved); }
+    } catch (e) { /* 忽略 */ }
+    if (savedFeedPos) restoreFeed();
+    else if (cloud.ready) loadCloud();
+  }
   refreshBlocks();   /* 轮 33：拉黑名单就绪（快照先撑着，云端校准） */
 });
 /* 云端就绪晚于挂载（异步探测）→ 就绪后补拉一次；未登录也拉（RLS 匿名只读） */
@@ -1380,6 +1390,7 @@ function restoreFeed() {
       releaseAnchor();
       restoreTick = false;
       savedFeedPos = null;
+      try { removeItem(FEED_ARCHIVE_KEY); } catch (e) { /* 忽略 */ }
       scheduleFeedTick();
     });
   });
@@ -1398,6 +1409,11 @@ onUnmounted(() => {
       heights: { ...heights },
       cmtTotal: { ...cloudCmtTotal.value },   /* 轮 127：评论数跟帖子一起存（否则返回全变 0，用户实测） */
     };
+    /* 轮 215：落盘——App 重启/页面刷新后也能回到原位置（体积超 1.5MB 放弃，防撑爆 localStorage） */
+    try {
+      const blob = JSON.stringify(savedFeedPos);
+      if (blob.length < 1500000) setItem(FEED_ARCHIVE_KEY, blob);
+    } catch (e) { /* 忽略 */ }
   }
   if (feedRaf) cancelAnimationFrame(feedRaf);
   if (cardRO) cardRO.disconnect();
