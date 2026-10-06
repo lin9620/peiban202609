@@ -1,4 +1,4 @@
-import { reactive, computed } from "vue";
+import { reactive, computed, watch } from "vue";
 import { i18n, t } from "../i18n.js";
 import { todayKey, dateKey } from "../utils/daily.js";
 import { LINES } from "../data/pets.js";
@@ -8,6 +8,7 @@ import { getItem, setItem } from "../utils/storage.js";
 import { onScopeSwitch, registerScopeBases, scopeId } from "../utils/userScope.js";
 import { finalReward as snackReward } from "../utils/snackGame.js";
 import { petHomeSnapshot, queuePetHomeSync, cancelPetHomeSync } from "../utils/wall.js";
+import { cloud, getClient } from "../utils/supabase.js";
 
 const LEGACY_KEY = "warm-paws-pet-v1";   // 最老的 v1 单宠存档（只读迁移源；不分域）
 
@@ -169,7 +170,9 @@ export const petStore = reactive({
       coins: wallet.coins,
       pets: this.pets,
       activeId: this.activeId,
+      updatedAt: Date.now(),
     }));
+    scheduleCloudPush();   /* 轮 208：本地存档 → 1.5s 防抖推云（宠物数据上云） */
   },
 
   adopt(species, name, personality, custom = null) {
@@ -446,6 +449,73 @@ export function toggleSleep() {
     sayLine(pet, "sleepIn", 4000);
   }
   petStore.save();
+}
+
+/* ═══════════ 轮 208 · 宠物数据上云（pets 表：宠物栏/当前宠物/金币） ═══════════
+ * 微信式：本机即主用副本，云端做跨设备同步。规则：
+ *   - 本地每次存档 → 1.5s 防抖 upsert 云端（带 updatedAt 时间戳）；
+ *   - 启动/页面回前台 → 拉云端比对 updatedAt，**新者胜**（云端快照可能落后现实时长，
+ *     采纳后补离线结算再存回）；表未建（迁移没跑）或未登录 → 静默跳过，行为退回纯本地。
+ * 范围：宠物栏 pets + activeId + 金币。手绘食谱不上云（48h 保质期、图片体积大，本地即合理）。 */
+let cloudPetWarned = false;
+let cloudPushTimer = 0;
+
+function petStateBlob() {
+  return { pets: petStore.pets, activeId: petStore.activeId, coins: wallet.coins, updatedAt: Date.now() };
+}
+
+async function pushCloudPet() {
+  try {
+    if (!cloud.user || !getClient()) return;
+    await getClient().from("pets").upsert({
+      user_id: cloud.user.id,
+      state: petStateBlob(),
+      updated_at: new Date().toISOString(),
+    });
+  } catch (e) { /* 静默：迁移未跑/网络抖动，下次存档再推 */ }
+}
+
+function scheduleCloudPush() {
+  if (!cloud.user) return;
+  clearTimeout(cloudPushTimer);
+  cloudPushTimer = setTimeout(pushCloudPet, 1500);
+}
+
+async function pullCloudPet() {
+  try {
+    if (!cloud.user || !getClient()) return;
+    const { data, error } = await getClient()
+      .from("pets").select("state, updated_at").eq("user_id", cloud.user.id).maybeSingle();
+    if (error) {
+      if (!cloudPetWarned) { console.warn("[pet] 云同步不可用——请先在 Supabase 执行 MIGRATION_pet_cloud.sql"); cloudPetWarned = true; }
+      return;
+    }
+    cloudPetWarned = false;
+    const cloudAt = data && data.updated_at ? Date.parse(data.updated_at) : 0;
+    const localAt = readSave().updatedAt || 0;
+    if (data && data.state && cloudAt > localAt) {
+      /* 云端较新：整体采纳 + 补离线结算（云端快照可能落后现实时长） */
+      petStore.pets = data.state.pets || [];
+      petStore.activeId = data.state.activeId || (petStore.pets[0] && petStore.pets[0].id) || null;
+      wallet.coins = data.state.coins ?? wallet.coins;
+      petStore.pets.forEach(applyOffline);
+      petStore.pets.forEach(settleNeglect);
+      petStore.save();   /* 落回本地（并触发一次幂等推云） */
+      syncPetHome();
+    } else if (localAt > 0) {
+      pushCloudPet();   /* 本地较新/云端还没有：推上去 */
+    }
+  } catch (e) { /* 静默 */ }
+}
+
+/* 云就绪 → 首拉；页面回前台 → 再拉（多设备以最新为准） */
+watch(() => [cloud.ready, cloud.user && cloud.user.id], (v) => {
+  if (v[0] && v[1]) pullCloudPet();
+}, { immediate: true });
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && cloud.user) pullCloudPet();
+  });
 }
 
 /* ---------- 手绘食谱（#1：最多 7 份、48 小时保质期） ---------- */

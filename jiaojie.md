@@ -1617,6 +1617,11 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **修**：①**本地持久 uid**——云启动落位时 `setItem("wp-uid", uid)`（登出/死会话清理同删）；②「我的帖子」挂载即用 wp-uid 同步读缓存快照渲染（不等 ready），ready 后照旧后台校准；③「我的收藏」补同款缓存（挂载秒出 + 网络后回写）；④cache 容量 120→200（大体积条目挤兑保护）。
      **食谱云端同步答复（用户问「换平台了怎么办，不联网吗」）**：手绘食谱**设计上就是本地的**——48 小时保质期（喂掉或过期），换设备丢失即过期，影响极小；若要跨设备同步需上云存储（dataURL 上传），属新需求待用户拍板。
      验证：dm-test 324/0 + app-shell 64/0 + userScope 8/0 + undef 0 + build 0。**交付**：**已部署 Version `6ca5495b`** / **APK `3140A6009104D372` 已出**（USB 断待补装）。
+
+  - **轮 208 · 宠物数据上云（2026-10-06，用户定调「宠物本身的数据是需要上云的啊」）**：
+     **范围**：宠物栏全量状态（pets 数组 + 当前宠物 + 金币）整包 JSONB 上云；**手绘食谱不上云**（48h 保质期、图片体积大，本地即合理——已向用户说明）。
+     **实现**：`MIGRATION_pet_cloud.sql`（public.pets：user_id 主键 + state jsonb + updated_at，RLS 仅本人读写；SUPABASE_SETUP.sql 尾部同步）+ petStore 云同步段：本地存档带 updatedAt → 1.5s 防抖 upsert；启动（云就绪 watch）与页面回前台（visibilitychange）拉云端比对 updatedAt **新者胜**——云端较新整体采纳并**补离线结算**（applyOffline/settleNeglect，云端快照落后现实时长也能正确衰减），本地较新推上去；表未建/未登录静默跳过（行为退回纯本地，跑完迁移即生效）。
+     验证：dm-test 324/0 + app-shell 64/0 + pet-visual 163/0 + pet-home 19/0 + mood 12/0 + undef 0 + build 0。**交付**：**已部署 Version `720900f8`** / **APK `7A8AD858812CA484` 已出**（USB 断待补装）。**待用户**：Supabase SQL Editor 执行 `MIGRATION_pet_cloud.sql`（跑完宠物数据即开始跨设备同步，跑之前 App 一切照旧）。
      验证：dm-test 324/0 + wall-test 34/0 + undef 0 + build 0。**交付**：**已部署 Version `8e0c7c24`** / **APK `A757291A8C5FEC00` 已出**（USB 又断待补装）。
      **教训（钉死）**：①`setRangeText` 无 input 事件——程序改值必须自己派发，v-model 才认；②Capacitor 键盘隐藏伴随 WebView 焦点抖动，App 内不能依赖 focusin 做面板互斥，要用原生键盘事件；③键盘高度以 OS 事件上报值为唯一权威，视口推算是估算不是事实。
 
