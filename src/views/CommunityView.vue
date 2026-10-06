@@ -990,11 +990,13 @@ onActivated(() => {
   window.addEventListener("wheel", onUserMove, { passive: true });
   window.addEventListener("touchmove", onUserMove, { passive: true });
   window.addEventListener("keydown", onUserMove);
-  const y0 = restoreScroll(route.path);   /* 轮 219：回位（KeepAlive 重插瞬间，零闪） */
-  if (y0 != null) scheduleFeedTick();   /* 轮 219：回位后再校准一次窗口 */
-  scheduleFeedTick();
+  restoreScroll(route.path);   /* 轮 219：回位（隐藏期内完成，用户看不到） */
+  /* 轮 222：回位 + 布局落定后揭示（250ms）——揭示时就在原位置 */
+  setTimeout(() => { feedRestoring.value = false; scheduleFeedTick(); }, 250);
 });
 onDeactivated(() => {
+  /* 轮 222：离开即置恢复态——回来时墙先隐藏，滚到位再揭示（零下滑动作） */
+  feedRestoring.value = true;
   if (cardRO) { cardRO.disconnect(); cardRO = null; }
   window.removeEventListener("scroll", onScroll);
   window.removeEventListener("resize", onViewport);

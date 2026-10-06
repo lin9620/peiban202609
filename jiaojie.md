@@ -1646,6 +1646,12 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **修（用户定案：再点 = 回原位置）**：滚动记忆键改 **route.path**（不含 query）；**轮 100 废止**——TabBar/SideNav 的 refresh query push 与 CommunityView 的 query.refresh 消费监听全删（再点当前页 = vue-router 忽略 = 原地不动 = 原位置）；T63 断言换新口径（反向钉死：refresh query 不得回归）。
      验证：dm-test 324/0 + wall-test 34/0 + app-shell 64/0 + undef 0 + build 0。**交付**：**已部署 Version `18f7fc97`** / **APK `3D4FF99EBC571F43` 已出（含今日全部）**（USB 断待补装）。
      验证：dm-test 324/0 + wall-test 34/0 + app-shell 64/0 + undef 0 + build 0。**交付**：**已部署 Version `aecd4dfb`** / **APK `72F68506FF9683CA` 已出**（USB 断待补装）。
+
+  - **轮 222 · 切页签回位定稿——隐藏期回位（2026-10-07，用户录屏对标知乎后连续复测）**：
+     **残留问题的定位**：KeepAlive 保活（轮 218）+ scrollBehavior 回位（轮 222 前的多次尝试）之后，回位仍发生在页面**可见之后**（f0 帧 y=46 = 顶部态闪现）——用户看到「先顶部后滚下去」。**修（定稿）**：`feedRestoring` 门控扩展到**切页签路径**——离开暖心墙（onDeactivated）即置恢复态（整墙隐藏），回页签（onActivated）→ restoreScroll 回位 → 250ms 后揭示——**揭示时就在原位置，全程无滚动动作**（隐藏期 ~250ms，观感=页面直接出现在原位置）。
+     **真机/线上实测**：before y=1999 → 切消息 → 回暖心墙 → **y=2000 精确保持**（截图同内容区域）。
+     验证：dm-test 324/0 + undef 0 + build 0。**交付**：**已部署 Version `b2e4790e`** / **APK 已出**（待装机）。
+     **说明**：手绘食谱跨设备同步仍待定（48h 保质期设计下价值有限，等用户拍板）。
      验证：dm-test 324/0 + build 0。**交付**：**已部署 Version `392484c6`** / APK 待随下轮装机。
      验证：dm-test 324/0 + wall-test 34/0 + undef 0 + build 0。**交付**：**已部署**（live-bundle-check 本地=线上 `329158103a4db359`）/ **APK `A171D8E86FD8CF29` 已出**。
      验证：dm-test 324/0 + undef 0 + build 0。**交付**：**已部署 Version `1cbc05db`** / **APK `D0CA0003FAD02F16` 已出**（USB 断待补装）。
