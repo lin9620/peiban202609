@@ -1628,6 +1628,10 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
   - **轮 210 · 大厅计数本地缓存秒出（2026-10-06，用户截图：首页「大厅此刻」四个计数每次进入都慢一拍）**：
      **病根**：首页「大厅此刻」四格的计数（countRecentStatuses RPC）每次进入都从零等网络，网络回来前显示 0/占位 = 慢一拍。**修**：上次取到的计数持久化（wp-status-counts），组件创建即渲染缓存值（本地秒出），网络回来原地更新（数字有变就地微调，无布局跳动）。
      验证：dm-test 324/0 + status-test 56/0 + undef 0 + build 0。**交付**：**已部署 Version `a1da45d7`** / **APK `3ED5A30E2D643EAF` 已出**（USB 断，装机待补——此前的 `B2002D4B`/`3140A600` 两包同样待装）。
+
+  - **轮 211 · 私信输入条视觉修复（2026-10-06，用户截图：「白色输入框一点都不明显」「发送按钮没有跟输入框一致高度」——表情删除的连带伤）**：
+     **根因**：轮 202 删 .emo-in 包装时，输入框的洗底样式原来挂在 `.emo-in .van-field__control` 上——包装没了样式脱钩，白底贴白 footer 几乎不可见；发送键 28px 小钮 flex-end 贴在 44px 输入框底部 = 「没对齐」。**修**：①输入框本体清晰化——白底 + 暖色描边（#e3cfc0）+ 轻阴影 + 圆角 14；②发送键 `align-self: stretch` 撑满行高，与输入框**同高**并列。
+     验证：undef 0 + build 0 + 线上截图（输入框清晰可见、按钮同高并列）。**交付**：**已部署 Version `7898799e`** / APK 待随下轮装机。
      验证：dm-test 324/0 + undef 0 + build 0。**交付**：**已部署 Version `a3f34205`** / **APK `B2002D4BF3FFCCEC` 已出**（USB 断待补装）。
      验证：dm-test 324/0 + app-shell 64/0 + pet-visual 163/0 + pet-home 19/0 + mood 12/0 + undef 0 + build 0。**交付**：**已部署 Version `720900f8`** / **APK `7A8AD858812CA484` 已出**（USB 断待补装）。**待用户**：Supabase SQL Editor 执行 `MIGRATION_pet_cloud.sql`（跑完宠物数据即开始跨设备同步，跑之前 App 一切照旧）。
      验证：dm-test 324/0 + wall-test 34/0 + undef 0 + build 0。**交付**：**已部署 Version `8e0c7c24`** / **APK `A757291A8C5FEC00` 已出**（USB 又断待补装）。
