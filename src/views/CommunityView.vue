@@ -4,6 +4,9 @@
  * 轮 215：再落盘 localStorage——App 重启/页面刷新也要回到原位置（用户实测「每次过去都要往下拉」）。 */
 let savedFeedPos = null;
 const FEED_ARCHIVE_KEY = "wp-feed-archive";
+/* 轮 217：恢复期间隐藏整面墙——恢复要等布局落地后才回滚位置，裸奔的首帧（顶部态）
+ * 就是被用户看到的「下滑」。藏到滚到位再揭示 = 第一帧就在原位置（知乎式页签回位）。 */
+const feedRestoring = ref(false);
 </script>
 
 <script setup>
@@ -1375,6 +1378,7 @@ let restoreTick = false;
 function restoreFeed() {
   const s = savedFeedPos;
   if (!s || !Array.isArray(s.rows) || !s.rows.length) { savedFeedPos = null; return; }
+  feedRestoring.value = true;   /* 轮 217：恢复期藏墙，落位后揭示（零下滑） */
   Object.assign(heights, s.heights);
   cloudPosts.value = s.rows;
   cloudCmtTotal.value = s.cmtTotal || {};   /* 轮 127：评论数一并恢复（缺失=老存档，回落空表） */
@@ -1390,6 +1394,7 @@ function restoreFeed() {
       releaseAnchor();
       restoreTick = false;
       savedFeedPos = null;
+      feedRestoring.value = false;   /* 轮 217：已钉在原位置，揭示 */
       try { removeItem(FEED_ARCHIVE_KEY); } catch (e) { /* 忽略 */ }
       scheduleFeedTick();
     });
@@ -1552,7 +1557,8 @@ watch(() => route.query.refresh, (v) => {
 
 <template>
   <!-- 轮 18：原生下拉刷新（顶部下拉 → 松手重拉；此前函数未绑定，用户看到「完全没做」） -->
-  <div @touchstart.passive="ts" @touchmove.passive="tm" @touchend.passive="te">
+  <div @touchstart.passive="ts" @touchmove.passive="tm" @touchend.passive="te"
+    :style="{ visibility: feedRestoring ? 'hidden' : 'visible' }">
     <div class="wall-pull" :style="{ height: pullDist + 'px', opacity: pullDist / 62 }">↓</div>
     <!-- 头部 + 发布框（手机端收起：发布统一走底部 ＋ → 独立发布页，页顶不再占一屏）
          轮 35：去掉与 h2 重复的小标签；副标题只在桌面显示（手机端两行文案太占首屏）
