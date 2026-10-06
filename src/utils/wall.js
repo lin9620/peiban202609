@@ -122,7 +122,7 @@ export function canDeleteCloud(item, userId = "") {
 /* ══════════ 云操作（下半部分） ══════════ */
 
 /** Storage 路径 → 公开 URL（转发适配层；不可用时给空串，绝不打断渲染） */
-function publicUrl(path) {
+export function publicUrl(path) {   /* 轮 213：ProfileView 直连取帖需要 */
   return db.imageUrl(path);
 }
 

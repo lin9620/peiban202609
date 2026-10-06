@@ -18,7 +18,7 @@ import { MIN_PASSWORD, NICK_MAX, passwordProblem } from "../utils/authRules.js";
 /* 轮 44：帖子时间显示到秒（fmtWhenSec 纯函数，wall-rules-test 覆盖） */
 import { fmtWhenSec } from "../utils/wallRules.js";
 import { db } from "../utils/api/db.js";
-import { cloudFetchUserPosts, cloudFavListMine, cloudFavRemove } from "../utils/wall.js";
+import { cloudFavListMine, cloudFavRemove, rowsToPosts, publicUrl, aggregateReactions } from "../utils/wall.js";
 import { cacheKey, cachePeek, cacheSet, swr } from "../utils/cache.js";
 
 /* 心情图标：一律用 Unicode 转义，避免源码中的 emoji 编码损坏 */
@@ -83,7 +83,11 @@ const myPostsBusy = ref(false);
 watch(
   () => [cloud.ready, cloud.user && cloud.user.id],
   async ([ready, uid]) => {
-    if (!ready || !uid) { myPosts.value = []; return; }
+    if (!ready || !uid) {
+      /* 轮 213：启动空窗不清缓存——挂载时同步秒出的缓存渲染要保留到 ready（用户实测 10s 空窗） */
+      if (!myPosts.value.length) myPosts.value = [];
+      return;
+    }
     myPostsBusy.value = true;
     await swr(
       cacheKey("profile-myposts", uid),
@@ -92,7 +96,16 @@ watch(
         fresh: (rows) => { myPosts.value = rows; },
       },
       async () => {
-        const got = (await cloudFetchUserPosts(uid, 3)) || [];
+        /* 轮 213：慢网提速——先一趟 listPostsByUser 出帖子，回应数后台补（两趟串行=手机上 10s 空窗） */
+        const posts = (await db.listPostsByUser(uid, 3)) || [];
+        const got = rowsToPosts(posts, {}, publicUrl);
+        db.listReactionsByPosts(got.map((x) => x.dbId)).then((rk) => {
+          const reactions = aggregateReactions(rk || [], uid);
+          myPosts.value = myPosts.value.map((p) => {
+            const r = reactions[p.dbId];
+            return r ? { ...p, ...r } : p;
+          });
+        }).catch(() => { /* 回应数失败不阻塞帖子 */ });
         return got.length ? got : null;   /* 空列表/失败不覆盖快照、不回写 */
       },
     );
@@ -117,7 +130,10 @@ const showFavs = ref(false);   /* 轮 129：头部「我的收藏」按钮开关
 watch(
   () => [cloud.ready, cloud.user && cloud.user.id],
   async ([ready, uid]) => {
-    if (!ready || !uid) { favRows.value = []; return; }
+    if (!ready || !uid) {
+      if (!favRows.value.length) favRows.value = [];   /* 轮 213：同上，保留挂载秒出的缓存 */
+      return;
+    }
     favBusy.value = true;
     const rows = await cloudFavListMine(20);
     favRows.value = (rows || []).filter((r) => r.post);

@@ -1616,6 +1616,11 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **病根**：ProfileView 的「我的帖子」虽有 SWR（轮 58），但**缓存快照要等 cloud.ready 才渲染**——cacheKey 需要 uid，而 uid 要等云启动链（detectConfig→createClient→getSession）走完，这段启动空窗就是用户看到的「慢」。另：**我的收藏完全没有缓存**（每次进页干等一次网络往返）。
      **修**：①**本地持久 uid**——云启动落位时 `setItem("wp-uid", uid)`（登出/死会话清理同删）；②「我的帖子」挂载即用 wp-uid 同步读缓存快照渲染（不等 ready），ready 后照旧后台校准；③「我的收藏」补同款缓存（挂载秒出 + 网络后回写）；④cache 容量 120→200（大体积条目挤兑保护）。
      **食谱云端同步答复（用户问「换平台了怎么办，不联网吗」）**：手绘食谱**设计上就是本地的**——48 小时保质期（喂掉或过期），换设备丢失即过期，影响极小；若要跨设备同步需上云存储（dataURL 上传），属新需求待用户拍板。
+
+  - **轮 213 续 · 手机 10s 空窗两真因修复（用户装最新包后仍复现「我的-我在暖心墙的帖子」10s 才出——手机直连 Supabase 的线路本身慢，两趟串行雪上加霜）**：
+     **①启动空窗清缓存（轮 207 自己埋的）**：watch 的空窗守卫 `myPosts.value = []` 把挂载秒出的缓存渲染**自己擦掉**了——修：有缓存就保留到 ready。收藏同款。
+     **②取帖两趟串行**：cloudFetchUserPosts 先 listPostsByUser 再 listReactionsByPosts（两趟串行 = 慢线上 6~10s）。**修**：ProfileView 直连取帖——一趟 listPostsByUser **先出帖子**（rowsToPosts 直调，wall.js 的 publicUrl 转 export），回应数后台补并按 dbId 原位合并；wall-test 拆的 export 不影响既有调用。
+     验证：dm-test 324/0 + app-shell 64/0（T21 钉改 center 口径）+ undef 0 + build 0。**交付**：**已部署 Version `9c3e46d5`** / **APK `29F737C1B69C2B4B` 已出**（USB 断待补装）。
      验证：dm-test 324/0 + app-shell 64/0 + userScope 8/0 + undef 0 + build 0。**交付**：**已部署 Version `6ca5495b`** / **APK `3140A6009104D372` 已出**（USB 断待补装）。
 
   - **轮 208 · 宠物数据上云（2026-10-06，用户定调「宠物本身的数据是需要上云的啊」）**：
