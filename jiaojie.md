@@ -1641,6 +1641,8 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
   - **轮 212 · 登录页整体回滚 + 发送键定案（2026-10-06，用户：「登录页面全给我换成以前的」「发送按钮改成原来的大小，往上对齐」）**：
      **①登录页整体回滚到轮 189 之前**（`git show 192c236^:src/views/LoginView.vue` 整文件还原）——n-input + Naive 自带 show-password 眼睛 + 原生间距全量回归（轮 211 的 :deep 补丁路线被否，直接用旧版）。回滚后依赖核查：naive-ui 仍在（n-button 全站在用）、supabase.js 的 cloudSignUp/SignIn/ResetPassword/UpdatePassword/SignInWithGoogle/ClearRecovery 六个导出全在 ✓。真机截图：灰底双框分离、眼睛可见且**点击切明文实测通过**（input[type=password] 1→0）、登录回归 ✓。
      **②发送键定案**：轮 211 的同高 stretch 被否——恢复原大小、`align-items: flex-start` 往上对齐（输入框可见框仍在，白底+描边）。
+
+  - **轮 213 · 发送键对齐定稿（2026-10-06，用户：「跟输入框对齐」——flex-start 的上对齐被否）**：`align-items: center`——发送键原大小、与输入框**垂直居中**对齐（28px 钮对 44px 框的视觉正解）。线上截图确认。**交付**：**已部署 Version `f71dddbf`**。
      验证：undef 0 + build 0 + 线上截图（登录页旧貌回归、眼睛切换实测、发送键原大小上对齐）。**交付**：**已部署 Version `e04f6d29`** / APK 待随下轮装机。
      **教训（钉死）**：跨组件库换件时，**原 props 不一定存在**（n-input 的 show-password-on ≠ van-field 有）——换完必须逐 prop 对照新库文档；scoped 样式碰组件库内部元素必须 :deep()。
      验证：dm-test 324/0 + undef 0 + build 0。**交付**：**已部署 Version `a3f34205`** / **APK `B2002D4BF3FFCCEC` 已出**（USB 断待补装）。
