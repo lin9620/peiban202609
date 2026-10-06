@@ -1624,6 +1624,10 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
 
   - **轮 209 · 会话行 ⋯ 菜单点空白关闭（2026-10-06，用户实测截图：列表行菜单点空白不消失）**：
      **根因**：点空白关闭只挂了**头部菜单**（headMenu，轮 144），列表行的 ⋯ 菜单（打开会话/免打扰/删除会话/拉黑）从未有点空白关——只能再点 ⋯ 或选菜单项才收。轮 197 撤左滑把全部操作收进 ⋯ 后高频使用，问题显形。**修**：onDocPointerDown 扩展——menuFor 打开时，pointerdown 不在 .dm-menu/.dm-more 内即收（点菜单项/⋯ 按钮不误收）。
+
+  - **轮 210 · 大厅计数本地缓存秒出（2026-10-06，用户截图：首页「大厅此刻」四个计数每次进入都慢一拍）**：
+     **病根**：首页「大厅此刻」四格的计数（countRecentStatuses RPC）每次进入都从零等网络，网络回来前显示 0/占位 = 慢一拍。**修**：上次取到的计数持久化（wp-status-counts），组件创建即渲染缓存值（本地秒出），网络回来原地更新（数字有变就地微调，无布局跳动）。
+     验证：dm-test 324/0 + status-test 56/0 + undef 0 + build 0。**交付**：**已部署 Version `a1da45d7`** / **APK `3ED5A30E2D643EAF` 装机 Success + 冷启动正常**（PID 见下）。
      验证：dm-test 324/0 + undef 0 + build 0。**交付**：**已部署 Version `a3f34205`** / **APK `B2002D4BF3FFCCEC` 已出**（USB 断待补装）。
      验证：dm-test 324/0 + app-shell 64/0 + pet-visual 163/0 + pet-home 19/0 + mood 12/0 + undef 0 + build 0。**交付**：**已部署 Version `720900f8`** / **APK `7A8AD858812CA484` 已出**（USB 断待补装）。**待用户**：Supabase SQL Editor 执行 `MIGRATION_pet_cloud.sql`（跑完宠物数据即开始跨设备同步，跑之前 App 一切照旧）。
      验证：dm-test 324/0 + wall-test 34/0 + undef 0 + build 0。**交付**：**已部署 Version `8e0c7c24`** / **APK `A757291A8C5FEC00` 已出**（USB 又断待补装）。

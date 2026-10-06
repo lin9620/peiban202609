@@ -43,6 +43,9 @@ const quote = computed(() =>
 const myStatus = ref(getItem("wp-status") || "");
 const myStatusHint = ref("");   // "" | "sync"（网络/被拒）| "setup"（未跑迁移，功能未开启）
 const statusCounts = ref(null);  // 只有 { status, count }，不含昵称或用户 ID
+/* 轮 209：先渲染上次缓存的计数（本地秒出），网络回来原地更新——
+ * 之前每次进入都从 0 等网络（用户实测「慢一拍，影响使用」）。 */
+try { statusCounts.value = JSON.parse(getItem("wp-status-counts") || "null"); } catch (e) { /* 忽略 */ }
 const statusBusy = ref(false);
 let statusRevision = 0;
 const isMember = computed(() => !!(cloud.user && cloud.user.id));
@@ -53,7 +56,11 @@ function statusLabel(k) {
 }
 
 async function refreshStatusCounts() {
-  statusCounts.value = await cloudFetchStatusCounts();
+  const got = await cloudFetchStatusCounts();
+  if (got) {
+    statusCounts.value = got;
+    try { setItem("wp-status-counts", JSON.stringify(got)); } catch (e) { /* 忽略 */ }
+  }
 }
 
 /* 选状态：再点一次清除；登录用户同步上云（RLS self update），游客只留本机 */
