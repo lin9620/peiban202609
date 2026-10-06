@@ -1564,13 +1564,6 @@ watch(() => route.query.post, (v) => { focusDone.value = ""; focusPost(v); }, { 
 watch(cloudPosts, () => { if (focusId.value) focusPost(focusId.value); });
 onMounted(() => { if (focusId.value) focusPost(focusId.value); });
 
-/* 轮 100：App 底栏再点「暖心墙」tab = 刷新 —— 强制取新第一页并回顶部（之前同路径
- * push 被 vue-router 忽略，点了没反应；TabBar 现在推一个带时间戳的 refresh query） */
-watch(() => route.query.refresh, (v) => {
-  if (!v || !cloud.ready) return;
-  window.scrollTo({ top: 0, behavior: "smooth" });
-  loadCloud({ fresh: true });
-});
 </script>
 
 <template>

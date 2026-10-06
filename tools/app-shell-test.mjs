@@ -364,10 +364,10 @@ ok("T62 轮144：聊天头「⋯」菜单点空白自动关（document pointerdo
   mv.includes('addEventListener("pointerdown", onDocPointerDown)')
   && mv.includes('removeEventListener("pointerdown", onDocPointerDown)')
   && mv.includes('closest(".dm-head-tools")'));
-ok("T63 轮144：左导航暖心墙 = 页内再点即刷新（TabBar 轮100 同款 refresh 时间戳 query；CommunityView 消费回顶）",
+ok("T63 轮215 定案：左导航/底栏再点暖心墙 = 回原位置（refresh 时间戳 query 已废止）",
   sn.includes("onNavClick") && sn.includes('@click="onNavClick(it, $event)"')
-  && sn.includes('refresh: String(Date.now())')
-  && read("src/views/CommunityView.vue").includes("route.query.refresh"));
+  && !sn.includes('refresh: String(Date.now())')
+  && !read("src/views/CommunityView.vue").includes("route.query.refresh"));
 
 out.push("");
 out.push(`TOTAL ${pass + fail}  PASS ${pass}  FAIL ${fail}`);

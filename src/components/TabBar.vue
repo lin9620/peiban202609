@@ -32,15 +32,9 @@ const activeIdx = computed(() => {
   return i < 0 ? 0 : i;
 });
 
-/* 轮 100：App 端再点当前页的 tab = 刷新该页（用户口径：暖心墙 tab 点击就是刷新）。
- * 已在本页时拦下默认导航（同路径 push 会被 vue-router 忽略 = 之前点了没反应），
- * 改推一个带时间戳的 refresh query —— CommunityView 监听它强制取新第一页并回顶部。 */
+/* 轮 215 定案：再点当前页 tab = 回到该页**原位置**（不刷新不回顶）。
+ * 同路径 push 被 vue-router 忽略 = 点了没反应——本来就在本页，无需动作。 */
 function goItem(item) {
-  /* 轮 100：App 端再点当前页的 tab = 刷新该页（仅暖心墙） */
-  if (item.path === "/community" && (route.path === "/community" || route.path.startsWith("/community/"))) {
-    router.push({ path: "/community", query: { refresh: String(Date.now()) } }).catch(() => {});
-    return;
-  }
   router.push(item.path).catch(() => {});
 }
 

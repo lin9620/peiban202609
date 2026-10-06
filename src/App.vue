@@ -187,11 +187,12 @@ const crashed = ref("");
  * 回位即所见，无跳变。 */
 const keepAliveNames = ["HomeView", "CommunityView", "MessagesView", "ProfileView"];
 const scrollMem = {};
+/* 轮 215 续：记忆键用 route.path（不含 query）——底栏 push 带 Ts query 时 fullPath 对不上 */
 watch(() => route.fullPath, (to, from) => {
-  if (from && from.fullPath) scrollMem[from.fullPath] = window.scrollY;
+  if (from && from.path) scrollMem[from.path] = window.scrollY;
 });
 function onPageEntered() {
-  const y = scrollMem[route.fullPath];
+  const y = scrollMem[route.path];
   if (y != null && Math.abs(window.scrollY - y) > 1) window.scrollTo(0, y);
 }
 onErrorCaptured((err) => {

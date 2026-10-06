@@ -23,10 +23,9 @@ const router = useRouter();
 /* 轮144（用户口径）：左侧边点「暖心墙」——已在暖心墙页时再点 = 刷新（抄 TabBar 轮100 先例）：
  * 同路径 push 会被 vue-router 忽略（点了没反应）→ 拦下默认导航，推带时间戳的 refresh query，
  * CommunityView 的 watch(route.query.refresh) 强制取新第一页并回顶部。其它按钮/非本页不干预。 */
+/* 轮 215 定案：再点当前页 = 回原位置（不刷新不回顶）——同路径 push 被 vue-router 忽略即所需行为 */
 function onNavClick(it, e) {
-  if (it.to !== "/community" || !isActive(it.to)) return;
-  e.preventDefault();
-  router.push({ path: "/community", query: { refresh: String(Date.now()) } }).catch(() => {});
+  if (it.to !== "/community" || !isActive(it.to)) e.preventDefault();
 }
 </script>
 
