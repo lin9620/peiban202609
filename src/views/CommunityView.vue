@@ -154,6 +154,28 @@ async function loadCloud({ fresh = false } = {}) {
       cloudDone.value = false;
     }
   };
+  /* 轮 206：进入路径的静默刷新 = **软合并**——只把没见过的新帖钉顶，其余原顺序不动、
+   * 不再整表替换（随机批 reshuffle 只属于下拉/强制刷新那种「用户明确要换一批」的场景）。
+   * 旧路径进入也整表替换 = 用户实测「暖心墙帖子每次都要重新加载，非常卡」。 */
+  const consumeSoft = (box) => {
+    if (!box || !Array.isArray(box.rows) || !box.rows.length) return;
+    const cur = cloudPosts.value;
+    if (!cur.length) { consume(box); return; }   /* 首次无内容：正常 consume */
+    const known = new Set(cur.map((p) => cmtKey(p)));
+    const additions = filterBlocked(box.rows)
+      .filter((p) => !known.has(cmtKey(p)))
+      .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    countViews(additions);
+    if (additions.length) cloudPosts.value = [...additions, ...cur];
+    if (box.counts) {
+      const next = { ...cloudCmtTotal.value };
+      for (const p of [...additions, ...cur]) {
+        if (p.dbId != null && box.counts[p.dbId] != null) next[p.dbId] = box.counts[p.dbId];
+      }
+      cloudCmtTotal.value = next;
+    }
+    newestSeenTs.value = Math.max(newestSeenTs.value, ...box.rows.map((p) => p.ts || 0));
+  };
   /* 轮 66：挂载取数器也走「随机换一批」——不再固定拉最新页（那正是「A 复活」的根源：
      随机批不回写缓存 + 挂载永远拉最新页 → 重开/刷新总回到同一批）。 */
   const fetcher = async () => {
@@ -199,7 +221,7 @@ async function loadCloud({ fresh = false } = {}) {
   } else {
     await swr(
       cacheKey("wall:posts", (cloud.user && cloud.user.id) || ""),
-      { cached: consume, fresh: consume },
+      { cached: consume, fresh: consumeSoft },
       fetcher,
     );
   }
