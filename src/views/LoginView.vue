@@ -53,8 +53,6 @@ watch(
 /* —— 邮箱登录 / 注册 —— */
 const authMode = ref("signin");
 const authEmail = ref("");
-const showPass = ref(false);      /* 轮 211：密码可见性（Vant Field 无眼睛，自己实现） */
-const showNewPass = ref(false);
 const authPass = ref("");
 const authNick = ref("");
 const authBusy = ref(false);
@@ -238,19 +236,8 @@ function passHint(pass) {
     <section v-else-if="cloud.ready && cloud.recovery" class="login-box anim d3">
       <h2 class="login-card-title">{{ t("profile.setPassTitle") }}</h2>
       <p class="notice">{{ t("profile.setPassHint") }}</p>
-      <div class="pass-wrap">
-      <van-field v-model="newPass" :type="showNewPass ? 'text' : 'password'"
+      <n-input v-model:value="newPass" type="password" round size="large" show-password-on="click"
         :placeholder="t('profile.newPass')" @keyup.enter="doSetPassword" />
-        <button type="button" class="pass-eye" aria-label="toggle password"
-          @click.stop.prevent="showNewPass = !showNewPass">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
-            stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z" />
-            <circle cx="12" cy="12" r="2.6" />
-            <line v-if="showNewPass" x1="4.5" y1="19.5" x2="19.5" y2="4.5" />
-          </svg>
-        </button>
-      </div>
       <n-button type="primary" class="auth-cta" round size="large" block :loading="passBusy" @click="doSetPassword">
         {{ t("profile.savePass") }}
       </n-button>
@@ -279,24 +266,13 @@ function passHint(pass) {
       </template>
       <p v-if="forgot" class="notice">{{ t("profile.forgotHint") }}</p>
 
-      <van-field v-model="authEmail"
+      <n-input v-model:value="authEmail" round size="large"
         :placeholder="t('profile.authEmail')" @keyup.enter="forgot ? doForgot() : doAuth()" />
 
       <template v-if="!forgot">
-        <div class="pass-wrap">
-          <van-field v-model="authPass" :type="showPass ? 'text' : 'password'"
-            :placeholder="t('profile.authPass')" @keyup.enter="doAuth" />
-          <button type="button" class="pass-eye" :aria-label="showPass ? t('common.hide') : t('common.show')"
-            @click.stop.prevent="showPass = !showPass">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
-              stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z" />
-              <circle cx="12" cy="12" r="2.6" />
-              <line v-if="showPass" x1="4.5" y1="19.5" x2="19.5" y2="4.5" />
-            </svg>
-          </button>
-        </div>
-        <van-field v-if="authMode === 'signup'" v-model="authNick"
+        <n-input v-model:value="authPass" type="password" round size="large" show-password-on="click"
+          :placeholder="t('profile.authPass')" @keyup.enter="doAuth" />
+        <n-input v-if="authMode === 'signup'" v-model:value="authNick" round size="large"
           :placeholder="t('common.nickname')" @keyup.enter="doAuth" />
         <n-button type="primary" class="auth-cta" round size="large" block :loading="authBusy" @click="doAuth">
           {{ authMode === "signin" ? t("common.signIn") : t("common.signUp") }}
@@ -324,7 +300,7 @@ function passHint(pass) {
     <!-- 本地模式（云端未就绪）：起个访客昵称继续玩 -->
     <section v-if="!cloud.ready" class="login-box anim d3">
       <h2 class="login-card-title">{{ t("login.guestTitle") }}</h2>
-      <van-field v-model="draftNick"
+      <n-input v-model:value="draftNick" round size="large"
         :placeholder="t('common.nickname')" @keyup.enter="continueAsGuest" />
       <n-button type="primary" class="auth-cta" round size="large" block @click="continueAsGuest">
         {{ t("common.save") }}
@@ -382,22 +358,9 @@ html[data-theme="night"] .login-back { background: rgba(139, 156, 232, .14); }
 }
 
 /* 表单分组：不画卡，靠间距；输入框极淡灰填充 */
-/* 轮 211：轮 189 换 van-field 后这些选择器全成了死规则（页面上已无 .n-input）——
-   输入框变纯白平铺（用户：「纯白的太丑」）+ 间距全散。按轮 167 设计稿口径重定向： */
-.pass-wrap { position: relative; margin-top: 10px; }
-.pass-wrap :deep(.van-field__control) { padding-right: 46px; }
-.pass-eye {
-  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
-  background: none; border: none; padding: 4px; cursor: pointer;
-  color: var(--ink-faint); display: flex; align-items: center;
-}
-.login-page :deep(.van-field__control) { background: #f6f6f5; border-radius: 14px; }
-html[data-theme="night"] .login-page :deep(.van-field__control) { background: rgba(139, 156, 232, .12); }
-.login-page :deep(.van-cell) { padding: 0; background: transparent; }
-.login-page :deep(.van-cell + .van-cell),
-.login-page :deep(.van-cell + .n-button),
-.login-page .n-button + :deep(.van-cell) { margin-top: 10px; }
-.login-page :deep(.van-field__right-icon) { color: var(--ink-faint); }
+.login-page .n-input { --n-border-radius: 14px; background: #f6f6f5; }
+html[data-theme="night"] .login-page .n-input { background: rgba(139, 156, 232, .12); }
+.n-input + .n-input, .n-input + .n-button, .n-button + .n-input { margin-top: 10px; }
 
 /* 主按钮：珊瑚色实底 + 14px 圆角 + 粗字 */
 .login-page .n-button--primary-type {

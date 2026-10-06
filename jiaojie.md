@@ -1637,6 +1637,11 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
      **三个真因**：①轮 189 换 van-field 后，登录页样式还挂在 `.login-page .n-input` 上——**死选择器**（页面已无 n-input）→ 输入框变纯白平铺 + 间距全散；②`show-password-on="click"` 是 **Naive UI 的 prop**，轮 189 机械转换原样照搬到 van-field（**Vant 根本没有此 prop**，node_modules 实证 grep 0 命中）——密码眼睛自轮 189 起就消失了；③LoginView 样式块是 **scoped** 的——`.van-field__control` 是 Vant 内部元素，scoped 选择器穿不进去（.n-input 时代能命中是因为那是自家元素），必须 `:deep()`。
      **修**：①样式按轮 167 设计稿口径重定向 + :deep() 化（输入框 #f6f6f5 极淡灰 + 圆角、van-cell 去壳、相邻间距 10px、右图标色）；②**密码眼睛自制**——Vant 无此功能，手写 .pass-wrap 相对包装 + 眼睛 SVG 按钮（点击切 type password/text，划线态同步），登录 + 忘记密码两处；③间距补齐（pass-wrap margin-top 10px）。
      验证：undef 0 + build 0 + 线上截图（灰底输入框回归、眼睛可见且点击切明文实测 type=text）。**交付**：**已部署 Version `f24a54de`** / APK 待随下轮装机。
+
+  - **轮 212 · 登录页整体回滚 + 发送键定案（2026-10-06，用户：「登录页面全给我换成以前的」「发送按钮改成原来的大小，往上对齐」）**：
+     **①登录页整体回滚到轮 189 之前**（`git show 192c236^:src/views/LoginView.vue` 整文件还原）——n-input + Naive 自带 show-password 眼睛 + 原生间距全量回归（轮 211 的 :deep 补丁路线被否，直接用旧版）。回滚后依赖核查：naive-ui 仍在（n-button 全站在用）、supabase.js 的 cloudSignUp/SignIn/ResetPassword/UpdatePassword/SignInWithGoogle/ClearRecovery 六个导出全在 ✓。真机截图：灰底双框分离、眼睛可见且**点击切明文实测通过**（input[type=password] 1→0）、登录回归 ✓。
+     **②发送键定案**：轮 211 的同高 stretch 被否——恢复原大小、`align-items: flex-start` 往上对齐（输入框可见框仍在，白底+描边）。
+     验证：undef 0 + build 0 + 线上截图（登录页旧貌回归、眼睛切换实测、发送键原大小上对齐）。**交付**：**已部署 Version `e04f6d29`** / APK 待随下轮装机。
      **教训（钉死）**：跨组件库换件时，**原 props 不一定存在**（n-input 的 show-password-on ≠ van-field 有）——换完必须逐 prop 对照新库文档；scoped 样式碰组件库内部元素必须 :deep()。
      验证：dm-test 324/0 + undef 0 + build 0。**交付**：**已部署 Version `a3f34205`** / **APK `B2002D4BF3FFCCEC` 已出**（USB 断待补装）。
      验证：dm-test 324/0 + app-shell 64/0 + pet-visual 163/0 + pet-home 19/0 + mood 12/0 + undef 0 + build 0。**交付**：**已部署 Version `720900f8`** / **APK `7A8AD858812CA484` 已出**（USB 断待补装）。**待用户**：Supabase SQL Editor 执行 `MIGRATION_pet_cloud.sql`（跑完宠物数据即开始跨设备同步，跑之前 App 一切照旧）。
