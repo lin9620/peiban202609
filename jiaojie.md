@@ -1621,6 +1621,10 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
   - **轮 208 · 宠物数据上云（2026-10-06，用户定调「宠物本身的数据是需要上云的啊」）**：
      **范围**：宠物栏全量状态（pets 数组 + 当前宠物 + 金币）整包 JSONB 上云；**手绘食谱不上云**（48h 保质期、图片体积大，本地即合理——已向用户说明）。
      **实现**：`MIGRATION_pet_cloud.sql`（public.pets：user_id 主键 + state jsonb + updated_at，RLS 仅本人读写；SUPABASE_SETUP.sql 尾部同步）+ petStore 云同步段：本地存档带 updatedAt → 1.5s 防抖 upsert；启动（云就绪 watch）与页面回前台（visibilitychange）拉云端比对 updatedAt **新者胜**——云端较新整体采纳并**补离线结算**（applyOffline/settleNeglect，云端快照落后现实时长也能正确衰减），本地较新推上去；表未建/未登录静默跳过（行为退回纯本地，跑完迁移即生效）。
+
+  - **轮 209 · 会话行 ⋯ 菜单点空白关闭（2026-10-06，用户实测截图：列表行菜单点空白不消失）**：
+     **根因**：点空白关闭只挂了**头部菜单**（headMenu，轮 144），列表行的 ⋯ 菜单（打开会话/免打扰/删除会话/拉黑）从未有点空白关——只能再点 ⋯ 或选菜单项才收。轮 197 撤左滑把全部操作收进 ⋯ 后高频使用，问题显形。**修**：onDocPointerDown 扩展——menuFor 打开时，pointerdown 不在 .dm-menu/.dm-more 内即收（点菜单项/⋯ 按钮不误收）。
+     验证：dm-test 324/0 + undef 0 + build 0。**交付**：**已部署 Version `a3f34205`** / **APK `B2002D4BF3FFCCEC` 已出**（USB 断待补装）。
      验证：dm-test 324/0 + app-shell 64/0 + pet-visual 163/0 + pet-home 19/0 + mood 12/0 + undef 0 + build 0。**交付**：**已部署 Version `720900f8`** / **APK `7A8AD858812CA484` 已出**（USB 断待补装）。**待用户**：Supabase SQL Editor 执行 `MIGRATION_pet_cloud.sql`（跑完宠物数据即开始跨设备同步，跑之前 App 一切照旧）。
      验证：dm-test 324/0 + wall-test 34/0 + undef 0 + build 0。**交付**：**已部署 Version `8e0c7c24`** / **APK `A757291A8C5FEC00` 已出**（USB 又断待补装）。
      **教训（钉死）**：①`setRangeText` 无 input 事件——程序改值必须自己派发，v-model 才认；②Capacitor 键盘隐藏伴随 WebView 焦点抖动，App 内不能依赖 focusin 做面板互斥，要用原生键盘事件；③键盘高度以 OS 事件上报值为唯一权威，视口推算是估算不是事实。

@@ -154,6 +154,13 @@ watch(seg, () => { headMenu.value = false; });
 /* 轮144：点菜单外空白处自动关（菜单内各项点击已各自 headMenu=false；
  * 文档级 pointerdown 兜住页面任意位置——列表/滚动区/输入框/另一侧都算“空白”） */
 function onDocPointerDown(e) {
+  /* 轮 209：会话行 ⋯ 菜单同样点空白关——轮 197 把全部操作收进 ⋯ 后高频使用，
+   * 之前只有头部菜单有点空白关，列表行的菜单点哪儿都不收（用户实测）。 */
+  if (menuFor.value) {
+    const t = e.target;
+    const inMenu = t && t.closest && (t.closest(".dm-menu") || t.closest(".dm-more"));
+    if (!inMenu) menuFor.value = "";
+  }
   if (!headMenu.value) return;
   if (e.target && e.target.closest && e.target.closest(".dm-head-tools")) return;
   headMenu.value = false;
