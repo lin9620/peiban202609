@@ -1620,6 +1620,11 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
   - **轮 213 续 · 手机 10s 空窗两真因修复（用户装最新包后仍复现「我的-我在暖心墙的帖子」10s 才出——手机直连 Supabase 的线路本身慢，两趟串行雪上加霜）**：
      **①启动空窗清缓存（轮 207 自己埋的）**：watch 的空窗守卫 `myPosts.value = []` 把挂载秒出的缓存渲染**自己擦掉**了——修：有缓存就保留到 ready。收藏同款。
      **②取帖两趟串行**：cloudFetchUserPosts 先 listPostsByUser 再 listReactionsByPosts（两趟串行 = 慢线上 6~10s）。**修**：ProfileView 直连取帖——一趟 listPostsByUser **先出帖子**（rowsToPosts 直调，wall.js 的 publicUrl 转 export），回应数后台补并按 dbId 原位合并；wall-test 拆的 export 不影响既有调用。
+
+  - **轮 214 · 切会话闪前一会话内容——结构性根治（2026-10-06，用户真机实测：「打开另外一个会话有时候会跳闪前一个会话的内容」）**：
+     **病根（代码级）**：loadMessages 切到**本地库为空的会话**时，local 分支直接跳过、`msgs.value` 从不清空——上一个会话的消息一直留在响应式数组里，配合任何时序竞态（网络慢、硬上限揭示、轮 203 前 Boot 期的中间态）就会闪出前一会话内容（「有时候」= 竞态窗口）。
+     **修（结构性，不赌时序）**：loadMessages 开头加**切会话先清屏**——`msgsConv !== id` 即清 msgs/oldestId/hasMore，**msgs 里永远只有当前会话的消息**，闪前会话在结构上不可能。MV/BC 同款。
+     验证：dm-test 324/0 + undef 0 + build 0。**交付**：**已部署 Version `1cbc05db`** / **APK `D0CA0003FAD02F16` 已出**（USB 断待补装）。
      验证：dm-test 324/0 + app-shell 64/0（T21 钉改 center 口径）+ undef 0 + build 0。**交付**：**已部署 Version `9c3e46d5`** / **APK `29F737C1B69C2B4B` 已出**（USB 断待补装）。
      验证：dm-test 324/0 + app-shell 64/0 + userScope 8/0 + undef 0 + build 0。**交付**：**已部署 Version `6ca5495b`** / **APK `3140A6009104D372` 已出**（USB 断待补装）。
 

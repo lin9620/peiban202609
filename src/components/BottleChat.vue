@@ -148,6 +148,14 @@ function onScrollTop() {
 
 async function loadMessages(id, { before = null } = {}) {
   if (!id) return false;
+  /* 轮 214：切会话先清屏——上一个会话的消息只要还留在 msgs 里，任何时序竞态
+   * （本地库为空的会话、网络慢、硬上限兜底揭示）都会让它闪出来
+   * （用户实测「打开另一个会话有时跳闪前一个会话的内容」）。结构上清零，永绝后患。 */
+  if (msgsConv !== id) {
+    msgs.value = [];
+    oldestId.value = null;
+    hasMore.value = true;
+  }
   let smoothed = false;
   loadingMsgs.value = true;
   const applyRows = (rows, more) => {
