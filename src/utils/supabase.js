@@ -15,7 +15,7 @@ import { createClient } from "@supabase/supabase-js";
 import { setAuthTokenProvider } from "./api/authToken.js";
 import { isApp } from "../stores/uiStore.js";
 /* 登录失败锁的记账读写（localStorage，隐私模式自动降级内存 —— 见 storage.js） */
-import { getItem, setItem } from "./storage.js";
+import { getItem, setItem, removeItem } from "./storage.js";
 import {
   bestNickname, hasAuthParams, isRecoveryEvent, parseAuthRedirect, redirectUrl, NICK_MAX,
   isMissingFnError, passwordProblem,
@@ -112,6 +112,7 @@ async function deadSessionSignOut(err) {
   try {
     accessToken = "";
     cloud.user = null;
+    removeItem("wp-uid");   /* 轮 206：死会话清理同清持久 uid */
     await sb.auth.signOut();
   } catch (e) { /* 清理失败下次再清 */ }
 }
@@ -320,6 +321,8 @@ export async function initCloud() {
     cloud.ready = true;
     if (boot) {
       const uidAtBoot = boot.user.id;
+      /* 轮 206：本地持久 uid——各页挂载时即可同步读缓存快照（不等 cloud.ready 的启动间隙） */
+      setItem("wp-uid", uidAtBoot);
       loadProfile(boot.user)
         .then((nick) => { if (cloud.user && cloud.user.id === uidAtBoot) cloud.nickname = nick; })
         .catch(() => { /* 昵称拿不到就走各处兜底名，不阻塞 */ });
@@ -430,6 +433,7 @@ export async function cloudSignOut() {
   try { await sb.auth.signOut(); } catch (e) { /* 忽略 */ }
   cloud.user = null;
   cloud.nickname = "";
+  removeItem("wp-uid");   /* 轮 206：登出清持久 uid */
   /* 轮 19：登出顺手清掉恢复态（双保险——就算上面兜住了 signOut 触发的
      PASSWORD_RECOVERY 事件，也不能让登录页残留「设置新密码」卡） */
   cloud.recovery = false;

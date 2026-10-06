@@ -19,7 +19,7 @@ import { MIN_PASSWORD, NICK_MAX, passwordProblem } from "../utils/authRules.js";
 import { fmtWhenSec } from "../utils/wallRules.js";
 import { db } from "../utils/api/db.js";
 import { cloudFetchUserPosts, cloudFavListMine, cloudFavRemove } from "../utils/wall.js";
-import { cacheKey, swr } from "../utils/cache.js";
+import { cacheKey, cachePeek, cacheSet, swr } from "../utils/cache.js";
 
 /* 心情图标：一律用 Unicode 转义，避免源码中的 emoji 编码损坏 */
 /* 轮 155：日历表情与打卡统一——旧系统 emoji 数组退役，格子改用 MoodFace 手绘脸。
@@ -70,6 +70,16 @@ watch(
  * 键带 uid 换号不串；缓存的是 rowsToPosts 视图（img 已是 URL，可序列化）。 */
 const myPosts = ref([]);
 const myPostsBusy = ref(false);
+/* 轮 206：挂载同步秒出——用本地持久 uid（wp-uid）直接读缓存快照，不等 cloud.ready 的启动间隙。
+ * （用户实测「我的页面帖子只展示前 3 条为什么也这么慢」——慢在 ready 前的空窗。） */
+(() => {
+  try {
+    const uid = getItem("wp-uid");
+    if (!uid) return;
+    const snap = cachePeek(cacheKey("profile-myposts", uid));
+    if (snap && Array.isArray(snap.rows)) myPosts.value = snap.rows;
+  } catch (e) { /* 忽略 */ }
+})();
 watch(
   () => [cloud.ready, cloud.user && cloud.user.id],
   async ([ready, uid]) => {
@@ -95,6 +105,14 @@ watch(
  * 被下架/删除的帖子（post 为 null）不展示；取消收藏乐观移除。 */
 const favRows = ref([]);
 const favBusy = ref(false);
+(() => {
+  try {
+    const uid = getItem("wp-uid");
+    if (!uid) return;
+    const snap = cachePeek(cacheKey("profile-favs", uid));
+    if (snap && Array.isArray(snap)) favRows.value = snap;
+  } catch (e) { /* 忽略 */ }
+})();
 const showFavs = ref(false);   /* 轮 129：头部「我的收藏」按钮开关 */
 watch(
   () => [cloud.ready, cloud.user && cloud.user.id],
@@ -103,6 +121,10 @@ watch(
     favBusy.value = true;
     const rows = await cloudFavListMine(20);
     favRows.value = (rows || []).filter((r) => r.post);
+    try {
+      const uid0 = getItem("wp-uid");
+      if (uid0) cacheSet(cacheKey("profile-favs", uid0), favRows.value);
+    } catch (e) { /* 忽略 */ }
     favBusy.value = false;
   },
   { immediate: true },

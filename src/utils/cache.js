@@ -14,7 +14,7 @@ import { getItem, setItem, removeItem, keys } from "./storage.js";
 
 const NS = "wp-cache:";
 const VERSION = "v1";
-export const CACHE_MAX_ENTRIES = 120;   /* 轮 157b：60 → 120——聊天每会话一条窗口快照，60 条会被其它域的缓存挤出（用户实测重进丢缓存） */
+export const CACHE_MAX_ENTRIES = 200;   /* 轮 206：120 → 200——大体积条目（墙/聊天）仍会挤兑，profile 等小快照不该被驱逐 */
 const DEFAULT_MAX_AGE = 7 * 24 * 3600 * 1000;   /* 7 天安全网 */
 let seq = 0;                                     /* 会话内写入序号：同一毫秒也能比出先后 */
 
