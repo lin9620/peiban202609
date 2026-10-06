@@ -8,9 +8,10 @@
  *   联尾两个钮分别去 /story/write（写）与 /story（全站页，含「我的」与四榜）。
 -->
 <script setup>
-import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick, defineAsyncComponent } from "vue";
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick, defineAsyncComponent, onActivated } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { t } from "../i18n.js";
+import { restoreScroll } from "../utils/scrollMem.js";
 import { isMobileNav } from "../stores/uiStore.js";
 import { HOME_PANES, paneFromQuery, paneIndex, swipeDir } from "../utils/panes.js";
 import TodayPane from "../components/TodayPane.vue";
@@ -33,6 +34,8 @@ const petMounted = ref(pane.value === "pet");
 const storyMounted = ref(pane.value === "story");
 
 /* /?tab=xxx 变化（＋ 钮投瓶 / 深链）→ 切联；桌面忽略（不消费 query） */
+onActivated(() => { restoreScroll(route.path); });   /* 轮 219：页签回位 */
+
 watch(() => route.query.tab, (v) => {
   if (isMobileNav.value) setPane(paneFromQuery(v), false);
 });

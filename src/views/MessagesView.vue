@@ -17,6 +17,7 @@ import { cloud } from "../utils/supabase.js";
 import * as dmApi from "../utils/dm.js";
 import { cacheKey, swr } from "../utils/cache.js";
 import { dmStoreLoad, dmStoreSave, dmStoreDrop } from "../utils/dmStore.js";
+import { restoreScroll } from "../utils/scrollMem.js";
 import { idbMerge, idbOlderThan, idbServerDone, idbDrop } from "../utils/dmIdb.js";
 import {
   previewText, sortConvs, filterConvs, withDayDividers, displayMsg,
@@ -681,6 +682,7 @@ onMounted(async () => {
 onActivated(() => {
   if (!timer) timer = setInterval(tick, 5000);
   document.addEventListener("pointerdown", onDocPointerDown);
+  restoreScroll(route.path);   /* 轮 219：回位（KeepAlive 重插瞬间） */
 });
 onDeactivated(() => {
   clearInterval(timer); timer = 0;

@@ -57,7 +57,18 @@
     } catch (e) { /* 拿不到 UA 就当网页 */ }
     var FLAG = "wp-boot-reload";
     try {
-      window.addEventListener("vite:preloadError", function () {
+      window.__bootErrs = window.__bootErrs || [];
+    window.addEventListener("error", function (e) {
+      window.__bootErrs.push((e.message || "") + " @" + (e.filename || "").split("/").pop() + ":" + (e.lineno || 0));
+    });
+    window.addEventListener("unhandledrejection", function (e) {
+      window.__bootErrs.push("REJ:" + String(e.reason).slice(0, 200));
+    });
+    window.__bootErrs = window.__bootErrs || [];
+    window.addEventListener("error", function (e) {
+      window.__bootErrs.push((e.message || "") + " @" + (e.filename || "").split("/").pop() + ":" + (e.lineno || 0));
+    });
+    window.addEventListener("vite:preloadError", function () {
         if (sessionStorage.getItem(FLAG)) return;   /* 已重载过一次：不再循环 */
         sessionStorage.setItem(FLAG, "1");
         location.reload();
@@ -76,6 +87,7 @@
         '<section class="card seo-hero" style="text-align:center">' +
         '<h2 class="seo-title">\u{1F43E} 温暖的爪印</h2>' +
         "<p>页面加载遇到了一点小麻烦，内容没有起来。</p>" +
+        (window.__bootErrs && window.__bootErrs.length ? '<p style="font-size:12px;color:#999;word-break:break-all">' + window.__bootErrs.map(String).join("<br>").slice(0, 400) + "</p>" : "") +
         '<p><a href="javascript:location.reload()" style="color:#e07a3f;font-weight:700">' +
         "\u70b9\u8fd9\u91cc\u91cd\u8bd5</a></p></section>";
     }, 12000);   /* 轮 216：6s → 12s——慢网络下资源未拉完就被看门狗换掉 = 假故障页 */

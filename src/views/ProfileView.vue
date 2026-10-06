@@ -1,9 +1,10 @@
 <script setup>
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, onActivated } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { NButton, NInput, NAvatar, NTag, NProgress } from "naive-ui";
 import { t } from "../i18n.js";
 import { getItem, setItem, removeItem } from "../utils/storage.js";
+import { restoreScroll } from "../utils/scrollMem.js";
 import { cookbook, removeDish, moodLog, moodStreak, wallet } from "../stores/petStore.js";
 import MoodFace from "../components/MoodFace.vue";
 import { isMobileNav } from "../stores/uiStore.js";
@@ -48,6 +49,8 @@ const streak = computed(() => moodStreak());
 /* 管理中心入口：仅数据库认定的管理员可见（is_admin()；失败一律当不是）。
  * 跟随登录态重新判定 —— 登录表单就在本页，组件挂载时常常还没登录 / Auth 还没就绪 */
 const isAdmin = ref(false);
+onActivated(() => { restoreScroll(route.path); });   /* 轮 219：页签回位 */
+
 watch(
   () => [cloud.ready, cloud.user && cloud.user.id],
   async ([ready, uid]) => {

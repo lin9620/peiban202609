@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref, onMounted, onErrorCaptured, onBeforeUnmount, watch } from "vue";
+import { rememberScroll } from "./utils/scrollMem.js";
 import {
   NConfigProvider, NMessageProvider, NDialogProvider, NTag, NButton,
 } from "naive-ui";
@@ -186,15 +187,13 @@ const crashed = ref("");
  * 离开时存（window.scrollY），新页 enter 完成后回位——KeepAlive 的 DOM 原样回来，
  * 回位即所见，无跳变。 */
 const keepAliveNames = ["HomeView", "CommunityView", "MessagesView", "ProfileView"];
-const scrollMem = {};
-/* 轮 215 续：记忆键用 route.path（不含 query）——底栏 push 带 Ts query 时 fullPath 对不上 */
+/* 轮 219：滚动位置记忆改共享工具（utils/scrollMem.js）——离开时 rememberScroll(from.path)，
+ * 回位由各页 onActivated 调 restoreScroll（KeepAlive 重插 DOM 的瞬间，零闪零跳）。 */
 watch(() => route.fullPath, (to, from) => {
-  if (from && from.path) scrollMem[from.path] = window.scrollY;
+  /* from 是 fullPath 字符串（非 route 对象）——from.path 恒 undefined，
+   * 记忆从未执行（轮 215 起的死 bug，用户实测「每次都要重新往下拉」）。 */
+  if (from) rememberScroll(from);
 });
-function onPageEntered() {
-  const y = scrollMem[route.path];
-  if (y != null && Math.abs(window.scrollY - y) > 1) window.scrollTo(0, y);
-}
 onErrorCaptured((err) => {
   crashed.value = (err && err.message) || String(err);
   console.error("[Warm Paws] 页面出错：", err);

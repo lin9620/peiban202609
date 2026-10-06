@@ -15,6 +15,7 @@ import { useRouter, useRoute } from "vue-router";
 import { NButton, NInput, NAvatar, NTag } from "naive-ui";
 import { t, i18n } from "../i18n.js";
 import { getItem, setItem, removeItem } from "../utils/storage.js";
+import { restoreScroll } from "../utils/scrollMem.js";
 /* 轮 32：个人数据键按账号分域（游客账/各登录账号互不串），读写走 scopeGet/scopeSet */
 import { scopeGet, scopeSet, scopeGetRaw, scopeSetRaw } from "../utils/userScope.js";
 import { cacheKey, cacheSet, swr } from "../utils/cache.js";
@@ -989,6 +990,8 @@ onActivated(() => {
   window.addEventListener("wheel", onUserMove, { passive: true });
   window.addEventListener("touchmove", onUserMove, { passive: true });
   window.addEventListener("keydown", onUserMove);
+  const y0 = restoreScroll(route.path);   /* 轮 219：回位（KeepAlive 重插瞬间，零闪） */
+  if (y0 != null) scheduleFeedTick();   /* 轮 219：回位后再校准一次窗口 */
   scheduleFeedTick();
 });
 onDeactivated(() => {
