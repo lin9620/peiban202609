@@ -7,6 +7,8 @@ const FEED_ARCHIVE_KEY = "wp-feed-archive";
 /* 轮 217：恢复期间隐藏整面墙——恢复要等布局落地后才回滚位置，裸奔的首帧（顶部态）
  * 就是被用户看到的「下滑」。藏到滚到位再揭示 = 第一帧就在原位置（知乎式页签回位）。 */
 const feedRestoring = ref(false);
+const wallScrollerEl = ref(null);
+let wallScrollTop = 0;   /* 轮 219：容器离场时的滚动位置（重插时浏览器会归零，必须显式恢复） */
 </script>
 
 <script setup>
@@ -529,11 +531,18 @@ function showWallMsg(tk) {
  * 先渲染缓存再后台刷新，不闪白屏；60px 阈值，指示条跟手。 */
 let pullStart = 0, pulling = false;
 const pullDist = ref(0);
-function ts(e) { if (window.scrollY <= 0) { pullStart = e.touches[0].clientY; pulling = true; } }
+function wallScroller() {
+  return isMobileNav ? (padTopEl.value ? padTopEl.value.parentElement : null) : null;
+}
+function ts(e) {
+  const sc = wallScroller();
+  if (!sc || sc.scrollTop <= 0) { pullStart = e.touches[0].clientY; pulling = true; }
+}
 function tm(e) {
   if (!pulling) return;
   const d = e.touches[0].clientY - pullStart;
-  if (d > 0 && window.scrollY <= 0) pullDist.value = Math.min(90, d);
+  const sc = wallScroller();
+  if (d > 0 && (!sc || sc.scrollTop <= 0)) pullDist.value = Math.min(90, d);
   else pulling = false;
 }
 async function te() {
@@ -991,12 +1000,15 @@ onActivated(() => {
   window.addEventListener("touchmove", onUserMove, { passive: true });
   window.addEventListener("keydown", onUserMove);
   restoreScroll(route.path);   /* 轮 219：回位（隐藏期内完成，用户看不到） */
+  /* 轮 219：容器 scrollTop 显式恢复——detached 重插时浏览器会归零 */
+  nextTick(() => { if (wallScrollerEl.value) wallScrollerEl.value.scrollTop = wallScrollTop; });
   /* 轮 222：回位 + 布局落定后揭示（250ms）——揭示时就在原位置 */
   setTimeout(() => { feedRestoring.value = false; scheduleFeedTick(); }, 250);
 });
 onDeactivated(() => {
   /* 轮 222：离开即置恢复态——回来时墙先隐藏，滚到位再揭示（零下滑动作） */
   feedRestoring.value = true;
+  wallScrollTop = wallScrollerEl.value ? wallScrollerEl.value.scrollTop : 0;   /* 轮 219：容器位置显式保存 */
   if (cardRO) { cardRO.disconnect(); cardRO = null; }
   window.removeEventListener("scroll", onScroll);
   window.removeEventListener("resize", onViewport);
@@ -1573,8 +1585,13 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
 
 <template>
   <!-- 轮 18：原生下拉刷新（顶部下拉 → 松手重拉；此前函数未绑定，用户看到「完全没做」） -->
-  <div @touchstart.passive="ts" @touchmove.passive="tm" @touchend.passive="te"
-    :style="{ visibility: feedRestoring ? 'hidden' : 'visible' }">
+  <div ref="wallScrollerEl" @touchstart.passive="ts" @touchmove.passive="tm" @touchend.passive="te"
+    @scroll.passive="onScroll"
+    :style="isMobileNav
+      ? { position: 'fixed', inset: 0, overflowY: 'auto', zIndex: 1,
+          paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'calc(50px + env(safe-area-inset-bottom))',
+          visibility: feedRestoring ? 'hidden' : 'visible' }
+      : { visibility: feedRestoring ? 'hidden' : 'visible' }">
     <div class="wall-pull" :style="{ height: pullDist + 'px', opacity: pullDist / 62 }">↓</div>
     <!-- 头部 + 发布框（手机端收起：发布统一走底部 ＋ → 独立发布页，页顶不再占一屏）
          轮 35：去掉与 h2 重复的小标签；副标题只在桌面显示（手机端两行文案太占首屏）

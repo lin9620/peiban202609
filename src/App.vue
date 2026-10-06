@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, onMounted, onErrorCaptured, onBeforeUnmount, watch } from "vue";
-import { rememberScroll } from "./utils/scrollMem.js";
+import { rememberScroll, restoreScroll } from "./utils/scrollMem.js";
 import {
   NConfigProvider, NMessageProvider, NDialogProvider, NTag, NButton,
 } from "naive-ui";
@@ -194,6 +194,8 @@ watch(() => route.fullPath, (to, from) => {
    * 记忆从未执行（轮 215 起的死 bug，用户实测「每次都要重新往下拉」）。 */
   if (from) rememberScroll(from);
 });
+/* 轮 220：新页面插入的第一瞬间回位（绘制之前）——页面出现时就在原位置，无滚动动作 */
+
 onErrorCaptured((err) => {
   crashed.value = (err && err.message) || String(err);
   console.error("[Warm Paws] 页面出错：", err);
@@ -316,11 +318,11 @@ onBeforeUnmount(() => { clearTimeout(scrubTimer); scrubTimer = 0; });
                * DOM/滚动位置/组件状态原样活着（用户录屏对标知乎：回页签第一帧=离开时的样子）。
                * key 仍用 meta.grp（列表/会话同组原地复用，轮 196 结论不变）；跨组 = 不同缓存项 + 过渡。
                * 滚动位置按 fullPath 记忆，after-enter 回位（onPageEntered）。 -->
-              <transition name="page" mode="out-in" @after-enter="onPageEntered">
-                <keep-alive :include="keepAliveNames">
-                  <component :is="Component" :key="(route.meta && route.meta.grp) || route.name || route.path" />
-                </keep-alive>
-              </transition>
+              <!-- 轮 221：去掉 out-in 渐隐——它让旧页先显示 ~300ms 再进新页（用户录屏对标知乎：
+                   页签切换必须即时互换，第一帧就在正确位置）。KeepAlive + @enter 回位已保证。 -->
+              <keep-alive :include="keepAliveNames">
+                <component :is="Component" :key="(route.meta && route.meta.grp) || route.name || route.path" />
+              </keep-alive>
             </router-view>
           </main>
 

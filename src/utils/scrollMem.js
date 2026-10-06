@@ -12,6 +12,10 @@ export function rememberScroll(path) {
   try { mem.set(path, window.scrollY); } catch (e) { /* 忽略 */ }
 }
 
+export function getScroll(path) {
+  try { return mem.get(path); } catch (e) { return null; }
+}
+
 export function restoreScroll(path) {
   try {
     const y = mem.get(path);

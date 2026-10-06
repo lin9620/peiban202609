@@ -40,6 +40,13 @@ app.config.errorHandler = (err, instance, info) => {
 
 app.use(router).mount("#app");
 
+/* 轮 219：关掉浏览器的历史滚动接管——新导航条目的内容延迟变高时，Chrome 会把滚动
+ * 重置回该条目的初始位置（0）= 用户实测「切页签回来总在顶部」。滚动完全由应用管理
+ * （utils/scrollMem.js：离开 rememberScroll，onActivated restoreScroll）。 */
+if (typeof history !== "undefined" && "scrollRestoration" in history) {
+  history.scrollRestoration = "manual";
+}
+
 /* 挂载成功：通知启动看门狗（index.html）清除英文 SEO 占位兜底，并放行后续自动重载 */
 try {
   window.__WP_MOUNTED__ = true;
