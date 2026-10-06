@@ -1644,7 +1644,7 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
   - **轮 218 续 · 真机实测抓出「回原位置」的三个拦路虎（2026-10-07，用户装最新包后复现：暖心墙滚到下面→点消息→点回暖心墙，位置丢了回到顶部）**：
      **真机 CDP/侦讯三连**：①滚动记忆按 **fullPath** 存取——底栏再点暖心墙推的是**每次不同的时间戳 query**（轮 100 的 refresh 机制），key 永远对不上 → 恢复永不发生（实测 scrollTo 日志：切页签全程 **零恢复调用**，y=1986→46）；②轮 100 的「再点暖心墙 tab = 强制取新第一页 + 回顶部」本身与新需求正面冲突；③左导航（SideNav）同款。
      **修（用户定案：再点 = 回原位置）**：滚动记忆键改 **route.path**（不含 query）；**轮 100 废止**——TabBar/SideNav 的 refresh query push 与 CommunityView 的 query.refresh 消费监听全删（再点当前页 = vue-router 忽略 = 原地不动 = 原位置）；T63 断言换新口径（反向钉死：refresh query 不得回归）。
-     验证：dm-test 324/0 + wall-test 34/0 + app-shell 64/0 + undef 0 + build 0。**交付**：**已部署 Version `18f7fc97`** / **APK `29F737C1B69C2B4B` 已出**（USB 断待补装）。
+     验证：dm-test 324/0 + wall-test 34/0 + app-shell 64/0 + undef 0 + build 0。**交付**：**已部署 Version `18f7fc97`** / **APK `3D4FF99EBC571F43` 已出（含今日全部）**（USB 断待补装）。
      验证：dm-test 324/0 + wall-test 34/0 + app-shell 64/0 + undef 0 + build 0。**交付**：**已部署 Version `aecd4dfb`** / **APK `72F68506FF9683CA` 已出**（USB 断待补装）。
      验证：dm-test 324/0 + build 0。**交付**：**已部署 Version `392484c6`** / APK 待随下轮装机。
      验证：dm-test 324/0 + wall-test 34/0 + undef 0 + build 0。**交付**：**已部署**（live-bundle-check 本地=线上 `329158103a4db359`）/ **APK `A171D8E86FD8CF29` 已出**。
