@@ -10,7 +10,7 @@ const feedRestoring = ref(false);
 </script>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from "vue";
+import { ref, computed, onMounted, onUnmounted, watch, nextTick, onActivated, onDeactivated } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { NButton, NInput, NAvatar, NTag } from "naive-ui";
 import { t, i18n } from "../i18n.js";
@@ -980,6 +980,24 @@ watch(mainBarKey, (v) => {
   if (typeof document === "undefined") return;
   if (v) document.addEventListener("click", mainBarDocClose);
   else document.removeEventListener("click", mainBarDocClose);
+});
+/* 轮 218：保活期摘掉全局监听与 RO（别的页面滚动不触发墙的窗口重算/续载） */
+onActivated(() => {
+  if (typeof ResizeObserver !== "undefined" && !cardRO) cardRO = new ResizeObserver(scheduleFeedTick);
+  window.addEventListener("scroll", onScroll, { passive: true });
+  window.addEventListener("resize", onViewport);
+  window.addEventListener("wheel", onUserMove, { passive: true });
+  window.addEventListener("touchmove", onUserMove, { passive: true });
+  window.addEventListener("keydown", onUserMove);
+  scheduleFeedTick();
+});
+onDeactivated(() => {
+  if (cardRO) { cardRO.disconnect(); cardRO = null; }
+  window.removeEventListener("scroll", onScroll);
+  window.removeEventListener("resize", onViewport);
+  window.removeEventListener("wheel", onUserMove);
+  window.removeEventListener("touchmove", onUserMove);
+  window.removeEventListener("keydown", onUserMove);
 });
 onUnmounted(() => {
   tabbarSuppressed.value = false;

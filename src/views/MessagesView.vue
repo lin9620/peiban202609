@@ -9,7 +9,7 @@
  *  - 打开会话即抬已读水位（服务端 dm_mark_read）；滚动到底部；仅在可见时轮询新消息。
  */
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch, defineAsyncComponent } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch, defineAsyncComponent, onActivated, onDeactivated } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { NButton, NInput, NAvatar, NTag } from "naive-ui";
 import { t, i18n } from "../i18n.js";
@@ -677,6 +677,15 @@ onMounted(async () => {
   if (typeof document !== "undefined") document.addEventListener("visibilitychange", onVisible);
 });
 
+/* 轮 218：保活期暂停轮询/监听（KeepAlive 下 onBeforeUnmount 不触发） */
+onActivated(() => {
+  if (!timer) timer = setInterval(tick, 5000);
+  document.addEventListener("pointerdown", onDocPointerDown);
+});
+onDeactivated(() => {
+  clearInterval(timer); timer = 0;
+  document.removeEventListener("pointerdown", onDocPointerDown);
+});
 onBeforeUnmount(() => {
   popBack(segBack);
   document.removeEventListener("pointerdown", onDocPointerDown);

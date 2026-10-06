@@ -179,6 +179,21 @@ watch(() => (cloud.user && cloud.user.id) || "", (uid) => { setUserScope(uid); }
 
 /* —— 错误边界：某个页面渲染出错时显示提示，而不是整页白屏 —— */
 const crashed = ref("");
+
+/* 轮 218 · 页签保活 + 滚动记忆（对标知乎录屏：切页签零加载零跳动）。
+ * 保活名单 = 四个主页签（SFC __name = 文件名）；其余页面（详情/他人主页等）
+ * 每次进入重新挂载（详情类本就该新鲜）。滚动位置按 fullPath 记忆：
+ * 离开时存（window.scrollY），新页 enter 完成后回位——KeepAlive 的 DOM 原样回来，
+ * 回位即所见，无跳变。 */
+const keepAliveNames = ["HomeView", "CommunityView", "MessagesView", "ProfileView"];
+const scrollMem = {};
+watch(() => route.fullPath, (to, from) => {
+  if (from && from.fullPath) scrollMem[from.fullPath] = window.scrollY;
+});
+function onPageEntered() {
+  const y = scrollMem[route.fullPath];
+  if (y != null && Math.abs(window.scrollY - y) > 1) window.scrollTo(0, y);
+}
 onErrorCaptured((err) => {
   crashed.value = (err && err.message) || String(err);
   console.error("[Warm Paws] 页面出错：", err);
@@ -297,16 +312,14 @@ onBeforeUnmount(() => { clearTimeout(scrubTimer); scrubTimer = 0; });
             </div>
 
             <router-view v-else v-slot="{ Component, route }">
-              <!-- 包一层 div 作为过渡元素：保证 <transition> 的节点始终是单一元素，避免视图多根节点导致白屏。
-               * 轮 196：key 用 route.meta.grp（路由分组，见 router.js 私信两条）——同一组件的列表/会话
-               * 两条路由同 key → out-in 不再整页拆掉重挂（用户反复报的进会话跳闪，逐帧实测定位）。
-               * 没有 grp 的页面回落 name/path：行为与旧版一致（按页过渡）。
-               * 不能按组件对象/组件名做 key：懒加载路由每次导航 Component 都是新对象（线上实测 key 序列
-               * c1→c2→c3），__name 取值还会在解析期短暂 undefined（崩过一次）。 -->
-              <transition name="page" mode="out-in">
-                <div :key="(route.meta && route.meta.grp) || route.name || route.path" class="route-wrap">
-                  <component :is="Component" />
-                </div>
+              <!-- 轮 218 · 知乎式页签保活：四个主页签 KeepAlive——切页签**不卸载不重拉**，
+               * DOM/滚动位置/组件状态原样活着（用户录屏对标知乎：回页签第一帧=离开时的样子）。
+               * key 仍用 meta.grp（列表/会话同组原地复用，轮 196 结论不变）；跨组 = 不同缓存项 + 过渡。
+               * 滚动位置按 fullPath 记忆，after-enter 回位（onPageEntered）。 -->
+              <transition name="page" mode="out-in" @after-enter="onPageEntered">
+                <keep-alive :include="keepAliveNames">
+                  <component :is="Component" :key="(route.meta && route.meta.grp) || route.name || route.path" />
+                </keep-alive>
               </transition>
             </router-view>
           </main>
