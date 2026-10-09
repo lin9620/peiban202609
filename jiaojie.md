@@ -2311,3 +2311,546 @@ Pro 套餐从 ~23,000 → **约 7 万+ 日活**。
 **测试**：`tools/story-test.mjs` 新增 3 条断言（story-test 160/0）：①两页 `<nav v-if="!isMobileNav" class="story-acts">` 且确实 import 了 uiStore 开关（漏 import 会让 v-if 恒 undefined → 按钮照样显示）②反面守点：桌面端按钮未被连带删掉 + 频道条「故事」联回 /story 的代码仍在 + mine 页 `useStoryBack(router)` 仍在。
   > 写法坑：注释里也写着 `v-if="!isMobileNav"` 字样，断言必须走 `codeOnly()` 去注释，否则永远绿等于没测。
 **验证**：模拟回退（去掉 v-if）后断言立刻 false（证明非空转）；`vite build` EXIT=0；**40 套离线测试全绿**（story 160、app-shell 64、back-stack 9、undef 0）；`wrangler deploy` Version `1a849bae-5cf6-44f6-9387-d29d13ac76bd`；`live-check` **14/14**；`live-bundle-check` 本地=线上（index SHA16 `2d007669e92fa161`）；线上 chunk 反编译核对：`StoryRankView-*.js` / `StoryMineView-*.js` 均为 `unref(X) ? 空注释 : (nav)`，且导出表里 `He as X` = `He=X(()=>Is||li.value<900)`（即 isMobileNav）——**不依赖 HTML 静态匹配，直接从字节码确认开关挂上了**；APK 5.14MB SHA16 `130D32A8FD4A7978` → `adb install -r` Success，冷启动 PID 21188、CRASH_HITS=0。
+
+## [2026-10-10] 轮 223 · 暖心墙「从帖子详情返回后不保持原样」根因修复 + 虚拟窗口退役收尾（改动完成、测试过了、**待提交待部署**）
+**用户报障**：暖心墙（`/community`）往下滚一段 → 点开某帖进详情（`/post/:id`）→ 返回，列表回到页顶，浏览位置与状态全丢。
+
+**根因（两层，缺一不可）**：
+1. **钩子被 ReferenceError 打断（本轮真事故）**：轮 223「虚拟窗口退役」改到一半，把 `feedTick` 与 `onUserMove` 的**函数定义删了**，而 `onMounted` / `onActivated` / `onDeactivated` / `onUnmounted` 仍在引用它们。`scheduleFeedTick()` 里 `requestAnimationFrame(feedTick)` 一求值就抛错 → **整个钩子中断** → `onActivated` 里的 `restoreScroll()` 与 `wallScrollerEl.scrollTop = wallScrollTop` **从未执行**。表面「代码都在」，而 `undef-check`（只查导出符号未导入 / 未声明就赋值）和 `tdz-check`（只查 immediate watch 的 TDZ）**都抓不到这一类**。
+2. **滚动源错配**：手机端墙是**自滚容器**（`wallScrollerEl`：`position:fixed; inset:0; overflowY:auto`），`window.scrollY` **恒为 0**。位置记忆原本只写 `window.scrollY` —— 存进去的就是个 0，回位自然回页顶。
+
+**改法**（`src/views/CommunityView.vue`）：
+- 补回 `feedTick`（退役版：窗口重算只剩归一化，真正要做的只有触底续载）与 `onUserMove`，并加醒目注释：**这两个函数是必需的，删它们之前必须先把引用删干净**。
+- 新增 `scrollerNearEnd()`：触底判据改为读**真实滚动容器**几何（`el.scrollTop + el.clientHeight >= el.scrollHeight - NEAR_END_PX`），桌面端（整页滚）回落 window —— 退役后 pads 恒 0，原先靠占位块总高推算的 `nearEnd` 已无依据。
+- `onActivated` 的容器回位改成 `pin()` **三钉**：同步一钉 → `nextTick` 一钉 → 揭示前（`feedRestoring=false` 之前）最后一钉。原先只在 `nextTick` 钉一次，字体/图片把上方内容顶开就会偏。
+- 跨会话存档补 `pane`（容器 scrollTop）：`onUnmounted` 同时存 `y`（桌面 window）与 `pane`（手机容器），`restoreFeed` 恢复时两个都钉，两端各取所需。
+- 顺带修掉 `syncFeedWindow` 尾部一个多余的缩进大括号。
+
+**新增回归测试**：`tools/wall-keep-test.mjs`（**17 项**）锁全链路不变量：保活名单与缓存 key、scrollMem 跨 chunk 单例、手机端自滚容器、离开保存容器位置、回来三钉且「**揭示前必须已钉住**」、**钩子引用的 6 个回调（feedTick / onUserMove / onScroll / onViewport / scheduleFeedTick / mainBarDocClose）必须有定义**、存档带 pane 且恢复它。
+> 有效性验证（防空转）：把 `function onUserMove()` / `function feedTick()` 从源码里删掉 → 对应用例**立刻 FAIL**。
+
+**同步测试口径**：`tools/feed-perf-test.mjs` 的 T20/T23/T24/T25 原是「虚拟窗口接线」断言，随退役改为「全量真实渲染 + pads 恒 0 + 读真实容器触底 + feedTick/onUserMove 有定义」；T29 的「离场还回锚定」从固定 700 字符切分改为切**整个 onUnmounted 钩子体**（写死字符数会把尾部 `releaseAnchor` 切出去 → 假失败，该测试自己记过这个教训）。
+
+**验证（三层口径）**：
+- **离线单测**：`wall-keep-test` **17/17**、`feed-perf-test` **27/27**（口径同步后恢复全绿）、`feed-window-test` 19/19、`wall-test` 34/34、`wall-rules-test` / `post-detail-test` / `back-stack-test` / `app-shell-test` 全绿；`undef-check` / `tdz-check` **0 problems**；`page-smoke --serve=dist` **8/8**；`vite build` **EXIT=0**。
+- **全套跑量**：40 套 `tools/*-test.mjs` + 5 套 `*-check.mjs` 全跑，仅 `auth-test` / `uifix-test` / `online-check` 三项失败 —— **均与本次改动无关**：`auth-test` 只读 App.vue（本轮未动该文件）；`uifix-test` 的失败项 T23 是 ProfileView 且该测试文件本身处于 `M`（上轮遗留改动）；`online-check` 需线上环境。
+- **实机交互**：**未做** —— `adb devices` 列表为空（设备未连接），无法装机复验。**这一层不能算完成。**
+
+**待办 / 待用户**：
+1. 插上手机并开 USB 调试后，我可跑：`npm run cap:sync` → `gradlew assembleDebug` → `adb install -r` → 亮屏实测「滚一段 → 点帖 → 返回，位置与状态是否原样」。
+2. 攒批提交（轮 216~223 的改动）等用户发话；本文件已按 0.6 记清「改动完成、测试过了、待提交待部署」。
+
+## [2026-10-10] 轮 224 · 暖心墙「返回不保持原样」**真机实测定位并修复**（已装机验证；待提交待部署）
+**用户实测反馈**（轮 223 我按推断修完并装机后）：「这点返回还是跑到了暖心墙首页最前面啊，你根本没做好」——我的推断是错的，改用 CDP 真机取证重定位。
+
+**真机取证（CDP，非推断）**：
+- 探针：容器滚到 1400 → 点帖 → 读我在源码里埋的 `data-cv-dea`（离开时保存的位置）
+- 结果：`onDeactivated` **确实被调用**（时间戳从 `@146899` 前进到 `@204055`），**但它读到的 `scrollTop` 恒为 0** → `saved=0` → 回来必然在页顶
+- **根因**：KeepAlive 的 deactivate 是「**先把 DOM 移进 `display:none` 的隐藏容器，再回调 `onDeactivated`**」。回调跑起来时元素已不在布局中，`scrollTop` 被浏览器归零。**我一直在存一个 0**，后面的「恢复」再完美也没用 —— 位置必须在 DOM 还活着的时候抓。
+- 副证：`wallScrollerEl` 确为自滚容器（`position:fixed`，`scrollHeight=7354 / clientHeight=843`，`window.scrollY=0`），所以位置只在容器上，与「window 不可滚」的既有认知一致。
+
+**改法**（`src/views/CommunityView.vue`）：
+1. **`onScroll(e)` 滚动期实时记账**：`if (e.target === wallScrollerEl.value) wallScrollTop = e.target.scrollTop`（惯性滚动也跟得上）。
+2. **新增 `onBeforeRouteLeave` 守卫**（新 import）：导航确认前抓一次 —— 这是唯一「DOM 仍挂在文档上」的时机。
+3. **`onDeactivated` 不再读 `scrollTop`**，只做兜底：`if (el && document.contains(el))` 才采信，绝不让归零值覆盖真位置。
+4. 两条路互为兜底（实时记账 + 路由守卫），任一道失效另一道还兜得住。
+
+**真机实测（物理返回键，用户真实操作）—— 零漂移**：
+```
+SETUP   ok cards=10 clickable=10
+SCROLL  1800
+ANCHOR  { id:"post-677", top:-457, scrollTop:1800 }
+CLICK   "clicked post-682"
+DETAIL  { path:"/post/682", dea:"saved=1800 @41089" }      ← 保存的是真值 1800（此前恒为 0）
+KEYBACK （adb shell input keyevent 4）
+BACK    { path:"/community", late:"pane=1800", cur:1800 }
+同一张卡 post-677 视口位置 : before.top=-457 → after.top=-457   差 0px
+```
+> 判据说明：`scrollTop` 数值会因图片加载/布局微调而变，所以最终验收用「**视口内第一张卡的 id + rect.top**」当锚点 —— 视觉上是否还是原来那一屏。差 0px = 用户看不出任何跳动。
+
+**新增/同步测试**：
+- `tools/wall-keep-test.mjs` 重写为 **25 项**：新增 K8「导航确认前抓位置」、K9「只采信仍在文档内的值（`document.contains`）」、K10「`onScroll` 滚动期实时记账」、K11「`onDeactivated` 不得再直接读 `scrollTop`（防回退成 0）」——**把错的写法明确钉死，防止有人改回去**。
+- 全套离线测试只剩 `auth-test` / `uifix-test`（ProfileView 遗留）/ `online-check`（需线上）三项失败，与本次改动无关。
+
+**装机链路（本轮）**：
+- 环境坑（记下来省下次折腾）：本机 `JAVA_HOME` **未设置**、`PATH` 里也没有 `java` → `gradlew.bat` 报 `ERROR: JAVA_HOME is not set...`（外层 cmd 表现为 **exit 9009**，看着像「命令找不到」，其实是被 gradlew 内部吞掉的 Java 缺失）。可用 JDK：`D:\00ruanjiananzhuang\jdk-21\jdk-21`（Android Studio 自带的 `...\android-studio-quail4-windows\jbr` 是 25，也能跑）。
+  正确姿势：`$env:JAVA_HOME='D:\00ruanjiananzhuang\jdk-21\jdk-21'; $env:PATH="$env:JAVA_HOME\bin;$env:PATH"`，再 `cmd /c "gradlew.bat assembleDebug --console=plain"`。
+- `vite build` **EXIT=0** → `cap:sync` 0 → `assembleDebug` **BUILD SUCCESSFUL** → `adb install -r` **Success** → 冷启动 PID 23280、无崩溃。
+- 产物链路核对：`dist/assets/CommunityView-goXjckqf.js` = `android/app/src/main/assets/public/...` = APK 内条目（**逐字节同名同大小**），确认设备上跑的就是修复后的包。
+- 设备：小米 23054RA19C（`PBIJR8BM6D6HS8LV`）。
+
+## [2026-10-10] 轮 225 · 私信「快速切会话串内容」竞态修复（已装机 + 真机取证验证；待提交待部署）
+**用户报障**：「快速点击一个用户 A 的会话，返回，再快速点击另一个用户 B 的会话记录，再点击 C 用户的会话，多次快速点击，快速点击之后全乱了，C 用户里面最后出现的可能是 B 用户，也可能出现 A 用户的会话记录。完全不能用。」
+
+**根因（纯异步竞态，与网络快慢正相关，与手速无关）**：
+- `loadMessages` / `tick` 都是「`await` 网络 → 写全局 `msgs.value`」的形状，而 `await` 期间用户完全可以切走。
+- 旧响应回来时**没有任何身份校验**就写 `msgs.value` —— 于是「最后返回的那份」赢，跟你当前点的是谁无关。
+- 5s 一次的**轮询**也在做同一件事：`listMessages(activeId.value)` 回来后直接 `mergeTail` 进 `msgs`，会把 A 的新消息并进当前打开的 B/C 会话。
+- 连带污染本地库：`dmStoreSave(meId, id, msgs.value)` 拿的是**当前 UI 列表**，串台时会把 B 的消息写进 A 的本地库（越用越乱）。
+
+**改法**（`src/views/MessagesView.vue`）：每次「按会话拉消息」发号 + 锁定会话身份，过期响应整份丢弃。
+```js
+let msgSeq = 0;
+const isStale = (mySeq, id) => mySeq !== msgSeq || String(activeId.value) !== String(id);
+// loadMessages: const mySeq = ++msgSeq; const cid = String(id); const stale = () => isStale(mySeq, cid);
+//               每个 await 之后 if (stale()) return false;  → 不写列表、不落库、不回填
+```
+- `applyRows` 首行即 `if (stale()) return false`（串会话最直接的入口）；
+- 落库 / `idbMerge` / `backfillOlder` 全部改用锁定的 `cid`（**不再用可变的 `activeId.value` 当键**）；
+- `tick()` 轮询：`await` 后 `if (isStale(mySeq, cid)) { tickBusy = false; return; }`；
+- `openConv`：`await loadMessages(id)` 后校验 `activeId` 才动滚动 / 标记已读；
+- `send` / `recall`：先捕获 `convId`，回来后校验再改列表 / 落库。
+
+**新增回归测试**：`tools/dm-race-test.mjs`（**16 项**）。除了锁上面的写法，还带两条「防回退」自动扫描：
+- **每个 `await` 之后 300 字符内必须有 `stale()`** —— 以后有人在异步路径上加代码忘了守卫，这里直接红；
+- **不得出现 `dmStoreSave(meId.value, activeId.value, …)` / `idbMerge(activeId.value, …)`** —— 禁止再拿可变全局当会话键。
+同步改 `tools/dm-test.mjs` 两条断言（`id` → `cid`，语义未变），dm-test 现 **324 pass / 0 fail**。
+
+**真机取证（这轮最值得记的方法论）**：
+快网络下「点 A → 切 C」时 A 的响应往往在切换前就回来了，**竞态窗口根本不出现** —— 我第一版测试在「把守卫改成恒 false」的包上照样 PASS，属于**空转**（差点把没修当修好）。两处改进才拿到真证据：
+1. **用 CDP `Network.emulateNetworkConditions` 注入 1.2s 延迟**，保证 A 的响应必然迟到；
+2. **污染是瞬时的**（迟到响应把列表刷成 A 的内容，随后又被 C 自己的数据覆盖），所以用页面内 `setInterval` **每 80ms 高频采样**，而不是事后取一次快照。
+结果（同环境 / 同序列 / 同判据，判据 = 「停在 C 的路径却出现 A 独有的消息文本」）：
+
+| 版本 | 「停在 C 却含 A 消息」的帧 | 结论 |
+|---|---|---|
+| 守卫关闭（TEMP-KILL-SWITCH） | **9 帧**（A 的 12 条消息整屏闪出） | FAIL —— 精确复现用户现象 |
+| 守卫开启（修复版） | **0 帧**（连跑两次） | PASS |
+
+> 附带教训：**「消息条数」不能当竞态判据** —— 慢网络下本地库先渲染一批、网络回来再合并，条数自己就会变（上一版据此误报过一次）；只有「内容归属」才是可靠判据。
+
+**验证**：`dm-race-test` 16/16、`dm-test` 324/0、`undef-check`/`tdz-check` 0；全套离线测试仅 `auth-test` / `uifix-test`（ProfileView 遗留）/ `online-check`（需线上）失败，均与本次改动无关。`vite build` 0 → `cap:sync` 0 → `assembleDebug` BUILD SUCCESSFUL → `adb install -r` Success（PID 26533）。
+
+## [2026-10-10] 轮 226 · 私信发送键改为贴底（输入框长高后不再吊在中间）（已装机验证；待提交待部署）
+**用户报障**：「那个会话的发送按钮，应该不管内容有多长一直在底部吧，现在内容长了，按钮在中间，这不对。」
+
+**根因**：`src/style.css` 的 `.dm-input-row { display: flex; align-items: center; … }`。
+轮 213 定 `center` 时只按**单行**算过（28px 按钮对 44px 输入框，居中才显得齐）；但输入框随后接了 `rows="1" autosize`（1~6 行），内容一长 `center` 就把按钮吊到了**垂直中间**。
+
+**改法（一行）**：`align-items: center` → **`flex-end`**。
+- 单行时贴着框底、多行时对齐最后一行，**任何高度都不离底部**（就是微信的行为）；
+- 评论区 `.cmt-main-bar .van-cell` 一直是 `flex-end`，现在两端口径一致；
+- 顺带修 `tools/app-shell-test.mjs` T21 的断言（原来写死了 `align-items: center`，属「测试锁住了错的行为」，必须一起改）。
+
+**真机验证（几何量测，不靠肉眼）**——判据：按钮底边 ≈ 输入框底边（贴底 ≈0；旧 center 会让「中心差」≈0）：
+```
+单行  align=flex-end 框高44px  按钮底-框底=0px   中心差=8px
+六行  align=flex-end 框高308px 按钮底-框底=0px   中心差=140px
+```
+输入框从 44px 长到 308px，按钮底边与框底**始终重合**（gap=0）；中心差 140px 反证它不再居中。
+> 改动同时覆盖 `MessagesView`（私信）与 `BottleChat`（漂流瓶聊天），两者共用 `.dm-input-row`。
+
+**验证**：`app-shell-test` / `dm-test` / `dm-race-test` / `undef-check` / `tdz-check` 全 0；`vite build` 0 → `cap:sync` 0 → `assembleDebug` BUILD SUCCESSFUL → `adb install -r` Success（PID 27815）。
+
+## [2026-10-10] 轮 227 · 暖心墙刷新失败提示时长缩短（1.2s）（已装机验证；待提交待部署）
+**用户报障**：「暖心墙，那个没刷出来，再试一次的提示停留时间太长了，缩短。」
+
+**根因**：提示状态机的清除时长是**一个常量 2500ms 打包**（`CommunityView` 两处：`loadCloud` 里那句、`te()` 下拉刷新里那句）——`"没刷出来"`（fail）与 `"已刷新"`/`"换一批"` 共用一个值。失败提示只需告知「这次没成」，不该杵 2.5 秒。
+
+**改法**（`src/views/CommunityView.vue`）：
+```js
+const NOTE_FAIL_MS = 1200;   /* 失败：看一眼就够 */
+const NOTE_OK_MS = 2200;     /* 成功 / 换批：稍长些，让人看清刷新出结果了 */
+const noteMs = (s) => (s === "fail" ? NOTE_FAIL_MS : NOTE_OK_MS);
+```
+两处 `setTimeout(..., 2500)` 改成 `setTimeout(..., noteMs(refreshNote.value))`。
+顺手把 `loadCloud` 里那句 `refreshNote.value = false` 改成 `""` —— 该 ref 是字符串状态机（`""|busy|ok|batch|fail`），塞布尔值虽然 `v-if` 也判假，但读起来是两套语义。
+
+**真机验证（时间线，断网触发真实失败路径）**：
+CDP `offline` → 点 `.wall-refresh`（App 端该按钮被 CSS 隐藏但 handler 仍在，与下拉刷新同一条 `loadCloud({fresh:true})` 路径）→ 记录 `.refresh-note` 每次文本变化：
+```
+   50ms  "刷新中…"              ← busy
+  388ms  "!没刷出来，再试一次"   ← fail（断网 → fetch 立即 reject）
+ 1614ms  「无提示」              ← 清除
+```
+**失败提示在屏 1226ms** ✓（期望 1200；老行为 2500）。判据窗取 800~1800ms，能明确区分新旧值。
+> 踩坑：第一版脚本把「`.refresh-note` 首次出现」当作计时起点，结果量到的是 **busy** 的起点、还因为只等 4.5s 得出「提示一直不消失」的假象。改成**记录完整文本变化时间线**后一目了然 —— 这类「按状态变化的提示」必须按文案分段量，不能只盯元素的出现与消失。
+
+**验证**：`undef-check` / `tdz-check` / `wall-test` / `app-shell-test` / `wall-keep-test` 全 0；`vite build` 0 → `cap:sync` 0 → `assembleDebug` BUILD SUCCESSFUL → `adb install -r` Success（PID 28132）。
+
+## [2026-10-10] 轮 228 · 私信会话「秒开」——本地库命中即揭示（平均 637ms → 235ms）（已装机验证；待提交待部署）
+**用户报障**：「会话框点击之后进入时间也太长了，现在不是本地储存了吗？为啥不能跟微信一样秒开，能优化吗？」
+
+**根因**：本地库（轮 194，`dmStoreLoad`，localStorage 每会话≤400 条）**确实同步读出来了**，但消息区被 `listRevealed=false` 挡着不给看：
+```js
+const settled = fontsOk() && entryReady.value && el.scrollHeight === lastH && !plateau() && gap < 4;
+const hold = (document.fonts.status === "loaded" && performance.now() > 2500) ? 80 : 300;
+if (stableSince && performance.now() - stableSince >= hold && !listRevealed.value) listRevealed.value = true;
+```
+必须等「字体就绪 + 高度连续稳定」，且页面活过 2.5s 前一律走 300ms 保守路径，兜底还要 2s。真机取证（首次测量）**首帧状态 = `hidden/30`** —— 30 条消息早就渲染好了，纯粹被门控挡着。
+
+**这道门的来历**：轮 176/180 为「30 条缓存窗口被 fresh 窗口**整窗替换**、高度 ±千 px」加的。**轮 194 引入本地库后，这个前提对本地库路径不成立**（本地库是该会话的完整历史，网络回来只走 `mergeTail` 往尾部并，不整窗替换）。判断错误导致「已经有了还不给看」。
+
+**改法**（`src/views/MessagesView.vue`）：
+1. 本地库分支改为 `scrollBottom(false, true)` —— 走新加的 `reveal` 参数；
+2. `scrollBottom(smooth, reveal)` 里新增**独立于 `chase` 链**的揭示循环：每帧自己钉底，**「高度连续 2 帧不变」+ `gap<4`** 才揭示（60 帧兜底）。
+   不挂 `scrollGen` 是刻意的：`chase` 会被后续 `++scrollGen`（mergeTail 的平滑滚动）作废，但那不该拖累揭示。
+
+**过程中踩的两个坑（都靠真机数据抓出来，值得记）**：
+1. **直接 `listRevealed.value = true` 会让用户先看到列表顶**。真机采样：`st=0 sh=5375 ch=726 gap=4649` —— `set()` 执行时 DOM 刚 patch、内容高度还没展开，`scrollTop` 被夹回 0，紧接着揭示就等于「先亮一眼顶部、下一帧再跳到底」，比慢更糟。→ 必须**钉底与揭示同一帧**。
+2. **「`gap<4` 就揭示」会被假贴底骗**。刚 patch 完的瞬间 `scrollHeight` 只是「刚好装满容器」的矮值，`gap` 天然为 0（原有 `plateau()` 防的就是这个，我的新循环一开始漏了它）→ 误判已到底 → 揭示 → 下一帧内容展开成 5375px，画面停在顶部。→ 补「**高度连续 2 帧不变 = 内容定型**」后才确认 `gap`。
+
+**真机验证（两项，均为几何量测）**：
+```
+进会话耗时：改前 542/381/1232/394ms（均 637）  →  改后 315/292/86/245ms（均 235）
+贴底检查：揭示首帧距底 0px，可见期内最大距底 0px（3 次全 0）
+  hidden  st=1401 sh=5175 gap=3048   ← 隐藏期钉底中
+  hidden  st=3102 sh=3828 gap=0      ← 钉住了
+  hidden  st=1696 sh=2422 gap=0      ← 高度定型
+  visible st=1696 sh=2422 gap=0      ← 揭示时已在底部（零跳变）
+```
+> 剩余 ~250ms（30 条消息的长会话）来自**浏览器布局/字体换装让高度反复变**（等定型的那几帧），不是我们的等待逻辑；短会话（2 条）已到 86ms。若用户仍嫌长，下一步可考虑放宽「定型」判据或预置消息高度，但会牺牲一点「不闪」的确定性 —— 先把当前版本交给用户实测手感。
+
+**验证**：`undef-check` / `tdz-check` / `dm-test` / `dm-race-test` / `app-shell-test` 全 0；`vite build` 0 → `cap:sync` 0 → `assembleDebug` BUILD SUCCESSFUL → `adb install -r` Success（PID 30156）。
+
+## [2026-10-10] 轮 229 · 私信发送键「转圈不协调」修正（已装机验证；待提交待部署）
+**用户报障**：「会话点发送，那个转圈不协调，能不能优化一下。」
+
+**两个真问题（都定位到具体代码，不是感觉）：**
+1. **disabled 与 loading 叠加 —— 按钮整颗变淡，转圈挂在淡色底上。**
+   `send()` 里 `body.value = ""` 紧跟着 `sending.value = true`；模板是 `:disabled="!body.trim()"`，
+   于是**点发送的同一瞬间**按钮既 loading 又 disabled，Naive 把整颗按钮调淡（主色消失），
+   那个转圈就转在一颗灰按钮里 —— 这就是「不协调」的主因。
+2. **按钮宽度会跳 20px，把输入框挤窄。**
+   真机量：文字态 **80px**；再插进 loading 图标就是 **100px**。发送那一瞬输入框突然变窄、整行抖一下。
+
+**改法**（`MessagesView.vue` + `BottleChat.vue`，两处同款结构一起改；CSS 在 `style.css`）：
+- 模板 `:disabled="!body.trim()"` → **`:disabled="!sending && !body.trim()"`**：发送中不再置灰；
+  防重复发送改由 `send()` 开头 `if (sending.value) return;` 挡（loading 态的 n-button 仍会派发 click）。
+- 模板文字包成 **`<span v-if="!sending">{{ t("dm.send") }}</span>`**：发送中只留转圈。
+- CSS 新增 **`.dm-input-row .dm-send-btn { min-width: 92px; }`**：文字态与「只有转圈」态都落在同一宽度上。
+
+**真机验证（几何量测）**：
+```
+空内容(应 disabled): wIdle=92  wSending=92  disabled=true
+有内容(应可用)    : wIdle=92  wSending=92  disabled=false
+（wSending = 模拟发送中：隐藏文字 span + 插入 14px 图标 + 6px 间距后重测）
+```
+两态宽度完全一致（92/92，不再挤窄输入框），`:disabled` 只在「空内容且不在发送中」为真。
+> 注：`wSending=100` 是第一版 `min-width:78px` 时量出来的 —— 那版没解决抖动，靠真机数据才发现，故改成「隐藏文字 + 92px」。
+
+**验证**：`undef-check` / `tdz-check` / `dm-test` / `dm-race-test` / `app-shell-test` / `bottle-test` 全 0；`vite build` 0 → `cap:sync` 0 → `assembleDebug` BUILD SUCCESSFUL → `adb install -r` Success（PID 31238）。
+
+### 轮 229b · 用户反馈「ui 样式太难看 + 位置也不协调」—— 两个都是我上轮留下的
+**用户原话**：「那个发送的按钮，你改了之后 ui 样式太难看了，而且位置也不协调」。
+
+**问题 1：样式太难看 = 我把按钮撑胖了。**
+上一版为了「两态等宽」写了 `min-width: 92px`，但真机上中文「发送」的**自然宽度就是 80px** —— 等于平时也被撑宽 12px，按钮显得肥大。
+**改**：`min-width: 92px` → **80px**（= 实测自然宽度）。min-width 只是下限，文案变长时仍会自然变宽，不会挤字。
+
+**问题 2：位置不协调 = 轮 226 只改了 `align-items` 没补偏移量。**
+轮 226 把行改成 `align-items: flex-end`（为了多行时按钮别吊在中间），但**贴的是输入框最底部**；而输入框底部还有 10px padding、行高 24px，按钮(28px)就比「末行中心」多沉了 `10 - (28-24)/2 = 8px` —— 单行时看着往下掉。
+**改**：给 `.dm-send-btn` 加 **`margin-bottom: 8px`**，让按钮中心对准**最后一行中心**（微信口径：单行正好垂直居中、多行对齐末行）。
+
+**真机验证（几何量测，判据 0px）**：
+```
+行高（由单行高 44 - 2×10 反推）= 24px
+单行: 按钮中心 507 vs 输入框中线 507 → 差 0px
+六行: 按钮中心 507 vs 末行中线   507 → 差 0px
+按钮宽 80px（min-width=80px, margin-bottom=8px）
+```
+> 教训：**像素级的「好看」不能靠算，要靠量**。我这轮连着两次在按钮上翻车（92px 撑胖、贴底沉 8px），都是先写了个「看起来合理」的数字，真机一量才发现不对 —— 以后动这类尺寸，先量自然值再定。
+
+**验证**：`undef-check` / `tdz-check` / `dm-test` / `app-shell-test` / `bottle-test` 全 0；`vite build` 0 → `cap:sync` 0 → `assembleDebug` BUILD SUCCESSFUL → `adb install -r` Success（PID 31756）。
+
+### 轮 229c · 用户「发送按钮还是太宽」—— 我的测量方法本身错了
+**用户原话**：「发送按钮还是太宽了」。
+
+**我犯的错（关键教训）**：上一轮我量到「按钮自然宽度 80px」，就据此把 min-width 设成 80。**那个 80px 不是自然宽度** —— 当时 CSS 里已经有 `min-width: 78px` 生效，我量的是**被顶宽后的值**，把结果当成了内容自然值。**测量必须在「没有 min-width 影响」的前提下做。**
+
+**真相（这次把 min-width 临时归零后重量）**：
+```
+min-width 生效时: 80px
+归零后(自然宽度): 56px      ← 中文「发送」真正需要的宽度
+padding: 0px 14px    font-size: 14px    输入框 281px / 整行 369px
+```
+也就是说我连续两轮（92px → 80px）都在**把按钮顶宽 24~36px**，用户两次说「太宽 / 难看」都是对的。
+
+**改法**：
+1. **删掉 `min-width`** —— 宽度完全交给内容（56px）。
+2. **发送中如何保持 56px**：文字从 `v-if` 改成 **`visibility:hidden` 保留占位**，转圈改用**自绘 `.dm-send-spin` 绝对定位**叠在按钮中心（不占宽度）。
+   → 不再用 n-button 自带的 `:loading`（它会往内容里插图标、把宽度顶开 20px）。
+3. `margin-bottom: 8px`（轮 229b 的位置修正）保留。
+
+**真机验证**：
+```
+单行: wIdle=56 wSending=56 min-width=auto padding=0px 14px
+六行: wIdle=56 wSending=56
+宽度差 0px；位置差 单行 0px / 六行 0px
+```
+> 记一条方法论：**动尺寸前先确认测量前提**。同一个按钮我量了三次（78/92/80 三版 min-width 都基于错误前提），三次都错；这次先把 min-width 归零量出真值 56px，一次就对。另外「两态等宽」不该用写死宽度去实现，用「保留占位 + 绝对定位」才不会跟自然尺寸打架。
+
+**验证**：`undef-check` / `tdz-check` / `dm-test` / `app-shell-test` / `bottle-test` 全 0；`vite build` 0 → `cap:sync` 0 → `assembleDebug` BUILD SUCCESSFUL → `adb install -r` Success（PID 32632）。
+
+## [2026-10-10] 轮 230 · 暖心墙「拉几轮就到底」+「底部提示被折叠一半」（已装机验证；待提交待部署）
+**用户报障**：「暖心墙往下拉几轮之后就到底了，而且那个提示文字被底部折叠了一半，你优化一下暖心墙帖子展示算法，以及 ui 也优化一下。」
+
+### 问题 1：续载被一行错误的判据挡死
+**真机取证**：连续滚到底 6 次，帖子数卡在 20 不动、`/api/posts` 请求数停在 2、底部直接显示「就到这里啦」。
+
+**根因**（`CommunityView.vue` 的 `consume()`）：
+```js
+cloudDone.value = box.rows.length < FEED_PAGE;   // FEED_PAGE = 50
+```
+但首屏/刷新拉的是 **`REFRESH_PAGE = 20`** 条（轮 162 给首屏瘦的身）——
+**20 < 50 恒成立，于是每次首屏/刷新都把 `cloudDone` 置为 true**，触底续载被 `feedTick` 的
+`else if (!cloudDone.value)` 挡死，永远只有首屏那 20 条。
+> 轮 60 注释里记着同族事故（「旧缓存盒不得当分页游标」），这次是**判据常量与本次请求的 limit 不匹配**。
+
+**改法**：`consume()` 里**不再判「到底」**（`cloudDone.value = false`）。
+「到底」只能由**分页请求**判定 —— `loadMoreCloud` 拿到空页或不满 `FEED_PAGE` 时才为真。
+万一真到底，触底会多发一次分页请求拿回空页，随即自愈为 true（多一次请求，换判据简单可靠）。
+
+**真机验证**：`10 → 20 → 50 → 60 → 70 → 100 → 110 → 120 → 150`（8 轮持续增长），posts 请求 4 → 8。
+
+### 问题 2：底部留白按错的高度填
+**真机取证**：
+```
+视口 843 | TabBar(van-tabbar--fixed) top=785 高 59 | 容器 padding-bottom: 50px
+底部提示 .notice: 775~793（高 19）→ 785~793 被 TabBar 盖住 8px ≈ 它高度的一半
+```
+**根因**：容器只给底部留了 50px，而 TabBar **实测 59px** —— 最底下那行提示正好卡进被盖住的 8px 里。
+
+**改法**：`paddingBottom: calc(50px + env(safe-area-inset-bottom))` → **`calc(70px + ...)`**（59 + 缓冲），
+保证任何底部文字都完整露在 TabBar 之上。
+
+**真机验证**：`padBottom=70px` ≥ TabBar 高 `58px` ✓ —— 内容最低只能停在 TabBar 顶边之上。
+> 量法说明：没有去量「滚到底时的最后一张卡」——**续载一直在加内容，永远追不到真正的底**
+> （实测跑完 8 轮后 `atBottom` 还剩 3492px，那是屏幕外 4252px 处的卡片）。改为验证
+> 「留白 ≥ TabBar 高度」这条**充分条件**，才是稳的。
+
+**验证**：`undef-check` / `tdz-check` / `wall-test` / `app-shell-test` / `feed-perf-test` / `wall-keep-test` 全 0；`vite build` 0 → `cap:sync` 0 → `assembleDebug` BUILD SUCCESSFUL → `adb install -r` Success（PID 2831）。
+
+## [2026-10-10] 轮 231 · 暖心墙：切回页签不刷新 + 帖子展示节奏优化（已装机验证；待提交待部署）
+**用户报障**：「点击暖心墙，那个应该是刷新啊，现在怎么没反应，还有，暖心墙帖子展示算法你上一轮也没有优化啊，我说你看看有什么问题，去优化一下。」
+> 用户说得对：轮 230 我只修了「到底」那个 bug（判据常量错配），**没有动展示节奏**。这轮才真正优化。
+
+### 一、点暖心墙「没反应」——KeepAlive 保活把数据新鲜度一起砍了
+`TabBar` 点同路径 tab 走 `router.push(path)`，命中 KeepAlive 缓存 → **DOM 原样拿出来、一个数据请求都不发**，内容停在离开那一刻。
+（轮 218 保活是为了「切页签零跳动」，但它没考虑「内容会过期」。）
+
+**改法**：`onActivated` 里做**静默新鲜化** —— `loadCloud({ quiet: true })`：
+- 只走 soft 合并（`consumeSoft`）：**只把没见过的新帖并进顶部**，不动顺序、不碰游标/到底状态、更不整表替换 → **滚动位置分毫不动**；
+- 不亮 loading（`loadingCloud` 立即复位），失败静默；
+- **首次激活跳过**（`activatedOnce` flag）—— `onMounted` 已经拉过一轮，不该重复发请求；
+- 等揭示（250ms）后再延时 300ms 发，别和回位抢主线程。
+> 实现坑：`quiet` 分支必须写在 `consume` / `consumeSoft` 两个 `const` 定义**之后** —— 提前 return 会踩 TDZ（`Cannot access 'consumeSoft' before initialization`）。
+
+**真机验证**：切到首页再点回暖心墙，窗口内确认发出 `GET /sb/rest/v1/rpc/wall_feed_page`。
+
+### 二、帖子展示节奏——「拉」和「亮」的错配
+| 现状 | 问题 |
+|---|---|
+| `FEED_PAGE=50` 一次拉 50 条，而 `reveal += PAGE_SIZE(10)` | **亮 10 拉 50** → 要连滚 5 次才翻完新到的一页 |
+| `if (hasMore) reveal += 10; else if (!cloudDone) loadMoreCloud();` | **串行**：得先把剩余 10 条熬完，才发下一页请求 → 每滚一次都要等一次网络往返 |
+
+**改法**（`feedTick`）：
+```js
+const REVEAL_STEP = 30;   /* 一次亮 3 屏（原 PAGE_SIZE=10） */
+if (hasMore.value) reveal.value = Math.min(shown.value.length, reveal.value + REVEAL_STEP);
+const notShown = shown.value.length - reveal.value;
+if (!cloudDone.value && notShown < REVEAL_STEP / 2) loadMoreCloud();   /* 预加载：不等亮完 */
+```
+① 一次补 3 屏（而不是 1 屏）；② 只要已亮的快到「已拉取」尾部（余量不足半屏）就**提前**要下一页。
+
+**真机验证（连续滚到底 6 轮）**：
+```
+cards: 10 → 50(+40) → 70(+20) → 100(+30) → 120(+20) → 150(+30) → 170(+20)
+每轮新增请求: 4 / 4 / 0 / 4 / 1 / 3     ← 每轮都在续，不再固定 +10
+```
+
+**测试同步**：`feed-perf-test` T25 原来锁 `reveal.value += PAGE_SIZE` 与 `else if (!cloudDone.value) loadMoreCloud()`，都随实现更新；并**新增两条防回退断言**：`REVEAL_STEP` 步进、`notShown` 预加载、以及 `loadCloud({ quiet: true })` 静默新鲜化。
+> 又一次判据教训：验证 ① 时我正则只匹配 `wall_posts|wall_refresh`，而真实接口是 `rpc/wall_feed_page`，差点把已生效的功能判成失败 —— 记录网络请求要看**全部**，别预设 URL 形状。
+
+**验证**：`undef-check` / `tdz-check` / `feed-perf-test` / `wall-test` / `wall-keep-test` / `app-shell-test` / `feed-window-test` 全 0；全套离线测试仅 `auth-test` / `uifix-test` / `online-check` 三项既有失败。`vite build` 0 → `cap:sync` 0 → `assembleDebug` BUILD SUCCESSFUL → `adb install -r` Success（PID 4400）。
+
+## [2026-10-10] 轮 232 · 已在暖心墙时「再点暖心墙」= 回到顶部 + 刷新（已装机验证；待提交待部署）
+**用户澄清**（纠正我轮 231 的理解）：「我说的是**我在暖心墙页面的时候，再点击暖心墙**应该是刷新，且回到页面最前面，这才是主流做法吧。」
+> 我轮 231 理解成了「从别的页签切回来时要刷新」，做了静默新鲜化 —— 那件事本身没错，但**不是用户要的**。用户要的是「**原地再点**」。
+
+### 历史（这个功能被改坏过一次）
+- **轮 144**：做过这件事 —— 推带时间戳的 `refresh` query，`CommunityView` watch 它 → 取新第一页 + 回顶部。
+- **轮 215**：改成「再点当前页 = 回原位置（不刷新不回顶）」，`CommunityView` 里那条 watch 随之删除。
+  结果两处导航都退化成「什么都不做」：
+  - `TabBar.goItem`：`router.push(同路径)` 被 vue-router **忽略** → 点了毫无反应；
+  - `SideNav.onNavClick`：只剩一句空的 `e.preventDefault()` → 同样没反应。
+  → 用户实测反馈「点暖心墙，那个应该是刷新啊，现在怎么没反应」。
+
+### 改法：一个不含 URL 的信号
+`uiStore.js` 新增：
+```js
+export const retapPath = ref("");   // 最近一次被「再点」的页签路径
+export const retapSeq  = ref(0);    // 自增序号（同路径连点也要能再次触发）
+export function retapTab(path) { retapPath.value = String(path || ""); retapSeq.value++; }
+```
+- `TabBar.goItem`：`if (isActive(item)) { retapTab(item.path); return; }`
+- `SideNav.onNavClick`：命中暖心墙且已在该页 → `e.preventDefault(); retapTab(it.to);`
+- `CommunityView`：`watch([retapSeq, retapPath], ...)` → 滚**容器**回顶 + `wallScrollTop = 0`（记忆一并归零）+ `manualRefresh()`（与下拉刷新同一条路径，有成败提示）
+
+**两个设计要点**：
+1. **用信号而不是 query** —— 轮 144 的 refresh query 会往地址栏塞时间戳、还会进前进后退历史；信号干干净净。
+2. **回顶必须同时把 `wallScrollTop` 归零** —— 手机端墙是自滚容器，只滚 DOM 不清记忆的话，下次离开再回来会被「位置保持」（轮 224）又拽回旧位置，等于白回顶。
+
+### 真机验证
+```
+滚动后 scrollTop = 2000
+再点暖心墙页签后 scrollTop = 0                        ← ① 回顶 OK
+期间刷新请求: 5 → 6（rpc/wall_feed_page）             ← ② 刷新 OK
+切走再切回后的 scrollTop = 0（而不是 2000）           ← ③ 记忆归零 OK
+```
+
+**测试**：`app-shell-test` 的 **T63 原本锁着轮 215 的旧行为**（「再点 = 回原位置」），随实现更新为「回顶 + 刷新」，并加了四条断言：TabBar 发信号、uiStore 有信号本体、CommunityView 真的接了（含 `wallScrollTop = 0` 与 `manualRefresh()`）、以及继续保证不再用 refresh query。
+
+**验证**：`undef-check` / `tdz-check` / `app-shell-test` / `wall-keep-test` / `feed-perf-test` / `wall-test` 全 0；`vite build` 0 → `cap:sync` 0 → `assembleDebug` BUILD SUCCESSFUL → `adb install -r` Success（PID 6311）。
+
+## [2026-10-10] 轮 233 · 切回暖心墙「秒开」：397ms → 119ms（已装机验证；待提交待部署）
+**用户提问**：「暖心墙帖子，切换页面再回来能不能做到秒开？我看知乎类似的页面就是秒开的，他们怎么做到的，是暂时存在本地之类的吗？」
+
+**先答「知乎怎么做的」**（用户猜的「存本地」只对了一半）：
+1. **页面实例留在内存里**（组件不销毁、DOM 原样复用）—— 这是「秒开」的**主因**，本地存储做不到这个（本地存储只解决**冷启动**）。本项目对应的是轮 218 的 KeepAlive 保活。
+2. **同步恢复滚动位置** —— 在 DOM 重新挂载的**同一帧**就把滚动位置设回去，不「等布局落定」。
+3. 图片/内容**预留尺寸**，避免加载后高度变化把位置顶偏。
+4. **本地持久化**（localStorage/IndexedDB）是给**进程被回收后的冷启动**用的（本项目已有：暖心墙 `FEED_ARCHIVE_KEY`、私信消息 IndexedDB）。
+
+**本次真机取证：位置早就对了，是被我们自己藏住的**
+```
+切回耗时: 到墙面 visible = 397ms
+那一刻 scrollTop = 1500          ← 位置正确
+前 20 帧（从 118ms 起）: hidden / top=1500   ← 内容第一帧就位，却被 visibility:hidden 挡了 280ms
+```
+根因：轮 222 的「等 250ms 再揭示」是**无条件**的保守设计（当时同步 pin 还不可靠），
+可实际上容器高度在 DOM 复用时**立即可读**，`scrollTop` 一设就到位 —— 那 250ms 纯属白等。
+
+**改法**（`CommunityView.onActivated`）：把「无条件等 250ms」改成「**读回确认到位就立即揭示**」：
+```js
+const pinnedOk = () => { const el = wallScrollerEl.value; return !!el && Math.abs(el.scrollTop - wallScrollTop) <= 2; };
+pin();
+if (pinnedOk()) { feedRestoring.value = false; scheduleFeedTick(); }        // 第一帧就在原位 → 秒开
+else nextTick(() => { pin(); if (pinnedOk()) { feedRestoring.value = false; scheduleFeedTick(); } });
+setTimeout(() => { pin(); feedRestoring.value = false; ... }, 250);          // 兜底，防永久藏住
+```
+**读回确认这一步是必须的**（不是多余）：若容器高度还没算好，浏览器会把 `scrollTop` 夹到更小值，
+`pinnedOk()` 为假 → 自动退到 nextTick / 250ms 兜底，**绝不会亮出错误位置**。
+
+**真机验证**：`397ms → 119ms`，且那一刻 `scrollTop` 仍精确等于 1500（**提速 3 倍多、位置零漂移**）。
+119ms 已只剩路由过渡本身的时间。
+
+**测试**：`wall-keep-test` 的 K15/K16 随实现更新 —— K15 原来断言 `nextTick(pin)`（现在改成 `nextTick(() => { pin(); ... })`）；
+K16 改成**逐条检查**每条 `feedRestoring=false` 路径之前都有 `pin()`，并要求存在 `pinnedOk()` 这套读回确认
+（「秒开」与「不闪」的共同前提）。
+
+**验证**：`wall-keep-test` / `undef-check` / `tdz-check` / `feed-perf-test` / `app-shell-test` / `wall-test` 全 0；
+`vite build` 0 → `cap:sync` 0 → `assembleDebug` BUILD SUCCESSFUL → `adb install -r` Success（PID 6933）。
+
+## [2026-10-10] 轮 234 · 暖心墙「加载更多后前面的帖子消失」修复（已装机验证；待提交待部署）
+**用户报障**：「刷到底部的时候，以前的帖子比如是 498 条，但是底部帖子加之后，前面的帖子 498 条就消失了，怎么回事」
+
+### 根因：推荐排序用「全表洗牌」，一追加数据就整段重排
+`wallRules.js` 的 `interleaveByDay`（推荐流的排序）原来是：
+```js
+const queues = keys.map((k) => shuffleSeeded(buckets.get(k), `${seed}|${k}`));  // Fisher-Yates
+```
+**Fisher-Yates 的结果依赖数组长度**。而触底续载必然往列表里追加帖子 —— 桶里成员一变，
+该天整段顺序就被重洗，用户眼前那批帖子全被换掉。这是「无限流 + 随机排序」的经典冲突：
+**用全表洗牌做随机，就无法安全追加。**
+
+（顺带确认 `loadMoreCloud` 本身没问题：`cloudPosts.value = cloudPosts.value.concat(add)` 是**追加**，
+`feedCursor` 游标也正确。问题全在展示层的排序。）
+
+### 改法：排序键改成「每帖独立」
+```js
+// 先 UTC 天倒序（新的天在前），同一天内按哈希随机
+{ p, day: utcDay(p.ts), ord: mulberry32(hashSeed(`${seed}|${day}|${postRef(p)}`))() }
+```
+排序键**只由帖子自己决定**（天 + 哈希都与「列表里还有谁」无关），于是：
+1. **追加新帖不动已有帖的相对顺序**（无限流的硬要求）；
+2. **续载拉到的都是更早的帖 → 按天倒序后只会落到列表末尾**，绝不会插到前面去 ——
+   而 `shownPage = shown.slice(0, reveal)` 是按「前 N 名」取的，新帖一旦插到前面，
+   用户已经滚过去的那批就被挤出可见窗口（这正是「前面的 498 条消失」的机制）。
+
+**两个实现细节（都是实测逼出来的）**：
+- **哈希必须再过一道 `mulberry32`**：`hashSeed` 对相似输入（同一天 id 1000、1001…）返回相近值，
+  直接排序会变成「基本按 id 排」，同一天的帖连成长串（T34 实测抓到「最长连续 8 条同天」）。
+- **「天」必须排在哈希之前**：只做哈希时，新帖会随机插到**任何**位置，真机实测首轮加载后
+  120 张里丢了 36 张；把天放前面后，跨天插入降为 0。
+
+### 真机验证（判据：加载前的卡片序列必须是加载后的**子序列**）
+```
+第1轮 10 → 20  | 原有顺序保持=是 | 丢失 0
+第2轮 20 → 50  | 保持=是 | 丢失 0
+第3轮 50 → 70  | 保持=否 | 丢失 6     ← 拉到的仍属「已有的天」，该天内部插入
+第4轮 70 → 100 | 保持=是 | 丢失 0     ← 拉到「更早的新天」→ 完全稳定
+```
+**跨天插入 36 → 0**，且**滚得越深越稳定**（用户滚到第 498 条的深处正是这种状态）。
+残留的「同一天内小幅插入」被挤掉的是 `reveal` 末尾（屏幕外）的卡片，观感影响小 —— 若要彻底消除，
+只能放弃「同一天内随机」（改为纯时间倒序），那就失去了推荐流的意义，暂不做。
+
+### 取舍（写在这里免得以后被当 bug 改回去）
+- **放弃了「跨天交错」**：同一天的帖现在会聚在一起（旧实现靠「每天轮流取一条」把它们打散，
+  但那个机制正是重排的根源）。推荐流本来就按天给新鲜内容，聚在一起读起来自然。
+- 测试同步：`wall-rules-test` 新增 **T35**（追加保序 + **判据自检**：同输入交给旧洗牌必须失败，
+  防止测试空转）；T34 删掉三条描述旧交错实现细节的断言
+  （「页首 3 条各来自一天」「前 8 条相邻不同天」「最长连续同天」—— 最后这条我一度加过，
+  实测跳出来：池子 12 条里 8 条来自同一天 = 67%，随机排列自然长串，那是池子分布不是排序问题）。
+
+**验证**：`wall-rules-test`（含 T35）/ `wall-test` / `undef-check` / `tdz-check` 全 0；
+`vite build` 0 → `cap:sync` 0 → `assembleDebug` BUILD SUCCESSFUL → `adb install -r` Success（PID 8710）。
+
+## [2026-10-10] 轮 235 · 故事详情页：App 端去掉「回故事栏」按钮 + 修 `?tab=today` URL 污染（已装机验证；待提交待部署）
+**用户要求**：「app 端把故事页面点击进去之后的那个左上角回故事栏的按钮去掉，那不像是 app 的操作逻辑，刚才你说的问题也可以一起修。」
+
+### 一、App 端去掉「回故事栏」按钮
+`StoryDetailView.vue` 里那个 `← 回故事栏` 按钮加 `v-if="!isMobileNav"`：
+**App 端不渲染**（App 的返回走物理返回键/手势，左上角再挂一个返回钮不符合操作逻辑）；
+**桌面端保留**（桌面没有物理返回键，只能点它）。新增 `import { isMobileNav }`。
+
+### 二、`?tab=today` URL 污染 —— 根因是个很典型的「离开后 watch 还在打枪」
+**现象**（真机高频采样 40ms 一次）：
+```
+   43ms  /?tab=story
+ 2601ms  /story/2?tab=today     ← 点故事卡的瞬间，tab 被改成了 today
+```
+而 `StoryFeed` 的点击明明是 `router.push('/story/2')`（纯字符串、不带 query）。
+
+**根因**（`HomeView.vue`）：
+```js
+watch(() => route.query.tab, (v) => {
+  if (isMobileNav.value) setPane(paneFromQuery(v), false);   // ← 离开首页后照样触发
+});
+```
+跳到 `/story/2` 时 `route.query.tab` 从 `"story"` 变成 **`undefined`**，
+而 `paneFromQuery(undefined)` 会回退成 `DEFAULT_PANE = "today"` → `setPane("today")`
+→ **`router.replace({ query: { tab: "today" } })`，把目标页面（`/story/2`）的 URL 改了。**
+首页被 KeepAlive 保活、watch 一直活着，所以**离开之后这一枪照样打**。
+
+**危害**：URL 被污染成 `?tab=today` 后，若用户点底部「首页」，会落到**今日联**而不是原本来处
+（与之前「从故事联进 mine 再返回跑到今日」是同族问题）。
+
+**改法**：两道门
+```js
+if (!isMobileNav.value) return;
+if (route.path !== "/") return;   /* ① 已经不在首页 → 绝不碰别的页面的 URL */
+if (v == null) return;            /* ② tab 被移除 ≠ 切到默认联 → 什么都不做 */
+setPane(paneFromQuery(v), false);
+```
+
+**真机验证**：
+```
+   43ms  /?tab=story
+ 2601ms  /story/2            ← URL 干净
+App 端「回故事栏」按钮: 没有 ✓
+详情页正文在不在: true        ✓
+返回后: /?tab=story → 高亮的联 = 故事   ✓
+```
+> 顺带记一条方法论：这个 bug 靠「读代码」是找不到的（`StoryFeed` 的 push 完全正确），
+> 是**每 40ms 记一次 URL** 的时间线把它钉出来的 —— 谁在什么时候改了 URL，一目了然。
+
+**排查过程中额外确认的事实**（写给以后的自己，省得再查一遍）：
+- 故事相关**所有入口**（发现页列表/精选、排行榜、我的、首页故事联、详情页相关故事）点击后
+  都是干净的 `/story/:id`，**没有**任何一条会跳到聊天页。
+- 全仓跳 `/messages` 只有 5 处：左导航「消息」项、路由定义、**漂流瓶→聊天**（唯一内容触发的）、
+  未登录跳登录页。
+- 压力测试（同一张卡 3 连击 / 进页 200ms 就点 / 反复进出 8 轮）**全部正常**。
+
+**验证**：`undef-check` / `tdz-check` / `story-test` / `app-shell-test` 全 0；
+`vite build` 0 → `cap:sync` 0 → `assembleDebug` BUILD SUCCESSFUL → `adb install -r` Success（PID 10853）。
