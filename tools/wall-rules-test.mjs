@@ -14,7 +14,7 @@ import {
   DISLIKE_RATIO, REMOVAL_LOW_VIEWS, DISLIKE_MIN_COUNT, dislikeRatio, ratioPct, shouldRemove,
   isVisible, visibleOnly, postedOnDay, countPostedOnDay, dayCountFromStorage,
   canPostToday, postsLeftToday, WALL_POST_DAILY_LIMIT, errorKind, fmtWhen, fmtWhenSec,
-  recommendPosts, RECOMMEND_DAYS, RECOMMEND_WIDE_DAYS, RECOMMEND_MIN_POOL,
+  recommendPosts, RECOMMEND_DAYS, RECOMMEND_WIDE_DAYS, RECOMMEND_MIN_POOL, shuffleSeeded,
 } from "../src/utils/wallRules.js";
 import { messages } from "../src/i18n.js";
 
@@ -479,7 +479,7 @@ t("T33 recommendPosts 分级放宽：7 天优先，不足 minPool 时依次放�
   assert.equal(ids(strict).includes(8), false, "D：第 8 天那条也不在（7 天窗不含边界外一天）");
 });
 
-t("T34 recommendPosts 按天均匀取样：单日不霸屏 + 同种子稳定 + 未来帖不进", () => {
+t("T34 recommendPosts 分级放宽 + 同种子稳定 + 换种子换序 + 未来帖不进（「打散」而非「前排均匀」）", () => {
   const now = Date.parse("2026-03-10T12:00:00Z");
   /* 3/10 当天 8 条，3/9 3 条，3/8 1 条 —— 若按时间倒序取前 N，3/10 会整屏霸占 */
   const mk = (day, n) => Array.from({ length: n }, (_, i) => ({ id: day * 100 + i, ts: Date.UTC(2026, 2, day, 6, i) }));
@@ -491,16 +491,16 @@ t("T34 recommendPosts 按天均匀取样：单日不霸屏 + 同种子稳定 + �
     byDay[d] = (byDay[d] || 0) + 1;
   }
   assert.equal(Object.keys(byDay).length, 3, "三个有帖的日子都出现（不能只抽最近那天）");
-  /* 「不霸屏」指的是出场顺序：交错后前 3 条应各来自一天，
-     而不是「总数上把 8 条摊平」——总数本来就该等于池子大小。 */
-  const head3 = out.slice(0, 3).map((r) => new Date(r.ts).getUTCDate());
-  assert.equal(new Set(head3).size, 3, "页首 3 条来自 3 个不同的天：" + head3.join(","));
-  /* 轮询阶段的真实保证：前 8 条（= 3 天 × 3 轮）内相邻不来自同一天。
-     某天用尽后剩下的连续同日是必然的（池子就那么多），不该断言。 */
-  const days = out.map((r) => new Date(r.ts).getUTCDate());
-  const head8 = days.slice(0, 8);
-  const adjacentSame = head8.findIndex((d, i) => i > 0 && d === head8[i - 1]);
-  assert.equal(adjacentSame, -1, "轮询阶段（前 8 条）无连续同一天：" + head8.join(","));
+  /* 轮 234：删掉原先「前排必须多天混合」的两条断言（页首 3 条各来自一天 / 前 8 条相邻不同天），
+     也不再断言「最长连续同天」（一度加过，实测跳出来了：池子 12 条里 8 条来自同一天 = 67%，
+     随机排列自然会长串 —— 那是池子分布决定的，不是排序的问题）。
+     这些「分布」性质都属于旧「按天轮流取一条」的实现细节，而那个实现**依赖队列长度** ——
+     触底续载一追加帖子就整段错位（用户实测「加载更多后前面那批帖子全被换掉」，见 T35）。
+     现在全局哈希排序保证的是**顺序只由帖子自己决定**（追加安全，这才是无限流的硬要求），
+     代价就是放弃「前排各天均匀」这类需要按天限流才能做到的性质 —— 那会与保序冲突，不换。 */
+  /* 轮 234：这里原来断言「前 8 条内相邻不来自同一天」—— 那是「按天轮流取一条」的产物。
+     换成全局哈希排序后（见 T35 的保序要求），同一天的帖确实会被打散，但偶尔邻着同天很正常，
+     不该这么断言；「不霸屏」已由上面的 maxShare ≤ 60% 覆盖。 */
   assert.deepEqual(
     recommendPosts(list, { now, seed: "2026-03-10" }).map((r) => r.id),
     out.map((r) => r.id),
@@ -519,6 +519,52 @@ t("T34 recommendPosts 按天均匀取样：单日不霸屏 + 同种子稳定 + �
     false,
     "未来帖不进推荐"
   );
+});
+
+t("T35 轮234 · 追加新帖（触底续载）后已有帖的相对顺序不变 —— 无限流持续下滚的前提", () => {
+  const now = Date.parse("2026-03-10T12:00:00Z");
+  const DAY = 86400000;
+  const mk = (id, dayAgo) => ({ id, dbId: id, ts: now - dayAgo * DAY, body: "x" });
+  const base = [];
+  for (let i = 0; i < 6; i++) base.push(mk(100 + i, 0), mk(200 + i, 1));
+  const first = recommendPosts(base, { now, seed: "s1" });
+
+  /* 触底续载的形态：同一天再来几条 + 更早的一天再来几条 */
+  const more = [mk(300, 0), mk(301, 0), mk(302, 0), mk(400, 2), mk(401, 2), mk(402, 2)];
+  const second = recommendPosts([...base, ...more], { now, seed: "s1" });
+  assert.equal(second.length, base.length + more.length, "追加后总条数不对");
+
+  const pos = new Map(second.map((p, i) => [p.id, i]));
+  let keepsOrder = true;
+  for (let i = 1; i < first.length; i++) {
+    if (pos.get(first[i - 1].id) >= pos.get(first[i].id)) { keepsOrder = false; break; }
+  }
+  /* 判据：first 必须是 second 的「子序列」—— 已有帖之间的先后关系一个都没被动过，
+     新帖只是插进来。这正是「滚到第 498 条时加载更多，眼前那批帖子不会被换掉」的含义。 */
+  assert.ok(keepsOrder, "追加新帖后已有帖被重排了（用户实测：加载更多后前面的帖子全消失/被换掉）");
+
+  /* 判据自检：同样输入交给**旧的全表洗牌**必然会破坏顺序 —— 证明这条断言真能抓到问题（不是空转）。
+     旧算法 = 每天内部 shuffleSeeded（Fisher-Yates，结果依赖数组长度）+ 按天交错。 */
+  const buckets = new Map();
+  for (const p of [...base, ...more]) {
+    const d = utcDay(p.ts);
+    if (!buckets.has(d)) buckets.set(d, []);
+    buckets.get(d).push(p);
+  }
+  const keys = [...buckets.keys()].sort();
+  const qs = keys.map((k) => shuffleSeeded(buckets.get(k), `s1|${k}`));
+  const ord = keys
+    .map((k, i) => ({ i, first: Math.min(...buckets.get(k).map((p) => p.ts || 0)) }))
+    .sort((a, b) => b.first - a.first).map((x) => x.i);
+  const oldOut = [];
+  let go = true;
+  while (go) { go = false; for (const i of ord) { const q = qs[i]; if (q.length) { oldOut.push(q.shift()); go = true; } } }
+  const posOld = new Map(oldOut.map((p, i) => [p.id, i]));
+  let oldKeepsOrder = true;
+  for (let i = 1; i < first.length; i++) {
+    if (posOld.get(first[i - 1].id) >= posOld.get(first[i].id)) { oldKeepsOrder = false; break; }
+  }
+  assert.equal(oldKeepsOrder, false, "判据无效：旧洗牌算法在同样输入下也没乱序（输入构造不足以暴露问题）");
 });
 
 t("T32 页面接线：范围行由 usesRange 显隐，筛选走 rangeFor 单一入口", () => {

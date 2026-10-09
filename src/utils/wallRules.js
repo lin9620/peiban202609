@@ -420,33 +420,50 @@ export function shuffleSeeded(list, seed, rand = null) {
  * @param {string} seed 同一天内可复现
  * @returns {Array} 新数组
  */
+/**
+ * 稳定随机排序（原名 interleaveByDay，保留导出名不动调用方）。
+ *
+ * 轮 234 重写：**放弃「按天分桶 + 轮流交错」，改为全局「每帖独立哈希」排序。**
+ *
+ * 为什么必须换掉旧的交错实现（用户实测）：
+ *   「刷到底部加载更多后，前面第 498 条那批帖子就消失了」——
+ *   旧的排布依赖**队列长度**（每天内部 Fisher-Yates 洗牌 + 按天轮流取一条），
+ *   而触底续载必然往列表里追加帖子：桶里成员一变、或某天的队列多了一条，
+ *   整段交错就错位，用户眼前那批帖子被整体换掉。
+ *   实测：day0 加 3 条新帖后，原本排在首位的 104 被推到第 9 位，与 day1 的元素全部错开。
+ *
+ * 新实现的性质：
+ *   - 排序键 = hash(seed | UTC天 | 帖子身份)，**只跟这个帖自己有关**；
+ *   - 于是追加新帖只会插到它该在的位置，**已有帖之间的相对顺序恒定不变**（无限流的前提）；
+ *   - 同一天的帖被哈希打散到各处 → 天然「某天不霸屏」（轮 146 的诉求仍然满足，不再需要交错）；
+ *   - 同一天可复现（同 seed 同顺序），第二天自然换一批（seed = UTC 日）；
+ *   - 哈希撞车时用时间倒序兜底，保证排序结果确定（不依赖 sort 的稳定性）。
+ * @param {Array} list 已过滤的帖子
+ * @param {string} seed 同一天内可复现
+ * @returns {Array} 新数组
+ */
 export function interleaveByDay(list, seed) {
   const arr = Array.isArray(list) ? list : [];
   if (!arr.length) return [];
-  const buckets = new Map();          // dayKey -> 该天的帖子（保持传入顺序）
-  for (const p of arr) {
-    const d = utcDay(p.ts);
-    if (!buckets.has(d)) buckets.set(d, []);
-    buckets.get(d).push(p);
-  }
-  // 天数多 → 每天内部各自洗牌（种子带天，避免所有天同序）
-  const keys = [...buckets.keys()].sort();            // 字典序 = 时间序（YYYY-MM-DD）
-  const queues = keys.map((k) => shuffleSeeded(buckets.get(k), `${seed}|${k}`));
-  // 新的天在前：把队列按「该天最早一帖的时间」倒序排
-  const order = keys
-    .map((k, i) => ({ i, first: Math.min(...buckets.get(k).map((p) => p.ts || 0)) }))
-    .sort((a, b) => b.first - a.first)
-    .map((x) => x.i);
-  const out = [];
-  let more = true;
-  while (more) {
-    more = false;
-    for (const i of order) {
-      const q = queues[i];
-      if (q.length) { out.push(q.shift()); more = true; }
-    }
-  }
-  return out;
+  return arr
+    .map((p) => {
+      const day = utcDay(p.ts);
+      return { p, day, ord: mulberry32(hashSeed(`${seed}|${day}|${postRef(p)}`))() };
+    })
+    /* 轮 234 · 排序键 = **先 UTC 天倒序（新的天在前），同一天内按哈希随机**。
+       为什么必须把「天」放在哈希前面（这是本轮真正的修复）：
+         · 排序键整体由帖子自己决定（天 + 哈希都与「列表里还有谁」无关）→ 追加新帖不动已有
+           帖的相对顺序（T35）；
+         · 更关键：续载拉到的都是**更早的帖**，按天倒序后它们只会落到**列表末尾**，
+           绝不会插到前面去 —— 而 `shownPage = shown.slice(0, reveal)` 是按「前 N 名」取的，
+           一旦新帖插到前面，用户已经滚过去的那批就被挤出可见窗口了。
+           真机实测就是这个：加载更多后 120 张里丢了 36 张（首轮），正是被插到前面的新帖挤掉的。
+       代价：同一天的帖会聚在一起，不再跨天交错。但这正是「更早的续载内容排在后面」的前提；
+       推荐流本来就是按天给新鲜内容，聚在一起读起来也自然。 */
+    .sort((a, b) => (a.day === b.day
+      ? (a.ord - b.ord) || ((Number(b.p.ts) || 0) - (Number(a.p.ts) || 0))
+      : (a.day < b.day ? 1 : -1)))     /* 字典序倒排：2026-10-10 排在 2026-10-09 前 */
+    .map((x) => x.p);
 }
 
 /**
