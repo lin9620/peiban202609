@@ -77,6 +77,21 @@ export function runBack() {
 }
 
 export const langOptions = languages.map((l) => ({ label: l.label, key: l.code }));
+
+/* ═══ 轮 232 · 「再点当前页签」信号（回到顶部 + 刷新）═══
+ * 主流做法（微信 / 知乎 / 小红书）：已经待在某个页签里时再点它一次 = 回到顶部 + 刷新内容。
+ * 本项目的两个导航（手机 TabBar / 桌面 SideNav）过去都够不着这件事：
+ *   · TabBar 走 router.push(同路径) → 被 vue-router 忽略 → **点了毫无反应**；
+ *   · SideNav 轮 144 做过（推带时间戳的 refresh query），轮 215 又改成「回原位置、不刷新不回顶」，
+ *     实现退化成一句空的 preventDefault → 同样什么都没发生（用户实测反馈）。
+ * 这里给一个不含 URL 的信号：页签点自己 → retapTab(path)；需要响应的页面 watch 它。
+ * 用信号而不是 query，是为了**不污染地址栏、不污染前进后退历史**。 */
+export const retapPath = ref("");   /* 最近一次被「再点」的页签路径 */
+export const retapSeq = ref(0);     /* 自增序号：同一条路径连点也要能再次触发 */
+export function retapTab(path) {
+  retapPath.value = String(path || "");
+  retapSeq.value++;
+}
 export const currentLang = computed(
   () => (languages.find((l) => l.code === i18n.locale) || languages[0]).label
 );

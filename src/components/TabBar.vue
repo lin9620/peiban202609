@@ -8,6 +8,7 @@ import { Tabbar as VanTabbar, TabbarItem as VanTabbarItem } from "vant";
 import "vant/es/tabbar/style/index";
 import { t } from "../i18n.js";
 import { badge } from "../stores/badgeStore.js";
+import { retapTab } from "../stores/uiStore.js";
 
 const route = useRoute();
 const router = useRouter();
@@ -32,9 +33,12 @@ const activeIdx = computed(() => {
   return i < 0 ? 0 : i;
 });
 
-/* 轮 215 定案：再点当前页 tab = 回到该页**原位置**（不刷新不回顶）。
- * 同路径 push 被 vue-router 忽略 = 点了没反应——本来就在本页，无需动作。 */
+/* 轮 232 修正：再点当前页 tab = **回到顶部 + 刷新**（主流做法：微信/知乎/小红书都是这样）。
+ * 轮 215 曾定「回原位置、不刷新不回顶」，可同路径 router.push 会被 vue-router 忽略 ——
+ * 实际效果是**点了完全没反应**（用户实测反馈）。改成发 retapTab 信号，由页面自己接：
+ * 暖心墙接了「滚回顶部 + 取新一批」（见 CommunityView）。 */
 function goItem(item) {
+  if (isActive(item)) { retapTab(item.path); return; }
   router.push(item.path).catch(() => {});
 }
 

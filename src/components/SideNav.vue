@@ -4,7 +4,7 @@
 import { useRoute, useRouter } from "vue-router";
 import { t } from "../i18n.js";
 import { badge } from "../stores/badgeStore.js";
-import { navOpen, toggleNav } from "../stores/uiStore.js";
+import { navOpen, toggleNav, retapTab } from "../stores/uiStore.js";
 
 const route = useRoute();
 const items = [
@@ -20,12 +20,16 @@ const items = [
 const isActive = (to) => (to === "/" ? route.path === "/" : route.path === to || route.path.startsWith(to + "/"));
 const router = useRouter();
 
-/* 轮144（用户口径）：左侧边点「暖心墙」——已在暖心墙页时再点 = 刷新（抄 TabBar 轮100 先例）：
- * 同路径 push 会被 vue-router 忽略（点了没反应）→ 拦下默认导航，推带时间戳的 refresh query，
- * CommunityView 的 watch(route.query.refresh) 强制取新第一页并回顶部。其它按钮/非本页不干预。 */
-/* 轮 215 定案：再点当前页 = 回原位置（不刷新不回顶）——同路径 push 被 vue-router 忽略即所需行为 */
+/* 轮 232 修正：再点当前页 = **回到顶部 + 刷新**（主流做法）。
+ * 历史：轮 144 做过这件事（推带时间戳的 refresh query），轮 215 改成「回原位置、不刷新不回顶」，
+ * 实现退化成一句空的 preventDefault —— 点了什么都不发生（用户实测反馈）。
+ * 现在统一走 uiStore 的 retapTab 信号：不污染地址栏、不进前进后退历史。
+ * ⚠ 其它页签：走默认 href 导航（**不许 preventDefault**——轮 218 续踩坑：误杀后页签全部失灵）。 */
 function onNavClick(it, e) {
-  if (it.to !== "/community" || !isActive(it.to)) e.preventDefault();
+  if (it.to === "/community" && isActive(it.to)) {
+    e.preventDefault();
+    retapTab(it.to);
+  }
 }
 </script>
 
