@@ -235,9 +235,15 @@ function seoRoutes() {
        * zh=true 时：<html lang> 换 zh-CN，URL 前缀 /zh，其余口径一致。
        * hreflang 互指（en ↔ zh，x-default 落 en）每页带全组，插在 </head> 前。 */
       const bakePage = (h, { title, desc, dir, html, zh }) => {
-        /* home（dir=""）保留尾斜杠 —— T9 钉住 canonical=https://warmpaws.de5.net/ 的既有口径 */
+        /* home（dir=""）保留尾斜杠 —— T9 钉住 canonical=https://warmpaws.de5.net/ 的既有口径。
+         * 轮 236：「/zh」首页不能带尾斜杠 —— Cloudflare 对非根目录的 "/xxx/" 一律 307 去掉尾斜杠
+         *   （实测 /zh/ → 307 → /zh；/pet/ → 307 → /pet）。于是每个 zh 页上的 hreflang="zh"
+         *   以及 /zh/index.html 自己的 canonical 都指向一个会 307 的 URL，
+         *   Google Search Console 报「网页会自动重定向」（用户实测收到该通知）。
+         *   根路径 "/" 是例外（实测 200，不重定向），所以 selfEn 的既有口径不动。
+         *   同时**这一行也是「别给子页写尾斜杠」的保证**：dir 非空时两边都不加尾斜杠。 */
         const selfEn = SITE + (dir ? "/" + dir : "/");
-        const selfZh = SITE + "/zh" + (dir ? "/" + dir : "/");
+        const selfZh = SITE + "/zh" + (dir ? "/" + dir : "");
         const self = zh ? selfZh : selfEn;
         let out = h
           .replace(/<title>[\s\S]*?<\/title>/, `<title>${title}</title>`)
