@@ -126,13 +126,19 @@ t("T18 首页不再计算/展示在线人数（HomeView + TodayPane）", () => {
   assert.ok(!home.includes("dayOfYear"), "dayOfYear 已成死导入");
   assert.ok(!todayPane.includes("const online = computed") && !todayPane.includes("{{ online }}"), "抽件后仍残留 online");
 });
-t("T19 大厅文案改为如实描述（tag + hall）", () => {
-  assert.ok(todayPane.includes('t("home.companions.tag")'), "缺少 tag 文案");
-  assert.ok(todayPane.includes('t("home.companions.hall")'), "缺少 hall 文案");
+/* 轮 150 更新：顶部问候块上线后，原来的 tag「一直亮着」与 hall 长句散文按用户要求撤掉了
+ * （用户原话「不要太多文字了」）。这里保留本条断言的**本意**——大厅不谎报在线人数：
+ * 视图里既不许出现旧的 online 文案，也不许出现「此刻大厅里」胶囊行（那是逐状态的人数真数据，
+ * 由 status-test 单独验口径），改成只出 statusCounts 的四格统计。 */
+t("T19 大厅不谎报在线人数（无 online 文案 / 只出四格真人数）", () => {
   const i18n = read("src/i18n.js");
-  assert.ok(i18n.includes('tag: "always on"') && i18n.includes('tag: "一直亮着"'), "tag 文案缺失");
   assert.ok(!i18n.includes('online: "{n} kind souls'), "残留 online 文案（en）");
   assert.ok(!i18n.includes('online: "此刻有 {n} 位温柔的人陪着你"'), "残留 online 文案（zh）");
+  assert.ok(todayPane.includes('v-if="statusCounts && statusCounts.length"')
+    && todayPane.includes("{{ row.count }}")
+    && !todayPane.includes("home.companions.hall")
+    && !todayPane.includes("home.companions.tag"),
+    "大厅只应渲染四格真实人数（tag/hall 文案已按用户要求撤掉）");
 });
 
 /* ══════════ ⑤ 陪你大厅状态上云：未跑迁移时给一句人话 ══════════ */

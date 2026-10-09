@@ -641,6 +641,11 @@ function onToggleFramed(d) {
     </button>
   </div>
 
+  <!-- 轮 151：手机端 PetView 被挂在 .home-track 里，而该轨道有内联 transform: translateX(...)
+       —— transform 会让它变成 fixed 定位的包含块，于是 .adopt-mask / 分享卡 / 零食雨
+       这些 position:fixed 的全屏弹层全被挤到轨道内（轨道宽 4 屏），用户只看到一层模糊蒙层、
+       弹窗本体在屏幕外。统一 Teleport 到 body 破掉这个包含块。 -->
+  <Teleport to="body">
   <div v-if="showAdopt" class="adopt-mask" @click.self="showAdopt = false">
     <div class="adopt-modal">
       <h3>{{ t("pet.adoptNew") }}</h3>
@@ -724,6 +729,7 @@ function onToggleFramed(d) {
 
   <ShareCard v-if="showShare" :quote="quote" :pet="activePet" @close="showShare = false" />
   <SnackRain v-if="snackOn" @close="snackOn = false" />
+  </Teleport>
   </div>
 </template>
 

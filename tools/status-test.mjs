@@ -58,8 +58,10 @@ for (const lang of ["zh", "en"]) {
     !!c && STATUS_KEYS.every((k) => EMOJI_RE.test(c[k])), c ? JSON.stringify(STATUS_KEYS.map((k) => c[k])) : "");
   ok(`${lang}: 四条文案互不相同（防复制粘贴错文案）`,
     !!c && new Set(STATUS_KEYS.map((k) => c[k])).size === STATUS_KEYS.length);
-  const keys = ["title", "choose", "youSet", "othersTitle", "anon", "loginHint", "syncFail", "syncNeedSetup", "agoMin", "agoHour"];
-  ok(`${lang}: 大厅区块文案齐备（标题/在做什么/你在这里/此刻大厅里/匿名/登录提示/两条错误/相对时间）`,
+  /* 轮 150：choose / youSet / othersTitle 已随顶部问候 + 四格统计重做而下线（清死键），
+     换成 pickHint / nowTitle / nowSub 三个新文案。 */
+  const keys = ["title", "pickHint", "nowTitle", "nowSub", "anon", "loginHint", "syncFail", "syncNeedSetup", "agoMin", "agoHour"];
+  ok(`${lang}: 大厅区块文案齐备（标题/选状态提示/大厅此刻+副标/匿名/登录提示/两条错误/相对时间）`,
     !!c && keys.every((k) => typeof c[k] === "string" && c[k].trim()),
     (c ? keys.filter((k) => typeof c[k] !== "string") : keys).join(","));
   ok(`${lang}: 未跑迁移的提示与同步失败是两句话（不能混用一句）`,
@@ -72,15 +74,35 @@ for (const lang of ["zh", "en"]) {
   const used = [...(todayPane + wallerView).matchAll(/["'](home\.companions\.[A-Za-z0-9_]+)["']/g)].map((m) => m[1]);
   const bad = [...new Set(used)].filter((k) =>
     typeof at(messages.zh, k) !== "string" || typeof at(messages.en, k) !== "string");
-  ok("两个视图引用的 home.companions.* 字面 key 全部存在（zh+en）", used.length >= 9 && bad.length === 0,
+  /* 阈值随结构调整：轮 150 把四个状态从 companions.<k> 字面改成 ico./name./sub. 拼接键后，
+   * 剩下的字面引用是 title/pickHint/nowTitle/nowSub/loginHint/syncFail/syncNeedSetup 这 7 处。
+   * 拼接键由上面三张子表逐项验，所以这里只要「一处不多一处不少」即可。 */
+  ok("两个视图引用的 home.companions.* 字面 key 全部存在（zh+en）", used.length >= 7 && bad.length === 0,
     bad.join(",") || `${used.length} 处引用全命中`);
+  /* 轮 150：状态 2×2 大卡用 `t("home.companions.ico." + k)` 这种**拼接** key（k 来自 STATUS_KEYS），
+   * 上一条正则只认字面量、抓不到，所以单独把三个子表按 STATUS_KEYS 逐项验一遍 —— 漏一项就是模板上显示原始 key。 */
+  for (const sub of ["ico", "name", "sub"]) {
+    for (const lang of ["zh", "en"]) {
+      const tbl = at(messages[lang], "home.companions." + sub);
+      const miss = STATUS_KEYS.filter((k) => typeof (tbl || {})[k] !== "string" || !(tbl[k] || "").trim());
+      ok(`home.companions.${sub}.* 覆盖四种状态（${lang}）`, miss.length === 0, miss.join(","));
+    }
+  }
+  /* 轮 150：emoji 现在只在 ico.* 里，卡片标题/短说明与人数统计一律纯文字（列表更干净）。 */
+  ok("ico.* 每项自带一个 emoji，name.* 是纯文字（不带 emoji）",
+    STATUS_KEYS.every((k) => EMOJI_RE.test(messages.zh.home.companions.ico[k]) && EMOJI_RE.test(messages.en.home.companions.ico[k]))
+      && STATUS_KEYS.every((k) => !EMOJI_RE.test(messages.zh.home.companions.name[k]) && !EMOJI_RE.test(messages.en.home.companions.name[k])));
 }
 
-/* ───────── 模板：不再重复 emoji，按钮/药丸直接用文案（T6 抽件后扫 TodayPane） ───────── */
-ok("TodayPane 模板不再引用 emoji 映射/硬拼 emoji",
-  !todayPane.includes("STATUS_EMOJI") && has(todayPane, '{{ t("home.companions." + k) }}'));
+/* ───────── 模板：不再重复 emoji，按钮/卡片直接用文案（T6 抽件后扫 TodayPane）
+ * 轮 150 更新：状态按钮从胶囊改成 2×2 大卡，模板里的 key 从 companions.<k> 拆成
+ * companions.ico.<k>（圆形图标）/ companions.name.<k>（卡片标题）/ companions.sub.<k>（一行短说明），
+ * 「此刻大厅里」胶囊行换成「大厅此刻」四格统计（数字在上、标签在下，仍只出人数不出个人）。 */
+ok("TodayPane 模板不再引用 emoji 映射/硬拼 emoji，图标走 i18n.ico",
+  !todayPane.includes("STATUS_EMOJI")
+    && has(todayPane, "home.companions.ico.\" + k", "home.companions.name.\" + k", "home.companions.sub.\" + k"));
 ok("大厅只渲染状态人数，不渲染个人昵称或个人列表",
-  has(todayPane, "{{ statusLabel(row.status) }}", 'row.count === 1 ? "home.companions.peopleCount1" : "home.companions.peopleCount"')
+  has(todayPane, "{{ row.count }}", "{{ statusLabel(row.status) }}")
     && !todayPane.includes("o.nickname") && !todayPane.includes("cloudFetchStatuses"));
 ok("主页徽章同样只输出 statusLabel",
   has(wallerView, "{{ statusLabel(profStatus) }}") && !wallerView.includes("STATUS_EMOJI"));
@@ -155,7 +177,7 @@ ok("TodayPane：再点一次同一状态即清除（本地与云端一起清）"
 ok("TodayPane：单独读取自己的档案，状态更新后刷新人数",
   has(todayPane, "await cloudFetchProfile(uid)", "await refreshStatusCounts()", "revision !== statusRevision"));
 ok("TodayPane：云端不可用时不伪造人数，也不覆盖本机状态",
-  has(todayPane, 'v-if="statusCounts"', "if (!profile ||", "if (!uid || !cloud.ready) return;"));
+  has(todayPane, 'v-if="statusCounts && statusCounts.length"', "if (!profile ||", "if (!uid || !cloud.ready) return;"));
 ok("HomeView：抽件接线（桌面拼回 + 手机三联都挂同一 TodayPane）",
   (home.match(/<TodayPane/g) || []).length === 2);
 ok("WallerView：徽章只在 24h 内新鲜时显示（与大厅同一规则）",
