@@ -2887,3 +2887,40 @@ ffc4487 轮225~229 私信：切会话竞态 + 秒开 + 发送键（**内容另�
 需要重打 APK 才能在真机验收 —— 但当前手机上装的包是**部署前**的构建
 （PID 10853，已含轮 223~235 的全部代码，与线上产物同源），可直接实测；
 若要留一份"正式发布包"，发话我再重打）。
+
+## [2026-10-10] 轮 236 · 修 Search Console「网页会自动重定向」（已提交 + 已部署 + 线上验证）
+**用户报障**（贴了 Search Console 通知）：「网页会自动重定向 —— 如果这并非您有意为之，建议您修正此问题」。
+
+### 定位：在线实测 23 个候选 URL 的状态码，一眼看出问题
+```
+/pet  -> 200          /pet/  -> 307 → /pet        ← 尾斜杠被 307
+/zh   -> 200          /zh/   -> 307 → /zh         ★★★ 就是它
+/community -> 200     /community/ -> 307 → /community
+```
+**Cloudflare 对非根目录的 `/xxx/` 一律 307 去掉尾斜杠**（根路径 `/` 是例外，实测 200 不重定向）。
+
+### 根因：`bakePage` 把首页的自引用 URL 拼成了带尾斜杠的 `/zh/`
+```js
+const selfZh = SITE + "/zh" + (dir ? "/" + dir : "/");   // dir="" → https://warmpaws.de5.net/zh/
+```
+于是**每个 zh 页面上的 `hreflang="zh"`、以及 `/zh/index.html` 自己的 `canonical`，都指向 `/zh/`** ——
+Google 抓到它就吃到 307，报「网页会自动重定向」（canonical 指向重定向 URL 更糟）。
+
+### 改法（一处）
+```js
+const selfZh = SITE + "/zh" + (dir ? "/" + dir : "");    // 首页也不带尾斜杠
+```
+`selfEn` 保持原样（`/` 实测 200，不重定向），既有的 T9 口径不动。
+
+### 验证
+- 构建产物：`dist/zh/index.html` canonical/hreflang → `https://warmpaws.de5.net/zh` ✓
+- 线上实测：`/zh` 的 canonical 与三组 hreflang 全部指向 **200 的 URL** ✓
+- `seo-test` **50/50** + `live-check` **14/14** + `live-bundle-check` SHA16 一致 ✓
+
+> 这次踩的坑：注释里写了 `**/zh`，其中的 `*/` **提前闭合了块注释** → esbuild 报
+> `Expected ";" but found "首页不能带尾斜杠"`、**构建直接失败**（一度以为改动没错，是旧 dist 在骗人）。
+> 教训：**注释里别写 `*/` 组合**；另外「改了代码但 build 失败时，dist 是旧的」——
+> 验证产物前先确认 `build=0`，否则量的是上一版。
+
+**后续（Google 侧）**：Search Console 的「自动重定向」要等 Google **重新抓取后**才会消失，
+一般几天到一两周；可用「网址检查」手动请求重新抓取 `/zh` 加速。
