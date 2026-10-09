@@ -4,6 +4,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { t } from "../i18n.js";
+import { isMobileNav } from "../stores/uiStore.js";
 import { useStoryBack } from "../utils/storyBack.js";
 import { renderLiteMd } from "../utils/storyRules.js";
 import {
@@ -95,7 +96,10 @@ watch(() => route.params.id, load);
 <template>
   <StoryShell active="story">
     <div class="story-read">
-      <button class="st-link" type="button" @click="back">← {{ t("story.backToHall") }}</button>
+      <!-- 轮 235：**App 端去掉这个「回故事栏」按钮** —— App 的返回走物理返回键/手势，
+           左上角再挂一个返回钮不符合 App 的操作逻辑（用户点名去掉）。
+           桌面端保留（桌面没有物理返回键，只能点它）。 -->
+      <button v-if="!isMobileNav" class="st-link" type="button" @click="back">← {{ t("story.backToHall") }}</button>
 
     <article v-if="row" class="st-read-card">
       <h1 class="st-read-title">{{ row.title }}</h1>

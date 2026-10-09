@@ -3,6 +3,7 @@
 <script setup>
 import { useRouter } from "vue-router";
 import { t } from "../i18n.js";
+import { isMobileNav } from "../stores/uiStore.js";
 import { useStoryBack } from "../utils/storyBack.js";
 import StoryShell from "../components/story/StoryShell.vue";
 import StoryRank from "../components/story/StoryRank.vue";
@@ -17,7 +18,10 @@ const { storyBack } = useStoryBack(router);
       <header class="story-head">
         <div class="story-head-row">
           <h1 class="story-title">{{ t("story.tabRank") }}</h1>
-          <nav class="story-acts">
+          <!-- 轮 153（用户要求）：App/窄屏去掉「发现」按钮 —— 顶部四联频道条里的「故事」已高亮，
+               点它即可回发现页（StoryShell.go("story")），物理返回键也回 /story，不会困死。
+               桌面端保持原样（有鼠标时这枚按钮是明确的返回落点）。 -->
+          <nav v-if="!isMobileNav" class="story-acts">
             <button class="st-btn st-btn--ghost st-btn--mark" type="button"
               @click="router.push('/story')">{{ t("story.tabDiscover") }}</button>
           </nav>

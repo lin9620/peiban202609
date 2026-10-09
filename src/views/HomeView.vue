@@ -37,7 +37,16 @@ const storyMounted = ref(pane.value === "story");
 onActivated(() => { restoreScroll(route.path); });   /* 轮 219：页签回位 */
 
 watch(() => route.query.tab, (v) => {
-  if (isMobileNav.value) setPane(paneFromQuery(v), false);
+  /* 轮 235 修（真机实测抓到的 URL 污染）：
+     从这里点故事卡去 /story/:id 时，route.query.tab 会从 "story" 变成 **undefined**，
+     而 paneFromQuery(undefined) 会回退成 DEFAULT_PANE("today") —— 于是本 watch 在**离开首页之后**
+     仍然触发 setPane("today")，把目标页的 URL replace 成 /story/2?tab=today（tab 被今天的默认联污染）。
+     首页被 KeepAlive 保活、watch 一直活着，所以离开后照样会打这一枪。
+     两道门：① 已经不在首页 → 不碰任何 URL；② tab 被移除了 ≠ 切到默认联 → 什么都不做。 */
+  if (!isMobileNav.value) return;
+  if (route.path !== "/") return;
+  if (v == null) return;
+  setPane(paneFromQuery(v), false);
 });
 
 function setPane(k, scroll = true) {

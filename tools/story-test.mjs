@@ -283,6 +283,22 @@ ok("共享壳：点某联跳首页对应 tab（独立页与首页联是两份 DO
   shellVue.includes("query: { tab: k }"));
 ok("三个故事页都套了共享壳", viewVue.includes("<StoryShell")
   && mineView.includes("<StoryShell") && rankView.includes("<StoryShell"));
+/* ───────── 轮 153：App/窄屏去掉「发现」按钮（桌面保留） ─────────
+ * 用户要求：app 端「排行榜」「我的」两页不要那枚「发现」按钮，网页端不动。
+ * 判据：两页的顶部操作条整条挂 v-if="!isMobileNav"（条里只有这一枚钮，挂条即可不留空框），
+ * 且确实从 uiStore 引了该开关（漏 import 会让 v-if 恒为 undefined → 按钮照样显示）。
+ * 反面断言同样是重点：若操作条回到无条件渲染，手机端就会多出一枚与频道条「故事」重复的返回钮。
+ * 注意 codeOnly 去注释 —— 两个文件的解释注释里也写着 v-if="!isMobileNav" 字样，
+ * 直接 includes 会永远绿，等于没测。 */
+const actsMobileOnly = (s) => /<nav\s+v-if="!isMobileNav"\s+class="story-acts"/.test(codeOnly(s));
+ok("App/窄屏：排行榜页去掉「发现」按钮（桌面保留）",
+  actsMobileOnly(rankView) && rankView.includes('import { isMobileNav } from "../stores/uiStore.js"'));
+ok("App/窄屏：我的页去掉「发现」按钮（桌面保留）",
+  actsMobileOnly(mineView) && mineView.includes('import { isMobileNav } from "../stores/uiStore.js"'));
+ok("桌面端按钮未被连带删掉（反向守点）+ 频道条「故事」联仍能回发现页 + 我的页物理返回键接管仍在",
+  codeOnly(rankView).includes('@click="router.push(\'/story\')"')
+  && shellVue.includes('k === "story"') && shellVue.includes('router.push("/story")')
+  && mineView.includes("useStoryBack(router)"));
 // 轮 150：已发布的故事要能改。服务端 story_publish 的 else 分支本来就允许改已发布的
 // （status <> 'removed'，published_at 用 coalesce 保住原发布时间），这里只补 UI 入口。
 ok("已发布行有「修改」按钮（走 /story/write?id= 复用续写通路）",
