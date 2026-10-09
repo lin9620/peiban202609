@@ -273,6 +273,8 @@ async function decide(accept) {
 }
 
 async function send() {
+  /* 轮 229：同私信页——发送中不置 disabled（否则整颗变淡、转圈挂在淡底上），防重入在这里挡 */
+  if (sending.value) return;
   const err = validateSend(body.value, null);
   if (err) { sendErr.value = t(err); return; }
   const text = body.value.trim();
@@ -436,8 +438,9 @@ onBeforeUnmount(() => { clearInterval(timer); });
             <van-field
               v-model="body" type="textarea" rows="1" autosize :maxlength="2000"
               :placeholder="t('dm.placeholder')" @keydown.enter.exact.prevent="send" />
-            <n-button type="primary" round size="small" :loading="sending" :disabled="!body.trim()" @click="send">
-              {{ t("dm.send") }}
+            <n-button type="primary" round size="small" class="dm-send-btn" :disabled="!sending && !body.trim()" @click="send">
+              <span :style="{ visibility: sending ? 'hidden' : 'visible' }">{{ t("dm.send") }}</span>
+              <span v-if="sending" class="dm-send-spin" aria-hidden="true"></span>
             </n-button>
           </div>
         </footer>

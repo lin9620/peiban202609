@@ -13,7 +13,7 @@ let wallScrollTop = 0;   /* 轮 219：容器离场时的滚动位置（重插时
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick, onActivated, onDeactivated } from "vue";
-import { useRouter, useRoute } from "vue-router";
+import { useRouter, useRoute, onBeforeRouteLeave } from "vue-router";
 import { NButton, NInput, NAvatar, NTag } from "naive-ui";
 import { t, i18n } from "../i18n.js";
 import { getItem, setItem, removeItem } from "../utils/storage.js";
@@ -33,7 +33,7 @@ import {
 /* 动态流虚拟窗口（纯逻辑，Node 单测覆盖：tools/feed-window-test.mjs）—— 轮 82 · B1 档 */
 import {
   buildOffsets, windowRange, nearEnd, revealTarget, idOf,
-  DEFAULT_EST, DEFAULT_OVERSCAN, WINDOW_ON_THRESHOLD,
+  DEFAULT_EST, DEFAULT_OVERSCAN, WINDOW_ON_THRESHOLD, NEAR_END_PX,
 } from "../utils/feedWindow.js";
 import { cloud } from "../utils/supabase.js";
 /* 回应写入收敛器（纯逻辑，Node 单测覆盖）：连点串行落库 + 过期响应不回写 */
@@ -54,7 +54,7 @@ import {
   RANGES, inRange, usesRange, rangeFor, fmtWhen, memoWhen,
   recommendPosts, RECOMMEND_DAYS,
 } from "../utils/wallRules.js";
-import { isMobileNav, tabbarSuppressed } from "../stores/uiStore.js";
+import { isMobileNav, tabbarSuppressed, retapSeq, retapPath } from "../stores/uiStore.js";
 /* 轮 33：举报弹窗 + 全站拉黑过滤（我拉黑的人，TA 的帖子/评论在我这里渲染前剔除） */
 import ReportDialog from "../components/ReportDialog.vue";
 import { filterBlocked, refreshBlocks } from "../utils/userBlocks.js";
@@ -138,10 +138,16 @@ const refreshText = computed(() => ({
   busy: t("community.refreshing"), ok: t("community.refreshed"),
   batch: t("community.refreshBatch"), fail: t("community.refreshFail"),
 }[refreshNote.value] || ""));
+/* 轮 227：提示停留时长按状态区分——用户反馈「没刷出来，再试一次」这条停太久
+   （原来是统一 2500ms）。失败提示只需告知「这次没成」，看一眼就够，不该杵在那儿；
+   成功 / 换批稍长些无妨（要看清刷新出结果了）。 */
+const NOTE_FAIL_MS = 1200;
+const NOTE_OK_MS = 2200;
+const noteMs = (s) => (s === "fail" ? NOTE_FAIL_MS : NOTE_OK_MS);
 const newestSeenTs = ref(0);   /* 轮 73：补上缺失声明（真新帖判定用） */
 const lastPulledRows = ref([]);   /* 轮 76：本次刷新拉到的批（评论数后台补齐用） */
 
-async function loadCloud({ fresh = false } = {}) {
+async function loadCloud({ fresh = false, quiet = false } = {}) {
   loadingCloud.value = true;
   let freshOk = true;   /* 轮 165 修：必须声明在函数作用域——上一轮写进了 if(fresh) 块内，
                            而函数尾 return freshOk 在块外 → ReferenceError 直接把整页炸成错误卡 */
@@ -160,9 +166,16 @@ async function loadCloud({ fresh = false } = {}) {
       cloudCmtTotal.value = next;
     }
     if (box.fromFetch) {
-      /* 本轮 fetch 的结果：游标=末条 dbId（id<游标 取下一页）；页不满=服务器已到底 */
+      /* 本轮 fetch 的结果：游标=末条 dbId（id<游标 取下一页） */
       feedCursor.value = box.rows.length ? box.rows[box.rows.length - 1].dbId : feedCursor.value;
-      cloudDone.value = box.rows.length < FEED_PAGE;
+      /* 轮 230 修「往下拉几轮就到底了」：**这里绝不能判「服务器已到底」**。
+         首屏/刷新拉的是 REFRESH_PAGE(20) 条（轮 162 瘦身），而本行原来拿 FEED_PAGE(50)
+         去比 —— 20 < 50 恒成立，于是每次首屏/刷新都把 cloudDone 置 true，触底续载被
+         feedTick 的 `else if (!cloudDone.value)` 挡死，永远只有首屏那 20 条
+         （真机取证：滚到底后 /api/posts 请求数停在 2、再也不发，底部直接显示「就到这里啦」）。
+         「到底」只能由**分页请求**判定（loadMoreCloud 拿到空页 / 不满一页 FEED_PAGE 时才为真）。
+         这里保守置 false：万一真到底，触底会发一次分页请求拿回空页，随即自愈为 true。 */
+      cloudDone.value = false;
       newestSeenTs.value = Math.max(newestSeenTs.value, ...box.rows.map((p) => p.ts || 0));
     } else {
       /* 旧/外来缓存盒：仅展示快照——游标清空、不算到底（loadMoreCloud 的去重+跳页会自愈错位） */
@@ -192,6 +205,22 @@ async function loadCloud({ fresh = false } = {}) {
     }
     newestSeenTs.value = Math.max(newestSeenTs.value, ...box.rows.map((p) => p.ts || 0));
   };
+  /* 轮 231 · 静默新鲜化（切回页签专用）：只把**没见过的新帖**软合并进顶部，
+     不亮 loading、不碰游标/到底状态、更不整表替换 —— 所以滚动位置分毫不动。
+     起因（用户反馈）：「点暖心墙，那个应该是刷新啊，现在怎么没反应」——
+     轮 218 的 KeepAlive 保活让切回时一个数据请求都不发，内容停在离开那一刻；
+     这里补上「数据新鲜」，同时保住「位置不变」。
+     ⚠ 必须放在 consume / consumeSoft 定义**之后**：提前 return 会踩 const 的 TDZ。 */
+  if (quiet) {
+    loadingCloud.value = false;
+    try {
+      const pack = await cloudFetchWallRefresh(REFRESH_PAGE);
+      if (pack && Array.isArray(pack.rows) && pack.rows.length) {
+        consumeSoft({ rows: pack.rows, counts: pack.counts || {} });
+      }
+    } catch (e) { /* 静默：切回页签的刷新失败不该打扰用户 */ }
+    return true;
+  }
   /* 轮 66：挂载取数器也走「随机换一批」——不再固定拉最新页（那正是「A 复活」的根源：
      随机批不回写缓存 + 挂载永远拉最新页 → 重开/刷新总回到同一批）。 */
   const fetcher = async () => {
@@ -233,7 +262,9 @@ async function loadCloud({ fresh = false } = {}) {
       refreshNote.value = "fail";
       freshOk = false;
     }
-    setTimeout(() => { refreshNote.value = false; }, 2500);
+    /* 轮 227：按状态决定停留时长（fail 短、ok/batch 稍长）；顺手把 false 改成 "" —— 该 ref
+       的类型是字符串状态机，塞布尔值虽然 v-if 也能判假，但读起来是两套语义。 */
+    setTimeout(() => { refreshNote.value = ""; }, noteMs(refreshNote.value));
   } else {
     await swr(
       cacheKey("wall:posts", (cloud.user && cloud.user.id) || ""),
@@ -552,7 +583,7 @@ async function te() {
     /* 轮 56：下拉刷新 = 强制取新第 1 页（不再拿缓存装样子）；轮 162：成败如实提示 */
     const okPull = await loadCloud({ fresh: true });
     refreshNote.value = okPull ? "ok" : "fail";
-    setTimeout(() => { refreshNote.value = ""; }, 2500);
+    setTimeout(() => { refreshNote.value = ""; }, noteMs(refreshNote.value));   /* 轮 227：fail 只停 1.2s */
   }
   pullDist.value = 0;
 }
@@ -566,6 +597,19 @@ async function manualRefresh() {
   if (loadingCloud.value) return;   /* 刷新进行中防重入（按钮同时 disabled 兜底） */
   await loadCloud({ fresh: true });
 }
+
+/* 轮 232：**再点一次底部「暖心墙」页签 = 回到顶部 + 刷新**（主流做法，用户点名要的口径）。
+ * 回顶必须滚**容器** —— 手机端墙是自滚容器（wallScrollerEl，window 一动不动），
+ * 而且要把记忆位置 wallScrollTop 一并归零：否则下次离开再回来会被「位置保持」又拽回旧位置，
+ * 等于白回顶。刷新复用 manualRefresh（与下拉刷新、网页刷新钮同一条路径，成败都有提示）。 */
+watch([retapSeq, retapPath], ([, p]) => {
+  if (p !== route.path) return;                 /* 点的是别的页签，不归我管 */
+  const el = wallScrollerEl.value;
+  if (el) el.scrollTo({ top: 0, behavior: "smooth" });
+  else window.scrollTo({ top: 0, behavior: "smooth" });
+  wallScrollTop = 0;
+  manualRefresh();
+});
 
 /* ════════ 每日限额：每个用户每天最多 7 条（WALL_POST_DAILY_LIMIT，库触发器同口径） ═════════ */
 const postedCount = ref(dayCountFromStorage(scopeGetRaw(POST_DAY_KEY)));   /* 本机今天已发几条（旧格式日期串兼容） */
@@ -992,6 +1036,8 @@ watch(mainBarKey, (v) => {
   else document.removeEventListener("click", mainBarDocClose);
 });
 /* 轮 218：保活期摘掉全局监听与 RO（别的页面滚动不触发墙的窗口重算/续载） */
+/* 轮 231：首次激活要跳过静默新鲜化（onMounted 已经拉过一轮，不该重复发请求） */
+let activatedOnce = false;
 onActivated(() => {
   if (typeof ResizeObserver !== "undefined" && !cardRO) cardRO = new ResizeObserver(scheduleFeedTick);
   window.addEventListener("scroll", onScroll, { passive: true });
@@ -999,22 +1045,75 @@ onActivated(() => {
   window.addEventListener("wheel", onUserMove, { passive: true });
   window.addEventListener("touchmove", onUserMove, { passive: true });
   window.addEventListener("keydown", onUserMove);
-  restoreScroll(route.path);   /* 轮 219：回位（隐藏期内完成，用户看不到） */
-  /* 轮 219：容器 scrollTop 显式恢复——detached 重插时浏览器会归零 */
-  nextTick(() => { if (wallScrollerEl.value) wallScrollerEl.value.scrollTop = wallScrollTop; });
-  /* 轮 222：回位 + 布局落定后揭示（250ms）——揭示时就在原位置 */
-  setTimeout(() => { feedRestoring.value = false; scheduleFeedTick(); }, 250);
+  const y0 = restoreScroll(route.path);   /* 轮 219：回位（隐藏期内完成，用户看不到） */
+  document.documentElement.setAttribute("data-cv-act", "act@" + Math.round(performance.now() % 1e6) + " y0=" + y0 + " saved=" + wallScrollTop);   /* 轮 220 侦讯 */
+  /* 轮 223：手机端墙**自己滚**（wallScrollerEl 是 fixed + overflowY:auto），window.scrollY
+   * 恒为 0 —— 只调 restoreScroll 等于什么都没做，必须把容器 scrollTop 显式钉回去。
+   * 同步先钉一记（KeepAlive 复用 DOM，ref 仍有效，此刻钉最稳、零闪），下一帧再补一次
+   * （防字体/图片把上方内容顶开），揭示前最后一钉见下。 */
+  const pin = () => { if (wallScrollerEl.value) wallScrollerEl.value.scrollTop = wallScrollTop; };
+  /* 轮 233 · 秒开：位置一旦落定就**立即**揭示，不再无条件等 250ms。
+     真机实测（点回暖心墙）：墙面要 397ms 才可见，可从第一帧（118ms）起 scrollTop 就已经
+     等于目标值 1500 —— 也就是说那 250ms 是**纯白等的隐藏期**（轮 222 的保守设计，当时
+     同步 pin 还不可靠）。现在同步 pin 能到位，所以：钉一记 → 读回确认 → 到位就亮。
+     读回是必要的（不是多此一举）：若容器高度还没算好，scrollTop 会被浏览器夹到更小值，
+     这时 pinnedOk() 为假，就退到 nextTick/250ms 兜底，绝不会亮出错误位置。 */
+  const pinnedOk = () => {
+    const el = wallScrollerEl.value;
+    return !!el && Math.abs(el.scrollTop - wallScrollTop) <= 2;
+  };
+  pin();
+  if (pinnedOk()) {
+    feedRestoring.value = false;   /* 第一个可绘制帧就在原位置 —— 这就是秒开 */
+    scheduleFeedTick();
+  } else {
+    nextTick(() => {
+      pin();
+      if (pinnedOk()) { feedRestoring.value = false; scheduleFeedTick(); }
+    });
+  }
+  /* 兜底：极端布局下万一一直钉不到位，250ms 后也必须揭示（保留原超时语义，防永久藏住） */
+  setTimeout(() => {
+    pin();                            /* 揭示前最后一钉：确保揭示的那一帧已在原位置 */
+    feedRestoring.value = false; scheduleFeedTick();
+    document.documentElement.setAttribute("data-cv-late", "late@" + Math.round(performance.now() % 1e6) + " y=" + Math.round(window.scrollY) + " pane=" + (wallScrollerEl.value ? Math.round(wallScrollerEl.value.scrollTop) : -1));
+  }, 250);
+  /* 轮 231：回到暖心墙时静默新鲜化 —— 用户反馈「点暖心墙，那个应该是刷新啊，现在怎么没反应」。
+     首次激活跳过（onMounted 已拉过一轮）；等揭示（250ms）之后 300ms 再发，别和回位抢主线程；
+     软合并只在顶部并入没见过的新帖，**不动顺序、不动滚动位置**，与位置保持不冲突。 */
+  if (cloud.ready && activatedOnce) {
+    setTimeout(() => { loadCloud({ quiet: true }); }, 300);
+  }
+  activatedOnce = true;
 });
 onDeactivated(() => {
   /* 轮 222：离开即置恢复态——回来时墙先隐藏，滚到位再揭示（零下滑动作） */
   feedRestoring.value = true;
-  wallScrollTop = wallScrollerEl.value ? wallScrollerEl.value.scrollTop : 0;   /* 轮 219：容器位置显式保存 */
+  /* 轮 224 真机实锤：**不能**在这里读 scrollTop —— KeepAlive 的 deactivate 是
+     「先把 DOM 移进 display:none 的隐藏容器，**再**回调 onDeactivated」，此刻 scrollTop
+     已被浏览器归零。取证（CDP 实测，非推断）：滚到 1400 → 本钩子确实被调用（时间戳前进）
+     但读到 0 → data-cv-dea 恒为 saved=0 → 回来永远落在页顶。
+     位置改由 onScroll 滚动期实时记账 + onBeforeRouteLeave 抓取（见下）。
+     这里只留兜底：只信「仍在文档里」的值，绝不用归零值覆盖真位置。 */
+  const el = wallScrollerEl.value;
+  if (el && document.contains(el)) wallScrollTop = el.scrollTop;
+  document.documentElement.setAttribute("data-cv-dea", "saved=" + Math.round(wallScrollTop) + " @" + Math.round(performance.now() % 1e6));   /* 轮 220/224 侦讯 */
   if (cardRO) { cardRO.disconnect(); cardRO = null; }
   window.removeEventListener("scroll", onScroll);
   window.removeEventListener("resize", onViewport);
   window.removeEventListener("wheel", onUserMove);
   window.removeEventListener("touchmove", onUserMove);
   window.removeEventListener("keydown", onUserMove);
+});
+/* 轮 224：离开路由**前**抓位置 —— 这是唯一「DOM 还活着」的时机。
+ * vue-router 的组件内守卫在导航确认前调用，此时组件仍在文档里，scrollTop 取到的是真值。
+ * 与 onScroll 的实时记账互为兜底：任一道失效，另一道还兜得住。 */
+onBeforeRouteLeave(() => {
+  const el = wallScrollerEl.value;
+  if (el && document.contains(el)) {
+    wallScrollTop = el.scrollTop;
+    document.documentElement.setAttribute("data-cv-dea", "leave=" + Math.round(wallScrollTop) + " @" + Math.round(performance.now() % 1e6));
+  }
 });
 onUnmounted(() => {
   tabbarSuppressed.value = false;
@@ -1183,6 +1282,10 @@ function disPct(p) { return ratioPct(p.views, (p.reacts && p.reacts.dislike) || 
 
 /* —— 分页展示：默认 10 条，滑到底部自动续 10 条（手机常用惯性；桌面同样生效） —— */
 const PAGE_SIZE = 10;
+/* 轮 231：滚到底一次亮多少条。原来就是 PAGE_SIZE(10)，可服务端一次就拉 FEED_PAGE(50) 条 ——
+   「亮 10 拉 50」的错配让用户要连滚 5 次才能把新到的一页翻完，手感就是「一顿一顿、拉不动」。
+   改成 3 屏（30 条）：一次滚完大半页，DOM 增量也还在可控范围（退役后一张卡 ≈ 300px）。 */
+const REVEAL_STEP = 30;
 const reveal = ref(PAGE_SIZE);
 watch([sortMode, rangeMode], () => { reveal.value = PAGE_SIZE; });
 const shownPage = computed(() => shown.value.slice(0, reveal.value));
@@ -1210,13 +1313,16 @@ const POST_GAP = 18;                 /* 卡片间距 = .card 的 margin-bottom�
 const FEED_EST = DEFAULT_EST;
 const winStart = ref(0);
 const winEnd = ref(PAGE_SIZE + 2);   /* 首屏先挂一小把，onMounted 立刻按真实视口算准 */
-const padTop = ref(0);
+const padTop = ref(0);    /* 轮 223：虚拟窗口退役，占位块恒 0（保留 ref 兼容模板/锚点） */
 const padBottom = ref(0);
 const padTopEl = ref(null);
 const cardEls = new Map();           /* id → 卡片元素（量高 / 锚点补偿用） */
 const seenCards = new Set();         /* 至少在视口里露过面的卡片 id（只有它们的屏外高度可信） */
 const heights = {};                  /* id → 实测高度 px（键用 idOf 归一） */
-const pageItems = computed(() => shownPage.value.slice(winStart.value, winEnd.value));
+/* 轮 223：虚拟窗口退役——几十条帖子的规模下纯自残（pads 重算把滚动钳回 0，
+ * 位置保持全废，用户实测「切页签回页顶」）。全量真实渲染：位置由真实 DOM 天然保持。
+ * 真到几百条再上虚拟列表时，必须连滚动容器一起换（window → 内部容器）。 */
+const pageItems = computed(() => shownPage.value);
 
 let feedRaf = 0;
 let cardRO = null;
@@ -1307,68 +1413,54 @@ function measureCards(vh) {
   }
 }
 
-/** 算出并应用窗口（pin >= 0 = 深链钉住第 pin 条，忽略滚动位置） */
+/** 算出并应用窗口（轮 223 退役版：pads 恒 0；pin 参数保留仅为兼容深链调用点） */
 function syncFeedWindow(pin = -1) {
-  const list = shownPage.value;
-  const n = list.length;
-  if (n <= WINDOW_ON_THRESHOLD) {          /* 短列表：窗口 = 全部，不加占位（老路径） */
-    winStart.value = 0;
-    winEnd.value = n;
-    padTop.value = 0;
-    padBottom.value = 0;
-    return { offsets: null, total: 0 };
-  }
-  const vh = window.innerHeight || 0;
-  measureCards(vh);
-  const { offsets, total } = buildOffsets(list, heights, { gap: feedGap(), est: FEED_EST });
-  const r = windowRange({
-    offsets, total,
-    scrollTop: listScrollTop(),
-    viewportH: vh,
-    overscan: DEFAULT_OVERSCAN,
-    pinIndex: pin >= 0 ? pin : -1,
-  });
-  /* 锚点补偿：窗口上方总高变了（量到新高度 / 深链吃估高）→ 把原窗口第一张卡搬回原处。
-     两条纪律：
-     ① 正在滚动（平滑动画 / 用户手势，200ms 内有过滚动事件）时绝不动手 —— 脚本滚动会
-        打断动画，用户就落在半路（真机取证：scrollTo(0,0) 被这里一次 scrollBy 掐断在 43k 处）；
-        这段时间里「内容被上方变化顶开」交给浏览器自带的滚动锚定（overflow-anchor，默认开着）兜。
-     ② 滚动位置被别人动过（两次测量之间）也不动手，理由同上。
-     也就是说：我们的补偿是给「停住之后」的场景兜底（尤其没有原生锚定的 Safari）。 */
-  const anchorK = winStart.value < n ? idOf(list[winStart.value]) : "";
-  const anchor = anchorK ? cardEls.get(anchorK) : null;
-  const before = anchor ? anchor.getBoundingClientRect().top : null;
-  const yBefore = window.scrollY;
-  winStart.value = r.start;
-  winEnd.value = r.end;
-  padTop.value = r.padTop;
-  padBottom.value = r.padBottom;
-  if (before != null) {
-    nextTick(() => {
-      const el = cardEls.get(anchorK);     /* 已被回收 → 剩下卡片的位置本来就没变，不用补 */
-      if (!el || typeof el.getBoundingClientRect !== "function") return;
-      if (performance.now() - lastScrollAt < 200) return;   /* 还在滚 → 让位 */
-      if (Math.abs(window.scrollY - yBefore) > 1) return;   /* 别人动过 → 让位 */
-      const d = el.getBoundingClientRect().top - before;
-      if (Math.abs(d) > 0.5) window.scrollBy({ top: d, left: 0, behavior: "instant" });
-    });
-  }
-  return { offsets, total };
+  /* 全量真实渲染：窗口 = 全部已亮条目，占位块高度恒 0（滚动位置由真实 DOM 天然保持）。
+     ⚠ 触底判定不在这里算 —— 见下面的 scrollerNearEnd()（它直接读真实滚动容器）。
+     窗口重算曾把 pads 改来改去，而 pads 一变浏览器就把 scrollTop 钳回 0 —— 这正是
+     「切页签/返回后回到页顶」的老根因，退役就是为了根治它。 */
+  winStart.value = 0;
+  winEnd.value = shownPage.value.length;
+  padTop.value = 0;
+  padBottom.value = 0;
+  return { offsets: null, total: 0 };
 }
+
+/** 触底判定（轮 223）：虚拟窗口退役后不再靠占位块高度推算，直接读**真实滚动容器**。
+ *  手机端墙自滚（wallScrollerEl = fixed + overflowY:auto，window 一动不动）；
+ *  桌面端墙随整页滚（window）。两端都要能续载，所以两条都判。 */
+function scrollerNearEnd() {
+  const el = wallScrollerEl.value;
+  if (el && el.scrollHeight > el.clientHeight + 1) {
+    return el.scrollTop + el.clientHeight >= el.scrollHeight - NEAR_END_PX;
+  }
+  const doc = document.documentElement;
+  const y = window.scrollY || doc.scrollTop || 0;
+  const vh = window.innerHeight || doc.clientHeight || 0;
+  return y + vh >= (doc.scrollHeight || 0) - NEAR_END_PX;
+}
+
 /** 用户自己动了（滚轮/触摸/按键）→ 深链钉住解除（程序滚动不会触发这些事件） */
 function onUserMove() { userMoved = true; }
 
+/** 每帧任务（轮 223 退役版）：窗口重算只剩归一化，真正要做的只有触底续载。
+ *  ⚠ feedTick / onUserMove 这两个函数是**必需**的：onMounted / onActivated /
+ *  onDeactivated / onUnmounted 都直接引用它们。定义一旦缺失，rAF 求值处就抛
+ *  ReferenceError 把整段钩子打断——onActivated 里的回位代码根本没机会执行
+ *  （用户实测「从帖子详情返回暖心墙不保持原样」、页签回来落在页顶）。
+ *  删它们之前必须先把引用一并删干净。 */
 function feedTick() {
   feedRaf = 0;
   if (userMoved) { userMoved = false; pinnedIdx = -1; }
-  const { offsets, total } = syncFeedWindow(pinnedIdx);
-  /* 触底续载：短列表（offsets=null）沿用旧哨兵「一进来就能续」的语义 */
-  const near = offsets
-    ? nearEnd({ total, scrollTop: listScrollTop(), viewportH: window.innerHeight || 0 })
-    : true;
-  if (!near) return;
-  if (hasMore.value) reveal.value += PAGE_SIZE;      /* 已拉取的里还有没亮的 → 先亮下一批 */
-  else if (!cloudDone.value) loadMoreCloud();        /* 亮完了 → 向服务器取下一页 */
+  syncFeedWindow(pinnedIdx);
+  if (!scrollerNearEnd()) return;
+  /* 轮 231：把「先亮完、再拉下一页」的串行改成并行 ——
+     ① 亮：一次补 REVEAL_STEP(30) 条，不再一次只挤 10 条；
+     ② 拉：只要已亮的快到「已拉取」的尾部（余量不足半屏），就**提前**向服务器要下一页（预加载）。
+     串行版本里，用户每次滚到底都得先把剩下的 10 条熬完，才等到一次网络往返 —— 卡顿感就来自这里。 */
+  if (hasMore.value) reveal.value = Math.min(shown.value.length, reveal.value + REVEAL_STEP);
+  const notShown = shown.value.length - reveal.value;
+  if (!cloudDone.value && notShown < REVEAL_STEP / 2) loadMoreCloud();
 }
 
 function scheduleFeedTick() {
@@ -1379,8 +1471,13 @@ function scheduleFeedTick() {
 /* 滚动事件单独一支：除了排窗口重算，还要**记下时刻**——锚点补偿靠它判定
    「用户正在滚（平滑动画 / 手势）」并让位（轮 82 前这个时间戳从没被写过，
    于是那条「还在滚别动手」的守卫永远为假 = 形同虚设，补偿有概率掐断平滑滚动）。 */
-function onScroll() {
+function onScroll(e) {
   lastScrollAt = performance.now();
+  /* 轮 224：滚的正是墙的容器时，顺手把位置记下来。
+     必须**在滚动期记账** —— 离开时（onDeactivated）DOM 已被 KeepAlive 移进
+     display:none 的隐藏容器，scrollTop 被浏览器归零，那时读什么都晚了。 */
+  const el = wallScrollerEl.value;
+  if (el && e && e.target === el) wallScrollTop = el.scrollTop;
   scheduleFeedTick();
 }
 
@@ -1424,8 +1521,11 @@ function restoreFeed() {
   restoreTick = true;
   nextTick(() => {
     holdAnchor();
-    window.scrollTo(0, s.y);
+    window.scrollTo(0, s.y);                     /* 桌面端：整页滚动的回位 */
+    /* 轮 223：手机端位置在容器上（window.scrollY 恒 0）——存档里的 pane 才是真位置 */
+    if (s.pane && wallScrollerEl.value) wallScrollerEl.value.scrollTop = s.pane;
     nextTick(() => {
+      if (s.pane && wallScrollerEl.value) wallScrollerEl.value.scrollTop = s.pane;   /* 布局落定后再钉一次 */
       releaseAnchor();
       restoreTick = false;
       savedFeedPos = null;
@@ -1440,7 +1540,8 @@ onUnmounted(() => {
   /* 轮 95：离场存位（含实测高度表），返回时整份恢复 */
   if (cloudPosts.value.length) {
     savedFeedPos = {
-      y: window.scrollY,
+      y: window.scrollY,                                                /* 桌面端：整页滚动的位置 */
+      pane: wallScrollerEl.value ? wallScrollerEl.value.scrollTop : 0,   /* 轮 223：手机端墙自滚，位置在容器上 */
       reveal: reveal.value,
       cursor: feedCursor.value,
       done: cloudDone.value,
@@ -1589,7 +1690,11 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
     @scroll.passive="onScroll"
     :style="isMobileNav
       ? { position: 'fixed', inset: 0, overflowY: 'auto', zIndex: 1,
-          paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'calc(50px + env(safe-area-inset-bottom))',
+          /* 轮 230：底部留白按**实测 TabBar 高度**给。van-tabbar 实测高 59px，而原来只留 50px ——
+         结果最底下那行提示（「就到这里啦…」）有 8px 被 TabBar 盖住（占它 19px 高度的四成），
+         用户反馈「提示文字被底部折叠了一半」正是这个。70px = 59 + 缓冲，
+         保证任何底部文字都完整露在 TabBar 之上。 */
+      paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'calc(70px + env(safe-area-inset-bottom))',
           visibility: feedRestoring ? 'hidden' : 'visible' }
       : { visibility: feedRestoring ? 'hidden' : 'visible' }">
     <div class="wall-pull" :style="{ height: pullDist + 'px', opacity: pullDist / 62 }">↓</div>

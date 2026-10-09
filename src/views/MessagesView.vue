@@ -48,6 +48,13 @@ const signedIn = computed(() => !!(cloud.ready && cloud.user));
 const activeId = ref(String(route.params.id || "")); // 当前会话（空串 = 只看列表）
 const msgs = ref([]);        // 当前会话消息（旧→新）
 let msgsConv = "";           // msgs 现在装的是哪个会话（轮 157b：防跨会话误合并）
+/* 轮 225 · 会话切换竞态守卫：每次「按会话拉消息」发号（msgSeq），响应回来时校验号与当前会话。
+ * 用户实测：快速点开 A → 返回 → 点 B → 点 C，多按几次后 C 里出现 B 甚至 A 的记录。
+ * 根因：loadMessages / tick 在 await 期间用户已经切走，旧响应回来**无条件**写 msgs.value，
+ * 于是「最后返回的那份」赢了 —— 与用户当前点的是谁完全无关。
+ * 两道判据缺一不可：① 号被更新的请求顶掉（同一会话连点也要防）；② 当前会话已不是它。 */
+let msgSeq = 0;
+const isStale = (mySeq, id) => mySeq !== msgSeq || String(activeId.value) !== String(id);
 const body = ref("");
 const sending = ref(false);
 const sendErr = ref("");
@@ -230,10 +237,14 @@ async function loadMeta(id) {
 
 async function loadMessages(id, { before = null } = {}) {
   if (!id) return false;
+  /* 轮 225：本轮的号 —— await 回来后若号被顶掉、或用户已切走，这份数据整份丢弃 */
+  const mySeq = ++msgSeq;
+  const cid = String(id);
+  const stale = () => isStale(mySeq, cid);
   /* 轮 214：切会话先清屏——上一个会话的消息只要还留在 msgs 里，任何时序竞态
    * （本地库为空的会话、网络慢、硬上限兜底揭示）都会让它闪出来
    * （用户实测「打开另一个会话有时跳闪前一个会话的内容」）。结构上清零，永绝后患。 */
-  if (msgsConv !== id) {
+  if (msgsConv !== cid) {
     msgs.value = [];
     oldestId.value = null;
     hasMore.value = true;
@@ -241,6 +252,7 @@ async function loadMessages(id, { before = null } = {}) {
   let smoothed = false;   /* 轮 173c：fresh 有新消息时已平滑滚到新底，调用方免再瞬时滚 */
   loadingMsgs.value = true;
   const applyRows = (rows, more) => {
+    if (stale()) return false;   /* 轮 225：过期响应绝不落进列表（这是串会话的直接入口） */
     /* 服务端返回新→旧：反转为旧→新（渲染顺序） */
     const asc = rows.slice().reverse();
     if (before == null || msgsConv !== id) {
@@ -259,19 +271,27 @@ async function loadMessages(id, { before = null } = {}) {
         el.style.scrollBehavior = prevSb || "";
       });
     }
-    msgsConv = id;
+    msgsConv = cid;
     hasMore.value = more != null ? more : rows.length === 30;
     oldestId.value = msgs.value.length ? msgs.value[0].id : null;
+    return true;
   };
   /* ── 轮 194：本地库秒开——进会话瞬间渲染本地完整历史（零网络等待、零闪跳）──
    * 193c 去掉缓存中间态后首次进入要等网络（用户实测 ~10s 空白）——
    * 正解是微信式本地库：localStorage 持久存每会话全量消息，进会话同步读取渲染。 */
   if (before == null) {
-    const local = dmStoreLoad(meId.value, id);
+    const local = dmStoreLoad(meId.value, cid);
     if (local.msgs.length) {
-      applyRows(local.msgs.slice().reverse(), local.more);
+      if (!applyRows(local.msgs.slice().reverse(), local.more)) return false;   /* 轮 225：已过期就别继续 */
       entryReady.value = true;   /* 轮 194：本地数据已落定，揭示门控即刻可开 */
-      scrollBottom();
+      /* 轮 228 · 秒开：本地库命中的是**该会话的完整历史**（最多 400 条），此刻已同步渲染完毕，
+       * ── 这就是「微信式秒开」该有的样子。不再去等「字体就绪 + 高度连续 hold ms」那道门：
+       * 那道门是轮 176/180 为「30 条缓存窗口被 fresh 窗口整窗替换、高度 ±千 px」准备的，
+       * 而本地库路径根本不存在整窗替换（网络回来只走 mergeTail 往尾部并）。
+       * 用户实测反馈：本地库明明已经读出来了，点进会话却还要楞一下 —— 就是被这道门挡住的。
+       * 注意必须走 scrollBottom 的 reveal 参数（钉底与揭示同一帧），不能在这里直接置 true，
+       * 否则会先亮出列表顶部再跳到底（真机实测首帧距底 4649px）。 */
+      scrollBottom(false, true);
       loadingMsgs.value = false;
     }
   }
@@ -279,20 +299,24 @@ async function loadMessages(id, { before = null } = {}) {
   try {
     if (before != null) {
       /* 轮 204：翻历史优先吃本地全量库（IndexedDB）——本地有就直接补页，零网络零等待 */
-      const idbRows = await idbOlderThan(id, before, 30);
+      const idbRows = await idbOlderThan(cid, before, 30);
+      if (stale()) return false;   /* 轮 225 */
       if (idbRows.length >= 5) {
-        applyRows(idbRows, true);   /* 本地页假设还有更早（网络层仍有则后续再补） */
-        dmStoreSave(meId.value, id, msgs.value, hasMore.value);
+        if (!applyRows(idbRows, true)) return false;   /* 本地页假设还有更早（网络层仍有则后续再补） */
+        dmStoreSave(meId.value, cid, msgs.value, hasMore.value);
         loadingMsgs.value = false;
         return smoothed;
       }
     }
-    const rows = (await dmApi.listMessages(id, { before, limit: 30 })) || [];
+    const rows = (await dmApi.listMessages(cid, { before, limit: 30 })) || [];
+    /* 轮 225：等响应这段就是竞态窗口 —— 用户可能已经返回列表或点开了别的会话。
+     * 过期就整份丢弃：不写列表、不落本地库、不触发回填（否则会把 A 的消息存进 B 的库）。 */
+    if (stale()) return false;
     const asc = rows.slice().reverse();
     if (before != null) {
-      applyRows(rows, rows.length === 30);
-      idbMerge(id, rows, { older: true });   /* 轮 204：网络历史页镜像进全量库 */
-    } else if (msgsConv === id && !msgs.value.some((m) => m.id < 0)) {
+      if (!applyRows(rows, rows.length === 30)) return false;
+      idbMerge(cid, rows, { older: true });   /* 轮 204：网络历史页镜像进全量库 */
+    } else if (msgsConv === cid && !msgs.value.some((m) => m.id < 0)) {
       /* 重开/刷新同会话：尾部增量并入（保住已翻历史），不整窗替换 */
       const { rows: merged, added } = mergeTail(msgs.value, asc);
       if (added) {
@@ -308,16 +332,19 @@ async function loadMessages(id, { before = null } = {}) {
       }
       oldestId.value = msgs.value.length ? msgs.value[0].id : null;
     } else {
-      applyRows(rows, rows.length === 30);
+      if (!applyRows(rows, rows.length === 30)) return false;
       entryReady.value = true;   /* 轮 194：首进无本地库，网络落定即开揭示门控 */
     }
+    if (stale()) return false;   /* 轮 225：落库前再确认一次 —— 防把 A 的消息写进 B 的本地库 */
     /* 本地库同步（全量落盘） */
-    dmStoreSave(meId.value, id, msgs.value, hasMore.value);
-    idbMerge(id, msgs.value);   /* 轮 204：镜像进全量库 */
-    if (before == null) backfillOlder(id);   /* 轮 204：静默回填更早历史（只写库不进 UI） */
+    dmStoreSave(meId.value, cid, msgs.value, hasMore.value);
+    idbMerge(cid, msgs.value);   /* 轮 204：镜像进全量库 */
+    if (before == null) backfillOlder(cid);   /* 轮 204：静默回填更早历史（只写库不进 UI） */
   } catch (e) {
-    if (before == null && msgsConv !== id) applyRows([], false);
+    if (stale()) return false;   /* 轮 225 */
+    if (before == null && msgsConv !== cid) applyRows([], false);
   }
+  if (stale()) return false;   /* 轮 225：过期时连 loadingMsgs/pinning 都不要碰（新请求在管） */
   loadingMsgs.value = false;
   if (before == null) pinning.value = false;
   return smoothed;
@@ -346,10 +373,10 @@ async function backfillOlder(convId) {
   finally { backfillBusy.delete(String(convId)); }
 }
 
-function scrollBottom(smooth = false) {
+function scrollBottom(smooth = false, reveal = false) {
   nextTick(() => {
     const el = listEl.value;
-    if (!el) return;
+    if (!el) { if (reveal) listRevealed.value = true; return; }   /* 没有容器就无所谓位置 */
     /* 轮 173：落地后连续几帧追钉底部——字体/内容晚到会把已排好的消息撑高，
      * 只滚一次会停在「中间」（用户实测：记录多了进会话落在半截）。
      * 用户一旦上滑（触摸/滚轮）立即停追，不打扰回看。 */
@@ -395,6 +422,35 @@ function scrollBottom(smooth = false) {
     };
     if (smooth && el.scrollTo) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
     requestAnimationFrame(chase);
+    /* 轮 228 · 秒开揭示：**确认真的贴底了再亮**。
+       为什么不能简单地在 set() 后面直接置 true：set() 执行时 DOM 刚 patch、内容高度还没
+       展开完，scrollTop 会被夹回 0（真机实测揭示首帧 st=0 sh=5375 gap=4649 —— 等于先给
+       用户看一眼列表顶，下一帧才跳到底，比慢更糟）。
+       这里自己每帧钉底，**等到 gap<4 的那一帧才揭示** —— 揭示与钉底同帧，亮出来就在最新消息。
+       本循环刻意不挂 scrollGen：chase 会被后续 ++scrollGen 作废（比如 mergeTail 的平滑滚动），
+       但那不该拖累揭示；另设 30 帧（~500ms）兜底，任何情况下都不会把消息区永久藏住。 */
+    if (reveal) {
+      let rf = 0, lastSh = -1, sameSh = 0;
+      const revealWhenPinned = () => {
+        if (listRevealed.value) return;
+        const e2 = listEl.value;
+        if (!e2) { listRevealed.value = true; return; }
+        e2.scrollTop = e2.scrollHeight;
+        const sh = e2.scrollHeight;
+        const g = sh - e2.scrollTop - e2.clientHeight;
+        /* 「高度连续 2 帧不变」= 内容已定型，这一步不能省：
+           刚 patch 完的瞬间内容还没铺开，scrollHeight 只是「刚好装满容器」的矮值，
+           此时 gap 天然为 0 —— 假贴底。真机实测就是被它骗过：判据认为已到底 → 揭示 →
+           下一帧内容展开成 5375px，画面其实停在顶部（首帧距底 4649px）。
+           内容定型后再确认 gap<4，亮出来才是真的最新消息。
+           短会话（本来就不够一屏）同样会很快定型 + gap=0，一样秒开；
+           60 帧（~1s）兜底，绝不把消息区永久藏住。 */
+        if (sh === lastSh) sameSh++; else { sameSh = 0; lastSh = sh; }
+        if ((sameSh >= 2 && g < 4) || ++rf > 60) { listRevealed.value = true; return; }
+        requestAnimationFrame(revealWhenPinned);
+      };
+      requestAnimationFrame(revealWhenPinned);
+    }
   });
 }
 
@@ -441,7 +497,10 @@ async function openConv(id) {
   entryReady.value = false;     /* 轮 180：显示门控重置——等 fresh 数据落定 */
 
   setTimeout(() => { if (entryReady.value && !listRevealed.value) listRevealed.value = true; }, 2000);   /* 轮 180：兜底只揭示已落定的 */
-  const smoothed = await loadMessages(activeId.value);
+  const smoothed = await loadMessages(id);
+  /* 轮 225：等消息期间用户又点了别的会话 / 返回了列表 → 别再动滚动与已读标记
+   * （否则会用旧会话的落点把新会话的屏滚乱，这是「切完位置乱跳」的另一半）。 */
+  if (String(activeId.value) !== String(id)) return;
   if (!smoothed) scrollBottom();   /* 有新消息时已平滑滚过，不再瞬时跳 */
   dmApi.markRead(id).catch(() => {});
   refreshBadge();
@@ -461,6 +520,10 @@ function backToList() {
 /* ─────────── 发送 / 撤回 ─────────── */
 
 async function send() {
+  /* 轮 229：发送中不再把按钮置 disabled（点了发送瞬间 body 会被清空，:disabled 随即为真，
+     Naive 就把整颗按钮调淡 —— 转圈挂在淡色底上很别扭，用户反馈「不协调」）。
+     防重复发送改由这里挡：loading 态的 n-button 点击仍会派发 click。 */
+  if (sending.value) return;
   const err = validateSend(body.value, null);
   if (err) { sendErr.value = t(err); return; }
   const text = body.value.trim();
@@ -480,37 +543,45 @@ async function send() {
     /* 轮 157：dm_send 直接回传 {msg_id, created_at} → 就地把乐观行换成正式行，
      * 不再整段重载 30 条（发送到「已发」少一次网络往返，弱网尤其明显） */
     const mid = r && r.msg_id;
+    /* 轮 225：发送期间用户可能已经切走 —— 那时 msgs 装的是别人的消息，
+     * 绝不能拿它去改列表 / 落库（会把 B 的消息写进 A 的本地库）。 */
+    const onSameConv = String(activeId.value) === String(convId);
     if (mid != null) {
-      const rowSrv = {
-        id: mid, sender: meId.value, body: text, image_path: null,
-        created_at: r.created_at || temp.created_at, deleted_at: null,
-      };
-      msgs.value = msgs.value.map((m) => (m.id === temp.id ? rowSrv : m));
-      oldestId.value = msgs.value.length ? msgs.value[0].id : null;
-      /* 轮 194：本地库同步补上这条（不补的话退出重进会先看到本地库少一条） */
-      dmStoreSave(meId.value, convId, msgs.value, hasMore.value);
-      idbMerge(convId, msgs.value);   /* 轮 204：发送镜像全量库 */
-    } else {
+      if (onSameConv) {
+        const rowSrv = {
+          id: mid, sender: meId.value, body: text, image_path: null,
+          created_at: r.created_at || temp.created_at, deleted_at: null,
+        };
+        msgs.value = msgs.value.map((m) => (m.id === temp.id ? rowSrv : m));
+        oldestId.value = msgs.value.length ? msgs.value[0].id : null;
+        /* 轮 194：本地库同步补上这条（不补的话退出重进会先看到本地库少一条） */
+        dmStoreSave(meId.value, convId, msgs.value, hasMore.value);
+        idbMerge(convId, msgs.value);   /* 轮 204：发送镜像全量库 */
+      }
+    } else if (onSameConv) {
       await loadMessages(convId);   /* 兜底：拿不到 msg_id（异常网关）才走整段重载 */
     }
-    scrollBottom(true);
+    if (onSameConv) scrollBottom(true);
     const row = convs.value.find((c) => String(c.conv_id) === String(convId));
     if (row) { row.last_preview = text.slice(0, 80); row.last_message_at = new Date().toISOString(); }
     refreshBadge();
   } catch (e) {
-    msgs.value = msgs.value.map((m) => (m.id === temp.id ? { ...m, pending: false, failed: true } : m));
+    if (onSameConv) msgs.value = msgs.value.map((m) => (m.id === temp.id ? { ...m, pending: false, failed: true } : m));
     sendErr.value = t(sendErrKey(e));
   }
   sending.value = false;
 }
 
 async function recall(m) {
+  const convId = String(activeId.value);   /* 轮 225：先捕获归属会话——切走后就别再动当前列表/落库 */
   try {
     await dmApi.recall(m, meId.value);
-    msgs.value = msgs.value.map((x) =>
-      (x.id === m.id ? { ...x, deleted_at: new Date().toISOString(), body: "", image_path: null } : x));
-    dmStoreSave(meId.value, activeId.value, msgs.value, hasMore.value);   /* 轮 194：撤回落盘 */
-    idbMerge(activeId.value, msgs.value);   /* 轮 204：撤回镜像全量库 */
+    if (String(activeId.value) === convId) {
+      msgs.value = msgs.value.map((x) =>
+        (x.id === m.id ? { ...x, deleted_at: new Date().toISOString(), body: "", image_path: null } : x));
+      dmStoreSave(meId.value, convId, msgs.value, hasMore.value);   /* 轮 194：撤回落盘 */
+      idbMerge(convId, msgs.value);   /* 轮 204：撤回镜像全量库 */
+    }
   } catch (e) {
     const late = e && String(e.message || e).includes("too-late");
     sendErr.value = t(late ? "dm.errTooLate" : "dm.errNetwork");
@@ -633,7 +704,13 @@ async function tick() {
   try {
     if (activeId.value) {
       /* 尾部增量合并（mergeTail）：已见行原位更新、新行追加——翻过的历史不再被轮询冲掉 */
-      const got = (await dmApi.listMessages(activeId.value, { before: null, limit: 20 })) || [];
+      const cid = String(activeId.value);
+      const mySeq = msgSeq;
+      const got = (await dmApi.listMessages(cid, { before: null, limit: 20 })) || [];
+      /* 轮 225：等响应期间用户切走了会话（或发起了新的加载）→ 这份尾部数据属于旧会话。
+       * 没有这道守卫时，5s 一次的轮询会把 A 的新消息 merge 进当前打开的 B/C 会话
+       * （用户实测「快速点几下之后 C 里出现 B 甚至 A 的记录」——轮询与切换撞车是主凶之一）。 */
+      if (isStale(mySeq, cid)) { tickBusy = false; return; }
       const asc = got.slice().reverse();
       if (asc.length) {
         const { rows, added } = mergeTail(msgs.value, asc);
@@ -643,7 +720,7 @@ async function tick() {
           msgs.value = rows;
           if (added) {
             if (nearBottom) scrollBottom(true);
-            dmApi.markRead(activeId.value).catch(() => {});
+            dmApi.markRead(cid).catch(() => {});
             refreshBadge();
           }
         }
@@ -972,8 +1049,9 @@ function goSignIn() {
                   v-model="body" type="textarea" rows="1" autosize :maxlength="2000"
                   :placeholder="isMobileNav ? t('dm.placeholderMobile') : t('dm.placeholder')"
                   @keydown.enter.exact.prevent="send" />
-                <n-button type="primary" round size="small" :loading="sending" :disabled="!body.trim()" @click="send">
-                  {{ t("dm.send") }}
+                <n-button type="primary" round size="small" class="dm-send-btn" :disabled="!sending && !body.trim()" @click="send">
+                  <span :style="{ visibility: sending ? 'hidden' : 'visible' }">{{ t("dm.send") }}</span>
+                  <span v-if="sending" class="dm-send-spin" aria-hidden="true"></span>
                 </n-button>
               </div>
             </template>

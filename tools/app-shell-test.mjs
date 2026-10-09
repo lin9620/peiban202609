@@ -72,9 +72,9 @@ const chatThread = (css.match(/\.shell--mobile-nav\.shell--chat \.dm-thread \{[\
 ok("T20 手机聊天卡横向撑满（flex column 必须重置 align-items:stretch）",
   /align-items:\s*stretch/.test(chatWrap) && /width:\s*100%/.test(chatWrap)
   && /width:\s*100%/.test(chatThread), chatWrap.replace(/\s+/g, " "));
-ok("T21 手机聊天页隐藏桌面提示（dm-hint）+ 微信式输入行（发送键在框旁,轮 68）",
+ok("T21 手机聊天页隐藏桌面提示（dm-hint）+ 微信式输入行（发送键在框旁、贴底,轮 68/226）",
   css.includes(".shell--mobile-nav.shell--chat .dm-hint { display: none; }")
-  && css.includes(".dm-input-row { display: flex; align-items: center;")
+  && css.includes(".dm-input-row { display: flex; align-items: flex-end;")
   && mv.includes('class="dm-input-row"'));
 
 ok("T22 手机输入框用短占位符（桌面仍保留 Enter/Shift 说明）",
@@ -364,10 +364,20 @@ ok("T62 轮144：聊天头「⋯」菜单点空白自动关（document pointerdo
   mv.includes('addEventListener("pointerdown", onDocPointerDown)')
   && mv.includes('removeEventListener("pointerdown", onDocPointerDown)')
   && mv.includes('closest(".dm-head-tools")'));
-ok("T63 轮215 定案：左导航/底栏再点暖心墙 = 回原位置（refresh 时间戳 query 已废止）",
+ok("T63 轮232：再点当前页签 = **回到顶部 + 刷新**（retapTab 信号；两导航都接；不再用 refresh query）",
   sn.includes("onNavClick") && sn.includes('@click="onNavClick(it, $event)"')
+  && sn.includes("retapTab(it.to)")
   && !sn.includes('refresh: String(Date.now())')
-  && !read("src/views/CommunityView.vue").includes("route.query.refresh"));
+  && !read("src/views/CommunityView.vue").includes("route.query.refresh")
+  /* TabBar：点「自己」时发信号（同路径 push 被 vue-router 忽略 → 过去点了毫无反应） */
+  && read("src/components/TabBar.vue").includes("retapTab(item.path)")
+  /* uiStore：信号本体（不带 URL，不污染地址栏与历史） */
+  && read("src/stores/uiStore.js").includes("export function retapTab(")
+  && read("src/stores/uiStore.js").includes("retapSeq")
+  /* CommunityView 真的接了：滚回顶部（容器）+ 记忆位置归零 + 刷新 */
+  && read("src/views/CommunityView.vue").includes("watch([retapSeq, retapPath]")
+  && read("src/views/CommunityView.vue").includes("wallScrollTop = 0;")
+  && read("src/views/CommunityView.vue").includes("manualRefresh();"));
 
 out.push("");
 out.push(`TOTAL ${pass + fail}  PASS ${pass}  FAIL ${fail}`);

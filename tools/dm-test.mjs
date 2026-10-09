@@ -303,8 +303,8 @@ ok("/settings 路由已注册", mvRouter.includes('"/settings"'));
   ok("私信页：发送后就地落位（msg_id 直换 + 本地库补条）",
     mv.includes("r.msg_id") && mv.includes("dmStoreSave(meId.value, convId, msgs.value, hasMore.value)"));
   ok("私信页：进会话本地库秒开（无网络先渲染）",
-    mv.includes("dmStoreLoad(meId.value, id)") && mv.includes("applyRows(local.msgs.slice().reverse(), local.more)"));
-  ok("私信页：网络回来全量落盘本地库", mv.includes("dmStoreSave(meId.value, id, msgs.value, hasMore.value)"));
+    mv.includes("dmStoreLoad(meId.value, cid)") && mv.includes("applyRows(local.msgs.slice().reverse(), local.more)"));
+  ok("私信页：网络回来全量落盘本地库", mv.includes("dmStoreSave(meId.value, cid, msgs.value, hasMore.value)"));
   ok("私信页：删会话/拒请求清本地库", mv.includes("dmStoreDrop(meId.value, c.conv_id)"));
   ok("私信页：轮询防重叠（busy 门）", mv.includes("tickBusy"));
   ok("漂流瓶聊天框：同款四件套",

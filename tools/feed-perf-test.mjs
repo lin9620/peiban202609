@@ -190,11 +190,15 @@ t("T8 memoWhen：返回的是函数，可安全在每次渲染里调用", () => 
  */
 const B1 = read("src/views/CommunityView.vue");
 
-t("T20 列表只渲染窗口切片（pageItems），不再直接遍历整段已亮数据", () => {
-  assert.ok(/v-for="p in pageItems"/.test(B1), "模板没改用窗口切片 pageItems");
-  assert.ok(!/v-for="p in shownPage"/.test(B1), "模板仍在直接遍历 shownPage（窗口没生效）");
-  assert.ok(/const pageItems = computed\(\(\) => shownPage\.value\.slice\(winStart\.value, winEnd\.value\)\)/.test(B1),
-    "pageItems 不是 shownPage 的窗口切片");
+t("T20 虚拟窗口退役：全量真实渲染（pageItems = shownPage），位置由真实 DOM 保持", () => {
+  /* 轮 223：几十条帖子的规模下窗口是自残 —— pads 重算会把滚动位置钳回 0，
+     「位置保持」全废（用户实测「切页签回页顶」「从帖子详情返回不保持原样」）。
+     退役后全量真实渲染，位置由真实 DOM 天然保持。
+     真到几百条再上虚拟列表时，必须连滚动容器一起换（window → 内部容器）。 */
+  assert.ok(/const pageItems = computed\(\(\) => shownPage\.value\)/.test(B1),
+    "pageItems 不是全量（退役不彻底，还留着窗口切片）");
+  assert.ok(/v-for="p in pageItems"/.test(B1), "模板没走 pageItems");
+  assert.ok(!/winStart\.value, winEnd\.value\)/.test(B1), "还在按窗口下标切片");
 });
 
 t("T21 上下占位块存在，且高度绑的是算出来的 padTop / padBottom", () => {
@@ -210,9 +214,13 @@ t("T22 卡片挂了函数 ref（高度表与锚点补偿的数据来源）", () 
   assert.ok(/cardRO\s*=\s*new ResizeObserver/.test(B1), "没建 ResizeObserver → 卡片自身变高（展开评论）后高度表不更新");
 });
 
-t("T23 高度表带上了卡片间距 gap，且间距是从真卡片现读的（不是写死）", () => {
-  assert.ok(/buildOffsets\(list, heights, \{ gap: feedGap\(\), est: FEED_EST \}\)/.test(B1),
-    "buildOffsets 没传 gap/est（几百条后会串位，估高也会和 CSS 占位打架）");
+t("T23 虚拟窗口退役：占位恒 0，不再用估高表撑滚动高度", () => {
+  /* 轮 223 退役：pads 恒 0，滚动高度由真实 DOM 决定，估高表不再参与布局。
+     （下面几条仍锁住兜底常量与 CSS 的口径一致 —— 将来真要重新引入占位块时，这仍是对的约束。） */
+  assert.ok(/padTop\.value = 0;/.test(B1) && /padBottom\.value = 0;/.test(B1),
+    "pads 没有恒置 0（占位块还在撑高度 → 滚动位置会被钳回 0）");
+  assert.ok(!/buildOffsets\(list, heights, \{ gap: feedGap\(\), est: FEED_EST \}\)/.test(B1),
+    "还在用估高表算占位（退役不彻底）");
   /* 真机取证：同一份 style.css 里 .card 桌面 18px、.shell--mobile-nav .card 手机 12px ——
      写死任一个，几百条之后就是上千像素的累计串位，所以必须从卡片 computed style 现读。 */
   assert.ok(/function feedGap\(\)/.test(B1), "缺 feedGap");
@@ -235,18 +243,38 @@ t("T23 高度表带上了卡片间距 gap，且间距是从真卡片现读的（
   assert.ok(/const FEED_EST = DEFAULT_EST;/.test(B1), "FEED_EST 没复用 DEFAULT_EST（又写死了一个数）");
 });
 
-t("T24 短列表回退阀：≤ WINDOW_ON_THRESHOLD 条时窗口 = 全部、占位清零", () => {
-  assert.ok(/if \(n <= WINDOW_ON_THRESHOLD\)/.test(B1), "缺短列表回退分支");
-  assert.ok(/winEnd\.value = n;[\s\S]{0,140}?padTop\.value = 0;[\s\S]{0,80}?padBottom\.value = 0;/.test(B1),
-    "回退分支没有把占位清零");
+t("T24 虚拟窗口退役：窗口恒为全量（winStart=0 / winEnd=已亮条数）", () => {
+  assert.ok(/winStart\.value = 0;/.test(B1), "winStart 没恒置 0");
+  assert.ok(/winEnd\.value = shownPage\.value\.length;/.test(B1), "winEnd 没恒为全量（窗口还在截断列表）");
 });
 
-t("T25 触底续载改由 nearEnd 算（哨兵会被底部占位块推到视口外，不能再用它）", () => {
-  assert.ok(/nearEnd\(\{ total, scrollTop: listScrollTop\(\)/.test(B1), "没接 nearEnd");
-  assert.ok(!/\bfeedIO\b/.test(B1), "旧的 IntersectionObserver 续载逻辑还在（会与 nearEnd 双重续载）");
+t("T25 触底续载读真实滚动容器（手机端墙自滚，window.scrollY 恒 0）", () => {
+  /* 轮 223：退役后没有占位块撑高，但手机端墙是**自滚容器**（wallScrollerEl =
+     fixed + overflowY:auto），此时 window.scrollY 恒 0 —— 续载判据若只看 window，
+     就永远判「已到底」而无限续载。必须读容器几何，桌面端（整页滚）再回落 window。 */
+  assert.ok(/function scrollerNearEnd\(\)/.test(B1), "没有触底判据 scrollerNearEnd");
+  assert.ok(/el\.scrollTop \+ el\.clientHeight >= el\.scrollHeight - NEAR_END_PX/.test(B1),
+    "没按容器几何算触底（手机端 window.scrollY 恒 0）");
+  assert.ok(/window\.scrollY \|\| doc\.scrollTop/.test(B1), "没兼容桌面端整页滚动");
+  assert.ok(!/\bfeedIO\b/.test(B1), "旧的 IntersectionObserver 续载逻辑还在");
   assert.ok(!/new IntersectionObserver/.test(B1), "组件里还有 IntersectionObserver");
-  assert.ok(/if \(hasMore\.value\) reveal\.value \+= PAGE_SIZE;/.test(B1), "续亮批次丢了");
-  assert.ok(/else if \(!cloudDone\.value\) loadMoreCloud\(\);/.test(B1), "向服务器取下一页丢了");
+  assert.ok(/if \(hasMore\.value\) reveal\.value = Math\.min\(shown\.value\.length, reveal\.value \+ REVEAL_STEP\);/.test(B1),
+    "续亮批次丢了（轮 231：一次补 REVEAL_STEP 条，不再一次只挤 PAGE_SIZE）");
+  /* 轮 231：续载从「先亮完再拉下一页」的串行改成并行 —— 已亮的快到已拉取尾部时就提前要下一页。
+     少这条，用户每滚到底都得先把剩余条目熬完才等到一次网络往返（实测「一顿一顿、拉不动」）。 */
+  assert.ok(/const notShown = shown\.value\.length - reveal\.value;/.test(B1)
+    && /if \(!cloudDone\.value && notShown < REVEAL_STEP \/ 2\) loadMoreCloud\(\);/.test(B1),
+    "预加载丢了（轮 231：不等亮完就提前拉下一页）");
+  /* 轮 231：切回页签的静默新鲜化 —— KeepAlive 保活让切回时一个请求都不发（用户：点暖心墙没反应） */
+  assert.ok(/loadCloud\(\{ quiet: true \}\)/.test(B1) && /if \(quiet\) \{/.test(B1),
+    "切回暖心墙的静默新鲜化丢了");
+  assert.ok(/if \(!cloudDone\.value && notShown < REVEAL_STEP \/ 2\) loadMoreCloud\(\);/.test(B1), "向服务器取下一页丢了（轮 231：改预加载，不再挂在 else 分支上）");
+  /* 本轮真事故的防复发锁：feedTick / onUserMove 的定义曾随退役一起被误删，而
+     onMounted / onActivated / onDeactivated / onUnmounted 仍在引用它们 →
+     rAF 求值处抛 ReferenceError 把整个钩子打断，「回位」那段代码根本没机会执行
+     （用户实测「从帖子详情返回暖心墙不保持原样」）。这两个函数是必需的。 */
+  assert.ok(/function feedTick\(\)/.test(B1), "feedTick 没定义（rAF 求值处抛 ReferenceError → 钩子中断）");
+  assert.ok(/function onUserMove\(\)/.test(B1), "onUserMove 没定义（addEventListener 处抛 ReferenceError → 钩子中断）");
 });
 
 t("T26 滚动监听装配齐 + 卸载时拆干净（rAF / RO / 元素表）", () => {
@@ -316,7 +344,15 @@ t("T29 滚动锚定「按需借用」：只在程序式跳转期间关，跳完 
   /* 轮 109（假失败修复）：本文件 onUnmounted 不止一处（轮108 给底部输入条/监听兜底先注册了一个），
      indexOf 只会抓到前一个 → 改成把每个 onUnmounted 块都切出来，要求至少一处还回锚定。 */
   const offs = n.split("onUnmounted(() => {").slice(1);
-  assert.ok(offs.some((x) => /releaseAnchor\(\)/.test(x.slice(0, 700))), "离场没还回锚定");
+  /* 轮 109/223：本文件 onUnmounted 不止一处，且「离场存档对象」这轮又长了一行 ——
+     固定 700 字符切分会把尾部的 releaseAnchor 切出去（假失败；本测试在 centerOn 那段
+     已经记过同样的教训）。改成切「整个钩子体」：一直取到下一个顶层声明为止。 */
+  const hookBody = (x) => {
+    const cuts = ["\nfunction ", "\nwatch(", "\nonMounted(", "\nonActivated(", "\nonDeactivated(", "\n</script>"]
+      .map((s) => x.indexOf(s)).filter((v) => v > 0);
+    return cuts.length ? x.slice(0, Math.min(...cuts)) : x;
+  };
+  assert.ok(offs.some((x) => /releaseAnchor\(\)/.test(hookBody(x))), "离场没还回锚定");
 });
 
 t("T30 让位守卫真的活着：滚动时刻被记录 + 间距缓存随断点失效", () => {

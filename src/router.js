@@ -1,9 +1,18 @@
 import { createRouter, createWebHistory } from "vue-router";
+import { getScroll } from "./utils/scrollMem.js";
 import HomeView from "./views/HomeView.vue";
 
 /* 其余页面按需加载：首屏更快，重依赖不阻塞首页 */
 export const router = createRouter({
   history: createWebHistory(),
+  /* 轮 222 · 知乎式页签回位：组间导航 = 回到记忆位置（vue-router 在 DOM 更新后、绘制前应用，零闪）；
+   * 同组原地切换（列表↔会话）= 不动滚动（返回 false）。savedPosition = 系统返回键的前进后退。 */
+  scrollBehavior(to, from, savedPosition) {
+    if (to.meta && to.meta.grp && from.meta && to.meta.grp === from.meta.grp) return false;
+    if (savedPosition) return savedPosition;
+    const y = getScroll(to.path);
+    return { top: y != null ? y : 0 };
+  },
   routes: [
     /* 轮 86：/zh/* 别名 —— 中文预渲染着陆页（dist/zh/**，构建期生成）与 en 页共用同一组件；
      * 语言由 i18n.js 按 location.pathname 强制 zh（只影响本次视图，不覆盖用户语言存档） */
