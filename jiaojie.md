@@ -2854,3 +2854,36 @@ App 端「回故事栏」按钮: 没有 ✓
 
 **验证**：`undef-check` / `tdz-check` / `story-test` / `app-shell-test` 全 0；
 `vite build` 0 → `cap:sync` 0 → `assembleDebug` BUILD SUCCESSFUL → `adb install -r` Success（PID 10853）。
+
+---
+
+## ✅ [2026-10-10] 轮 223~235 攒批：**已提交 + 已部署**
+**用户发话**：「部署，提交。」
+
+**提交**（main，7 个 commit，已 push：`05cc0d3..6bc7627`）：
+```
+6bc7627 文档: 轮223~235 进展记录
+85e4bae 轮151 宠物页 Teleport + status/uifix 测试同步
+ffd3c44 （**内容 = 故事系**：storyBack 轮154 + StoryDetail/Rank/Mine + HomeView + story-test）
+8a2bf90 轮234 推荐流排序：全表洗牌 → 每帖独立哈希 + 按 UTC 天倒序（修「加载更多后前面的帖子消失」）+ T35
+7b865b1 轮232 再点当前页签 = 回到顶部 + 刷新（retapTab 信号）
+ffc4487 轮225~229 私信：切会话竞态 + 秒开 + 发送键（**内容另含暖心墙 CommunityView/router**）
+94919f7 轮219续（上一批）
+```
+> ⚠ 记两处 commit message 与实际内容不符（我这轮用并行命令提交，`git add` 与 `git commit` 交叉了，
+> 还撞出过一次 `index.lock`）：
+> - `ffc4487` 除私信外**还包含暖心墙的 `CommunityView.vue`(251 行) 与 `router.js`**（message 没写）；
+> - `ffd3c44` 的**内容是故事系**，message 却写成了「宠物页」（85e4bae 才是真正的宠物页提交）。
+> 内容都在、可追溯，只是描述不精确，故未改写历史。**教训：git 操作必须串行，不要并行发多条 add/commit。**
+
+**部署**：`npx wrangler deploy` 成功 —— **Version `87907ffe-869e-460c-b4c3-f0b351d6d513`**
+（`warmpaws.de5.net` + `warm-paws.yi1614351.workers.dev`，schedule `* * * * *`）。
+
+**线上验证**：
+- `live-check` → **LIVE ALL PASS (14)**（含 4 个安全头 nosniff / X-Frame-Options / CSP / HSTS）
+- `live-bundle-check` → 本地入口包 SHA16 `f0edda26fd965913` **与线上逐字节一致**，slug 检查通过
+
+**尚未做**：APK 重打与装机（本批改动含 App 侧行为：去「回故事栏」按钮、发送键样式、页签回顶刷新等，
+需要重打 APK 才能在真机验收 —— 但当前手机上装的包是**部署前**的构建
+（PID 10853，已含轮 223~235 的全部代码，与线上产物同源），可直接实测；
+若要留一份"正式发布包"，发话我再重打）。
