@@ -2,7 +2,7 @@
 import { computed, ref, onMounted, onErrorCaptured, onBeforeUnmount, watch } from "vue";
 import { rememberScroll, restoreScroll } from "./utils/scrollMem.js";
 import {
-  NConfigProvider, NMessageProvider, NDialogProvider, NTag, NButton,
+  NConfigProvider, NMessageProvider, NDialogProvider, NTag, NButton, NModal,
 } from "naive-ui";
 import { useRoute, useRouter } from "vue-router";
 import { App as CapApp } from "@capacitor/app";
@@ -18,6 +18,8 @@ import { cloud, initCloud, cloudHandleAppRedirect, isAppAuthRedirect } from "./u
 import { cloudFetchUserPosts } from "./utils/wall.js";
 import { setUserScope } from "./utils/userScope.js";
 import { cacheDrop, cacheKey, swr } from "./utils/cache.js";
+import { avatarUrlFor } from "./utils/avatar.js";   /* 轮 238:萌宠头像池 */
+import { APP_RELEASE_URL } from "./utils/api/db.js";   /* 轮 238:App 安装包发布地址 */
 import { getItem } from "./utils/storage.js";
 import * as dmApi from "./utils/dm.js";
 import { bottleQuota, bottleHeld } from "./utils/bottle.js";
@@ -59,6 +61,37 @@ function noticeText(n) {
 
 /* 云端探测（未配置时静默保持本地模式） */
 const cloudSigned = computed(() => !!(cloud.ready && cloud.user));
+
+/* 轮 238 · 「下载 App」弹窗（桌面欢迎条入口）：直接下载 APK / 扫码下载。
+ * APK = npm run apk:web 复制进 public/apk/ 的构建产物；二维码在弹窗打开时
+ * 才懒加载 qrcode 生成（SVG 直插 DOM，不占主包；CSP img-src 含 data: 也可用）。 */
+const dlOpen = ref(false);
+const dlQr = ref("");
+const dlQrErr = ref(false);
+/* 轮 238 · 下载地址解析：管理员上传过 → Storage 公开地址（即最新包）；
+ * 没上传过（HEAD 404）→ 回退内置静态包 /apk/warm-paws.apk。二维码与下载同源。 */
+const dlUrl = ref("/apk/warm-paws.apk");
+const dlQrUrl = ref("");
+watch(dlOpen, (v) => {
+  if (!v) return;
+  dlQr.value = "";
+  dlQrErr.value = false;
+  dlUrl.value = APP_RELEASE_URL;
+  /* 先解析最终地址（Storage 探测 404 → 回退内置包），二维码用解析后的地址生成 */
+  const probe = /^https?:/.test(APP_RELEASE_URL)
+    ? fetch(APP_RELEASE_URL, { method: "HEAD" })
+        .then((r) => (r.ok ? APP_RELEASE_URL : "/apk/warm-paws.apk"))
+        .catch(() => "/apk/warm-paws.apk")
+    : Promise.resolve("/apk/warm-paws.apk");
+  probe.then((url) => {
+    if (!dlOpen.value) return;
+    dlUrl.value = url;
+    const abs = /^https?:/.test(url) ? url : location.origin + url;
+    return import("qrcode").then((QR) => QR.toString(abs, {
+      type: "svg", margin: 1, width: 168, color: { dark: "#4A3B33", light: "#FFF7EE" },
+    })).then((svg) => { if (dlOpen.value) dlQr.value = svg; });
+  }).catch(() => { if (dlOpen.value) dlQrErr.value = true; });
+});
 
 /* ─── T9 · 安卓系统返回键（App 内导航与原生一致）───
  * 手机形态导航 = 「Tab 根视图 + push 二级页」：
@@ -288,13 +321,18 @@ onBeforeUnmount(() => { clearTimeout(scrubTimer); scrubTimer = 0; });
                 <span class="wb-name">{{ displayName }}</span>
               </div>
               <div class="wb-right">
+                <!-- 轮 238 · 下载 App 入口（网页端专属；App 内不显示） -->
+                <button v-if="!isApp" type="button" class="wb-dl" :title="t('appDownload.button')" @click="dlOpen = true">
+                  <span class="wb-dl-ico" aria-hidden="true">⤓</span>{{ t("appDownload.button") }}
+                </button>
                 <span class="wb-coins">💰 {{ wallet.coins }}</span>
                 <router-link to="/notifications" class="wb-round" :title="t('notif.title')">
                   <span class="wb-ico">🔔</span>
                   <span v-if="badge.notif" class="wb-badge">{{ badge.notif > 99 ? "99+" : badge.notif }}</span>
                 </router-link>
                 <router-link to="/profile" class="wb-round wb-avatar" :title="t('nav.profile')">
-                  {{ displayName.slice(0, 1).toUpperCase() }}
+                  <img v-if="avatarUrlFor(cloud.user && cloud.user.id)" class="wb-avatar-img" :src="avatarUrlFor(cloud.user && cloud.user.id)" alt="" />
+                  <span v-else>{{ displayName.slice(0, 1).toUpperCase() }}</span>
                 </router-link>
               </div>
             </div>
@@ -329,6 +367,35 @@ onBeforeUnmount(() => { clearTimeout(scrubTimer); scrubTimer = 0; });
           <!-- 轮 57：页脚整块移除（用户：去掉「用心制作·你做的比你认为的更好」和那段空框）。
                隐私政策入口在「设置」页；/privacy 路由保留（Google 审核用）。 -->
         </div>
+
+        <!-- 轮 238 · 下载 App 弹窗：直接下载 APK / 扫码下载（渐变 hero + 双卡） -->
+        <n-modal v-model:show="dlOpen" transform-origin="center">
+          <div class="dl-modal">
+            <div class="dl-hero">
+              <span class="dl-orb dl-orb-a" aria-hidden="true"></span>
+              <span class="dl-orb dl-orb-b" aria-hidden="true"></span>
+              <button type="button" class="dl-close" :title="t('appDownload.close')" @click="dlOpen = false">✕</button>
+              <h3 class="dl-title">{{ t("appDownload.title") }}</h3>
+              <p class="dl-intro">{{ t("appDownload.intro") }}</p>
+            </div>
+            <div class="dl-grid">
+              <a class="dl-card" :href="dlUrl" download="warm-paws.apk">
+                <span class="dl-badge" aria-hidden="true">⤓</span>
+                <b class="dl-card-t">{{ t("appDownload.direct") }}</b>
+                <span class="dl-card-h">{{ t("appDownload.directHint") }}</span>
+              </a>
+              <div class="dl-card">
+                <span class="dl-qr-box">
+                  <span v-if="!dlQr && !dlQrErr" class="dl-qr-spin" aria-hidden="true"></span>
+                  <span v-else-if="dlQrErr" class="dl-qr-fallback" aria-hidden="true">🐾</span>
+                  <span v-else class="dl-qr-svg" v-html="dlQr"></span>
+                </span>
+                <b class="dl-card-t">{{ t("appDownload.qr") }}</b>
+                <span class="dl-card-h">{{ dlQrErr ? t("appDownload.qrFail") : t("appDownload.qrHint") }}</span>
+              </div>
+            </div>
+          </div>
+        </n-modal>
 
         <!-- 轮 108：tabbarSuppressed —— 底部输入条打开时收起 tabbar（输入条直接贴键盘，图2） -->
         <SideNav v-if="!isMobileNav" />

@@ -536,9 +536,43 @@ export const db = {
       },
     });
   },
-  /** 管理员公告 */
-  async adminBroadcast(body) {
+  /** 轮 238 · 公告分批推送：start 建档 → step 循环推批（幂等可续发）→ list 历史 */
+  async adminBroadcastStart(body) {
     return call("/admin/broadcast", { method: "POST", body: { body } });
+  },
+  async adminBroadcastStep(bid, batch) {
+    return call("/admin/broadcast/step", { method: "POST", body: batch ? { bid, batch } : { bid } });
+  },
+  /** 公告历史（admin_broadcasts_list；非管理员得到空集） */
+  async adminBroadcasts(limit = 20, offset = 0) {
+    return call(`/admin/broadcast?limit=${limit}&offset=${offset}`, { method: "GET" });
+  },
+
+  /* ═══ 轮 238 · App 安装包发布（经 /sb 透传到 Storage；对象名固定 warm-paws.apk）═══ */
+  async appReleaseUpload(file) {
+    const res = await fetch(`${BASE}/sb/storage/v1/object/app-releases/warm-paws.apk`, {
+      method: "POST",
+      headers: authHeaders({ "content-type": "application/vnd.android.package-archive", "x-upsert": "true" }),
+      body: file,
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => null);
+      throw new Error((j && (j.message || j.error)) || `HTTP ${res.status}`);
+    }
+    return true;
+  },
+  async appReleaseMeta() {
+    const res = await fetch(`${BASE}/sb/storage/v1/object/list/app-releases`, {
+      method: "POST",
+      headers: authHeaders({ "content-type": "application/json" }),
+      body: JSON.stringify({ prefix: "", limit: 5 }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const rows = await res.json().catch(() => []);
+    const row = (Array.isArray(rows) ? rows : []).find((x) => x.name === "warm-paws.apk");
+    return row && row.metadata
+      ? { sizeMb: (row.metadata.size / 1048576).toFixed(1), when: row.updated_at }
+      : null;
   },
 
   /** 清空我的全部通知 */

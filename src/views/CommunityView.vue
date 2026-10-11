@@ -60,6 +60,7 @@ import ReportDialog from "../components/ReportDialog.vue";
 import { filterBlocked, refreshBlocks } from "../utils/userBlocks.js";
 /* 轮 84：…菜单的「拷贝」（WebView 里 navigator.clipboard 缺失时 execCommand 兜底） */
 import { copyText } from "../utils/clipboard.js";
+import { avatarUrlFor } from "../utils/avatar.js";   /* 轮 238:萌宠头像池 */
 import {
   validateImageFile, isSaneShape, isUsableDataUrl, shrinkToDataUrl,
 } from "../utils/imaging.js";
@@ -1815,8 +1816,8 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
         <n-avatar round :size="42" class="post-avatar"
           :class="{ clickable: canOpen(p) }"
           :title="canOpen(p) ? t('community.viewHome') : ''"
-          @click="goProfile(p)">
-          🙂
+          :src="avatarUrlFor(p.userId) || undefined"
+          @click="goProfile(p)"><template v-if="!avatarUrlFor(p.userId)" #default>🙂</template><template v-else #fallback>🙂</template>
         </n-avatar>
         <div class="post-meta">
           <div class="post-name"

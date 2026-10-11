@@ -773,9 +773,31 @@ async function hit(script, path, init) {
   const { res, c } = await hit([{ body: { admin: true, sent: 1 } }], "/api/admin/broadcast", {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ body: "hi" }),
   });
-  ok("adminBroadcast 200", res.status === 200);
-  ok("adminBroadcast → rpc admin_broadcast", c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/admin_broadcast` &&
+  ok("adminBroadcastStart 200", res.status === 200);
+  ok("adminBroadcastStart → rpc admin_broadcast_start", c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/admin_broadcast_start` &&
     c.outbound[0].init.body === JSON.stringify({ p_body: "hi" }), c.outbound[0].init.body);
+}
+{
+  /* 轮 238 · 分批推送：POST step → rpc admin_broadcast_step（bid 校验） */
+  const st = await hit([{ body: { admin: true, bid: "b", sent: 2000, done: false } }], "/api/admin/broadcast/step", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ bid: "11111111-2222-3333-4444-555555555555" }),
+  });
+  ok("adminBroadcastStep 200", st.res.status === 200);
+  ok("adminBroadcastStep → rpc admin_broadcast_step",
+    st.c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/admin_broadcast_step` &&
+    st.c.outbound[0].init.body === JSON.stringify({ p_bid: "11111111-2222-3333-4444-555555555555" }), st.c.outbound[0].init.body);
+  const bad = await hit([], "/api/admin/broadcast/step", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ bid: "not-a-uuid" }),
+  });
+  ok("adminBroadcastStep 坏 bid → 400", bad.res.status === 400);
+}
+{
+  /* 公告历史：GET 同路径 → rpc admin_broadcasts_list（limit/offset 透传） */
+  const { res, c } = await hit([{ body: [{ id: "b", body: "hi", created_at: "2026-10-11", sent: 3, total: 3, done: true }] }], "/api/admin/broadcast?limit=20&offset=0", { method: "GET" });
+  ok("adminBroadcasts 200", res.status === 200);
+  ok("adminBroadcasts → rpc admin_broadcasts_list",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/admin_broadcasts_list` &&
+    c.outbound[0].init.body === JSON.stringify({ p_limit: 20, p_offset: 0 }), c.outbound[0].init.body);
 }
 
 /* ─────────── 私信（阶段 4：/api/dm/* → rpc dm_*） ─────────── */
@@ -914,9 +936,31 @@ async function hit(script, path, init) {
   const { res, c } = await hit([{ body: { admin: true, sent: 1 } }], "/api/admin/broadcast", {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ body: "hi" }),
   });
-  ok("adminBroadcast 200", res.status === 200);
-  ok("adminBroadcast → rpc admin_broadcast", c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/admin_broadcast` &&
+  ok("adminBroadcastStart 200", res.status === 200);
+  ok("adminBroadcastStart → rpc admin_broadcast_start", c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/admin_broadcast_start` &&
     c.outbound[0].init.body === JSON.stringify({ p_body: "hi" }), c.outbound[0].init.body);
+}
+{
+  /* 轮 238 · 分批推送：POST step → rpc admin_broadcast_step（bid 校验） */
+  const st = await hit([{ body: { admin: true, bid: "b", sent: 2000, done: false } }], "/api/admin/broadcast/step", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ bid: "11111111-2222-3333-4444-555555555555" }),
+  });
+  ok("adminBroadcastStep 200", st.res.status === 200);
+  ok("adminBroadcastStep → rpc admin_broadcast_step",
+    st.c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/admin_broadcast_step` &&
+    st.c.outbound[0].init.body === JSON.stringify({ p_bid: "11111111-2222-3333-4444-555555555555" }), st.c.outbound[0].init.body);
+  const bad = await hit([], "/api/admin/broadcast/step", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ bid: "not-a-uuid" }),
+  });
+  ok("adminBroadcastStep 坏 bid → 400", bad.res.status === 400);
+}
+{
+  /* 公告历史：GET 同路径 → rpc admin_broadcasts_list（limit/offset 透传） */
+  const { res, c } = await hit([{ body: [{ id: "b", body: "hi", created_at: "2026-10-11", sent: 3, total: 3, done: true }] }], "/api/admin/broadcast?limit=20&offset=0", { method: "GET" });
+  ok("adminBroadcasts 200", res.status === 200);
+  ok("adminBroadcasts → rpc admin_broadcasts_list",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/admin_broadcasts_list` &&
+    c.outbound[0].init.body === JSON.stringify({ p_limit: 20, p_offset: 0 }), c.outbound[0].init.body);
 }
 
 /* ─────────── 私信（阶段 4：/api/dm/* → rpc dm_*） ─────────── */
@@ -1055,9 +1099,31 @@ async function hit(script, path, init) {
   const { res, c } = await hit([{ body: { admin: true, sent: 1 } }], "/api/admin/broadcast", {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ body: "hi" }),
   });
-  ok("adminBroadcast 200", res.status === 200);
-  ok("adminBroadcast → rpc admin_broadcast", c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/admin_broadcast` &&
+  ok("adminBroadcastStart 200", res.status === 200);
+  ok("adminBroadcastStart → rpc admin_broadcast_start", c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/admin_broadcast_start` &&
     c.outbound[0].init.body === JSON.stringify({ p_body: "hi" }), c.outbound[0].init.body);
+}
+{
+  /* 轮 238 · 分批推送：POST step → rpc admin_broadcast_step（bid 校验） */
+  const st = await hit([{ body: { admin: true, bid: "b", sent: 2000, done: false } }], "/api/admin/broadcast/step", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ bid: "11111111-2222-3333-4444-555555555555" }),
+  });
+  ok("adminBroadcastStep 200", st.res.status === 200);
+  ok("adminBroadcastStep → rpc admin_broadcast_step",
+    st.c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/admin_broadcast_step` &&
+    st.c.outbound[0].init.body === JSON.stringify({ p_bid: "11111111-2222-3333-4444-555555555555" }), st.c.outbound[0].init.body);
+  const bad = await hit([], "/api/admin/broadcast/step", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ bid: "not-a-uuid" }),
+  });
+  ok("adminBroadcastStep 坏 bid → 400", bad.res.status === 400);
+}
+{
+  /* 公告历史：GET 同路径 → rpc admin_broadcasts_list（limit/offset 透传） */
+  const { res, c } = await hit([{ body: [{ id: "b", body: "hi", created_at: "2026-10-11", sent: 3, total: 3, done: true }] }], "/api/admin/broadcast?limit=20&offset=0", { method: "GET" });
+  ok("adminBroadcasts 200", res.status === 200);
+  ok("adminBroadcasts → rpc admin_broadcasts_list",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/admin_broadcasts_list` &&
+    c.outbound[0].init.body === JSON.stringify({ p_limit: 20, p_offset: 0 }), c.outbound[0].init.body);
 }
 {
   const { res, c } = await hit([{ body: { ok: true, removed: 3 } }], "/api/notifications/clear", { method: "POST", body: "{}" });

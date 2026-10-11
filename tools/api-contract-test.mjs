@@ -432,8 +432,12 @@ if (!getClient()) {
   ok("notifPrefsSet 形状（布尔强转）", fake.calls[0] === 'rpc:notif_prefs_set:{"p_comments":true,"p_reactions":false,"p_pets":true,"p_dms":false}', fake.calls[0]);
 }
 {
-  const { fake } = await run([{ data: { admin: true, sent: 1 } }], () => db.adminBroadcast("hi"));
-  ok("adminBroadcast 形状", fake.calls[0] === 'rpc:admin_broadcast:{"p_body":"hi"}', fake.calls[0]);
+  const { fake } = await run([{ data: { admin: true, bid: "b", sent: 0, total: 1, done: false } }], () => db.adminBroadcastStart("hi"));
+  ok("adminBroadcastStart 形状", fake.calls[0] === 'rpc:admin_broadcast_start:{"p_body":"hi"}', fake.calls[0]);
+  const step = await run([{ data: { admin: true, bid: "b", sent: 2000, total: 1, done: false } }], () => db.adminBroadcastStep("b"));
+  ok("adminBroadcastStep 形状（默认批）", step.fake.calls[0] === 'rpc:admin_broadcast_step:{"p_bid":"b"}', step.fake.calls[0]);
+  const stepB = await run([{ data: { admin: true, bid: "b", sent: 4000, total: 1, done: false } }], () => db.adminBroadcastStep("b", 2000));
+  ok("adminBroadcastStep 形状（带批量）", stepB.fake.calls[0] === 'rpc:admin_broadcast_step:{"p_bid":"b","p_batch":2000}', stepB.fake.calls[0]);
 }
 {
   const { fake } = await run([{ data: { ok: true, removed: 3 } }], () => db.notifClear());

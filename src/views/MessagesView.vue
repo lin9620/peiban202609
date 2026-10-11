@@ -18,6 +18,7 @@ import * as dmApi from "../utils/dm.js";
 import { cacheKey, swr } from "../utils/cache.js";
 import { dmStoreLoad, dmStoreSave, dmStoreDrop } from "../utils/dmStore.js";
 import { restoreScroll } from "../utils/scrollMem.js";
+import { avatarUrlFor } from "../utils/avatar.js";   /* 轮 238:萌宠头像池 */
 import { idbMerge, idbOlderThan, idbServerDone, idbDrop } from "../utils/dmIdb.js";
 import {
   previewText, sortConvs, filterConvs, withDayDividers, displayMsg,
@@ -26,7 +27,7 @@ import {
 import { badge, refreshBadge } from "../stores/badgeStore.js";
 /* 轮 34：拉黑已全站生效（私信拦截 + 暖心墙内容隐藏）——这里走 userBlocks 的包装，
  * 让「拉黑名单」的内容过滤缓存与私信名单始终是同一份 */
-import { blockUser, unblockUser, refreshBlocks } from "../utils/userBlocks.js";
+import { blockUser, unblockUser, refreshBlocks, isBlocked } from "../utils/userBlocks.js";
 import BottleRecords from "../components/BottleRecords.vue";
 /* 轮 142 · 桌面「漂流瓶」段：行式列表（左列）+ 独立聊天框（中列）——与会话段的 dm-thread 各自单开 */
 import BottleChatList from "../components/BottleChatList.vue";
@@ -84,6 +85,18 @@ function fontsOk() {                /* 轮 178b：webfont 没在加载中 = 排�
     fonts.ready 有「触发过早误放行」的坑，弃用）；加载失败也会落到 loaded，不会永藏 */
       return !(document.fonts && document.fonts.status === "loading");
     }
+/* 轮 238 · 字体「静默」判定：文楷按 unicode-range 分块加载，两批之间 fonts.status
+ * 会短暂读回 "loaded"——fontsOk() 被骗过 → 揭示落在震荡中段 → 下一个子集到达继续
+ * 重排 = 内容闪现又跳没（长消息子集多、窗口多，用户实测「闪现出来又消失」）。
+ * 记录最后一次字体活动时刻，揭示前要求静默 ≥150ms（loading/loadingdone 都算活动）。 */
+let lastFontActivity = -1e9;
+if (typeof document !== "undefined" && document.fonts) {
+  const markFontActivity = () => { lastFontActivity = performance.now(); };
+  document.fonts.addEventListener("loading", markFontActivity);
+  document.fonts.addEventListener("loadingdone", markFontActivity);
+}
+const fontQuiet = () =>
+  !document.fonts || performance.now() - lastFontActivity > 150;
 let scrollGen = 0;                  /* 轮 176b：滚动链代数——平滑滚动接管时作废旧追帧链 */
 const pinning = ref(false);         /* 轮 173b：进会话钉底中（直到首屏数据落定） */
 function onListTouch() { userScrolling.value = true; }
@@ -117,9 +130,12 @@ function goUser(id) {
   if (id) router.push({ name: "waller", params: { id } });
 }
 
-/* 常规会话 / 消息请求 分组（被拉黑的会话在 rowView 里把未读清零） */
-const normal = computed(() => sortConvs(filterConvs(convs.value.filter((c) => c.accepted !== false), q.value)).map(rowView));
-const requests = computed(() => sortConvs(filterConvs(convs.value.filter((c) => c.accepted === false), q.value)).map(rowView));
+/* 常规会话 / 消息请求 分组（被拉黑的会话在 rowView 里把未读清零）。
+ * 轮 238：拉黑的会话**即时从列表隐藏**（服务端 dm_list_convs 同口径）——
+ * 过滤以全站拉黑权威名单 isBlocked 为准（响应式；冷启动用快照、refreshBlocks 校准），
+ * 行上的乐观标志只作补充——SWR 缓存快照里的行 blocked 是旧值，只看行标志会漏（用户实测）。 */
+const normal = computed(() => sortConvs(filterConvs(convs.value.filter((c) => c.accepted !== false && !c.blocked && !isBlocked(c.other_id)), q.value)).map(rowView));
+const requests = computed(() => sortConvs(filterConvs(convs.value.filter((c) => c.accepted === false && !c.blocked && !isBlocked(c.other_id)), q.value)).map(rowView));
 
 /* 带日期分隔的消息流 */
 const flow = computed(() => withDayDividers(msgs.value.map(displayMsg)));
@@ -179,10 +195,14 @@ const canType = computed(() => {
   if (!activeId.value) return false;
   const c = activeConv.value || meta.value || {};
   if (c.blocked) return false;
+  /* 轮 238：以全站拉黑权威名单为准（换设备/冷启动后行标志可能是缓存旧值） */
+  if (isBlocked(c.other_id || c.user_id)) return false;
   if (c.accepted === false) return false;
   return true;
 });
-const blockedByMe = computed(() => !!(activeConv.value || meta.value || {}).blocked);
+const blockedByMe = computed(() =>
+  !!(activeConv.value || meta.value || {}).blocked
+  || isBlocked((activeConv.value && activeConv.other_id) || (meta.value && meta.value.other_id)));
 
 /* #19 已拉黑列表：集中查看、逐个解除（RPC dm_blocks / dm_unblock；拉黑本身零通知） */
 const showBlocked = ref(false);
@@ -194,13 +214,21 @@ async function loadBlocked() {
 }
 async function unblockOne(b) {
   blockedBusy.value = b.user_id;
+  /* 轮 238 · 乐观更新：行先从面板消失；失败放回原位。
+   * 会话行的拉黑态也同步翻（响应式，列表过滤立即生效），隐式刷新只做兜底。 */
+  const idx = blockedRows.value.findIndex((x) => x.user_id === b.user_id);
+  const removed = idx >= 0 ? blockedRows.value.splice(idx, 1)[0] : null;
+  const convRow = convs.value.find((x) => x.other_id === b.user_id);
+  if (convRow) convRow.blocked = false;
   try {
     /* 轮 34：走 userBlocks 包装 —— 私信名单与暖心墙内容过滤缓存同步更新，
-     * 解除后 TA 的帖子/评论在墙里立刻恢复显示，不用刷新页面 */
+       解除后 TA 的帖子/评论在墙里立刻恢复显示，不用刷新页面 */
     await unblockUser(b.user_id);
-    blockedRows.value = blockedRows.value.filter((x) => x.user_id !== b.user_id);
-    await loadConvsImplicit();   /* 解除后会话恢复可见 */
-  } catch (e) { /* 静默，行保留 */ }
+    loadConvsImplicit();   /* 解除后会话恢复可见（后台兜底，不挡操作反馈） */
+  } catch (e) {   /* 静默回滚 */
+    if (removed) blockedRows.value.splice(Math.min(idx, blockedRows.value.length), 0, removed);
+    if (convRow) convRow.blocked = true;
+  }
   finally { blockedBusy.value = ""; }
 }
 function toggleBlockedPanel() {
@@ -210,6 +238,16 @@ function toggleBlockedPanel() {
 
 /* ─────────── 数据加载 ─────────── */
 
+/* 轮 238 · 拉黑行保留（tombstone）：服务端 dm_list_convs **不返回**被拉黑的会话，
+ * 若刷新时直接整体替换 convs，解除拉黑时本地已无行可恢复（只能等服务端再刷）= 不跟手。
+ * 这里把「本地已拉黑、服务端没返回」的行（带完整 conv_id）拼回去——它们被 normal/
+ * requests 过滤着不可见，解除拉黑即时恢复。 */
+function withBlockedTombstones(rows) {
+  const served = new Set((rows || []).map((r) => r.conv_id));
+  const extra = convs.value.filter((c) => c.blocked && !served.has(c.conv_id));
+  return extra.length ? (rows || []).concat(extra) : rows;
+}
+
 async function loadConvs() {
   if (!signedIn.value) return;
   loadingConvs.value = true;
@@ -217,8 +255,8 @@ async function loadConvs() {
   await swr(
     cacheKey("dm:convs", meId.value),
     {
-      cached: (rows) => { convs.value = rows; loadingConvs.value = false; },
-      fresh: (rows) => { convs.value = rows; failed.value = false; },
+      cached: (rows) => { convs.value = withBlockedTombstones(rows); loadingConvs.value = false; },
+      fresh: (rows) => { convs.value = withBlockedTombstones(rows); failed.value = false; },
       onError: () => { failed.value = true; },
     },
     () => dmApi.listConvs(200, 0),
@@ -227,8 +265,11 @@ async function loadConvs() {
 }
 
 async function openBottleChat(id) {
-  await loadConvs();
-  await openConv(String(id));
+  /* 轮 238：**先开聊天**（本地库秒开），列表刷新转后台——
+   * 旧版 await loadConvs() 挡在前面，用户实测「慢的要死，不是存本地吗」：
+   * 存了本地也被会话列表的网络刷新堵死。列表数据由后台刷新补齐。 */
+  openConv(String(id));
+  loadConvs();
 }
 
 async function loadMeta(id) {
@@ -408,14 +449,15 @@ function scrollBottom(smooth = false, reveal = false) {
       if (frames > 600) { listRevealed.value = true; return; }   /* 硬上限 ~10s，防异常永藏 */
       set();
       const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
-      const settled = fontsOk() && entryReady.value && el.scrollHeight === lastH && !plateau() && gap < 4;
+      /* 轮 238：字体静默也入稳定判据——分块加载的间隙 sh 会短暂不动，莫当真 */
+      const settled = fontQuiet() && fontsOk() && entryReady.value && el.scrollHeight === lastH && !plateau() && gap < 4;
       lastH = el.scrollHeight;
       if (settled) stableFrames++; else stableFrames = 0;
       if (settled && !stableSince) stableSince = performance.now();
       if (!settled) stableSince = 0;
-      /* 轮 205：揭示等待自适应——字体就绪且页面已活过 2.5s（样式/字体必然落定）→ 80ms 快车道
-       * （微信式秒开）；冷加载/字体未定 → 300ms 保守（后段位移吞进隐藏期）。 */
-      const hold = (document.fonts && document.fonts.status === "loaded" && performance.now() > 2500) ? 80 : 300;
+      /* 轮 205 → 轮 238：揭示等待自适应——字体静默且页面已活过 2.5s → 80ms 快车道
+       * （微信式秒开）；字体仍在分块到达 → 300ms 保守（后段位移吞进隐藏期）。 */
+      const hold = (fontQuiet() && performance.now() > 2500) ? 80 : 300;
       if (stableSince && performance.now() - stableSince >= hold && !listRevealed.value) listRevealed.value = true;
       frames++;
       requestAnimationFrame(chase);
@@ -443,10 +485,12 @@ function scrollBottom(smooth = false, reveal = false) {
            此时 gap 天然为 0 —— 假贴底。真机实测就是被它骗过：判据认为已到底 → 揭示 →
            下一帧内容展开成 5375px，画面其实停在顶部（首帧距底 4649px）。
            内容定型后再确认 gap<4，亮出来才是真的最新消息。
+           轮 238：还要字体静默——长消息的文楷分块在两批之间 sh 会短暂不动，
+           「2 帧稳定」被假象骗过 → 揭示后继续重排 = 闪现又跳没（用户实测）。
            短会话（本来就不够一屏）同样会很快定型 + gap=0，一样秒开；
-           60 帧（~1s）兜底，绝不把消息区永久藏住。 */
+           60 帧（~1s）兜底优先于字体静默，绝不把消息区永久藏住。 */
         if (sh === lastSh) sameSh++; else { sameSh = 0; lastSh = sh; }
-        if ((sameSh >= 2 && g < 4) || ++rf > 60) { listRevealed.value = true; return; }
+        if (((sameSh >= 2 && g < 4) && fontQuiet()) || ++rf > 60) { listRevealed.value = true; return; }
         requestAnimationFrame(revealWhenPinned);
       };
       requestAnimationFrame(revealWhenPinned);
@@ -487,16 +531,24 @@ async function openConv(id) {
     router.replace({ name: "messages", params: { id: String(id) } }).catch(() => {});
   }
   meta.value = null;
-  /* 轮 157：从会话列表点进来时 activeConv 行已带昵称/免打扰/拉黑/请求态——不再单拉
-   * conv_meta（每次开聊天少一次 RPC 往返）；深链直进（通知/瓶子记录）列表行缺失才拉。 */
+  /* 轮 238：meta 拉取不再阻塞本地库渲染——标题等 meta 回来后响应式补上。
+   * 旧版 await loadMeta 把「本地秒开」堵在一个网络请求后面（漂流瓶/深链进入尤其明显）。 */
   if (!convs.value.some((c) => String(c.conv_id) === String(activeId.value))) {
-    await loadMeta(activeId.value);
+    loadMeta(activeId.value);
   }
   pinning.value = true;   /* 轮 173b：进会话钉底，直到首屏数据落定 */
   listRevealed.value = false;   /* 轮 176：消息区先隐，钉底稳了再显示（防首帧错位跳闪） */
   entryReady.value = false;     /* 轮 180：显示门控重置——等 fresh 数据落定 */
 
-  setTimeout(() => { if (entryReady.value && !listRevealed.value) listRevealed.value = true; }, 2000);   /* 轮 180：兜底只揭示已落定的 */
+  /* 轮 180 → 轮 238：兜底只揭示已落定的；揭示前先同步钉一次底（否则 2s 兜底亮出
+   * 来的可能还是顶部/半截位置——长消息 + 字体震荡时尤其如此），亮出来的就是最新消息 */
+  setTimeout(() => {
+    if (entryReady.value && !listRevealed.value) {
+      const el2 = listEl.value;
+      if (el2) el2.scrollTop = el2.scrollHeight;
+      listRevealed.value = true;
+    }
+  }, 2000);   /* 轮 180：兜底只揭示已落定的 */
   const smoothed = await loadMessages(id);
   /* 轮 225：等消息期间用户又点了别的会话 / 返回了列表 → 别再动滚动与已读标记
    * （否则会用旧会话的落点把新会话的屏滚乱，这是「切完位置乱跳」的另一半）。 */
@@ -592,52 +644,80 @@ async function recall(m) {
 /* ────────── 会话操作：请求 / 免打扰 / 隐藏 / 拉黑 ─────────── */
 
 async function acceptReq(c) {
-  try { await dmApi.accept(c.conv_id); } catch (e) { /* 静默 */ }
-  /* 关键：改的是 convs.value 里的原始行（computed requests/normal 都从它过滤）。
-   * 之前改的是 rowView 生成的展示拷贝 → 列表纹丝不动，按钮一直挂在原地（用户实测）。 */
+  /* 轮 238 · 乐观更新：本地状态先落（按钮先消失、行先进「会话」组），网络只做确认，
+   * 失败回滚 —— 旧写法 await 完才改界面，弱网点一下半天没动静（用户实测「不跟手」）。
+   * 改的必须是 convs.value 里的原始行（rowView 展示拷贝不回流不响应，轮 197 结论）。 */
   const row = convs.value.find((x) => String(x.conv_id) === String(c.conv_id));
   if (row) row.accepted = true;
   if (meta.value && String(meta.value.conv_id) === String(c.conv_id)) meta.value.accepted = true;
   refreshBadge();
+  try { await dmApi.accept(c.conv_id); }
+  catch (e) {   /* 静默回滚成请求态 */
+    if (row) row.accepted = false;
+    if (meta.value && String(meta.value.conv_id) === String(c.conv_id)) meta.value.accepted = false;
+  }
 }
 
 async function rejectReq(c) {
-  try { await dmApi.hide(c.conv_id); } catch (e) { /* 静默 */ }
-  convs.value = convs.value.filter((x) => x.conv_id !== c.conv_id);
-  dmStoreDrop(meId.value, c.conv_id);   /* 轮 194：会话移出列表即清本地库 */
-  idbDrop(c.conv_id);   /* 轮 204：全量库同清 */
+  /* 轮 238 · 乐观更新：行先消失；失败插回原位（本地库等清空留到确认成功后） */
+  const idx = convs.value.findIndex((x) => String(x.conv_id) === String(c.conv_id));
+  const removed = idx >= 0 ? convs.value.splice(idx, 1)[0] : null;
   refreshBadge();
+  try {
+    await dmApi.hide(c.conv_id);
+    dmStoreDrop(meId.value, c.conv_id);   /* 轮 194：会话移出列表即清本地库 */
+    idbDrop(c.conv_id);   /* 轮 204：全量库同清 */
+  } catch (e) {   /* 静默回滚 */
+    if (removed) convs.value.splice(Math.min(idx, convs.value.length), 0, removed);
+  }
 }
 
 async function toggleMute(c) {
   const on = !c.muted;
-  try { await dmApi.mute(c.conv_id, on); } catch (e) { /* 静默 */ }
-  c.muted = on;
   menuFor.value = "";
+  /* 轮 238 · 乐观更新：🔇 图标先翻，网络只做确认；失败回滚。
+   * 旧写法两个毛病：await 完才改 + 改的是 rowView 拷贝（不响应式），
+   * 结果弱网点完没动静、图标要等下轮列表刷新才出现（用户实测「不跟手」）。 */
+  const row = convs.value.find((x) => String(x.conv_id) === String(c.conv_id));
+  if (row) row.muted = on;
+  try { await dmApi.mute(c.conv_id, on); }
+  catch (e) { if (row) row.muted = !on; }
 }
 
 async function hideConv(c) {
-  try { await dmApi.hide(c.conv_id); } catch (e) { /* 静默 */ }
-  convs.value = convs.value.filter((x) => x.conv_id !== c.conv_id);
-  dmStoreDrop(meId.value, c.conv_id);   /* 轮 194：会话移出列表即清本地库 */
-  idbDrop(c.conv_id);   /* 轮 204：全量库同清 */
+  menuFor.value = "";
+  /* 轮 238 · 乐观更新：行先消失、聊天页先退出；失败插回原位。本地库清理等确认成功再做。 */
+  const idx = convs.value.findIndex((x) => String(x.conv_id) === String(c.conv_id));
+  const removed = idx >= 0 ? convs.value.splice(idx, 1)[0] : null;
   if (String(activeId.value) === String(c.conv_id)) {
     activeId.value = "";
     router.replace({ name: "messagesList" }).catch(() => {});
   }
-  menuFor.value = "";
   refreshBadge();
+  try {
+    await dmApi.hide(c.conv_id);
+    dmStoreDrop(meId.value, c.conv_id);   /* 轮 194：会话移出列表即清本地库 */
+    idbDrop(c.conv_id);   /* 轮 204：全量库同清 */
+  } catch (e) {   /* 静默回滚 */
+    if (removed) convs.value.splice(Math.min(idx, convs.value.length), 0, removed);
+  }
 }
 
 async function toggleBlock(c) {
-  const blocked = (activeConv.value || meta.value || {}).blocked;
+  /* 轮 238 · 乐观更新：行上的拉黑态先翻（未读清零/列表过滤立即生效），菜单先收，
+   * 网络只做确认；失败回滚。列表刷新降级为后台隐式刷（不再 await 挡住操作反馈）。 */
+  const row = convs.value.find((x) => String(x.conv_id) === String(c.conv_id));
+  const wasBlocked = !!(row ? row.blocked : (activeConv.value || meta.value || {}).blocked);
+  menuFor.value = "";
+  if (row) row.blocked = !wasBlocked;
   try {
     /* 轮 34：拉黑=全站生效（私信 + 暖心墙内容过滤），缓存同步走 userBlocks */
-    if (blocked) await unblockUser(c.other_id);
+    if (wasBlocked) await unblockUser(c.other_id);
     else await blockUser(c.other_id);
-  } catch (e) { /* 静默 */ }
-  menuFor.value = "";
-  await loadConvs();
+  } catch (e) {   /* 静默回滚 */
+    if (row) row.blocked = wasBlocked;
+  }
+  loadConvsImplicit();
   refreshBadge();
 }
 
@@ -672,8 +752,10 @@ async function mutePeer() {
   const id = curPeer.value.conv_id;
   if (!id) return;
   const on = !curPeer.value.muted;
-  try { await dmApi.mute(id, on); } catch (e) { /* 静默 */ }
+  /* 轮 238 · 乐观更新：头部菜单态先翻；失败回滚 */
   bottleMeta.value = { ...(bottleMeta.value || {}), muted: on };
+  try { await dmApi.mute(id, on); }
+  catch (e) { bottleMeta.value = { ...(bottleMeta.value || {}), muted: !on }; }
 }
 
 async function blockPeer() {
@@ -682,12 +764,15 @@ async function blockPeer() {
   const uid = curPeer.value.user_id;
   if (!uid) return;
   const blocked = curPeer.value.blocked;
+  /* 轮 238 · 乐观更新：菜单态先翻；失败回滚 */
+  bottleMeta.value = { ...(bottleMeta.value || {}), blocked: !blocked };
+  refreshBadge();
   try {
     if (blocked) await unblockUser(uid);
     else await blockUser(uid);
-  } catch (e) { /* 静默 */ }
-  bottleMeta.value = { ...(bottleMeta.value || {}), blocked: !blocked };
-  refreshBadge();
+  } catch (e) {   /* 静默回滚 */
+    bottleMeta.value = { ...(bottleMeta.value || {}), blocked };
+  }
 }
 
 /* ─────────── 轮询（只在可见 + 有会话时跑） ─────────── */
@@ -736,7 +821,7 @@ async function tick() {
 /* 轮询里的列表刷新：不动 loadingConvs，避免列表闪「载入中」 */
 async function loadConvsImplicit() {
   try {
-    convs.value = (await dmApi.listConvs(200, 0)) || [];
+    convs.value = withBlockedTombstones((await dmApi.listConvs(200, 0)) || []);
   } catch (e) { /* 静默 */ }
 }
 
@@ -774,6 +859,13 @@ onBeforeUnmount(() => {
 
 /* 地址栏变了（通知中心点私信跳进来 / ← 钮 / 系统返回键）→ 切会话或回列表 */
 watch(() => route.params.id, (v) => {
+  /* 轮 237 · 只认私信路由自己的 :id —— 本页被 KeepAlive 保活，这个 watch 在别的页面也活着。
+   * 从消息列表点头像「看 TA 的主页」跳 /u/:id 时，route.params.id 变成**用户 uuid**，
+   * 旧代码把它当会话 id → openConv(uuid) → push /messages/<uuid>：用户刚落到主页就被
+   * 劫持进一个空会话（标题落到「这位伙伴」、消息区全空，用户实测）。
+   * /post/:id、/story/:id 等数字 id 同理会中招（读帖 7 会被拽进会话 7）。
+   * 修法：route 不是 messages/messagesList 时一律无视 —— 此时本页不可见，:id 与本页无关。 */
+  if (route.name !== "messages" && route.name !== "messagesList") return;
   const id = String(v || "");
   if (id) {
     if (id !== activeId.value) openConv(id);
@@ -783,6 +875,10 @@ watch(() => route.params.id, (v) => {
   activeId.value = "";
   msgs.value = [];
   msgsConv = "";
+  /* 轮 237：翻页游标一并复位 —— 只清 msgs 不清 oldestId/hasMore，下个会话首屏数据
+   * 落定前会闪出「加载更早的消息」按钮（old 残留 + 空列表的矛盾态，用户截图实证）。 */
+  oldestId.value = null;
+  hasMore.value = true;
   meta.value = null;
   fromList.value = false;
   seg.value = "dm";
@@ -877,11 +973,11 @@ function goSignIn() {
           </button>
         </div>
         <div v-if="showBlocked" class="dm-blocked">
-          <p class="sub">{{ t("dm.blockedHint") }}</p>
+          <!-- 轮 238：App 端不摆说明文字（用户拍板精简）；长解释留给桌面端 -->
+          <p v-if="!isMobileNav" class="sub">{{ t("dm.blockedHint") }}</p>
           <p v-if="!blockedRows.length" class="sub">{{ t("dm.blockedEmpty") }}</p>
           <div v-for="b in blockedRows" :key="b.user_id" class="dm-blocked-row">
-            <n-avatar round :size="30" class="post-avatar clickable" :title="t('dm.viewHome')" @click="goUser(b.user_id)">
-              {{ (b.nickname || "?").slice(0, 1).toUpperCase() }}
+            <n-avatar round :size="30" class="post-avatar clickable" :title="t('dm.viewHome')" :src="avatarUrlFor(b.user_id) || undefined" @click="goUser(b.user_id)"><template v-if="!avatarUrlFor(b.user_id)" #default>{{ (b.nickname || "?").slice(0, 1).toUpperCase() }}</template><template v-else #fallback>{{ (b.nickname || "?").slice(0, 1).toUpperCase() }}</template>
             </n-avatar>
             <b class="dm-name">{{ b.nickname || t("dm.someone") }}</b>
             <button class="dm-act" :disabled="blockedBusy === b.user_id" @click="unblockOne(b)">
@@ -899,7 +995,7 @@ function goSignIn() {
             <span class="notif-count">{{ requests.length }}</span>
           </div>
           <div v-for="c in requests" :key="'r' + c.conv_id" class="dm-row req">
-            <n-avatar round :size="38" class="post-avatar clickable" :title="t('dm.viewHome')" @click.stop="goUser(c.other_id)">{{ (c.nickname || "?").slice(0, 1).toUpperCase() }}</n-avatar>
+            <n-avatar round :size="38" class="post-avatar clickable" :title="t('dm.viewHome')" :src="avatarUrlFor(c.other_id) || undefined" @click.stop="goUser(c.other_id)"><template v-if="!avatarUrlFor(c.other_id)" #default>{{ (c.nickname || "?").slice(0, 1).toUpperCase() }}</template><template v-else #fallback>{{ (c.nickname || "?").slice(0, 1).toUpperCase() }}</template></n-avatar>
             <div class="dm-row-body">
               <div class="dm-row-top">
                 <b class="dm-name">{{ c.nickname }}</b>
@@ -922,16 +1018,23 @@ function goSignIn() {
             v-for="c in normal" :key="c.conv_id"
             class="dm-row" :class="{ on: String(c.conv_id) === String(activeId) }"
             @click="openConv(c.conv_id)">
-            <n-avatar round :size="38" class="post-avatar clickable" :title="t('dm.viewHome')" @click.stop="goUser(c.other_id)">{{ (c.nickname || "?").slice(0, 1).toUpperCase() }}</n-avatar>
+            <n-avatar round :size="38" class="post-avatar clickable" :title="t('dm.viewHome')" :src="avatarUrlFor(c.other_id) || undefined" @click.stop="goUser(c.other_id)"><template v-if="!avatarUrlFor(c.other_id)" #default>{{ (c.nickname || "?").slice(0, 1).toUpperCase() }}</template><template v-else #fallback>{{ (c.nickname || "?").slice(0, 1).toUpperCase() }}</template></n-avatar>
             <div class="dm-row-body">
-              <div class="dm-row-top">
-                <b class="dm-name">{{ c.nickname }}</b>
-                <span class="sub dm-time">{{ when(c.last_message_at || c.created_at) }}</span>
-              </div>
-              <p class="sub dm-preview">
-                <span v-if="c.muted" class="dm-muted">🔇</span>
-                {{ previewText(c.last_preview, t) }}
-              </p>
+            <div class="dm-row-top">
+              <b class="dm-name">{{ c.nickname }}</b>
+              <!-- 轮 238 · 免打扰标改微信式：小灰标绝对定位在时间左侧（无文字、不参与 baseline
+               * 对齐 —— svg 没有文字基线，进 flex 行会把整行撑高错位，实测 21px→34px） -->
+              <span class="sub dm-time" :class="{ 'has-mute': c.muted }">
+                <svg v-if="c.muted" class="dm-muted-ico" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor" />
+                  <path d="M16 9.8l4.4 4.4M20.4 9.8L16 14.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none" />
+                </svg>
+                {{ when(c.last_message_at || c.created_at) }}
+              </span>
+            </div>
+            <p class="sub dm-preview">
+              {{ previewText(c.last_preview, t) }}
+            </p>
             </div>
             <span v-if="c.unread" class="dm-badge">{{ c.unread > 99 ? "99+" : c.unread }}</span>
             <button class="dm-more" :title="t('dm.more')" @click.stop="menuFor = (menuFor === String(c.conv_id) ? '' : String(c.conv_id))">⋯</button>
@@ -980,9 +1083,12 @@ function goSignIn() {
         <template v-if="activeId">
           <header class="dm-thread-head">
             <button v-if="isMobileNav" class="dm-thread-back" @click="backToList">←</button>
-            <n-avatar v-if="!isMobileNav" round :size="40" class="dm-msg-avatar">{{ peerInitial }}</n-avatar>
+            <n-avatar v-if="!isMobileNav" round :size="40" class="dm-msg-avatar" :src="avatarUrlFor((activeConv && activeConv.other_id) || (meta && meta.other_id)) || undefined">{{ peerInitial }}<template #fallback>{{ peerInitial }}</template></n-avatar>
             <b class="dm-name dm-peer-link" :title="t('dm.viewHome')" @click="goUser(activeConv && activeConv.other_id)">{{ title || t("dm.someone") }}</b>
-            <span v-if="activeConv && activeConv.muted" class="dm-muted">🔇 {{ t("dm.mutedTag") }}</span>
+            <svg v-if="activeConv && activeConv.muted" class="dm-muted-ico" viewBox="0 0 24 24" :aria-label="t('dm.mutedTag')">
+              <path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor" />
+              <path d="M16 9.8l4.4 4.4M20.4 9.8L16 14.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none" />
+            </svg>
             <n-tag v-if="activeConv && activeConv.accepted === false" round size="small" :bordered="false" class="soft-tag">
               {{ t("dm.requestTag") }}
             </n-tag>
@@ -1015,7 +1121,7 @@ function goSignIn() {
             <template v-for="it in flow" :key="it.key">
               <div v-if="it.type === 'day'" class="dm-day"><span>{{ dayLabel(it.ts) }}</span></div>
               <div v-else class="dm-line" :class="{ mine: it.msg.sender === meId }">
-                <n-avatar v-if="it.msg.sender !== meId" round :size="30" class="dm-msg-avatar">{{ peerInitial }}</n-avatar>
+                <n-avatar v-if="it.msg.sender !== meId" round :size="30" class="dm-msg-avatar" :src="avatarUrlFor(it.msg.sender) || undefined"><template v-if="!avatarUrlFor(it.msg.sender)" #default>{{ peerInitial }}</template><template v-else #fallback>{{ peerInitial }}</template></n-avatar>
                 <div class="dm-msg-col">
                   <div class="dm-bubble" :class="{ recalled: it.msg.recalled, failed: it.msg.failed }">
                     <p v-if="it.msg.recalled" class="dm-recalled">{{ t("dm.recalled") }}</p>
@@ -1041,7 +1147,8 @@ function goSignIn() {
               {{ blockedByMe ? t("dm.gateBlockedByMe") : t("dm.gateRequest") }}
             </p>
             <template v-else>
-              <p class="sub dm-hint">{{ t("dm.hint") }}</p>
+              <!-- 轮 238：桌面键位说明只留桌面（手机键盘没有 Shift+Enter，纯占地方） -->
+              <p v-if="!isMobileNav" class="sub dm-hint">{{ t("dm.hint") }}</p>
               <p v-if="sendErr" class="sub dm-err">{{ sendErr }}</p>
               <!-- 轮 68：微信式输入行——单行起、随内容长高（1~6 行），发送键在框右侧 -->
               <div class="dm-input-row">

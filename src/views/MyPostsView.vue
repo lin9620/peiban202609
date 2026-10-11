@@ -8,6 +8,7 @@ import { t } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
 import { cloudFetchUserPosts } from "../utils/wall.js";
 import { cacheKey, swr } from "../utils/cache.js";
+import { avatarUrlFor } from "../utils/avatar.js";   /* 轮 238:萌宠头像池 */
 
 /* 与暖心墙同款的三种回应（计数只读展示；点卡片回墙里互动） */
 const REACTIONS = [
@@ -148,7 +149,7 @@ function openWall(p) {
         v-for="p in rows" :key="p.id"
         class="post-card card mypage-post" @click="openWall(p)">
         <div class="post-head">
-          <n-avatar round :size="42" class="post-avatar">🙂</n-avatar>
+          <n-avatar round :size="42" class="post-avatar" :src="avatarUrlFor(uid) || undefined"><template v-if="!avatarUrlFor(uid)" #default>🙂</template><template v-else #fallback>🙂</template></n-avatar>
           <div class="post-meta">
             <div class="post-name">{{ p.name }}</div>
             <div class="post-time">{{ whenPost(p.ts) }}</div>

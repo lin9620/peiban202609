@@ -207,7 +207,8 @@ onMounted(async () => {
             : n.kind === "reaction" ? "🤗" : n.kind === "system" ? "📢" : "💬" }}</span>
           <div class="notif-body">
             <p class="notif-line">{{ line(n) }}</p>
-            <p v-if="n.post_body" class="sub notif-quote">{{ n.post_body }}</p>
+            <!-- 轮 238 · 公告正文：system 通知的 meta.body 在这里露出（此前模板只有「管理员公告」四个字，用户收了提示看不到内容） -->
+            <p v-if="(n.view && n.view.systemBody) || n.post_body" class="sub notif-quote">{{ (n.view && n.view.systemBody) || n.post_body }}</p>
             <p class="sub notif-time">{{ when(n.created_at) }}</p>
           </div>
           <!-- 这一行是几条通知合并的（用户反馈：一进去十几条，列表只见 3 条 —— 把数亮出来） -->

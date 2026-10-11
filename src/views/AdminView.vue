@@ -132,7 +132,7 @@ async function load() {
 /* 跟随登录态：直接打开 /admin（书签 / 刷新）时 Auth 可能还没就绪 —— 就绪后自动加载；
  * 确认未登录时显示「没有权限」（保持与旧 onMounted 版本一致的语义） */
 watch(signedIn, (ok) => {
-  if (ok) load();
+  if (ok) { load(); loadBroadcasts(true); loadRelMeta(); }   /* 轮 238：公告历史 + App 版本随管理页一并拉 */
   else state.value = "denied";
 }, { immediate: true });
 
@@ -166,23 +166,108 @@ function switchTab(name) {
 }
 
 
-/* —— 全员公告：走 db.adminBroadcast（RPC 内再查一次 is_admin，前端只是壳） —— */
+/* —— 全员公告：轮 238 · 分批推送 ——
+ * start 建档（快照总人数）→ 循环 step（每批 2000，只插还没收到的用户，幂等）
+ * → done。中途关页/断网不怕：历史面板里未完成的公告可「继续发送」续推。
+ * 单击保护上限 200 批（= 40 万人），超出落给历史续发。 */
 const announce = ref("");
+
+/* —— 轮 238 · App 版本（管理中心上传 APK → 下载/二维码即指向新包）—— */
+const relMeta = ref(null);
+const relLoaded = ref(false);
+const relBusy = ref(false);
+const relMsg = ref("");
+const relInput = ref(null);
+async function loadRelMeta() {
+  try {
+    relMeta.value = await db.appReleaseMeta();
+  } catch (e) { /* 迁移未跑/非管理员：面板显示空态 */ }
+  relLoaded.value = true;
+}
+async function uploadApk(e) {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  if (!/\.apk$/i.test(file.name) || file.size > 60 * 1024 * 1024) {
+    relMsg.value = t("admin.appRelease.badFile");
+    return;
+  }
+  relBusy.value = true;
+  relMsg.value = "";
+  try {
+    await db.appReleaseUpload(file);
+    relMsg.value = t("admin.appRelease.done");
+    await loadRelMeta();
+  } catch (err) {
+    relMsg.value = t("admin.appRelease.fail", { r: (err && err.message) || "" });
+  }
+  relBusy.value = false;
+}
+const bcastRows = ref([]);
+const bcastLoaded = ref(false);
+const bcastDone = ref(false);
+const bcastProgress = ref("");   /* "正在发送 x/y…" —— 发送期间替代按钮文案 */
+async function runBroadcastSteps(bid) {
+  let last = null;
+  for (let guard = 0; guard < 200; guard++) {
+    const r = await db.adminBroadcastStep(bid);
+    if (!r || r.admin === false) throw new Error("denied");
+    if (r.missing) throw new Error("missing");
+    last = r;
+    bcastProgress.value = t("admin.broadcast.progress", { s: r.sent, t: r.total });
+    if (r.done) return r;
+  }
+  return last;   /* 未推完：历史面板续发 */
+}
 async function sendBroadcast() {
   const text = announce.value.trim();
   if (!text || busy.value !== "") return;
   busy.value = "broadcast";
+  actionMsg.value = "";
   try {
-    const r = await db.adminBroadcast(text);
-    if (!r || r.admin === false) {
+    const start = await db.adminBroadcastStart(text);
+    if (!start || start.admin === false) {
       actionMsg.value = t("admin.broadcast.denied");
     } else {
-      actionMsg.value = t("admin.broadcast.done", { n: r.sent || 0 });
-      announce.value = "";
+      const end = await runBroadcastSteps(start.bid);
+      if (end && end.done) {
+        actionMsg.value = t("admin.broadcast.done", { n: end.sent || 0 });
+        announce.value = "";
+      } else {
+        actionMsg.value = t("admin.broadcast.unfinished", { s: (end && end.sent) || 0, t: (end && end.total) || 0 });
+      }
+      loadBroadcasts(true);
     }
   } catch (e) {
     actionMsg.value = t("admin.broadcast.fail", { r: (e && e.message) || "" });
   }
+  bcastProgress.value = "";
+  busy.value = "";
+}
+/* 历史「继续发送」：同一循环接着推（step 幂等，不会重复送达） */
+const resumeBid = ref("");
+async function resumeBroadcast(bid) {
+  if (busy.value !== "") return;
+  busy.value = "broadcast";
+  resumeBid.value = bid;
+  try {
+    await runBroadcastSteps(bid);
+    loadBroadcasts(true);
+  } catch (e) { /* 静默：行保留，可再点 */ }
+  resumeBid.value = "";
+  bcastProgress.value = "";
+  busy.value = "";
+}
+/* 轮 238 · 公告历史 */
+async function loadBroadcasts(reset = false) {
+  if (busy.value === "bcast") return;
+  busy.value = "bcast";
+  try {
+    const rows = (await db.adminBroadcasts(20, reset ? 0 : bcastRows.value.length)) || [];
+    bcastRows.value = reset ? rows : bcastRows.value.concat(rows);
+    bcastLoaded.value = true;
+    bcastDone.value = rows.length < 20;
+  } catch (e) { bcastLoaded.value = true; }
   busy.value = "";
 }
 
@@ -360,9 +445,56 @@ const recentUsers = computed(() => (Array.isArray(ov.value && ov.value.recent_us
               <span class="sub" style="margin: 0">{{ t("admin.broadcast.count", { n: announce.length }) }}</span>
               <n-button type="primary" size="small" round
                 :disabled="!announce.trim() || busy !== ''" @click="sendBroadcast">
-                {{ t("admin.broadcast.send") }}
+                {{ bcastProgress || t("admin.broadcast.send") }}
               </n-button>
             </div>
+          </section>
+
+          <!-- 轮 238 · 历史公告：未完成的可继续发送（step 幂等续推） -->
+          <section class="card" style="margin-bottom: 0">
+            <h2>{{ t("admin.broadcast.historyTitle") }}</h2>
+            <p v-if="bcastLoaded && !bcastRows.length" class="sub">{{ t("admin.broadcast.historyEmpty") }}</p>
+            <p v-else-if="!bcastLoaded" class="sub">{{ t("admin.broadcast.historyLoading") }}</p>
+            <div v-for="b in bcastRows" :key="b.id" class="admin-row">
+              <div class="admin-grow">
+                <div class="admin-clip">{{ b.body }}</div>
+                <span class="admin-meta">
+                  {{ b.done
+                    ? t("admin.broadcast.historySent", { n: b.sent })
+                    : t("admin.broadcast.historyUnfinished", { s: b.sent, t: b.total }) }}
+                  <template v-if="dayOf(b.created_at)"> · {{ dayOf(b.created_at) }}</template>
+                </span>
+              </div>
+              <n-button v-if="!b.done" size="tiny" round type="primary"
+                :disabled="busy !== ''" @click="resumeBroadcast(b.id)">
+                {{ resumeBid === b.id ? (bcastProgress || "…") : t("admin.broadcast.resume") }}
+              </n-button>
+            </div>
+            <n-button v-if="!bcastDone && bcastRows.length" size="tiny" round style="margin-top: 10px"
+              :disabled="busy === 'bcast'" @click="loadBroadcasts(false)">
+              {{ t("admin.broadcast.historyMore") }}
+            </n-button>
+          </section>
+
+          <!-- 轮 238 · App 版本：上传安卓安装包 → 下载弹窗与二维码即指向新包 -->
+          <section class="card" style="margin-bottom: 0">
+            <h2>{{ t("admin.appRelease.title") }}</h2>
+            <p class="sub">{{ t("admin.appRelease.hint") }}</p>
+            <p v-if="relMeta" class="sub">
+              {{ t("admin.appRelease.current", { s: relMeta.sizeMb, t: dayOf(relMeta.when) }) }}
+            </p>
+            <p v-else-if="relLoaded" class="sub">{{ t("admin.appRelease.none") }}</p>
+            <p v-else class="sub">{{ t("admin.broadcast.historyLoading") }}</p>
+            <div class="row-between" style="margin-top: 10px">
+              <span class="sub" style="margin: 0">{{ t("admin.appRelease.apkOnly") }}</span>
+              <n-button type="primary" size="small" round :loading="relBusy"
+                @click="relInput && relInput.click()">
+                {{ t("admin.appRelease.upload") }}
+              </n-button>
+              <input ref="relInput" type="file" accept=".apk,application/vnd.android.package-archive"
+                style="display: none" @change="uploadApk" />
+            </div>
+            <p v-if="relMsg" class="sub" style="margin-top: 8px">{{ relMsg }}</p>
           </section>
 
           <section class="card" style="margin-bottom: 0">

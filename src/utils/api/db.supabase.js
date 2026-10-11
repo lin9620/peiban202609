@@ -590,9 +590,34 @@ export const db = {
     }));
   },
 
-  /** 管理员公告 → 全员 system 通知（非管理员得到 {admin:false}） */
-  adminBroadcast(body) {
-    return unwrap(sb().rpc("admin_broadcast", { p_body: body }));
+  /** 轮 238 · 公告分批推送：start 建档 → step 循环推批（幂等可续发）→ list 历史 */
+  adminBroadcastStart(body) {
+    return unwrap(sb().rpc("admin_broadcast_start", { p_body: body }));
+  },
+  adminBroadcastStep(bid, batch) {
+    return unwrap(sb().rpc("admin_broadcast_step", batch ? { p_bid: bid, p_batch: batch } : { p_bid: bid }));
+  },
+  /** 公告历史（admin_broadcasts_list；非管理员得到空集） */
+  adminBroadcasts(limit = 20, offset = 0) {
+    return unwrap(sb().rpc("admin_broadcasts_list", { p_limit: limit, p_offset: offset }));
+  },
+
+  /* ═══ 轮 238 · App 安装包发布（管理中心上传 → 下载/二维码即指向新包）═══
+   * 对象名固定 warm-paws.apk，upsert 覆盖 = 下载链接永不变化、内容常新。 */
+  async appReleaseUpload(file) {
+    const { error } = await sb().storage.from("app-releases")
+      .upload("warm-paws.apk", file, { upsert: true, contentType: "application/vnd.android.package-archive" });
+    if (error) throw error;
+    return true;
+  },
+  async appReleaseMeta() {
+    const { data, error } = await sb().storage.from("app-releases")
+      .list("", { limit: 5, search: "warm-paws" });
+    if (error) throw error;
+    const row = (data || []).find((x) => x.name === "warm-paws.apk");
+    return row && row.metadata
+      ? { sizeMb: (row.metadata.size / 1048576).toFixed(1), when: row.updated_at }
+      : null;
   },
 
   /** 清空我的全部通知（返回 {ok, removed}） */

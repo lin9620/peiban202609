@@ -46,7 +46,7 @@ const statusCounts = ref(null);  // 只有 { status, count }，不含昵称或�
 /* 轮 209：先渲染上次缓存的计数（本地秒出），网络回来原地更新——
  * 之前每次进入都从 0 等网络（用户实测「慢一拍，影响使用」）。 */
 try { statusCounts.value = JSON.parse(getItem("wp-status-counts") || "null"); } catch (e) { /* 忽略 */ }
-const statusBusy = ref(false);
+let statusCountsBusy = false;   /* 轮 238：计数刷新在途标记（并发触发跳过，不叠请求） */
 let statusRevision = 0;
 const isMember = computed(() => !!(cloud.user && cloud.user.id));
 
@@ -56,29 +56,36 @@ function statusLabel(k) {
 }
 
 async function refreshStatusCounts() {
-  const got = await cloudFetchStatusCounts();
-  if (got) {
-    statusCounts.value = got;
-    try { setItem("wp-status-counts", JSON.stringify(got)); } catch (e) { /* 忽略 */ }
-  }
+  if (statusCountsBusy) return;   /* 轮 238：在途就跳过（下个状态点击会再触发），不叠请求 */
+  statusCountsBusy = true;
+  try {
+    const got = await cloudFetchStatusCounts();
+    if (got) {
+      statusCounts.value = got;
+      try { setItem("wp-status-counts", JSON.stringify(got)); } catch (e) { /* 忽略 */ }
+    }
+  } finally { statusCountsBusy = false; }
 }
 
-/* 选状态：再点一次清除；登录用户同步上云（RLS self update），游客只留本机 */
-async function setStatus(k) {
-  if (statusBusy.value) return;
-  statusRevision++;
-  statusBusy.value = true;
+/* 选状态：再点一次清除；登录用户同步上云（RLS self update），游客只留本机。
+ * 轮 238：本地状态**先翻转、界面先动**，云端 PATCH 与计数刷新转后台**串行队列**——
+ * 旧版 statusBusy 锁要等两个串行网络请求才放（生产代理下一次 7s+），
+ * 四个按钮点一次就暗住十几秒（用户实测）。PATCH 按点击顺序入队，不会乱序。 */
+let statusSyncChain = Promise.resolve();
+function setStatus(k) {
   const next = myStatus.value === k ? "" : k;
   myStatus.value = next;
   myStatusHint.value = "";
   if (next) setItem("wp-status", next);
   else removeItem("wp-status");
-  /* 失败原因分类：未跑迁移 → 「功能还没开启」，其余 → 「同步没成功」（状态都先留本机） */
-  if (isMember.value && !(await cloudSetStatus(next || null))) {
-    myStatusHint.value = errorKind(cloud.error) === "not-migrated" ? "setup" : "sync";
-  }
-  await refreshStatusCounts();
-  statusBusy.value = false;
+  if (!isMember.value) return;   /* 游客只留本机，无云端可同步 */
+  statusSyncChain = statusSyncChain
+    .then(() => cloudSetStatus(next || null))
+    .then((ok) => {
+      if (!ok) myStatusHint.value = errorKind(cloud.error) === "not-migrated" ? "setup" : "sync";
+      return refreshStatusCounts();   /* 计数在状态落库后刷新，反映新人数 */
+    })
+    .catch(() => { myStatusHint.value = "sync"; });
 }
 
 /* 只查询自己的档案恢复选中态；大厅不再下载个人列表。 */
@@ -200,7 +207,6 @@ const seasonName = computed(() => season.name[i18n.locale] || season.name.en);
           v-for="k in STATUS_KEYS" :key="k"
           type="button" class="status-card"
           :class="{ 'is-on': myStatus === k }"
-          :disabled="statusBusy"
           @click="setStatus(k)">
           <span class="status-ico">{{ t("home.companions.ico." + k) }}</span>
           <span class="status-name">{{ t("home.companions.name." + k) }}</span>

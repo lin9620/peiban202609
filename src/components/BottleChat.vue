@@ -19,6 +19,7 @@ import { displayMsg, withDayDividers, canRecall, validateSend, sendErrKey, merge
 import { dmStoreLoad, dmStoreSave } from "../utils/dmStore.js";
 import { idbMerge } from "../utils/dmIdb.js";
 import { refreshBadge } from "../stores/badgeStore.js";
+import { avatarUrlFor } from "../utils/avatar.js";   /* 轮 238:萌宠头像池 */
 
 const props = defineProps({
   letter: { type: Object, default: null },   /* 左列选中的漂流瓶记录行（bottle_letters.*） */
@@ -68,6 +69,16 @@ function fontsOk() {                /* 轮 178b：webfont 没在加载中 = 排�
     fonts.ready 有「触发过早误放行」的坑，弃用）；加载失败也会落到 loaded，不会永藏 */
   return !(document.fonts && document.fonts.status === "loading");
 }
+/* 轮 238 · 字体「静默」判定（与 MessagesView 同款）：文楷分块加载的间隙 status
+ * 会短暂读回 "loaded"，只看 status 会在震荡中段揭示 → 闪现又跳没。 */
+let lastFontActivity = -1e9;
+if (typeof document !== "undefined" && document.fonts) {
+  const markFontActivity = () => { lastFontActivity = performance.now(); };
+  document.fonts.addEventListener("loading", markFontActivity);
+  document.fonts.addEventListener("loadingdone", markFontActivity);
+}
+const fontQuiet = () =>
+  !document.fonts || performance.now() - lastFontActivity > 150;
 const pinning = ref(false);         /* 轮 173b：进会话钉底中（直到首屏数据落定） */
 function onListTouch() { userScrolling.value = true; }
 function onListWheel() { userScrolling.value = true; }
@@ -115,14 +126,14 @@ function scrollBottom(smooth = false) {
       const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
       /* 轮 196：矮平台不当稳定（同主会话——防挂载初期揭示后内容展开闪顶部帧） */
       const plateau = el.scrollHeight <= el.clientHeight + 24 && frames < 40;
-      const settled = fontsOk() && entryReady.value && el.scrollHeight === lastH && !plateau && gap < 4;
+      const settled = fontQuiet() && fontsOk() && entryReady.value && el.scrollHeight === lastH && !plateau && gap < 4;
       lastH = el.scrollHeight;
       if (settled) stableFrames++; else stableFrames = 0;
       if (settled && !stableSince) stableSince = performance.now();
       if (!settled) stableSince = 0;
       /* 轮 205：揭示等待自适应——字体就绪且页面已活过 2.5s（样式/字体必然落定）→ 80ms 快车道
        * （微信式秒开）；冷加载/字体未定 → 300ms 保守（后段位移吞进隐藏期）。 */
-      const hold = (document.fonts && document.fonts.status === "loaded" && performance.now() > 2500) ? 80 : 300;
+      const hold = (fontQuiet() && performance.now() > 2500) ? 80 : 300;
       if (stableSince && performance.now() - stableSince >= hold && !listRevealed.value) listRevealed.value = true;
       frames++;
       requestAnimationFrame(chase);
@@ -366,7 +377,7 @@ onBeforeUnmount(() => { clearInterval(timer); });
 
     <template v-else>
       <header class="dm-thread-head">
-        <n-avatar round :size="40" class="dm-msg-avatar clickable" :title="t('dm.viewHome')" @click="goUser(peerId)">{{ peerInitial }}</n-avatar>
+        <n-avatar round :size="40" class="dm-msg-avatar clickable" :title="t('dm.viewHome')" :src="avatarUrlFor(peerId) || undefined" @click="goUser(peerId)"><template v-if="!avatarUrlFor(peerId)" #default>{{ peerInitial }}</template><template v-else #fallback>{{ peerInitial }}</template></n-avatar>
         <b class="dm-name dm-peer-link" :title="t('dm.viewHome')" @click="goUser(peerId)">{{ props.peerName || t("bottle.peerFallback") }}</b>
         <span class="bchat-tag">{{ t("bottle.title") }}</span>
         <span class="dm-spacer"></span>
@@ -411,7 +422,7 @@ onBeforeUnmount(() => { clearInterval(timer); });
           <template v-for="it in flow" :key="it.key">
             <div v-if="it.type === 'day'" class="dm-day"><span>{{ dayLabel(it.ts) }}</span></div>
             <div v-else class="dm-line" :class="{ mine: it.msg.sender === meId }">
-              <n-avatar v-if="it.msg.sender !== meId" round :size="30" class="dm-msg-avatar">{{ peerInitial }}</n-avatar>
+              <n-avatar v-if="it.msg.sender !== meId" round :size="30" class="dm-msg-avatar" :src="avatarUrlFor(peerId) || undefined"><template v-if="!avatarUrlFor(peerId)" #default>{{ peerInitial }}</template><template v-else #fallback>{{ peerInitial }}</template></n-avatar>
               <div class="dm-msg-col">
                 <div class="dm-bubble" :class="{ recalled: it.msg.recalled, failed: it.msg.failed }">
                   <p v-if="it.msg.recalled" class="dm-recalled">{{ t("dm.recalled") }}</p>

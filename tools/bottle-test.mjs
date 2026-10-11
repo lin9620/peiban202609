@@ -254,10 +254,12 @@ ok("BottleView：弹窗里回信/放回海里直接可用（doReply/doRelease �
     && has(bottleView, '@click="doReply(fishPop.letter)"')
     && (bottleView.match(/fishPop\.value\.show = false/g) || []).length >= 2
     && has(bottleView, '@click="fishPop.show = false"'));
-ok("BottleView：弹窗无右上角 X、不可点遮罩/Esc 关——捞到信只有「回信/放回」两条路（轮 26）",
+ok("BottleView：弹窗可关（✕/蒙版/Esc）+ 离开漂流瓶联自动关——信在「手里」随时可找回（轮 238，旧版困人陷阱）",
   !has(bottleView, "popKeep")
-    && has(bottleView, ':closable="false"') && has(bottleView, ':mask-closable="false"')
-    && has(bottleView, ':close-on-esc="false"'));
+    && !bottleView.includes(':closable="false"')
+    && !bottleView.includes(':mask-closable="false"')
+    && !bottleView.includes(':close-on-esc="false"')
+    && bottleView.includes('fishPop.value.show = false'));  /* 离开联自动关 */
 ok("BottleView：按下瞬间出「撒网中」弹窗 + 8s 悬死给出口（轮 26：反馈 <100ms）",
   has(bottleView, 'fishPop.value = { show: true, mode: "fishing", letter: null, msg: "" }')
     && has(bottleView, "const FISH_TIMEOUT") && has(bottleView, '"bottle-slow"')

@@ -15,6 +15,7 @@ import { bottleRecords, bottleChatState, bottleErrKey } from "../utils/bottle.js
 import { cloudFetchProfile } from "../utils/wall.js";
 import { relativeTime } from "../utils/dmRules.js";
 import { refreshBadge } from "../stores/badgeStore.js";
+import { avatarUrlFor } from "../utils/avatar.js";   /* 轮 238:萌宠头像池 */
 
 const props = defineProps({
   /* 父级当前选中的信（受控）：用于行选中态；切换页签/刷新后由父级对齐 */
@@ -135,7 +136,7 @@ onBeforeUnmount(() => {
       v-for="row in rows" :key="row.id" role="listitem"
       class="bcl-row" :class="{ on: String(row.id) === String(props.selectedId) }"
       @click="pick(row)">
-      <n-avatar round :size="38" class="post-avatar">{{ initial(row) }}</n-avatar>
+      <n-avatar round :size="38" class="post-avatar" :src="avatarUrlFor(peerId(row)) || undefined"><template v-if="!avatarUrlFor(peerId(row))" #default>{{ initial(row) }}</template><template v-else #fallback>{{ initial(row) }}</template></n-avatar>
       <div class="bcl-body">
         <div class="bcl-top">
           <b class="dm-name">{{ peerName(row) }}</b>

@@ -10,6 +10,7 @@ import { cloud, cloudUpdateNickname, cloudChangePassword, cloudDeleteAccount } f
 import { NICK_MAX, MIN_PASSWORD, passwordProblem } from "../utils/authRules.js";
 import * as notifyApi from "../utils/notify.js";
 import { normPrefs } from "../utils/notifyRules.js";
+import { avatarUrlFor } from "../utils/avatar.js";   /* 轮 238:萌宠头像池 */
 import {
   themeKey, themeOptions, applyTheme,
   langOptions, onLangPick, isMobileNav,
@@ -181,7 +182,8 @@ onMounted(() => { loadPrefs(); });
     <!-- 用户卡：Soul 式顶部身份区 -->
     <section class="card set-user">
       <div class="set-avatar" :class="{ paw: !cloudSigned }">
-        {{ cloudSigned ? (userNick || "?").slice(0, 1).toUpperCase() : "\u{1F43E}" }}
+        <img v-if="cloudSigned && avatarUrlFor(cloud.user && cloud.user.id)" class="set-avatar-img" :src="avatarUrlFor(cloud.user && cloud.user.id)" alt="" />
+        <span v-else>{{ cloudSigned ? (userNick || "?").slice(0, 1).toUpperCase() : "\u{1F43E}" }}</span>
       </div>
       <div class="set-user-body">
         <b class="set-user-name">
@@ -386,6 +388,8 @@ onMounted(() => { loadPrefs(); });
   box-shadow: 0 6px 14px rgba(240, 132, 47, .25);
 }
 .set-avatar.paw { background: var(--accent-soft); color: var(--accent-deep); font-size: 26px; box-shadow: none; }
+/* 轮 238:设置页头像 = 萌宠头像池（图盖满圆框；未登录落回爪印） */
+.set-avatar-img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
 .set-user-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .set-user-name { font-size: 16px; }
 .set-user-mail { font-size: 12px; overflow-wrap: anywhere; }

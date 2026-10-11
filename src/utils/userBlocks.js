@@ -48,21 +48,36 @@ export async function refreshBlocks() {
   return blockState.ids;
 }
 
-/** 拉黑（dm RPC 拦私信 + 本地名单即时更新，UI 立刻生效） */
+/** 拉黑（dm RPC 拦私信 + 本地名单即时更新，UI 立刻生效）
+ * 轮 238：名单更新改为**乐观先行**（先动 blockState 再发请求，失败回滚）——
+ * 消息列表按 isBlocked 过滤，这里不先动名单，列表就要等 RPC 回来才消失 = 不跟手。 */
 export async function blockUser(userId) {
   if (!userId) return false;
-  await dmApi.block(userId);
   if (!blockState.ids.includes(userId)) blockState.ids.unshift(userId);
   scopeSet(SNAP_BASE, blockState.ids);
+  try {
+    await dmApi.block(userId);
+  } catch (e) {
+    blockState.ids = blockState.ids.filter((id) => id !== userId);
+    scopeSet(SNAP_BASE, blockState.ids);
+    throw e;
+  }
   return true;
 }
 
-/** 取消拉黑 */
+/** 取消拉黑（同上：名单先行，失败回滚恢复名单） */
 export async function unblockUser(userId) {
   if (!userId) return false;
-  await dmApi.unblock(userId);
+  const snapshot = blockState.ids.slice();
   blockState.ids = blockState.ids.filter((id) => id !== userId);
   scopeSet(SNAP_BASE, blockState.ids);
+  try {
+    await dmApi.unblock(userId);
+  } catch (e) {
+    blockState.ids = snapshot;
+    scopeSet(SNAP_BASE, blockState.ids);
+    throw e;
+  }
   return true;
 }
 

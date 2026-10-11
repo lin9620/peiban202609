@@ -201,7 +201,7 @@ ok("SQL 撤回窗口 = 15 minutes", mig.includes("interval '15 minutes'"));
 ok("SQL 会话有序对约束 user_a < user_b", mig.includes("check (user_a < user_b)"));
 ok("SQL 唯一约束防并发重复建会话", mig.includes("unique (user_a, user_b)"));
 ok("SETUP 同步了第 9 节", setup.includes("-- 9) 私信与通知中心"));
-for (const fn of ["dm_send", "notif_page", "notif_clear", "admin_broadcast"]) {
+for (const fn of ["dm_send", "notif_page", "notif_clear", "admin_broadcast_start", "admin_broadcast_step", "admin_broadcasts_list"]) {
   ok(`SETUP 也含 ${fn}`, setup.includes(`create or replace function public.${fn}(`));
 }
 ok("SETUP 末尾有函数授权", setup.includes("grant execute on all functions in schema public"));
@@ -215,7 +215,8 @@ const names = (src) => {
   for (const m of src.matchAll(METHOD_RE)) out.add(m[1]);
   return out;
 };
-const isGroup = (n) => n.startsWith("dm") || n.startsWith("notif") || n === "adminBroadcast";
+const isGroup = (n) => n.startsWith("dm") || n.startsWith("notif")
+  || n.startsWith("adminBroadcast");   /* 轮 238：公告三件套 Start/Step/(s)List */
 const D = [...names(direct)].filter(isGroup).sort();
 const G = [...names(gateway)].filter(isGroup).sort();
 ok("两实现 dm/notif 方法集一致", eq(D, G), `${D.join(",")} vs ${G.join(",")}`);
@@ -223,7 +224,8 @@ const NEED_METHODS = [
   "dmOpen", "dmListConvs", "dmListMessages", "dmConvMeta", "dmSend", "dmMarkRead",
   "dmHide", "dmUnhide", "dmMute", "dmAccept", "dmRecall", "dmBlock", "dmUnblock",
   "dmBlocks", "dmUnreadTotal", "notifPage", "notifUnread", "notifMark", "notifClear",
-  "notifPrefsGet", "notifPrefsSet", "adminBroadcast",
+  "notifPrefsGet", "notifPrefsSet",
+  "adminBroadcastStart", "adminBroadcastStep", "adminBroadcasts",   /* 轮 238：分批推送三件套 */
 ];
 for (const m of NEED_METHODS) {
   ok(`直连实现有 ${m}`, D.includes(m));
@@ -293,13 +295,16 @@ ok("/settings 路由已注册", mvRouter.includes('"/settings"'));
     mv.includes("pinning.value = true;") && mv.includes("if (before == null) pinning.value = false;")
     && bc.includes("pinning.value = true;") && bc.includes("pinning.value = false;")
     && mv.includes("if (userScrolling.value) return;") && bc.includes("if (userScrolling.value) return;")
-    && mv.includes("settled = fontsOk() && entryReady.value && el.scrollHeight === lastH")
-    && bc.includes("settled = fontsOk() && entryReady.value && el.scrollHeight === lastH"));
+    && mv.includes("settled = fontQuiet() && fontsOk() && entryReady.value && el.scrollHeight === lastH")
+    && bc.includes("settled = fontQuiet() && fontsOk() && entryReady.value && el.scrollHeight === lastH"));
   ok("私信页：触顶自动翻历史（passive 滚动监听 + rAF 节流）",
     mv.includes('@scroll.passive="onScrollTop"') && mv.includes("requestAnimationFrame"));
   ok("私信页：翻历史锚点保持（scrollHeight 差值补偿）", mv.includes("el.scrollTop += el.scrollHeight - oldH"));
   ok("私信页：轮询走 mergeTail 增量合并", mv.includes("mergeTail(msgs.value, asc)"));
   ok("私信页：会话列表降频（每 3 拍一次，不再每 5s 全量拉 200 行）", mv.includes("tickN % 3 === 1"));
+  ok("轮 238：拉黑会话即时从列表隐藏（乐观翻状态 + 过滤 blocked，与服务端 dm_list_convs 同口径）",
+    mv.includes("c.accepted !== false && !c.blocked && !isBlocked(c.other_id)") && mv.includes("!isBlocked(c.other_id)")
+    && mv.includes("if (row) row.blocked = !wasBlocked;"));
   ok("私信页：发送后就地落位（msg_id 直换 + 本地库补条）",
     mv.includes("r.msg_id") && mv.includes("dmStoreSave(meId.value, convId, msgs.value, hasMore.value)"));
   ok("私信页：进会话本地库秒开（无网络先渲染）",

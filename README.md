@@ -321,7 +321,7 @@ src/
     SnackRain.vue      零食雨小游戏（鼠标/键盘操作 + 结算面板）
     ShareCard.vue      分享卡片生成
   views/               Home / Pet（宠物乐园）/ Community / Waller（用户主页 /u/:id）/ Profile / Privacy（隐私政策）/ Admin（管理中心，仅管理员）
-public/                robots.txt · sitemap.xml · og-image.png · favicon.png · apple-touch-icon.png · _headers（安全头 + 资产长缓存）
+public/                robots.txt · sitemap.xml · og-image.png · favicon.png · apple-touch-icon.png · avatars/（30 张萌宠头像，gen-avatars.mjs 生成，注册用户按 uid 哈希稳定分配） · _headers（安全头 + 资产长缓存）
 ```
 
 > 宠物动画：**预设 5 种宠物用 Lottie**（`utils/lottiePet.js` 在运行时生成矢量 JSON 交给 lottie-web 播放，因此不依赖任何外部素材文件、可离线、可缩放不糊）。
@@ -355,7 +355,7 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 - ✅ **已完成**：宠物图外置 + 互动计数独立列——立绘 / 手绘菜图进 Storage（`wall-images/<uid>/pet-<hash>.<ext>`，按内容哈希命名、重复上传即覆盖），`pet_profiles` 的互动计数改用独立列 `pats`/`feeds`：修掉「主人同步把访客计数清零」，并把单行数据从 MB 级降到几百字节（解掉将来迁库时单行 2MB 的硬限制）
 - ✅ **已完成**：数据访问适配层——`wall.js` 里所有云端调用（查询 / RPC / Storage）收口到 `src/utils/api/db.js` 一个文件（行为不变），附 `api-contract-test.mjs` 契约测试锁定调用形状；将来换库 / 换托管（Cloudflare Hyperdrive、D1 或自建 API）只改适配层，页面与业务逻辑零改动
 - ✅ **已完成**：API 网关骨架（阶段 2）——Cloudflare Worker 同时托管静态资源与同源 `/api/*` 具名端点（**纯翻译层**：Supabase REST/Storage，用户 JWT 原样透传、RLS 仍由数据库执行、不解析 token、非开放代理、图片路径白名单防穿越）；前端数据层变成可切换实现（默认直连，`VITE_API_GATEWAY=1` 走网关），Auth 仍直连。三套契约测试锁形（api 83 / gateway 65 / worker 180 项）——阶段 3（Hyperdrive / D1 / R2）只换 Worker 内部与适配实现，端点契约不动
-- ✅ **已完成**：管理中心 `/admin`（仅管理员）——总览看板（用户/帖子/评论/浏览/回应分布/宠物互动/存储用量 + 近 14 天趋势 + 浏览最多帖子 + 最新注册）与内容治理（帖子下架/恢复/删除、评论删除）；总览的「用户」卡可点进用户名单页签（昵称/邮箱/用户ID/注册时间，100 条/页，最新在前）；权限由数据库 `admin_users` 白名单 + RLS 兜底，前端只做展示壳；非管理员调用只拿 `{admin:false}` 不泄露数字
+- ✅ **已完成**：管理中心 `/admin`（仅管理员）——总览看板（用户/帖子/评论/浏览/回应分布/宠物互动/存储用量 + 近 14 天趋势 + 浏览最多帖子 + 最新注册 + 历史公告）与内容治理（帖子下架/恢复/删除、评论删除）；总览的「用户」卡可点进用户名单页签（昵称/邮箱/用户ID/注册时间，100 条/页，最新在前）；权限由数据库 `admin_users` 白名单 + RLS 兜底，前端只做展示壳；非管理员调用只拿 `{admin:false}` 不泄露数字
 - ✅ **已完成**：墙上的主页（/u/:id）——点帖子头像/昵称进入，看 TA 的帖子、加入时间与收到的抱抱/暖暖/同感
 - 陪你大厅接入真实在线人数（**当前刻意不显示人数**，等有真实统计再接）
 - 宠物冒险（带回手绘明信片图鉴）、装扮系统、季节彩蛋

@@ -29,6 +29,7 @@ import { copyText } from "../utils/clipboard.js";
 /* 轮 33：举报弹窗 + 全站拉黑过滤（我拉黑的人，TA 的帖子/评论在我这里不显示） */
 import ReportDialog from "../components/ReportDialog.vue";
 import { filterBlocked, isBlocked } from "../utils/userBlocks.js";
+import { avatarUrlFor } from "../utils/avatar.js";   /* 轮 238:萌宠头像池 */
 
 const route = useRoute();
 const router = useRouter();
@@ -519,7 +520,7 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
 
       <article v-if="!authorBlocked" class="post-card card">
         <div class="post-head">
-          <n-avatar round :size="42" class="post-avatar">🙂</n-avatar>
+          <n-avatar round :size="42" class="post-avatar" :src="avatarUrlFor(post.userId) || undefined"><template v-if="!avatarUrlFor(post.userId)" #default>🙂</template><template v-else #fallback>🙂</template></n-avatar>
           <div class="post-meta">
             <div class="post-name">{{ post.name }}</div>
             <div class="post-time">{{ when(post.ts) }}</div>

@@ -1482,14 +1482,30 @@ async function handleApi(request, env, ctx) {
         }
       }
 
-      /* —— 管理员公告（阶段 4：全员 system 通知） —— */
-      if (seg[0] === "admin" && seg[1] === "broadcast" && seg.length === 2 && m === "POST") {
+      /* —— 管理员公告（轮 238 · 分批推送）：POST = 建档（start），POST step = 推一批，
+         GET = 历史。管理端循环 step 直到 done；中途关页可从历史续发。 —— */
+      if (seg[0] === "admin" && seg[1] === "broadcast" && seg.length === 2 && request.method === "POST") {
         const b = await readJson(request);
         if (b.err) return b.err;
         const t = b.body || {};
         const body = typeof t.body === "string" ? t.body : "";
         if (!body.trim()) return fail(400, "empty-body");
-        return rpc(env, request, "admin_broadcast", { p_body: body });
+        return rpc(env, request, "admin_broadcast_start", { p_body: body });
+      }
+      if (seg[0] === "admin" && seg.length === 3 && seg[1] === "broadcast" && seg[2] === "step" && request.method === "POST") {
+        const b = await readJson(request);
+        if (b.err) return b.err;
+        const bid = typeof (b.body || {}).bid === "string" ? b.body.bid : "";
+        if (!/^[0-9a-f-]{36}$/i.test(bid)) return fail(400, "bad-bid");
+        const batch = Number((b.body || {}).batch) > 0 ? Number(b.body.batch) : undefined;
+        return rpc(env, request, "admin_broadcast_step", batch ? { p_bid: bid, p_batch: batch } : { p_bid: bid });
+      }
+      /* 轮 238 · GET 同路径 = 公告历史（admin_broadcasts_list；非管理员空集） */
+      if (seg[0] === "admin" && seg[1] === "broadcast" && seg.length === 2 && m === "GET") {
+        return rpc(env, request, "admin_broadcasts_list", {
+          p_limit: parseLimit(q.get("limit"), 20),
+          p_offset: parseOffset(q.get("offset")),
+        });
       }
 
       return fail(404, "not-found");

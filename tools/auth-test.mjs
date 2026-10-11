@@ -343,7 +343,7 @@ ok("A48b nickLong 的 {n} 真会被替换（昵称上限提示不留占位符）
   /* 轮 31 补：轮 30 漏了 getItem/setItem 的 import → 记账静默失效（锁定形同虚设），
    * 这里既查导入（undef-check 抓过的那类坑），也真跑一次 round-trip。 */
   ok("A101 登录失败锁记账真的能落盘（supabase.js 导入 getItem/setItem，undef-check 0 问题）",
-    sb.includes('import { getItem, setItem } from "./storage.js";'));
+    sb.includes('import { getItem, setItem, removeItem } from "./storage.js";'));
   {
     const mail = "Lock.Probe@Example.com";
     loginLockSave(mail, { n: 3, until: 0 });

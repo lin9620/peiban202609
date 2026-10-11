@@ -21,6 +21,7 @@ import { fmtWhenSec } from "../utils/wallRules.js";
 import { db } from "../utils/api/db.js";
 import { cloudFavListMine, cloudFavRemove, rowsToPosts, publicUrl, aggregateReactions } from "../utils/wall.js";
 import { cacheKey, cachePeek, cacheSet, swr } from "../utils/cache.js";
+import { avatarUrlFor } from "../utils/avatar.js";   /* 轮 238:萌宠头像池 */
 
 /* 心情图标：一律用 Unicode 转义，避免源码中的 emoji 编码损坏 */
 /* 轮 155：日历表情与打卡统一——旧系统 emoji 数组退役，格子改用 MoodFace 手绘脸。
@@ -314,8 +315,7 @@ const brightRatio = computed(() => {
   <div>
     <!-- 账户 -->
     <section class="card profile-head">
-      <n-avatar round :size="64" class="profile-avatar">
-        {{ signedIn ? displayName.slice(0, 1).toUpperCase() : PAW }}
+      <n-avatar round :size="64" class="profile-avatar" :src="avatarUrlFor(cloud.user && cloud.user.id) || undefined"><template v-if="!avatarUrlFor(cloud.user && cloud.user.id)" #default>{{ signedIn ? displayName.slice(0, 1).toUpperCase() : PAW }}</template><template v-else #fallback>{{ signedIn ? displayName.slice(0, 1).toUpperCase() : PAW }}</template>
       </n-avatar>
       <div class="profile-id">
         <span class="sec-label">{{ t("profile.title") }}</span>
@@ -363,7 +363,7 @@ const brightRatio = computed(() => {
           v-for="r in favRows" :key="r.post.dbId"
           class="post-card card my-post" :to="'/post/' + r.post.dbId">
           <div class="post-head">
-            <n-avatar round :size="42" class="post-avatar">🙂</n-avatar>
+            <n-avatar round :size="42" class="post-avatar" :src="avatarUrlFor(cloud.user && cloud.user.id) || undefined"><template v-if="!avatarUrlFor(cloud.user && cloud.user.id)" #default>🙂</template><template v-else #fallback>🙂</template></n-avatar>
             <div class="post-meta">
               <div class="post-name">{{ r.post.name }}</div>
               <div class="post-time">{{ fmtWhenSec(r.post.created_at) }}</div>
@@ -534,7 +534,7 @@ const brightRatio = computed(() => {
           v-for="p in myPosts" :key="p.id"
           class="post-card card my-post" :to="'/post/' + p.dbId">
           <div class="post-head">
-            <n-avatar round :size="42" class="post-avatar">🙂</n-avatar>
+            <n-avatar round :size="42" class="post-avatar" :src="avatarUrlFor(cloud.user && cloud.user.id) || undefined"><template v-if="!avatarUrlFor(cloud.user && cloud.user.id)" #default>🙂</template><template v-else #fallback>🙂</template></n-avatar>
             <div class="post-meta">
               <div class="post-name">{{ p.name }}</div>
               <div class="post-time">{{ fmtWhenSec(p.ts) }}</div>

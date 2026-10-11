@@ -5,7 +5,7 @@
  * 这样剥离后的 App 资源在 JS 起不来时也能给出中文提示而不是白屏。
  * 用法：node tools/cap-strip-hero.mjs [目录]   缺省处理 android/app/src/main/assets/public
  * 注意：以后 cap sync 会把带占位的 dist 拷回来 → 用 npm run cap:sync（已串好本脚本）。 */
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const root = process.argv[2] || "android/app/src/main/assets/public";
@@ -29,4 +29,9 @@ function walk(dir) {
   }
 }
 walk(root);
-console.log(`[cap-strip-hero] ${root} · index.html × ${files} · 剥 SEO 占位 × ${hero} · 放宽看门狗 × ${watch}`);
+/* 轮 238 · 剥掉同步进 App 资源的网页用 APK（public/apk/）——
+ * 「下载 App」是网页端功能，App 里点不了它；嵌进去 = App 体积白白翻倍。 */
+try {
+  rmSync(join(root, "apk"), { recursive: true, force: true });
+} catch (e) { /* 没有 apk/ 目录就 nothing to do */ }
+console.log(`[cap-strip-hero] ${root} · index.html × ${files} · 剥 SEO 占位 × ${hero} · 放宽看门狗 × ${watch} · 剥内嵌 apk ✓`);

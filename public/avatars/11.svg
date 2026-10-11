@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="dino">
+<defs><clipPath id="c"><circle cx="48" cy="48" r="48"/></clipPath>
+<linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#EAF7E1"/><stop offset="1" stop-color="#D6EFC4"/></linearGradient><radialGradient id="sh" cx="40%" cy="32%" r="85%">
+<stop offset="52%" stop-color="#000" stop-opacity="0"/><stop offset="100%" stop-color="#000" stop-opacity=".08"/>
+</radialGradient><radialGradient id="b"><stop offset="0%" stop-color="#F58CA6" stop-opacity=".5"/><stop offset="100%" stop-color="#F58CA6" stop-opacity="0"/></radialGradient></defs>
+<g clip-path="url(#c)">
+<rect width="96" height="96" fill="url(#g)"/>
+<path d="M36.5 27.5 L41.5 20.5 L46.5 27.5 L51.5 19.5 L56.5 27.5 L61.5 21 L64.5 28.5" fill="none" stroke="#7DA85E" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/><circle cx="48" cy="55" r="29.5" fill="#8FBF6E"/><circle cx="48" cy="55" r="29.5" fill="url(#sh)"/><ellipse cx="38" cy="36.5" rx="12" ry="6.5" fill="#FFF" opacity=".26" transform="rotate(-16 38 36.5)"/><path d="M35.3 54.4 Q38.5 50.2 41.7 54.4" stroke="#4A3B33" stroke-width="1.7" fill="none" stroke-linecap="round"/><path d="M54.3 54.4 Q57.5 50.2 60.7 54.4" stroke="#4A3B33" stroke-width="1.7" fill="none" stroke-linecap="round"/><path d="M43.5 61.5 Q48 64.5 52.5 61.5" stroke="#4A3B33" stroke-width="1.4" fill="none" stroke-linecap="round"/><circle cx="29" cy="60" r="6.2" fill="url(#b)"/><circle cx="67" cy="60" r="6.2" fill="url(#b)"/>
+</g>
+</svg>

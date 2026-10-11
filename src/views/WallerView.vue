@@ -9,6 +9,7 @@ import {
 } from "../utils/wall.js";
 import { visibleOnly, ANON_KEY, fmtWhen } from "../utils/wallRules.js";
 import { cacheKey, swr } from "../utils/cache.js";   /* 轮 158：主页聚合 SWR */
+import { avatarUrlFor } from "../utils/avatar.js";   /* 轮 238:萌宠头像池 */
 import { scopeGetRaw } from "../utils/userScope.js";
 /* 轮 33：全站拉黑（复用 dm_blocks；拉黑后 TA 的内容在我这边隐藏） */
 import { blockUser, unblockUser, isBlocked, refreshBlocks } from "../utils/userBlocks.js";
@@ -162,8 +163,7 @@ onMounted(async () => {
   <div class="waller">
     <!-- 主页头：头像 + 昵称 + 加入时间 -->
     <section class="card waller-head">
-      <n-avatar round :size="72" class="post-avatar">
-        {{ failed ? "?" : loading ? "…" : initial }}
+      <n-avatar round :size="72" class="post-avatar" :src="avatarUrlFor(uid) || undefined"><template v-if="!avatarUrlFor(uid)" #default>{{ failed ? "?" : loading ? "…" : initial }}</template><template v-else #fallback>{{ failed ? "?" : loading ? "…" : initial }}</template>
       </n-avatar>
       <div class="waller-id">
         <span class="sec-label">{{ t("waller.title") }}</span>
@@ -240,7 +240,7 @@ onMounted(async () => {
     <template v-if="!failed">
       <article v-for="p in posts" :key="p.id" class="post-card card">
         <div class="post-head">
-          <n-avatar round :size="40" class="post-avatar">{{ initial }}</n-avatar>
+          <n-avatar round :size="40" class="post-avatar" :src="avatarUrlFor(uid) || undefined"><template v-if="!avatarUrlFor(uid)" #default>{{ initial }}</template><template v-else #fallback>{{ initial }}</template></n-avatar>
           <div class="post-meta">
             <div class="post-name">{{ name }}</div>
             <div class="post-time">{{ when(p.ts) }}</div>

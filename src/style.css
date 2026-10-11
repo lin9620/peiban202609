@@ -102,7 +102,92 @@ button, input, textarea { font-family: inherit; }
 }
 .wb-round:hover { transform: translateY(-2px); border-color: var(--accent); }
 .wb-round:active { transform: scale(.95); }
+/* 轮 238 · 「下载 App」入口（桌面欢迎条）+ 弹窗：直接下载 APK / 扫码下载 */
+.wb-dl {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: inherit; font-size: 13px; font-weight: 600;
+  color: var(--accent-deep); background: var(--accent-soft);
+  border: 1.5px solid var(--accent); border-radius: 999px; padding: 8px 14px;
+  cursor: pointer; transition: transform .15s var(--like-ease), background .15s ease, color .15s ease;
+}
+.wb-dl:hover { background: var(--accent); color: #fff; transform: translateY(-2px); }
+.wb-dl:active { transform: scale(.96); }
+.wb-dl-ico { font-size: 15px; line-height: 1; }
+/* 轮 238 · 「下载 App」弹窗 v2：渐变 hero 带（光斑装饰）+ 双卡 + 入场动画。
+ * 前版一张白卡太素（用户「丑哭了」）——现在：hero 用主题色渐变 + 两枚模糊光斑，
+ * 双卡各自带图标徽章 / 二维码盒，悬停上浮，圆角 22 + 大而软的暖色投影。 */
+.dl-modal {
+  position: relative; width: min(480px, calc(100vw - 40px));
+  background: var(--card); border-radius: 22px; overflow: hidden;
+  box-shadow: 0 24px 64px rgba(122, 74, 42, .3), 0 4px 16px rgba(122, 74, 42, .12);
+  animation: dl-pop .3s var(--like-ease);
+}
+@keyframes dl-pop { from { transform: translateY(10px) scale(.95); opacity: 0; } }
+.dl-hero {
+  position: relative; padding: 24px 26px 20px; overflow: hidden;
+  background: linear-gradient(135deg, var(--accent-soft), var(--wash) 78%);
+}
+.dl-orb { position: absolute; border-radius: 50%; filter: blur(18px); opacity: .5; pointer-events: none; }
+.dl-orb-a { width: 130px; height: 130px; right: -34px; top: -46px; background: var(--accent); opacity: .28; }
+.dl-orb-b { width: 90px; height: 90px; left: -26px; bottom: -40px; background: var(--accent-soft); opacity: .8; }
+.dl-title { position: relative; margin: 0; font-size: 21px; color: var(--ink); }
+.dl-title::after { content: "🐾"; font-size: 17px; margin-left: 7px; }
+.dl-intro { position: relative; margin: 5px 0 0; font-size: 13px; color: var(--ink-soft); }
+.dl-close {
+  position: absolute; top: 12px; right: 12px; z-index: 1;
+  width: 30px; height: 30px; border-radius: 50%; border: none; cursor: pointer;
+  background: rgba(255, 255, 255, .6); color: var(--ink-soft); font-size: 13px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .15s ease, transform .15s var(--like-ease);
+}
+.dl-close:hover { background: #fff; color: var(--ink); transform: rotate(90deg); }
+.dl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; padding: 18px 22px 22px; }
+.dl-card {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; text-align: center;
+  padding: 18px 14px 16px; border: 1px solid var(--hairline); border-radius: 18px;
+  background: var(--wash); color: var(--ink); text-decoration: none;
+  transition: transform .18s var(--like-ease), border-color .18s ease, box-shadow .18s ease;
+}
+a.dl-card { cursor: pointer; }
+a.dl-card:hover {
+  transform: translateY(-3px); border-color: var(--accent);
+  box-shadow: 0 10px 24px rgba(169, 88, 62, .18);
+}
+.dl-badge {
+  width: 46px; height: 46px; border-radius: 50%; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; color: var(--accent-deep);
+  background: linear-gradient(135deg, var(--accent-soft), rgba(255, 255, 255, .7));
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+.dl-card-t { font-size: 14.5px; color: var(--ink); }
+.dl-card-h { font-size: 12px; line-height: 1.55; color: var(--ink-soft); }
+.dl-qr-box {
+  position: relative;
+  width: 148px; height: 148px; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  background: #FFFDF7; border: 1px solid var(--hairline); border-radius: 14px;
+  box-shadow: inset 0 0 0 4px #fff;
+}
+/* 扫一扫四角框（左上 / 右下两枚，取景框隐喻） */
+.dl-qr-box::before, .dl-qr-box::after {
+  content: ""; position: absolute; width: 16px; height: 16px;
+  border: 2.5px solid var(--accent); opacity: .6; pointer-events: none;
+}
+.dl-qr-box::before { left: 6px; top: 6px; border-right: none; border-bottom: none; border-top-left-radius: 8px; }
+.dl-qr-box::after { right: 6px; bottom: 6px; border-left: none; border-top: none; border-bottom-right-radius: 8px; }
+.dl-qr-svg, .dl-qr-svg svg { width: 100%; height: 100%; display: block; border-radius: 14px; }
+.dl-qr-fallback { font-size: 40px; }
+.dl-qr-spin {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 2.5px solid var(--hairline); border-top-color: var(--accent);
+  animation: dl-spin .8s linear infinite;
+}
+@keyframes dl-spin { to { transform: rotate(360deg); } }
+@media (max-width: 480px) { .dl-grid { grid-template-columns: 1fr; } }
 .wb-avatar { background: var(--accent); color: #fff; font-weight: 500; font-size: 15px; }
+/* 轮 238:欢迎条头像 = 萌宠头像池（图盖满圆框；无 uid 落回首字母） */
+.wb-avatar-img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
 .wb-badge {
   position: absolute; top: -3px; right: -3px; min-width: 17px; height: 17px;
   padding: 0 4px; border-radius: 999px; background: var(--low); color: #fff;
@@ -1776,6 +1861,10 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
   display: flex; flex-direction: column; gap: 6px;
   max-height: 68vh; overflow-y: auto; padding: 14px;
 }
+/* 轮 237 · 子项禁止被压扁 —— flex 纵向列超高时，默认 flex-shrink:1 会先把固定元素
+ * 压扁而不是触发滚动：搜索框实测 44px→20px，24px 高的输入框带占位文字溢出框外
+ * （桌面矮窗口 + 会话多时必现，用户截图实证）。不收缩 = 内容超高走 overflow 滚动。 */
+.dm-list > * { flex-shrink: 0; }
 .dm-search { margin-bottom: 6px; }
 .dm-sec { display: flex; align-items: center; gap: 8px; margin: 8px 0 2px; }
 .dm-row {
@@ -1798,7 +1887,13 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   overflow-wrap: anywhere;
 }
-.dm-muted { opacity: .8; margin-right: 4px; }
+/* 轮 238 · 免打扰标 = 微信式小灰标：列表行嵌在时间左侧、聊天头挂在名字旁，一律无文字。
+ * 旧写法 🔇 emoji + 「免打扰」文案又大又抢眼（用户拍板改微信式）。
+ * 图标绝对定位在时间盒左外侧、垂直居中 —— 不进 flex 行、不参与 baseline 对齐
+ * （svg 没有文字基线，进 flex 行会把整行撑高错位，实测 21px→34px）。 */
+.dm-time { position: relative; }
+.dm-time.has-mute { padding-left: 18px; }
+.dm-muted-ico { position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; color: var(--ink-faint); }
 .dm-badge {
   min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px;
   background: #f2603f; color: #fff; font-size: 11px; font-weight: 500;
@@ -2452,6 +2547,7 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 .hall-now-cell span { font-size: 11px; color: var(--ink-faint); white-space: nowrap; }
 .hall-now-cell.on { background: var(--accent-soft); }
 .hall-now-cell.on b, .hall-now-cell.on span { color: var(--accent-deep); }
+/* ══════════ 故事栏（轮 145+） ══════════
    单一来源：故事样式全在这段（组件内不再写 style 标签，避免同权重双源互相压制）。
    布局照私信页轮 142 的一体化惯例：桌面单卡 + 内部分隔线，窄屏上下堆叠。 */
 .story-page { max-width: 900px; margin: 0 auto; }

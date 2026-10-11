@@ -4,7 +4,7 @@
      桌面首页收尾与手机「漂流瓶」联（默认联）共用同一组件。 -->
 <script setup>
 import { ref, computed, watch, onMounted } from "vue";
-import { useRouter } from "vue-router";
+import { useRouter, useRoute } from "vue-router";
 import { NButton, NInput, NModal } from "naive-ui";
 import { t } from "../i18n.js";
 import {
@@ -18,6 +18,7 @@ import { relativeTime } from "../utils/dmRules.js";
 import { cloud } from "../utils/supabase.js";
 
 const router = useRouter();   /* #17 记录里「去聊天」直接进会话页 */
+const route = useRoute();       /* 轮 238:离开漂流瓶联自动关弹窗 */
 const cloudSigned = computed(() => !!(cloud.ready && cloud.user));
 const mailDraft = ref("");
 const replyDraft = ref("");
@@ -165,12 +166,14 @@ async function doFish() {
     mergePending();
     syncQuota();
     /* 轮 22：捞到了 → 居中弹窗直接展示这封信（可就地回信/放回，不再让人猜捞没捞到） */
-    fishPop.value = { show: true, mode: "got", letter: l, msg: "" };
+    if (route.query.tab === "bottle") fishPop.value = { show: true, mode: "got", letter: l, msg: "" };
+    else refreshBottle();   /* 人不在漂流瓶联:信进「手里」托盘,不弹窗 */
   } catch (e) {
     const k = String(e && e.message) === "bottle-slow" ? "bottle.errSlow" : bottleErrKey(e);
     mailHint.value = t(k);
     /* 轮 22：点了捞却没动静的几类原因（海里空/今天用完/囤太多）也弹窗说清 */
-    fishPop.value = { show: true, mode: "msg", letter: null, msg: t(k) };
+    if (route.query.tab === "bottle") fishPop.value = { show: true, mode: "msg", letter: null, msg: t(k) };
+    else mailHint.value = t(k);
     /* 轮 20：限额报错 → 立即同步服务端次数（一次点击内对齐，不再「显示还能捞但说用完」） */
     if (k === "bottle.errFishLimit") syncQuota();
   } finally { fishing.value = false; }
@@ -201,7 +204,7 @@ async function doReply(l) {
     mergePending();
     syncQuota();
     fishPop.value.show = false;   /* 轮 22：在弹窗里回的信 → 弹窗关闭 */
-    await refreshBottle();
+    refreshBottle();   /* 轮 238：记录/托盘后台刷新，不 await（回信成功已就地更新） */
   } catch (e) {
     mailHint.value = t(bottleErrKey(e));
   } finally { busyId.value = ""; }
@@ -210,14 +213,19 @@ async function doReply(l) {
 async function doRelease(l) {
   if (!l || busyId.value) return;
   busyId.value = l.id;
+  /* 轮 238 · 放回海里 = **乐观执行**：弹窗立即关、信立即从手里消失——「它走了」不需要
+   * 等服务端点头（旧版 await RPC + await refreshBottle 两条慢链串行，用户实测 20s 无反应）。
+   * RPC 后台确认；失败还原 + 弹窗告知。放回不扣次数，无需同步配额。 */
+  const fromPopup = !!(fished.value && fished.value.id === l.id);
+  const heldSnapshot = held.value.slice();
+  fishPop.value.show = false;
+  fished.value = fromPopup ? null : fished.value;
+  held.value = held.value.filter((x) => x.id !== l.id);
   try {
     await bottleRelease(l.id);
-    fished.value = null;
-    held.value = held.value.filter((x) => x.id !== l.id);
-    mergePending();
-    fishPop.value.show = false;   /* 轮 22：在弹窗里放回的信 → 弹窗关闭 */
-    await refreshBottle();
   } catch (e) {
+    held.value = heldSnapshot;
+    if (fromPopup) { fished.value = l; fishPop.value = { show: true, mode: "got", letter: l, msg: "" }; }
     mailHint.value = t(bottleErrKey(e));
   } finally { busyId.value = ""; }
 }
@@ -227,6 +235,11 @@ async function doRelease(l) {
  * 轮 42：初始查询在这里显式触发（onMounted 在 setup 全部执行完之后才跑，
  * onSessionChanged 里用到的 const 一定都已初始化 —— 修 TDZ 崩溃，见上方注释）。 */
 onMounted(() => { purgeLegacyBottleLocals(); onSessionChanged(); });
+/* 轮 238 · 离开漂流瓶联:弹窗即关（信在「手里」随时可找回）——
+ * 旧版无关闭钮 + 蒙版不关 + 跟着人走到别的联（用户实测困在宠物页），全修。 */
+watch(() => route.query.tab, (v) => {
+  if (v !== "bottle" && fishPop.value.show) fishPop.value.show = false;
+});
 
 /* —— 漂流瓶记录（#17）：我发布的 / 我捞到的 两类，按发布时间新→旧，10 条一页 —— */
 const REC_PAGE = 10;
@@ -237,8 +250,14 @@ const recDone = ref(false);
 const recLoading = ref(false);
 const recAll = ref([]);         /* 轮144：「我发布的」全量（待处理置顶排序后）——本地分页数据源（≤200 条） */
 
+/* 轮 238 · 代数守卫：切换页签必须作废在途响应——
+ * 旧版 recLoading 守卫会**吞掉点击**（挂载加载在飞时点另一页签 = 静默 return），
+ * 且旧数据回来渲染在新页签下 = 内容与页签错位（用户实测「切换不跟手」）。 */
+let recGen = 0;
+
 async function loadRecords(reset = false) {
-  if (!cloudSigned.value || recLoading.value) return;
+  if (!cloudSigned.value) return;
+  const gen = ++recGen;
   recLoading.value = true;
   recErr.value = "";
   const target = reset ? 0 : recPage.value;
@@ -250,6 +269,7 @@ async function loadRecords(reset = false) {
        * 客户端置顶、其余保持服务端时间新→旧，再本地分页切片；待处理的不再被时间序埋掉。 */
       const got = await bottleRecords(null, 0, { mine: true, limit: 200 });
       const rows = sortBottleMine(Array.isArray(got) ? got : [], myId.value);
+      if (gen !== recGen) return;   /* 已被更新的切换作废：整批丢弃，不落任何数据 */
       recAll.value = rows;
       recPage.value = 0;
       recRows.value = rows.slice(0, REC_PAGE);
@@ -257,22 +277,25 @@ async function loadRecords(reset = false) {
     } else {
       const got = await bottleRecords(null, target * REC_PAGE, { mine: false, limit: REC_PAGE });
       const rows = Array.isArray(got) ? got : [];
+      if (gen !== recGen) return;   /* 同上 */
       recRows.value = rows;
       recPage.value = target;
       recDone.value = rows.length < REC_PAGE;
     }
   } catch (e) {
+    if (gen !== recGen) return;
     recRows.value = [];
     recAll.value = [];
     recDone.value = true;
     recErr.value = bottleErrKey(e);
   } finally {
-    recLoading.value = false;
+    if (gen === recGen) recLoading.value = false;
   }
 }
 function switchRecTab(x) {
   if (recTab.value === x) return;
   recTab.value = x;
+  recRows.value = [];        /* 旧页签内容立即让位：加载态立现，不再挂着旧数据装作已切换 */
   loadRecords(true);
 }
 function recPageGo(d) {
@@ -382,7 +405,7 @@ async function decideRec(l, accept) {
             @click="doReply(l)">
             {{ t("bottle.reply") }}
           </n-button>
-          <n-button quaternary size="small" round :disabled="busyId === l.id" @click="doRelease(l)">
+          <n-button quaternary size="small" round :loading="busyId === l.id" :disabled="busyId === l.id" @click="doRelease(l)">
             {{ t("bottle.release") }}
           </n-button>
         </div>
@@ -412,11 +435,13 @@ async function decideRec(l, accept) {
           <!-- 轮 24c：押在手里的信，操作按钮直接放在记录卡上（此前只在顶部托盘/弹窗里，用户找不到） -->
           <div v-if="recTab === 'held' && l.status === 'held'" class="mail-send" @click.stop>
             <n-button type="primary" size="small" round
+              :loading="busyId === l.id && replyOpen === l.id"
               :disabled="busyId === l.id"
               @click="openReply(l)">
               {{ t("bottle.reply") }}
             </n-button>
             <n-button quaternary size="small" round
+              :loading="busyId === l.id && replyOpen !== l.id"
               :disabled="busyId === l.id"
               @click="doRelease(l)">
               {{ t("bottle.release") }}
@@ -472,7 +497,7 @@ async function decideRec(l, accept) {
          在手机上≈343px 没事，桌面网页上就是 88vw≈1670px 的巨幕（用户报「弹窗也太大了吧」）。
          min(560px, 100vw-32px)：桌面 560px 居中，手机仍是留 16px 边距的近全宽。 -->
     <n-modal v-model:show="fishPop.show" preset="card" style="width: min(560px, calc(100vw - 32px))"
-      :closable="false" :mask-closable="false" :close-on-esc="false"
+     
       :title="fishPop.mode === 'got' ? t('bottle.gotTitle') : (fishPop.mode === 'fishing' ? t('bottle.fishing') : t('bottle.popNotice'))">
       <template v-if="fishPop.mode === 'fishing'">
         <div class="fish-wait">
@@ -493,7 +518,7 @@ async function decideRec(l, accept) {
             @click="doReply(fishPop.letter)">
             {{ t("bottle.reply") }}
           </n-button>
-          <n-button quaternary round :disabled="busyId === fishPop.letter.id" @click="doRelease(fishPop.letter)">
+          <n-button quaternary round :loading="busyId === fishPop.letter.id" :disabled="busyId === fishPop.letter.id" @click="doRelease(fishPop.letter)">
             {{ t("bottle.release") }}
           </n-button>
         </div>

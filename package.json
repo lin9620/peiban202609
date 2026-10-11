@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "deploy": "wrangler deploy",
     "deploy:dry": "wrangler deploy --dry-run --outdir .edge-final",
-    "cap:sync": "cap sync android && node tools/cap-strip-hero.mjs"
+    "cap:sync": "cap sync android && node tools/cap-strip-hero.mjs",
+    "apk:web": "node tools/apk-to-web.mjs"
   },
   "dependencies": {
     "@capacitor/android": "8.5.2",
@@ -24,6 +25,7 @@
     "emoji-picker-element": "^1.29.1",
     "lottie-web": "^5.13.0",
     "naive-ui": "^2.45.3",
+    "qrcode": "^1.5.4",
     "vant": "^4.10.2",
     "vue": "^3.5.0",
     "vue-router": "^4.4.0"

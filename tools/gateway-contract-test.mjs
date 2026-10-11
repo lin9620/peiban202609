@@ -257,7 +257,9 @@ setGatewayAuthProbe(() => true); /* 单测注入：auth 就绪（与 db.supabase
     await db.notifMark([], true);
     await db.notifPrefsGet();
     await db.notifPrefsSet({ comments: true, reactions: false, pets: true, dms: false });
-    await db.adminBroadcast("hi");
+    await db.adminBroadcastStart("hi");
+    await db.adminBroadcastStep("11111111-2222-3333-4444-555555555555");
+    await db.adminBroadcasts(20, 0);
     await db.notifClear();
     await db.deleteMyAccount();
     const u = (i) => c.calls[i].url;
@@ -271,9 +273,11 @@ setGatewayAuthProbe(() => true); /* 单测注入：auth 就绪（与 db.supabase
     ok("notifPrefsGet 端点", u(5) === "/api/notifications/prefs", u(5));
     ok("notifPrefsSet 端点+body", u(6) === "/api/notifications/prefs" && m(6) === "POST" &&
       b(6) === JSON.stringify({ comments: true, reactions: false, pets: true, dms: false }), b(6));
-    ok("adminBroadcast 端点+body", u(7) === "/api/admin/broadcast" && m(7) === "POST" && b(7) === JSON.stringify({ body: "hi" }), u(7));
-    ok("notifClear 端点", u(8) === "/api/notifications/clear" && m(8) === "POST" && b(8) === JSON.stringify({}), u(8));
-    ok("accountDelete 端点", u(9) === "/api/account/delete" && m(9) === "POST" && b(9) === JSON.stringify({}), u(9));
+    ok("adminBroadcastStart 端点+body", u(7) === "/api/admin/broadcast" && m(7) === "POST" && b(7) === JSON.stringify({ body: "hi" }), u(7));
+    ok("adminBroadcastStep 端点+bid", u(8) === "/api/admin/broadcast/step" && m(8) === "POST" && b(8) === JSON.stringify({ bid: "11111111-2222-3333-4444-555555555555" }), u(8));
+    ok("adminBroadcasts 端点", u(9) === "/api/admin/broadcast?limit=20&offset=0" && m(9) === "GET", u(9));
+    ok("notifClear 端点", u(10) === "/api/notifications/clear" && m(10) === "POST" && b(10) === JSON.stringify({}), u(10));
+    ok("accountDelete 端点", u(11) === "/api/account/delete" && m(11) === "POST" && b(11) === JSON.stringify({}), u(11));
   } finally {
     c.restore();
   }

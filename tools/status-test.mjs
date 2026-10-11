@@ -168,14 +168,16 @@ ok("README 登记迁移文件并写清未跑时的降级行为",
   readme.includes("MIGRATION_profile_status.sql") && readme.includes("只存本机") && readme.includes("此刻大厅里"));
 
 /* ───────── 视图接线（T6 抽件：大厅/状态逻辑在 TodayPane，HomeView 只负责挂载） ───────── */
-ok("TodayPane：登录才上云，写失败按 errorKind 区分「未开启」与「同步失败」",
-  has(todayPane, "if (isMember.value && !(await cloudSetStatus(next || null)))")
+ok("TodayPane：登录才上云，写失败按 errorKind 区分「未开启」与「同步失败」（轮 238 起后台队列，按钮不锁）",
+  has(todayPane, "if (!isMember.value) return;")
+    && todayPane.includes("cloudSetStatus(next || null)")
     && has(todayPane, 'errorKind(cloud.error) === "not-migrated" ? "setup" : "sync"'));
 ok("TodayPane：再点一次同一状态即清除（本地与云端一起清）",
   has(todayPane, 'const next = myStatus.value === k ? "" : k')
     && has(todayPane, 'if (next) setItem("wp-status", next);') && has(todayPane, "removeItem(\"wp-status\")"));
-ok("TodayPane：单独读取自己的档案，状态更新后刷新人数",
-  has(todayPane, "await cloudFetchProfile(uid)", "await refreshStatusCounts()", "revision !== statusRevision"));
+ok("TodayPane：单独读取自己的档案，状态更新后刷新人数（轮 238 起为后台队列刷新，不锁按钮）",
+  has(todayPane, "await cloudFetchProfile(uid)", "revision !== statusRevision")
+  && todayPane.includes("return refreshStatusCounts();"));
 ok("TodayPane：云端不可用时不伪造人数，也不覆盖本机状态",
   has(todayPane, 'v-if="statusCounts && statusCounts.length"', "if (!profile ||", "if (!uid || !cloud.ready) return;"));
 ok("HomeView：抽件接线（桌面拼回 + 手机三联都挂同一 TodayPane）",
