@@ -135,6 +135,66 @@ export const db = {
     return unwrap(sb().from(T.posts).insert(row).select("*").single());
   },
 
+  /* ══════════ 轮 252 ══════════ */
+
+  /** wall_posts 有哪些列（发帖前探一次；失败给空数组=保守走旧载荷）。 */
+  async probeColumns() {
+    try {
+      const cols = await unwrap(sb().from(T.posts).select("*").limit(1));
+      return Array.isArray(cols) && cols[0] ? Object.keys(cols[0]) : [];
+    } catch (e) {
+      return [];
+    }
+  },
+
+  /* ══════════ 轮 252 · 搜索：关键词 + 标签（PostgREST 链） ══════════
+   *
+   * 轮 170 listPosts 的教训：显式列 + removed 兼容回退。
+   * 老库无 tags/img_w/img_h 列时首次 select 会 400 → 回退旧列（tag 过滤交给
+   * wall.js 客户端再筛一遍：旧库 rowsToPosts 出来 tags 恒空 → 标签搜空结果，合理）。
+   * 返回与合并包同形 { posts, react, comment }。 */
+  async searchPosts(qs) {
+    const q = new URLSearchParams(String(qs || ""));
+    const limit = Math.max(1, Number(q.get("limit")) || 20);
+    const before = Number(q.get("before_id")) > 0 ? Number(q.get("before_id")) : 0;
+    const keyword = String(q.get("q") || "").trim().slice(0, 60);
+    const tags = String(q.get("tags") || "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean).slice(0, 5);
+    /* ilike 转义：% _ \ 前加反斜杠（PostgREST 默认反斜杠转义） */
+    const kw = keyword ? `%${keyword.replace(/[\\%_]/g, (c) => "\\" + c)}%` : "";
+    const build = (cols, withTagFilter) => {
+      let b = sb().from(T.posts).select(cols).eq("removed", false);
+      if (before) b = b.lt("id", before);
+      if (kw) b = b.ilike("body", kw);
+      if (withTagFilter && tags.length) b = b.overlaps("tags", tags);
+      return b.order("id", { ascending: false }).limit(limit);
+    };
+    let posts = null;
+    try {
+      posts = await unwrap(build("id,user_id,author_name,body,image_path,created_at,views,dislikes,removed,tags,img_w,img_h", true));
+    } catch (e) {
+      /* 老库：新列缺失（PGRST204/400）→ 旧列 + 不带 tag 过滤 */
+      try { posts = await unwrap(build("id,user_id,author_name,body,image_path,created_at,views,dislikes,removed", false)); }
+      catch (e2) { posts = null; }
+    }
+    if (!posts || !posts.length) return { posts: posts || [], react: {}, comment: {} };
+    const ids = posts.map((r) => r.id).filter((x) => x != null);
+    const [reactRows, cmtRows] = await Promise.all([
+      unwrap(sb().from(T.reactions).select("post_id,user_id,kind").in("post_id", ids)),
+      unwrap(sb().from(T.comments).select("post_id").in("post_id", ids).limit(2000)),
+    ]);
+    const react = {};
+    for (const r of reactRows || []) {
+      if (!r || r.post_id == null) continue;
+      const o = react[r.post_id] || (react[r.post_id] = { hug: 0, warm: 0, relate: 0, mine: {} });
+      if (o[r.kind] !== undefined) o[r.kind]++;
+      /* mine 不在这里填：rowsToPosts 的调用方（wall.js/CommunityView）在拿到云端
+       * mine 权威值后覆盖；搜索页拼 mine 会多一次身份查询，这一屏先看计数。 */
+    }
+    const comment = {};
+    for (const c of cmtRows || []) if (c && c.post_id != null) comment[c.post_id] = (comment[c.post_id] || 0) + 1;
+    return { posts, react, comment };
+  },
+
   /** 公开档案（昵称 / 加入时间 / 陪你大厅状态）；行不存在返回 null；老库无状态列时退回两列查询 */
   async getProfile(userId) {
     let res = await sb().from(T.profiles).select("nickname,created_at,status,status_at").eq("id", userId).maybeSingle();

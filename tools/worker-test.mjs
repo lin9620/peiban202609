@@ -1433,6 +1433,75 @@ function seoEnv() {
 }
 
 
+/* ─────────── 轮 252 · /posts/search + /posts/columns ─────────── */
+{
+  const env = makeEnv();
+  /* search：RPC 命中（迁移已跑）→ 直接回 RPC 响应 */
+  const c1 = capture([{ status: 200, body: { posts: [{ id: 9 }], react: {}, comment: {} } }]);
+  const r1 = await worker.fetch(new Request("https://x/api/posts/search?q=%E5%BC%80%E5%BF%83&tags=%E5%92%96%E5%95%A1&limit=20&before_id=5"), env, {});
+  const j1 = await r1.json();
+  ok("search：RPC 链路（POST rpc/wall_search_posts）",
+    r1.status === 200 && Array.isArray(j1.posts) && c1.outbound[0].url.includes("/rpc/wall_search_posts"));
+  const rpcBody = JSON.parse(c1.outbound[0].init.body);
+  ok("search：RPC 参数形状（p_q/p_tags/p_limit/p_before）",
+    rpcBody.p_q === "开心" && Array.isArray(rpcBody.p_tags) && rpcBody.p_tags[0] === "咖啡"
+    && rpcBody.p_limit === 20 && rpcBody.p_before === 5);
+  c1.restore();
+  /* search：RPC 404（迁移没跑）→ REST 链（新列 + tags ov + body ilike），再补回应/评论 */
+  const c2 = capture([
+    { status: 404, body: { message: "function not found" } },
+    { status: 200, body: [{ id: 7, user_id: "u1", body: "开心#咖啡#", tags: ["咖啡"] }] },
+    { status: 200, body: [{ post_id: 7, user_id: "u2", kind: "hug" }] },
+    { status: 200, body: [{ post_id: 7 }] },
+  ]);
+  const r2 = await worker.fetch(new Request("https://x/api/posts/search?q=hi_tags&tags=a,b&limit=20"), env, {});
+  const j2 = await r2.json();
+  const q2 = c2.outbound[1].url;
+  ok("search：RPC 404 → REST 链（ilike + ov + 显式新列 + removed）",
+    r2.status === 200 && j2.posts[0].id === 7
+    && q2.includes("rest/v1/wall_posts") && q2.includes("removed=eq.false")
+    && q2.includes("tags=ov.") && q2.includes("ilike.")
+    && decodeURIComponent(q2).includes("tags,img_w,img_h"));
+  ok("search：聚合同形 {posts, react, comment} + mine 按 JWT（无 JWT 不标）",
+    j2.react["7"].hug === 1 && j2.react["7"].mine && j2.react["7"].mine.hug === undefined
+    && j2.comment["7"] === 1);
+  c2.restore();
+  /* search：新列 400（老库）→ 退回旧列且不带 tags 条件 */
+  const c3 = capture([
+    { status: 404, body: {} },
+    { status: 400, body: { code: "PGRST204" } },
+    { status: 200, body: [{ id: 3 }] },
+    { status: 200, body: [] },
+    { status: 200, body: [] },
+  ]);
+  const r3 = await worker.fetch(new Request("https://x/api/posts/search?tags=x"), env, {});
+  const q3 = c3.outbound[2].url;
+  ok("search：老库 400 → 旧列、无 tags 条件",
+    r3.status === 200 && decodeURIComponent(q3).includes("views,dislikes,removed")
+    && !q3.includes("tags=ov.") && !q3.includes("img_w"));
+  c3.restore();
+  /* search：上游全挂 → 502 */
+  const c4 = capture([{ throw: true }, { throw: true }]);
+  const r4 = await worker.fetch(new Request("https://x/api/posts/search?q=x"), env, {});
+  ok("search：上游挂 → 502", r4.status === 502);
+  c4.restore();
+  /* columns：新库 200 → ["tags","img_w","img_h"]；老库 400 → [] */
+  const c5 = capture([{ status: 200, body: [] }]);
+  const r5 = await worker.fetch(new Request("https://x/api/posts/columns"), env, {});
+  ok("columns：新库 → 三列名", r5.status === 200 && (await r5.json()).join(",") === "tags,img_w,img_h");
+  c5.restore();
+  const c6 = capture([{ status: 400, body: {} }]);
+  const r6 = await worker.fetch(new Request("https://x/api/posts/columns"), env, {});
+  ok("columns：老库 400 → []", r6.status === 200 && (await r6.json()).length === 0);
+  c6.restore();
+  /* 路由不与单帖 GET 冲突：search/columns 不会掉进 decodeSeg 分支 */
+  const c7 = capture([{ status: 200, body: [] }]);
+  const r7 = await worker.fetch(new Request("https://x/api/posts/search"), env, {});
+  ok("search：空参数也 200（不是 400 bad-id）", r7.status === 200);
+  c7.restore();
+}
+
+
 console.log(`worker-test: ${pass} pass, ${fails.length} fail`);
 for (const f of fails) console.log("FAIL  " + f);
 if (fails.length) process.exit(1);

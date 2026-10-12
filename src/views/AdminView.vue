@@ -540,7 +540,7 @@ const recentUsers = computed(() => (Array.isArray(ov.value && ov.value.recent_us
           {{ postsLoaded ? t("admin.empty") : t("admin.loading") }}
         </p>
         <div v-for="p in posts" :key="p.id" class="admin-row">
-          <img v-if="p.image_path" :src="db.imageUrl(p.image_path)" class="admin-thumb" alt="" />
+          <img loading="lazy" v-if="p.image_path" :src="db.imageUrl(p.image_path)" class="admin-thumb" alt="" />
           <div
             class="admin-grow admin-open" :title="t('admin.actions.openPost')"
             @click="router.push({ path: '/community', query: { post: String(p.id) } })">

@@ -152,10 +152,11 @@ ok("T31 手机端5 今日联去宠物卡 + 毛玻璃退场 + 轨道高度跟当�
   && read("src/views/HomeView.vue").includes("trackH")
   && read("src/views/HomeView.vue").includes("setPane(HOME_PANES[idx.value - 1].k)")
   && read("src/views/HomeView.vue").includes("setPane(HOME_PANES[idx.value + 1"));
-ok("T32 手机端4 捞到的瓶子居中弹出（bottle-tray fixed 居中 + 压暗背景）",
-  css.includes(".shell--mobile-nav .bottle-tray {")
+ok("T32 手机端4 捞到的瓶子居中弹出（轮238 teleport 到 body；轮241 去全屏压暗——不再黑底锁页）",
+  css.includes("body > .bottle-tray {")
   && css.includes("translate(-50%, -50%)")
-  && css.includes("@keyframes bottle-pop"));
+  && css.includes("@keyframes bottle-pop")
+  && !css.includes("body > .bottle-tray::before"));
 ok("T33 长词断行护栏（乱码长词不再撑爆 grid 轨道：minmax(0,1fr)+min-width:0+anywhere+shell clip）",
   css.includes(".dm-wrap { grid-template-columns: minmax(0, 1fr); }")
   && css.includes(".dm-wrap > * { min-width: 0; max-width: 100%; }")

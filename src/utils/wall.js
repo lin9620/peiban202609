@@ -9,7 +9,7 @@ import { cloud } from "./supabase.js";
 import { normalizeText, CMT_KEY } from "./comments.js";
 import { isUsableDataUrl } from "./imaging.js";
 import { STATUS_WINDOW_MS } from "./statuses.js";
-import { VIEW_KEY, ANON_KEY, POST_DAY_KEY, POSTS_KEY, REACTS_KEY } from "./wallRules.js";
+import { VIEW_KEY, ANON_KEY, POST_DAY_KEY, POSTS_KEY, REACTS_KEY, extractTags } from "./wallRules.js";
 import { registerScopeBases } from "./userScope.js";
 /* 所有云端数据访问都走适配层：换库 / 换托管时只改 utils/api/db.js（见那里的文件头说明） */
 import { db } from "./api/db.js";
@@ -34,6 +34,9 @@ export function rowsToPosts(rows, reactions = {}, imageUrlFor = () => "") {
     const ag = reactions[r.id] || {};
     /* 厌恶数优先用表里的 dislikes 列（服务端维护、权威）；没迁移时退回回应行聚合值 */
     const dislikes = r.dislikes != null ? Math.max(0, Number(r.dislikes) || 0) : (ag.dislike || 0);
+    /* 轮 252：图片尺寸（未迁移/旧帖 = 未知，不预留，行为与原来一致） */
+    const imgW = Number(r.img_w) > 0 ? Number(r.img_w) : 0;
+    const imgH = Number(r.img_h) > 0 ? Number(r.img_h) : 0;
     return {
       id: "c" + r.id,                       // 云端帖 id 加前缀，避免与本地数字 id 撞 key
       dbId: r.id,
@@ -51,6 +54,10 @@ export function rowsToPosts(rows, reactions = {}, imageUrlFor = () => "") {
       views: Math.max(0, Number(r.views) || 0),      // 浏览数（未迁移时为 0）
       dislikes,
       removed: r.removed === true,                   // 假删除：达到下架线的帖子
+      /* 轮 252：标签（DB text[]，旧帖无列 = 空数组）+ 图片尺寸（0 = 未知，不预留） */
+      tags: Array.isArray(r.tags) ? r.tags.filter((t) => typeof t === "string" && t) : [],
+      imgW,
+      imgH,
       /* 这一行数据是否来自「已跑迁移」的库：否则界面上别显示假的 0 次浏览/0 厌恶 */
       stats: r.views != null || r.dislikes != null || r.removed != null,
       cloud: true,
@@ -185,25 +192,86 @@ export async function cloudFetchPostsSample(limit = 50) {
 }
 
 /** 发布帖子；imageDataUrl 可空。返回视图帖子或 null */
-export async function cloudInsertPost({ text, imageDataUrl, name }) {
+export async function cloudInsertPost({ text, imageDataUrl, name, imgW = 0, imgH = 0 }) {
   if (!canUseWall()) return null;
   const clean = String(text || "").trim().slice(0, 1000);
   if (!clean && !imageDataUrl) return null;
+  /* 轮 252：老库（迁移没跑）insert 带未知列会 400 —— 先探一次表结构（缓存 1 小时），
+   * 有 tags 列才带新列发；没列直接走旧载荷。比「发了 400 再重试」少一次失败往返。 */
+  let tagCols = false;
+  try {
+    const cached = typeof sessionStorage !== "undefined" ? sessionStorage.getItem("wp-wall-cols-v1") : null;
+    if (cached) tagCols = cached === "1";
+    else {
+      const probe = await db.probeColumns();
+      tagCols = Array.isArray(probe) && probe.includes("tags");
+      try { if (typeof sessionStorage !== "undefined") sessionStorage.setItem("wp-wall-cols-v1", tagCols ? "1" : "0"); } catch (e) { /* 忽略 */ }
+    }
+  } catch (e) { tagCols = false; }
   try {
     let imagePath = null;
     if (imageDataUrl) imagePath = await cloudUploadImage(imageDataUrl);
-    const data = await db.insertPost({
+    const base = {
       user_id: cloud.user.id,
       author_name: name || "Guest",
       body: clean || "\u{1F5BC}\uFE0F",
       image_path: imagePath,
-    });
+    };
+    /* 轮 252：标签从正文解析 + 图片尺寸入库。带新列的 insert 若 400（探列误判/缓存过期，
+     * unwrap 是 throw 不是返回 falsy —— 上一版把重试挂在 !data 上永远走不到），捕获后
+     * 去掉新列重试一次，帖照发；成功路径给视图补 tags（服务端没存时本地也看得到）。 */
+    let data = null;
+    let retried = false;
+    try {
+      data = await db.insertPost({
+        ...base,
+        ...(tagCols ? { tags: extractTags(clean) } : {}),
+        ...(tagCols && imagePath && imgW > 0 && imgH > 0 ? { img_w: imgW, img_h: imgH } : {}),
+      });
+    } catch (e) {
+      /* 只有首发改了新列才重试（否则是限额/RLS 类错误，重发同样徒劳） */
+      if (!tagCols) throw e;
+      retried = true;
+      try { data = await db.insertPost(base); }
+      catch (e2) { throw e2; }   /* 旧载荷也失败 → 交外层 warn 兜底 */
+    }
+    if (!data) return null;
     const view = rowsToPosts([data], {}, publicUrl)[0];
     view.img = imageDataUrl && !view.img ? imageDataUrl : view.img; // 上传失败时仍可本地预览
+    if (retried || !Array.isArray(data.tags)) view.tags = extractTags(clean); // 老库/降级：本地补标签展示
     return view;
   } catch (e) {
     console.warn("[cloud] insertPost:", e);
     cloud.error = e && e.message ? e.message : String(e);
+    return null;
+  }
+}
+
+/* ══════════ 轮 252 · 搜索：关键词 + 标签（REST 链，分页游标同款口径） ══════════
+ *
+ * 为什么走 REST 链而不是 wall_search_posts RPC：RPC 需要先跑迁移；REST 链
+ * 老库也能用（tags 列缺失时后端隐掉 tag 条件，见 worker/api.js 的落库兼容注释）。
+ * 参数与 RPC 对齐（q/tags/limit/before），返回与合并包同形 { rows, counts }。
+ *
+ * @param {{q?: string, tags?: string[], limit?: number, before?: number}} args
+ */
+export async function cloudSearchPosts({ q = "", tags = [], limit = 20, before = 0 } = {}) {
+  if (!canReadWall()) return null;
+  try {
+    const qs = new URLSearchParams({
+      limit: String(Number(limit) > 0 ? Number(limit) : 20),
+    });
+    const keyword = String(q || "").trim().slice(0, 60);
+    if (keyword) qs.set("q", keyword);
+    const normed = (Array.isArray(tags) ? tags : []).map((x) => String(x || "").trim().toLowerCase()).filter(Boolean).slice(0, 5);
+    if (normed.length) qs.set("tags", normed.join(","));
+    if (Number(before) > 0) qs.set("before_id", String(Number(before)));
+    const pack = await db.searchPosts(qs.toString());
+    if (!pack || !Array.isArray(pack.posts)) return null;
+    const rows = rowsToPosts(pack.posts, pack.react || {}, publicUrl);
+    return { rows, counts: pack.comment || {} };
+  } catch (e) {
+    console.warn("[cloud] searchPosts:", e);
     return null;
   }
 }

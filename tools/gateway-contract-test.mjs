@@ -153,6 +153,30 @@ setGatewayAuthProbe(() => true); /* 单测注入：auth 就绪（与 db.supabase
   }
 }
 
+/* ── 轮 252：搜索 / 列探测（前端侧端点形状） ── */
+{
+  const c = capture();
+  try {
+    await db.searchPosts("q=%E5%BC%80%E5%BF%83&tags=%E5%92%96%E5%95%A1&limit=20&before_id=7");
+    await db.probeColumns();
+    const u = (i) => c.calls[i].url;
+    ok("searchPosts 端点（原样透传查询串）",
+      u(0) === `/api/posts/search?q=${enc("开心")}&tags=${enc("咖啡")}&limit=20&before_id=7`, u(0));
+    ok("probeColumns 端点", u(1) === "/api/posts/columns", u(1));
+  } finally {
+    c.restore();
+  }
+  /* probeColumns 失败一律给 []（调用方保守走旧载荷，不炸发帖） */
+  const real = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => new Response(JSON.stringify({ message: "down" }), { status: 500, headers: { "content-type": "application/json" } });
+    const cols = await db.probeColumns();
+    ok("probeColumns 失败 → []", Array.isArray(cols) && cols.length === 0, JSON.stringify(cols));
+  } finally {
+    globalThis.fetch = real;
+  }
+}
+
 /* ── imageUrl（纯字符串，不发请求） ── */
 {
   ok("imageUrl → 同源 /api/img/*", db.imageUrl("u1/x.jpg") === "/api/img/u1/x.jpg", String(db.imageUrl("u1/x.jpg")));

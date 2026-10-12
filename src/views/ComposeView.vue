@@ -7,7 +7,7 @@ import { NButton } from "naive-ui";
 import { t } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
 import { cloudInsertPost, canUseWall } from "../utils/wall.js";
-import { errorKind, utcDay, POST_DAY_KEY, dayCountFromStorage, canPostToday, postsLeftToday } from "../utils/wallRules.js";
+import { errorKind, utcDay, POST_DAY_KEY, dayCountFromStorage, canPostToday, postsLeftToday, extractTags, TAG_MAX } from "../utils/wallRules.js";
 import { getItem, setItem } from "../utils/storage.js";
 import {
   validateImageFile, isSaneShape, isUsableDataUrl, shrinkToDataUrl,
@@ -17,6 +17,12 @@ const router = useRouter();
 const route = useRoute();
 const draft = ref("");
 const imgData = ref("");
+/* 轮 252：选图时记下原始宽高（naturalWidth/Height）—— 发帖时随帖入库，
+   渲染端用 aspect-ratio 预留高度，图片到达前布局不跳。0 = 未知。 */
+const imgW = ref(0);
+const imgH = ref(0);
+/* 轮 252：草稿里解析出的 #xxx# 标签（实时预览，最多 TAG_MAX 个） */
+const draftTags = computed(() => extractTags(draft.value));
 const imgErr = ref("");
 const wallMsg = ref("");
 const posted = ref(false);
@@ -56,7 +62,12 @@ function pickImage(e) {
     img.onerror = () => showImgErr("community.imgFail");
     img.onload = () => {
       if (!isSaneShape(img.naturalWidth, img.naturalHeight)) return showImgErr("community.imgBadShape");
-      try { imgData.value = shrinkToDataUrl(img); }
+      try {
+        imgData.value = shrinkToDataUrl(img);
+        /* 轮 252：记原始宽高（shrink 后的 dataURL 尺寸不同，但比例一致，预留用比例即可） */
+        imgW.value = img.naturalWidth;
+        imgH.value = img.naturalHeight;
+      }
       catch (err) { showImgErr("community.imgFail"); }
     };
     img.src = reader.result;
@@ -87,7 +98,9 @@ async function submit() {
   if (busy.value) return;
   if (postedToday.value) return showMsg("community.dailyLimit");
   busy.value = true;
-  const created = await cloudInsertPost({ text, imageDataUrl: imgData.value, name: wallName.value });
+  /* 轮 252：图片尺寸随帖入库（没图/未知 = 0；老库无列时 cloudInsertPost 内部会兜底） */
+  const created = await cloudInsertPost({ text, imageDataUrl: imgData.value, name: wallName.value,
+    imgW: imgW.value, imgH: imgH.value });
   busy.value = false;
   if (!created) {
     const kind = errorKind(cloud.error);
@@ -97,6 +110,8 @@ async function submit() {
   setItem(POST_DAY_KEY, JSON.stringify({ day: utcDay(), n: localCount.value + 1 }));
   draft.value = "";
   imgData.value = "";
+  imgW.value = 0;
+  imgH.value = 0;
   posted.value = true;
   /* 发完自动回墙：帖子在列表顶部（回墙会重拉，能看到自己刚发的） */
   setTimeout(() => { goBack(); }, 800);
@@ -128,7 +143,8 @@ async function submit() {
         autofocus
         :placeholder="t('community.placeholder')"></textarea>
 
-      <img v-if="imgData" :src="imgData" class="compose-pic" alt="preview" />
+      <img v-if="imgData" :src="imgData" class="compose-pic" alt="preview"
+          :style="imgW > 0 && imgH > 0 ? { aspectRatio: imgW + ' / ' + imgH } : {}" />
 
       <p v-if="imgErr" class="compose-hint bad">{{ imgErr }}</p>
 
@@ -138,10 +154,14 @@ async function submit() {
           🖼️ {{ t("community.addImage") }}
           <input type="file" accept="image/*" style="display: none" @change="pickImage" />
         </label>
-        <n-button v-if="imgData" quaternary size="small" @click="imgData = ''">
+        <n-button v-if="imgData" quaternary size="small" @click="imgData = ''; imgW = 0; imgH = 0">
           {{ t("community.removeImage") }}
         </n-button>
-        <span class="compose-count">{{ draft.length }}/{{ POST_MAX }}</span>
+        <!-- 轮 252：#xxx# 标签实时预览（发帖后可被搜索 / 点击筛选） -->
+          <span v-if="draftTags.length" class="compose-tags">
+            <span v-for="tg in draftTags" :key="tg" class="compose-tag">#{{ tg }}#</span>
+          </span>
+          <span class="compose-count">{{ draft.length }}/{{ POST_MAX }}</span>
       </div>
 
       <!-- 发布：整行大按钮（拇指友好；窄屏不再挤在工具行里换行成半截） -->
@@ -243,6 +263,13 @@ async function submit() {
   border-top: 1px dashed rgba(255, 159, 90, .28);
 }
 .compose-bar .compose-count { margin-left: auto; }
+/* 轮 252：标签预览 chip */
+.compose-tags { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.compose-tag {
+  padding: 2px 8px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent-deep);
+  font-size: 11.5px; font-weight: 600;
+}
 .compose-tool {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 7px 14px; border-radius: 999px;

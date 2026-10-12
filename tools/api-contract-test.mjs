@@ -23,6 +23,9 @@ function makeFake(script = []) {
       eq: (k, v) => { ops.push(`eq:${k}:${JSON.stringify(v)}`); return b; },
       not: (k, op, v) => { ops.push(`not:${k}:${op}:${JSON.stringify(v)}`); return b; },
       gte: (k, v) => { ops.push(`gte:${k}:${JSON.stringify(v)}`); return b; },
+      lt: (k, v) => { ops.push(`lt:${k}:${JSON.stringify(v)}`); return b; },
+      ilike: (k, v) => { ops.push(`ilike:${k}:${JSON.stringify(v)}`); return b; },
+      overlaps: (k, v) => { ops.push(`overlaps:${k}:${JSON.stringify(v)}`); return b; },
       in: (k, a) => { ops.push(`in:${k}:${JSON.stringify(a)}`); return b; },
       order: (k, o = {}) => { ops.push(`order:${k}:${o && o.ascending === false ? "desc" : "asc"}`); return b; },
       limit: (n) => { ops.push(`limit:${n}`); return b; },
@@ -108,6 +111,39 @@ const rows = [{ id: 1 }, { id: 2 }];
     db.insertPost({ user_id: "u1", author_name: "A", body: "hi", image_path: null }));
   ok("insertPost 形状", fake.calls[0] === 'from:wall_posts|insert:{"user_id":"u1","author_name":"A","body":"hi","image_path":null}|select:*|single', fake.calls[0]);
   ok("insertPost 返回整行", out && out.id === 9);
+}
+
+/* ─────────── 轮 252：搜索 / 列探测（直连链形状） ─────────── */
+{
+  const cols = "id,user_id,author_name,body,image_path,created_at,views,dislikes,removed,tags,img_w,img_h";
+  const { fake, out } = await run(
+    [{ data: [{ id: 7, tags: ["咖啡"] }] }, { data: [{ post_id: 7, user_id: "u2", kind: "hug" }] }, { data: [{ post_id: 7 }] }],
+    () => db.searchPosts("q=开心&tags=咖啡&limit=20&before_id=9"),
+  );
+  ok("searchPosts 首查形状（显式新列 + removed + ilike + overlaps + id desc）",
+    fake.calls[0] === `from:wall_posts|select:${cols}|eq:removed:false|lt:id:9|ilike:body:"%开心%"|overlaps:tags:["咖啡"]|order:id:desc|limit:20`,
+    fake.calls[0]);
+  ok("searchPosts 聚合同形 {posts, react, comment}",
+    out.posts[0].id === 7 && out.react["7"].hug === 1 && out.comment["7"] === 1);
+}
+{
+  /* 老库：新列缺失 400 → 退回旧列且不带 overlaps */
+  const { fake, out } = await run(
+    [{ error: { code: "PGRST204" } }, { data: [{ id: 3 }] }, { data: [] }, { data: [] }],
+    () => db.searchPosts("tags=x"),
+  );
+  ok("searchPosts 老库 400 → 旧列、无 tag 条件",
+    fake.calls[1] === "from:wall_posts|select:id,user_id,author_name,body,image_path,created_at,views,dislikes,removed|eq:removed:false|order:id:desc|limit:20",
+    fake.calls[1]);
+  ok("searchPosts 降级仍返回同形包", out && out.posts[0].id === 3 && out.react && out.comment);
+}
+{
+  const { fake, out } = await run([{ data: [{ id: 1, tags: [] }] }], () => db.probeColumns());
+  ok("probeColumns：表里有行 → 列名列表含 tags",
+    fake.calls[0] === "from:wall_posts|select:*|limit:1" && Array.isArray(out) && out.includes("tags"),
+    fake.calls[0]);
+  const { out: out2 } = await run([{ data: [] }], () => db.probeColumns());
+  ok("probeColumns：空表 → []（保守走旧载荷）", Array.isArray(out2) && out2.length === 0, JSON.stringify(out2));
 }
 
 /* ─────────── 档案 ─────────── */

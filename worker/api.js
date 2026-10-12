@@ -232,6 +232,75 @@ async function listPosts(env, request, uid, limit, offset, beforeId = 0) {
   return res;
 }
 
+/* ═══ 轮 252 · 帖子搜索 / 列探测（关键词 + 标签）═══
+ * 搜索首选 RPC wall_search_posts（迁移没跑 → 404 → 退回 REST 链，与 wallRefresh
+ * 同思路）。REST 链显式列 + removed 过滤；老库无 tags/img_w/img_h 列（400）→
+ * 退回旧列且隐掉标签条件（tag 过滤交回客户端筛，旧库 tags 恒空 → 标签搜空结果）。
+ * 返回与合并包同形 { posts, react, comment }。 */
+async function searchPosts(env, request, q) {
+  const limit = parseLimit(q.get("limit"), 20);
+  const beforeRaw = q.get("before_id") || "";
+  const before = /^\d+$/.test(beforeRaw) ? Number(beforeRaw) : 0;
+  const keyword = String(q.get("q") || "").trim().slice(0, 60);
+  const tags = (q.get("tags") || "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean).slice(0, 5);
+
+  const rpcRes = await rpc(env, request, "wall_search_posts", {
+    p_q: keyword, p_tags: tags, p_limit: limit, p_before: before,
+  });
+  if (rpcRes && rpcRes.ok) return rpcRes;
+
+  /* ilike 转义：% _ \ 前加反斜杠（PostgREST 默认反斜杠转义），整段再 URL 编码 */
+  const kw = keyword ? `%${keyword.replace(/[\\%_]/g, (c) => "\\" + c)}%` : "";
+  const build = (cols, withTagFilter) => {
+    const parts = [`select=${encodeURIComponent(cols)}`, "removed=eq.false"];
+    if (before) parts.push(`id=lt.${before}`);
+    if (kw) parts.push(`body=ilike.${encodeURIComponent(kw)}`);
+    if (withTagFilter && tags.length) parts.push(`tags=ov.{${tags.map(encodeURIComponent).join(",")}}`);
+    parts.push("order=id.desc", `limit=${limit}`);
+    return restUrl(env, TABLE.posts, parts.join("&"));
+  };
+  const NEW_COLS = "id,user_id,author_name,body,image_path,created_at,views,dislikes,removed,tags,img_w,img_h";
+  const OLD_COLS = "id,user_id,author_name,body,image_path,created_at,views,dislikes,removed";
+  let res = await upstream(env, request, build(NEW_COLS, true));
+  if (!res) return fail(502, "upstream-unreachable");
+  if (!res.ok && res.status === 400) {
+    res = await upstream(env, request, build(OLD_COLS, false));
+    if (!res) return fail(502, "upstream-unreachable");
+  }
+  if (!res.ok) return res;
+  let rows = [];
+  try { rows = JSON.parse(await res.text()) || []; } catch (e) { rows = []; }
+  if (!rows.length) return json({ posts: [], react: {}, comment: {} });
+  const ids = rows.map((r) => r.id).filter((x) => x != null);
+  const [rk, cm] = await Promise.all([
+    listReactionsByPosts(env, request, ids),
+    listCommentPostIds(env, request, ids, 2000),
+  ]);
+  let reactions = [], cmtRows = [];
+  if (rk && rk.ok) { try { reactions = JSON.parse(await rk.text()) || []; } catch (e) { reactions = []; } }
+  if (cm && cm.ok) { try { cmtRows = JSON.parse(await cm.text()) || []; } catch (e) { cmtRows = []; } }
+  const uid = jwtUid(request);
+  const react = {};
+  for (const r of reactions) {
+    if (!r || r.post_id == null) continue;
+    const o = react[r.post_id] || (react[r.post_id] = { hug: 0, warm: 0, relate: 0, mine: {} });
+    if (o[r.kind] !== undefined) o[r.kind]++;
+    if (uid && r.user_id === uid && o[r.kind] !== undefined) o.mine[r.kind] = true;
+  }
+  const comment = {};
+  for (const c of cmtRows) if (c && c.post_id != null) comment[c.post_id] = (comment[c.post_id] || 0) + 1;
+  return json({ posts: rows, react, comment });
+}
+
+/* 轮 252：探 wall_posts 新列（tags/img_w/img_h）。显式 select 交给 PostgREST 校验，
+ * 表为空也能判（老库 400 → []，调用方退回旧载荷；见 wall.js cloudInsertPost）。 */
+async function probePostColumns(env, request) {
+  const cols = encodeURIComponent("tags,img_w,img_h");
+  const res = await upstream(env, request, restUrl(env, TABLE.posts, `select=${cols}&limit=1`));
+  if (!res) return fail(502, "upstream-unreachable");
+  return json(res.ok ? ["tags", "img_w", "img_h"] : []);
+}
+
 /** 评论列表（旧→新） */
 async function listComments(env, request, postId, limit) {
   const res = await upstream(
@@ -921,6 +990,9 @@ async function handleApi(request, env, ctx) {
 
       /* —— 帖子 —— */
       if (seg[0] === "posts") {
+        /* 轮 252：搜索 / 列探测要抢在「单帖 id」分支前拦下（decodeSeg("search") 不是空值） */
+        if (seg.length === 2 && seg[1] === "columns" && m === "GET") return probePostColumns(env, request);
+        if (seg.length === 2 && seg[1] === "search" && m === "GET") return searchPosts(env, request, q);
         if (seg.length === 1) {
           if (m === "GET") {
             const bidRaw = q.get("before_id") || "";

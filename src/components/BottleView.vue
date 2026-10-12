@@ -6,6 +6,7 @@
 import { ref, computed, watch, onMounted } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { NButton, NInput, NModal } from "naive-ui";
+import { isMobileNav } from "../stores/uiStore.js";
 import { t } from "../i18n.js";
 import {
   BOTTLE_BODY_MAX, BOTTLE_SEND_MAX, BOTTLE_FISH_MAX,
@@ -19,6 +20,8 @@ import { cloud } from "../utils/supabase.js";
 
 const router = useRouter();   /* #17 记录里「去聊天」直接进会话页 */
 const route = useRoute();       /* 轮 238:离开漂流瓶联自动关弹窗 */
+/* 托盘只在漂流瓶联显示(桌面内联不受影响) */
+const trayOn = computed(() => !isMobileNav.value || route.query.tab === "bottle");
 const cloudSigned = computed(() => !!(cloud.ready && cloud.user));
 const mailDraft = ref("");
 const replyDraft = ref("");
@@ -33,10 +36,13 @@ const trayErr = ref("");        /* 托盘读取失败提示（轮 37：直连服
  * 旧版只显示一封、且手里压着一封就禁捞新信——「每天能捞 7 次」被做成了
  * 「捞 1 次就被锁」。现在多封并存互不阻塞，捞瓶按钮只看剩余次数。 */
 const pending = ref([]);
+/* 轮 241：id 一律 String() 归一比较 —— 捞信 RPC 与 bottle_held 两条链的 id 类型
+ * 可能一侧 number 一侧 string（Supabase RPC json vs SETOF 的经典坑，真机实证：
+ * bottle_release 返回 200、托盘却还在 = filter/Map key 因类型不等失效，pending 被复活）。 */
 function mergePending() {
   const map = new Map();
-  for (const l of held.value) map.set(l.id, l);
-  if (fished.value && fished.value.id) map.set(fished.value.id, fished.value);
+  for (const l of held.value) map.set(String(l.id), l);
+  if (fished.value && fished.value.id != null) map.set(String(fished.value.id), fished.value);
   pending.value = [...map.values()];
 }
 
@@ -199,7 +205,7 @@ async function doReply(l) {
     replyDrafts.value = { ...replyDrafts.value, [l.id]: "" };
     fished.value = null;
     replyOpen.value = "";
-    held.value = held.value.filter((x) => x.id !== l.id);
+    held.value = held.value.filter((x) => String(x.id) !== String(l.id));
     /* 轮 21：回信成功才计 1 次（服务端 bottle_reply 盖章）；轮 37 本机不再记账，只回读服务端值 */
     mergePending();
     syncQuota();
@@ -216,11 +222,14 @@ async function doRelease(l) {
   /* 轮 238 · 放回海里 = **乐观执行**：弹窗立即关、信立即从手里消失——「它走了」不需要
    * 等服务端点头（旧版 await RPC + await refreshBottle 两条慢链串行，用户实测 20s 无反应）。
    * RPC 后台确认；失败还原 + 弹窗告知。放回不扣次数，无需同步配额。 */
-  const fromPopup = !!(fished.value && fished.value.id === l.id);
+  const fromPopup = !!(fished.value && String(fished.value.id) === String(l.id));
   const heldSnapshot = held.value.slice();
   fishPop.value.show = false;
   fished.value = fromPopup ? null : fished.value;
-  held.value = held.value.filter((x) => x.id !== l.id);
+  held.value = held.value.filter((x) => String(x.id) !== String(l.id));
+  /* 轮 241：乐观放回后就地重算托盘。pending 是 mergePending() 的快照，不重算则
+   * 弹窗关闭、托盘接力显示的瞬间会把刚放回的那封再端出来（与 v-show 接力修复配套）。 */
+  mergePending();
   try {
     await bottleRelease(l.id);
   } catch (e) {
@@ -392,24 +401,36 @@ async function decideRec(l, accept) {
 
       <!-- 捞到的信（可同时持有几封，逐封回信或放回；捞新信不需要先处理手里的） -->
       <p v-if="trayErr" class="notice">{{ t(trayErr) }}</p>
-      <div v-for="l in pending" :key="l.id" class="bottle-tray">
-        <div class="m-q">{{ l.body }}</div>
-        <span class="m-who">{{ t("bottle.fromSea") }}</span>
-        <van-field
-          v-model="replyDrafts[l.id]"
-          type="textarea" rows="2" autosize :maxlength="BOTTLE_BODY_MAX"
-          :placeholder="t('bottle.replyPlaceholder')" />
-        <div class="mail-send">
-          <n-button type="primary" size="small" round
-            :disabled="busyId === l.id || !String(replyDrafts[l.id] || '').trim()"
-            @click="doReply(l)">
-            {{ t("bottle.reply") }}
-          </n-button>
-          <n-button quaternary size="small" round :loading="busyId === l.id" :disabled="busyId === l.id" @click="doRelease(l)">
-            {{ t("bottle.release") }}
-          </n-button>
-        </div>
-      </div>
+      <!-- 轮 238 · 托盘 Teleport 到 body（position: fixed 在 .home-track 的 transform 里会被
+       * 劫持包含块：居中变成「对 2405px 高的轨道居中」，托盘漂到任意联上 = 宠物页悬空卡、
+       * 今日页黑边，用户实测）。一次只弹一封（旧版全部 fixed 叠在同一坐标互相糊脸）；
+       * trayOn: 仅漂流瓶联显示，滑走即藏（信留在 pending，回来再弹）。 -->
+      <teleport to="body" :disabled="!isMobileNav">
+        <template v-for="l in pending.slice(0, 1)" :key="l.id">
+          <!-- 轮 241（用户实报图1）：fishPop 弹窗开着时托盘必须让位 —— 捞到信时
+             mergePending() 先把信并入 pending、随后 fishPop 又弹同一封，两层遮罩
+             （n-modal overlay + 托盘 ::before .45 黑）叠加成「背景发灰、底下文字透出、
+             看着像卡住」。弹窗关闭（回信/放回/关掉）托盘再接管同一封，接力不丢信。 -->
+          <div v-show="trayOn && !fishPop.show" class="bottle-tray">
+            <div class="m-q">{{ l.body }}</div>
+            <span class="m-who">{{ t("bottle.fromSea") }}</span>
+            <van-field
+              v-model="replyDrafts[l.id]"
+              type="textarea" rows="2" autosize :maxlength="BOTTLE_BODY_MAX"
+              :placeholder="t('bottle.replyPlaceholder')" />
+            <div class="mail-send">
+              <n-button type="primary" size="small" round
+                :disabled="busyId === l.id || !String(replyDrafts[l.id] || '').trim()"
+                @click="doReply(l)">
+                {{ t("bottle.reply") }}
+              </n-button>
+              <n-button quaternary size="small" round :loading="busyId === l.id" :disabled="busyId === l.id" @click="doRelease(l)">
+                {{ t("bottle.release") }}
+              </n-button>
+            </div>
+          </div>
+        </template>
+      </teleport>
 
       <!-- #17 记录：我发布的 / 我捞到的，按发布时间新→旧，10 条一页；能聊天的点进去 -->
       <div class="mail-list">
@@ -495,9 +516,13 @@ async function decideRec(l, accept) {
     <!-- 轮 22：捞信结果居中弹窗（手机端核心反馈）——捞到可就地回信 / 放回海里（「先收着」已按用户要求移除）。
          轮 40：宽度必须显式给——n-modal 不给 width 会被容器撑满，原来的 max-width: 88vw
          在手机上≈343px 没事，桌面网页上就是 88vw≈1670px 的巨幕（用户报「弹窗也太大了吧」）。
-         min(560px, 100vw-32px)：桌面 560px 居中，手机仍是留 16px 边距的近全宽。 -->
+         min(560px, 100vw-32px)：桌面 560px 居中，手机仍是留 16px 边距的近全宽。
+         轮 242（用户拍板）：捞到信/捞的过程中弹窗**不可关闭**——点空白、Esc、右上× 全禁，
+         必须「回信成功」或「放回海里」才消（旧版遮罩可点关，信还在手里 → 每次进漂流瓶联
+         托盘又把它端出来，用户实测「后面每次进入又自动出现」）。msg 模式（没捞到/限额）
+         保留三种关闭方式，否则「知道了」之外无路可走 = 死局。 -->
     <n-modal v-model:show="fishPop.show" preset="card" style="width: min(560px, calc(100vw - 32px))"
-     
+      :mask-closable="fishPop.mode === 'msg'" :esc="fishPop.mode === 'msg'" :closable="fishPop.mode === 'msg'"
       :title="fishPop.mode === 'got' ? t('bottle.gotTitle') : (fishPop.mode === 'fishing' ? t('bottle.fishing') : t('bottle.popNotice'))">
       <template v-if="fishPop.mode === 'fishing'">
         <div class="fish-wait">

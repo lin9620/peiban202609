@@ -270,6 +270,45 @@ export function countPostedOnDay(list, userId, day = utcDay()) {
   return n;
 }
 
+/* ══════════ 轮 252 · 标签（#xxx#）：解析 / 校验 / 归一 ══════════
+ *
+ * 词法（推特式，中文友好）：# 开头、第二个 #（或空白/结尾）收尾，中间至少 1 个
+ * 非空白非 # 字符。归一：去首尾空格、转小写（英文大小写视为同一标签）、去重、
+ * 最多 5 个、单个最长 20 字。纯函数，可单测。
+ * 示例："今天#开心#的一天 #学习  " → ["开心", "学习"]。
+ */
+
+export const TAG_MAX = 5;        // 一帖最多几个标签
+export const TAG_LEN = 20;       // 单个标签最长多少字
+
+/** 正文 → 标签数组（顺序 = 出现顺序，去重保留首次）。 */
+export function extractTags(text) {
+  const out = [];
+  if (typeof text !== "string" || !text) return out;
+  const re = /#([^#\s][^#\s]{0,19})\s?#?/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const tag = String(m[1] || "").trim().toLowerCase();
+    if (!tag || tag.length > TAG_LEN) continue;
+    if (!out.includes(tag)) out.push(tag);
+    if (out.length >= TAG_MAX) break;
+  }
+  return out;
+}
+
+/** 标签数组归一（DB 回来的旧数据/手填脏值用同一套口径洗）。 */
+export function normTags(tags) {
+  const out = [];
+  if (!Array.isArray(tags)) return out;
+  for (const t of tags) {
+    const tag = String(t == null ? "" : t).trim().toLowerCase();
+    if (!tag || tag.length > TAG_LEN) continue;
+    if (!out.includes(tag)) out.push(tag);
+    if (out.length >= TAG_MAX) break;
+  }
+  return out;
+}
+
 /**
  * 解析 POST_DAY_KEY 里的本机记账：兼容两种格式 ——
  *   旧：日期串 "2026-03-06"（当时一天一条，计 1）

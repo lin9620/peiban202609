@@ -247,7 +247,7 @@ onMounted(async () => {
           </div>
         </div>
         <p class="post-text" v-if="p.text">{{ p.text }}</p>
-        <img v-if="p.img" :src="p.img" class="pic" alt="" />
+        <img loading="lazy" v-if="p.img" :src="p.img" class="pic" alt="" />
         <div class="react-row">
           <span class="r-chip">&#129726; {{ p.reacts.hug || 0 }}</span>
           <span class="r-chip">&#9728;&#65039; {{ p.reacts.warm || 0 }}</span>

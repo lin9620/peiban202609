@@ -72,6 +72,19 @@ const passMsg = ref("");
 
 function clearAuthMsg() { authMsg.value = ""; authOk.value = false; }
 
+/* 轮250（全局巡检实证「没成功：email rate limit」）：reason 里混着 Supabase 英文原文，
+ * 原样塞进 authFail 会把英文透给用户。常见原因本地化；未知兜底仍透原码（保可诊断性）。 */
+function authErrText(r) {
+  const s = String(r || "unknown");
+  if (/rate.?limit|too many/i.test(s)) return t("profile.errRateLimit");
+  if (/invalid login|invalid.*credential|wrong password/i.test(s)) return t("profile.errBadCreds");
+  if (/already (been )?registered|user already/i.test(s)) return t("profile.errEmailTaken");
+  if (/password.*(short|weak)|at least 6/i.test(s)) return t("profile.errWeak");
+  if (/not.?confirmed|confirm.*email|verification/i.test(s)) return t("profile.errNotConfirm");
+  if (/network|failed to fetch|fetch failed/i.test(s)) return t("profile.errNetwork");
+  return t("profile.authFail", { r: s });
+}
+
 function switchAuthMode() {
   authMode.value = authMode.value === "signin" ? "signup" : "signin";
   forgot.value = false;
@@ -100,7 +113,7 @@ async function doAuth() {
     /* 轮 30：连续错 5 次锁 12 小时——专属文案（剩余小时数），不再透传原始错误 */
     authMsg.value = r.reason === "locked"
       ? t("profile.lockedOut", { h: r.hours || 12 })
-      : t("profile.authFail", { r: r.reason || "unknown" });
+      : authErrText(r.reason);
     return;
   }
   if (r.needVerify) {
@@ -133,7 +146,7 @@ async function doForgot() {
   forgotOk.value = false;
   const r = await cloudResetPassword(authEmail.value.trim());
   forgotBusy.value = false;
-  if (!r.ok) { forgotMsg.value = t("profile.authFail", { r: r.reason || "unknown" }); return; }
+  if (!r.ok) { forgotMsg.value = authErrText(r.reason); return; }
   forgotOk.value = true;
   forgotMsg.value = t("profile.forgotSent");
 }
@@ -146,7 +159,7 @@ async function doSetPassword() {
   passMsg.value = "";
   const r = await cloudUpdatePassword(newPass.value);
   passBusy.value = false;
-  if (!r.ok) { passMsg.value = t("profile.authFail", { r: r.reason || "unknown" }); return; }
+  if (!r.ok) { passMsg.value = authErrText(r.reason); return; }
   newPass.value = "";
   cloudClearRecovery();
   goTarget();   /* 密码已重置 = 已登录，回跳 */
@@ -167,7 +180,7 @@ async function doGoogle() {
   googleMsg.value = "";
   const r = await cloudSignInWithGoogle();
   googleBusy.value = false;
-  if (!r.ok) googleMsg.value = t("profile.authFail", { r: r.reason || "unknown" });
+  if (!r.ok) googleMsg.value = authErrText(r.reason);
 }
 /* 轮 31：App 端走「App 内授权窗口 → 回跳 App」——点按钮那一刻不算失败，
  * 失败发生在回来之后（用户取消 / 令牌缺失 / 建会话报错），由 supabase.js 写进 cloud.appAuthErr。 */
@@ -266,7 +279,7 @@ function passHint(pass) {
       </template>
       <p v-if="forgot" class="notice">{{ t("profile.forgotHint") }}</p>
 
-      <n-input v-model:value="authEmail" round size="large"
+      <n-input v-model:value="authEmail" type="email" round size="large"
         :placeholder="t('profile.authEmail')" @keyup.enter="forgot ? doForgot() : doAuth()" />
 
       <template v-if="!forgot">

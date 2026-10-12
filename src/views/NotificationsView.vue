@@ -4,7 +4,8 @@
  *  - 分栏（全部 / 评论 / 回应 / 宠物 / 私信 / 系统）各带未读角标；
  *  - 「只看未读」开关；分页「加载更多」；一键全部已读；清空；
  *  - 聚合：「小A 和另外 3 人 …」（连续同类型同帖合并，见 notifyRules.aggregate）；
- *  - 点击一条 = 标记已读 + 跳到原帖（/community?post=帖子id）或该私信会话（/messages/:id）；
+ *  - 点击一条 = 标记已读 + 跳到原帖详情（/post/:id，轮 241 起；原 /community?post= 只落墙、看不到详情）
+ *    或该私信会话（/messages/:id）；
  *  - 偏好开关（评论 / 回应 / 宠物 / 私信）写在页尾，读取走 RPC（缺行 = 全开）。
  * 未登录 / 云端不可用时显示引导，不报错（与站内其他页面一致的降级哲学）。
  */
@@ -139,7 +140,10 @@ async function openItem(n) {
   if (tg.type === "bottle") router.push({ name: "messagesList", query: { bottle: String(tg.bottleId) } });
   else if (tg.type === "dm") router.push({ name: "messages", params: { id: String(tg.convId) } });
   else if (tg.type === "user") router.push({ name: "waller", params: { id: tg.userId } });  /* #15 摸宠物等 → TA 的主页 */
-  else router.push({ path: "/community", query: { post: String(tg.postId) } });
+  /* 轮 241（用户实报）：帖子互动（点赞/抱抱/评论/回应）要进**帖子详情页**，
+   * 旧实现兜底跳 /community?post= 落在暖心墙列表 —— 看不到详情，还得自己找那条帖。
+   * PostDetailView 可直达（route.params.id + SWR 本地先出图）。 */
+  else router.push({ name: "postDetail", params: { id: String(tg.postId) } });
 }
 
 async function markAll() {

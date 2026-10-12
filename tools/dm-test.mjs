@@ -146,7 +146,7 @@ const NEED_DM = [
   "dm.title", "dm.intro", "dm.needSignIn", "dm.loadFail", "dm.search", "dm.requests",
   "dm.conversations", "dm.accept", "dm.reject", "dm.empty", "dm.more", "dm.open",
   "dm.mute", "dm.unmute", "dm.hide", "dm.block", "dm.unblock", "dm.someone",
-  "dm.mutedTag", "dm.requestTag", "dm.older", "dm.reachTop", "dm.sending",
+  "dm.requestTag", "dm.older", "dm.reachTop", "dm.sending",
   "dm.sendFailed", "dm.recalled", "dm.recall", "dm.noMessages", "dm.gateBlockedByMe",
   "dm.gateRequest", "dm.placeholder", "dm.hint", "dm.send", "dm.pickOne",
   "dm.emptyPreview", "dm.errEmpty", "dm.errTooLong", "dm.errBlocked", "dm.errBlockedByMe",

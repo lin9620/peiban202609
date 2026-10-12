@@ -173,10 +173,11 @@ ok("BottleView：字数上限用 BOTTLE_BODY_MAX；次数只由服务端值算�
   has(bottleView, ':maxlength="BOTTLE_BODY_MAX"')
     && has(bottleView, "Math.max(0, BOTTLE_SEND_MAX - quota.value.sent)")
     && has(bottleView, "Math.max(0, BOTTLE_FISH_MAX - quota.value.fished)"));
-ok("BottleView：待处理信箱多封并存（pending 合并 fished+held；捞新信不被手里那封锁死）",
+ok("BottleView：待处理信箱多封并存（pending 合并 fished+held；捞新信不被手里那封锁死；轮 238 起托盘一次弹一封）",
   has(bottleView, "const pending = ref([])")
     && has(bottleView, "function mergePending()")
-    && has(bottleView, 'v-for="l in pending"'));
+    && has(bottleView, 'v-for="l in pending.slice(0, 1)"')
+    && has(bottleView, "trayOn"));
 ok("BottleView：次数服务端权威（bottle_quota 同步；拉不到只提示、不拦操作）",
   has(bottleView, "async function syncQuota()") && has(bottleView, "await bottleQuota()")
     && has(bottleView, 'quotaErr.value = "bottle.quotaUnavailable"')
@@ -361,6 +362,22 @@ ok("漂流瓶标题用 display 字体并与内容分隔（对齐故事栏页头�
   && css.includes(".bt-head"));
 ok("同一条 .mail-list 只定义一次（避免后者覆盖前者）",
   (css.match(/^\.mail-list \{/gm) || []).length === 1);
+
+/* 轮 241（用户实报图1）：捞到信时 mergePending() 把信并入 pending（托盘渲染），fishPop
+ * 随后又弹同一封 → 两层遮罩（n-modal overlay + 托盘 ::before 0.45 黑）叠加成
+ * 「背景发灰、底下文字透出、看着像卡住」。两道修复防回退：
+ * ① 托盘在弹窗开着时让位（关掉弹窗托盘接力，同一封不丢）；② 乐观放回后就地重算 pending
+ * （否则接力瞬间把刚放回的信再端出来）。 */
+const doRel = bottleView.slice(bottleView.indexOf("async function doRelease"),
+  bottleView.indexOf("async function doRelease") + 900);
+ok("轮241 捞信双弹层接力：托盘让位 fishPop + 乐观放回重算 pending + id 全链 String 归一",
+  bottleView.includes('v-show="trayOn && !fishPop.show"') && doRel.includes("mergePending();")
+  && doRel.includes("String(fished.value.id)") && doRel.includes("String(x.id) !== String(l.id)")
+  && /map\.set\(String\(/.test(bottleView));
+ok("轮242 捞到信弹窗不可关闭（遮罩/Esc/× 全绑 msg 模式才放行；got/fishing 必须当场回信或放回）",
+  bottleView.includes(":mask-closable=\"fishPop.mode === 'msg'\"")
+  && bottleView.includes(":esc=\"fishPop.mode === 'msg'\"")
+  && bottleView.includes(":closable=\"fishPop.mode === 'msg'\""));
 
 console.log(`bottle-test: ${pass} pass, ${fails.length} fail`);
 for (const f of fails) console.log("FAIL  " + f);

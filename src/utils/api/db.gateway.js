@@ -139,6 +139,18 @@ export const db = {
     return call("/posts", { method: "POST", body: row });
   },
 
+  /* ══════════ 轮 252 ══════════ */
+
+  /** wall_posts 有哪些列（发帖时决定带不带 tags/img_w/img_h；失败一律给空数组=保守走旧载荷）。 */
+  probeColumns() {
+    return call("/posts/columns").catch(() => []);
+  },
+
+  /** 搜索（关键词 + 标签 + before 游标；返回与合并包同形 { posts, react, comment }）。 */
+  searchPosts(qs) {
+    return call(`/posts/search?${String(qs || "")}`);
+  },
+
   /** 公开档案（昵称 / 加入时间 / 陪你大厅状态）；行不存在返回 null（老库兼容由 Worker 内部处理） */
   async getProfile(userId) {
     return call(`/users/${enc(userId)}/profile`);

@@ -44,7 +44,7 @@ import {
   cloudDeleteComment, cloudSetReaction, cloudFetchCommentCounts, canUseWall, canReadWall,
   cloudAddView, cloudToggleDislike,
   cloudFetchMyCommentReactions, cloudToggleCommentReaction,
-  cloudFavIds, cloudFavAdd, cloudFavRemove,
+  cloudFavIds, cloudFavAdd, cloudFavRemove, cloudSearchPosts,
 } from "../utils/wall.js";
 /* 进阶规则（纯函数，Node 单测覆盖）：排序 / 浏览去重 / 厌恶比例下架 / 每日一条 */
 import {
@@ -147,6 +147,84 @@ const NOTE_OK_MS = 2200;
 const noteMs = (s) => (s === "fail" ? NOTE_FAIL_MS : NOTE_OK_MS);
 const newestSeenTs = ref(0);   /* 轮 73：补上缺失声明（真新帖判定用） */
 const lastPulledRows = ref([]);   /* 轮 76：本次刷新拉到的批（评论数后台补齐用） */
+
+/* ══════════ 轮 252 · 搜索 + 标签 ══════════
+ * 关键词（正文 ilike）+ 标签（tags 交集，服务端筛）都由 cloudSearchPosts 完成；
+ * 搜索激活时 shown 直接改道返回搜索结果（不动正常流的游标/缓存，清空搜索即原样回来）。
+ * 老库（迁移没跑）时后端隐掉标签条件、tags 恒空 → 标签搜索返回空结果，属预期降级。 */
+const searchQ = ref("");          /* 关键词输入（300ms 防抖自动搜） */
+const searchTags = ref([]);       /* 选中的标签（点击 chip 增删） */
+const searchRows = ref([]);       /* 搜索结果帖（服务端 id desc） */
+const searchBusy = ref(false);
+const searchDone = ref(false);    /* 结果不满一页 = 服务端到底 */
+const searchTouched = ref(false); /* 用户发起过搜索（空结果才显示「没有找到」） */
+const searchActive = computed(() => !!(searchQ.value.trim() || searchTags.value.length));
+
+async function runSearch({ append = false } = {}) {
+  if (searchBusy.value) return;
+  const q = searchQ.value.trim();
+  const tags = searchTags.value.slice(0, 5);
+  if (!q && !tags.length) {
+    searchRows.value = []; searchDone.value = false; searchTouched.value = false;
+    return;
+  }
+  searchBusy.value = true;
+  searchTouched.value = true;
+  try {
+    const before = append && searchRows.value.length ? searchRows.value[searchRows.value.length - 1].dbId : 0;
+    const pack = await cloudSearchPosts({ q, tags, limit: FEED_PAGE, before });
+    if (!pack || !Array.isArray(pack.rows)) return;   /* 失败：保留现场，再输入/滚动时重试 */
+    const rows = filterBlocked(pack.rows);
+    if (!append) { searchRows.value = rows; reveal.value = PAGE_SIZE; }
+    else {
+      const seen = new Set(searchRows.value.map((p) => p.dbId));
+      searchRows.value = searchRows.value.concat(rows.filter((p) => !seen.has(p.dbId)));
+    }
+    countViews(searchRows.value);
+    if (pack.counts) {
+      const next = { ...cloudCmtTotal.value };
+      for (const p of rows) if (p.dbId != null && pack.counts[p.dbId] != null) next[cmtKey(p)] = pack.counts[p.dbId];
+      cloudCmtTotal.value = next;
+    }
+    searchDone.value = rows.length < FEED_PAGE;
+  } finally {
+    searchBusy.value = false;
+  }
+}
+
+/* 输入防抖自动搜；标签增删立即重搜；清空两者即退出搜索态 */
+let searchTimer = 0;
+watch(searchQ, () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => runSearch(), 320);
+});
+watch(searchTags, () => runSearch());
+function toggleSearchTag(tg) {
+  const i = searchTags.value.indexOf(tg);
+  searchTags.value = i < 0 ? [...searchTags.value, tg] : searchTags.value.filter((x) => x !== tg);
+}
+/* 帖子上的标签 chip → 直接按该标签搜（清关键词，单标签） */
+function searchByTag(tg) {
+  searchQ.value = "";
+  searchTags.value = [tg];
+  focusFeedTop();
+}
+function clearSearch() {
+  searchQ.value = "";
+  searchTags.value = [];
+}
+/* 回到列表顶部（手机端墙自滚 / 桌面整页滚，两条都判） */
+function focusFeedTop() {
+  const el = wallScrollerEl && wallScrollerEl.value;
+  if (el && typeof el.scrollTo === "function") el.scrollTo({ top: 0, behavior: "smooth" });
+  else if (typeof window !== "undefined" && typeof window.scrollTo === "function") window.scrollTo({ top: 0, behavior: "smooth" });
+}
+/* 热门标签：从已加载帖子里取频次前 12（搜索入口；帖子少时不显示） */
+const hotTags = computed(() => {
+  const cnt = {};
+  for (const p of cloudPosts.value) for (const tg of (p.tags || [])) cnt[tg] = (cnt[tg] || 0) + 1;
+  return Object.entries(cnt).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([tg]) => tg);
+});
 
 async function loadCloud({ fresh = false, quiet = false } = {}) {
   loadingCloud.value = true;
@@ -299,6 +377,11 @@ async function loadCloud({ fresh = false, quiet = false } = {}) {
    时间戳并列导致跨页重排等任何错位，都只表现为「整页重复」→ 跳过该页用下一页游标续取
    （最多跳 3 页），永不产生重复 :key、永不假到底。 */
 async function loadMoreCloud() {
+  /* 轮 252：搜索态下触底 = 搜索结果续页（before 游标同款口径） */
+  if (searchActive.value) {
+    if (!searchDone.value && !searchBusy.value) await runSearch({ append: true });
+    return;
+  }
   if (cloudDone.value || pageBusy.value || loadingCloud.value) return;
   pageBusy.value = true;
   try {
@@ -1271,6 +1354,8 @@ const all = computed(() => [
 ]);
 /* 展示用：推荐 = 最近 7 天按天随机（默认）；其余 = 按时间范围筛 + 排序 */
 const shown = computed(() => {
+  /* 轮 252：搜索激活 → 直接展示搜索结果（正常流的游标/缓存不动，清空搜索即原样回来） */
+  if (searchActive.value) return searchRows.value;
   const visible = visibleOnly(all.value);
   if (sortMode.value === "recommend") return recommendPosts(visible, { days: RECOMMEND_DAYS });
   return sortPosts(
@@ -1596,7 +1681,9 @@ function goDetailReplies(p, cm) {
 const whenFmt = memoWhen((ts, locale) => fmtWhen(ts, locale));
 const when = (ts) => whenFmt(ts, i18n.locale);
 
-/* —— 深链到某帖：/community?post=<dbId>（通知中心点「评论/回应」跳回来时用） ——
+/* —— 深链到某帖：/community?post=<dbId>（分享/直达定位用）——
+ * 轮 241：通知中心的评论/回应/点赞点击已改跳 /post/:id 详情页，不再进本深链；
+ * 本逻辑保留（外链 /community?post= 仍要能定位到那条帖）。
  * 云端帖的 dbId 才是数据库里的真实 id；还没加载出来（或不是本页可见帖）就什么都不做。 */
 const route = useRoute();
 const focusId = ref(String(route.query.post || ""));
@@ -1776,6 +1863,23 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
       </div>
     </transition>
 
+    <!-- 轮 252 · 搜索栏：关键词实时搜（防抖）+ 热门标签 chip（点击筛选/增删） -->
+    <div class="wall-search">
+      <div class="wall-search-row">
+        <input v-model="searchQ" class="wall-search-input" type="search"
+          :placeholder="t('community.searchPh')" :aria-label="t('community.searchPh')" />
+        <button v-if="searchQ || searchTags.length" class="sort-btn" @click="clearSearch">✕</button>
+      </div>
+      <div v-if="hotTags.length" class="wall-tag-row">
+        <button v-for="tg in hotTags" :key="tg" class="tag-chip"
+          :class="{ on: searchTags.includes(tg) }"
+          @click="toggleSearchTag(tg)">#{{ tg }}#</button>
+      </div>
+      <p v-if="searchBusy" class="notice">{{ t("community.searching") }}</p>
+      <p v-else-if="searchTouched && searchActive && !searchRows.length" class="notice">
+        {{ t("community.searchEmpty") }}</p>
+    </div>
+
     <!-- 排序：默认最新；还有 同感最多 / 抱抱最多 / 暖暖最多 -->
     <div class="sort-row">
       <span class="sort-label">{{ t("community.sortLabel") }}</span>
@@ -1803,6 +1907,16 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
         @click="pickRange(r.key)">
         {{ t(r.tk) }}
       </button>
+    </div>
+
+    <!-- 轮 252：手机端首屏骨架（桌面端在 composer 卡内已有；这里 isMobileNav 专属，不重复） -->
+    <div v-if="isMobileNav && loadingCloud && !shownPage.length" class="sk-feed" aria-hidden="true">
+      <div class="sk-card" v-for="n in 3" :key="n">
+        <div class="sk-head"><span class="sk-circle"></span><span class="sk-line" style="width: 32%"></span></div>
+        <span class="sk-line" style="width: 94%"></span>
+        <span class="sk-line" style="width: 80%"></span>
+        <span class="sk-block"></span>
+      </div>
     </div>
 
     <!-- 轮 82 · B1 档：虚拟窗口占位块（高度由脚本按实测高度表写行内 style，撑住滚动高度） -->
@@ -1841,10 +1955,16 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
 
       <!-- 轮 84：点正文/图进帖子详情页（示例帖与本地帖没有 dbId，goDetail 不响应） -->
       <p class="post-text go-detail" @click="goDetail(p)">{{ i18n.locale === "zh" && p.zh ? p.zh : p.text || p.en }}</p>
+      <!-- 轮 252：#xxx# 标签 chip（点击 = 按该标签搜索） -->
+      <div v-if="p.tags && p.tags.length" class="post-tags">
+        <button v-for="tg in p.tags" :key="tg" class="tag-chip" @click.stop="searchByTag(tg)">#{{ tg }}#</button>
+      </div>
       <!-- 轮 81 · 动态流性能：图片懒加载 + 异步解码。
            原来一进页面/一续页就把这一页所有图片一起下载解码，滚动时主线程被解码尖刺打断；
            loading=lazy 只解码视口附近的图，decoding=async 让解码离开主线程。 -->
-      <img v-if="p.img" :src="p.img" class="pic go-detail" loading="lazy" decoding="async" alt="" @click="goDetail(p)" />
+      <img v-if="p.img" :src="p.img" class="pic go-detail" loading="lazy" decoding="async" alt=""
+        :style="p.imgW > 0 && p.imgH > 0 ? { aspectRatio: p.imgW + ' / ' + p.imgH } : {}"
+        @click="goDetail(p)" />
 
       <div class="react-row">
         <n-button

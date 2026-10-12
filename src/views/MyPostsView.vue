@@ -157,7 +157,7 @@ function openWall(p) {
           <span class="mypage-go">{{ t("community.viewHome") }} →</span>
         </div>
         <p class="post-text">{{ p.text || "🖼️" }}</p>
-        <img v-if="p.img" :src="p.img" class="pic" alt="" />
+        <img loading="lazy" v-if="p.img" :src="p.img" class="pic" alt="" />
         <div class="react-row">
           <n-button
             v-for="r in REACTIONS" :key="r.key"

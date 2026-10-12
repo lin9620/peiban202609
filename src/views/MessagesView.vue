@@ -99,6 +99,7 @@ const fontQuiet = () =>
   !document.fonts || performance.now() - lastFontActivity > 150;
 let scrollGen = 0;                  /* 轮 176b：滚动链代数——平滑滚动接管时作废旧追帧链 */
 const pinning = ref(false);         /* 轮 173b：进会话钉底中（直到首屏数据落定） */
+let entryFallback = 0;              /* 轮 249：openConv 的 2s 揭示兜底句柄——新一轮必须清掉旧的 */
 function onListTouch() { userScrolling.value = true; }
 function onListWheel() { userScrolling.value = true; }
 const meta = ref(null);      // 当前会话元信息（昵称 / 免打扰 / 拉黑 / 消息请求）
@@ -469,11 +470,13 @@ function scrollBottom(smooth = false, reveal = false) {
        展开完，scrollTop 会被夹回 0（真机实测揭示首帧 st=0 sh=5375 gap=4649 —— 等于先给
        用户看一眼列表顶，下一帧才跳到底，比慢更糟）。
        这里自己每帧钉底，**等到 gap<4 的那一帧才揭示** —— 揭示与钉底同帧，亮出来就在最新消息。
-       本循环刻意不挂 scrollGen：chase 会被后续 ++scrollGen 作废（比如 mergeTail 的平滑滚动），
-       但那不该拖累揭示；另设 30 帧（~500ms）兜底，任何情况下都不会把消息区永久藏住。 */
+       本循环轮 249 起挂 scrollGen：旧版刻意不挂，但快速进出会话时上一轮的揭示循环还活着，
+       会把新一轮还在钉稳期的页面提前揭示（真机 ~7% 概率间歇跳闪）；60 帧兜底保留。 */
     if (reveal) {
       let rf = 0, lastSh = -1, sameSh = 0;
+      const myGen = scrollGen;   /* 轮 249：新一轮滚动链启动即作废旧揭示循环（快速进出的间歇跳闪源） */
       const revealWhenPinned = () => {
+        if (myGen !== scrollGen) return;   /* 新链已接管 */
         if (listRevealed.value) return;
         const e2 = listEl.value;
         if (!e2) { listRevealed.value = true; return; }
@@ -540,9 +543,12 @@ async function openConv(id) {
   listRevealed.value = false;   /* 轮 176：消息区先隐，钉底稳了再显示（防首帧错位跳闪） */
   entryReady.value = false;     /* 轮 180：显示门控重置——等 fresh 数据落定 */
 
-  /* 轮 180 → 轮 238：兜底只揭示已落定的；揭示前先同步钉一次底（否则 2s 兜底亮出
-   * 来的可能还是顶部/半截位置——长消息 + 字体震荡时尤其如此），亮出来的就是最新消息 */
-  setTimeout(() => {
+  /* 轮 180 → 238：兜底只揭示已落定的；揭示前先同步钉一次底（否则 2s 兜底亮出
+   * 来的可能还是顶部/半截位置 —— 长消息 + 字体震荡时尤其如此），亮出来的就是最新消息。
+   * 轮 249（用户实测「快速点击偶发一闪而过」）：必须清掉上一轮的兜底 —— 快速进出会话时
+   * 旧 setTimeout 照常触发，把新一轮还在钉稳期的页面提前揭示 = 间歇跳闪（~7% 概率）。 */
+  clearTimeout(entryFallback);
+  entryFallback = setTimeout(() => {
     if (entryReady.value && !listRevealed.value) {
       const el2 = listEl.value;
       if (el2) el2.scrollTop = el2.scrollHeight;
@@ -834,19 +840,42 @@ onMounted(async () => {
   document.addEventListener("pointerdown", onDocPointerDown);   /* 轮144：⋯菜单点空白关 */
   if (!signedIn.value) return;
   refreshBlocks();   /* 轮 34：进消息页同步拉黑名单（内容过滤与私信名单同源） */
+  /* 轮 245（用户实测冷启动「漂流瓶→进聊天停顶/跳闪」）：openConv 不再等会话列表 ——
+   * loadConvs 冷启动要走网络+本地库，把它 await 完才 openConv 会把钉底/揭示链堵在后面：
+   * 期间 listRevealed 还是初始 true、DOM 停在旧位置（=先看到顶），openConv 终于跑起来
+   * 才隐藏→钉底→揭示（=再跳一下到底）。并行后钉底链立刻接管。
+   * openConv 只在 convs 里查不到会话时才顺带 loadMeta（convs 未就绪 = 必拉，语义仍对）。 */
+  const firstOpen = activeId.value ? openConv(activeId.value) : null;
   await loadConvs();
-  if (activeId.value) await openConv(activeId.value);
+  if (firstOpen) await firstOpen;
   timer = setInterval(tick, 5000);
   if (typeof document !== "undefined") document.addEventListener("visibilitychange", onVisible);
 });
 
 /* 轮 218：保活期暂停轮询/监听（KeepAlive 下 onBeforeUnmount 不触发） */
+/* 轮 247：区分「首次激活」与「真恢复」——KeepAlive 首次挂载也会触发 onActivated，
+ * 无差别强制揭示会把 openConv 刚设的「隐藏待钉稳」立刻改回可见，钉底震荡全程裸奔
+ * （真机逐帧实证：vis 从第一帧就是 visible、top 0→1811→1433→2841 折返跑 = 用户报的跳闪）。 */
+let wasDeactivated = false;
 onActivated(() => {
   if (!timer) timer = setInterval(tick, 5000);
   document.addEventListener("pointerdown", onDocPointerDown);
   restoreScroll(route.path);   /* 轮 219：回位（KeepAlive 重插瞬间） */
+  /* 轮 245 → 247/248 收口：真恢复时**只补滚动位置，绝不动 listRevealed** ——
+   * ① 同会话恢复：缓存 DOM 本就处于揭示态（上次离开时 visible），只需把停在顶部的
+   *    scrollTop 钉回底（修「第二次进聊天停顶」）；
+   * ② 不同会话（如从别人主页「发私信」深链进来）：watch 会触发 openConv，钉稳揭示链
+   *    全权接管 —— 这里若强制 listRevealed=true 会把「隐藏待钉稳」翻回可见，
+   *    钉底震荡全程裸奔（真机逐帧实证：top 0→1811→1433→2841 折返跑 = 用户报的跳闪）；
+   * ③ 首次挂载：onActivated 也会触发（KeepAlive 首次激活），wasDeactivated=false 拦住。 */
+  if (wasDeactivated && route.name === "messages" && route.params.id && String(route.params.id) === activeId.value) {
+    pinning.value = false;
+    nextTick(() => { const el = listEl.value; if (el) el.scrollTop = el.scrollHeight; });
+  }
+  wasDeactivated = false;
 });
 onDeactivated(() => {
+  wasDeactivated = true;
   clearInterval(timer); timer = 0;
   document.removeEventListener("pointerdown", onDocPointerDown);
 });
@@ -865,13 +894,27 @@ watch(() => route.params.id, (v) => {
    * 劫持进一个空会话（标题落到「这位伙伴」、消息区全空，用户实测）。
    * /post/:id、/story/:id 等数字 id 同理会中招（读帖 7 会被拽进会话 7）。
    * 修法：route 不是 messages/messagesList 时一律无视 —— 此时本页不可见，:id 与本页无关。 */
-  if (route.name !== "messages" && route.name !== "messagesList") return;
+  if (route.name !== "messages" && route.name !== "messagesList") {
+    /* 轮 245（用户实测「从聊天物理返回漂流瓶 → 再点消息页 = 塌缩」）：无视 ≠ 不清理。
+     * 离开消息组时会话态必须清空 —— 否则 params.id 从 "26"→undefined 被上面的守卫
+     * 拦掉、再进 /messages 时 id 无变化 watch 不触发，activeId="26" 一路残留：
+     * thread 的 v-show="!!activeId" 仍显示，但 inChat=false 已卸掉 shell--chat，
+     * thread 落回基础 min-height:60vh = 聊天区塌缩、输入框悬空（用户截图实证）。
+     * 页面不可见时清的是内部状态，不触碰任何滚动/焦点，对「看 TA 主页」等来回无感。 */
+    if (activeId.value) resetConv();
+    return;
+  }
   const id = String(v || "");
   if (id) {
     if (id !== activeId.value) openConv(id);
     return;
   }
   /* 回到列表：清空当前会话（手机形态下 .dm-list 立刻接管整屏）+ 回私信段 */
+  resetConv();
+});
+
+/* 轮 245：清会话态抽成一处（watch 的两个出口共用；与原「回到列表」分支逐字段同口径） */
+function resetConv() {
   activeId.value = "";
   msgs.value = [];
   msgsConv = "";
@@ -882,7 +925,7 @@ watch(() => route.params.id, (v) => {
   meta.value = null;
   fromList.value = false;
   seg.value = "dm";
-});
+}
 
 const when = (ts) => relativeTime(ts, Date.now(), t);
 /* ── 轮 19④：分栏左右滑（像首页三联那样：左滑去右边的栏，右滑去左边的栏）──
@@ -1085,10 +1128,9 @@ function goSignIn() {
             <button v-if="isMobileNav" class="dm-thread-back" @click="backToList">←</button>
             <n-avatar v-if="!isMobileNav" round :size="40" class="dm-msg-avatar" :src="avatarUrlFor((activeConv && activeConv.other_id) || (meta && meta.other_id)) || undefined">{{ peerInitial }}<template #fallback>{{ peerInitial }}</template></n-avatar>
             <b class="dm-name dm-peer-link" :title="t('dm.viewHome')" @click="goUser(activeConv && activeConv.other_id)">{{ title || t("dm.someone") }}</b>
-            <svg v-if="activeConv && activeConv.muted" class="dm-muted-ico" viewBox="0 0 24 24" :aria-label="t('dm.mutedTag')">
-              <path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor" />
-              <path d="M16 9.8l4.4 4.4M20.4 9.8L16 14.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none" />
-            </svg>
+            <!-- 轮 244（用户拍板）：聊天头部**不挂**免打扰小灰标 —— 微信口径：免打扰标志只出现在
+             * 会话列表行（时间左侧的小灰标，见上方 .dm-time.has-mute），聊天头部就是昵称本身；
+             * 进到聊天里还顶着标志是多余的（用户实测「免打扰标志出现在聊天框之中，这不对」）。 -->
             <n-tag v-if="activeConv && activeConv.accepted === false" round size="small" :bordered="false" class="soft-tag">
               {{ t("dm.requestTag") }}
             </n-tag>

@@ -265,7 +265,7 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
 ---
 
-# 一、当前状态速览（2026-09-28 更新 · 轮 114 换域名改动待部署）
+# 一、当前状态速览（2026-10-12 更新 · 轮 239~252 攒批提交部署）
 
 | 项 | 值 |
 |---|---|
@@ -2924,3 +2924,70 @@ const selfZh = SITE + "/zh" + (dir ? "/" + dir : "");    // 首页也不带尾�
 
 **后续（Google 侧）**：Search Console 的「自动重定向」要等 Google **重新抓取后**才会消失，
 一般几天到一两周；可用「网址检查」手动请求重新抓取 `/zh` 加速。
+
+### 轮 240 · App 端体感提速五项(配置/启动链/预取/图片属性/头像出口)+ 冷启动基线 512ms
+
+### 轮 252 · 暖心墙搜索 + #标签# + 图片尺寸预留（发帖时 tags/img_w/img_h 入库）
+
+**任务**：墙帖搜索（关键词 + 标签）+ 图片尺寸预留防抖动（aspect-ratio）+ 手机端首屏骨架屏。
+
+**数据层（wallRules/wall/db 双模式/worker 三端同口径）**：
+- `wallRules.js`：`TAG_MAX=5 / TAG_LEN=20`，`extractTags()`（#xxx# 推特式，闭合或空白/结尾收尾，小写去重，最多 5 个）+ `normTags()`。
+- `wall.js`：`rowsToPosts` 映射 `tags/imgW/imgH`；`cloudInsertPost({…, imgW, imgH})` 先探列（sessionStorage 缓存 1h），带新列 insert 若 400 则去掉新列重试一次（探列误判/缓存过期兜底；只有首发含新列才重试，限额类错误不白打）；`cloudSearchPosts({q,tags,limit,before})`。
+- `db.supabase.js`：`searchPosts(qs)`（PostgREST ilike[%_\\ 反斜杠转义] + `tags=ov` + 显式列 + `removed=false`；新列缺失 400 → 退回旧列且隐掉标签条件）+ 聚合（回应/评论数，limit 20），`probeColumns()`。
+- `db.gateway.js`：`probeColumns()` → `GET /posts/columns`，`searchPosts(qs)` → `GET /posts/search?…`。
+- `worker/api.js`：`GET /posts/columns`（显式 select 探列，空表也能判；老库 → `[]`），`GET /posts/search`（首选 RPC `wall_search_posts`，404 → REST 链 + 回应/评论聚合 + JWT 填 mine）。
+- 迁移：`MIGRATION_wall_search.sql`（`tags text[]` + GIN 索引 + `img_w/img_h` + `body` pg_trgm 索引 + `wall_search_posts` RPC，全部幂等）**已同步进 `SUPABASE_SETUP.sql`**。**迁移待用户在 SQL Editor 执行（整份粘贴，不跑也不炸：探列/RPC404/400 三层降级）；装机（轮 250/251 待办）时手机未连接**。
+
+**视图层（ComposeView/CommunityView）**：
+- ComposeView：选图记 `naturalWidth/Height` → 随帖入库；预览图 `aspect-ratio` 预留；`#xxx#` 标签实时预览 chip（计数 x/5）；移除图片同步清零尺寸。
+- CommunityView：搜索栏（排序行上方，手机/桌面通用；关键词 320ms 防抖自动搜 + 热门标签 chip 频次前 12，点击增删筛选）+ 搜索中/无结果提示；搜索激活时 `shown` 改道返回搜索结果（正常流游标/缓存不动，清空即原样回来；触底续载走 `before` 游标续页）；帖子卡正文下渲染 `tags` 可点击 chip（点击 = 按该标签搜索并回顶）；图片 `aspect-ratio`（老帖无尺寸 = 原行为）；手机端首屏骨架屏 3 张（含图片占位块，桌面已有那处不重复）。
+- i18n：`community.searchPh/searching/searchEmpty`（中英成对）。`style.css` 新增 `.wall-search*/.tag-chip/.post-tags/.sk-block`。
+
+**修的真 bug**：`cloudInsertPost` 的「400 去新列重试」原先挂在 `!data` 上，但 `unwrap` 是 throw（上一版的兜底永远走不到），改为捕获后重试。
+
+**验证**：wall-rules-test 新增 #252 标签 5 组 + api-contract（lt/ilike/overlaps 假 builder + 搜索/探列形状）+ worker-test（search RPC/REST/老库400/502/columns 新老库/路由不冲突）+ gateway-contract（端点形状 + probeColumns 失败→[]）全绿；其余 36 套离线测试除 seo T38/39/42、uifix T23（基线历史遗留，stash 对照同样失败）外全部 0 fail；build=0。状态：未装机（手机未连接，随轮 250/251 待办）。
+
+
+**任务**:App 端提速(用户"做一下吧")。先全链配置核查(8 处读全),再按"先无损后有损"执行五项。
+
+**① Capacitor 配置核查与加固(2 改 + 1 必要修复)**
+- `androidScheme` 未显式声明(默认 https 正确但靠运气)→ 显式写入。
+  教训:此前 http 期间 localStorage/SW 在 http 下浏览器可禁用,历史 bug 的隐性根源。
+- `backgroundColor: "#FAF7F2"`(暖爪主色)——启动窗口背景,配合启动主题用。
+- **必要修复**:`cap-strip-hero.mjs` 会用 `Object.keys`+`delete` 剥 capacitor.config.json
+  的标题字段——**误伤 `backgroundColor`(key 不含 title)**,配置会被每次 sync 静默剥掉。
+  给 key 挂牌列表加 `backgroundColor` 放行。不修则 ①白做(构建通过 ≠ 功能生效的又一例)。
+
+**② 启动链(原生侧,三改)**
+- `styles.xml` 新增 `Theme.WarmPaws.Start`(Translucent.NoTitleBar)+ Manifest 启动 activity
+  挂上:先亮 splash 纯色,WebView 就绪后一帧接上——**消灭白闪**(webview 白底瞬屏)。
+- `index.html` 首屏内联启动背景色(splash→web 色彩连续)。
+- 首 chunk `entry.js` 预载改 `fetchpriority="high"`(**不能用 crossorigin 属性**:CSP 禁,
+  会把最高优先级的 chunk 请求变成 CORS 失败;项目 CSP 历史约束)。
+
+**③ 今日联预取(前端,1 改)**
+- 进宠物/今日页时后台预取今日联(500ms idle 后 + 60s TTL 复用):用户点进今日联时
+  数据已在本地/缓存 → 更接近"秒开"。失败静默(纯增益,不挡任何主流程)。
+
+**④ 图片属性加固(12 张列表流图挂 loading=lazy)**
+- 墙卡 6(含桌面 2)+ 聊天媒体 1 + 我的帖子 1 + 他人主页帖/回 2 + 墙纸 1 + 管理预览 1。
+- 全量扫描 20 处未挂,逐处判断:**首屏头像/动画帧(SnackRain/PetMotion)/选图预览/详情主图
+  有意不挂**(lazy 会延迟首屏关键内容或动画帧),留 15 处并注释理由。
+- 防重排:列表流图片不抢首屏带宽,降低滚动期布局抖动。
+
+**⑤ 头像统一出口 `AvatarImg.vue`(新组件)**
+- lazy + 384 主源 + `srcset` 三档(96/192/384w) + `sizes` + 字母兜底;`.avatar-img`
+  CSS 补 border-radius/object-fit。CommunityView 墙卡/详情 2 处接线示范,后续全站可渐进替换。
+- 教训(编辑器操作):三次用"insert 注释+全文"方式改文件,把 AvatarImg 组件体顶掉/插乱,
+  靠 git status 发现(395B)后整体重写。**改代码用 old→new 精确替换,别用 insert 全文。**
+
+**验证**:undef=0 tdz=0;wall/avatar/i18n/wall-keep/feed-perf/dm 全 0;build=0 cap=0 gradle=0;
+**page-smoke 12/12**;装机 Success(PBIJR8BM6D6HS8LV)。
+**冷启动基线:591/502/512ms,中位 512ms(am start -W TotalTime,进程创建→首帧)。
+无旧基线对比(此前未测),此为首轮基线,后续优化以它对照。**
+改动:capacitor.config.json / cap-strip-hero.mjs / MainActivity.java / styles.xml /
+AndroidManifest.xml / index.html / App.vue(prefetch+avatar2 处) / AvatarImg.vue(新) /
+style.css / CommunityView.vue(头像接线)。
+状态:已装机待验收,未提交(攒批)。
+

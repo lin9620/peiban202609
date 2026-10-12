@@ -15,6 +15,7 @@ import {
   isVisible, visibleOnly, postedOnDay, countPostedOnDay, dayCountFromStorage,
   canPostToday, postsLeftToday, WALL_POST_DAILY_LIMIT, errorKind, fmtWhen, fmtWhenSec,
   recommendPosts, RECOMMEND_DAYS, RECOMMEND_WIDE_DAYS, RECOMMEND_MIN_POOL, shuffleSeeded,
+  extractTags, normTags, TAG_MAX, TAG_LEN,
 } from "../src/utils/wallRules.js";
 import { messages } from "../src/i18n.js";
 
@@ -575,6 +576,40 @@ t("T32 页面接线：范围行由 usesRange 显隐，筛选走 rangeFor 单一�
   assert.ok(src.includes("inRange(p, rangeFor(sortMode.value, rangeMode.value))"),
     "筛选未走 rangeFor（会出现「按钮藏了但筛选还在偷偷生效」）");
   assert.ok(!src.includes("inRange(p, rangeMode.value)"), "仍在直接用未加工的档位筛选");
+});
+
+/* ══════════ 轮 252 · 标签（#xxx#）解析 / 归一 ══════════ */
+t("#252 extractTags：推特式 #xxx# 闭合标签", () => {
+  assert.deepEqual(extractTags("今天#开心#的一天"), ["开心"]);
+  /* 不闭合也收（空白/结尾收尾），中文友好 */
+  assert.deepEqual(extractTags("#学习 去啦"), ["学习"]);
+  assert.deepEqual(extractTags("随手记 #晚饭"), ["晚饭"]);
+});
+t("#252 extractTags：多标签、去重保留首次、小写归一", () => {
+  assert.deepEqual(extractTags("#咖啡#和#散步#，#咖啡#再来一次"), ["咖啡", "散步"]);
+  assert.deepEqual(extractTags("#Work# then #work#"), ["work"]);
+});
+t("#252 extractTags：最多 TAG_MAX 个、单个最长 TAG_LEN 字（超长截断到 TAG_LEN）", () => {
+  const many = "#a##b##c##d##e##f#";
+  assert.equal(extractTags(many).length, TAG_MAX);
+  assert.deepEqual(extractTags(many), ["a", "b", "c", "d", "e"]);
+  /* 正则本身只吃 TAG_LEN 字（[^#\s]{0,19}），超长部分留在正文里、标签被截断保留 */
+  assert.deepEqual(extractTags("#" + "长".repeat(TAG_LEN + 5) + "#"), ["长".repeat(TAG_LEN)]);
+  assert.deepEqual(extractTags("#" + "字".repeat(TAG_LEN) + "#"), ["字".repeat(TAG_LEN)]);
+});
+t("#252 extractTags：脏输入安全（非字符串 / 空串 / 只有井号）", () => {
+  assert.deepEqual(extractTags(null), []);
+  assert.deepEqual(extractTags(undefined), []);
+  assert.deepEqual(extractTags(""), []);
+  assert.deepEqual(extractTags("# #"), []);
+  assert.deepEqual(extractTags("###"), []);
+});
+t("#252 normTags：DB 回来的脏值按同一套口径洗（去空/小写/去重/限量/限长）", () => {
+  assert.deepEqual(normTags([" Ab ", "ab", "", null, "c"]), ["ab", "c"]);
+  assert.deepEqual(normTags(["x".repeat(TAG_LEN + 1)]), []);
+  assert.deepEqual(normTags(["a", "b", "c", "d", "e", "f"]).length, TAG_MAX);
+  assert.deepEqual(normTags("not-array"), []);
+  assert.deepEqual(normTags(null), []);
 });
 
 console.log(out.join("\n"));

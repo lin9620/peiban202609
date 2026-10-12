@@ -1181,6 +1181,41 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 .sort-btn.on { color: #fff; background: var(--accent); }
 .sort-btn.on:hover { color: #fff; }
 
+/* ═══════════ 轮 252：搜索栏 / 标签 chip / 图片占位骨架 ═══════════ */
+.wall-search { margin: 12px 2px 4px; }
+.wall-search-row { display: flex; align-items: center; gap: 8px; }
+.wall-search-input {
+  flex: 1 1 auto; min-width: 0;
+  border: 1px solid var(--hairline); border-radius: 999px;
+  padding: 8px 16px; font: inherit; font-size: 13px;
+  background: var(--wash-mid); color: var(--ink);
+  outline: none; transition: border-color .2s ease, background .2s ease;
+}
+.wall-search-input:focus { border-color: var(--accent); background: var(--card); }
+.wall-search-input::placeholder { color: var(--ink-faint); }
+/* 热门标签 chip 行：横向排布，超宽可横滑（手机端一屏能看到更多入口） */
+.wall-tag-row {
+  display: flex; gap: 6px; flex-wrap: wrap;
+  margin-top: 8px;
+}
+/* 标签 chip：帖子卡上 = 点击搜索；搜索栏里 = 点击筛选（on = 已选中） */
+.tag-chip {
+  border: none; font-family: inherit; cursor: pointer;
+  padding: 3px 10px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 600;
+  background: var(--accent-soft); color: var(--accent-deep);
+  transition: all .18s ease;
+}
+.tag-chip:hover { transform: translateY(-1px); }
+.tag-chip.on { color: #fff; background: var(--accent); }
+/* 帖子卡上的标签行：正文与图片之间 */
+.post-tags { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 2px; }
+/* 骨架屏图片占位块：按常见 4:3 给高度，加载完成后真实卡片接管 */
+.sk-block {
+  display: block; width: 100%; aspect-ratio: 4 / 3; border-radius: 12px;
+  background: var(--accent-soft); animation: t-skel-pulse 1.4s ease-in-out infinite;
+}
+
 /* ══════════ 轮 84：评论互动（…菜单 / 回应 / 时间位 / 排序 / 查看更多） ══════════ */
 
 /* 帖子/评论头部的 ⋯ 触发钮（cmt-head 原本就带 margin-left:auto 的删除钮，⋯ 跟在删除钮后） */
@@ -2039,7 +2074,11 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 /* 窄屏：会话列表在上、对话在下（单列）。
    T9 修复：1fr 的最小轨道 = 内容 min-content → 不可断行的长词（如无空格乱码）会把整条
    轨道撑到几百 px、整页横向溢出（真机截图实证）。minmax(0,1fr) + 项 min-width:0 锁死。 */
-@media (max-width: 780px) {
+/* 轮 241：断点 780 → 899，与 uiStore 的 isMobileNav（vw < 900 / isApp）真正对齐 ——
+ * 旧值 780 在 781~899px 区间是盲区：shell--mobile-nav / shell--chat 类已经挂上，
+ * 本块的 tabbar、手机单列布局、.dm-page 撑高却全部不命中 → 布局破碎
+ * （手机横屏 ~844、平板、折叠屏展开、窄桌面窗全踩；uiStore 注释原称「对齐」实际没对齐）。 */
+@media (max-width: 899px) {
   .dm-wrap { grid-template-columns: minmax(0, 1fr); }
   .dm-wrap > * { min-width: 0; max-width: 100%; }
   .dm-list { max-height: 46vh; }
@@ -2159,7 +2198,11 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 /* 整屏页（聊天 / 发帖）：页面自身的 min-height:100dvh 与「宠物通知浮层」那 14px 外边距叠加
    会多出一条 14px 的滚动 —— 整屏形态下把浮层外边距归零，页面才真的刚好一屏。 */
 .shell--mobile-nav.shell--chat .pet-notice-stack { margin-bottom: 0; }
-.shell--mobile-nav.shell--chat .dm-page { height: 100dvh; gap: 0; }
+/* 轮 241（用户实报图2）：100vh 打底再用 dvh —— Android WebView < Chrome 108
+   （2022 前的国产机常见）不认识 dvh，整条 height:100dvh 会被当无效声明丢弃 →
+   .dm-page 高度塌缩 → 下面两级 flex:1 无处分配 → 聊天不撑满、输入框悬在中间；
+   桌面新 Chrome 测不出来，只有旧内核手机复现。新内核 dvh 覆盖 vh（随地址栏伸缩）。 */
+.shell--mobile-nav.shell--chat .dm-page { height: 100vh; height: 100dvh; gap: 0; }
 
 /* ═══ T6 · 首页三联容器（仅手机形态渲染；桌面零规则零变化）═══
  * .home3 用 overflow: clip（不创建滚动容器）→ 频道条 sticky 仍相对视口生效；
@@ -2298,9 +2341,12 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 @media (max-width: 899px) {
   html, body { overscroll-behavior-y: contain; }
 }
-/* 手机端 4：捞到的漂流瓶整卡居中弹出（原来跟在页尾容易被忽略） */
+/* 手机端 4：捞到的漂流瓶整卡居中弹出（原来跟在页尾容易被忽略）。
+ * 轮 238 · Teleport 到 body 后托盘不再是 .shell 后代——选择器改 body 直系
+ * （position: fixed 留在 .home-track 的 transform 里会被劫持包含块：居中变「对轨道居中」，
+ *   托盘漂到任意联上 = 宠物页悬空卡、今日页黑边，真机像素实证）。 */
 @media (min-width: 0) {
-  .shell--mobile-nav .bottle-tray {
+  body > .bottle-tray {
     position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
     z-index: 150; width: min(340px, calc(100vw - 36px));
     margin: 0; padding: 18px 16px; border-radius: 22px;
@@ -2308,10 +2354,9 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
     box-shadow: 0 24px 60px rgba(30, 20, 10, .38), 0 2px 10px rgba(30, 20, 10, .2);
     animation: bottle-pop .26s cubic-bezier(.34, 1.4, .64, 1);
   }
-  .shell--mobile-nav .bottle-tray::before {
-    content: ""; position: fixed; inset: 0; z-index: -1;
-    background: rgba(30, 22, 14, .45);
-  }
+  /* 轮 241（用户实报「一进漂流瓶就黑色弹窗」）：托盘不再压全屏暗底 ——
+     原 ::before 是全屏 rgba(30,22,14,.45) 黑 + 页面像被锁住，找回手里未处理的信
+     只是通知性质，不该劫持整页交互；卡片自带大投影已经足够醒目。 */
 }
 @keyframes bottle-pop { from { opacity: 0; transform: translate(-50%, -46%) scale(.92); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
 /* 共有 2：不喜欢按钮调大（好按、好看见） */
