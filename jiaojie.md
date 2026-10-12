@@ -2946,7 +2946,7 @@ const selfZh = SITE + "/zh" + (dir ? "/" + dir : "");    // 首页也不带尾�
 
 **修的真 bug**：`cloudInsertPost` 的「400 去新列重试」原先挂在 `!data` 上，但 `unwrap` 是 throw（上一版的兜底永远走不到），改为捕获后重试。
 
-**验证**：wall-rules-test 新增 #252 标签 5 组 + api-contract（lt/ilike/overlaps 假 builder + 搜索/探列形状）+ worker-test（search RPC/REST/老库400/502/columns 新老库/路由不冲突）+ gateway-contract（端点形状 + probeColumns 失败→[]）全绿；其余 36 套离线测试除 seo T38/39/42、uifix T23（基线历史遗留，stash 对照同样失败）外全部 0 fail；build=0。状态：未装机（手机未连接，随轮 250/251 待办）。
+**验证**：wall-rules-test 新增 #252 标签 5 组 + api-contract（lt/ilike/overlaps 假 builder + 搜索/探列形状）+ worker-test（search RPC/REST/老库400/502/columns 新老库/路由不冲突）+ gateway-contract（端点形状 + probeColumns 失败→[]）全绿；其余 36 套离线测试除 seo T38/39/42、uifix T23（基线历史遗留，stash 对照同样失败）外全部 0 fail；build=0。**已提交 `0113d6e` / 已推送（`HEAD == origin/main`）/ 已部署 Version `51feda2f`（入口 `index-DzmDi8IU.js`，705458 字节，SHA16 `1ff9621eddeda97b` 本地=线上，含 slug）/ live-check 14/14**。状态：未装机（手机未连接，随轮 250/251 待办）；`MIGRATION_wall_search.sql` 待用户在 SQL Editor 整份执行（不跑也降级可用）。
 
 
 **任务**:App 端提速(用户"做一下吧")。先全链配置核查(8 处读全),再按"先无损后有损"执行五项。
