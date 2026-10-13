@@ -21,6 +21,9 @@ await check("资产缓存 immutable", "/", async (r) => {
   return (a.headers.get("cache-control") || "").includes("immutable");
 });
 await check("根路径 200", "/", (r) => r.status === 200);
+/* 轮 260：这就是给 UptimeRobot 等免费监控盯的端点（不依赖静态资源，只验 Worker + 配置活着） */
+await check("健康端点 /api/health 200 {ok:true}", "/api/health", async (r) =>
+  r.status === 200 && (await r.json().catch(() => null))?.ok === true);
 await check("/pet 200 + canonical 独立", "/pet?cb=" + Date.now(), async (r) =>
   r.status === 200 && (await r.text()).includes('rel="canonical" href="https://warmpaws.de5.net/pet"'));
 await check("/community 200 + canonical 独立", "/community?cb=" + Date.now(), async (r) =>

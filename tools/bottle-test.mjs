@@ -261,13 +261,27 @@ ok("BottleView：弹窗可关（✕/蒙版/Esc）+ 离开漂流瓶联自动关�
     && !bottleView.includes(':mask-closable="false"')
     && !bottleView.includes(':close-on-esc="false"')
     && bottleView.includes('fishPop.value.show = false'));  /* 离开联自动关 */
-ok("BottleView：按下瞬间出「撒网中」弹窗 + 8s 悬死给出口（轮 26：反馈 <100ms）",
+ok("BottleView：按下瞬间出「撒网中」弹窗 + 6s 悬死给出口（轮 254：超时提示「没捞到」）",
   has(bottleView, 'fishPop.value = { show: true, mode: "fishing", letter: null, msg: "" }')
-    && has(bottleView, "const FISH_TIMEOUT") && has(bottleView, '"bottle-slow"')
+    && has(bottleView, "const FISH_TIMEOUT = 6000") && has(bottleView, '"bottle-slow"')
     && has(bottleView, "fishPop.mode === 'fishing'"));
 ok("i18n：弹窗文案双语齐（gotTitle/popNotice/fishing/fishingSub/errSlow），popKeep 键已清",
   ["gotTitle", "popNotice", "fishing", "fishingSub", "errSlow"].every((k) => k in messages.en.bottle && k in messages.zh.bottle)
     && !("popKeep" in messages.en.bottle) && !("popKeep" in messages.zh.bottle));
+
+/* ───────── 轮 254：捞网会话代际——离开即作废，在飞请求落地不补弹旧弹窗 ─────────
+ * 真因：HomeView 被 KeepAlive 保活，轮 238 的 watch 只关了弹窗本体；promise 落地时
+ * 回调又按 tab === "bottle" 弹窗 → 用户切走再切回，旧弹窗复活（用户实报 bug）。 */
+ok("BottleView：捞网会话代际 fishGen——离开（切页签 watch / KeepAlive 失活）即 abandonFish 作废",
+  has(bottleView, "let fishGen = 0") && has(bottleView, "function abandonFish()")
+    && has(bottleView, "onDeactivated(abandonFish)")
+    && has(bottleView, 'if (v !== "bottle") abandonFish();')
+    && has(bottleView, "const gen = ++fishGen") && has(bottleView, "const alive = () => gen === fishGen"));
+ok("BottleView：会话作废后——超时/出错提示一律丢弃（!alive 丢弃 ≥2 处）、捞到走托盘不走弹窗、finally 不复位他人会话",
+  (bottleView.match(/if \(!alive\(\)\) return;/g) || []).length >= 2
+    && has(bottleView, 'if (alive() && route.query.tab === "bottle")')
+    && has(bottleView, "finally { if (alive()) fishing.value = false; }")
+    && has(bottleView, "if (fishing.value) return;"));   /* 防重入：loading 钮仍会派发 click */
 
 
 

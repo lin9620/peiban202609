@@ -78,24 +78,56 @@ function apply(dm, notif) {
   } catch (e) { /* 写不进就算了 */ }
 }
 
-/** 刷一次（页面回前台 / 发消息后 / 读通知后都可手动触发）。返回是否成功（供退避用） */
-export async function refreshBadge() {
-  if (badge.loading) return true;
+/* 刷一次（页面回前台 / 发消息后 / 读通知后都可手动触发）。返回是否成功（供退避用）。
+ * 轮 254：after = 先等写操作落库再拉 —— 旧写法 markRead 不 await、refreshBadge 立刻并发发，
+ * 「已读」还没写进库，未读数拉回来还是旧值，红点要等下一轮 30s 轮询才消（用户实测「点进去
+ * 马上返回，红点好几秒才消失」）。传 after 即可串行化，不传保持原行为。
+ * 轮 254：loading 中的调用不再丢弃（旧实现 return true 直接吞掉 → 手动刷新撞上轮询就白点）
+ * ——改排队：等在飞那轮跑完立刻补跑一次，保证「写操作之后的那次校正」必达。 */
+let rerun = false;
+export async function refreshBadge({ after = null } = {}) {
+  if (after) { try { await after; } catch (e) { /* 写失败也要照常拉一次校正 */ } }
+  if (badge.loading) { rerun = true; return true; }
   badge.loading = true;
   let ok = true;
   try {
-    const [dm, notif] = await Promise.all([
-      unreadTotalSafe(), unreadSafe(),
-    ]);
-    apply(dm, notif);
-    /* 云端不可用时两个 safe 包装都给 0 —— 那时不算失败，别退避（未登录是常态） */
-    ok = !!(dm && notif);
-  } catch (e) {
-    ok = false; // 静默：角标轮询绝不让页面报错
+    do {
+      rerun = false;
+      try {
+        const [dm, notif] = await Promise.all([
+          unreadTotalSafe(), unreadSafe(),
+        ]);
+        apply(dm, notif);
+        /* 云端不可用时两个 safe 包装都给 0 —— 那时不算失败，别退避（未登录是常态） */
+        ok = !!(dm && notif);
+      } catch (e) {
+        ok = false; // 静默：角标轮询绝不让页面报错
+      }
+    } while (rerun);   /* 等待期间又有请求进来 → 在飞的跑完立刻再跑一轮 */
   } finally {
     badge.loading = false;
   }
   return ok;
+}
+
+/* 轮 254 · 乐观本地递减：用户「处理了」（进会话读消息 / 点开通知 / 全部已读）那一刻
+ * 立刻改本地角标 + 落缓存，红点即时跟手；网络 refreshBadge 随后到，用服务端权威值校正。
+ * patch 只写列出的键（不传的保持原值）；值一律钳到 ≥0。 */
+export function badgeLocal(patch) {
+  if (!patch || typeof patch !== "object") return;
+  for (const k of Object.keys(patch)) {
+    if (typeof badge[k] !== "number") continue;
+    badge[k] = Math.max(0, Math.floor(Number(patch[k]) || 0));
+  }
+  const key = badgeCacheKey(cacheUid);
+  if (!key) return;
+  try {
+    setItem(key, JSON.stringify({
+      dm: badge.dm, requests: badge.requests, notif: badge.notif,
+      comments: badge.comments, reactions: badge.reactions,
+      pets: badge.pets, system: badge.system,
+    }));
+  } catch (e) { /* 写不进就算了 */ }
 }
 
 function schedule() {

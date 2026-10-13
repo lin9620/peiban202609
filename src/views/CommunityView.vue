@@ -44,7 +44,7 @@ import {
   cloudDeleteComment, cloudSetReaction, cloudFetchCommentCounts, canUseWall, canReadWall,
   cloudAddView, cloudToggleDislike,
   cloudFetchMyCommentReactions, cloudToggleCommentReaction,
-  cloudFavIds, cloudFavAdd, cloudFavRemove, cloudSearchPosts,
+  cloudFavIds, cloudFavAdd, cloudFavRemove, cloudSearchPosts, favCacheInsert, favCacheRemove,
 } from "../utils/wall.js";
 /* 进阶规则（纯函数，Node 单测覆盖）：排序 / 浏览去重 / 厌恶比例下架 / 每日一条 */
 import {
@@ -218,6 +218,18 @@ function focusFeedTop() {
   const el = wallScrollerEl && wallScrollerEl.value;
   if (el && typeof el.scrollTo === "function") el.scrollTo({ top: 0, behavior: "smooth" });
   else if (typeof window !== "undefined" && typeof window.scrollTo === "function") window.scrollTo({ top: 0, behavior: "smooth" });
+}
+/* 轮 253：图片渐进渲染（知乎/Reddit 式淡入）—— 图载完/失败才去掉透明，
+ * 失败也标记（避免图片挂了永远隐形）；Set 存帖 id，上限防野列表撑内存。 */
+const imgOk = ref(new Set());
+function markImgOk(p) {
+  if (!p) return;
+  const s = imgOk.value;
+  if (s.has(p.id)) return;
+  if (s.size > 500) s.clear();
+  const next = new Set(s);
+  next.add(p.id);
+  imgOk.value = next;
 }
 /* 热门标签：从已加载帖子里取频次前 12（搜索入口；帖子少时不显示） */
 const hotTags = computed(() => {
@@ -508,13 +520,19 @@ function moreFav() {
   const wasOn = favSet.value.has(t0.dbId);
   if (wasOn) {
     favSet.value = new Set([...favSet.value].filter((x) => x !== t0.dbId));
+    favCacheRemove(t0.dbId);
     cloudFavRemove(t0.dbId).then((ok) => { if (!ok) showWallMsg("fav.fail"); });
     showWallMsg("fav.removed");
   } else {
     favSet.value = new Set([...favSet.value, t0.dbId]);
+    /* 轮 254 · 收藏跟手：立刻写穿收藏页缓存（进 /favorites 0ms 可见）；
+       云端失败时连缓存带 favSet 一起回滚。 */
+    const p = t0.post || null;
+    if (p) favCacheInsert(p);
     cloudFavAdd(t0.dbId).then((ok) => {
       if (!ok) {
         favSet.value = new Set([...favSet.value].filter((x) => x !== t0.dbId));
+        if (p) favCacheRemove(t0.dbId);
         showWallMsg("fav.fail");
       }
     });
@@ -524,7 +542,8 @@ function moreFav() {
 function togglePostMore(p) {
   const k = postMoreKey(p);
   moreKey.value = moreKey.value === k ? "" : k;
-  moreTarget.value = { type: "post", reportable: canReportPost(p), dbId: p.dbId, faved: favSet.value.has(p.dbId), label: p.text || p.en || "", copy: postCopyText(p) };
+  /* 轮 254：带上 post 引用 —— 收藏时写穿收藏页缓存要用（favCacheInsert 需要视图帖） */
+  moreTarget.value = { type: "post", reportable: canReportPost(p), dbId: p.dbId, faved: favSet.value.has(p.dbId), label: p.text || p.en || "", copy: postCopyText(p), post: p };
 }
 function toggleCmtMore(cm) {
   const k = cmtMoreKey(cm);
@@ -902,6 +921,7 @@ function cmtLeft(p) {
   return MAX_LEN - String(cmtDraft.value[cmtKey(p)] || "").length;
 }
 function canDel(cm) {
+  if (!cm || cm.pending) return false;   /* 轮 254：乐观临时行还没落库，不给删 */
   return canDelete(cm, nickname.value, cloud.user ? cloud.user.id : "");
 }
 /* 展开/收起二级回复：与话题区同为「N 条回复」点击展开（默认收起，评论多时不刷屏） */
@@ -1295,20 +1315,36 @@ async function sendCmt(p, cm = null) {
   /* 云端帖：写库成功后把返回的视图评论追加到本地 store */
   if (p.cloud && canUseWall()) {
     const parentDbId = cm ? cm.dbId : null;
+    /* 轮 254 · 乐观上屏：草稿立即清空、临时评论立即可见（pending 标记）；
+       网络回来换成正式行，失败摘掉临时行 + 还草稿 + 提示 —— 不再「点了发送半天没动静」。 */
+    const tmp = {
+      id: "t" + Date.now(), dbId: null, name: wallName.value, text,
+      ts: Date.now(), cloud: true, userId: cloud.user ? cloud.user.id : "",
+      parentId: cm ? cm.id : null, replyTo: at,
+      reacts: { heart: 0, broken: 0 }, myReacts: [], pending: true,
+    };
+    const arr0 = Array.isArray(comments.value[k]) ? comments.value[k].slice() : [];
+    arr0.push(tmp);
+    comments.value = { ...comments.value, [k]: arr0 };
+    draftRef.value = { ...draftRef.value, [rk]: "" };
+    if (cm) {
+      openRep.value = { ...openRep.value, [repOpenKey(p, cm)]: true };
+      onReplyDone(p);
+    }
+    syncTotal(p);
     const created = await cloudInsertComment(p.dbId, text, wallName.value, {
       parentId: parentDbId,
       replyToName: at,
     });
-    if (!created) return showCmtErr(); /* 草稿留着，用户可以直接重试 */
-    const arr = Array.isArray(comments.value[k]) ? comments.value[k].slice() : [];
-    arr.push(created);
-    comments.value = { ...comments.value, [k]: arr };
-    draftRef.value = { ...draftRef.value, [rk]: "" };
-    if (cm) {
-      openRep.value = { ...openRep.value, [repOpenKey(p, cm)]: true }; /* 回复完顺手展开 */
-      onReplyDone(p);
+    const cur = Array.isArray(comments.value[k]) ? comments.value[k] : [];
+    if (!created) {
+      comments.value = { ...comments.value, [k]: cur.filter((c) => c.id !== tmp.id) };
+      draftRef.value = { ...draftRef.value, [rk]: text };   /* 还草稿，可直接重试 */
+      if (cm && at) atName.value = { ...atName.value, [k]: at };  /* 还 @ 目标 */
+      syncTotal(p);
+      return showCmtErr();
     }
-    syncTotal(p);
+    comments.value = { ...comments.value, [k]: cur.map((c) => (c.id === tmp.id ? created : c)) };
     return;
   }
 
@@ -1336,15 +1372,21 @@ function onReplyDone(p) {
 }
 async function delCmt(p, cm) {
   if (!canDel(cm)) return;
-  /* 云端评论：先删库，成功再动本地镜像 */
-  if (cm.cloud) {
-    const done = await cloudDeleteComment(cm.dbId);
-    if (!done) return;
-  }
+  if (cm.pending) return;   /* 轮 254：乐观临时行还没落库，不给删 */
+  /* 轮 254 · 乐观删除：先摘行（0ms 跟手），云端失败插回原位 */
+  const before = comments.value;
   comments.value = removeComment(comments.value, p, cm.id);
   cancelReplyIfTarget(p, cm); /* 正在回复这条时，删完就收起回复框 */
   persistCmt();
   syncTotal(p);
+  if (cm.cloud) {
+    const done = await cloudDeleteComment(cm.dbId);
+    if (!done) {
+      comments.value = before;
+      persistCmt();
+      syncTotal(p);
+    }
+  }
 }
 
 /* 动态流：云端就绪且拉到帖子 → 真实帖子；否则回退本机帖子（不再凭空消失）。
@@ -1962,8 +2004,10 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
       <!-- 轮 81 · 动态流性能：图片懒加载 + 异步解码。
            原来一进页面/一续页就把这一页所有图片一起下载解码，滚动时主线程被解码尖刺打断；
            loading=lazy 只解码视口附近的图，decoding=async 让解码离开主线程。 -->
-      <img v-if="p.img" :src="p.img" class="pic go-detail" loading="lazy" decoding="async" alt=""
+      <img v-if="p.img" :src="p.img" class="pic go-detail pic-fade" loading="lazy" decoding="async" alt=""
         :style="p.imgW > 0 && p.imgH > 0 ? { aspectRatio: p.imgW + ' / ' + p.imgH } : {}"
+        :class="{ 'pic-in': imgOk.has(p.id) }"
+        @load="markImgOk(p)" @error="markImgOk(p)"
         @click="goDetail(p)" />
 
       <div class="react-row">
@@ -2173,6 +2217,16 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
       {{ t("community.noMore") }}
     </p>
     <p v-if="pageBusy" class="sub" style="text-align: center">{{ t("community.loading") }}</p>
+    <!-- 轮 253：触底续载迷你骨架（知乎/Reddit 式：续载时底部不断档）——
+         桌面/手机通用；搜索态用 searchBusy（pageBusy 只亮正常流）。
+         骨架 aria-hidden 不打扰读屏，文字 loading 提示照旧保留。 -->
+    <div v-show="pageBusy || (searchActive && searchBusy && searchRows.length)"
+      class="sk-feed sk-more" aria-hidden="true">
+      <div class="sk-card" v-for="n in 2" :key="n">
+        <div class="sk-head"><span class="sk-circle"></span><span class="sk-line" style="width: 40%"></span></div>
+        <span class="sk-line" style="width: 88%"></span>
+      </div>
+    </div>
 
     <!-- 轮 87：…菜单改 document 点击收起（原全屏遮罩被卡片堆叠上下文盖住菜单，举报/拷贝点了没反应） -->
 

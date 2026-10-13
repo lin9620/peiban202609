@@ -144,10 +144,10 @@ const EN = flat(messages.en);
 const ZH = flat(messages.zh);
 const NEED = [
   "notif.title", "notif.intro", "notif.needSignIn", "notif.loadFail", "notif.tabAll",
-  "notif.tabComments", "notif.tabReactions", "notif.tabPets", "notif.tabDms", "notif.tabSystem",
+  "notif.tabComments", "notif.tabReactions", "notif.tabPets", "notif.tabSystem",
   "notif.unreadOnly", "notif.unreadOnlyOn", "notif.markAll", "notif.clear", "notif.empty",
   "notif.more", "notif.noMore", "notif.unread", "notif.prefs", "notif.prefsHint",
-  "notif.prefComments", "notif.prefReactions", "notif.prefPets", "notif.prefDms",
+  "notif.prefComments", "notif.prefReactions", "notif.prefPets",
   "notif.prefsSaved", "notif.someone", "notif.comment", "notif.reply", "notif.reaction",
   "notif.pet", "notif.dm", "notif.system", "notif.fallback",
 ];

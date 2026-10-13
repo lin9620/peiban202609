@@ -40,11 +40,11 @@ t("T3 字数由 MAX_LEN 单一来源驱动（不是写死 200）", () => {
   assert.equal(MAX_LEN, 200);
   assert.ok(/cmtLeft\(p\)[\s\S]{0,120}MAX_LEN/.test(cmt), "cmtLeft 未使用 MAX_LEN");
 });
-t("T4 文案双语齐备", () => {
+t("T4 文案双语齐备（轮 258：字数提示行退役，left/full 死键已删——反转为防复活断言）", () => {
   const i18n = read("src/i18n.js");
   for (const k of ['left: "{n} characters left"', 'full: "Reached the {n}-character limit"',
     'left: "还可写 {n} 字"', 'full: "已达 {n} 字上限，不能再输入了"']) {
-    assert.ok(i18n.includes(k), "缺少 " + k);
+    assert.ok(!i18n.includes(k), "死键复活：" + k);
   }
 });
 t("T5 样式定义了 .cmt-left（含达上限配色）", () => {
@@ -181,8 +181,11 @@ t("T22 浏览眼睛已摘除（#8）：视图不再渲染 👁，浏览数文案
   }
   assert.ok(communityView.includes('t("community.views"'), "浏览数文案被误删（应只去图标）");
 });
-t("T23 「我的」页展示我的帖子（共有 5：默认最新 3 条 + 「更多」→ /my-posts）", () => {
-  assert.ok(profileView.includes("cloudFetchUserPosts(uid, 3)"), "ProfileView 应只拉最新 3 条");
+t("T23 「我的」页展示我的帖子（底部区块：最新 3 条 + 「更多」→ /my-posts 全量翻页）", () => {
+  /* 轮 44 帖子挪底 + 轮 206 挂载同步读缓存秒出 + 轮 213 走 SWR（原「轮 20 独立列表页 3 条」口径已废） */
+  assert.ok(profileView.includes('cachePeek(cacheKey("profile-myposts"'), "轮 206：挂载同步读缓存秒出（不等 cloud.ready 空窗）");
+  assert.ok(profileView.includes("swr(") && profileView.includes('cacheKey("profile-myposts"'), "ProfileView 应走 SWR 缓存");
+  assert.ok(profileView.includes("db.listPostsByUser(uid, 3)"), "ProfileView 应只拉最新 3 条");
   assert.ok(profileView.includes('to="/my-posts"') && profileView.includes("profile.more"), "缺「更多」入口");
   assert.ok(profileView.includes("profile.myPosts") && profileView.includes("profile.myPostsEmpty"), "缺少帖子区块文案键");
   assert.ok(profileView.includes("'/post/' + p.dbId"), "深链进独立详情页 /post/:id（轮 20，不再跳回暖心墙列表）");

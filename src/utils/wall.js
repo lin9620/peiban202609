@@ -11,6 +11,7 @@ import { isUsableDataUrl } from "./imaging.js";
 import { STATUS_WINDOW_MS } from "./statuses.js";
 import { VIEW_KEY, ANON_KEY, POST_DAY_KEY, POSTS_KEY, REACTS_KEY, extractTags } from "./wallRules.js";
 import { registerScopeBases } from "./userScope.js";
+import { cacheKey, cachePeek, cacheSet } from "./cache.js";
 /* 所有云端数据访问都走适配层：换库 / 换托管时只改 utils/api/db.js（见那里的文件头说明） */
 import { db } from "./api/db.js";
 
@@ -653,6 +654,57 @@ export async function cloudFavRemove(postId) {
   } catch (e) {
     return false;
   }
+}
+
+/* ══════════ 轮 254 · 收藏列表缓存写穿（不跟手修复）══════════
+ * 用户点收藏 → 立刻把行插进收藏页的缓存（profile-favs|uid）；点「我的收藏」时
+ * 收藏页挂载先读缓存 = 0ms 看到刚收藏的帖子，网络回来只做校正。
+ * 反之取消收藏立刻从缓存摘除。写穿失败静默（缓存本来就只是加速器）。 */
+function favCacheKey() {
+  const uid = (cloud.user && cloud.user.id) || "";
+  return uid ? cacheKey("profile-favs", uid) : "";
+}
+
+/** 视图帖 → 收藏行（与 cloudFavListMine 返回形状对齐：{favedAt, post:{...}}） */
+function favRowOf(post) {
+  return {
+    favedAt: new Date().toISOString(),
+    post: {
+      dbId: post.dbId,
+      userId: post.userId,
+      name: post.name,
+      text: post.text,
+      img: post.img,
+      ts: post.ts,
+      views: post.views || 0,
+    },
+  };
+}
+
+/** 收藏成功：插到缓存头（新→旧序，与云端一致） */
+export function favCacheInsert(viewPost) {
+  const key = favCacheKey();
+  if (!key || !viewPost || viewPost.dbId == null) return;
+  try {
+    const cur = cachePeek(key);
+    const rows = (Array.isArray(cur) ? cur : []).filter(
+      (r) => r && r.post && r.post.dbId !== viewPost.dbId,
+    );
+    rows.unshift(favRowOf(viewPost));
+    cacheSet(key, rows.slice(0, 100));
+  } catch (e) { /* 忽略：缓存写不进不挡收藏本身 */ }
+}
+
+/** 取消收藏：立刻从缓存摘除 */
+export function favCacheRemove(dbId) {
+  const key = favCacheKey();
+  if (!key || !Number.isInteger(dbId)) return;
+  try {
+    const cur = cachePeek(key);
+    if (!Array.isArray(cur) || !cur.length) return;
+    const rows = cur.filter((r) => !(r && r.post && r.post.dbId === dbId));
+    if (rows.length !== cur.length) cacheSet(key, rows);
+  } catch (e) { /* 忽略 */ }
 }
 
 export async function cloudFetchUserPosts(userId, limit = 50, offset = 0) {

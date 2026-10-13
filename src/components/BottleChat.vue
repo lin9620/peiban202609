@@ -261,8 +261,8 @@ async function onLetter() {
   setTimeout(() => { if (entryReady.value && !listRevealed.value) listRevealed.value = true; }, 2000);   /* 轮 180：兜底只揭示已落定的 */
   const results = await Promise.all([loadMessages(convId.value), syncMeta()]);
   if (!results[0]) scrollBottom();   /* 有新消息时已平滑滚过 */
-  dmApi.markRead(convId.value).catch(() => {});
-  refreshBadge();
+  /* 轮 254：等「已读」落库再刷角标（旧写法并发发，拉回旧值 → 红点不跟手） */
+  refreshBadge({ after: dmApi.markRead(convId.value).catch(() => {}) });
 }
 watch(() => [props.letter && props.letter.id, convId.value], onLetter, { immediate: true });
 

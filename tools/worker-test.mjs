@@ -1502,6 +1502,24 @@ function seoEnv() {
 }
 
 
+/* ══════════ 轮 256 · /api/client-log 错误信标（方法门 / 坏体 / 每 IP 限频） ══════════ */
+{
+  const env = makeEnv();
+  const post = (body) => worker.fetch(req("/api/client-log", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }), env, {});
+  const r1 = await post({ kind: "err", msg: "boom", route: "/community", stack: "at x", ua: "test-agent" });
+  ok("client-log：合法信标 200 {ok:true}", r1.status === 200 && (await r1.json()).ok === true);
+  ok("client-log：GET 405", (await worker.fetch(req("/api/client-log"), env, {})).status === 405);
+  const r2 = await worker.fetch(req("/api/client-log", { method: "POST", headers: { "content-type": "application/json" }, body: "not-json" }), env, {});
+  ok("client-log：坏 JSON 400 invalid-json", r2.status === 400 && (await r2.json()).error === "invalid-json");
+  /* 限频：同 IP 一分钟内 >20 条 → 429（前面 r1 已占 1 条额度；坏 JSON 在限频前被拒不占额） */
+  let limited = false;
+  for (let i = 0; i < 30 && !limited; i++) {
+    const r = await post({ kind: "rej", msg: "m" + i });
+    limited = (r.status === 429);
+  }
+  ok("client-log：每 IP 每分钟 >20 条 429 限频", limited);
+}
+
 console.log(`worker-test: ${pass} pass, ${fails.length} fail`);
 for (const f of fails) console.log("FAIL  " + f);
 if (fails.length) process.exit(1);

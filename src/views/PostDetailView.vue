@@ -13,7 +13,7 @@ import {
   cloudFetchPost, cloudFetchProfile, cloudFetchComments, cloudInsertComment,
   cloudDeleteComment, cloudToggleReaction, cloudAddView, cloudToggleDislike,
   cloudFetchMyCommentReactions, cloudToggleCommentReaction,
-  cloudFavIds, cloudFavAdd, cloudFavRemove,
+  cloudFavIds, cloudFavAdd, cloudFavRemove, favCacheInsert, favCacheRemove,
 } from "../utils/wall.js";
 /* 轮 84：评论排序 / 回应 / 拷贝文本 */
 import {
@@ -93,8 +93,15 @@ async function moreFav() {
   if (!signedIn.value) { hint.value = t("fav.signIn"); return; }
   const want = !favOn.value;
   favOn.value = want;
+  /* 轮 254：收藏/取消同步写穿收藏页缓存（进 /favorites 0ms 可见/可除），失败一并回滚 */
+  if (want) favCacheInsert(p0); else favCacheRemove(p0.dbId);
   const ok = want ? await cloudFavAdd(p0.dbId) : await cloudFavRemove(p0.dbId);
-  if (!ok) { favOn.value = !want; hint.value = t("fav.fail"); return; }
+  if (!ok) {
+    favOn.value = !want;
+    if (want) favCacheRemove(p0.dbId); else favCacheInsert(p0);
+    hint.value = t("fav.fail");
+    return;
+  }
   hint.value = want ? t("fav.done") : t("fav.removed");
 }
 watch(myId, () => {
@@ -318,7 +325,8 @@ const repsOf = (cm) => comments.value.filter((c) => c.parentId === cm.id);
 /* 轮 50：与暖心墙同口径——二级回复默认显示前两条，>2 条点「N 条回复」展开全部 */
 const visibleReps = (cm) => (repOpen.value[cm.id] ? repsOf(cm) : repsOf(cm).slice(0, 2));
 const countN = computed(() => comments.value.length);
-const canDel = (cm) => !!(cm && cm.cloud && myId.value && cm.userId === myId.value);
+/* 轮 254：乐观临时行（pending）还没落库，删除按钮先藏起来 */
+const canDel = (cm) => !!(cm && !cm.pending && cm.cloud && myId.value && cm.userId === myId.value);
 
 function loadComments() {
   if (!post.value || !post.value.dbId) return;
@@ -443,19 +451,40 @@ async function sendCmt(cm = null, rp = null) {
   if (!signedIn.value) return;   /* #28：云端帖未登录不评论（只存本机会误导） */
   cmtErr.value = "";
   const at = cm ? (rp ? rp.name : atName.value) : "";
-  const created = await cloudInsertComment(post.value.dbId, text, wallName.value, {
-    parentId: cm ? cm.dbId : null,
-    replyToName: at,
-  });
-  if (!created) { cmtErr.value = t("comment.fail"); return; }
-  comments.value = [...comments.value, created];
+  const parentId = cm ? cm.dbId : null;
+  /* 轮 254 · 乐观上屏（与暖心墙同款）：草稿立即清空、临时行立即可见；
+     成功换正式行，失败摘行 + 还草稿 + cmtErr。 */
+  const tmp = {
+    id: "t" + Date.now(), dbId: null, name: wallName.value, text,
+    ts: Date.now(), cloud: true, userId: myId.value,
+    parentId: cm ? cm.id : null, replyTo: at,
+    reacts: { heart: 0, broken: 0 }, myReacts: [], pending: true,
+  };
+  comments.value = [...comments.value, tmp];
   if (cm) {
     repDraft.value = { ...repDraft.value, [cm.id]: "" };
     repOpen.value = { ...repOpen.value, [cm.id]: true };
-    repActive.value = "";
-    atName.value = "";
   } else {
     cmtDraft.value = "";
+  }
+  const created = await cloudInsertComment(post.value.dbId, text, wallName.value, {
+    parentId,
+    replyToName: at,
+  });
+  if (!created) {
+    comments.value = comments.value.filter((c) => c.id !== tmp.id);
+    if (cm) {
+      repDraft.value = { ...repDraft.value, [cm.id]: text };
+      if (!rp) atName.value = at;   /* 还 @ 目标（经 rp 直接点名的本就没动） */
+    }
+    else cmtDraft.value = text;
+    cmtErr.value = t("comment.fail");
+    return;
+  }
+  comments.value = comments.value.map((c) => (c.id === tmp.id ? created : c));
+  if (cm) {
+    repActive.value = "";
+    atName.value = "";
   }
 }
 /* 轮 111：桌面卡内主评论输入框（在「浏览次数 ↔ N 条评论」之间）的发送——
@@ -468,12 +497,16 @@ async function sendTopCmt() {
 
 async function delCmt(cm) {
   if (!canDel(cm)) return;
-  const done = await cloudDeleteComment(cm.dbId);
-  if (!done) return;
-  /* 删一级评论连它的回复一起删（与云端 FK 级联一致） */
+  if (cm.pending) return;   /* 轮 254：乐观临时行还没落库，不给删 */
+  /* 轮 254 · 乐观删除：先摘行，云端失败插回原位 */
+  const before = comments.value;
   comments.value = comments.value.filter(
     (c) => c.id !== cm.id && c.parentId !== cm.id,
   );
+  if (cm.cloud) {
+    const done = await cloudDeleteComment(cm.dbId);
+    if (!done) { comments.value = before; return; }
+  }
   if (repActive.value.split(":")[0] === cm.id) cancelReply();
 }
 

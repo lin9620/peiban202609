@@ -126,6 +126,10 @@ function safeImagePath(rawPath) {
   return out.join("/");
 }
 
+/** 轮 256：client-log 每隔离实例内存限频窗（Map<ip,{ts,n}>，60s 窗、每 ip 20 条）。
+ * Workers 的 isolate 各有各的内存，跨实例不共享——尽力而为，够防死循环刷屏。 */
+let clientLogRL = null;
+
 /** 请求体：限长 + JSON 解析；出错时给现成的 Response（{err}） */
 async function readJson(request) {
   let text;
@@ -925,6 +929,33 @@ async function handleApi(request, env, ctx) {
       /* —— 健康 / 图片 / 上传 —— */
       if (seg[0] === "health") {
         return m === "GET" ? json({ ok: true, mode: "gateway", ts: Date.now() }) : fail(405, "method-not-allowed");
+      }
+      /* 轮 256 · 客户端错误信标：前端 utils/beacon.js 把未捕获错误/拒绝 POST 过来。
+       * 这里只做 白名单字段 + 截断 + 限频，落一行 JSON 日志（Workers Logs / wrangler tail 可见）；
+       * 不入库、不回显、不解析任何凭据（只用 cf-connecting-ip 限频）。 */
+      if (seg[0] === "client-log") {
+        if (m !== "POST") return fail(405, "method-not-allowed");
+        const b = await readJson(request);
+        if (b.err) return b.err;
+        const t = b.body || {};
+        const now = Date.now();
+        const ip = request.headers.get("cf-connecting-ip") || "anon";
+        if (!clientLogRL) clientLogRL = new Map();
+        let slot = clientLogRL.get(ip);
+        if (!slot || now - slot.ts > 60000) { slot = { ts: now, n: 0 }; clientLogRL.set(ip, slot); }
+        slot.n++;
+        if (clientLogRL.size > 5000) clientLogRL = new Map(); /* 容量兜底：防内存被刷大 */
+        if (slot.n > 20) return fail(429, "rate-limited");
+        console.log(JSON.stringify({
+          evt: "client-log",
+          kind: t.kind === "rej" ? "rej" : "err",
+          msg: typeof t.msg === "string" ? t.msg.slice(0, 300) : "",
+          route: typeof t.route === "string" ? t.route.slice(0, 120) : "",
+          stack: typeof t.stack === "string" ? t.stack.slice(0, 1200) : "",
+          ua: typeof t.ua === "string" ? t.ua.slice(0, 160) : "",
+          ts: now,
+        }));
+        return json({ ok: true });
       }
       if (seg[0] === "img") {
         return m === "GET" ? imgResponse(env, request, ctx, seg.slice(1)) : fail(405, "method-not-allowed");

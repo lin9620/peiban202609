@@ -6,6 +6,7 @@ import App from "./App.vue";
 import { router } from "./router.js";
 import { initPet, tickPet, savePet, tickAdventure } from "./stores/petStore.js";
 import { initUserScope } from "./utils/userScope.js";
+import { installErrorBeacon } from "./utils/beacon.js";
 import "./style.css";
 
 /* 轮 38：启动页显示的权威判据。
@@ -18,6 +19,10 @@ try {
     document.documentElement.classList.add("cap-app");
   }
 } catch (e) { /* 非 Capacitor 环境忽略 */ }
+
+/* 轮 256：无声错误信标——未捕获异常/未处理拒绝 POST 给 Worker /api/client-log，
+ * 否则错误边界把崩溃盖成「小状况」提示，开发者这边一无所知（轮 42/80 两次事故的盲区）。 */
+installErrorBeacon();
 
 /* 轮 32：先把「升级前的无域老存档」搬进 guest 域（各模块已在本文件 import 时注册好
  * 个人键与 reload 钩子，搬完会就地重读），再读档 —— 顺序不能反，否则首次升级加载丢档 */

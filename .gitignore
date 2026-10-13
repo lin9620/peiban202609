@@ -18,9 +18,11 @@ arity-test.txt
 # 本地工具缓存与临时脚本（云部署不需要）
 .wrangler/
 .edge-final/
+/_scratch/
 _*.mjs
 _*.txt
 _*.ps1
+_*.png
 
 # Android / Capacitor（App 轨道红线：密钥与本地构建产物绝不提交）
 *.keystore

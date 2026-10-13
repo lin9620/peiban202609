@@ -77,11 +77,12 @@ ok("T21 手机聊天页隐藏桌面提示（dm-hint）+ 微信式输入行（发
   && css.includes(".dm-input-row { display: flex; align-items: flex-end;")
   && mv.includes('class="dm-input-row"'));
 
-ok("T22 手机输入框用短占位符（桌面仍保留 Enter/Shift 说明）",
+ok("T22 输入框短占位符（轮 255：桌面也改短；Enter/Shift 说明保留在 dm.hint 提示行）",
   mv.includes("isMobileNav ? t('dm.placeholderMobile') : t('dm.placeholder')")
   && messages.en.dm.placeholderMobile === "Write something…"
   && messages.zh.dm.placeholderMobile === "写点什么…"
-  && messages.en.dm.placeholder.includes("Shift+Enter"));
+  && messages.en.dm.placeholder === "Write something…"
+  && messages.en.dm.hint.includes("Shift+Enter") && messages.zh.dm.hint.includes("Shift+Enter"));
 
 /* ─── ⑧ 消息 Tab 内分栏（T7 手机三段；轮 142 桌面两段） ─── */
 ok("T23 分栏条：手机 = 原样三段，桌面 = 轮142 两段（会话|漂流瓶）",
@@ -379,6 +380,26 @@ ok("T63 轮232：再点当前页签 = **回到顶部 + 刷新**（retapTab 信�
   && read("src/views/CommunityView.vue").includes("watch([retapSeq, retapPath]")
   && read("src/views/CommunityView.vue").includes("wallScrollTop = 0;")
   && read("src/views/CommunityView.vue").includes("manualRefresh();"));
+
+/* ─── 轮 256：无声错误信标（未捕获错误/拒绝 → POST /api/client-log） ─── */
+{
+  const main = read("src/main.js");
+  const beacon = read("src/utils/beacon.js");
+  ok("T64 错误信标：main.js 启动即安装 + beacon 监听 error / unhandledrejection",
+    main.includes('import { installErrorBeacon } from "./utils/beacon.js"')
+    && main.includes("installErrorBeacon()")
+    && beacon.includes('window.addEventListener("error"')
+    && beacon.includes('window.addEventListener("unhandledrejection"')
+    /* 安装必须在 mount 前（早期错误也要抓到）；且监听注册本身在 try 里（信标绝不抛） */
+    && main.indexOf("installErrorBeacon()") < main.indexOf("createApp(App)")
+    && beacon.includes("export function installErrorBeacon()"));
+  ok("T65 错误信标：只发 /api/client-log + 每页限流 + 不带凭据字段",
+    beacon.includes('"/api/client-log"')
+    && beacon.includes("MAX_PER_PAGE") && beacon.includes("if (sent >= MAX_PER_PAGE) return;")
+    && beacon.includes("sendBeacon")
+    && !beacon.includes("Authorization") && !beacon.includes("apikey")
+    && !beacon.includes("localStorage") && !beacon.includes("sessionStorage"));
+}
 
 out.push("");
 out.push(`TOTAL ${pass + fail}  PASS ${pass}  FAIL ${fail}`);

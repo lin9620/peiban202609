@@ -125,10 +125,12 @@ ok("T35 _headers 含 HSTS", /Strict-Transport-Security:\s*max-age=\d{6,}/.test(h
 const zhHome = exists("dist/zh/index.html") ? read("dist/zh/index.html") : "";
 ok("T36 zh 首页生成：lang=zh-CN + 中文标题", zhHome.includes('<html lang="zh-CN">') && zhHome.includes("<title>暖爪 · 一个可以安心落脚的地方</title>"));
 ok("T37 zh 首页正文为中文词条（进 .seo-static）", zhHome.includes("一个可以安心落脚的地方") && zhHome.includes('class="seo-static"'));
-ok("T38 zh 首页 canonical 自指 /zh/", zhHome.includes('rel="canonical" href="https://warmpaws.de5.net/zh/"'));
-ok("T39 zh 首页 hreflang 全组（en/zh/x-default）",
+/* 轮 236：canonical / hreflang 的 zh 地址一律无尾斜杠（/zh，非 /zh/）——
+ * 带尾斜杠会被 Search Console 当另一条 URL 判重复、301 绕圈（用户报障后定的口径）。 */
+ok("T38 zh 首页 canonical 自指 /zh（无尾斜杠，轮 236）", zhHome.includes('rel="canonical" href="https://warmpaws.de5.net/zh"'));
+ok("T39 zh 首页 hreflang 全组（en/zh/x-default；zh 无尾斜杠）",
   zhHome.includes('hreflang="en" href="https://warmpaws.de5.net/"') &&
-  zhHome.includes('hreflang="zh" href="https://warmpaws.de5.net/zh/"') &&
+  zhHome.includes('hreflang="zh" href="https://warmpaws.de5.net/zh"') &&
   zhHome.includes('hreflang="x-default" href="https://warmpaws.de5.net/"'));
 {
   const zhC = exists("dist/zh/community/index.html") ? read("dist/zh/community/index.html") : "";
@@ -141,9 +143,9 @@ ok("T39 zh 首页 hreflang 全组（en/zh/x-default）",
 {
   /* hreflang 在构建期注入 —— 必须看 dist 产物，源码 index.html 没有 */
   const enHome = exists("dist/index.html") ? read("dist/index.html") : "";
-  ok("T42 en 首页同样带 hreflang 全组（en/zh/x-default）",
+  ok("T42 en 首页同样带 hreflang 全组（en/zh/x-default；zh 无尾斜杠，轮 236）",
     enHome.includes('hreflang="en" href="https://warmpaws.de5.net/"') &&
-    enHome.includes('hreflang="zh" href="https://warmpaws.de5.net/zh/"') &&
+    enHome.includes('hreflang="zh" href="https://warmpaws.de5.net/zh"') &&
     enHome.includes('hreflang="x-default" href="https://warmpaws.de5.net/"'));
 }
 ok("T43 en 页 lang 保持 en（zh 替换不回流英文页）", html.includes('<html lang="en">') && !html.includes('<html lang="zh-CN"'));

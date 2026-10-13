@@ -271,8 +271,19 @@ function buildBound(code) {
 export function scanUnassigned(rel, code, bound) {
   const out = [];
   const sm = /<script[^>]*>([\s\S]*?)<\/script>/.exec(code);
-  const scriptTxt = sm ? sm[1] : code;
   const tagM = /<script[^>]*>/.exec(code);
+  /* 轮 261：.vue 有 <script> 开却无 </script>（半成品文件）——scriptTxt 兜底成整文件后，
+     模板属性 class= / @click= 会被 stripNoise 剥成裸赋值（FavoritesView 一次刷 11 条假警报）。
+     报一条结构性问题，比 11 条误导性假阳性有用。
+     第二种形态：</script> 排在 </template> 之后（标签交叉嵌套）——懒匹配把整段模板
+     吞进「脚本」，同样满屏假阳性，而且这种文件 vue 插件也会把模板当 JS 交给 babel、构建必败。 */
+  if (!sm && tagM) {
+    return [rel + "  →  <script> 块没有对应的 </script>（文件疑似半成品，模板会被当脚本扫出假赋值）"];
+  }
+  if (sm && sm[1].includes("<template")) {
+    return [rel + "  →  </script> 在 </template> 之后（SFC 标签交叉嵌套：模板被吞进脚本块，构建必败）"];
+  }
+  const scriptTxt = sm ? sm[1] : code;
   const baseLine = tagM ? code.slice(0, tagM.index + tagM[0].length).split("\n").length - 1 : 0;
   const seen = new Set();
   for (const m of stripNoise(scriptTxt).matchAll(ASSIGN_RE)) {

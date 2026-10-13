@@ -5,6 +5,9 @@ import { petUi } from "../stores/petStore.js";
 
 const props = defineProps({
   pet: { type: Object, required: true },
+  /* 轮 261：佩戴的装扮（ACCESSORIES 之一）——渲染在宠物框内（锚点按百分比，
+   * 随宠物一起跳动），不再锚在舞台顶部（旧版全飘在天上） */
+  acc: { type: Object, default: null },
 });
 
 /** 用户上传的二次元立绘 */
@@ -19,6 +22,15 @@ watch(() => petUi.moodTick, () => {
   if (mood.value) moodTimer = setTimeout(() => { mood.value = ""; }, 1900);
 });
 onBeforeUnmount(() => clearTimeout(moodTimer));
+
+/* 按物种解析佩戴锚点：posBy[species] 覆盖默认 pos（耳型差异大，
+ * 见 extras.js 注释；兔子/水獭/恐龙的侧边饰品要贴头侧而不是猫耳朵的位置） */
+const accPos = computed(() => {
+  const a = props.acc;
+  if (!a || !a.pos) return null;
+  const over = a.posBy && a.posBy[props.pet.species];
+  return over ? { ...a.pos, ...over } : a.pos;
+});
 
 /* 点击跳跃（CSS 驱动，兼容 Lottie 与自定义立绘） */
 const hopOn = ref(false);
@@ -40,6 +52,9 @@ watch(() => petUi.happyTick, () => {
       <span v-if="mood === 'clean'" class="custom-spark cs2">✨</span>
     </template>
     <LottiePet v-else :species="pet.species" :sleeping="pet.sleeping" :mood="mood" />
+    <span
+      v-if="accPos" class="acc-wear"
+      :style="{ top: accPos.top, left: accPos.left, fontSize: (accPos.size || 32) + 'px' }">{{ acc.ico }}</span>
   </div>
 </template>
 

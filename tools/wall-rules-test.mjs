@@ -221,14 +221,8 @@ t("T17 示例帖永不被下架（示范内容不该消失）", () => {
   assert.equal(shouldRemove(10, 10, { sample: true }), false);
 });
 
-t("T17b 规则提示文案：中文不超 15 字（用户明确要求），且中英都存在", () => {
-  const zh = messages.zh.community.dislikeRule;
-  const en = messages.en.community.dislikeRule;
-  assert.equal(typeof zh, "string");
-  assert.equal(typeof en, "string");
-  assert.ok([...zh].length <= 15, `中文提示 ${[...zh].length} 字：${zh}`);
-  assert.ok([...zh].length > 0 && [...en].length > 0);
-});
+/* 轮 258：community.dislikeRule 死键已随 i18n 死键清理删除（UI 不再展示规则文案，
+ * 下架逻辑本体由上方 shouldRemove 用例钉死）——原 T17b 一并退役。 */
 
 t("T18 ratioPct：给用户看的百分比，一位小数", () => {
   assert.equal(ratioPct(1000, 1), "0.1%");

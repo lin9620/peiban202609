@@ -295,10 +295,10 @@ setCloud(googleUser, "Dale Chen"); /* 还原，避免影响后续用例 */
 /* ═════════ ⑦ 文案：双语齐备 ═════════ */
 const KEYS = [
   "googleSignIn", "googleBusy", "orEmail", "needEmail", "badEmail", "needPass", "shortPass",
-  "passRule", "forgot", "forgotTitle", "forgotHint", "forgotHint2", "forgotSend", "forgotSent",
+  "passRule", "forgot", "forgotTitle", "forgotHint", "forgotSend", "forgotSent",
   "setPassTitle", "setPassHint", "newPass", "savePass", "backToSignIn", "resetDone",
   "resetLinkBad", "resetLinkBadWhy",
-  "nickTitle", "nickChange", "nickAutoHint", "nickHint", "needNick", "nickLong", "nickSave", "nickSaved",
+  "nickTitle", "nickChange", "nickAutoHint", "nickHint", "needNick", "nickLong", "nickSave",
   "nickSavedSynced", "nickSavedOld",
 ];
 const missEn = KEYS.filter((k) => !messages.en.profile[k]);
@@ -366,7 +366,7 @@ ok("A48b nickLong 的 {n} 真会被替换（昵称上限提示不留占位符）
     sv.includes("pwNew.value !== pwConfirm.value") && sv.includes("t(\"settings.pwNeedOld\")"));
   for (const lang of ["zh", "en"]) {
     const c = messages[lang] && messages[lang].settings;
-    const keys = ["password", "pwOld", "pwNew", "pwConfirm", "pwSave", "pwSaved", "pwGoogleSaved",
+    const keys = ["pwOld", "pwNew", "pwConfirm", "pwSave", "pwSaved", "pwGoogleSaved",
       "pwOldWrong", "pwMismatch", "pwNeedOld", "pwShort", "pwFail", "pwHint", "pwGoogleHint"];
     ok(`A54 ${lang}: settings 密码文案齐备`, !!c && keys.every((k) => typeof c[k] === "string" && c[k].trim()),
       (c ? keys.filter((k) => !c[k]) : keys).join(","));

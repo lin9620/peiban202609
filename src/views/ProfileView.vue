@@ -19,7 +19,7 @@ import { MIN_PASSWORD, NICK_MAX, passwordProblem } from "../utils/authRules.js";
 /* 轮 44：帖子时间显示到秒（fmtWhenSec 纯函数，wall-rules-test 覆盖） */
 import { fmtWhenSec } from "../utils/wallRules.js";
 import { db } from "../utils/api/db.js";
-import { cloudFavListMine, cloudFavRemove, rowsToPosts, publicUrl, aggregateReactions } from "../utils/wall.js";
+import { rowsToPosts, publicUrl, aggregateReactions } from "../utils/wall.js";
 import { cacheKey, cachePeek, cacheSet, swr } from "../utils/cache.js";
 import { avatarUrlFor } from "../utils/avatar.js";   /* 轮 238:萌宠头像池 */
 
@@ -118,41 +118,8 @@ watch(
   { immediate: true },
 );
 
-/* 轮 128 / #13 我的收藏：登录后拉最近 20 条（收藏列表私有，RLS 只回本人）；
- * 被下架/删除的帖子（post 为 null）不展示；取消收藏乐观移除。 */
-const favRows = ref([]);
-const favBusy = ref(false);
-(() => {
-  try {
-    const uid = getItem("wp-uid");
-    if (!uid) return;
-    const snap = cachePeek(cacheKey("profile-favs", uid));
-    if (snap && Array.isArray(snap)) favRows.value = snap;
-  } catch (e) { /* 忽略 */ }
-})();
-const showFavs = ref(false);   /* 轮 129：头部「我的收藏」按钮开关 */
-watch(
-  () => [cloud.ready, cloud.user && cloud.user.id],
-  async ([ready, uid]) => {
-    if (!ready || !uid) {
-      if (!favRows.value.length) favRows.value = [];   /* 轮 213：同上，保留挂载秒出的缓存 */
-      return;
-    }
-    favBusy.value = true;
-    const rows = await cloudFavListMine(20);
-    favRows.value = (rows || []).filter((r) => r.post);
-    try {
-      const uid0 = getItem("wp-uid");
-      if (uid0) cacheSet(cacheKey("profile-favs", uid0), favRows.value);
-    } catch (e) { /* 忽略 */ }
-    favBusy.value = false;
-  },
-  { immediate: true },
-);
-async function unFav(dbId) {
-  const ok = await cloudFavRemove(dbId);
-  if (ok) favRows.value = favRows.value.filter((r) => r.post.dbId !== dbId);
-}
+/* 轮 254：内嵌收藏逻辑（favRows/watch/unFav/showFavs）已迁往独立页 FavoritesView；
+   头部按钮改为 router.push('/favorites')，缓存键 profile-favs 两页同用。 */
 
 /* —— 登录 / 注册 / 忘记密码已独立成页（/login，手机与网页共用）——
  * 本页未登录时只放一张入口卡；老的重置邮件可能回落到 /profile，
@@ -329,7 +296,8 @@ const brightRatio = computed(() => {
       </div>
       <div class="profile-actions">
         <template v-if="signedIn">
-          <n-button quaternary round @click="showFavs = !showFavs">
+          <!-- 轮 254：收藏改独立页（用户拍板「不要在我的页面下面显示」）→ 跳 /favorites -->
+          <n-button quaternary round @click="router.push('/favorites')">
             {{ t("fav.title") }}
           </n-button>
           <n-tag v-if="streak > 0" round :bordered="false" class="soft-tag">
@@ -351,32 +319,8 @@ const brightRatio = computed(() => {
       </div>
     </section>
 
-    <!-- 轮 128 / #13 我的收藏：收藏别人的暖心帖（私有；点卡进详情，可就地取消） -->
-    <section v-if="cloudSigned && showFavs" class="card">
-      <div class="row-between">
-        <h2>{{ t("fav.title") }}</h2>
-      </div>
-      <p v-if="favBusy" class="sub">…</p>
-      <p v-else-if="!favRows.length" class="sub">{{ t("fav.empty") }}</p>
-      <div v-else class="my-posts">
-        <router-link
-          v-for="r in favRows" :key="r.post.dbId"
-          class="post-card card my-post" :to="'/post/' + r.post.dbId">
-          <div class="post-head">
-            <n-avatar round :size="42" class="post-avatar" :src="avatarUrlFor(cloud.user && cloud.user.id) || undefined"><template v-if="!avatarUrlFor(cloud.user && cloud.user.id)" #default>🙂</template><template v-else #fallback>🙂</template></n-avatar>
-            <div class="post-meta">
-              <div class="post-name">{{ r.post.name }}</div>
-              <div class="post-time">{{ fmtWhenSec(r.post.created_at) }}</div>
-            </div>
-          </div>
-          <p class="post-text">{{ r.post.text || "🖼️" }}</p>
-          <img loading="lazy" v-if="r.post.img" :src="r.post.img" class="pic" alt="" />
-          <button class="btn small ghost" @click.stop.prevent="unFav(r.post.dbId)">
-            {{ t("fav.remove") }}
-          </button>
-        </router-link>
-      </div>
-    </section>
+    <!-- 轮 254：内嵌「我的收藏」区块退役 → 独立页 /favorites（按钮见上方头部）。
+         数据/取消收藏逻辑一并迁走（FavoritesView）；缓存键 profile-favs 保留同用。 -->
     <!-- 改昵称：Google 首登自动昵称 → 常驻紧凑提示；点「改一改」出现输入框。
          保存走 profiles self update（RLS），署名/主页/头像即时生效 -->
     <section v-if="cloudSigned && (nickAuto || nickEdit)" class="card nick-box">

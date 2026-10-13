@@ -98,6 +98,7 @@ node tools/status-counts-test.mjs # 大厅人数接口单测（11 项：只取�
 node tools/bottle-test.mjs    # 温暖漂流瓶规则层单测（60 项：每日 3 封 7 瓶 / 48h 回海 / 1000 字上限 / 错误码↔i18n 闭环 / 六 RPC 与 Worker 路由契约 / RLS 可见性 / 旧信箱清理）
 node tools/bottle-chat-test.mjs # 漂流瓶续聊离线回归（86 项：规则与状态机 / 通知文案与跳转落点 / 双适配器与 Worker 转发 / SQL 与 SUPABASE_SETUP 同源检查；不执行数据库迁移）
 node tools/i18n-test.mjs      # 文案完整性与插值回归（19 项：en/zh 键集合对称、修复过的 key、$ 特殊字符）
+node tools/i18n-usage-test.mjs # i18n 死键/漏键检查（2 项：代码引用了但没定义=漏键；定义了但没人用=死键；动态拼接/反引号模板/属性链直读自动豁免）
 node tools/cache-test.mjs     # 本地优先缓存单测（12 项：SWR 命中先渲染/后台刷新回写/相同数据去抖/无缓存 onError/有缓存断网静默保留/换用户隔离/前缀清理/容量淘汰）
 node tools/home-panes-test.mjs # T6 首页三联单测（9 项：联顺序与默认漂流瓶 / /?tab= 消费与兜底 / 横滑判定(阈值+纵向让位) / i18n 频道键成对 / 频道条与懒挂载接线 / 宠物联禁滑 / 桌面零变化 / 抽件自包含）
 node tools/admin-test.mjs     # 管理中心纯函数单测（39 项：admin:false 兜底 / 字段缺省 / 趋势图 14 天补零 / 行规整 / 北京时间口径）
@@ -294,6 +295,7 @@ npm run deploy   # wrangler deploy 发布到 Worker warm-paws（warmpaws.de5.net
 1. 发布就是上面两条命令（`package.json` 的 `build` / `deploy` 脚本，配置见 `wrangler.jsonc`：Worker 名 `warm-paws`，静态资源目录 `./dist`，SPA 回退已配好）。
 2. Supabase 后台 → **Authentication → URL Configuration**：Site URL 填 `https://warmpaws.de5.net`，Redirect URLs 加 `https://warmpaws.de5.net/**` 与 `http://localhost:5173/**`
 3. 部署后验证：`node tools/live-check.mjs`（页面 / 缓存 / 安全头 / SEO 资产，应输出 `LIVE ALL PASS`）。
+4. 可用性监控（轮 260，一次配置、长期免费）：UptimeRobot（或同类免费服务）加一个 HTTP 监控盯 `https://warmpaws.de5.net/api/health`（5 分钟间隔；期望 HTTP 200 且 JSON 含 `"ok":true`，该端点由 Worker 直接应答、不依赖静态资源）。站点挂了会发邮件——在此之前「挂了」只能靠用户报障。
 
 > 路由已是 **history 模式**（`/pet`、`/community`、`/profile` 可直接访问与分享），构建时会为每条路由产出独立静态 HTML（含各自的 title / canonical / OG）；SPA 回退由 `wrangler.jsonc` 的 `not_found_handling` 兜底。部署后可用 `node tools/live-check.mjs` 验证线上站点（页面 / 缓存 / 安全头 / SEO 资产）。
 > 备选方案：推 GitHub → Vercel 导入（根目录 vercel.json 已配好 rewrites），环境变量在 Vercel 项目 Settings 里配 `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`。

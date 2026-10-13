@@ -19,7 +19,7 @@ import * as notifyApi from "../utils/notify.js";
 import { cacheKey, swr, cacheDrop } from "../utils/cache.js";
 import { aggregate, kindsFor, itemView, targetOf, idsOf } from "../utils/notifyRules.js";
 import { relativeTime } from "../utils/dmRules.js";
-import { badge, refreshBadge } from "../stores/badgeStore.js";
+import { badge, refreshBadge, badgeLocal } from "../stores/badgeStore.js";
 
 const router = useRouter();
 const route = useRoute();
@@ -128,13 +128,23 @@ async function openItem(n) {
    * 用户反馈：「一进去十几条通知，列表只显示 3 条」—— 旧版只标了组里第一条，
    * 剩下的十几条未读还挂在角标上，看着就是「读了也不消」。 */
   const ids = idsOf(n);
-  notifyApi.mark(ids.length ? { ids } : { ids: [n.id] }).catch(() => {});
+  const markP = notifyApi.mark(ids.length ? { ids } : { ids: [n.id] }).catch(() => {});
   const now = new Date().toISOString();
-  n.read_at = n.read_at || now;
   const touched = new Set(ids);
+  /* 轮 254 · 红点跟手：先数出这组「此前未读」有几条（必须在 map 改 read_at 之前），
+   * 本地角标立刻按数递减（0ms 跟手）；等 mark 落库后再拉服务端权威值校正。
+   * 旧写法 mark 不 await 就 refresh（并发）→ 拉回旧值，红点好几秒才消（用户实测）。 */
+  const wasUnread = rows.value.filter((r) => touched.has(r.id) && !r.read_at).length;
+  const dec = Math.max(1, wasUnread);
+  n.read_at = n.read_at || now;
   rows.value = rows.value.map((r) => (touched.has(r.id) ? { ...r, read_at: r.read_at || now } : r));
   cacheDrop("notif:");     /* 首屏缓存里的未读标记一并作废，下次进来不会又「复活」 */
-  refreshBadge();
+  /* 分类计数同步减（分栏角标也跟手）；kind → badge 键映射与 notifyRules kindsFor 同口径 */
+  const cat = { comment: "comments", reply: "comments", reaction: "reactions", pet: "pets", system: "system" }[n.kind];
+  const patch = { notif: Math.max(0, badge.notif - dec) };
+  if (cat) patch[cat] = Math.max(0, badge[cat] - dec);
+  badgeLocal(patch);
+  refreshBadge({ after: markP });
   const tg = targetOf(n);
   if (!tg) return;
   if (tg.type === "bottle") router.push({ name: "messagesList", query: { bottle: String(tg.bottleId) } });
@@ -147,18 +157,23 @@ async function openItem(n) {
 }
 
 async function markAll() {
-  try { await notifyApi.mark({ all: true }); } catch (e) { /* 静默 */ }
+  const markP = notifyApi.mark({ all: true }).catch(() => { });
   const now = new Date().toISOString();
   rows.value = rows.value.map((r) => ({ ...r, read_at: r.read_at || now }));
   cacheDrop("notif:");      /* 首屏缓存里还存着未读标记，一并作废 */
-  refreshBadge();
+  /* 轮 254：角标 0ms 清零（全部已读语义），mark 落库后 refreshBadge 校正 */
+  badgeLocal({
+    notif: 0, comments: 0, reactions: 0, pets: 0, system: 0,
+  });
+  refreshBadge({ after: markP });
 }
 
 async function clearAll() {
-  try { await notifyApi.clearAll(); } catch (e) { /* 静默 */ }
+  const clearP = notifyApi.clearAll().catch(() => { });
   cacheDrop("notif:");
   load(true);
-  refreshBadge();
+  badgeLocal({ notif: 0, comments: 0, reactions: 0, pets: 0, system: 0 });
+  refreshBadge({ after: clearP });
 }
 
 onMounted(async () => {

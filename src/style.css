@@ -797,6 +797,13 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
   width: 100%; border-radius: 18px; margin-top: 12px; display: block;
   background: rgba(140, 128, 112, .06);
 }
+/* 轮 253：图片渐进淡入（配合 CommunityView 的 imgOk 集合 + pic-fade 标记）——
+ * 预留了 aspect-ratio 解决布局跳动，载完/失败再淡入解决视觉弹出。透明过渡只走
+ * opacity（不触发 layout）；失败也标记，避免挂图永远隐形。
+ * 作用域锁死在 .pic-fade：其他视图的 .pic 不参与，永远直接显示。
+ * 降级：老帖无尺寸 → 只有底色，无过渡。 */
+.pic-fade:not(.pic-in) { opacity: 0; }
+.pic-fade.pic-in { opacity: 1; transition: opacity .45s ease; }
 
 /* ═══ 我的 ═══ */
 .profile-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
@@ -959,13 +966,18 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 }
 
 /* ═══════════ 装扮 · 画廊 · 信箱 · 季节 ═══════════ */
+/* 轮 261：装扮锚进「宠物框」内（top/left 为百分比，锚点居中；随宠物跳动），
+   不再锚在舞台顶部（旧版 dy 是舞台顶起算的 px，饰品全飘在天上） */
 .acc-wear {
-  position: absolute; left: 50%; transform: translateX(-50%) rotate(-8deg);
-  font-size: 32px; z-index: 6; pointer-events: none;
+  position: absolute; transform: translate(-50%, -50%) rotate(-8deg);
+  z-index: 6; pointer-events: none; line-height: 1;
   filter: drop-shadow(0 3px 5px rgba(90, 60, 30, .25));
   animation: accBob 2.8s ease-in-out infinite;
 }
-@keyframes accBob { 0%, 100% { transform: translateX(-50%) rotate(-8deg); } 50% { transform: translateX(-50%) rotate(8deg) translateY(-3px); } }
+@keyframes accBob {
+  0%, 100% { transform: translate(-50%, -50%) rotate(-8deg); }
+  50% { transform: translate(-50%, -50%) rotate(8deg) translateY(-3px); }
+}
 
 .gallery-strip {
   position: absolute; top: 4%; left: 4%;
@@ -1215,6 +1227,9 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
   display: block; width: 100%; aspect-ratio: 4 / 3; border-radius: 12px;
   background: var(--accent-soft); animation: t-skel-pulse 1.4s ease-in-out infinite;
 }
+/* 触底续载迷你骨架：只占两张小卡的高度，不抢滚动条 */
+.sk-more { margin: 14px 2px 4px; }
+.sk-more .sk-card { padding: 14px 16px; }
 
 /* ══════════ 轮 84：评论互动（…菜单 / 回应 / 时间位 / 排序 / 查看更多） ══════════ */
 
@@ -1872,6 +1887,8 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
   margin: 2px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .bcl-chip {
+  display: inline-block; max-width: 100%; vertical-align: bottom;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   flex: 0 0 auto; font-size: 11px; font-weight: 500; padding: 1px 8px; border-radius: 999px;
   color: var(--ink-soft); background: var(--wash-mid); border: 1px solid var(--hairline);
 }

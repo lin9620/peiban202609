@@ -24,7 +24,7 @@ import {
   previewText, sortConvs, filterConvs, withDayDividers, displayMsg,
   validateSend, sendErrKey, canRecall, relativeTime, rowView, mergeTail,
 } from "../utils/dmRules.js";
-import { badge, refreshBadge } from "../stores/badgeStore.js";
+import { badge, refreshBadge, badgeLocal } from "../stores/badgeStore.js";
 /* 轮 34：拉黑已全站生效（私信拦截 + 暖心墙内容隐藏）——这里走 userBlocks 的包装，
  * 让「拉黑名单」的内容过滤缓存与私信名单始终是同一份 */
 import { blockUser, unblockUser, refreshBlocks, isBlocked } from "../utils/userBlocks.js";
@@ -524,6 +524,17 @@ async function openConv(id) {
   headMenu.value = false;
   const same = String(activeId.value) === String(id);
   activeId.value = String(id);
+  /* 轮 254 · 红点跟手：进会话那一刻就把本地行未读清零 + 导航角标同步递减（0ms 跟手），
+   * 网络 markRead → refreshBadge 只做服务端校正（失败也不影响观感，下轮轮询自愈）。
+   * 不等 loadMessages/网络往返，用户「点进去马上返回」红点也已经消了。 */
+  {
+    const row = convs.value.find((c) => String(c.conv_id) === String(id));
+    const lost = row && Number(row.unread) > 0 ? Number(row.unread) : 0;
+    if (row && lost) {
+      row.unread = 0;
+      badgeLocal({ dm: Math.max(0, badge.dm - lost) });
+    }
+  }
   /* 双形态导航（微信式）：
    *  - 手机形态：聊天是独立整屏页 → push，历史保留列表 → ← 钮 / 系统返回键都能回列表；
    *  - 桌面形态：列表与聊天同页双列 → replace，点会话不污染浏览器历史（原行为不变）。 */
@@ -560,8 +571,9 @@ async function openConv(id) {
    * （否则会用旧会话的落点把新会话的屏滚乱，这是「切完位置乱跳」的另一半）。 */
   if (String(activeId.value) !== String(id)) return;
   if (!smoothed) scrollBottom();   /* 有新消息时已平滑滚过，不再瞬时跳 */
-  dmApi.markRead(id).catch(() => {});
-  refreshBadge();
+  /* 轮 254：先等「已读」落库再刷角标（旧写法两个并发发，读还没写进去就拉 → 拉回旧值，
+   * 红点要等下一轮 30s 轮询才消 —— 用户实测「点进去马上返回，红点不跟手」）。 */
+  refreshBadge({ after: dmApi.markRead(id).catch(() => {}) });
 }
 
 /* ← 返回会话列表（手机形态）：从列表点进来 → 退一步（不留多余历史）；
@@ -656,26 +668,33 @@ async function acceptReq(c) {
   const row = convs.value.find((x) => String(x.conv_id) === String(c.conv_id));
   if (row) row.accepted = true;
   if (meta.value && String(meta.value.conv_id) === String(c.conv_id)) meta.value.accepted = true;
-  refreshBadge();
+  /* 轮 254：请求数角标本地先减（乐观跟手），网络落库后再拉服务端权威值校正。
+     旧写法 refreshBadge 在 accept 之前并发发 —— 读还没写进去，角标不动。 */
+  badgeLocal({ requests: Math.max(0, badge.requests - 1) });
   try { await dmApi.accept(c.conv_id); }
   catch (e) {   /* 静默回滚成请求态 */
     if (row) row.accepted = false;
     if (meta.value && String(meta.value.conv_id) === String(c.conv_id)) meta.value.accepted = false;
+    badgeLocal({ requests: badge.requests + 1 });
   }
+  refreshBadge();
 }
 
 async function rejectReq(c) {
   /* 轮 238 · 乐观更新：行先消失；失败插回原位（本地库等清空留到确认成功后） */
   const idx = convs.value.findIndex((x) => String(x.conv_id) === String(c.conv_id));
   const removed = idx >= 0 ? convs.value.splice(idx, 1)[0] : null;
-  refreshBadge();
+  /* 轮 254：拒绝 = 请求态消一个 → 角标本地先减；落库后校正（旧写法 refresh 在 hide 之前发） */
+  badgeLocal({ requests: Math.max(0, badge.requests - 1) });
   try {
     await dmApi.hide(c.conv_id);
     dmStoreDrop(meId.value, c.conv_id);   /* 轮 194：会话移出列表即清本地库 */
     idbDrop(c.conv_id);   /* 轮 204：全量库同清 */
   } catch (e) {   /* 静默回滚 */
     if (removed) convs.value.splice(Math.min(idx, convs.value.length), 0, removed);
+    badgeLocal({ requests: badge.requests + 1 });
   }
+  refreshBadge();
 }
 
 async function toggleMute(c) {
@@ -699,11 +718,11 @@ async function hideConv(c) {
     activeId.value = "";
     router.replace({ name: "messagesList" }).catch(() => {});
   }
-  refreshBadge();
   try {
     await dmApi.hide(c.conv_id);
     dmStoreDrop(meId.value, c.conv_id);   /* 轮 194：会话移出列表即清本地库 */
     idbDrop(c.conv_id);   /* 轮 204：全量库同清 */
+    refreshBadge();       /* 轮 254：挪到落库之后（旧写法在写之前并发发，拉回旧值） */
   } catch (e) {   /* 静默回滚 */
     if (removed) convs.value.splice(Math.min(idx, convs.value.length), 0, removed);
   }
@@ -739,9 +758,10 @@ function pickBottle(row, name) {
 
 /* 同意聊天 → 数据库建会话：把新会话带进「会话」段列表 + 刷红点（中列继续停在漂流瓶聊天框） */
 async function onBottleAccepted(convId) {
-  if (convId) dmApi.markRead(convId).catch(() => {});
   await loadConvs();
-  refreshBadge();
+  /* 轮 254：等「已读」落库再校正角标（旧写法 markRead 不 await 就 refresh，并发拉回旧值，
+     红点要等下一轮 30s 轮询才消）。 */
+  refreshBadge({ after: convId ? dmApi.markRead(convId).catch(() => {}) : null });
 }
 
 /* BottleChat 回传的人/会话信息（convMeta 或兜底名字）——头部「…」菜单据此显示 */
@@ -772,10 +792,10 @@ async function blockPeer() {
   const blocked = curPeer.value.blocked;
   /* 轮 238 · 乐观更新：菜单态先翻；失败回滚 */
   bottleMeta.value = { ...(bottleMeta.value || {}), blocked: !blocked };
-  refreshBadge();
   try {
     if (blocked) await unblockUser(uid);
     else await blockUser(uid);
+    refreshBadge();       /* 轮 254：挪到落库之后（旧写法在写之前并发发，拉回旧值） */
   } catch (e) {   /* 静默回滚 */
     bottleMeta.value = { ...(bottleMeta.value || {}), blocked };
   }
@@ -811,8 +831,14 @@ async function tick() {
           msgs.value = rows;
           if (added) {
             if (nearBottom) scrollBottom(true);
-            dmApi.markRead(cid).catch(() => {});
-            refreshBadge();
+            /* 轮 254：行未读本地先清 + 角标同步减（乐观跟手），等落库再校正 */
+            const crow = convs.value.find((x) => String(x.conv_id) === String(cid));
+            const clost = crow && Number(crow.unread) > 0 ? Number(crow.unread) : 0;
+            if (crow && clost) {
+              crow.unread = 0;
+              badgeLocal({ dm: Math.max(0, badge.dm - clost) });
+            }
+            refreshBadge({ after: dmApi.markRead(cid).catch(() => {}) });
           }
         }
       }

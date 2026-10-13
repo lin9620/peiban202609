@@ -280,6 +280,8 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
 ## 二、现在在做什么
 
+- **当前批次（改动完成、测试过了、待提交待部署——攒批）**：轮 253（知乎/Reddit 式渐进渲染补齐：图片淡入 + 触底续载迷你骨架）+ 轮 254（捞漂流瓶 6s 超时提示「没捞到」 + 修「切走再回来旧弹窗复活」：捞网会话代际 fishGen）+ 轮 255（英文文案全面精简：药丸溢出 ×7 + 占位去重 + 任务名 ×2 + 长描述 ×13 + .bcl-chip 防御 CSS）+ **轮 256（无声错误上报信标：beacon.js + Worker /api/client-log）+ 轮 257（4 条已知失败测试清零：seo T38/39/42 无尾斜杠口径 + uifix T23 现口径）+ 轮 258（新工具 i18n-usage-test 死键/漏键检查 + 清掉 79 个死键）+ 轮 259（根目录临时文件大扫除 + .gitignore 补 _scratch/_*.png）+ 轮 260（可用性监控就绪：/api/health 进 live-check + README 配置说明）+ 轮 261（装扮穿戴按身体部位锚定 pos/posBy：废弃舞台顶 dy、锚进 PetMotion 随宠跳动、兔/恐龙/水獭 posBy 覆盖，全 5 物种 ×15 组合无头截图目检；另修失败构建 closeBundle 踩坏全部预渲染的守卫 + zh 首页正文语言 + home.companions.hall 缺键恢复 + 挪正 FavoritesView 交叉嵌套结构使正式构建恢复）+ **轮 262（「不跟手」全局治理：红点即时递减 badgeLocal + refreshBadge({after}) 串行修竞态/排队不丢弃；收藏独立页 /favorites + 写穿缓存 favCacheInsert；评论发送/删除乐观化 pending 临时行）**；全量 47 套离线测试 ALL OK、build EXIT=0、page-smoke 13/13；生效需部署，App 端要重打包装机（随轮 250/251 待办）。详见文末 F 区各轮。
+- **上一批（已提交已部署）**：轮 239~252 攒批：已提交 `0113d6e`（+文档 `3899f5b`）/ 已部署 Version `51feda2f`（入口 `index-DzmDi8IU.js`，live-check 14/14，本地=线上）；`MIGRATION_wall_search.sql` 待用户 SQL Editor 整份执行（不跑也降级可用）。
 - **当前任务**：**轮 146（暖心墙示例帖全清 + 推荐档分级放宽 + 月档改滚动 30 天）待部署** —— 验收点：`/community` 停在「推荐」档应看到大量真实老帖（不再是示例帖），跨天均匀不霸屏；「本月」档 = 前 30 天。遗留待用户拍板：库里 9/24 有 47 条 `〔压测 #xxx〕` 灌水帖，是否清理（删数据需用户明确指示）。
 - **上一批（历史）**：轮 114（**换域名 dale.de5.net → warmpaws.de5.net：改动完成、36 套离线全绿，待提交待部署——攒批；部署即自动绑新域，之后 APK 必须重打**）。22 文件 + `.env` 全量替换 + wrangler.jsonc `custom_domain` 自动建绑 + 旧域面板绑定保留双域并存；外部面板（Supabase Redirect URLs / Google Branding / GSC）待办清单见 F 区轮 114。**顺序红线：先 deploy 再打 APK**。
 - **上一批（已交付）**：轮 113（**上传 / 部署 / 打包 / 装机 四链路全部完成 ✅**）。用户发话「上传，部署，打包，装机」→ 把轮 107-112 的攒批一次性发出去：① 提交 `bf7b2c2`（轮 107 死代码清理）+ `c194df0`（轮 108-112 代码）+ `8fecc0f`（轮 108-112 测试与文档），**push 成功**（`HEAD == origin/main == 8fecc0f`，工作区干净）② 部署 Worker **Version `3a91942c`**（`wrangler deploy` EXIT=0，https://warm-paws.yi1614351.workers.dev）③ 线上验证 **LIVE ALL PASS (14)** + live-bundle-check **本地 dist = 线上**（入口 `index-C5pZNGVS.js`，SHA16 `c6dbdbad5170f85f` 两边一致、443181 字节、含 slug）④ `cap sync` EXIT=0（SEO 占位剥离 ×8）+ Gradle **BUILD SUCCESSFUL in 30s** → APK `apk/warm-paws-debug.apk` 5.21 MB，SHA16 **`A4852FA5763FAE05`**，包内入口 `index-C5pZNGVS.js` = 线上同一份 ⑤ `adb install -r` **Success**（`net.de5.dale`）+ 冷启动前台存活、`mWakefulness=Awake`、`logcat` 无 crash/FATAL + 截图确认渲染。**待用户真机/网页验收**。详见 F 区轮 113。
@@ -2927,6 +2929,16 @@ const selfZh = SITE + "/zh" + (dir ? "/" + dir : "");    // 首页也不带尾�
 
 ### 轮 240 · App 端体感提速五项(配置/启动链/预取/图片属性/头像出口)+ 冷启动基线 512ms
 
+### 轮 253 · 知乎/Reddit 式渐进渲染补齐（图片淡入 + 触底续载迷你骨架）
+
+**结论先行**：首屏骨架/lazy/aspect-ratio/虚拟化都已有，只差两块小的，补齐；**blur-up 模糊底图不做**（要服务端缩略图，成本陡增；aspect-ratio 已解决布局跳动，边际收益小）。
+
+**① 图片渐进淡入**：帖子卡图片加 `pic-fade` 标记 + `imgOk` 集合（存帖 id，>500 清零重记防野列表撑内存）；`@load/@error` 都标记（挂图不隐形）；CSS 只走 `opacity`（不触发布局），`.pic-fade:not(.pic-in){opacity:0}` + `.pic-in` 0.45s 过渡。作用域锁死 `.pic-fade`——其他视图 `.pic`（详情/主页/治理）零影响。
+
+**② 触底续载迷你骨架**：分页 loading 文字下叠两张小骨架卡（`sk-more`，复用 `.sk-*`）；桌面/手机通用；搜索态用 `searchBusy`（`pageBusy` 只亮正常流）；骨架 `aria-hidden`，读屏仍读文字提示。
+
+**验证**：undef=0 tdz=0 build=0 page-smoke 12/12。纯前端，零迁移、零数据层改动，未提交（等下一攒批）/未部署/未装机。
+
 ### 轮 252 · 暖心墙搜索 + #标签# + 图片尺寸预留（发帖时 tags/img_w/img_h 入库）
 
 **任务**：墙帖搜索（关键词 + 标签）+ 图片尺寸预留防抖动（aspect-ratio）+ 手机端首屏骨架屏。
@@ -2991,3 +3003,131 @@ AndroidManifest.xml / index.html / App.vue(prefetch+avatar2 处) / AvatarImg.vue
 style.css / CommunityView.vue(头像接线)。
 状态:已装机待验收,未提交(攒批)。
 
+### 轮 254 · 捞漂流瓶 6s 超时提示「没捞到」+ 修「切走再回来旧弹窗复活」（待提交待部署）
+**用户报障**：「给捞漂流瓶加一个时间限制，多长时间没反应比如 6s 就提示没有捞到，后续切回别的页面再返回也不要弹出之前的的弹窗了，现在是有这个问题 bug。」
+
+**① 超时口径**：`FISH_TIMEOUT` 8000 → **6000**（BottleView.vue）；超时文案 i18n `errSlow` 中英成对改「没捞到」口径——zh「没捞到——等了 6 秒没反应，再捞一次试试」/ en "Nothing surfaced — no answer after 6s. Cast again."。
+
+**② 弹窗复活真因（机制定位，不是感觉）**：HomeView 被 KeepAlive 保活——
+- 轮 238 的 `watch(route.query.tab)` 只关掉了弹窗**本体**；在飞的 `bottleFish()` promise 落地时（超时/出错/捞到），回调又按 `route.query.tab === "bottle"` 决定弹不弹——用户此时若已切回漂流瓶联，**旧弹窗就复活**（撒网中超时的 msg 弹窗、迟到的「捞到了」弹窗都会）。
+- 「离开首页整页」（`/?tab=bottle` ↔ `/community` 等）时 query.tab 不变，watch 根本不触发 → 弹窗留在保活 DOM 里，回来原样再弹。
+
+**改法（捞网会话代际 `fishGen`，BottleView.vue）**：
+- `let fishGen = 0` + `abandonFish()`：`fishGen++`、`fishPop.show=false`、`fishing=false`（旧会话 finally 见代际不符不再复位，不会踩新会话的状态）。
+- `doFish`：入口补 `if (fishing.value) return;` 防重入（loading 态 n-button 仍派发 click）；`const gen = ++fishGen` + `alive()` 守卫全程：
+  - **捞到但会话作废** → 与「不在漂流瓶联」同一条路：`refreshBottle()` 信进「手里」托盘，**不补弹窗**（信不会丢，回来托盘里找得到）；
+  - **超时/出错但会话作废** → 提示一律丢弃（`if (!alive()) return;`，空捞/超时/限额全算）；限额报错仍后台 `syncQuota()` 对齐次数；
+  - `finally { if (alive()) fishing.value = false; }`。
+- 作废触发点两处：`watch(route.query.tab)` 改调 `abandonFish()`（切页签）+ **新增 `onDeactivated(abandonFish)`**（KeepAlive 失活——切页那条 watch 覆盖不到的路）。
+- `/bottle` 独立页不在 keepAliveNames，切走即卸载，天然无此问题（onDeactivated 不影响它）。
+
+**测试**：`bottle-test` 78→**80**——原「8s 悬死」断言更新为 6s 常量锁形 + 新增会话代际两条防回退断言（abandonFish 双触发点 / `!alive()` 丢弃 ≥2 处 / 成功改道托盘 / finally 代际复位 / 防重入）。
+
+**验证**：全量 44 套离线 **42 套 OK**（seo T38/39/42 + uifix T23 = 基线历史遗留，轮 252 已记录「stash 对照同样失败」，与本轮无关）+ `undef-check` 0 + `tdz-check` 0 + `vite build` 0 + `page-smoke` 12/12。
+
+**状态**：改动完成、测试过了，**待提交待部署——攒批**（与轮 253 同批）；生效需部署，App 端要重打包装机（随轮 250/251/253 待办）。
+
+### 轮 255 · 英文文案全面精简：药丸溢出修复 + 占位去重 + 长描述瘦身（待提交待部署）
+**用户报障**：截图实报——Messages 页 Bottle 分栏的状态药丸英文撑出卡片被硬裁（"Kept as a letter — no chat was starte|"）；要求「App 端英文环境下描述尽量精简一些」，先审计后修，清单确认后全修。
+
+**审计办法**：临时探针遍历 `i18n.messages` 双语全量 → ① en 长度 ≥26（短容器溢出风险线）② en/zh 长度比 ≥1.8（西文膨胀）两榜，再逐一核对渲染容器（`.bcl-chip` 药丸 / `.t-name` 任务行 / 占位符 / 提示段）。
+
+**改动（只动 en 文案，中文零改动；23 条 + 1 条 CSS）**：
+- **A 状态药丸 ×7**（`.bcl-chip` 是 `flex:0 0 auto` 无宽度上限，英文一长就撑爆）：chatDeclined「Kept as a letter — no chat was started.」→**Kept as a letter**；pending→**Drifting at sea**；stPicked→**Picked up**；stDecide→**Reply received**；stWaitAgree→**Once they accept**；chatWaiting→**Waiting for the writer**；chatQuestion→**Chat with the person who replied?**（细节信息由卡片下方的同意/拒绝按钮与正文承载，药丸只报状态）。
+- **B 占位去重 ×1**：`dm.placeholder` 桌面版「Write something… (Enter to send, Shift+Enter for a new line)」→**Write something…**（与输入框上方常驻的 `dm.hint` 提示行重复说同一件事；手机端 placeholderMobile 本就是短版）。
+- **C 任务名截断 ×2**（右栏 "Feed a handmad…"）：tasks.feed→**Feed a dish**；tasks.mood→**Log your mood**（顺修英文语法）。
+- **D 长描述瘦身 ×13**：recordsHint 163→92、pet.snack.howto 138→62、settings.delWarn 190→126、quotaUnavailable 103→62、forgotHint 108→59、customIntro 89→72、painter.intro 75→68、wardrobe.hint 69→35、notif.prefsHint 63→51、cloudNeedLogin 69→53、dm.gateRequest 46→37、dm.errFirstLimit 47→40、login.sub 70→57。
+- **CSS 防御**：`.bcl-chip` 加 `display:inline-block; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap`——以后再写长文案也不会撑爆药丸。
+- 顺带记录：`dm.intro`（123 字符）在代码里已无引用，是死键，本轮未动（可后续清理）。
+
+**测试同步**：`app-shell-test` T22 原钉「桌面占位符保留 Enter/Shift 说明」→ 更新为「桌面也改短，说明保留在 `dm.hint`」并新增两语言 hint 断言（64/64）。
+
+**验证**：全量 44 套离线 **43 OK**（仅 seo T38/39/42 + uifix T23 = 已知基线遗留）+ `bottle-test` 80/80 + `i18n-test` 19/19 + `app-shell-test` 64/64 + `undef-check` 0 + `tdz-check` 0 + `vite build` 0 + `page-smoke` 12/12。
+
+**状态**：改动完成、测试过了，**待提交待部署——攒批**（与轮 253/254 同批）；生效需部署，App 端要重打包装机。
+
+
+### 轮 256 · 无声错误上报信标（前端 beacon + Worker /api/client-log）（待提交待部署）
+**动机**：轮 42 TDZ 白屏、轮 80 陈旧 dist——两次线上事故都是「用户报障才发现」。错误边界把崩溃盖成「这里好像有点小状况」，开发者一无所知。
+
+**改动**：
+- **前端 `src/utils/beacon.js`（新）**：`installErrorBeacon()` 监听 `window error`（捕获态，兼收资源加载失败）与 `unhandledrejection`；`navigator.sendBeacon`（失败退 `fetch keepalive`）POST `/api/client-log`。载荷只有 kind/msg/route/堆栈/UA（全部截断），无 cookie 无凭据无用户数据；**每页最多 5 条**防死循环刷屏；信标自身 try/catch 全包，绝不成为新报错源。
+- **`src/main.js`**：首个 import 之后立即 `installErrorBeacon()`（在 createApp 之前 → 模块加载期崩溃，如轮 42 的 TDZ，也能抓到）。
+- **`worker/api.js`**：新路由 `POST /api/client-log`——readJson（400/413 既有闸）→ 每 IP 每分钟 20 条内存限频（429）→ 白名单字段截断后 `console.log` 一行 JSON（Workers Logs / `wrangler tail` 可见）。不入库不回显。GET→405。
+- **测试**：worker-test +4（合法信标 200 / GET 405 / 坏 JSON 400 / 限频 429）；app-shell-test +2（T64 安装时序与监听、T65 只发 client-log + 限流 + 无凭据字段）。
+- 说明：部署后 Worker 端点才生效；在那之前信标 POST 会 404——无害（catch 吞掉）。看日志：`npx wrangler tail` 或 Cloudflare 后台 Workers Logs 搜 `client-log`。
+
+**验证**：worker-test 290/290、app-shell 66/66、undef 0、tdz 0。
+
+### 轮 257 · 4 条已知失败测试清零（seo T38/39/42 + uifix T23）（待提交待部署）
+「带着红的全绿」会让测试失去信号价值，本轮把两条历史基线失败修零：
+- **seo T38/T39/T42**：期望值还停在旧口径 `/zh/`（带尾斜杠）——轮 236 已按 Search Console 报障改为无尾斜杠 `/zh`（带尾斜杠被判重复 URL、301 绕圈）。更新断言为 `/zh` 并加口径注释。→ seo-test 50/50。
+- **uifix T23**：还在钉「cloudFetchUserPosts(uid, 3)」老接口——轮 44/206/213 后 ProfileView 已改为 `cachePeek(cacheKey("profile-myposts"))` 同步秒出 + `swr()` + `db.listPostsByUser(uid, 3)`。断言全部改钉现行为。→ uifix 24/24。
+
+### 轮 258 · 新工具 i18n-usage-test（死键/漏键检查）+ 清掉 79 个死键（待提交待部署）
+**新工具 `tools/i18n-usage-test.mjs`**（已登记 README）：i18n-test 管「中英成对」，它管「用没用」：
+- **漏键=硬失败**：代码写了完整字面量键、i18n 没定义 → 界面会显示原始 key。
+- **死键=硬失败**：i18n 定义了、代码任何地方不引用（含 vite.config 预渲染）→ 白占双语维护成本。
+- 抗误报五件套：Vue 属性表达式（`v-if="a.b"` 引号前是 `=`）跳过；容器引用（`t("privacy.s2l")` 数组整用）子树全算被引用；无点顶层键（`t("brand")`）单算；动态基串（`"adventure.welcome"+n`）放行；反引号模板（`` t(`notif.react.${v}`) ``）与属性链直读（`E.community.title`/`ZH.home.mood.subtitle`）都识别。确要保留的死键进 KEEP 注明理由（现仅 home.hello：i18n-test 探针键）。
+
+**死键清理（en+zh 双删，共 79 键，叶子 937→879）**：bottle 评论块 12（评论功能早已移去 story，bottle 段遗留）、comment 段 4、admin 列名 8（author/body/status/actions 等旧表格布局）、notif.tabDms/prefDms（DM 页签已移走）、profile.forgotHint2/nickSaved、settings.masterOn/masterOff/password、story.writeStory/published、pet 11（coins/customTitle/switchTo/gallerySoon/onlyOne/painter×4/actions.desktop）、adventure 3、home 4（quoteTitle/storyTitle/download/downloading）、community.dislikeRule、fav.gone、gallery.unhang、rail.slipTitle、theme.pick、langBtn、emoji.title、brand?（不——brand/tagline/welcomeBack 在用，未删）、dm.intro、admin.appRelease.uploading。
+- **测试同步**：dm-test NEED 去 dm.intro；notify-test NEED 去 tabDms/prefDms；auth-test KEYS 去 forgotHint2/nickSaved、A54 去 password；uifix T4 反转为「left/full 死键防复活」断言；wall-rules-test T17b（钉 dislikeRule 文案）退役并留注释。
+- 注：brand/tagline/welcomeBack 曾被工具首版误报死（无点顶层键看不见），工具修正后确认在用（SideNav/App.vue），未删。
+
+**验证**：i18n-usage-test 2/2、i18n-test 19/19、dm 327、notify 145、auth 130、uifix 24、wall-rules 49。
+
+### 轮 259 · 根目录临时文件大扫除（待提交待部署）
+- **删除**：仓库根 ~55 个 `_*.txt` 探针输出、`_dev.log`/`dev-cloud.log`/`_gradle.log`、`arity-test.txt`/`comment-test.txt`/`undef-report.txt`、`_cdp-probe.mjs`/`_probe_geo.js`；tools 下 ~70 个 `_*.mjs`/`_*.js`/`_*.py`/`_*.ps1`/`_*.png` 历轮一次性探针与截图；上级目录 6 个 `_*.txt`。
+- **挪进 `_scratch/`**（可反悔）：根目录 6 张 `_phone-*.png`/`_avatar-sheet.png` 截图 + `_icon-concepts/`。
+- **保留**：`public/_headers`（Cloudflare 真实配置文件，非垃圾）。
+- **.gitignore 补**：`/_scratch/`、`_*.png`。
+- `_pv3.txt` 被外部进程锁住暂未删掉（0 字节、已被 ignore，无碍）。
+- git 视角：删除的追踪文件（tools/_*.png、_probe_geo.js 等 39 个）进本批待提交。
+
+### 轮 260 · 可用性监控就绪（/api/health + 配置说明）（待提交待部署）
+- `GET /api/health` 早已有（Worker 直接应答 `{ok:true,mode:"gateway",ts}`，不依赖静态资源）——本轮把它接进 `tools/live-check.mjs`（部署后验证现在也钉它）。
+- **README 部署清单加第 4 条**：UptimeRobot（或同类免费服务）加 HTTP 监控盯 `https://warmpaws.de5.net/api/health`（5 分钟间隔，期望 200 + `"ok":true`）；站点挂了发邮件——在此之前「挂了」只能靠用户报障。**此条需用户自己注册 UptimeRobot 配一次**（约 2 分钟）。
+
+### 轮 261 · 装扮穿戴按身体部位锚定（pos/posBy）+ 三个构建链路修复（待提交待部署）
+**A. 用户报修：饰品全飘舞台顶 → 按部位穿戴**
+- 架构：废弃 `dy`（舞台顶 px），extras.js 每件饰品改 `pos: { top/left（宠物框百分比）, size }`；`.acc-wear` 从 PetView 舞台级 div 移进 `PetMotion.vue`（`acc` prop，锚进 `.pet-motion` 框内随宠物跳动），CSS `translate(-50%,-50%)` 锚点居中、accBob 关键帧同步。
+- 分区（lottiePet 画布 220×200 几何，头顶≈30%/眼线≈52%/脖子≈67%/头底沿≈72%）：帽 23%、冠 22%、墨镜 51%、雏菊/叶/樱花结耳侧 34~37%、围巾 **78%**、铃铛 77%。
+- `posBy` 物种覆盖：兔耳长在头顶中央、水獭/恐龙无耳 → daisy/leaf/ribbon 按 `pet.species` 换贴头侧锚点，`accPos` computed 合并覆盖。
+- 「小红帽」emoji 实为蓝色 → 改名「小蓝帽」（名实一致，防违和）。
+- **验证方式**：harness 截图通道失效期间，自起无头 Edge（独立 profile + CDP，`_scratch/cdp-sweep.mjs`，参数 = 饰品名过滤 + 站点端口）批量「点戴 + 舞台裁剪截图」；全 5 物种 15 组合逐一目检：猫 8 件、兔 7 件、狗/恐龙/水獭各 2~3 件全过；围巾 75% 仍压嘴线 → 78% 复检过。
+- 测试钉住：pet-visual-test 新增第 6/7 节（pos 格式/分区互异、posBy 覆盖在头侧带且≠默认、小蓝帽防改名复活、accPos 解析链路）**176/176**。
+**B. 顺手挖出的三个构建链路问题**
+1. **失败构建踩坏全部预渲染**：rollup 出错时 closeBundle 照跑，seoRoutes 拿上次成品（已烤正文的 index.html）当干净壳 → `replace('<div id="app"></div>')` 全失配 → 27 个子页被首页 hero 覆盖、隐私正文整段丢失（privacy-test P34 红，assets 停在 17:11、HTML 全变 20:42 即为铁证）。修复：closeBundle 开头断言 tpl 含纯净挂载点，不匹配即跳过（已用真失败构建实测：打印跳过、产物完好）。
+2. **zh 首页正文永远是英文**：home 块先烤 en 写回 tpl、zh 再重读 tpl → 挂载点已被占、中文 hero 注入不进去（head 中文、正文英文）。修复：干净壳只读一次，en/zh 共用。
+3. **`home.companions.hall` 被当死键删除**（轮 150/256）→ vite.config 4 处引用 → 首页/pet/zh-profile 预渲染印 "undefined" 很久。修复：恢复 en/zh 原文（带注释「预渲染专用勿删」）；i18n-usage-test 属性链补缺键检测（键不存在也报，方法名 `.split(` 去尾防误报）——当时漏检的根因：属性链只在键存在时才标记引用。
+4. undef-check 补 .vue `<script>` 未闭合 / `</script>` 排在 `</template>` 后的结构识别（FavoritesView 半成品曾一次刷 11 条模板假阳性 → 收敛为 1 条明确结构报错；挪正后归零）。
+**C. 环境记录（工具坑）**
+- 无头 Edge 首版带 AdGuard/Tampermonkey 扩展劫持种子页（数据种到别的 origin）→ `--disable-extensions` + 清 profile 后正常。
+- dev 服务器会 watch `_scratch/` 新写文件，正被写入时 EBUSY 能把 watcher 崩掉（无碍，重启即可）。
+- **FavoritesView.vue 曾是交叉嵌套半成品**（`<script>`(10) → `<template>`(68) → `</template>`(111) → `<style>` → `</script>`(180)，babel 必败、构建挡红）。**已由本人经用户确认后挪正**：纯块顺序重排（template/style 移到 `</script>` 之后），内容一字未改；随即 `npm run build` EXIT=0，产物含真实收藏页分片 `FavoritesView-Gdz9dzlL.js`（桩构建已被正式产物覆盖，`_scratch/vite.scratch.config.mjs` 只是历史备用件）。
+
+**本轮验证**：全量 **45 套 BAD=0**（复跑）+ privacy 34/34 + i18n-usage 2/2 + i18n 19/19 + pet-visual 176/176 + tdz 0 + **undef 0**（FavoritesView 挪正后清零）+ **正式 vite build EXIT=0** + **失败构建守卫实测通过** + page-smoke **13/13**（新增 /favorites 冒烟）。
+
+**本轮批次总验证**：全量 **45 套离线测试 BAD=0**（历史首次零失败——此前 seo T38/39/42 + uifix T23 常年挂红；轮 261 复跑仍 0）+ privacy 34/34 + i18n-usage 2/2 + i18n 19/19 + pet-visual 176/176 + **undef 0** + tdz 0 + **vite build EXIT=0（正式产物，含真实收藏页）** + page-smoke **13/13**（轮 261 纳入 /favorites）+ **失败构建守卫实测通过**。
+
+**状态**：轮 253~261 全部改动完成、测试过了，**待提交待部署——攒批**；轮 256 的 Worker 端点与轮 260 的 live-check 都要部署后才真正生效；App 端要重打包装机（随轮 250/251 待办）；UptimeRobot 配置需用户手动完成一次（注册免费账号 + 加一条 HTTP 监控盯 `https://warmpaws.de5.net/api/health`，5 分钟间隔；需部署后该端点才存在）。
+
+### 轮 262 · 「不跟手」全局治理：红点即时递减 + 收藏独立页 + 评论发送/删除乐观化（待提交待部署）
+**用户报障**：①「消息红点点进去马上返回不消失，要等好几秒」「通知处理了不跟手」；②「点收藏立马去我的页面看收藏很久才出现，而且收藏应该是单独页面，不要在我的页面下面显示」；③「全局找一下类似的不跟手问题都解决一下」。
+
+**根因（机制级，不是感觉）**：
+- **红点滞后**：`markRead()` 不 await 就调 `refreshBadge()` —— 两个请求并发，「已读」还没写进库未读数就拉回来了 → 拿到旧值，只能等下一轮 30s 轮询才消。且 `refreshBadge` 的 `badge.loading` 守卫会把 loading 中的手动刷新**直接丢弃**（不是排队）→ 撞上轮询就白点。
+- **收藏滞后**：`profile-favs` 缓存只在「我的」页 watch 里网络回来才写；点收藏 → 收藏列表读到的还是旧缓存。KeepAlive 保活让 ProfileView 的 watch 不重跑，旧列表停留更久。
+- **评论滞后**：`sendCmt/delCmt` 全部 await 网络成功才动 DOM，弱网点发送/删除半天没动静。
+
+**改动**：
+1. **badgeStore.js**：`refreshBadge({ after })` —— 先等写操作落库再拉（串行化修竞态）；loading 中的调用改**排队**（`rerun` 标记，跑完立刻补一轮，不再丢弃）；新增导出 `badgeLocal(patch)` —— 本地乐观递减（钳 ≥0 + 同步落角标缓存），网络回来用服务端权威值校正。
+2. **MessagesView**：进会话（openConv）0ms 清本地行 `unread` + `badgeLocal({dm})`；`refreshBadge({ after: markRead })`；accept/reject 请求数先本地减、失败回滚；hide/block 的 refreshBadge 挪到**落库之后**；轮询 tick 收新消息同样「先清行再串行校正」。**BottleChat** onLetter 同款。
+3. **NotificationsView**：openItem 先数「组内此前未读几条」（**必须在 map 改 read_at 之前**——第一版写成事后数，恒 0，已修）→ `badgeLocal` 递减 notif + 对应分类（kind→badge 键映射与 kindsFor 同口径）→ `refreshBadge({ after: mark })`；markAll/clearAll 直接 `badgeLocal` 全清 0 + after 串行。
+4. **收藏独立页**：新路由 `/favorites` + `FavoritesView.vue`（不进 keepAliveNames —— 每次进入重新挂载重取，列表永远是新的；挂载同步 cachePeek 秒出 → SWR 校正；取消收藏乐观移除 + 失败插回原位）。ProfileView 头部「我的收藏」按钮改 `router.push('/favorites')`，内嵌区块与 favRows/watch/unFav 逻辑整体迁走。
+5. **收藏写穿缓存**（wall.js 新增 `favCacheInsert/favCacheRemove`）：点收藏 0ms 写进 `profile-favs|uid` 缓存（行形状对齐 cloudFavListMine 的 `{favedAt, post:{…}}`），进收藏页第一帧就看到；失败连缓存带 favSet 一起回滚。CommunityView（moreTarget 带 post 引用）与 PostDetailView（moreFav）两处接线。
+6. **评论乐观化**（两视图同款）：sendCmt 立即追加 `pending` 临时行（草稿 0ms 清空、回复框即展开、syncTotal 计数跟上）→ 网络成功换正式行 / 失败摘行 + **还草稿 + 还 @ 目标 + 提示**；delCmt 先摘行、云端失败插回原位；`canDel` 对 pending 行返回 false（删除按钮先藏，临时行没落库不能删）。
+
+**验证**：全量 **47 套离线 ALL OK**（45 套 + undef + tdz + i18n-usage 计入口径）+ vite build EXIT=0 + page-smoke **13/13**（含 /favorites）。
+
+**状态**：改动完成、测试过了，**待提交待部署——攒批**（与轮 253~261 同批）；生效需部署，App 端要重打包装机（随轮 250/251 待办）。

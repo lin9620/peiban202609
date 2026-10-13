@@ -3,7 +3,7 @@
      SWR 快照顶显示），页面里没有一份「本地缓存」决定行为。
      桌面首页收尾与手机「漂流瓶」联（默认联）共用同一组件。 -->
 <script setup>
-import { ref, computed, watch, onMounted } from "vue";
+import { ref, computed, watch, onMounted, onDeactivated } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { NButton, NInput, NModal } from "naive-ui";
 import { isMobileNav } from "../stores/uiStore.js";
@@ -49,8 +49,23 @@ function mergePending() {
 /* 轮 22/25：捞信结果一律居中弹窗——捞到（就地回信/放回）、没捞到、限额，全部有明确反馈；
  * 「先收着，稍后回」按用户要求移除（捞到就当场回信或放回，不许囤） */
 const fishPop = ref({ show: false, mode: "msg", letter: null, msg: "" });
-/* 轮 26：捞信悬死兜底（毫秒）——正常一网 1-3s；超时只是给出口，不给「永远转圈」死局 */
-const FISH_TIMEOUT = 8000;
+/* 轮 26：捞信悬死兜底——正常一网 1-3s；超时只是给出口，不给「永远转圈」死局。
+ * 轮 254（用户拍板）：8s → 6s，超时提示改「没捞到」口径（等 6 秒没反应 = 没捞到）。 */
+const FISH_TIMEOUT = 6000;
+
+/* ═══ 轮 254 · 捞网会话代际（修「切走再回来，旧弹窗又弹出来」）═══
+ * 真因：HomeView 被 KeepAlive 保活，轮 238 的 watch 只关掉了弹窗**本体**；
+ * 在飞的 bottleFish() promise 落地时（超时/出错/捞到），回调又按
+ * `route.query.tab === "bottle"` 决定弹不弹 —— 用户此时若已切回漂流瓶联，
+ * 旧弹窗就复活（用户实报：「切回别的页面再返回，又弹出之前的弹窗」）。
+ * 修法：离开漂流瓶（切页签 / 切页失活）即作废当前会话（fishGen++），
+ * 在飞请求落地时会话已失效 → 一律不补弹窗：捞到的信走托盘找回，提示全部丢弃。 */
+let fishGen = 0;
+function abandonFish() {
+  fishGen++;
+  fishPop.value.show = false;
+  fishing.value = false;   /* 会话作废即停转圈；旧会话 finally 见代际不符不再复位 */
+}
 
 /* ════════ 每日次数：唯一真相是服务端 bottle_quota()（轮 37）════════
  * 用户点名「什么每天捞 7 瓶、写 3 瓶，老老实实改成线上」。此前本机留着一本乐观
@@ -150,6 +165,9 @@ async function doSend() {
 
 async function doFish() {
   if (fishLeft.value === 0) return;   /* 未知（null）不拦：真限额由服务端 bottle-limit-fish 兜底 */
+  if (fishing.value) return;          /* 轮 254：loading 态的 n-button 仍会派发 click，防重入 */
+  const gen = ++fishGen;
+  const alive = () => gen === fishGen;
   fishing.value = true;
   mailHint.value = "";
   /* 轮 26：按下**瞬间**就弹「撒网中」——不再等网络回来才有反应（反馈 <100ms，
@@ -162,6 +180,7 @@ async function doFish() {
     ]);
     if (!l || !l.id) {
       /* 竞态兜底（轮 18）：服务端抢占落空返回空 → 明示「海里暂时没信」，绝不扣次数 */
+      if (!alive()) return;   /* 轮 254：会话已作废——连空捞提示也不补弹 */
       mailHint.value = t("bottle.errEmpty");
       fishPop.value = { show: true, mode: "msg", letter: null, msg: t("bottle.errEmpty") };
       return;
@@ -171,18 +190,20 @@ async function doFish() {
      * （本机账本已删），这里只回读一次服务端权威值（服务端记账在 bottle_reply()）。 */
     mergePending();
     syncQuota();
-    /* 轮 22：捞到了 → 居中弹窗直接展示这封信（可就地回信/放回，不再让人猜捞没捞到） */
-    if (route.query.tab === "bottle") fishPop.value = { show: true, mode: "got", letter: l, msg: "" };
+    /* 轮 22：捞到了 → 居中弹窗直接展示这封信（可就地回信/放回，不再让人猜捞没捞到）。
+     * 轮 254：会话已作废（人已切走）→ 与「不在漂流瓶联」同一条路：信进「手里」托盘，不补弹窗 */
+    if (alive() && route.query.tab === "bottle") fishPop.value = { show: true, mode: "got", letter: l, msg: "" };
     else refreshBottle();   /* 人不在漂流瓶联:信进「手里」托盘,不弹窗 */
   } catch (e) {
     const k = String(e && e.message) === "bottle-slow" ? "bottle.errSlow" : bottleErrKey(e);
+    /* 轮 20：限额报错 → 立即同步服务端次数（一次点击内对齐，不再「显示还能捞但说用完」） */
+    if (k === "bottle.errFishLimit") syncQuota();
+    if (!alive()) return;   /* 轮 254：会话已作废——切走回来不补弹旧提示（超时/出错一律丢弃） */
     mailHint.value = t(k);
     /* 轮 22：点了捞却没动静的几类原因（海里空/今天用完/囤太多）也弹窗说清 */
     if (route.query.tab === "bottle") fishPop.value = { show: true, mode: "msg", letter: null, msg: t(k) };
     else mailHint.value = t(k);
-    /* 轮 20：限额报错 → 立即同步服务端次数（一次点击内对齐，不再「显示还能捞但说用完」） */
-    if (k === "bottle.errFishLimit") syncQuota();
-  } finally { fishing.value = false; }
+  } finally { if (alive()) fishing.value = false; }
 }
 
 /* 回信/放回按信独立操作：待处理信箱可同时有多封，互不阻塞 */
@@ -245,10 +266,14 @@ async function doRelease(l) {
  * onSessionChanged 里用到的 const 一定都已初始化 —— 修 TDZ 崩溃，见上方注释）。 */
 onMounted(() => { purgeLegacyBottleLocals(); onSessionChanged(); });
 /* 轮 238 · 离开漂流瓶联:弹窗即关（信在「手里」随时可找回）——
- * 旧版无关闭钮 + 蒙版不关 + 跟着人走到别的联（用户实测困在宠物页），全修。 */
+ * 旧版无关闭钮 + 蒙版不关 + 跟着人走到别的联（用户实测困在宠物页），全修。
+ * 轮 254：升级为 abandonFish() —— 关弹窗之外还作废在飞会话（不补弹旧弹窗）。 */
 watch(() => route.query.tab, (v) => {
-  if (v !== "bottle" && fishPop.value.show) fishPop.value.show = false;
+  if (v !== "bottle") abandonFish();
 });
+/* 轮 254 · 切页（HomeView 被 KeepAlive 保活，watch(route.query.tab) 覆盖不到
+ * 「离开首页整页」这条路）：组件失活即作废会话——切走再回来绝不弹旧弹窗。 */
+onDeactivated(abandonFish);
 
 /* —— 漂流瓶记录（#17）：我发布的 / 我捞到的 两类，按发布时间新→旧，10 条一页 —— */
 const REC_PAGE = 10;

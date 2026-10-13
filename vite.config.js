@@ -112,6 +112,16 @@ function seoRoutes() {
       const distDir = path.join(rootDir, "dist");
       const tpl = path.join(distDir, "index.html");
       if (!fs.existsSync(tpl)) return;
+      /* 轮 261：失败构建也会触发 closeBundle（rollup 出错时 bundle.close() 照跑）——
+         此时 tpl 还是上一次构建的成品（首页正文已烤进挂载点，不再是干净壳），
+         拿它当模板给子页 replace('<div id="app"></div>') 会全部失配，
+         所有预渲染子页被首页 hero 覆盖（隐私正文整段丢失，privacy-test P34 实测踩过）。
+         干净壳的唯一形态就是纯净挂载点；不匹配 = 壳不是本次新吐的，整段跳过，
+         子页保留上次成功构建的正确产物。 */
+      if (!fs.readFileSync(tpl, "utf8").includes('<div id="app"></div>')) {
+        console.log("\n  seo-routes  跳过（index.html 已烤过正文，非本次干净壳——失败构建触发的 closeBundle）\n");
+        return;
+      }
       const SITE = "https://warmpaws.de5.net";
       /* og:description / twitter:description 共用的占位串（来自 index.html），子页替换用 */
       const ROOT_DESC_TEXT =
@@ -291,14 +301,16 @@ function seoRoutes() {
       }
       /* 首页本体也注入正文（先做子页再做首页，子页拿到的模板仍是干净壳） */
       {
+        /* 轮 261：干净壳只读一次给 en/zh 共用——旧代码先烤英文写回 tpl、zh 再重读，
+           拿到的已是烤过英文正文的壳，replace('<div id="app"></div>') 失配，
+           /zh 首页正文永远停留在英文 hero（head 是中文、正文是英文，实测踩过）。 */
+        const clean = fs.readFileSync(tpl, "utf8");
         const heroHome = hero(E.home.heroTitle, [
           E.home.heroSub.split("{n}").join("Warm Paws"),
           E.home.companions.title + ". " + E.home.companions.hall,
           E.home.mood.title + " " + E.home.mood.subtitle,
         ]);
-        let h = fs.readFileSync(tpl, "utf8");
-        /* 轮 83：首页正文同样包 .seo-static（理由见上方子页注入处） */
-        h = bakePage(h, { title: "Warm Paws · A gentle place to be", desc: ROOT_DESC_TEXT, dir: "", html: heroHome, zh: false });
+        let h = bakePage(clean, { title: "Warm Paws · A gentle place to be", desc: ROOT_DESC_TEXT, dir: "", html: heroHome, zh: false });
         fs.writeFileSync(tpl, h);
         made++;
         /* 轮 86：zh 首页 /zh */
@@ -307,8 +319,7 @@ function seoRoutes() {
           ZH.home.companions.title + "。" + ZH.home.companions.hall,
           ZH.home.mood.title + " " + ZH.home.mood.subtitle,
         ]);
-        let zh = fs.readFileSync(tpl, "utf8");
-        zh = bakePage(zh, {
+        let zh = bakePage(clean, {
           title: "暖爪 · 一个可以安心落脚的地方",
           desc: `${ZH.home.heroTitle}。${ZH.home.heroSub.split("{n}").join("Warm Paws")}`,
           dir: "", html: zhHeroHome, zh: true,

@@ -439,14 +439,13 @@ function onToggleFramed(d) {
       <div v-if="!away" class="pet-stage" @click="onStageClick">
         <div v-if="petUi.speech" class="speech-bubble">{{ petUi.speech }}</div>
         <div v-if="activePet.sleeping" class="zzz"><span>z</span><span>Z</span><span>Z</span></div>
-        <PetMotion :pet="activePet" />
+        <PetMotion :pet="activePet" :acc="wornAcc" />
         <SeasonFx :count="9" />
         <div v-if="framedDishes.length" class="gallery-strip">
           <span v-for="d in framedDishes" :key="d.id" class="g-frame">
             <img :src="d.img" alt="" />
           </span>
         </div>
-        <div v-if="wornAcc" class="acc-wear" :style="{ top: wornAcc.dy + 'px' }">{{ wornAcc.ico }}</div>
         <div class="fx-layer">
           <span
             v-for="f in fxList" :key="f.id" class="fx"
