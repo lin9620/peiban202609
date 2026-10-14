@@ -486,7 +486,11 @@ const brightRatio = computed(() => {
         <h2>{{ t("profile.myPosts") }}</h2>
         <router-link class="my-posts-link" to="/my-posts">{{ t("profile.more") }} →</router-link>
       </div>
-      <p v-if="myPostsBusy" class="sub">…</p>
+      <!-- 轮 287：busy 占位只在「屏上本来就没帖子」时显示（首拉无缓存）。
+           onActivated 静默刷新会置 busy=true——若无条件渲染这个 …，返回页签的瞬间会把
+           KeepAlive 原样保留的帖子盖掉，等网络回来（跨境 2~5s）才放出，用户报「点别的
+           页面再返回还要等几秒帖子才出现」。暖心墙口径：有内容在屏就永不遮。 -->
+      <p v-if="myPostsBusy && !myPosts.length" class="sub">…</p>
       <p v-else-if="!myPosts.length" class="sub">{{ t("profile.myPostsEmpty") }}</p>
       <!-- 轮 18：与暖心墙完全同款的帖子卡（头像/署名/时间/全文/配图/回应数/浏览数）；
            轮 20：整卡点击进独立详情页 /post/:id（完整帖子+评论展开），不再跳回暖心墙列表 -->
