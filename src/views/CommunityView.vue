@@ -1886,15 +1886,14 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
       paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'calc(70px + env(safe-area-inset-bottom))',
           visibility: feedRestoring ? 'hidden' : 'visible' }
       : { visibility: feedRestoring ? 'hidden' : 'visible' }">
-    <!-- 轮 284：下拉指示条从裸字符 ↓ 换成循环箭头 SVG——跟手旋转（下拉多长转多少），
-         过 62px 阈值变主题色，把「拉到什么程度」直接画在图标上。 -->
+    <!-- 轮 286（用户：「转来转去的，那是个什么玩意」）——轮 284 做成了跟手连续旋转（拉多长转多少），
+         转起来像个坏掉的风扇。改回 Material 口径：箭头默认朝下，过 62px 阈值才 180° 翻转朝上
+         （表示「可以松手了」），带缓动只在跨阈值那一下转，拉动过程本身不转。 -->
     <div class="wall-pull" :style="{ height: pullDist + 'px', opacity: pullDist / 62 }">
       <svg class="wp-ic" viewBox="0 0 24 24" aria-hidden="true"
-        :class="{ ready: pullDist >= 62 }"
-        :style="{ transform: 'rotate(' + (pullDist / 90) * 360 + 'deg)' }">
-        <polyline points="21 4 21 10 15 10" />
-        <polyline points="3 20 3 14 9 14" />
-        <path d="M5.06 9a8 8 0 0 1 13.18-3L21 8M3 16l2.76 2a8 8 0 0 0 13.18-3" />
+        :class="{ ready: pullDist >= 62 }">
+        <path d="M12 4v14" />
+        <polyline points="6 13 12 19 18 13" />
       </svg>
     </div>
     <!-- 头部 + 发布框（手机端收起：发布统一走底部 ＋ → 独立发布页，页顶不再占一屏）
@@ -2314,11 +2313,12 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
 
 <style scoped>
 /* 下拉刷新指示条（轮 18）：跟手拉伸，松手回弹。
-   轮 284：图标换循环箭头 SVG —— rotate 由模板按 pullDist 绑定（拉多长转多长，
-   90px 拉满转一整圈），过 62px 阈值 .ready 变主题色，把「能不能松手」画在图标上。 */
+   轮 286：Material 口径——箭头默认朝下，过 62px 阈值 .ready 180° 翻转朝上（缓动 0.25s，
+   只在跨阈值那一下转）+ 变主题色；拉动过程不转（轮 284 的跟手连续旋转被用户吐槽「转来转去」）。 */
 .wall-pull { display: flex; align-items: center; justify-content: center; overflow: hidden; color: var(--ink-soft); transition: height .15s ease; }
 .wp-ic { width: 22px; height: 22px; flex: none;
   fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round;
-  transition: color .15s ease; }
-.wp-ic.ready { color: var(--accent-deep); }
+  transform: rotate(0deg);
+  transition: transform .25s cubic-bezier(.4, 0, .2, 1), color .15s ease; }
+.wp-ic.ready { color: var(--accent-deep); transform: rotate(180deg); }
 </style>
