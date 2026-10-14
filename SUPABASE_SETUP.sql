@@ -79,12 +79,14 @@ create table if not exists public.wall_comments (
   user_id       uuid not null references auth.users (id) on delete cascade,
   author_name   text not null default 'Guest',
   body          text not null check (char_length(body) between 1 and 200),
-  created_at    timestamptz not null default now()
+  created_at    timestamptz not null default now(),
+  deleted_at    timestamptz                          -- 轮 285：软删时间戳（空 = 没删；删评论不删行，好让下面的二级回复活下来）
 );
 
--- 已建过库的用户：补 parent_id / reply_to_name 列（幂等，重复执行无副作用）
+-- 已建过库的用户：补 parent_id / reply_to_name / deleted_at 列（幂等，重复执行无副作用）
 alter table public.wall_comments add column if not exists parent_id bigint;
 alter table public.wall_comments add column if not exists reply_to_name text;
+alter table public.wall_comments add column if not exists deleted_at timestamptz;
 do $$
 begin
   if not exists (
@@ -115,6 +117,33 @@ create policy "comments insert by auth" on public.wall_comments
   for insert with check (auth.uid() = user_id);
 create policy "comments delete own" on public.wall_comments
   for delete using (auth.uid() = user_id);
+
+-- 轮 285 · 删评论改软删（与 MIGRATION_comment_delete.sql 同源，新库直接建齐）：
+-- 上面的 delete 策略保留着（老行为的兜底路径仍会用到），但**前端不再硬删**——
+-- 改调这个 security definer RPC 写 deleted_at：行留着 → parent_id 的
+-- on delete cascade 永不触发 → 一级评论下面的二级回复不会被连带删光。
+-- 为什么必须走 RPC：wall_comments 只有 select / insert / delete 策略，没有 update 策略，
+-- 直接 update 会被 RLS 拒（42501）；函数内仍按 auth.uid() 卡「只能删自己的」。
+create or replace function public.wall_comment_delete(p_id bigint)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  n int;
+begin
+  update public.wall_comments
+     set deleted_at = now()
+   where id = p_id
+     and user_id = auth.uid()
+     and deleted_at is null;
+  get diagnostics n = row_count;
+  return n > 0;
+end;
+$$;
+revoke all on function public.wall_comment_delete(bigint) from public;
+grant execute on function public.wall_comment_delete(bigint) to anon, authenticated;
 
 -- 4) 回应（抱抱/暖暖/同感）：每人每帖每种一次
 create table if not exists public.wall_reactions (

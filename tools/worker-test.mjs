@@ -238,6 +238,31 @@ async function hit(script, path, init) {
   ok("deleteComment 出站 URL/方法/204",
     c.outbound[0].url === `${ORIGIN}/rest/v1/wall_comments?id=eq.c1` && c.outbound[0].init.method === "DELETE" && res.status === 204);
 }
+/* ── 轮 285 · 删评论改软删（保住下面的二级回复） ── */
+{
+  const { res, c } = await hit([{ status: 200, body: true }], "/api/comments/delete",
+    { method: "POST", body: JSON.stringify({ id: 7 }), headers: { "content-type": "application/json" } });
+  ok("软删：POST /comments/delete → rpc wall_comment_delete（写 deleted_at，不 DELETE 行 → 级联不触发）",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/wall_comment_delete`
+      && c.outbound[0].init.method === "POST"
+      && c.outbound[0].init.body === JSON.stringify({ p_id: 7 })
+      && res.status === 200,
+    JSON.stringify({ url: c.outbound[0] && c.outbound[0].url, body: c.outbound[0] && c.outbound[0].init.body, status: res.status }));
+}
+{
+  /* 老库没跑 MIGRATION_comment_delete.sql：上游 404/PGRST202 必须原样透传，
+     前端正是认出这条消息才退回硬删路由 —— 吞掉就变成「删不掉」 */
+  const { res } = await hit(
+    [{ status: 404, body: { code: "PGRST202", message: "Could not find the function public.wall_comment_delete(p_id) in the schema cache" } }],
+    "/api/comments/delete", { method: "POST", body: JSON.stringify({ id: 7 }), headers: { "content-type": "application/json" } });
+  const j = await res.json();
+  ok("软删：函数缺失时 404/PGRST202 原样透传（不吞错）", res.status === 404 && j.code === "PGRST202", res.status + " " + JSON.stringify(j));
+}
+{
+  const { res } = await hit([], "/api/comments/delete",
+    { method: "POST", body: JSON.stringify({ id: "not-a-number" }), headers: { "content-type": "application/json" } });
+  ok("软删：非法 id → 400 bad-id", res.status === 400, String(res.status));
+}
 
 /* ─────────── 回应 ─────────── */
 {

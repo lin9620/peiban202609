@@ -101,6 +101,9 @@ export function rowsToComments(rows) {
     /* 二级评论：parent_id 是 DB 主键，这里统一加上 c 前缀，和 id 命名保持一致 */
     parentId: r.parent_id ? "c" + r.parent_id : null,
     replyTo: r.reply_to_name || "",
+    /* 轮 285：软删标记 —— deleted_at 有值 = 作者已删（正文留库、界面渲染「已删除」占位，
+     * 于是它的二级回复能留在原位）。老库没这列 → undefined → false，与迁移前一致。 */
+    deleted: !!r.deleted_at,
     /* 轮 84：评论回应计数（去归一化列，RPC wall_toggle_comment_reaction 维护）。
      * 旧库没跑迁移时这两列不存在 → undefined，reactCount 纯函数会归 0，不炸。 */
     reacts: { heart: r.hearts, broken: r.brokens },
@@ -278,11 +281,45 @@ export async function cloudSearchPosts({ q = "", tags = [], limit = 20, before =
 }
 
 /** 拉取某帖评论（旧→新），失败返回 null */
+/* ═══ 轮 282 · 评论 SWR 缓存（对标知乎/小红书磁盘缓存评论区）═══
+ * 实测（本机→Supabase 跨境）：空查询 RTT 800~2550ms、评论查询 841~1250ms ——
+ * 慢在网络往返不在查询。旧实现每次点开评论都重新走网络（无本地快照），
+ * 详情页更是「帖子 1 个 RTT → 评论再 1 个 RTT」串行 = 手机上 2~6 秒空白。
+ * 现在：进详情/点开评论先 0ms 渲染缓存评论，网络回来覆盖（fresh）；发/删评论后
+ * 调 cmtCacheSet 回写，下次打开不闪旧数据。key 按帖子 dbId 分（评论本就公开可读）。 */
+export function cmtCacheKey(dbId) {
+  return cacheKey("wall:cmts", dbId);
+}
+export function cmtCacheSet(dbId, rows) {
+  if (dbId == null || !Array.isArray(rows)) return;
+  try { cacheSet(cmtCacheKey(dbId), rows); } catch (e) { /* 缓存写不进不挡评论本身 */ }
+}
+
 export async function cloudFetchComments(dbPostId) {
   if (!canReadWall()) return null;
   try {
+    /* 轮 275：评论顺序串行「先取全量评论、再取我的回应」——后一个请求堵住前一个的
+     * 渲染，用户点开评论看到的是「第二个请求回来后」的内容。改成：
+     * 先发评论请求，渲染完再在后台补我的回应高亮（myReacts 只管高亮、不管列表）。 */
     const data = await db.listComments(dbPostId, 200);
-    return rowsToComments(data || []);
+    const rows = rowsToComments(data || []);
+    /* 轮 282：拉成功即落盘缓存（mineReady 是函数属性，JSON 序列化自然丢弃不进缓存）——
+     * 下次详情页/墙内点开 0ms 渲染，网络回来才覆盖。数据层落缓存，两个视图都受益。 */
+    try { cacheSet(cmtCacheKey(dbPostId), rows); } catch (e) { /* 落盘失败不影响本次返回 */ }
+    /* 我的回应高亮后台补：调用方把返回的 promise 挂上（.then 无感合并），
+     * 不阻塞评论列表上屏。失败静默（只是少了高亮）。 */
+    rows.mineReady = (async () => {
+      try {
+        const ids = rows.filter((r) => r.dbId != null).map((r) => r.dbId);
+        if (!ids.length || !cloud.user || !cloud.user.id) return;
+        const mine = await db.listMyCommentReactions(ids, cloud.user.id);
+        if (!mine) return;
+        const map = {};
+        for (const r of mine) { (map[r.comment_id] = map[r.comment_id] || []).push(r.kind); }
+        for (const cm of rows) { if (map[cm.dbId]) cm.myReacts = map[cm.dbId]; }
+      } catch (e) { /* 忽略 */ }
+    })();
+    return rows;
   } catch (e) {
     console.warn("[cloud] fetchComments:", e);
     return null;
@@ -386,8 +423,11 @@ export async function cloudFetchCommentCounts(dbPostIds) {
 export async function cloudDeleteComment(dbCommentId) {
   if (!canUseWall()) return false;
   try {
-    await db.deleteComment(dbCommentId);
-    return true;
+    /* 轮 285：适配层现在走软删 RPC，返回 false = 一行没改成（非本人 / 已删过 / JWT 无效）。
+     * 必须当失败处理让视图回滚乐观标记，否则会出现「界面上删了、库里还在」的假成功。
+     * 未跑迁移退回硬删时返回的是 null（204 无 body），不是 false，不受影响。 */
+    const r = await db.deleteComment(dbCommentId);
+    return r !== false;
   } catch (e) {
     console.warn("[cloud] deleteComment:", e);
     return false;

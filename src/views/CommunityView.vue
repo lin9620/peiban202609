@@ -20,13 +20,13 @@ import { getItem, setItem, removeItem } from "../utils/storage.js";
 import { restoreScroll } from "../utils/scrollMem.js";
 /* 轮 32：个人数据键按账号分域（游客账/各登录账号互不串），读写走 scopeGet/scopeSet */
 import { scopeGet, scopeSet, scopeGetRaw, scopeSetRaw } from "../utils/userScope.js";
-import { cacheKey, cacheSet, swr } from "../utils/cache.js";
+import { cacheKey, cacheSet, cacheGet, swr } from "../utils/cache.js";
 /* 轮 84：墙内前 3 条 / 查看更多 / 评论回应 / 拷贝文本。
    注意：import 大括号内不要写注释 —— undef-check 的导入解析器会把注释与下一个名字粘连（踩过）。 */
 import {
   CMT_KEY, addComment, removeComment, displayCount,
   canDelete, normalizeText, postKey, MAX_LEN,
-  topComments, repliesOf, replyCount,
+  renderTops, renderReplies, liveComments,
   wallTopComments, hasMoreComments, reactCount, toggleReact,
   hasReacted as cmtHasReacted, postCopyText, commentCopyText,
 } from "../utils/comments.js";
@@ -45,6 +45,7 @@ import {
   cloudAddView, cloudToggleDislike,
   cloudFetchMyCommentReactions, cloudToggleCommentReaction,
   cloudFavIds, cloudFavAdd, cloudFavRemove, cloudSearchPosts, favCacheInsert, favCacheRemove,
+  cmtCacheKey, cmtCacheSet,
 } from "../utils/wall.js";
 /* 进阶规则（纯函数，Node 单测覆盖）：排序 / 浏览去重 / 厌恶比例下架 / 每日一条 */
 import {
@@ -61,6 +62,7 @@ import { filterBlocked, refreshBlocks } from "../utils/userBlocks.js";
 /* 轮 84：…菜单的「拷贝」（WebView 里 navigator.clipboard 缺失时 execCommand 兜底） */
 import { copyText } from "../utils/clipboard.js";
 import { avatarUrlFor } from "../utils/avatar.js";   /* 轮 238:萌宠头像池 */
+import { setPostNav } from "../utils/postNav.js";    /* 轮 279:进详情前存列表快照,左右滑用 */
 import {
   validateImageFile, isSaneShape, isUsableDataUrl, shrinkToDataUrl,
 } from "../utils/imaging.js";
@@ -141,8 +143,9 @@ const refreshText = computed(() => ({
 }[refreshNote.value] || ""));
 /* 轮 227：提示停留时长按状态区分——用户反馈「没刷出来，再试一次」这条停太久
    （原来是统一 2500ms）。失败提示只需告知「这次没成」，看一眼就够，不该杵在那儿；
-   成功 / 换批稍长些无妨（要看清刷新出结果了）。 */
-const NOTE_FAIL_MS = 1200;
+   成功 / 换批稍长些无妨（要看清刷新出结果了）。
+   轮 284（用户：再减 1/3）：1200 → 800ms。 */
+const NOTE_FAIL_MS = 800;
 const NOTE_OK_MS = 2200;
 const noteMs = (s) => (s === "fail" ? NOTE_FAIL_MS : NOTE_OK_MS);
 const newestSeenTs = ref(0);   /* 轮 73：补上缺失声明（真新帖判定用） */
@@ -633,7 +636,9 @@ async function cmtReact(p, cm, kind) {
   delete next[cm.id];
   cmtReactBusy.value = next;
 }
-/* 展开评论区后补拉「我点过的」；失败静默（只是少了高亮，不影响计数展示） */
+/* 展开评论区后补拉「我点过的」；失败静默（只是少了高亮，不影响计数展示）
+ * 轮 275：cloudFetchComments 已内置后台补高亮（mineReady），这里保留给「发评论/
+ * 回复等操作后」的即时刷新用 —— 操作后行数组已变，mineReady 的闭包是旧数组。 */
 async function loadCmtMine(p, rows) {
   const ids = (Array.isArray(rows) ? rows : []).filter((r) => r.dbId != null).map((r) => r.dbId);
   if (!ids.length || !cloud.user || !cloud.user.id) return;
@@ -910,13 +915,17 @@ function persistCmt() {
 function cmtKey(p) { return postKey(p); }
 /* 该帖评论是否已拉到本地：是数组 → 本地列表为准；undefined → 用云端聚合数（见 displayCount） */
 function listed(p) { return comments.value[cmtKey(p)]; }
+/* 轮 285：一律先过 renderTops / renderReplies（软删口径）——
+ * 一级评论「删了但下面还有活回复」才留成「该评论已删除」占位，没有活回复的整条不画；
+ * 二级回复删了直接不画（两级封顶，回复下面不会再有下级）；计数走 liveComments。 */
+function allOf(p) { const a = listed(p); return Array.isArray(a) ? a : []; }
 /* 一级评论（主列表）。轮 84：墙内只展示前 WALL_TOP_LIMIT(3) 条；更多 → 「查看更多」进详情页。
  * 顺序维持原口径（按发布先后），详情页里才提供 最新/最热 排序。 */
-function listFor(p) { return wallTopComments(topComments(comments.value, p)); }
-function hasMoreCmts(p) { return hasMoreComments(topComments(comments.value, p)); }
-/* 某条一级评论下的回复（二级） */
-function repliesFor(p, cm) { return repliesOf(comments.value, p, cm.id); }
-function repliesN(p, cm) { return replyCount(comments.value, p, cm.id); }
+function listFor(p) { return wallTopComments(renderTops(allOf(p))); }
+function hasMoreCmts(p) { return hasMoreComments(renderTops(allOf(p))); }
+/* 某条一级评论下的回复（二级；软删的不进列表） */
+function repliesFor(p, cm) { return renderReplies(allOf(p), cm.id); }
+function repliesN(p, cm) { return repliesFor(p, cm).length; }
 /* 轮 50：二级回复默认显示前两条（用户拍板，不再默认全收起）；
    >2 条时「N 条回复」按钮 = 展开全部 ↔ 收回默认两条。 */
 function visibleReplies(p, cm) {
@@ -927,11 +936,12 @@ function visibleReplies(p, cm) {
 function countFor(p) {
   return displayCount(listed(p), cloudCmtTotal.value[cmtKey(p)] || 0);
 }
-/* 云端帖评论总数随本地增删走：写/删一条后同步一下缓存，避免回退显示旧数字 */
+/* 云端帖评论总数随本地增删走：写/删一条后同步一下缓存，避免回退显示旧数字
+ * 轮 285：软删行不计入（与 displayCount / renderTops 的口径一致） */
 function syncTotal(p) {
   const k = cmtKey(p);
   if (p.cloud && Array.isArray(listed(p))) {
-    cloudCmtTotal.value = { ...cloudCmtTotal.value, [k]: listed(p).length };
+    cloudCmtTotal.value = { ...cloudCmtTotal.value, [k]: liveComments(listed(p)).length };
   }
 }
 /* 评论字数：输入框已用 :maxlength 硬限制在 MAX_LEN，这里只做展示（0 = 已达上限） */
@@ -963,6 +973,7 @@ const replyRp = ref({});
 function replyRpOf(p, cm) { return replyRp.value[repKey(p, cm)] || null; }
 /* 回复一级评论：挂到它下面，不 @（视觉上已经挨着作者） */
 function openReply(p, cm) {
+  if (cm && cm.deleted) return;   /* 轮 285：墓碑没有回复入口（整条接管点击也不该弹输入框） */
   /* #28 未登录不能回复云端帖 */
   if (p.cloud && !signedIn.value) return showWallMsg("community.commentSignIn");
   /* 轮 98：取消按钮已移除 —— 再点同一条的「回复」= 收起该框（无二级框开着时） */
@@ -986,6 +997,8 @@ function clearReplyToRp(p, cm) {
 }
 /* 回复某条回复：输入框就地出现在「这条二级评论」下方（仍挂在同一个一级评论下，两级封顶），并 @ 这位回复者 */
 function openReplyTo(p, cm, rp) {
+  if (cm && cm.deleted) return;                 /* 轮 285：墓碑没有回复入口 */
+  if (rp && rp.deleted) return;                 /* 轮 285：软删的回复本来也不渲染，兜一手 */
   /* #28 未登录不能回复云端帖 */
   if (p.cloud && !signedIn.value) return showWallMsg("community.commentSignIn");
   /* 轮 98：再点同一条回复的「回复」= 收起该框 */
@@ -1072,6 +1085,18 @@ function loadThread(p, force = false) {
   if (!p.cloud || !canReadWall()) return;
   const k = cmtKey(p);
   if (cmtLoading.value[k]) return;
+  /* 轮 282：展开瞬间先渲染评论磁盘缓存（0ms 出内容）——实测网络 RTT 800~2500ms，
+   * 旧实现点开要干等网络。缓存命中即上屏；下面的网络拉取仍按 TTL 回填覆盖。
+   * filterBlocked 本地执行（拉黑表也是缓存的），缓存版不含 mineReady（回填时补）。 */
+  if (!force && !comments.value[k]) {
+    try {
+      const snap = cacheGet(cmtCacheKey(p.dbId));
+      if (Array.isArray(snap) && snap.length) {
+        comments.value = { ...comments.value, [k]: filterBlocked(snap) };
+        cloudCmtTotal.value = { ...cloudCmtTotal.value, [k]: snap.length };
+      }
+    } catch (e) { /* 缓存读失败照常走网络 */ }
+  }
   if (!force && Date.now() - (cmtFetchedAt.value[k] || 0) < CMT_TTL) return;
   cmtFetchedAt.value = { ...cmtFetchedAt.value, [k]: Date.now() };
   cmtLoading.value = { ...cmtLoading.value, [k]: true };
@@ -1086,7 +1111,12 @@ function loadThread(p, force = false) {
     }
     comments.value = { ...comments.value, [k]: filterBlocked(rows) };
     cloudCmtTotal.value = { ...cloudCmtTotal.value, [k]: rows.length };
-    loadCmtMine(p, rows);   /* 轮 84：补拉「我点过的评论回应」（高亮用，失败静默） */
+    /* 轮 275：列表先行上屏；mineReady 是后台补高亮的 promise。
+     * 注意 mineReady 闭包写的是 cloudFetchComments 返回的**原数组行对象**：
+     * 无拉黑名单时 filterBlocked 原样返回同一数组（同引用，无感合并）；
+     * 有拉黑时 filter 产新数组但行对象仍是同一批引用 —— 高亮写入行对象本身，
+     * 这里再触发一次响应式即可。 */
+    if (rows.mineReady) rows.mineReady.then(() => { comments.value = { ...comments.value }; }).catch(() => {});
   });
 }
 function toggleCmt(p) {
@@ -1260,6 +1290,7 @@ async function openMainBar(p) {
  * 云端帖未登录 = 原拦截提示（两平台一致）。再点同目标的「回复」= 收起底部条 */
 function replyViaBar(p, cm, rp = null, e = null) {
   if (e) e.stopPropagation();   /* 不让同一击冒泡去触发「点空白收起」/整层评论接管 */
+  if (cm && cm.deleted) return;   /* 轮 285：墓碑没有回复入口（手机端整条评论可点的接管层也拦在这） */
   if (!isMobileNav.value || (p.cloud && !signedIn.value)) {
     if (rp) openReplyTo(p, cm, rp); else openReply(p, cm);
     return;
@@ -1325,6 +1356,7 @@ async function sendCmt(p, cm = null) {
   const draftRef = cm ? repDraft : cmtDraft;
   const text = draftRef.value[rk];
   if (!normalizeText(text)) return;
+  if (cm && cm.deleted) return;   /* 轮 285：不给已删除的评论继续挂新回复 */
   /* #28 未登录不能评论云端帖（评论只存本机、别人看不到，会误导）；示例帖保持本地演示 */
   if (p.cloud && !signedIn.value) return;
   /* 回复某条回复时记下的 @ 对象（回复一级评论时为空） */
@@ -1363,6 +1395,8 @@ async function sendCmt(p, cm = null) {
       return showCmtErr();
     }
     comments.value = { ...comments.value, [k]: cur.map((c) => (c.id === tmp.id ? created : c)) };
+    /* 轮 282：发成功回写该帖评论缓存（滤 pending），下次点开不闪旧数据 */
+    cmtCacheSet(p.dbId, (comments.value[k] || []).filter((c) => !c.pending));
     return;
   }
 
@@ -1391,9 +1425,12 @@ function onReplyDone(p) {
 async function delCmt(p, cm) {
   if (!canDel(cm)) return;
   if (cm.pending) return;   /* 轮 254：乐观临时行还没落库，不给删 */
-  /* 轮 254 · 乐观删除：先摘行（0ms 跟手），云端失败插回原位 */
+  /* 轮 285 · 乐观软删：removeComment 现在只标 deleted、不摘行 ——
+   * 它下面的二级回复原位不动（原实现 filter 掉 parentId 相同的行，正是
+   * 「b 删一级评论，c/d/e 的回复全丢」的来源）；云端失败再整体回滚。 */
   const before = comments.value;
   comments.value = removeComment(comments.value, p, cm.id);
+  if (moreKey.value === cmtMoreKey(cm)) moreKey.value = "";   /* 墓碑上不该再挂着 … 菜单 */
   cancelReplyIfTarget(p, cm); /* 正在回复这条时，删完就收起回复框 */
   persistCmt();
   syncTotal(p);
@@ -1403,7 +1440,10 @@ async function delCmt(p, cm) {
       comments.value = before;
       persistCmt();
       syncTotal(p);
+      return;
     }
+    /* 轮 282：删成功回写该帖评论缓存，下次点开不闪回已删评论（缓存里带 deleted，口径一致） */
+    cmtCacheSet(p.dbId, (comments.value[cmtKey(p)] || []).filter((c) => !c.pending));
   }
 }
 
@@ -1725,6 +1765,7 @@ function goProfile(p) { if (canOpen(p)) router.push({ name: "waller", params: { 
  * 示例帖与未上云的本地帖没有 dbId，无处可去 → 不响应（光标也不会变成手型，CSS 同口径）。 */
 function goDetail(p) {
   if (!p || p.dbId == null) return;
+  setPostNav(shown.value);   /* 轮 279：把「当前这张列表」存下来,详情页据此算上一条/下一条 */
   router.push({ name: "postDetail", params: { id: p.dbId } });
 }
 
@@ -1845,7 +1886,17 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
       paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'calc(70px + env(safe-area-inset-bottom))',
           visibility: feedRestoring ? 'hidden' : 'visible' }
       : { visibility: feedRestoring ? 'hidden' : 'visible' }">
-    <div class="wall-pull" :style="{ height: pullDist + 'px', opacity: pullDist / 62 }">↓</div>
+    <!-- 轮 284：下拉指示条从裸字符 ↓ 换成循环箭头 SVG——跟手旋转（下拉多长转多少），
+         过 62px 阈值变主题色，把「拉到什么程度」直接画在图标上。 -->
+    <div class="wall-pull" :style="{ height: pullDist + 'px', opacity: pullDist / 62 }">
+      <svg class="wp-ic" viewBox="0 0 24 24" aria-hidden="true"
+        :class="{ ready: pullDist >= 62 }"
+        :style="{ transform: 'rotate(' + (pullDist / 90) * 360 + 'deg)' }">
+        <polyline points="21 4 21 10 15 10" />
+        <polyline points="3 20 3 14 9 14" />
+        <path d="M5.06 9a8 8 0 0 1 13.18-3L21 8M3 16l2.76 2a8 8 0 0 0 13.18-3" />
+      </svg>
+    </div>
     <!-- 头部 + 发布框（手机端收起：发布统一走底部 ＋ → 独立发布页，页顶不再占一屏）
          轮 35：去掉与 h2 重复的小标签；副标题只在桌面显示（手机端两行文案太占首屏）
          轮 47：手机端整卡隐藏——副标题/发布框都是桌面专属后，这张卡里只剩「暖心墙」
@@ -1878,14 +1929,8 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
         <p v-if="signedIn" class="sub" style="margin: 4px 0 0">
           {{ t("community.postLeft", { n: postsLeft }) }}
         </p>
-        <div v-if="loadingCloud && !shownPage.length" class="sk-feed" aria-hidden="true">
-          <div class="sk-card" v-for="n in 2" :key="n">
-            <div class="sk-head"><span class="sk-circle"></span><span class="sk-line" style="width: 32%"></span></div>
-            <span class="sk-line" style="width: 94%"></span>
-            <span class="sk-line" style="width: 80%"></span>
-            <span class="sk-line" style="width: 42%"></span>
-          </div>
-        </div>
+        <!-- 轮 277（用户拍板）：首屏骨架退役（与底部轮 272/276 同口径：去展示留机制）——
+             数据不变（SWR 缓存秒出、无缓存等网络），加载中不再摆脉冲卡。 -->
         <p v-else-if="loadingCloud" class="notice">{{ t("community.loading") }}</p>
         <p v-if="posted" class="streak-note" style="color: var(--good); font-weight: 700">
           {{ t("community.postedThanks") }}
@@ -1918,7 +1963,14 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
           </svg>
         </span>
         <span v-else-if="refreshNote === 'fail'" class="rn-ic rn-warnic" aria-hidden="true">!</span>
-        <span v-else class="rn-ic rn-busyic" aria-hidden="true"></span>
+        <span v-else class="rn-ic" aria-hidden="true">
+          <!-- 轮 284：刷新中药丸的图标从裸 border 圆环换成「轨道 + 圆头弧线」spinner，
+               轨道淡色撑出旋转感，弧线走主题色，圆头端点更柔和 -->
+          <svg class="rn-busy" viewBox="0 0 24 24">
+            <circle class="rb-track" cx="12" cy="12" r="9" />
+            <path class="rb-arc" d="M12 3a9 9 0 0 1 9 9" />
+          </svg>
+        </span>
         <span>{{ refreshText }}</span>
       </div>
     </transition>
@@ -1955,7 +2007,14 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
         class="sort-btn wall-refresh" :class="{ spin: loadingCloud }"
         :disabled="loadingCloud"
         :title="t('community.refreshBtn')" :aria-label="t('community.refreshBtn')"
-        @click="manualRefresh">↻</button>
+        @click="manualRefresh">
+        <!-- 轮 284：字符 ↻ 换 SVG 循环箭头——只转图标不晃按钮，线条图标更精致 -->
+        <svg class="wr-ic" viewBox="0 0 24 24" aria-hidden="true">
+          <polyline points="21 4 21 10 15 10" />
+          <polyline points="3 20 3 14 9 14" />
+          <path d="M5.06 9a8 8 0 0 1 13.18-3L21 8M3 16l2.76 2a8 8 0 0 0 13.18-3" />
+        </svg>
+      </button>
     </div>
 
     <!-- 时间范围：只在「最新」之外的排序下出现（「最新」= 看全部最新内容，没有时间窗口） -->
@@ -1969,15 +2028,7 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
       </button>
     </div>
 
-    <!-- 轮 252：手机端首屏骨架（桌面端在 composer 卡内已有；这里 isMobileNav 专属，不重复） -->
-    <div v-if="isMobileNav && loadingCloud && !shownPage.length" class="sk-feed" aria-hidden="true">
-      <div class="sk-card" v-for="n in 3" :key="n">
-        <div class="sk-head"><span class="sk-circle"></span><span class="sk-line" style="width: 32%"></span></div>
-        <span class="sk-line" style="width: 94%"></span>
-        <span class="sk-line" style="width: 80%"></span>
-        <span class="sk-block"></span>
-      </div>
-    </div>
+    <!-- 轮 277（用户拍板）：手机端首屏骨架退役（与底部轮 272/276 同口径）——数据不变。 -->
 
     <!-- 轮 82 · B1 档：虚拟窗口占位块（高度由脚本按实测高度表写行内 style，撑住滚动高度） -->
     <div ref="padTopEl" class="feed-pad" :style="{ height: padTop + 'px' }" aria-hidden="true"></div>
@@ -2098,6 +2149,11 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
 
         <!-- 一级评论（轮 108 续3：整条评论点哪儿都弹底部输入条——接管层在此，内部按钮除外） -->
         <div v-for="cm in listFor(p)" :key="cm.id" class="cmt-item" @click="cmtItemTap(p, cm, $event)">
+          <!-- 轮 285：软删占位 —— 作者删掉一级评论后，昵称/正文/操作行整块换成一句「已删除」，
+               它下面的二级回复（下方 cmt-reps）原样保留：
+               正是「把 b 的评论替换成已被删除，但是下面二级评论还在」。
+               判据在 renderTops：已删的一级评论只有还挂着活回复才进列表（没回复的整条不画）。 -->
+          <template v-if="!cm.deleted">
           <div class="cmt-head">
             <b :class="{ clickable: canOpen(cm) }"
                :title="canOpen(cm) ? t('community.viewHome') : ''"
@@ -2129,6 +2185,9 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
               @click="cmtReact(p, cm, 'broken')"><span class="t-like-icon"><svg class="rc-ico t-like-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.59.94 4.5 2.35C12.91 3.94 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z"/><path d="M12 6.8 10.4 9.4l2.4 1.5-1.5 2.4 1.1 1.8"/></svg></span><span class="t-like-particles" aria-hidden="true"><i v-for="n in 8" :key="n"></i></span><i>{{ reactCount(cm, "broken") }}</i></button>
               <!-- 轮 88：「N 条回复」按钮移到回复列表底部（见下方 replies-toggle），操作行只留时间/回复/回应 -->
           </div>
+          </template>
+          <p v-else class="cmt-text cmt-gone"
+            style="color: var(--low); font-style: italic; cursor: default">{{ t("comment.deleted") }}</p>
 
           <!-- 轮 110：一级评论的回复框紧跟这条一级评论——正文/操作行之下、二级列表之上
                （用户原话「把一级评论回复框点击后出现在一级评论下面，二级评论上面，你现在是一级评论最下面」）。
@@ -2136,7 +2195,7 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
                云端帖未登录不给开：openReply 已拦截，这里再守一道（轮 91 口径不变）。 -->
           <div
             :id="'repbox-' + repKey(p, cm)"
-            v-if="isReplyOpen(p, cm) && !isMobileNav && !(p.cloud && !signedIn)" class="cmt-input cmt-input-rep">
+            v-if="!cm.deleted && isReplyOpen(p, cm) && !isMobileNav && !(p.cloud && !signedIn)" class="cmt-input cmt-input-rep">
             <!-- 轮 97：统一输入条样式 -->
             <div class="cmt-input-row">
               <van-field
@@ -2234,17 +2293,9 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
     <p v-if="shownPage.length && !hasMore && cloudDone" class="notice" style="text-align: center">
       {{ t("community.noMore") }}
     </p>
-    <p v-if="pageBusy" class="sub" style="text-align: center">{{ t("community.loading") }}</p>
-    <!-- 轮 253：触底续载迷你骨架（知乎/Reddit 式：续载时底部不断档）——
-         桌面/手机通用；搜索态用 searchBusy（pageBusy 只亮正常流）。
-         骨架 aria-hidden 不打扰读屏，文字 loading 提示照旧保留。 -->
-    <div v-show="pageBusy || (searchActive && searchBusy && searchRows.length)"
-      class="sk-feed sk-more" aria-hidden="true">
-      <div class="sk-card" v-for="n in 2" :key="n">
-        <div class="sk-head"><span class="sk-circle"></span><span class="sk-line" style="width: 40%"></span></div>
-        <span class="sk-line" style="width: 88%"></span>
-      </div>
-    </div>
+    <!-- 轮 272（用户拍板）：触底续载的底部文字 + 骨架屏整体退役——
+         「老是出来，影响观感」。续载机制原样保留（后台静默拉、行到即上屏），
+         底部只剩到底时的 noMore。搜索态的 searching 文字在 1920 行，照旧。 -->
 
     <!-- 轮 87：…菜单改 document 点击收起（原全屏遮罩被卡片堆叠上下文盖住菜单，举报/拷贝点了没反应） -->
 
@@ -2262,6 +2313,12 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
 </template>
 
 <style scoped>
-/* 下拉刷新指示条（轮 18）：跟手拉伸，松手回弹 */
+/* 下拉刷新指示条（轮 18）：跟手拉伸，松手回弹。
+   轮 284：图标换循环箭头 SVG —— rotate 由模板按 pullDist 绑定（拉多长转多长，
+   90px 拉满转一整圈），过 62px 阈值 .ready 变主题色，把「能不能松手」画在图标上。 */
 .wall-pull { display: flex; align-items: center; justify-content: center; overflow: hidden; color: var(--ink-soft); transition: height .15s ease; }
+.wp-ic { width: 22px; height: 22px; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round;
+  transition: color .15s ease; }
+.wp-ic.ready { color: var(--accent-deep); }
 </style>

@@ -10,6 +10,7 @@ import {
 import { visibleOnly, ANON_KEY, fmtWhen } from "../utils/wallRules.js";
 import { cacheKey, swr } from "../utils/cache.js";   /* 轮 158：主页聚合 SWR */
 import { avatarUrlFor } from "../utils/avatar.js";   /* 轮 238:萌宠头像池 */
+import { setPostNav } from "../utils/postNav.js";    /* 轮 279:进详情前存列表快照,左右滑用 */
 import { scopeGetRaw } from "../utils/userScope.js";
 /* 轮 33：全站拉黑（复用 dm_blocks；拉黑后 TA 的内容在我这边隐藏） */
 import { blockUser, unblockUser, isBlocked, refreshBlocks } from "../utils/userBlocks.js";
@@ -29,6 +30,14 @@ const dmBusy = ref(false);
 const dmMsg = ref("");
 const isSelf = computed(() => !!(cloud.user && cloud.user.id === uid));
 const canDm = computed(() => !!(cloud.ready && cloud.user && uid && !isSelf.value));
+
+/* 轮 271：点 TA 的帖子（正文/图）进详情页（/post/:id）——与暖心墙轮 84 同款口径：
+ * cloudFetchUserPosts 返回 rowsToPosts 同款行（dbId 恒有）；没 dbId 的行不响应。 */
+function goDetail(p) {
+  if (!p || p.dbId == null) return;
+  setPostNav(posts.value);   /* 轮 279：TA 的帖子列表快照,详情页左右滑用 */
+  router.push({ name: "postDetail", params: { id: p.dbId } });
+}
 
 async function startDm() {
   if (dmBusy.value || !canDm.value) return;
@@ -246,8 +255,8 @@ onMounted(async () => {
             <div class="post-time">{{ when(p.ts) }}</div>
           </div>
         </div>
-        <p class="post-text" v-if="p.text">{{ p.text }}</p>
-        <img loading="lazy" v-if="p.img" :src="p.img" class="pic" alt="" />
+        <p class="post-text go-detail" v-if="p.text" @click="goDetail(p)">{{ p.text }}</p>
+        <img loading="lazy" v-if="p.img" :src="p.img" class="pic go-detail" alt="" @click="goDetail(p)" />
         <div class="react-row">
           <span class="r-chip">&#129726; {{ p.reacts.hug || 0 }}</span>
           <span class="r-chip">&#9728;&#65039; {{ p.reacts.warm || 0 }}</span>

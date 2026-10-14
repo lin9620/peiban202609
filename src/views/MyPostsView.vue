@@ -9,6 +9,7 @@ import { cloud } from "../utils/supabase.js";
 import { cloudFetchUserPosts } from "../utils/wall.js";
 import { cacheKey, swr } from "../utils/cache.js";
 import { avatarUrlFor } from "../utils/avatar.js";   /* 轮 238:萌宠头像池 */
+import { setPostNav } from "../utils/postNav.js";    /* 轮 279:进详情前存列表快照,左右滑用 */
 
 /* 与暖心墙同款的三种回应（计数只读展示；点卡片回墙里互动） */
 const REACTIONS = [
@@ -117,7 +118,9 @@ async function te() {
 function whenPost(ts) { return new Date(ts).toLocaleDateString(); }
 function openWall(p) {
   /* 轮 19：独立详情页（完整帖子 + 评论展开），不再跳回暖心墙信息流 */
-  if (p.dbId != null) router.push({ path: `/post/${p.dbId}` });
+  if (p.dbId == null) return;
+  setPostNav(rows.value);   /* 轮 279：我的帖子列表快照,详情页左右滑用 */
+  router.push({ path: `/post/${p.dbId}` });
 }
 </script>
 

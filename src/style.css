@@ -1239,14 +1239,8 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 .tag-chip.on { color: #fff; background: var(--accent); }
 /* 帖子卡上的标签行：正文与图片之间 */
 .post-tags { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 2px; }
-/* 骨架屏图片占位块：按常见 4:3 给高度，加载完成后真实卡片接管 */
-.sk-block {
-  display: block; width: 100%; aspect-ratio: 4 / 3; border-radius: 12px;
-  background: var(--accent-soft); animation: t-skel-pulse 1.4s ease-in-out infinite;
-}
-/* 触底续载迷你骨架：只占两张小卡的高度，不抢滚动条 */
-.sk-more { margin: 14px 2px 4px; }
-.sk-more .sk-card { padding: 14px 16px; }
+/* 轮 277：首屏图片骨架退役（sk-block 只在退役的手机首屏骨架里用过），规则删除 */
+/* 轮 272：触底续载骨架退役（sk-more 只在 CommunityView 底部用过），规则删除 */
 
 /* ══════════ 轮 84：评论互动（…菜单 / 回应 / 时间位 / 排序 / 查看更多） ══════════ */
 
@@ -1386,13 +1380,18 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 .go-detail { cursor: pointer; }
 
 /* 轮 83：网页端刷新按钮 —— 排序行右端；点它走与触屏下拉同一条 loadCloud({fresh:true})。
- * App 壳（html.cap-app，index.html 内联脚本判定）里有原生下拉刷新，这里隐藏避免重复。 */
-.wall-refresh { margin-left: auto; font-size: 15px; line-height: 1; padding: 5px 12px; }
+ * App 壳（html.cap-app，index.html 内联脚本判定）里有原生下拉刷新，这里隐藏避免重复。
+ * 轮 284：图标 ↻ → SVG 循环箭头；spin 改挂在图标上——原来转整个按钮（连胶囊底一起晃），
+ * 现在按钮本体稳定、只转图标，视觉更稳。 */
+.wall-refresh { margin-left: auto; font-size: 15px; line-height: 1; padding: 5px 12px;
+  display: inline-flex; align-items: center; justify-content: center; }
 .wall-refresh:disabled { opacity: .55; cursor: default; transform: none; }
-.wall-refresh.spin { animation: wall-refresh-spin 1s linear infinite; }
+.wall-refresh .wr-ic { width: 16px; height: 16px; display: block;
+  fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.wall-refresh.spin .wr-ic { animation: wall-refresh-spin .9s linear infinite; }
 @keyframes wall-refresh-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
-  .wall-refresh.spin { animation: none; }
+  .wall-refresh.spin .wr-ic { animation: none; }
 }
 html.cap-app .wall-refresh { display: none; }
 
@@ -2089,9 +2088,7 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 .dm-hint { font-size: 11.5px; flex: 1; }
 .dm-err { color: #d9534f; }
 .dm-empty { text-align: center; }
-/* 轮 266：会话列表骨架屏（复用全局 sk-circle/sk-line 脉冲配方；行高对齐真行） */
-.dm-sk-rows .dm-row { pointer-events: none; }
-.dm-sk-rows .dm-row-body { flex: 1; }
+/* 轮 276：会话列表骨架退役（dm-sk-rows 只在 MessagesView 用过），规则删除 */
 .dm-back {
   align-self: center; color: var(--ink-soft); font-weight: 500; text-decoration: none; font-size: 13px;
 }
@@ -2654,19 +2651,7 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 .story-title { font-family: var(--font-display); font-size: 26px; font-weight: 600; }
 .st-sub { color: var(--ink-soft); font-size: 13px; }
 .st-hint { color: var(--ink-faint); font-size: 12px; }
-/* 轮 158：故事流骨架屏（首访无缓存时占位，shimmer 动画）；warm 配色跟随主题墨色 */
-.st-skel { display: grid; gap: 10px; }
-.st-skel-card {
-  height: 88px; border-radius: 16px;
-  background: linear-gradient(100deg, rgba(141, 131, 120, .10) 40%, rgba(141, 131, 120, .18) 50%, rgba(141, 131, 120, .10) 60%);
-  background-size: 200% 100%;
-  animation: st-skel-shine 1.2s ease-in-out infinite;
-}
-@keyframes st-skel-shine { to { background-position: -200% 0; } }
-html[data-theme="night"] .st-skel-card {
-  background: linear-gradient(100deg, rgba(139, 156, 232, .10) 40%, rgba(139, 156, 232, .20) 50%, rgba(139, 156, 232, .10) 60%);
-  background-size: 200% 100%;
-}
+/* 轮 277：故事流骨架退役（st-skel 系只在 StoryFeed 首访骨架里用过），规则删除 */
 /* 轮 168/189：表情按钮嵌进输入框右缘（微信式）——相对定位壳叠放；
    输入控件已换 Vant Field（van-field__control），避让 padding 同步更新 */
 .emo-in { position: relative; flex: 1 1 auto; min-width: 0; }
@@ -2771,8 +2756,14 @@ html[data-theme="night"] .st-skel-card {
 @keyframes rn-twinkle { 50% { transform: scale(.68) rotate(22deg); opacity: .55; } }
 .rn-warnic { color: var(--low); font-weight: 800; animation: rn-pop .3s ease-out, rn-wobble .5s ease .1s; }
 @keyframes rn-wobble { 25% { transform: rotate(-12deg); } 60% { transform: rotate(9deg); } }
-.rn-busyic { width: 15px; height: 15px; border-radius: 50%; border: 2.5px solid var(--hairline); border-top-color: var(--accent); animation: rn-spin .8s linear infinite; }
+/* 轮 284：刷新中药丸 spinner——轨道淡圈撑出旋转感 + 圆头弧线走主题色（替代旧 .rn-busyic border 圆环） */
+.rn-busy { width: 16px; height: 16px; display: block; animation: rn-spin .8s linear infinite; }
+.rn-busy .rb-track { fill: none; stroke: var(--hairline); stroke-width: 3; }
+.rn-busy .rb-arc { fill: none; stroke: var(--accent); stroke-width: 3; stroke-linecap: round; }
 @keyframes rn-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .rn-busy { animation: none; }
+}
 .st-err { color: var(--low); font-size: 13px; margin-top: 8px; }
 .st-spring { flex: 1; }
 

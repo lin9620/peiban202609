@@ -1186,18 +1186,8 @@ function goSignIn() {
           </div>
         </template>
 
-        <!-- 轮 266 · 首装/弱网骨架屏：服务端还没应答过（convsLoaded=false）且没失败时，
-             给 3 条骨架行占位——对标微信/知乎：「加载中」绝不渲染成「还没有会话」。
-             失败态由上方 loadFail 提示 + 3s 快速重试接管（成功后骨架自动让位）。 -->
-        <div v-if="!convsLoaded && !failed" class="dm-sk-rows" aria-hidden="true">
-          <div v-for="i in 3" :key="'sk' + i" class="dm-row">
-            <span class="sk-circle"></span>
-            <div class="dm-row-body">
-              <span class="sk-line" style="width: 38%"></span>
-              <span class="sk-line" style="width: 66%; margin-top: 8px"></span>
-            </div>
-          </div>
-        </div>
+        <!-- 轮 276（用户拍板）：会话列表底部骨架退役（与暖心墙轮 272 同口径：去展示留机制）。
+             convsLoaded 仍保留作「空态可信」门控；失败态的上方 loadFail 提示 + 3s 快速重试不变。 -->
 
         <p v-if="!normal.length && !requests.length && convsLoaded && !failed" class="sub dm-empty">{{ t("dm.empty") }}</p>
         </template>

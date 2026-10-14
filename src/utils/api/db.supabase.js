@@ -17,6 +17,8 @@
  *      契约测试见 tools/api-contract-test.mjs —— 换实现后跑它就知道有没有跑偏。
  */
 import { getClient } from "../supabase.js";
+/* 轮 285：删评论改软删 —— 老库没跑迁移时认出「函数还没建」再退回硬删（不把没跑迁移当删除失败） */
+import { isMissingFnError } from "../authRules.js";
 
 /** 表名集中在此：换库时只改这里的映射 */
 const T = {
@@ -246,9 +248,21 @@ export const db = {
     return unwrap(sb().from(T.comments).select("post_id").in("post_id", postIds).limit(limit));
   },
 
-  /** 删除评论（RLS 兜底：只能删自己的） */
-  deleteComment(id) {
-    return unwrap(sb().from(T.comments).delete().eq("id", id));
+  /** 删除评论（RLS 兜底：只能删自己的）
+   *  轮 285 · 改**软删**：走 security definer RPC 写 deleted_at，行不删 ——
+   *  这样 parent_id 的 on delete cascade 不触发，一级评论下面的二级回复不会被连带删光
+   *  （用户反馈的「b 删一级评论，c/d/e 的回复全丢」就是这个级联干的）。
+   *  返回值语义：RPC 返回 true = 真改到了行；false = 一行没改（非本人/已删过/JWT 无效）；
+   *  老库没跑 MIGRATION_comment_delete.sql（PGRST202/42883）→ 退回硬删，行为与迁移前一致。
+   *  出错一律上抛，降级判断在 wall.js / 视图层。 */
+  async deleteComment(id) {
+    try {
+      return await unwrap(sb().rpc("wall_comment_delete", { p_id: id }));
+    } catch (e) {
+      if (!isMissingFnError(e && e.message, e && e.code)) throw e;
+      /* 老库没这列/这函数：退回迁移前的硬删（不挡删除；代价是二级回复照旧会没） */
+      return unwrap(sb().from(T.comments).delete().eq("id", id));
+    }
   },
 
   /* ══════════ 回应（抱抱 / 暖暖 / 同感 / 厌恶） ══════════ */

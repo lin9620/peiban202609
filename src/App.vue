@@ -202,11 +202,11 @@ watch(cloudSigned, (v) => {
   if (v) {
     startBadge();
     startDmRealtime();   /* 轮 269：前台秒达通道（失败静默，轮询兜底不变） */
-    /* 轮 266：登录后补预热——首装流程是「先登录 → 再进消息页」，而启动期那次
-     * prefetchConvs 因未登录直接跳过了；不在登录时补跑，第一次进消息页必然是
-     * 冷网络（用户报障「消息记录出来的太慢」的机制原因之一）。
-     * listConvs 已单飞合并：若与启动链/消息页在途请求重叠，join 同一个，不多发。 */
+    /* 轮 266/281：登录后补预热——首装流程「先登录 → 再进页」，启动期那次预热因未登录
+     * 直接跳过；不在登录时补跑，第一次进页必然是冷网络（用户实测「我的」页三条帖子
+     * 「经常很久才出现」的断点之一）。listConvs/prefetch 有单飞/同 key SWR，重叠不多发。 */
     prefetchConvs();
+    prefetchProfilePosts();
     return;
   }
   stopBadge();

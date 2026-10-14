@@ -19,7 +19,10 @@ export function getScroll(path) {
 export function restoreScroll(path) {
   try {
     const y = mem.get(path);
-    if (y != null) window.scrollTo(0, y);
+    /* 轮 279：behavior:"instant" 必须显式给——style.css 有全局 html{scroll-behavior:smooth}，
+     * 不给的话回位会变成「先在顶部、再慢慢滑下来」的可见动画（用户实测「我的」页返回
+     * 自动下拉）。即时回位 = 页面出现即在原位，与暖心墙（滚自己的容器，天然不吃 smooth）一致。 */
+    if (y != null) window.scrollTo({ top: y, left: 0, behavior: "instant" });
     return y;
   } catch (e) { return null; }
 }

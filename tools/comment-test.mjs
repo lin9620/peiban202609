@@ -6,6 +6,8 @@ import {
   listComments, countComments, addComment, removeComment,
   canDelete, normalizeText, postKey, MAX_LEN, MAX_PER_POST,
   topComments, repliesOf, replyCount, displayCount,
+  /* 轮 285：软删口径（删一级评论不再连带删掉它的二级回复） */
+  renderTops, renderReplies, liveComments, markDeleted, isDeleted,
   /* 轮 84：评论回应 / 排序 / 墙内前 3 条 / 拷贝文本 */
   CMT_REACT_KINDS, WALL_TOP_LIMIT, SORT_MODES, reactCount, hasReacted, toggleReact,
   sortComments, wallTopComments, hasMoreComments, postCopyText, commentCopyText,
@@ -49,13 +51,16 @@ t("T3 空存储上添加真实评论即正常可见", () => {
   assert.equal(listComments(s, { id: "s1" })[0].text, "hello");
 });
 
-t("T4 删除后不会自动复活（无 seed 可复活）", () => {
+t("T4 删除后不会自动复活（无 seed 可复活）；轮 285 软删行不渲染也不计数", () => {
   let s = addComment({}, { id: "s1" }, { name: "A", text: "real" }).store;
   const c = listComments(s, { id: "s1" })[0];
   s = removeComment(s, { id: "s1" }, c.id);
-  assert.equal(listComments(s, { id: "s1" }).length, 0);
-  // 再读一次仍是空（过去靠 re-seed 会复活示范评论）
-  assert.equal(listComments(s, { id: "s1" }).length, 0);
+  /* 轮 285：行留在库里（标 deleted），渲染/计数才当它不存在；再读一次状态一致 = 没复活 */
+  assert.equal(listComments(s, { id: "s1" }).length, 1, "软删不物理摘行");
+  assert.equal(isDeleted(listComments(s, { id: "s1" })[0]), true, "被删的那条带软删标记");
+  assert.deepEqual(renderTops(listComments(s, { id: "s1" })), [], "没有活回复 → 整条不渲染");
+  assert.equal(displayCount(listComments(s, { id: "s1" }), 0), 0, "软删行不计入「N 条评论」");
+  assert.equal(listComments(s, { id: "s1" })[0].text, "real", "再读一次仍是同一条标记行，没有 re-seed 复活");
 });
 
 t("T5 空 / 纯空格输入被拒绝", () => {
@@ -87,15 +92,17 @@ t("T8 不同帖子的评论互不影响", () => {
   assert.equal(listComments(s, { id: "s2" }).length, 1, "s2 只应有自己那 1 条");
 });
 
-t("T9 删除只移除目标评论", () => {
+t("T9 删除只标记目标评论（轮 285：不摘行、不动别人）", () => {
   let s = addComment(EN, { id: "s1", sample: true }, { name: "A", text: "a" }).store;
   s = addComment(s, { id: "s1", sample: true }, { name: "A", text: "b" }).store;
   const before = listComments(s, { id: "s1", sample: true });
   const target = before.find((c) => c.text === "a");
   const after = removeComment(s, { id: "s1", sample: true }, target.id);
-  const texts = listComments(after, { id: "s1", sample: true }).map((c) => c.text);
-  assert.deepEqual(texts.filter((x) => x === "b").length, 1);
-  assert.equal(texts.includes("a"), false);
+  const all = listComments(after, { id: "s1", sample: true });
+  assert.equal(all.length, 2, "轮 285：行都还在，只是标了 deleted");
+  assert.equal(all.filter((c) => isDeleted(c)).length, 1, "只有目标被标记");
+  assert.equal(all.find((c) => c.text === "b").deleted, undefined, "另一条原样");
+  assert.deepEqual(renderTops(all).map((c) => c.text), ["b"], "已删的不进渲染列表");
 });
 
 t("T10 只能删除自己的评论", () => {
@@ -216,17 +223,24 @@ t("T22 parentId 指向不存在 / 非本帖的评论 → 退化为一级评论",
   assert.equal(topComments(cross.store, other).length, 1);
 });
 
-t("T23 删一级评论：其回复一并删除（与云端 FK 级联一致）", () => {
+t("T23 删一级评论：留成「已删除」占位，它的二级回复原样保留（用户报障回归）", () => {
   const p = { id: 91007 };
-  let s = addComment({}, p, { name: "A", text: "root" }).store;
+  let s = addComment({}, p, { name: "B", text: "root" }).store;
   const rid = topComments(s, p)[0].id;
-  s = addComment(s, p, { name: "B", text: "r1", parentId: rid }).store;
-  s = addComment(s, p, { name: "C", text: "r2", parentId: rid }).store;
+  s = addComment(s, p, { name: "C", text: "r1", parentId: rid }).store;
+  s = addComment(s, p, { name: "D", text: "r2", parentId: rid }).store;
   assert.equal(countComments(s, p), 3);
   const after = removeComment(s, p, rid);
-  assert.equal(countComments(after, p), 0);
-  assert.deepEqual(topComments(after, p), []);
-  assert.equal(after[postKey(p)], undefined, "空了要删键，存储不留空数组");
+  /* ── 用户原话：「把 b 的评论替换成已被删除，但是下面二级评论还在」 ── */
+  const all = listComments(after, p);
+  assert.equal(all.length, 3, "轮 285：谁都没被物理删除（行留着，级联才不会触发）");
+  assert.equal(all.filter((c) => isDeleted(c)).length, 1, "只有 b 被标记");
+  const tops = renderTops(all);
+  assert.equal(tops.length, 1, "占位仍进主列表");
+  assert.equal(tops[0].deleted, true, "渲染成「该评论已删除」");
+  assert.deepEqual(renderReplies(all, rid).map((c) => c.text), ["r1", "r2"], "c/d 的回复一条不少");
+  assert.equal(displayCount(all, 0), 2, "「N 条评论」不含被删的那条");
+  assert.equal(after[postKey(p)].length, 3, "存储键保留（不再是 undefined）");
 });
 
 t("T24 删一条回复不动一级评论和其它回复", () => {
@@ -237,9 +251,10 @@ t("T24 删一条回复不动一级评论和其它回复", () => {
   const delId = repliesOf(s, p, rid)[0].id;
   s = addComment(s, p, { name: "C", text: "r2", parentId: rid }).store;
   const after = removeComment(s, p, delId);
-  assert.equal(topComments(after, p).length, 1);
-  assert.equal(repliesOf(after, p, rid).length, 1);
-  assert.equal(repliesOf(after, p, rid)[0].text, "r2");
+  const all = listComments(after, p);
+  assert.equal(renderTops(all).length, 1, "一级评论照常（没删它）");
+  assert.deepEqual(renderReplies(all, rid).map((c) => c.text), ["r2"], "软删的回复不渲染，另一条原样");
+  assert.equal(isDeleted(all.find((c) => c.id === delId)), true, "被删的回复只是标了标记");
 });
 
 t("T25 displayCount：没拉评论明细时先用云端聚合数（评论数不再显示 0 —— bug 修复回归）", () => {
@@ -265,6 +280,56 @@ t("T26 每帖上限把回复也算进去（回复绕不过 MAX_PER_POST）", () 
   assert.equal(over.ok, false);
   assert.equal(over.reason, "full");
   assert.equal(replyCount(over.store, p, rid), MAX_PER_POST - 1);
+});
+
+/* ══════════ 轮 285 · 软删口径补充用例（删一级评论不再连带删掉它的二级回复） ══════════ */
+
+t("D1 占位只在「还挂着活回复」时留：回复也被删干净 → 整条消失（不留空墓碑）", () => {
+  const p = { id: 91010 };
+  let s = addComment({}, p, { name: "B", text: "root" }).store;
+  const rid = topComments(s, p)[0].id;
+  s = addComment(s, p, { name: "C", text: "r1", parentId: rid }).store;
+  const r1 = repliesOf(s, p, rid)[0];
+  const after = removeComment(removeComment(s, p, rid), p, r1.id);
+  const all = listComments(after, p);
+  assert.equal(all.length, 2, "行都还在");
+  assert.deepEqual(renderTops(all), [], "活回复没了 → 占位也不渲染");
+  assert.equal(displayCount(all, 0), 0, "计数也一并归零");
+});
+
+t("D2 markDeleted：纯函数（不改入参）+ 幂等 + 找不到原样返回", () => {
+  const list = [{ id: "a", text: "x" }, { id: "b", text: "y" }];
+  const snap = JSON.stringify(list);
+  const out = markDeleted(list, "a");
+  assert.equal(JSON.stringify(list), snap, "入参不能被改");
+  assert.equal(out[0].deleted, true, "目标被标记");
+  assert.equal(out[1].deleted, undefined, "别的行不动");
+  assert.notEqual(out, list, "返回新数组");
+  assert.equal(markDeleted(out, "a"), out, "已删过 → 原样（幂等）");
+  assert.equal(markDeleted(list, "nope"), list, "找不到 → 原样");
+  assert.deepEqual(markDeleted(null, "a"), [], "脏入参不炸");
+});
+
+t("D3 canDelete：软删过的评论不再给删（墓碑上不渲染删除钮）", () => {
+  assert.equal(canDelete({ name: "Alice", deleted: true }, "Alice"), false, "本地评论");
+  assert.equal(canDelete({ cloud: true, userId: "u1", deleted: true }, "", "u1"), false, "云端评论");
+  assert.equal(canDelete({ name: "Alice" }, "Alice"), true, "没删过的照常");
+});
+
+t("D4 renderTops/renderReplies/liveComments：脏数据与空输入安全", () => {
+  assert.deepEqual(renderTops(null), []);
+  assert.deepEqual(renderReplies(undefined, "x"), []);
+  assert.deepEqual(liveComments("nope"), []);
+  const junk = [null, 0, "s", { id: "k", parentId: null }];
+  assert.deepEqual(renderTops(junk).map((c) => c.id), ["k"], "脏行被跳过但合法行保留");
+  assert.equal(liveComments(junk).length, 4, "未标记 deleted 的行都算存活");
+});
+
+t("D5 displayCount：本地列表已拉到时按「存活行」计（软删行不计入）", () => {
+  const rows = [{ id: 1 }, { id: 2, deleted: true }, { id: 3 }];
+  assert.equal(displayCount(rows, 99), 2, "以本地为准且剔除软删行");
+  assert.equal(displayCount(rows), 2);
+  assert.equal(displayCount(undefined, 5), 5, "没拉明细仍用云端聚合数");
 });
 
 /* ══════════ 轮 84 · 评论回应 / 排序 / 墙内前 3 条 / 拷贝文本 ══════════ */

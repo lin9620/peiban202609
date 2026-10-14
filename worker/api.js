@@ -1086,6 +1086,18 @@ async function handleApi(request, env, ctx) {
           if (!id) return fail(400, "bad-id");
           return deleteRows(env, request, TABLE.comments, `id=eq.${encodeURIComponent(id)}`);
         }
+        /* 轮 285 · 删评论改软删：POST /api/comments/delete {id} → RPC wall_comment_delete。
+         * 写 deleted_at 而不是 DELETE 行 —— 行留着，parent_id 的 on delete cascade 就不触发，
+         * 一级评论下面的二级回复不会被连带删光。
+         * 老库没跑 MIGRATION_comment_delete.sql 时上游回 404/PGRST202（原样透传），
+         * 前端认出「没这个函数」就退回上面那条硬删路由，行为与迁移前完全一致。 */
+        if (seg.length === 2 && seg[1] === "delete" && m === "POST") {
+          const b = await readJson(request);
+          if (b.err) return b.err;
+          const cid = Number(b.body && b.body.id);
+          if (!Number.isFinite(cid) || cid <= 0) return fail(400, "bad-id");
+          return rpc(env, request, "wall_comment_delete", { p_id: cid });
+        }
         /* —— 轮 84 · 评论回应（👍心 / 💔碎心）—— */
         if (seg.length === 2 && seg[1] === "reactions" && m === "GET") {
           const ids = parseIds(q.get("ids"));

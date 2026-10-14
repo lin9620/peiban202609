@@ -9,9 +9,11 @@ export const router = createRouter({
    * 同组原地切换（列表↔会话）= 不动滚动（返回 false）。savedPosition = 系统返回键的前进后退。 */
   scrollBehavior(to, from, savedPosition) {
     if (to.meta && to.meta.grp && from.meta && to.meta.grp === from.meta.grp) return false;
-    if (savedPosition) return savedPosition;
+    /* 轮 279：behavior:"instant"——全局 html{scroll-behavior:smooth} 会把这里也动画化
+     * （返回页先亮在顶部再滑到记忆位 = 用户实测「自动下拉」）；即时落位零可见滚动。 */
+    if (savedPosition) return { ...savedPosition, behavior: "instant" };
     const y = getScroll(to.path);
-    return { top: y != null ? y : 0 };
+    return { top: y != null ? y : 0, behavior: "instant" };
   },
   routes: [
     /* 轮 86：/zh/* 别名 —— 中文预渲染着陆页（dist/zh/**，构建期生成）与 en 页共用同一组件；

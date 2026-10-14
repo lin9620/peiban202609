@@ -13,7 +13,9 @@ export const messages = {
   en: {
     brand: "Warm Paws",
     tagline: "A gentle place to be",
-    nav: { home: "Home", pet: "My Pet", community: "Warm Wall", bottle: "Drift bottles", story: "Story Hall", profile: "Me", expand: "Expand menu", collapse: "Collapse menu" },
+    nav: { home: "Home", pet: "My Pet", community: "Warm Wall", bottle: "Drift bottles", story: "Story Hall", profile: "Me", expand: "Expand menu", collapse: "Collapse menu",
+      /* 轮 279：详情页左右滑到头时的边界提示（zh/en 成对，用在 PostDetailView） */
+      prevEnd: "This is the first post", nextEnd: "This is the last post" },
     /* App 轨道 T5：底部 Tab Bar（与顶部 nav 独立成组，zh/en 成对） */
     tab: {
       home: "Home", community: "Wall", messages: "Messages", profile: "Me",
@@ -497,6 +499,8 @@ export const messages = {
       expandOthers: "Expand {n} more replies", collapseReplies: "Collapse replies",
       viewAllReplies: "View all {n} replies",
       barSignIn: "Sign in to comment",
+      /* 轮 285：软删占位（删一级评论不再连带删掉它的二级回复，父条渲染成这一句） */
+      deleted: "This comment was deleted",
     },
 
     rail: {
@@ -888,7 +892,9 @@ export const messages = {
   zh: {
     brand: "暖爪",
     tagline: "一个温柔的地方",
-    nav: { home: "今天", pet: "我的宠物", community: "暖心墙", bottle: "漂流瓶", story: "故事栏", profile: "我的", expand: "展开导航", collapse: "收起导航" },
+    nav: { home: "今天", pet: "我的宠物", community: "暖心墙", bottle: "漂流瓶", story: "故事栏", profile: "我的", expand: "展开导航", collapse: "收起导航",
+      /* 轮 279：详情页左右滑到头时的边界提示（zh/en 成对，用在 PostDetailView） */
+      prevEnd: "已经是第一条了", nextEnd: "已经是最后一条了" },
     /* App 轨道 T5：底部 Tab Bar（zh nav.home=「今天」，Tab 用「首页」更贴导航心智） */
     tab: {
       home: "首页", community: "暖心墙", messages: "消息", profile: "我的",
@@ -1372,6 +1378,8 @@ export const messages = {
       expandOthers: "展开其他 {n} 条回复", collapseReplies: "收起回复",
       viewAllReplies: "查看全部 {n} 条回复",
       barSignIn: "登录后即可评论",
+      /* 轮 285：软删占位（删一级评论不再连带删掉它的二级回复，父条渲染成这一句） */
+      deleted: "该评论已删除",
     },
 
     rail: {

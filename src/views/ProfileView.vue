@@ -22,6 +22,7 @@ import { db } from "../utils/api/db.js";
 import { rowsToPosts, publicUrl, aggregateReactions } from "../utils/wall.js";
 import { cacheKey, cachePeek, cacheSet, swr } from "../utils/cache.js";
 import { avatarUrlFor } from "../utils/avatar.js";   /* 轮 238:萌宠头像池 */
+import { setPostNav } from "../utils/postNav.js";    /* 轮 279:进详情前存列表快照,左右滑用 */
 
 /* 心情图标：一律用 Unicode 转义，避免源码中的 emoji 编码损坏 */
 /* 轮 155：日历表情与打卡统一——旧系统 emoji 数组退役，格子改用 MoodFace 手绘脸。
@@ -75,48 +76,64 @@ watch(
 const myPosts = ref([]);
 const myPostsBusy = ref(false);
 /* 轮 206：挂载同步秒出——用本地持久 uid（wp-uid）直接读缓存快照，不等 cloud.ready 的启动间隙。
- * （用户实测「我的页面帖子只展示前 3 条为什么也这么慢」——慢在 ready 前的空窗。） */
+ * （用户实测「我的页面帖子只展示前 3 条为什么也这么慢」——慢在 ready 前的空窗。）
+ * 轮 281：wp-uid 可能还没落位（首装登录态在 in-flight）→ 云端 uid 兜底；两个 uid 都
+ * 拿不到才退到下面的 watch 路径。key 与 App.vue prefetchProfilePosts 同一条（profile-myposts|uid）。 */
 (() => {
   try {
-    const uid = getItem("wp-uid");
+    const uid = getItem("wp-uid") || ((cloud.user && cloud.user.id) || "");
     if (!uid) return;
     const snap = cachePeek(cacheKey("profile-myposts", uid));
     if (snap && Array.isArray(snap.rows)) myPosts.value = snap.rows;
   } catch (e) { /* 忽略 */ }
 })();
+/* 轮 281：加载抽成函数——watch（登录态就绪）与 onActivated（KeepAlive 切回页签）共用。
+ * SWR 语义不变：缓存先渲染（cached），网络回来覆盖（fresh）并回写。 */
+async function loadMyPosts() {
+  const uid = (cloud.user && cloud.user.id) || "";
+  if (!uid) {
+    /* 轮 213：启动空窗不清缓存——挂载时同步秒出的缓存渲染要保留到 ready（用户实测 10s 空窗） */
+    if (!myPosts.value.length) myPosts.value = [];
+    return;
+  }
+  myPostsBusy.value = true;
+  await swr(
+    cacheKey("profile-myposts", uid),
+    {
+      cached: (rows) => { myPosts.value = rows; },
+      fresh: (rows) => { myPosts.value = rows; },
+    },
+    async () => {
+      /* 轮 213：慢网提速——先一趟 listPostsByUser 出帖子，回应数后台补（两趟串行=手机上 10s 空窗） */
+      const posts = (await db.listPostsByUser(uid, 3)) || [];
+      const got = rowsToPosts(posts, {}, publicUrl);
+      db.listReactionsByPosts(got.map((x) => x.dbId)).then((rk) => {
+        const reactions = aggregateReactions(rk || [], uid);
+        myPosts.value = myPosts.value.map((p) => {
+          const r = reactions[p.dbId];
+          return r ? { ...p, ...r } : p;
+        });
+      }).catch(() => { /* 回应数失败不阻塞帖子 */ });
+      return got.length ? got : null;   /* 空列表/失败不覆盖快照、不回写 */
+    },
+  );
+  myPostsBusy.value = false;
+}
 watch(
   () => [cloud.ready, cloud.user && cloud.user.id],
   async ([ready, uid]) => {
-    if (!ready || !uid) {
-      /* 轮 213：启动空窗不清缓存——挂载时同步秒出的缓存渲染要保留到 ready（用户实测 10s 空窗） */
-      if (!myPosts.value.length) myPosts.value = [];
-      return;
-    }
-    myPostsBusy.value = true;
-    await swr(
-      cacheKey("profile-myposts", uid),
-      {
-        cached: (rows) => { myPosts.value = rows; },
-        fresh: (rows) => { myPosts.value = rows; },
-      },
-      async () => {
-        /* 轮 213：慢网提速——先一趟 listPostsByUser 出帖子，回应数后台补（两趟串行=手机上 10s 空窗） */
-        const posts = (await db.listPostsByUser(uid, 3)) || [];
-        const got = rowsToPosts(posts, {}, publicUrl);
-        db.listReactionsByPosts(got.map((x) => x.dbId)).then((rk) => {
-          const reactions = aggregateReactions(rk || [], uid);
-          myPosts.value = myPosts.value.map((p) => {
-            const r = reactions[p.dbId];
-            return r ? { ...p, ...r } : p;
-          });
-        }).catch(() => { /* 回应数失败不阻塞帖子 */ });
-        return got.length ? got : null;   /* 空列表/失败不覆盖快照、不回写 */
-      },
-    );
-    myPostsBusy.value = false;
+    if (!ready || !uid) return;   /* 轮 281：不清缓存（213 口径），只等 ready */
+    await loadMyPosts();
   },
   { immediate: true },
 );
+/* 轮 281：KeepAlive 切回页签 = 静默新鲜化——缓存先在屏，网络回来覆盖（滚动位不动，
+ * 与暖心墙轮 231 同款语义）。首次激活由上面 immediate watch 拉过，跳过防双发。 */
+let myPostsActivated = false;
+onActivated(() => {
+  if (!myPostsActivated) { myPostsActivated = true; return; }
+  loadMyPosts();
+});
 
 /* 轮 254：内嵌收藏逻辑（favRows/watch/unFav/showFavs）已迁往独立页 FavoritesView；
    头部按钮改为 router.push('/favorites')，缓存键 profile-favs 两页同用。 */
@@ -476,7 +493,8 @@ const brightRatio = computed(() => {
       <div v-else class="my-posts">
         <router-link
           v-for="p in myPosts" :key="p.id"
-          class="post-card card my-post" :to="'/post/' + p.dbId">
+          class="post-card card my-post" :to="'/post/' + p.dbId"
+          @click="setPostNav(myPosts)">
           <div class="post-head">
             <n-avatar round :size="42" class="post-avatar" :src="avatarUrlFor(cloud.user && cloud.user.id) || undefined"><template v-if="!avatarUrlFor(cloud.user && cloud.user.id)" #default>🙂</template><template v-else #fallback>🙂</template></n-avatar>
             <div class="post-meta">

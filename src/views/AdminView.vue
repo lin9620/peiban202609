@@ -161,6 +161,33 @@ async function load() {
     err.value = (e && e.message) || "error";
   }
 }
+
+/* ── 位置硬约束（承本文件 33/47 行同款告诫）：下面这批 ref 全部会被 167 行
+ *    watch(signedIn, …, { immediate: true }) 的回调直接或间接读到
+ *    （loadRelMeta / loadBroadcasts / resumeBroadcast）。immediate 回调在 setup
+ *    跑到那一行时就同步执行，所以它们必须声明在这个 watch 之前；否则「书签直接打开
+ *    管理中心」这种已登录场景一进来就 TDZ —— 且 loadRelMeta 是 async，第一个 TDZ
+ *    被空 catch 吞掉、第二个抛在 try 外，错误于是变成「未处理的 Promise 拒绝」，
+ *    即信标 2026-10-14 抓到的 `Cannot access 'Se' before initialization`（`relLoaded`
+ *    的压缩名）。轮 278 把这批 ref 从下方原位上移到此处修掉。 ── */
+/* —— 全员公告：轮 238 · 分批推送 —— start 建档（快照总人数）→ 循环 step（每批 2000，
+ * 只插还没收到的用户，幂等）→ done。中途关页/断网不怕：历史面板里未完成的公告可
+ * 「继续发送」续推。单击保护上限 200 批（= 40 万人），超出落给历史续发。 */
+const announce = ref("");
+/* —— 轮 238 · App 版本（管理中心上传 APK → 下载/二维码即指向新包）—— */
+const relMeta = ref(null);
+const relLoaded = ref(false);
+const relBusy = ref(false);
+const relMsg = ref("");
+const relInput = ref(null);
+/* —— 公告发送状态 —— */
+const bcastRows = ref([]);
+const bcastLoaded = ref(false);
+const bcastDone = ref(false);
+const bcastProgress = ref("");   /* "正在发送 x/y…" —— 发送期间替代按钮文案 */
+/* —— 历史「继续发送」：同一循环接着推（step 幂等，不会重复送达）—— */
+const resumeBid = ref("");
+
 /* 跟随登录态：直接打开 /admin（书签 / 刷新）时 Auth 可能还没就绪 —— 就绪后自动加载；
  * 确认未登录时显示「没有权限」（保持与旧 onMounted 版本一致的语义） */
 watch(signedIn, (ok) => {
@@ -199,18 +226,7 @@ function switchTab(name) {
 }
 
 
-/* —— 全员公告：轮 238 · 分批推送 ——
- * start 建档（快照总人数）→ 循环 step（每批 2000，只插还没收到的用户，幂等）
- * → done。中途关页/断网不怕：历史面板里未完成的公告可「继续发送」续推。
- * 单击保护上限 200 批（= 40 万人），超出落给历史续发。 */
-const announce = ref("");
-
-/* —— 轮 238 · App 版本（管理中心上传 APK → 下载/二维码即指向新包）—— */
-const relMeta = ref(null);
-const relLoaded = ref(false);
-const relBusy = ref(false);
-const relMsg = ref("");
-const relInput = ref(null);
+/* announce / rel* 五个 ref 已上移到 watch(signedIn) 之前（位置硬约束），此处只留函数。 */
 async function loadRelMeta() {
   try {
     relMeta.value = await db.appReleaseMeta();
@@ -236,10 +252,7 @@ async function uploadApk(e) {
   }
   relBusy.value = false;
 }
-const bcastRows = ref([]);
-const bcastLoaded = ref(false);
-const bcastDone = ref(false);
-const bcastProgress = ref("");   /* "正在发送 x/y…" —— 发送期间替代按钮文案 */
+/* bcast* 四个 ref 已上移到 watch(signedIn) 之前（位置硬约束），此处只留函数。 */
 async function runBroadcastSteps(bid) {
   let last = null;
   for (let guard = 0; guard < 200; guard++) {
@@ -277,8 +290,7 @@ async function sendBroadcast() {
   bcastProgress.value = "";
   busy.value = "";
 }
-/* 历史「继续发送」：同一循环接着推（step 幂等，不会重复送达） */
-const resumeBid = ref("");
+/* resumeBid 已上移到 watch(signedIn) 之前（位置硬约束），此处只留函数。 */
 async function resumeBroadcast(bid) {
   if (busy.value !== "") return;
   busy.value = "broadcast";

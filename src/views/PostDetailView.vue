@@ -14,16 +14,22 @@ import {
   cloudDeleteComment, cloudToggleReaction, cloudAddView, cloudToggleDislike,
   cloudFetchMyCommentReactions, cloudToggleCommentReaction,
   cloudFavIds, cloudFavAdd, cloudFavRemove, favCacheInsert, favCacheRemove,
+  cmtCacheKey, cmtCacheSet,
 } from "../utils/wall.js";
 /* 轮 84：评论排序 / 回应 / 拷贝文本 */
+/* 轮 285：软删口径 —— 渲染/计数按「已删的父条留占位、它的回复照常显示」走（import 大括号内不写注释） */
 import {
   normalizeText, MAX_LEN,
   SORT_MODES, sortComments, reactCount, toggleReact, hasReacted as cmtHasReacted,
   postCopyText, commentCopyText,
+  renderTops, renderReplies, liveComments, markDeleted,
 } from "../utils/comments.js";
 import { fmtWhen } from "../utils/wallRules.js";
-import { cacheKey, swr, cacheSet } from "../utils/cache.js";   /* 轮 158：帖子主体 SWR */
-import { isMobileNav, tabbarSuppressed } from "../stores/uiStore.js";
+import { cacheKey, swr, cacheSet, cacheGet } from "../utils/cache.js";   /* 轮 158：帖子主体 SWR */
+import { isApp, isMobileNav, tabbarSuppressed } from "../stores/uiStore.js";
+/* 轮 279：左右滑看上一条/下一条 —— 方向判定复用 panes 的 swipeDir（已有单测），上下文来自 postNav */
+import { swipeDir } from "../utils/panes.js";
+import { navIdsFor, navTarget } from "../utils/postNav.js";
 /* 轮 84：…菜单的「拷贝」（WebView 里 navigator.clipboard 缺失时 execCommand 兜底） */
 import { copyText } from "../utils/clipboard.js";
 /* 轮 33：举报弹窗 + 全站拉黑过滤（我拉黑的人，TA 的帖子/评论在我这里不显示） */
@@ -51,6 +57,13 @@ async function load() {
   loading.value = true;
   failed.value = false;
   gone.value = false;
+  /* 轮 282：评论先行并行——路由 param 就是帖子 dbId，评论请求不必等帖子主体；
+   * 缓存命中 0ms 上屏，网络与帖子主体并行回来覆盖（旧链路两个 RTT 串行 = 2~6s 空白)。
+   * 必须先让出同步栈：watch(uid, load, {immediate:true}) 在 setup 中途就同步调 load()，
+   * 而 comments/cmtLoading 等 const 声明在 watch 之后 —— 同步调 loadComments 会撞 TDZ
+   * （线上报 Cannot access '$' before initialization）。一个微任务后 setup 已跑完，安全。 */
+  await Promise.resolve();
+  loadComments(uid.value);
   /* 轮 158：帖子主体 SWR——从墙/我的/主页点进来，本地先出上次的帖子立刻能读，
    * 后台拉新数据纠正（回应数/浏览数以 fresh 为准）。null = 查无此帖/网络挂 → 原failed口径 */
   await swr(
@@ -75,7 +88,7 @@ async function load() {
   if (myId.value) {
     cloudFetchProfile(myId.value).then((pf) => { if (pf) myProfile.value = pf; });
   }
-  loadComments();
+  /* 轮 282：loadComments 已并行提前到 load() 开头（与帖子主体同时发），此处不再串行等待 */
 }
 
 /* 登录态就绪/变化 → 重拉（拿到 mine 回应标记与本人署名） */
@@ -92,9 +105,12 @@ async function moreFav() {
   if (!p0 || p0.dbId == null) return;
   if (!signedIn.value) { hint.value = t("fav.signIn"); return; }
   const want = !favOn.value;
+  closeMore();   /* 轮 273：点了立刻收菜单（与暖心墙 moreFav 同款）——旧写法菜单一直开着，
+   * 菜单文案读的是打开瞬间 moreTarget.faved 快照，点完文案不变，用户以为「没点上」= 不跟手 */
   favOn.value = want;
   /* 轮 254：收藏/取消同步写穿收藏页缓存（进 /favorites 0ms 可见/可除），失败一并回滚 */
   if (want) favCacheInsert(p0); else favCacheRemove(p0.dbId);
+  hint.value = want ? t("fav.done") : t("fav.removed");   /* 轮 273：反馈先行，不等网络 */
   const ok = want ? await cloudFavAdd(p0.dbId) : await cloudFavRemove(p0.dbId);
   if (!ok) {
     favOn.value = !want;
@@ -102,7 +118,6 @@ async function moreFav() {
     hint.value = t("fav.fail");
     return;
   }
-  hint.value = want ? t("fav.done") : t("fav.removed");
 }
 watch(myId, () => {
   if (!post.value) return;
@@ -218,7 +233,9 @@ async function cmtReact(cm, kind) {
   delete next[cm.id];
   cmtReactBusy.value = next;
 }
-/* 评论加载后补拉「我点过的」；失败静默（只少高亮，不影响计数展示） */
+/* 评论加载后补拉「我点过的」；失败静默（只少高亮，不影响计数展示）
+ * 轮 275：cloudFetchComments 已内置后台补高亮（mineReady），这里保留给「发评论/
+ * 删除等操作后」的即时刷新用 —— 操作后行数组已变，mineReady 的闭包是旧数组。 */
 async function loadCmtMine(rows) {
   const ids = (Array.isArray(rows) ? rows : []).filter((r) => r.dbId != null).map((r) => r.dbId);
   if (!ids.length || !myId.value) return;
@@ -227,6 +244,13 @@ async function loadCmtMine(rows) {
   const map = {};
   for (const r of mine) { (map[r.comment_id] = map[r.comment_id] || []).push(r.kind); }
   for (const cm of comments.value) { if (map[cm.dbId]) cm.myReacts = map[cm.dbId]; }
+}
+
+/* 轮 274：点帖子头部头像/名字进对方主页（/u/:id）——与暖心墙点头像/昵称同款（#15）。
+ * cloudFetchPost 返回的视图帖带 userId；作者本人点自己也进得去（WallerView 有 isSelf 口径）。 */
+function goUser() {
+  const id = post.value && post.value.userId;
+  if (id) router.push({ name: "waller", params: { id: String(id) } });
 }
 
 /* —— …菜单（帖子右上角 / 每条评论右上角：举报迁入 + 拷贝；同一时刻最多开一个） —— */
@@ -293,7 +317,9 @@ const detailBarPh = computed(() => {
 });
 
 const tops = computed(() => {
-  const list = comments.value.filter((c) => !c.parentId);
+  /* 轮 285：renderTops 决定「哪些一级评论要画」——已删的只有下面还挂着活回复时才留
+   * （留成「该评论已删除」占位），否则整条不渲染；软删行本身仍留在 comments 里。 */
+  const list = renderTops(comments.value);
   /* 轮 90：默认 = 自然顺序（与暖心墙评论一致：旧→新，不滤不限——评论不是帖子，不用 7 天推荐池）；
      最新 = 时间倒序 */
   return cmtSort.value === "new" ? sortComments(list, "new") : list;
@@ -321,24 +347,47 @@ watch(cmtSort, () => nextTick(syncSortPill));
 onMounted(() => { syncSortPill(); window.addEventListener("resize", syncSortPill); });
 onUnmounted(() => window.removeEventListener("resize", syncSortPill));
 onUnmounted(() => window.removeEventListener("scroll", onWallScroll));
-const repsOf = (cm) => comments.value.filter((c) => c.parentId === cm.id);
+/* 轮 285：软删的二级回复直接不渲染（两级封顶，回复下面不会再有下级，不留墓碑） */
+const repsOf = (cm) => renderReplies(comments.value, cm.id);
 /* 轮 50：与暖心墙同口径——二级回复默认显示前两条，>2 条点「N 条回复」展开全部 */
 const visibleReps = (cm) => (repOpen.value[cm.id] ? repsOf(cm) : repsOf(cm).slice(0, 2));
-const countN = computed(() => comments.value.length);
-/* 轮 254：乐观临时行（pending）还没落库，删除按钮先藏起来 */
-const canDel = (cm) => !!(cm && !cm.pending && cm.cloud && myId.value && cm.userId === myId.value);
+/* 轮 285：软删行不算「N 条评论」（与 renderTops/renderReplies 的渲染口径一致） */
+const countN = computed(() => liveComments(comments.value).length);
+/* 轮 254：乐观临时行（pending）还没落库，删除按钮先藏起来；轮 285：已删过的墓碑也不给再删一次 */
+const canDel = (cm) => !!(cm && !cm.deleted && !cm.pending && cm.cloud && myId.value && cm.userId === myId.value);
 
-function loadComments() {
-  if (!post.value || !post.value.dbId) return;
+function loadComments(idOverride = null) {
+  /* 轮 282：并行化——路由 param（uid）就是帖子 dbId，评论不必等帖子主体拉完；
+   * idOverride 供 load() 在 post 落位前就发出评论请求（两个 RTT 串行 → 并行）。 */
+  const dbId = idOverride != null ? idOverride : (post.value && post.value.dbId);
+  if (dbId == null) return;
   cmtLoading.value = true;
-  cloudFetchComments(post.value.dbId).then((rows) => {
-    cmtLoading.value = false;
-    if (Array.isArray(rows)) {
-      comments.value = filterBlocked(rows);
-      loadCmtMine(comments.value);   /* 轮 84：补拉「我点过的评论回应」（高亮用，失败静默） */
-      focusTargetComment();   /* 轮 89：带 cid 进入 → 展开目标线程并滚动定位 */
-    }
-  });
+  /* 轮 282：SWR 缓存——缓存评论先 0ms 上屏（实测网络 RTT 800~2500ms 是主要慢源），
+   * 网络回来覆盖；mineReady 高亮仍后台补。 */
+  swr(
+    cmtCacheKey(dbId),
+    {
+      cached: (rows) => {
+        if (Array.isArray(rows)) {
+          comments.value = filterBlocked(rows);
+          cmtLoading.value = false;
+        }
+      },
+      fresh: (rows) => {
+        cmtLoading.value = false;
+        if (!Array.isArray(rows)) return;
+        comments.value = filterBlocked(rows);
+        /* mineReady 闭包写的是原数组行对象：无拉黑时 filterBlocked 同引用（无感合并）；
+         * 有拉黑时行对象仍是同一批引用，高亮写入行对象本身，触发一次响应式即可。 */
+        if (rows.mineReady) rows.mineReady.then(() => { comments.value = comments.value.slice(); }).catch(() => {});
+        focusTargetComment();   /* 轮 89：带 cid 进入 → 展开目标线程并滚动定位 */
+      },
+      onError: () => { cmtLoading.value = false; },
+    },
+    /* 复位塞进 fetcher：cloudFetchComments 失败返回 null（不抛异常），swr 对 null
+     * 既不调 fresh 也不调 onError —— 若只在 hooks 里复位，失败会卡 cmtLoading=true。 */
+    () => cloudFetchComments(dbId).then((r) => { cmtLoading.value = false; return r; }),
+  );
 }
 
 /* 轮 89：墙内「查看全部回复」带 cid 跳转进来 → 展开目标线程 + 滚动定位。
@@ -360,13 +409,15 @@ async function focusTargetComment() {
 }
 function toggleCmt() {
   openCmt.value = !openCmt.value;
-  if (openCmt.value && !comments.value.length) loadComments();
+  /* 轮 282：load() 已并行首发过一次（cmtLoading 门控），在途时不重复发 */
+  if (openCmt.value && !comments.value.length && !cmtLoading.value) loadComments();
 }
 function toggleReplies(cm) {
   repOpen.value = { ...repOpen.value, [cm.id]: !repOpen.value[cm.id] };
 }
 function startReply(cm, rp = null, e = null) {
   if (!signedIn.value) return;
+  if (cm && cm.deleted) return;   /* 轮 285：已删除的评论不留回复入口（它下面的既有回复仍可看） */
   /* 轮 108 续5：手机端 = 底部输入条回复模式（再点同目标 = 收起）；桌面 = 就地内联框原路。
    * 回复「回复」仍是两级封顶：挂同一级下，@那位回复者（与墙规则一致） */
   if (isMobileNav.value) {
@@ -448,6 +499,7 @@ async function sendDetailBar() {
 async function sendCmt(cm = null, rp = null) {
   const text = cm ? (repDraft.value[cm.id] || "") : cmtDraft.value;
   if (!normalizeText(text) || !post.value) return;
+  if (cm && cm.deleted) return;   /* 轮 285：不给已删除的评论继续挂新回复 */
   if (!signedIn.value) return;   /* #28：云端帖未登录不评论（只存本机会误导） */
   cmtErr.value = "";
   const at = cm ? (rp ? rp.name : atName.value) : "";
@@ -482,6 +534,8 @@ async function sendCmt(cm = null, rp = null) {
     return;
   }
   comments.value = comments.value.map((c) => (c.id === tmp.id ? created : c));
+  /* 轮 282：发成功回写评论缓存（滤掉可能残留的 pending 临时行），下次打开不闪旧数据 */
+  cmtCacheSet(post.value.dbId, comments.value.filter((c) => !c.pending));
   if (cm) {
     repActive.value = "";
     atName.value = "";
@@ -498,16 +552,19 @@ async function sendTopCmt() {
 async function delCmt(cm) {
   if (!canDel(cm)) return;
   if (cm.pending) return;   /* 轮 254：乐观临时行还没落库，不给删 */
-  /* 轮 254 · 乐观删除：先摘行，云端失败插回原位 */
+  /* 轮 285 · 乐观软删：行不摘，只标 deleted —— 这样它下面的二级回复原位不动，
+   * 云端失败再整体回滚。原实现按「id 自身 + parentId 指向它」两批一起 filter 掉行，
+   * 连带把回复摘光，正是用户反馈的「b 删一级评论，c/d/e 的回复全丢」。 */
   const before = comments.value;
-  comments.value = comments.value.filter(
-    (c) => c.id !== cm.id && c.parentId !== cm.id,
-  );
+  comments.value = markDeleted(comments.value, cm.id);
   if (cm.cloud) {
     const done = await cloudDeleteComment(cm.dbId);
     if (!done) { comments.value = before; return; }
   }
+  /* 轮 282：删成功回写评论缓存，下次打开不闪回已删评论（缓存里带 deleted 标记，口径一致） */
+  cmtCacheSet(post.value && post.value.dbId, comments.value.filter((c) => !c.pending));
   if (repActive.value.split(":")[0] === cm.id) cancelReply();
+  if (moreKey.value === "cmt:" + cm.id) closeMore();   /* 墓碑上不该再挂着 … 菜单 */
 }
 
 /* ═════════ 举报（轮 33）+ 拉黑隐藏 ═════════ */
@@ -532,10 +589,177 @@ const canReportCmt = (cm) => !!(cm && cm.cloud && cm.dbId != null
   && cm.userId && cm.userId !== myId.value);
 /* 帖子作者被我拉黑：正文以「已隐藏」呈现（数据还在，取消拉黑即恢复） */
 const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userId)));
+
+/* ═════════ 轮 279 · 左右滑看上一条 / 下一条 ═════════
+ * 上下文 = 跳转前由入口存下的列表快照（utils/postNav.js）：①暖心墙 ②我的帖子 ③他人帖子。
+ * 启用判据：当前 id 在那张表里，且没有更优先的浮层（⋯菜单 / 举报弹窗 / 已下架）挡着——
+ * 从收藏、通知这类没有列表的入口进来时，不在表里就完全不响应。
+ *
+ * 两端差异（用户要求「app 端跟网页端不一样的实现方式」的全部落点）：
+ *   App 端 —— 只挂触摸：WebView 里没有真实鼠标与物理键盘，挂了也收不到事件；
+ *   网页端 —— 触摸之外再挂桌面鼠标拖拽与 ←/→ 键。
+ * 方向判定、跟手位移、边界阻尼、切换时序两端是同一套代码。
+ *
+ * 手法（用户拍板）：跟手 + 过半才切 + 边界回弹。 */
+const navIds = ref([]);
+const dragX = ref(0);
+const dragPhase = ref("");                       /* ""=静止 | drag=跟手 | out=滑出动画 */
+const swipeStyle = computed(() => ({ transform: `translateX(${dragX.value}px)` }));
+
+const SWAP_MS = 220;                             /* 滑出时长，与 .pd-swipe.out 的 transition 对齐 */
+const EDGE_DAMP = 0.32;                          /* 到头只跟 32%：手感是「顶住了」而不是「滑穿了」 */
+const TURN_RATIO = 0.5;                          /* 过半才切 */
+const AXIS_LOCK = 10;                            /* 位移满 10px 才定轴，免得手抖误判 */
+let swapTimer = 0, edgeTimer = 0, preTimer = 0;
+
+const viewW = () => Math.max((typeof window !== "undefined" && window.innerWidth) || 0, 320);
+
+/* uid 变（含切换后的下一条）→ 重算上下文 + 给新帖预热相邻两条（滑过去时秒开，不用等网络） */
+watch(uid, () => {
+  navIds.value = navIdsFor(uid.value);
+  clearTimeout(preTimer);
+  preTimer = setTimeout(prefetchAround, 700);
+}, { immediate: true });
+
+const canSwipe = computed(() => navIds.value.length > 1
+  && dragPhase.value === ""
+  && !reportShow.value && !moreKey.value && !gone.value);
+
+function prefetch(id) {
+  if (!id) return;
+  try {
+    const k = cacheKey("wall:post", id);
+    if (cacheGet(k)) return;                     /* 已经缓存过就不重复拉 */
+    cloudFetchPost(id).then((p) => { if (p) cacheSet(k, p); }).catch(() => {});
+  } catch (e) { /* 预取失败不影响正片 */ }
+}
+function prefetchAround() {
+  const i = navIds.value.indexOf(uid.value);
+  if (i < 0) return;
+  prefetch(navIds.value[i - 1]);
+  prefetch(navIds.value[i + 1]);
+}
+
+/* 到头了再拖：只跟 EDGE_DAMP，所以位移永远够不到 TURN_RATIO → 一定回弹，与 tryStep 双保险 */
+function dampX(x) {
+  const i = navIds.value.indexOf(uid.value);
+  const blocked = (x > 0 && i <= 0) || (x < 0 && i >= navIds.value.length - 1);
+  return blocked ? x * EDGE_DAMP : x;
+}
+
+function edgeHint(dir) {
+  const msg = dir > 0 ? t("nav.nextEnd") : t("nav.prevEnd");
+  hint.value = msg;
+  clearTimeout(edgeTimer);
+  edgeTimer = setTimeout(() => { if (hint.value === msg) hint.value = ""; }, 2400);
+}
+
+/* dir = 1 左滑（下一条）/ -1 右滑（上一条） */
+function tryStep(dir) {
+  const next = navTarget(uid.value, dir);
+  if (!next) { edgeHint(dir); return false; }
+  dragPhase.value = "out";
+  dragX.value = dir > 0 ? -viewW() : viewW();    /* 朝滑出去的方向推满屏 */
+  clearTimeout(swapTimer);
+  swapTimer = setTimeout(() => swapTo(next), SWAP_MS);
+  return true;
+}
+
+async function swapTo(next) {
+  /* 必须先等路由换完再把位移归零：否则归零那一帧旧内容会「闪回」中央（自测抓到过）。
+   * await 之后在 nextTick 里归零 → 新内容渲染在屏幕外一帧随即落位，那一帧用户看不见。 */
+  try { await router.replace({ name: "postDetail", params: { id: next } }); }
+  catch (e) { /* 路由被更早的操作打断：无所谓，位移照样复位 */ }
+  nextTick(() => {
+    dragX.value = 0;
+    dragPhase.value = "";                        /* 同时摘掉 .out → 无过渡，瞬间落位 */
+    if (typeof window !== "undefined") window.scrollTo(0, 0);
+  });
+}
+
+/* —— 手势：window 级监听（同 StoryShell 口径），可交互元素让路 —— */
+const GUARD = 'input, textarea, select, button, a, [contenteditable="true"], .more-pop, .van-popup, .n-dialog';
+let sx = 0, sy = 0, axis = "", tracking = false;
+
+function gStart(x, y, target) {
+  tracking = false; axis = "";
+  if (!canSwipe.value) return;
+  if (target && target.closest && target.closest(GUARD)) return;  /* 手按在按钮/输入框上：不抢 */
+  sx = x; sy = y; tracking = true;
+}
+function gMove(x, y) {
+  if (!tracking) return;
+  const dx = x - sx, dy = y - sy;
+  if (!axis) {
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < AXIS_LOCK) return;
+    if (Math.abs(dx) <= Math.abs(dy)) { tracking = false; return; }  /* 纵向：让位给页面滚动 */
+    axis = "x";
+    try { if (typeof window !== "undefined" && window.getSelection) window.getSelection().removeAllRanges(); }
+    catch (e) { /* 拖动前已选中的文字：清不掉也不影响功能 */ }
+  }
+  dragPhase.value = "drag";
+  dragX.value = dampX(dx);
+}
+function gEnd(x) {
+  if (!tracking) return;
+  const onX = axis === "x";
+  tracking = false; axis = "";
+  if (!onX) { dragPhase.value = ""; dragX.value = 0; return; }
+  const dir = swipeDir(x - sx, 0);               /* 1=左滑 → 下一条；0 = 没到 48px 阈值 */
+  if (!dir) { dragPhase.value = ""; dragX.value = 0; return; }
+  const dist = dragX.value;                      /* 实际位移，已含边界阻尼 */
+  const has = navTarget(uid.value, dir);
+  if (has && Math.abs(dist) >= viewW() * TURN_RATIO) { tryStep(dir); return; }
+  dragPhase.value = ""; dragX.value = 0;         /* 没过半 / 到头 → 回弹 */
+  if (!has && Math.abs(dist) >= 24) edgeHint(dir);
+}
+
+const onTouchStart = (e) => { const a = e.touches[0]; if (a) gStart(a.clientX, a.clientY, e.target); };
+const onTouchMove = (e) => { const a = e.touches[0]; if (a) gMove(a.clientX, a.clientY); };
+const onTouchEnd = (e) => { const a = e.changedTouches[0]; if (a) gEnd(a.clientX); };
+const onMouseDown = (e) => { if (e.button) return; gStart(e.clientX, e.clientY, e.target); };
+const onMouseMove = (e) => { if (tracking) gMove(e.clientX, e.clientY); };
+const onMouseUp = (e) => { if (tracking) gEnd(e.clientX); };
+
+function onKey(e) {
+  if (!canSwipe.value) return;
+  const el = e.target;
+  if (el && el.closest && el.closest('input, textarea, [contenteditable="true"]')) return;  /* 光标移动归输入框 */
+  const dir = e.key === "ArrowLeft" ? -1 : e.key === "ArrowRight" ? 1 : 0;
+  if (!dir) return;
+  e.preventDefault();                            /* 免得方向键在翻页同时还滚页面 */
+  tryStep(dir);
+}
+
+onMounted(() => {
+  window.addEventListener("touchstart", onTouchStart, { passive: true });
+  window.addEventListener("touchmove", onTouchMove, { passive: true });
+  window.addEventListener("touchend", onTouchEnd, { passive: true });
+  if (!isApp) {                                  /* 网页端才有鼠标与物理键盘 */
+    window.addEventListener("mousedown", onMouseDown);
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("keydown", onKey);
+  }
+});
+onUnmounted(() => {
+  window.removeEventListener("touchstart", onTouchStart);
+  window.removeEventListener("touchmove", onTouchMove);
+  window.removeEventListener("touchend", onTouchEnd);
+  window.removeEventListener("mousedown", onMouseDown);
+  window.removeEventListener("mousemove", onMouseMove);
+  window.removeEventListener("mouseup", onMouseUp);
+  window.removeEventListener("keydown", onKey);
+  clearTimeout(swapTimer); clearTimeout(edgeTimer); clearTimeout(preTimer);
+});
 </script>
 
 <template>
   <div class="pd">
+    <!-- 轮 279：左右滑的位移只作用在这一层。手机端底部输入条 cmt-main-bar 与举报弹窗
+         刻意留在本层**之外** —— position:fixed 一旦进了带 transform 的祖先就会被劫持包含块
+         （style.css 2392 行记着同一坑，轮 238/175/151 各踩过一次）。 -->
+    <div class="pd-swipe" :class="{ drag: dragPhase === 'drag', out: dragPhase === 'out' }" :style="swipeStyle">
     <div class="pd-head">
       <button class="pd-back" @click="goBack">&#8249; {{ t("nav.community") }}</button>
     </div>
@@ -553,9 +777,9 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
 
       <article v-if="!authorBlocked" class="post-card card">
         <div class="post-head">
-          <n-avatar round :size="42" class="post-avatar" :src="avatarUrlFor(post.userId) || undefined"><template v-if="!avatarUrlFor(post.userId)" #default>🙂</template><template v-else #fallback>🙂</template></n-avatar>
+          <n-avatar round :size="42" class="post-avatar clickable" :title="t('dm.viewHome')" @click="goUser" :src="avatarUrlFor(post.userId) || undefined"><template v-if="!avatarUrlFor(post.userId)" #default>🙂</template><template v-else #fallback>🙂</template></n-avatar>
           <div class="post-meta">
-            <div class="post-name">{{ post.name }}</div>
+            <div class="post-name clickable" :title="t('dm.viewHome')" @click="goUser">{{ post.name }}</div>
             <div class="post-time">{{ when(post.ts) }}</div>
           </div>
           <!-- 轮 84：帖子右上角 … 菜单（举报迁入 + 拷贝正文）；post-foot 里原举报按钮移除 -->
@@ -634,6 +858,11 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
           <div v-for="cm in shownTops" :key="cm.id" class="cmt-item"
             :id="cm.dbId != null ? 'cmt-' + cm.dbId : undefined"
             :class="{ 'cmt-focus': focusCid && String(cm.dbId) === focusCid }">
+            <!-- 轮 285：软删占位 —— 作者删掉一级评论后，昵称/正文/操作行整块换成一句「已删除」，
+                 它下面的二级回复（下方 cmt-reps）原样保留：
+                 正是「把 b 的评论替换成已被删除，但是下面二级评论还在」。
+                 判据在 renderTops：已删的一级评论只有还挂着活回复才进列表（没回复的整条不画）。 -->
+            <template v-if="!cm.deleted">
             <div class="cmt-head">
               <b>{{ cm.name }}</b>
               <button v-if="canDel(cm)" class="cmt-del" :title="t('common.delete')" @click="delCmt(cm)">×</button>
@@ -659,12 +888,15 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
                 @click="cmtReact(cm, 'broken')"><span class="t-like-icon"><svg class="rc-ico t-like-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.59.94 4.5 2.35C12.91 3.94 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z"/><path d="M12 6.8 10.4 9.4l2.4 1.5-1.5 2.4 1.1 1.8"/></svg></span><span class="t-like-particles" aria-hidden="true"><i v-for="n in 8" :key="n"></i></span><i>{{ reactCount(cm, "broken") }}</i></button>
               <!-- 轮 88：「N 条回复」按钮移到回复列表底部（见下方 replies-toggle），操作行只留时间/回复/回应 -->
             </div>
+            </template>
+            <p v-else class="cmt-text cmt-gone"
+              style="color: var(--low); font-style: italic; cursor: default">{{ t("comment.deleted") }}</p>
 
             <!-- 轮 112：一级评论的回复框紧跟这条一级评论——正文/操作行之下、二级列表之上
                  （用户原话「帖子详细页面的一级评论输入框：把一级评论回复框点击后出现在一级评论下面，
                  二级评论上面，你现在是一级评论最下面。二级评论输入框不改。app端不改」）。
                  二级就地框（本评论内 cmt-input-in 的上一个分支）与手机端底部输入条都不受影响。 -->
-            <div v-if="!isMobileNav && repActive === cm.id" class="cmt-input cmt-input-in">
+            <div v-if="!cm.deleted && !isMobileNav && repActive === cm.id" class="cmt-input cmt-input-in">
               <div class="cmt-input-row">
                 <van-field v-model="repDraft[cm.id]" type="textarea" rows="1" autosize
                   :placeholder="repPlaceholder(cm)" :maxlength="MAX_LEN" />
@@ -728,6 +960,7 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
     </transition>
       </article>
     </template>
+    </div><!-- /.pd-swipe 轮 279：左右滑位移层到此为止 -->
 
     <!-- 轮 111：桌面评论输入固定底栏（cmt-bar-fixed，轮 93 引入）**已退役**——
          主评论框搬进卡内「浏览次数 ↔ N 条评论」之间（用户要求与暖心墙轮 109 同款），未登录入口同址保留。 -->
@@ -805,4 +1038,15 @@ const authorBlocked = computed(() => !!(post.value && isBlocked(post.value.userI
 .cmt-input-in { margin: 8px 0 2px; }
 .cmt-input > .n-input { flex: 1; min-width: 0; }
 .cmt-login { font-weight: 500; }
+
+/* ── 轮 279 · 左右滑位移层 ── */
+.pd-swipe {
+  /* pan-y = 纵向滚动交给浏览器、横向交给 JS。不写这条，iOS 会把手势当横向滚动
+   * 或边缘返回抢走，跟手会断；写了它 touchmove 才能用 passive 监听（不用 preventDefault）。 */
+  touch-action: pan-y;
+  overscroll-behavior-x: contain;
+}
+.pd-swipe.drag { transition: none; user-select: none; -webkit-user-select: none; }
+.pd-swipe.out { transition: transform .22s cubic-bezier(.22, .72, .28, 1); }
+@media (prefers-reduced-motion: reduce) { .pd-swipe.out { transition-duration: .01ms; } }
 </style>

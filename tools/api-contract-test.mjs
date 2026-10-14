@@ -205,8 +205,30 @@ const rows = [{ id: 1 }, { id: 2 }];
   ok("listCommentPostIds 形状", fake.calls[0] === "from:wall_comments|select:post_id|in:post_id:[1,2]|limit:2000", fake.calls[0]);
 }
 {
-  const { fake } = await run([{ data: null }], () => db.deleteComment(7));
-  ok("deleteComment 形状", fake.calls[0] === "from:wall_comments|delete|eq:id:7", fake.calls[0]);
+  /* 轮 285 · 软删：删评论不再 DELETE 行（行留着 → parent_id 的 on delete cascade 不触发 → 二级回复活下来） */
+  const { fake } = await run([{ data: true }], () => db.deleteComment(7));
+  ok("deleteComment 形状（软删 RPC 写 deleted_at，不是 DELETE 行）",
+    fake.calls[0] === 'rpc:wall_comment_delete:{"p_id":7}', fake.calls[0]);
+}
+{
+  /* 老库没跑 MIGRATION_comment_delete.sql：函数不存在（PGRST202）→ 退回硬删，行为与迁移前完全一致 */
+  const { fake } = await run([
+    { throw: { code: "PGRST202", message: "Could not find the function public.wall_comment_delete(p_id) in the schema cache" } },
+    { data: null },
+  ], () => db.deleteComment(7));
+  ok("deleteComment 降级：函数缺失 → 退回 from:wall_comments|delete|eq:id:7（不把没跑迁移当删除失败）",
+    fake.calls.length === 2 && fake.calls[1] === "from:wall_comments|delete|eq:id:7",
+    JSON.stringify(fake.calls));
+}
+{
+  /* RPC 真失败（非「函数缺失」）必须照旧上抛，不能被降级吞掉 */
+  const { fake, out } = await run(
+    [{ error: { code: "42501", message: "new row violates row-level security policy" } }],
+    () => db.deleteComment(7).then(() => "should-not-resolve", (e) => e && e.message),
+  );
+  ok("deleteComment 红线：非「迁移缺失」的错误不降级、原样上抛",
+    out === "new row violates row-level security policy" && fake.calls.length === 1,
+    JSON.stringify(fake.calls) + " / " + out);
 }
 
 /* ─────────── 回应 ─────────── */

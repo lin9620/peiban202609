@@ -230,7 +230,7 @@ const iToggle = cmt.indexOf('class="replies-toggle"');
 ok("T42 轮110：网页端一级回复框在「本评论操作行」之下、「二级回复列表」之上（不再压在整条评论底部）；二级就地框仍在二级列表内",
   iActs1 > -1 && iRepBox > -1 && iReps > -1 && iRepBoxIn > -1 && iToggle > -1
   && iActs1 < iRepBox && iRepBox < iReps && iReps < iRepBoxIn && iRepBoxIn < iToggle
-  && cmt.includes('v-if="isReplyOpen(p, cm) && !isMobileNav && !(p.cloud && !signedIn)"')
+  && cmt.includes('v-if="!cm.deleted && isReplyOpen(p, cm) && !isMobileNav && !(p.cloud && !signedIn)"')
   && cmt.includes('v-if="replyRpOf(p, cm) === rp.id'));
 
 /* ─── 轮 138 · 桌面左导航展开（方案 A：🐾 = 开关，64 → 212px，行内文字 + 品牌行回首页） ─── */

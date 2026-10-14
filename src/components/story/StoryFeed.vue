@@ -111,10 +111,8 @@ defineExpose({ load, loadFeatured });
       <p class="st-card-stats">{{ t("story.stats", { likes: r.like_count, views: r.view_count }) }}</p>
     </article>
 
-    <!-- 轮 158：首访无缓存时的骨架占位（三张 shimmer 卡），不再整块空白干等 -->
-    <div v-if="loading && !shown.length" class="st-skel" aria-hidden="true">
-      <div v-for="i in 3" :key="i" class="st-skel-card"></div>
-    </div>
+    <!-- 轮 277（用户拍板）：首访骨架退役（与暖心墙/消息同口径：去展示留机制）——
+         数据不变（缓存秒出、无缓存等网络回来直接出）。 -->
     <p v-if="!shown.length && !loading" class="st-hint">{{ t("story.rankEmpty") }}</p>
     <button v-if="more" class="st-btn st-btn--ghost" type="button" :disabled="loading" @click="loadMore">
       {{ loading ? t("story.saving") : t("story.openStory") }}

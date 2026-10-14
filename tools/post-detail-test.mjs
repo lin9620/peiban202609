@@ -68,10 +68,12 @@ ok("PostDetailView 轮112：一级回复框在「本评论操作行」之下、�
     && detail.indexOf('repActive === cm.id"') < detail.indexOf('class="cmt-reps"')
     && detail.indexOf('class="cmt-reps"') < detail.indexOf("repActive === cm.id + ':' + rp.id\"")
     && detail.indexOf("repActive === cm.id + ':' + rp.id\"") < detail.indexOf('class="replies-toggle"')
-    && has(detail, 'v-if="!isMobileNav && repActive === cm.id"', "repPlaceholder(cm)"));
-ok("PostDetailView：删自己的评论（云端比对 userId；删一级连回复一起）",
+    && has(detail, 'v-if="!cm.deleted && !isMobileNav && repActive === cm.id"', "repPlaceholder(cm)"));
+ok("PostDetailView：删自己的评论（云端比对 userId；轮 285 软删 —— 只标 deleted、不再连带删回复）",
   has(detail, "cm.cloud && myId.value && cm.userId === myId.value")
-    && has(detail, "c.id !== cm.id && c.parentId !== cm.id"));
+    && has(detail, "markDeleted(comments.value, cm.id)")
+    && !has(detail, "c.id !== cm.id && c.parentId !== cm.id")
+    && has(detail, "t(\"comment.deleted\")"));
 ok("PostDetailView：进页计一次浏览（cloudAddView 幂等）+ 返回上一页",
   has(detail, "await cloudAddView(post.value.dbId, myId.value)")   /* 轮 172：p → post.value */
     && has(detail, "function goBack()") && has(detail, "router.back()"));

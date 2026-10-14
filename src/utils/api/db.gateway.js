@@ -15,6 +15,8 @@
  */
 import { getClient, refreshAccessToken } from "../supabase.js";
 import { getAuthToken } from "./authToken.js";
+/* 轮 285：删评论改软删 —— 老库没跑迁移时认出「函数还没建」再退回硬删（不把没跑迁移当删除失败） */
+import { isMissingFnError } from "../authRules.js";
 
 /* 轮 160：单测可注入的「刷新会话」替身；生产走 supabase.js 的 refreshAccessToken */
 let refresher = null;
@@ -187,9 +189,17 @@ export const db = {
     return call(`/comment-post-ids?ids=${enc(postIds.join(","))}&limit=${enc(limit)}`);
   },
 
-  /** 删除评论（RLS 兜底：只能删自己的） */
+  /** 删除评论（RLS 兜底：只能删自己的）
+   *  轮 285 · 改**软删**：POST /api/comments/delete → Worker 调 RPC wall_comment_delete 写 deleted_at，
+   *  行不删 → parent_id 的 on delete cascade 不触发 → 二级回复活下来。
+   *  老库没跑迁移时上游 404/PGRST202 被 Worker 原样透传，认出消息后退回 DELETE（迁移前的老行为）。 */
   async deleteComment(id) {
-    await call(`/comments/${enc(id)}`, { method: "DELETE" });
+    try {
+      return await call("/comments/delete", { method: "POST", body: { id } });
+    } catch (e) {
+      if (!isMissingFnError(e && e.message)) throw e;
+      return call(`/comments/${enc(id)}`, { method: "DELETE" });
+    }
   },
 
   /* ═════════ 回应（抱抱 / 暖暖 / 同感 / 厌恶） ══════════ */

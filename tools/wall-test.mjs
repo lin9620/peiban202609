@@ -60,6 +60,17 @@ ok("T22 评论映射：parent_id 为空 → parentId=null（一级评论）", rc
 ok("T23 评论映射：reply_to_name → replyTo，缺省为空串", rcs[1].replyTo === "Bean" && rcs[2].replyTo === "" && rcs[2].parentId === "c3");
 ok("T24 评论映射：PostgREST 返回字符串型 parent_id 也能解析", rcs[3].parentId === "c3" && rcs[3].replyTo === "Bean");
 
+/* —— rowsToComments：软删标记（轮 285 —— 删一级评论不再连带删掉它的二级回复） —— */
+const rcd = rowsToComments([
+  { id: 3, post_id: 7, user_id: "u1", author_name: "Bean", body: "kept", created_at: "2026-01-02T00:00:00Z", deleted_at: null },
+  { id: 4, post_id: 7, user_id: "u2", author_name: "Juno", body: "gone", created_at: "2026-01-02T00:01:00Z", deleted_at: "2026-01-03T00:00:00Z" },
+  { id: 5, post_id: 7, user_id: "u2", author_name: "Juno", body: "old", created_at: "2026-01-02T00:02:00Z" },
+]);
+ok("T28 评论映射：deleted_at → deleted（没这列的老库 → false，与迁移前一致）",
+  rcd[0].deleted === false && rcd[1].deleted === true && rcd[2].deleted === false);
+ok("T29 软删行：正文仍回传（软删保留原文供审计），显示与否由渲染层 renderTops 决定",
+  rcd[1].text === "gone" && rcd[1].id === "c4" && rcd[1].cloud === true);
+
 /* —— countsFromRows：进页面时的「每帖评论数」（含回复） —— */
 const cnt = countsFromRows([
   { post_id: 7 }, { post_id: 7 }, { post_id: 7 }, { post_id: 9 },

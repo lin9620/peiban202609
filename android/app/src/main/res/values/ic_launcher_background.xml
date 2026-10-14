@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#2C3550</color>
+    <!-- 轮 278：C 暖窝图标——米底，与前景珊瑚图案同色系（原海军蓝 #2C3550 退役） -->
+    <color name="ic_launcher_background">#F5F0E8</color>
 </resources>

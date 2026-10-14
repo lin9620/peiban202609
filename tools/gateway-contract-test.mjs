@@ -100,7 +100,9 @@ setGatewayAuthProbe(() => true); /* 单测注入：auth 就绪（与 db.supabase
     ok("listComments 端点", u(4) === "/api/posts/p1/comments?limit=200", u(4));
     ok("insertComment 端点+body", u(5) === "/api/comments" && m(5) === "POST" && b(5) === JSON.stringify({ post_id: "p1" }));
     ok("listCommentPostIds 端点", u(6) === `/api/comment-post-ids?ids=${enc("a,b")}&limit=500`, u(6));
-    ok("deleteComment 端点", u(7) === "/api/comments/c1" && m(7) === "DELETE");
+    ok("deleteComment 端点（轮 285 软删：POST /api/comments/delete，不 DELETE 行）",
+      u(7) === "/api/comments/delete" && m(7) === "POST" && b(7) === JSON.stringify({ id: "c1" }),
+      u(7) + " " + m(7) + " " + b(7));
     ok("listReactionsByPosts 端点", u(8) === `/api/reactions?ids=${enc("a,b")}`, u(8));
     ok("listReactionsByPost 端点", u(9) === "/api/posts/p1/reactions", u(9));
     ok("findReaction 端点", u(10) === "/api/reactions/mine?post_id=p&user_id=u&kind=hug", u(10));
@@ -199,6 +201,26 @@ setGatewayAuthProbe(() => true); /* 单测注入：auth 就绪（与 db.supabase
     let clean = true;
     try { await db.deleteComment("c1"); } catch (e) { clean = false; }
     ok("204 空 body → 不抛错", clean);
+
+    /* 轮 285：老库没跑 MIGRATION_comment_delete.sql → 上游 404/PGRST202（Worker 原样透传）
+     * → 认出「没这个函数」就退回硬删路由，行为与迁移前完全一致（不把没跑迁移当删除失败）。 */
+    const seen = [];
+    globalThis.fetch = async (url, init = {}) => {
+      const u0 = String(url);
+      seen.push([u0, (init && init.method) || "GET"]);
+      if (u0.includes("/comments/delete")) {
+        return new Response(
+          JSON.stringify({ code: "PGRST202", message: "Could not find the function public.wall_comment_delete(p_id) in the schema cache" }),
+          { status: 404, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response(null, { status: 204 });
+    };
+    let fellBack = "";
+    try { await db.deleteComment("c1"); } catch (e) { fellBack = e && e.message; }
+    ok("deleteComment 降级：函数不存在 → 退回 DELETE /api/comments/c1",
+      !fellBack && seen.length === 2 && seen[1][0] === "/api/comments/c1" && seen[1][1] === "DELETE",
+      fellBack || JSON.stringify(seen));
 
     globalThis.fetch = async () => { throw new Error("down"); };
     let msg2 = "";
