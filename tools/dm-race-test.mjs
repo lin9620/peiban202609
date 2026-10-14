@@ -84,10 +84,14 @@ ok("R10 openConv 等完消息后校验 activeId，才动滚动与已读",
     && /if \(String\(activeId\.value\) !== String\(id\)\) return;/.test(oc));
 
 /* ══════════ tick：轮询不能把旧会话数据并进来 ══════════ */
+/* 轮 269：尾部刷新已抽成 pullTail（tick 内联 → 独立函数，实时通道复用）——
+ * 断言改为 tick 调 pullTail + pullTail 内三道守卫齐全（语义与旧内联版一致）。 */
 const tk = fnBody(mv, "async function tick(");
+const pt = fnBody(mv, "async function pullTail(");
 ok("R11 轮询在 await 后丢弃旧会话的尾部数据",
-  /const cid = String\(activeId\.value\);/.test(tk) && /const mySeq = msgSeq;/.test(tk)
-    && /if \(isStale\(mySeq, cid\)\) \{ tickBusy = false; return; \}/.test(tk),
+  /await pullTail\(String\(activeId\.value\)\);/.test(tk)
+    && /const mySeq = msgSeq;/.test(pt)
+    && /if \(isStale\(mySeq, cid\)\) return false;/.test(pt),
   "tick 没做会话身份校验 —— 5s 一次的轮询会把 A 的新消息并进当前会话");
 
 /* ══════════ send：切走后不得拿别人的 msgs 落库 ══════════ */

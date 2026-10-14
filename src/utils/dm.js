@@ -5,6 +5,7 @@
  */
 import { db } from "./api/db.js";
 import { canRecall } from "./dmRules.js";
+import { singleFlight } from "./inflight.js";
 
 /** 云端就绪且已登录（私信的全部入口都以此为闸） */
 export function dmReady() {
@@ -17,9 +18,13 @@ export async function openConv(otherId) {
   return r && r.conv_id;
 }
 
-/** 会话列表（新→旧；db 侧已排序，这里兜底再排一次以防实现差异） */
+/* 会话列表（新→旧；db 侧已排序，这里兜底再排一次以防实现差异）
+ * 轮 266：单飞合并——启动页预热（App.vue prefetchConvs）与消息页 loadConvs /
+ * 轮询刷新对同一页各发一次就是双份流量 + 竞态覆盖；合并后「预热发的那次就是
+ * 界面等到的那次」，弱网下首装打开消息页直接吃在途结果（用户报障「消息记录出来的
+ * 太慢」的机制修法之一）。key 带分页参数：不同页 = 不同 key，互不影响。 */
 export async function listConvs(limit = 100, offset = 0) {
-  return db.dmListConvs(limit, offset);
+  return singleFlight(`dm:convs:${limit}:${offset}`, () => db.dmListConvs(limit, offset));
 }
 
 /** 单会话元信息（深链进入用） */
@@ -70,11 +75,17 @@ export async function unreadTotal() {
 /** 未读总览的「绝不抛错」版本：角标轮询失败时退化为零，不打断界面 */
 export async function unreadTotalSafe() {
   try {
-    if (!db.ready()) return { total: 0, requests: 0 };
+    if (!db.ready()) return { total: 0, requests: 0, convs: [] };
     const r = await db.dmUnreadTotal();
-    return { total: (r && r.total) || 0, requests: (r && r.requests) || 0 };
+    /* 轮 268：convs = 行级未读明细 [{conv_id,unread}]（MIGRATION_dm_unread_convs.sql
+     * 跑过才有；没跑时服务端不返回该键 → 这里兜底空数组，前端降级为旧行为） */
+    return {
+      total: (r && r.total) || 0,
+      requests: (r && r.requests) || 0,
+      convs: (r && Array.isArray(r.convs)) ? r.convs : [],
+    };
   } catch (e) {
-    return { total: 0, requests: 0 };
+    return { total: 0, requests: 0, convs: [] };
   }
 }
 

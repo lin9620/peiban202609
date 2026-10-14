@@ -387,7 +387,22 @@ async function loadCloud({ fresh = false, quiet = false } = {}) {
 
 /* 触底续载（轮 62 自愈版）：游标取下一页，**追加前去重**——缓存快照与游标页交叠、
    时间戳并列导致跨页重排等任何错位，都只表现为「整页重复」→ 跳过该页用下一页游标续取
-   （最多跳 3 页），永不产生重复 :key、永不假到底。 */
+   （最多跳 3 页），永不产生重复 :key、永不假到底。
+   轮 267（用户实测「骨架出现之后十几秒都不消失」）两修：
+    ① 骨架窗口 = 只等「行上屏」，不等评论数——旧行为把 cloudFetchCommentCounts 也
+       拴在 pageBusy 里（第三个串行请求），行都出来了骨架还在；现在行一上屏就收骨架，
+       评论数转后台静默补。
+    ② 8s 超时兜底——链路无任何超时（listPosts + listReactionsByPosts + counts、
+       最多 3 跳全是串行），弱网单个挂死骨架就永远不消失。超时只放弃「等」，
+       不放弃「数据」：底层请求继续走、游标不动，下次触底重试（去重自愈）。 */
+const PAGE_BUSY_MS = 8000;
+function withTimeout(p, ms) {
+  let t = 0;
+  return Promise.race([
+    Promise.resolve(p).finally(() => { clearTimeout(t); }),
+    new Promise((_, rej) => { t = setTimeout(() => rej(new Error("page-busy-timeout")), ms); }),
+  ]);
+}
 async function loadMoreCloud() {
   /* 轮 252：搜索态下触底 = 搜索结果续页（before 游标同款口径） */
   if (searchActive.value) {
@@ -399,7 +414,7 @@ async function loadMoreCloud() {
   try {
     let cursor = feedCursor.value;
     for (let hop = 0; hop < 3; hop++) {
-      const rows = await cloudFetchPosts(FEED_PAGE, cursor);
+      const rows = await withTimeout(cloudFetchPosts(FEED_PAGE, cursor), PAGE_BUSY_MS);
       if (!rows) return;                    /* 拉取失败：保留现场，下次触底再试 */
       if (!rows.length) { cloudDone.value = true; return; }   /* 空页 = 真到底 */
       const seen = new Set(cloudPosts.value.map((p) => p.dbId));
@@ -409,19 +424,22 @@ async function loadMoreCloud() {
         cloudPosts.value = cloudPosts.value.concat(add);
         feedCursor.value = rows[rows.length - 1].dbId;
         cloudDone.value = rows.length < FEED_PAGE;
-        const counts = await cloudFetchCommentCounts(rows.map((r) => r.dbId)).catch(() => null);
-        if (counts) {
+        pageBusy.value = false;   /* 轮 267：行已上屏，骨架使命完成——评论数转后台补 */
+        cloudFetchCommentCounts(rows.map((r) => r.dbId)).then((counts) => {
+          if (!counts) return;
           const next = { ...cloudCmtTotal.value };
           for (const p of add) {
             if (p.dbId != null) next[cmtKey(p)] = counts[p.dbId] || 0;
           }
           cloudCmtTotal.value = next;
-        }
+        }).catch(() => {});
         return;
       }
       cursor = rows[rows.length - 1].dbId;  /* 整页都是已加载过的 → 前进游标跳过这页 */
     }
     cloudDone.value = true;                 /* 连跳 3 页全重复：数据库真没有没看过的了 */
+  } catch (e) {
+    /* 轮 267：超时/异常——游标与现场都不动，下次触底重试；骨架由 finally 收起 */
   } finally {
     pageBusy.value = false;
   }

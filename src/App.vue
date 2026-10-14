@@ -24,6 +24,7 @@ import { getItem } from "./utils/storage.js";
 import * as dmApi from "./utils/dm.js";
 import { bottleQuota, bottleHeld } from "./utils/bottle.js";
 import { badge, startBadge, stopBadge } from "./stores/badgeStore.js";
+import { startDmRealtime, stopDmRealtime } from "./utils/dmRealtime.js";   /* 轮 269：前台实时秒达 */
 /* 皮肤/语言：状态在 uiStore（与「设置」页共用）；App 只消费主题 */
 import { naiveTheme, naiveOverrides } from "./stores/uiStore.js";
 
@@ -198,8 +199,18 @@ onBeforeUnmount(() => {
  * 轮 37 起漂流瓶已完全不写本机缓存（全线上），这里的 bottle: 只用于清掉老版本留在
  * 设备上的快照——别删，删了老设备升级后会一直带着那份过期快照。 */
 watch(cloudSigned, (v) => {
-  if (v) { startBadge(); return; }
+  if (v) {
+    startBadge();
+    startDmRealtime();   /* 轮 269：前台秒达通道（失败静默，轮询兜底不变） */
+    /* 轮 266：登录后补预热——首装流程是「先登录 → 再进消息页」，而启动期那次
+     * prefetchConvs 因未登录直接跳过了；不在登录时补跑，第一次进消息页必然是
+     * 冷网络（用户报障「消息记录出来的太慢」的机制原因之一）。
+     * listConvs 已单飞合并：若与启动链/消息页在途请求重叠，join 同一个，不多发。 */
+    prefetchConvs();
+    return;
+  }
   stopBadge();
+  stopDmRealtime();   /* 轮 269：登出关通道（不留别人的订阅） */
   cacheDrop("dm:");
   cacheDrop("notif:");
   cacheDrop("bottle:");

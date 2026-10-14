@@ -542,6 +542,13 @@ export const db = {
       p_report: reportId, p_action: action, p_note: note,
     }));
   },
+
+  /* ══════════ 客户端错误日志（轮 270；表 RLS 零策略，读只走 RPC） ══════════ */
+
+  /** 错误日志页：{admin, total, items, top}；非管理员得到 {admin:false} */
+  adminClientLogsPage(offset, limit) {
+    return unwrap(sb().rpc("admin_clientlog_page", { p_offset: offset, p_limit: limit }));
+  },
   /* ══════════ 私信（阶段 4：写路径全部走 RPC，表直写被 RLS 拒绝） ══════════ */
 
   /** 找或建与某用户的会话 → {conv_id} */

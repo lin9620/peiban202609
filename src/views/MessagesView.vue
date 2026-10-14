@@ -24,7 +24,8 @@ import {
   previewText, sortConvs, filterConvs, withDayDividers, displayMsg,
   validateSend, sendErrKey, canRecall, relativeTime, rowView, mergeTail,
 } from "../utils/dmRules.js";
-import { badge, refreshBadge, badgeLocal } from "../stores/badgeStore.js";
+import { badge, refreshBadge, badgeLocal, badgeDmConvPatch } from "../stores/badgeStore.js";
+import { onDmInsert } from "../utils/dmRealtime.js";   /* 轮 269：前台秒达 */
 /* 轮 34：拉黑已全站生效（私信拦截 + 暖心墙内容隐藏）——这里走 userBlocks 的包装，
  * 让「拉黑名单」的内容过滤缓存与私信名单始终是同一份 */
 import { blockUser, unblockUser, refreshBlocks, isBlocked } from "../utils/userBlocks.js";
@@ -43,6 +44,9 @@ const router = useRouter();
 const convs = ref([]);       // 会话列表
 const q = ref("");           // 搜索
 const loadingConvs = ref(false);
+const convsLoaded = ref(false);   /* 轮 266：服务端**明确应答过**（哪怕空列表）才算已加载——
+    * 「还没有会话」只在它为 true 时才显示；此前一律给骨架屏。
+    * 修用户报障：弱网下网络失败/未返回时旧版把「还没查到」渲染成「还没有会话」（假空）。 */
 const failed = ref(false);
 const signedIn = computed(() => !!(cloud.ready && cloud.user));
 
@@ -137,6 +141,15 @@ function goUser(id) {
  * 行上的乐观标志只作补充——SWR 缓存快照里的行 blocked 是旧值，只看行标志会漏（用户实测）。 */
 const normal = computed(() => sortConvs(filterConvs(convs.value.filter((c) => c.accepted !== false && !c.blocked && !isBlocked(c.other_id)), q.value)).map(rowView));
 const requests = computed(() => sortConvs(filterConvs(convs.value.filter((c) => c.accepted === false && !c.blocked && !isBlocked(c.other_id)), q.value)).map(rowView));
+
+/* 轮 268：行未读 = max(列表权威值, badge 行级映射)——badge 请求（30s 轮询 + 角标本地缓存
+ * 秒出）比会话列表快，映射先到就先亮红点（修「顶/底红点都在，中间行红点等好几秒才出现」）。
+ * 两边都来自服务端权威时刻；openConv/轮询清行时两者同步清，max 不会让红点复活。 */
+function rowUnread(c) {
+  const a = Number(c.unread) || 0;
+  const b = Number((badge.dmConvs || {})[String(c.conv_id)]) || 0;
+  return Math.max(a, b);
+}
 
 /* 带日期分隔的消息流 */
 const flow = computed(() => withDayDividers(msgs.value.map(displayMsg)));
@@ -257,12 +270,27 @@ async function loadConvs() {
     cacheKey("dm:convs", meId.value),
     {
       cached: (rows) => { convs.value = withBlockedTombstones(rows); loadingConvs.value = false; },
-      fresh: (rows) => { convs.value = withBlockedTombstones(rows); failed.value = false; },
-      onError: () => { failed.value = true; },
+      fresh: (rows) => {
+        convs.value = withBlockedTombstones(rows);
+        failed.value = false;
+        convsLoaded.value = true;   /* 服务端明确应答（含空列表）——「还没有会话」从此刻起才可信 */
+        convsRetryN = 0;            /* 成功即停快速重试 */
+      },
+      onError: () => { failed.value = true; scheduleConvsRetry(); },
     },
     () => dmApi.listConvs(200, 0),
   );
   loadingConvs.value = false;
+}
+
+/* 轮 266：网络失败快速重试（旧版失败后要等 15s 后的轮询才可能恢复，
+ * 期间列表显示「还没有会话」= 用户看到的「假空」）。3s 一试、最多 3 次，成功即停。 */
+let convsRetryN = 0;
+let convsRetryTimer = 0;
+function scheduleConvsRetry() {
+  if (convsRetryN >= 3 || convsRetryTimer) return;
+  convsRetryN += 1;
+  convsRetryTimer = setTimeout(() => { convsRetryTimer = 0; loadConvs(); }, 3000);
 }
 
 async function openBottleChat(id) {
@@ -526,14 +554,17 @@ async function openConv(id) {
   activeId.value = String(id);
   /* 轮 254 · 红点跟手：进会话那一刻就把本地行未读清零 + 导航角标同步递减（0ms 跟手），
    * 网络 markRead → refreshBadge 只做服务端校正（失败也不影响观感，下轮轮询自愈）。
-   * 不等 loadMessages/网络往返，用户「点进去马上返回」红点也已经消了。 */
+   * 不等 loadMessages/网络往返，用户「点进去马上返回」红点也已经消了。
+   * 轮 268：行未读的乐观来源有两个（列表行值 + badge 行级映射），取 max 才是「用户
+   * 眼睛看到的未读」——只按行值减会漏掉「快照旧、映射新」的场景；映射一并清掉防复活。 */
   {
     const row = convs.value.find((c) => String(c.conv_id) === String(id));
-    const lost = row && Number(row.unread) > 0 ? Number(row.unread) : 0;
-    if (row && lost) {
-      row.unread = 0;
-      badgeLocal({ dm: Math.max(0, badge.dm - lost) });
-    }
+    const fromRow = row && Number(row.unread) > 0 ? Number(row.unread) : 0;
+    const fromMap = Number((badge.dmConvs || {})[String(id)]) || 0;
+    const lost = Math.max(fromRow, fromMap);
+    if (row && lost) row.unread = 0;
+    if (lost) badgeLocal({ dm: Math.max(0, badge.dm - lost) });
+    badgeDmConvPatch(id, 0);
   }
   /* 双形态导航（微信式）：
    *  - 手机形态：聊天是独立整屏页 → push，历史保留列表 → ← 钮 / 系统返回键都能回列表；
@@ -813,36 +844,7 @@ async function tick() {
   tickN++;
   tickBusy = true;
   try {
-    if (activeId.value) {
-      /* 尾部增量合并（mergeTail）：已见行原位更新、新行追加——翻过的历史不再被轮询冲掉 */
-      const cid = String(activeId.value);
-      const mySeq = msgSeq;
-      const got = (await dmApi.listMessages(cid, { before: null, limit: 20 })) || [];
-      /* 轮 225：等响应期间用户切走了会话（或发起了新的加载）→ 这份尾部数据属于旧会话。
-       * 没有这道守卫时，5s 一次的轮询会把 A 的新消息 merge 进当前打开的 B/C 会话
-       * （用户实测「快速点几下之后 C 里出现 B 甚至 A 的记录」——轮询与切换撞车是主凶之一）。 */
-      if (isStale(mySeq, cid)) { tickBusy = false; return; }
-      const asc = got.slice().reverse();
-      if (asc.length) {
-        const { rows, added } = mergeTail(msgs.value, asc);
-        if (rows !== msgs.value) {
-          const el = listEl.value;
-          const nearBottom = !el || (el.scrollHeight - el.scrollTop - el.clientHeight) < 120;
-          msgs.value = rows;
-          if (added) {
-            if (nearBottom) scrollBottom(true);
-            /* 轮 254：行未读本地先清 + 角标同步减（乐观跟手），等落库再校正 */
-            const crow = convs.value.find((x) => String(x.conv_id) === String(cid));
-            const clost = crow && Number(crow.unread) > 0 ? Number(crow.unread) : 0;
-            if (crow && clost) {
-              crow.unread = 0;
-              badgeLocal({ dm: Math.max(0, badge.dm - clost) });
-            }
-            refreshBadge({ after: dmApi.markRead(cid).catch(() => {}) });
-          }
-        }
-      }
-    }
+    if (activeId.value) await pullTail(String(activeId.value));
     /* 会话列表不再每拍全量拉 200 行：每 3 拍（约 15s）一次，未读/预览仍够新鲜；
      * 后台 chatter 少 2/3，弱网下不跟用户操作抢带宽。消息轮询优先于列表刷新。 */
     if (tickN % 3 === 1) await loadConvsImplicit();
@@ -850,11 +852,74 @@ async function tick() {
   finally { tickBusy = false; }
 }
 
+/* 尾部刷新：把该会话服务器侧最新 20 条 merge 进当前列表（原 tick 内的内联逻辑，
+ * 轮 269 抽成函数——实时通道收到 INSERT 事件时直接复用同一条路：不手写 merge，
+ * 实时行与 RPC 行的形状差异（nickname 等）由服务端全行覆盖，下一拍自愈）。
+ * 轮 225 语义原样保留：只读不发号（mySeq = msgSeq），响应回来只校验号与会话；
+ * 发号权仍归 loadMessages（openConv），轮询/实时绝不顶号。 */
+async function pullTail(cid) {
+  const mySeq = msgSeq;
+  const got = (await dmApi.listMessages(cid, { before: null, limit: 20 })) || [];
+  /* 等响应期间用户切走了会话（或发起了新的加载）→ 这份尾部数据属于旧会话，整份丢弃。 */
+  if (isStale(mySeq, cid)) return false;
+  const asc = got.slice().reverse();
+  if (!asc.length) return false;
+  /* 尾部增量合并（mergeTail）：已见行原位更新、新行追加——翻过的历史不再被冲掉 */
+  const { rows, added } = mergeTail(msgs.value, asc);
+  if (rows === msgs.value) return false;
+  const el = listEl.value;
+  const nearBottom = !el || (el.scrollHeight - el.scrollTop - el.clientHeight) < 120;
+  msgs.value = rows;
+  if (added) {
+    if (nearBottom) scrollBottom(true);
+    /* 轮 254：行未读本地先清 + 角标同步减（乐观跟手），等落库再校正 */
+    const crow = convs.value.find((x) => String(x.conv_id) === String(cid));
+    const clost = Math.max(
+      crow && Number(crow.unread) > 0 ? Number(crow.unread) : 0,
+      Number((badge.dmConvs || {})[cid]) || 0,   /* 轮 268：映射也算 */
+    );
+    if (crow && clost) crow.unread = 0;
+    if (clost) badgeLocal({ dm: Math.max(0, badge.dm - clost) });
+    badgeDmConvPatch(cid, 0);
+    refreshBadge({ after: dmApi.markRead(cid).catch(() => {}) });
+  }
+  return added;
+}
+
 /* 轮询里的列表刷新：不动 loadingConvs，避免列表闪「载入中」 */
 async function loadConvsImplicit() {
   try {
     convs.value = withBlockedTombstones((await dmApi.listConvs(200, 0)) || []);
+    convsLoaded.value = true;   /* 轮 266：轮询也算服务端应答（首拉失败后轮询救回 = 空态可信） */
+    failed.value = false;
+    convsRetryN = 0;
   } catch (e) { /* 静默 */ }
+}
+
+/* 轮 269 · 实时 INSERT 回调：
+ *  - 事件属于当前打开的会话 → pullTail 秒上屏（与 tick 同一条路，有 msgSeq 守卫）；
+ *  - 属于别的会话 → 列表隐式刷新（节流 3s 一次，防连发刷屏）；行未读红点由 badge
+ *    的 refreshBadge(conv 明细) 先亮（dmRealtime 已触发），列表回来再精确校正。 */
+let offDmInsert = null;
+let rtListAt = 0;
+function armDmRealtime() {
+  if (offDmInsert) return;
+  offDmInsert = onDmInsert((row) => {
+    if (!signedIn.value) return;
+    const cid = String((row && row.conv_id) || "");
+    if (!cid) return;
+    if (activeId.value && String(activeId.value) === cid) {
+      pullTail(cid).catch(() => {});
+      return;
+    }
+    const now = Date.now();
+    if (now - rtListAt < 3000) return;
+    rtListAt = now;
+    loadConvsImplicit();
+  });
+}
+function disarmDmRealtime() {
+  if (offDmInsert) { try { offDmInsert(); } catch (e) {} offDmInsert = null; }
 }
 
 function onVisible() {
@@ -875,6 +940,7 @@ onMounted(async () => {
   await loadConvs();
   if (firstOpen) await firstOpen;
   timer = setInterval(tick, 5000);
+  armDmRealtime();   /* 轮 269：实时回调挂载（本视图卸载即注销） */
   if (typeof document !== "undefined") document.addEventListener("visibilitychange", onVisible);
 });
 
@@ -885,6 +951,7 @@ onMounted(async () => {
 let wasDeactivated = false;
 onActivated(() => {
   if (!timer) timer = setInterval(tick, 5000);
+  armDmRealtime();   /* 轮 269：保活恢复时重挂实时回调（与轮询同节奏） */
   document.addEventListener("pointerdown", onDocPointerDown);
   restoreScroll(route.path);   /* 轮 219：回位（KeepAlive 重插瞬间） */
   /* 轮 245 → 247/248 收口：真恢复时**只补滚动位置，绝不动 listRevealed** ——
@@ -903,12 +970,15 @@ onActivated(() => {
 onDeactivated(() => {
   wasDeactivated = true;
   clearInterval(timer); timer = 0;
+  disarmDmRealtime();   /* 轮 269：保活期暂停实时回调（与轮询同节奏） */
   document.removeEventListener("pointerdown", onDocPointerDown);
 });
 onBeforeUnmount(() => {
   popBack(segBack);
   document.removeEventListener("pointerdown", onDocPointerDown);
   clearInterval(timer);
+  disarmDmRealtime();   /* 轮 269 */
+  clearTimeout(convsRetryTimer); convsRetryTimer = 0;   /* 轮 266：别把重试带进坟墓 */
   if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVisible);
 });
 
@@ -1105,7 +1175,7 @@ function goSignIn() {
               {{ previewText(c.last_preview, t) }}
             </p>
             </div>
-            <span v-if="c.unread" class="dm-badge">{{ c.unread > 99 ? "99+" : c.unread }}</span>
+            <span v-if="rowUnread(c)" class="dm-badge">{{ rowUnread(c) > 99 ? "99+" : rowUnread(c) }}</span>
             <button class="dm-more" :title="t('dm.more')" @click.stop="menuFor = (menuFor === String(c.conv_id) ? '' : String(c.conv_id))">⋯</button>
             <div v-if="menuFor === String(c.conv_id)" class="dm-menu">
               <button class="dm-menu-item" @click.stop="openConv(c.conv_id); menuFor = ''">{{ t("dm.open") }}</button>
@@ -1116,7 +1186,20 @@ function goSignIn() {
           </div>
         </template>
 
-        <p v-if="!normal.length && !requests.length && !loadingConvs" class="sub dm-empty">{{ t("dm.empty") }}</p>
+        <!-- 轮 266 · 首装/弱网骨架屏：服务端还没应答过（convsLoaded=false）且没失败时，
+             给 3 条骨架行占位——对标微信/知乎：「加载中」绝不渲染成「还没有会话」。
+             失败态由上方 loadFail 提示 + 3s 快速重试接管（成功后骨架自动让位）。 -->
+        <div v-if="!convsLoaded && !failed" class="dm-sk-rows" aria-hidden="true">
+          <div v-for="i in 3" :key="'sk' + i" class="dm-row">
+            <span class="sk-circle"></span>
+            <div class="dm-row-body">
+              <span class="sk-line" style="width: 38%"></span>
+              <span class="sk-line" style="width: 66%; margin-top: 8px"></span>
+            </div>
+          </div>
+        </div>
+
+        <p v-if="!normal.length && !requests.length && convsLoaded && !failed" class="sub dm-empty">{{ t("dm.empty") }}</p>
         </template>
         <!-- 轮 142 · 漂流瓶段：桌面 = 行式列表（选中交给中列 BottleChat）；手机 = 原卡片式 BottleRecords（零改动） -->
         <BottleChatList

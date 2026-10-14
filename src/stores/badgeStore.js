@@ -16,6 +16,8 @@ import { unreadSafe } from "../utils/notify.js";
 export const badge = reactive({
   dm: 0,        // 私信未读（不含消息请求）
   requests: 0,  // 待处理的消息请求
+  dmConvs: {},  // 轮 268：行级未读 {conv_id: unread}——badge 请求捎带的明细，
+                // 让会话列表行红点与顶/底角标同时出现（MIGRATION_dm_unread_convs.sql 跑过才有）
   notif: 0,     // 通知未读（total）
   comments: 0,
   reactions: 0,
@@ -35,6 +37,40 @@ function badgeCacheKey(uid) {
   return uid ? `${BADGE_CACHE_KEY}:${uid}` : "";
 }
 
+/* 轮 268：行级映射的规范化——服务端 convs 数组 → {conv_id: unread}；
+ * 没跑迁移/无数据 → 空对象（前端降级为旧行为，行红点仍随会话列表出现） */
+function normDmConvs(v) {
+  const map = {};
+  if (Array.isArray(v)) {
+    for (const row of v) {
+      if (row && row.conv_id != null) {
+        const n = Math.max(0, Math.floor(Number(row.unread) || 0));
+        if (n > 0) map[String(row.conv_id)] = n;
+      }
+    }
+  } else if (v && typeof v === "object") {
+    for (const k of Object.keys(v)) {
+      const n = Math.max(0, Math.floor(Number(v[k]) || 0));
+      if (n > 0) map[k] = n;
+    }
+  }
+  return map;
+}
+
+/** 把当前角标（含行级映射）落缓存——apply / badgeLocal / badgeDmConvPatch 共用 */
+function writeBadgeCache() {
+  const key = badgeCacheKey(cacheUid);
+  if (!key) return;
+  try {
+    setItem(key, JSON.stringify({
+      dm: badge.dm, requests: badge.requests, notif: badge.notif,
+      comments: badge.comments, reactions: badge.reactions,
+      pets: badge.pets, system: badge.system,
+      dmConvs: badge.dmConvs,
+    }));
+  } catch (e) { /* 写不进就算了 */ }
+}
+
 /** 登录（或换账号）时把该用户上次的角标先上屏；没有缓存就清零 */
 function hydrateBadge(uid) {
   cacheUid = uid || "";
@@ -45,6 +81,7 @@ function hydrateBadge(uid) {
   const src = raw && typeof raw === "object" ? raw : zero;
   badge.dm = Math.max(0, src.dm || 0);
   badge.requests = Math.max(0, src.requests || 0);
+  badge.dmConvs = normDmConvs(src.dmConvs);   /* 轮 268：行级映射也随缓存秒恢复 */
   badge.notif = Math.max(0, src.notif || 0);
   badge.comments = Math.max(0, src.comments || 0);
   badge.reactions = Math.max(0, src.reactions || 0);
@@ -60,22 +97,17 @@ const MAX_MS = 300000;
 function apply(dm, notif) {
   badge.dm = Math.max(0, (dm && dm.total) || 0);
   badge.requests = Math.max(0, (dm && dm.requests) || 0);
+  /* 轮 268：行级映射整体刷新（服务端权威）。没跑 MIGRATION_dm_unread_convs.sql 时
+   * dm.convs 缺失 → 空对象，行红点退化为旧行为（等会话列表），不误伤。 */
+  badge.dmConvs = normDmConvs(dm && dm.convs);
   badge.notif = Math.max(0, (notif && notif.total) || 0);
   badge.comments = Math.max(0, (notif && notif.comments) || 0);
   badge.reactions = Math.max(0, (notif && notif.reactions) || 0);
   badge.pets = Math.max(0, (notif && notif.pets) || 0);
   badge.system = Math.max(0, (notif && notif.system) || 0);
-  /* 写入缓存：只是几个数字（无隐私内容），下次冷启动当首屏兜底；
+  /* 写入缓存：只是几个数字 + conv_id→数字映射（无隐私内容），下次冷启动当首屏兜底；
    * 按 uid 分开存，换账号不会把上一个人的角标带出来；登出时 stopBadge 会清掉。 */
-  const key = badgeCacheKey(cacheUid);
-  if (!key) return;
-  try {
-    setItem(key, JSON.stringify({
-      dm: badge.dm, requests: badge.requests, notif: badge.notif,
-      comments: badge.comments, reactions: badge.reactions,
-      pets: badge.pets, system: badge.system,
-    }));
-  } catch (e) { /* 写不进就算了 */ }
+  writeBadgeCache();
 }
 
 /* 刷一次（页面回前台 / 发消息后 / 读通知后都可手动触发）。返回是否成功（供退避用）。
@@ -119,15 +151,20 @@ export function badgeLocal(patch) {
     if (typeof badge[k] !== "number") continue;
     badge[k] = Math.max(0, Math.floor(Number(patch[k]) || 0));
   }
-  const key = badgeCacheKey(cacheUid);
-  if (!key) return;
-  try {
-    setItem(key, JSON.stringify({
-      dm: badge.dm, requests: badge.requests, notif: badge.notif,
-      comments: badge.comments, reactions: badge.reactions,
-      pets: badge.pets, system: badge.system,
-    }));
-  } catch (e) { /* 写不进就算了 */ }
+  writeBadgeCache();
+}
+
+/* 轮 268 · 行级未读本地补丁：打开会话那一刻把该行的乐观映射清掉（红点即时跟手），
+ * 等 dm_list_convs / badge 轮询回来用服务端权威值校正。unread 传数字 = 设值；其余 = 删除。 */
+export function badgeDmConvPatch(convId, unread) {
+  if (convId == null || convId === "") return;
+  const k = String(convId);
+  const next = { ...badge.dmConvs };
+  const n = Math.max(0, Math.floor(Number(unread) || 0));
+  if (n > 0) next[k] = n;
+  else delete next[k];
+  badge.dmConvs = next;
+  writeBadgeCache();
 }
 
 function schedule() {
@@ -164,6 +201,7 @@ export function stopBadge() {
     document.removeEventListener("visibilitychange", onVisible);
   }
   badge.dm = 0; badge.requests = 0; badge.notif = 0;
+  badge.dmConvs = {};   /* 轮 268：登出行级映射一并清零（缓存随后整键删除） */
   badge.comments = 0; badge.reactions = 0; badge.pets = 0; badge.system = 0;
   /* 登出：只清掉这位用户的角标缓存 —— 换账号登录时，新 uid 读的是它自己的那份，
    * 不会把上一个人的未读数带出来，同时也不会误删同设备其它账号的缓存。 */

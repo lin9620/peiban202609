@@ -785,6 +785,18 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
   content-visibility: auto;
   contain-intrinsic-size: auto 320px;
 }
+/* 轮 262：⋯ 菜单（举报/拷贝/收藏）打开时，它所在的帖子卡必须让路——两层都得开，
+ * 只开一层会把「卡底硬切」换成「下一张卡顶硬切」：
+ * ① content-visibility: auto 隐含 paint containment，把卡片子元素裁到卡片 padding box。
+ *    菜单是绝对定位挂在 .post-head/.cmt-head 下的，高度一越过卡片底边就被硬切一条横线。
+ *    （getComputedStyle 的 contain 回显 none——Chrome 不显示这条隐式包含，光看 computed 会漏。）
+ * ② .card 的 z-index:1 让每张卡各开一个堆叠上下文，菜单的 z-index:40 只在本卡内有效；
+ *    下一张卡同样 z-index:1 且 DOM 靠后 → 整卡画在菜单之上，溢出部分被下一张卡顶边切。
+ * 用 :has(.more-pop) 精确命中「这张卡里有打开的菜单」（菜单 v-if 渲染，收起即移出 DOM），
+ * 覆盖暖心墙 + 帖子详情页、帖子/一级评论/二级回复三处菜单，模板不用挂任何状态。
+ * 卡在屏幕上本就没被 skip，关掉 cv 不改高度不跳版；其余卡的性能优化原样保留。
+ * z-index 只提到 2：仍低于排序条(60)/底部输入条(140)/TabBar(130+)，不会盖住它们。 */
+.post-card:has(.more-pop) { content-visibility: visible; z-index: 2; }
 .post-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .post-avatar { background: linear-gradient(135deg, #ffd9b8, #ffc7de) !important; font-size: 18px; }
 .post-meta { flex: 1; min-width: 0; }
@@ -1205,6 +1217,11 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 }
 .wall-search-input:focus { border-color: var(--accent); background: var(--card); }
 .wall-search-input::placeholder { color: var(--ink-faint); }
+/* 轮 264：干掉 type="search" 原生自带的清除按钮——它跟右侧自己写的 ✕ 撞车（用户：「只保留一个×」）。
+   不能把 type 改回 text：手机键盘右下角那个「搜索」键正是 type="search" 给的，改了会丢键位。
+   所以保留 type="search"（键盘不变），只用 CSS 关掉原生 ×；留下的 ✕ 走 clearSearch()，
+   关键词与已选标签一起清——原生那个只清文字、清不掉标签，本来就不该留。 */
+.wall-search-input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; display: none; }
 /* 热门标签 chip 行：横向排布，超宽可横滑（手机端一屏能看到更多入口） */
 .wall-tag-row {
   display: flex; gap: 6px; flex-wrap: wrap;
@@ -2072,6 +2089,9 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 .dm-hint { font-size: 11.5px; flex: 1; }
 .dm-err { color: #d9534f; }
 .dm-empty { text-align: center; }
+/* 轮 266：会话列表骨架屏（复用全局 sk-circle/sk-line 脉冲配方；行高对齐真行） */
+.dm-sk-rows .dm-row { pointer-events: none; }
+.dm-sk-rows .dm-row-body { flex: 1; }
 .dm-back {
   align-self: center; color: var(--ink-soft); font-weight: 500; text-decoration: none; font-size: 13px;
 }
@@ -2111,7 +2131,24 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
   --van-tabbar-item-active-background: transparent;
   max-width: 640px; margin: 0 auto;
 }
-.tabbar .van-tabbar-item { background: transparent; }
+.tabbar .van-tabbar-item { background: transparent; position: relative; }
+/* 轮 265：TabBar 红点角标不许压住文字（用户报「数字1跟下面都重合了」，对照小红书）。
+ * 根因：tab 项是**纯文字、没有图标**（轮「手机端 9」定的设计），而 vant 把角标锚在 .van-badge__wrapper 上——
+ * 这个本该装图标的壳里没东西 → 空盒、宽 0 高 0，角标就被钉在文字行**中间**。
+ * 实测（无头 Edge 注入同款 DOM 量几何）：角标 [280.9,857.3,296.9,873.7] 压「消息」[273.6,865.5,304.2,880.5]，
+ * 重叠 x=16px（整个角标宽）/ y=8.2px，正好盖住「消」字上半截。
+ * 小红书那类 App 是把角标锚在**图标**上、落在图标右上方，文字排在图标下面所以永远压不到（网页版 .badge-container
+ * 实测 position:relative + top:0/right:0 锚在 link-wrapper 上，同款套路）。我们没有图标，
+ * 就把锚点从空壳挪到 **tab 项本身**，位置沿用手写时代那条 .tab-badge 的口径（文字右上方）。 */
+/* ① 空壳不再自成定位上下文（它是角标的直接父级，不拨掉的话上面那条 position:relative 够不着）；
+ *② 掉 .van-tabbar-item__icon 给角标的 4px margin-top（否则会把 top 再往下顶 4px）。 */
+.tabbar .van-badge__wrapper.van-tabbar-item__icon { position: static; }
+.tabbar .van-tabbar-item .van-badge--fixed {
+  top: 2px;                     /* 顶到 TabBar 顶部留白（实测文字行距栏顶 24.5px，撞不上） */
+  right: calc(50% - 26px);      /* 文字右上角（50% 现在按 tab 项宽度解，不再是空壳的 0 宽） */
+  margin: 0;
+  transform: none;              /* 去掉 vant 的 translate(50%,-50%)——正是它把角标拽进文字行的 */
+}
 .tabbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 140;
   display: flex; justify-content: space-around; align-items: stretch;

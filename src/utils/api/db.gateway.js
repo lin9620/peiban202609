@@ -454,6 +454,14 @@ export const db = {
     return call(`/admin/reports/${enc(reportId)}/handle`, { method: "POST", body: { action, note } });
   },
 
+  /* ══════════ 客户端错误日志（轮 270；只读，写入是匿名信标经 Worker） ══════════ */
+
+  /** 错误日志页：{admin, total, items(最新 N 条), top(按 msg+route 聚合 Top 20)}。
+   *  非管理员得到 {admin:false}，不泄露任何内容 —— 判定在 RPC 里的 admin_users。 */
+  adminClientLogsPage(offset, limit) {
+    return call(`/admin/client-logs?offset=${enc(offset)}&limit=${enc(limit)}`);
+  },
+
   /* ══════════ 私信（阶段 4） ══════════ */
 
   /** 找或建会话 → {conv_id} */

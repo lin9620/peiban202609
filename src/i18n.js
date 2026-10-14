@@ -521,7 +521,7 @@ export const messages = {
       denied: "Not authorized — admins only.",
       loading: "Loading…",
       refresh: "Refresh",
-      tabs: { overview: "Overview", posts: "Posts", comments: "Comments", reports: "Reports", users: "Users" },
+      tabs: { overview: "Overview", posts: "Posts", comments: "Comments", reports: "Reports", users: "Users", clientlogs: "Client errors" },
       /* 轮 33：举报/复核处理队列 */
       reports: {
         pending: "Pending", handled: "Handled", empty: "Nothing here — all calm ✨",
@@ -535,6 +535,19 @@ export const messages = {
           dismiss: "Dismiss", removePost: "Take down", restorePost: "Restore post",
           deleteComment: "Delete comment", unhideComment: "Restore comment",
         },
+      },
+      /* 轮 270：客户端错误日志（前端无声信标 utils/beacon.js 落库后的查看面板） */
+      clogs: {
+        top: "Top issues (by how often they hit)",
+        raw: "Latest entries",
+        total: "{n} entries in total",
+        empty: "No client errors captured — the beacon has nothing to report 🎉",
+        times: "{n}×",
+        lastSeen: "Last seen {t}",
+        col: { route: "Page", ip: "IP" },
+        kind: { err: "Error", rej: "Unhandled rejection" },
+        showStack: "Stack trace",
+        loadFail: "Couldn't load the client error logs: {r}",
       },
       cards: {
         users: "Users", usersToday: "New today",
@@ -1383,7 +1396,7 @@ export const messages = {
       denied: "没有权限——仅管理员可访问。",
       loading: "加载中……",
       refresh: "刷新",
-      tabs: { overview: "总览", posts: "帖子", comments: "评论", reports: "举报", users: "用户" },
+      tabs: { overview: "总览", posts: "帖子", comments: "评论", reports: "举报", users: "用户", clientlogs: "客户端错误" },
       /* 轮 33：举报/复核处理队列 */
       reports: {
         pending: "待处理", handled: "已处理", empty: "这里静悄悄的，没有要处理的内容 ✨",
@@ -1397,6 +1410,19 @@ export const messages = {
           dismiss: "驳回", removePost: "下架帖子", restorePost: "恢复帖子",
           deleteComment: "删除评论", unhideComment: "恢复评论",
         },
+      },
+      /* 轮 270：客户端错误日志（前端无声信标 utils/beacon.js 落库后的查看面板） */
+      clogs: {
+        top: "最常出现的问题（按次数）",
+        raw: "最新记录",
+        total: "共 {n} 条",
+        empty: "还没有捕获到客户端错误——信标无话可说 🎉",
+        times: "{n} 次",
+        lastSeen: "最近一次 {t}",
+        col: { route: "页面", ip: "IP" },
+        kind: { err: "错误", rej: "未处理的 Promise 拒绝" },
+        showStack: "调用栈",
+        loadFail: "没取到客户端错误日志：{r}",
       },
       cards: {
         users: "用户", usersToday: "今日新增",

@@ -40,19 +40,12 @@ export function purgeLegacyBottleLocals() {
 }
 
 /* ═══════════ 轮 41 · 单飞合并（让「启动期预热」有意义）═════════════
- * 启动页（App.vue prefetchBottle）与首页三联（BottleView 的 immediate watch）会对
- * 同一批接口各发一次请求——不合并就是双份流量 + 竞态覆盖。这里把**正在进行**的
- * 同 key 请求合并成同一个 Promise：预热发的那次就是界面等到的那次。
- * 只合并在途请求：不缓存、不写存储、不复用**已完成**的结果（轮 37 口径不变：
- * 一切以服务端此刻返回为准；回信/投递后的 syncQuota 一定是新请求，不会读到旧值）。 */
-const flights = new Map();
-export function singleFlight(key, fn) {
-  const hit = flights.get(key);
-  if (hit) return hit;
-  const p = Promise.resolve().then(fn).finally(() => { flights.delete(key); });
-  flights.set(key, p);
-  return p;
-}
+ * 实现已挪到 utils/inflight.js（轮 266：私信会话列表也要用）；这里保留导出
+ * 使 bottle.js 既有调用方零改动。语义见 inflight.js 头注。
+ * 注：必须「import 再 export」而非 re-export 语法——后者无本地绑定，
+ * tools/undef-check.mjs 会把 bottle.js 内的使用判成未定义（实测误报）。 */
+import { singleFlight } from "./inflight.js";
+export { singleFlight };
 
 /** 漂流瓶要登录（信要能找到作者、回信要能送到人） */
 export function canBottle() {

@@ -931,8 +931,11 @@ async function handleApi(request, env, ctx) {
         return m === "GET" ? json({ ok: true, mode: "gateway", ts: Date.now() }) : fail(405, "method-not-allowed");
       }
       /* 轮 256 · 客户端错误信标：前端 utils/beacon.js 把未捕获错误/拒绝 POST 过来。
-       * 这里只做 白名单字段 + 截断 + 限频，落一行 JSON 日志（Workers Logs / wrangler tail 可见）；
-       * 不入库、不回显、不解析任何凭据（只用 cf-connecting-ip 限频）。 */
+       * 这里做 白名单字段 + 截断 + 限频；只用 cf-connecting-ip 限频，不解析任何凭据。
+       * 轮 270 · 此前只 console.log 进 Cloudflare 临时日志区 —— 采得到、看不到、回溯不了；
+       * 现在额外落库到 client_logs（经 security definer RPC；Worker 只有 anon key、没有 service role）。
+       * 落库是**尽力而为**：迁移未执行 / 上游不可达 / 被 SQL 侧防灌闸丢弃，一律不影响本接口
+       * 返回 {ok:true} —— 信标的铁律是「绝不给本就出错的页面再加一次失败」。 */
       if (seg[0] === "client-log") {
         if (m !== "POST") return fail(405, "method-not-allowed");
         const b = await readJson(request);
@@ -946,15 +949,18 @@ async function handleApi(request, env, ctx) {
         slot.n++;
         if (clientLogRL.size > 5000) clientLogRL = new Map(); /* 容量兜底：防内存被刷大 */
         if (slot.n > 20) return fail(429, "rate-limited");
-        console.log(JSON.stringify({
-          evt: "client-log",
-          kind: t.kind === "rej" ? "rej" : "err",
-          msg: typeof t.msg === "string" ? t.msg.slice(0, 300) : "",
-          route: typeof t.route === "string" ? t.route.slice(0, 120) : "",
-          stack: typeof t.stack === "string" ? t.stack.slice(0, 1200) : "",
-          ua: typeof t.ua === "string" ? t.ua.slice(0, 160) : "",
-          ts: now,
-        }));
+        const kind = t.kind === "rej" ? "rej" : "err";
+        const msg = typeof t.msg === "string" ? t.msg.slice(0, 300) : "";
+        const route = typeof t.route === "string" ? t.route.slice(0, 120) : "";
+        const stack = typeof t.stack === "string" ? t.stack.slice(0, 1200) : "";
+        const ua = typeof t.ua === "string" ? t.ua.slice(0, 160) : "";
+        console.log(JSON.stringify({ evt: "client-log", kind, msg, route, stack, ua, ts: now }));
+        try {
+          /* SQL 里会再夹一次字段并查每 IP / 全局日上限（纵深防御） */
+          await rpc(env, request, "client_log_write", {
+            p_kind: kind, p_msg: msg, p_route: route, p_stack: stack, p_ua: ua, p_ip: ip,
+          });
+        } catch { /* 落库失败静默吞掉：信标不向客户端报错、不重试 */ }
         return json({ ok: true });
       }
       if (seg[0] === "img") {
@@ -1414,6 +1420,16 @@ async function handleApi(request, env, ctx) {
             p_status: q.get("status") || "pending",
             p_offset: parseOffset(q.get("offset")),
             p_limit: parseLimit(q.get("limit"), 20),
+          });
+        }
+        /* 轮 270：客户端错误日志（管理中心「客户端错误」页签）。
+         * 只读、只翻译：是否管理员由 RPC 内的 admin_users 判定，Worker 不做第二道判断。
+         * limit 钳到 200，与 SQL 侧 admin_clientlog_page 的钳位一致（别指望 DB 兜）。 */
+        if (seg[1] === "client-logs" && seg.length === 2) {
+          if (m !== "GET") return fail(405, "method-not-allowed");
+          return rpc(env, request, "admin_clientlog_page", {
+            p_offset: parseOffset(q.get("offset")),
+            p_limit: Math.min(parseLimit(q.get("limit"), 50), 200),
           });
         }
         if (seg[1] === "reports" && seg.length === 4 && seg[3] === "handle" && m === "POST") {

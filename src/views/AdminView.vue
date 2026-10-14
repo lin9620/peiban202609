@@ -42,6 +42,17 @@ const repOffset = ref(0);
 const repTotal = ref(0);
 const pendingReports = computed(() => (ov.value && ov.value.reports_pending) || 0);
 
+/* ═══ 客户端错误日志页签（轮 270）：前端无声信标 utils/beacon.js 落库后的查看面板。
+ * 只读、懒加载（首次切页签才拉）；不记录 user_id，所以只能按「页面 + 消息 + 调用栈」定位。
+ * 位置硬约束同上：必须声明在 watch(signedIn, ..., { immediate: true }) 之前（TDZ 前科）。 */
+const CLOGS_PAGE = 50;
+const clogsLoaded = ref(false);
+const clogsTotal = ref(0);
+const clogsTop = ref([]);    /* 按 (msg, route) 聚合的 Top 20 —— 先看「哪个错炸了 N 次」 */
+const clogsItems = ref([]);  /* 最新原始记录（含 stack） */
+const clogsErr = ref("");
+const clogShowStack = ref({}); /* id → 是否展开调用栈（不然一屏全是堆栈） */
+
 async function loadReports(offset = 0) {
   try {
     const r = await db.adminReportPage(repTab.value, offset, REP_PAGE);
@@ -59,6 +70,21 @@ function switchRepTab(name) {
   if (repTab.value === name && repLoadedFor.value === name) return;
   repTab.value = name;
   loadReports(0);
+}
+async function loadClientLogs() {
+  try {
+    const r = await db.adminClientLogsPage(0, CLOGS_PAGE);
+    if (!r || r.admin === false) { fail(new Error("admin=false")); return; }
+    clogsTop.value = r.top || [];
+    clogsItems.value = r.items || [];
+    clogsTotal.value = r.total || 0;
+    clogsErr.value = "";
+    clogShowStack.value = {};
+    clogsLoaded.value = true;
+  } catch (e) {
+    /* 只在本页签内报错，不把整个管理中心打成 error 态 */
+    clogsErr.value = t("admin.clogs.loadFail", { r: (e && e.message) || "" });
+  }
 }
 async function handleReport(item, action) {
   if (busy.value !== "") return;
@@ -107,6 +133,12 @@ async function load() {
   repOffset.value = 0;
   repTotal.value = 0;
   repTab.value = "pending";
+  clogsLoaded.value = false;
+  clogsTotal.value = 0;
+  clogsTop.value = [];
+  clogsItems.value = [];
+  clogsErr.value = "";
+  clogShowStack.value = {};
   tab.value = "overview";
   if (!signedIn.value) {
     state.value = "denied";
@@ -163,6 +195,7 @@ function switchTab(name) {
   if (name === "comments" && !commentsLoaded.value) loadComments();
   if (name === "users" && !usersLoaded.value) loadUsers(0);
   if (name === "reports" && !repLoaded.value) loadReports(0);
+  if (name === "clientlogs" && !clogsLoaded.value) loadClientLogs();
 }
 
 
@@ -384,7 +417,7 @@ const recentUsers = computed(() => (Array.isArray(ov.value && ov.value.recent_us
         </div>
         <div class="admin-tabs">
           <button
-            v-for="x in ['overview', 'posts', 'comments', 'reports']" :key="x"
+            v-for="x in ['overview', 'posts', 'comments', 'reports', 'clientlogs']" :key="x"
             class="admin-tab" :class="{ on: tab === x }"
             @click="switchTab(x)">
             {{ t(`admin.tabs.${x}`) }}
@@ -673,6 +706,59 @@ const recentUsers = computed(() => (Array.isArray(ov.value && ov.value.recent_us
             {{ t("admin.page.next") }}
           </n-button>
         </div>
+      </section>
+
+      <!-- ── 页签：客户端错误（轮 270；前端无声信标落库后的查看面板，只读） ── -->
+      <section v-else-if="tab === 'clientlogs'" class="card">
+        <div class="row-between">
+          <h2 style="margin-bottom: 0">
+            {{ t("admin.tabs.clientlogs") }}<template v-if="clogsLoaded"> · {{ t("admin.clogs.total", { n: fmtNum(clogsTotal) }) }}</template>
+          </h2>
+          <n-button quaternary size="small" @click="loadClientLogs">{{ t("admin.refresh") }}</n-button>
+        </div>
+        <p v-if="clogsErr" class="notice" style="margin: 12px 0 0">{{ clogsErr }}</p>
+        <p v-if="!clogsItems.length && !clogsErr" class="sub" style="margin-top: 12px">
+          {{ clogsLoaded ? t("admin.clogs.empty") : t("admin.loading") }}
+        </p>
+
+        <!-- 聚合优先：先看「哪个错炸了多少次」，比逐条翻原始行有用得多 -->
+        <template v-if="clogsTop.length">
+          <p class="sub" style="margin: 18px 0 4px; font-weight: 600">{{ t("admin.clogs.top") }}</p>
+          <div v-for="(x, i) in clogsTop" :key="'top' + i" class="admin-row">
+            <div class="admin-grow">
+              <div class="admin-clip">{{ clip(x.msg, 90) || "…" }}</div>
+              <span class="admin-meta">
+                {{ t("admin.clogs.col.route") }} {{ x.route || "?" }}
+                · {{ t("admin.clogs.times", { n: fmtNum(x.n) }) }}
+                · {{ t("admin.clogs.lastSeen", { t: dayTimeOf(x.last_at) }) }}
+              </span>
+            </div>
+          </div>
+        </template>
+
+        <template v-if="clogsItems.length">
+          <p class="sub" style="margin: 18px 0 4px; font-weight: 600">{{ t("admin.clogs.raw") }}</p>
+          <div v-for="x in clogsItems" :key="x.id" class="admin-row">
+            <div class="admin-grow">
+              <div class="admin-clip">
+                <n-tag size="tiny" round :bordered="false" :type="x.kind === 'rej' ? 'warning' : 'error'">
+                  {{ t("admin.clogs.kind." + (x.kind === "rej" ? "rej" : "err")) }}
+                </n-tag>
+                {{ clip(x.msg, 110) || "…" }}
+              </div>
+              <span class="admin-meta">
+                {{ dayTimeOf(x.created_at) }}
+                · {{ t("admin.clogs.col.route") }} {{ x.route || "?" }}
+                · {{ t("admin.clogs.col.ip") }} {{ x.ip || "?" }}
+              </span>
+              <span v-if="x.stack" class="admin-meta">
+                <a class="admin-open" @click="clogShowStack[x.id] = !clogShowStack[x.id]">{{ t("admin.clogs.showStack") }}</a>
+              </span>
+              <pre v-if="x.stack && clogShowStack[x.id]"
+                style="white-space: pre-wrap; word-break: break-all; margin: 6px 0 0; font-size: 12px; color: var(--ink-faint)">{{ x.stack }}</pre>
+            </div>
+          </div>
+        </template>
       </section>
 
       <!-- ── 页签：用户名单（点总览的「用户」卡进入；100/页，最新在前） ── -->

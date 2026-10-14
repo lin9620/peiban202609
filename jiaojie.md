@@ -280,7 +280,8 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
 ## 二、现在在做什么
 
-- **当前批次（改动完成、测试过了、待提交待部署——攒批）**：轮 253（知乎/Reddit 式渐进渲染补齐：图片淡入 + 触底续载迷你骨架）+ 轮 254（捞漂流瓶 6s 超时提示「没捞到」 + 修「切走再回来旧弹窗复活」：捞网会话代际 fishGen）+ 轮 255（英文文案全面精简：药丸溢出 ×7 + 占位去重 + 任务名 ×2 + 长描述 ×13 + .bcl-chip 防御 CSS）+ **轮 256（无声错误上报信标：beacon.js + Worker /api/client-log）+ 轮 257（4 条已知失败测试清零：seo T38/39/42 无尾斜杠口径 + uifix T23 现口径）+ 轮 258（新工具 i18n-usage-test 死键/漏键检查 + 清掉 79 个死键）+ 轮 259（根目录临时文件大扫除 + .gitignore 补 _scratch/_*.png）+ 轮 260（可用性监控就绪：/api/health 进 live-check + README 配置说明）+ 轮 261（装扮穿戴按身体部位锚定 pos/posBy：废弃舞台顶 dy、锚进 PetMotion 随宠跳动、兔/恐龙/水獭 posBy 覆盖，全 5 物种 ×15 组合无头截图目检；另修失败构建 closeBundle 踩坏全部预渲染的守卫 + zh 首页正文语言 + home.companions.hall 缺键恢复 + 挪正 FavoritesView 交叉嵌套结构使正式构建恢复）+ **轮 262（「不跟手」全局治理：红点即时递减 badgeLocal + refreshBadge({after}) 串行修竞态/排队不丢弃；收藏独立页 /favorites + 写穿缓存 favCacheInsert；评论发送/删除乐观化 pending 临时行）**；全量 47 套离线测试 ALL OK、build EXIT=0、page-smoke 13/13。**整批已提交 `663fe61` / 已部署 Version `0b375659`（入口 `index-Cp2C6aCf.js`，SHA16 `0d129290f4ee4701` 本地=线上，live-check 15/15）**；App 端要重打包装机（随轮 250/251 待办）。详见文末 F 区各轮。
+- **当前批次（改动完成、测试过了、待提交待部署——攒批）**：**轮 263（帖子/评论「⋯」菜单被卡片底边硬切：`.post-card` 的 `content-visibility:auto` 隐含 paint containment 裁掉菜单溢出部分 + `.card{z-index:1}` 各开堆叠上下文致下一张卡盖住菜单；一行 `.post-card:has(.more-pop){content-visibility:visible;z-index:2}` 两层同修，模板零改动）+ 轮 264（搜索栏两个 × 撞车只留一个：`.wall-search-input::-webkit-search-cancel-button` 关掉原生清除按钮，**保留 `type=search`** 以不丢手机键盘「搜索」键位，留下的 ✕ 走 clearSearch() 关键词+标签一起清）+ **轮 265（TabBar 红点角标压住「消息」二字：tab 项纯文字无图标 → vant 角标锚在空的 .van-badge__wrapper（宽0高0）上被钉进文字行；拨掉空壳的 position:relative 改锚 tab 项，位置沿用手写时代 .tab-badge 的口径）** —— 三轮均只改 `src/style.css`，模板零改动；全量 45 套离线 ALL OK + tdz 0 + build EXIT=0（入口 `index-CsTdwCxQ.js`）+ page-smoke 13/13 + 无头几何复验/目检（轮 263：elementFromPoint 四点全 MENU 无硬切；轮 264：undo 反证两个 × 回来=无假通过；轮 265：角标与文字重叠 y=0、`badgeVisibleAboveText:true`）。详见文末 F 区轮 263/264/265、踩坑 #43/#44/#45。**+ 轮 266（首装首次进消息页「会话列表出来太慢 + 假空」四修：listConvs 单飞合并（singleFlight 挪 utils/inflight.js）+ 登录后补预热 + 会话列表骨架屏/「还没有会话」只认服务端应答/失败 3s 快速重试×3 + RPC 实测 ≈400ms 定位瓶颈为跨境 RTT 非 SQL）** —— 全量离线 BAD_TOTAL=0 + undef 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 266。**+ 轮 267（暖心墙触底骨架「十几秒不消失」两修：行上屏即收骨架（评论数转后台补，不再拴在 pageBusy 里）+ withTimeout 8s 超时兜底（超时只放弃等不放弃数据：游标不动、下次触底重试自愈））** —— 全量离线 BAD_TOTAL=0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 267。**+ 轮 268（会话行红点与顶/底角标不同步：dm_unread_total 捎带行级未读明细 convs → badgeStore 存映射+进角标缓存秒恢复，行未读 = max(行权威值, 映射)，openConv 清行同步清映射防复活；MIGRATION_dm_unread_convs.sql 幂等待用户 SQL Editor 执行，不跑降级为旧行为）** —— 全量离线 BAD_TOTAL=0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 268。**+ 轮 269（私信实时通道：dmRealtime.js 订阅 dm_messages INSERT（RLS 天然隔离+自发回显丢弃+失败静默轮询兜底），tick 尾部刷新抽 pullTail 供实时复用（轮 225 只读不发号语义保留），MessagesView 当前会话 pullTail 秒上屏/别会话节流 3s 刷列表，App 登录态起停通道；MIGRATION_dm_realtime.sql 真幂等待用户 SQL Editor 执行，不跑降级轮询；R11 断言随重构更新）** —— 45 套 BAD_TOTAL=0（含 dm-race 16/16）+ undef 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 269。**+ 轮 270（错误信标「采了看不见」：/api/client-log 从只 console.log 改为落库 `client_logs`（Worker 无 service role → 写入走授给 anon 的 security definer RPC；表 RLS 零策略，读写只走 RPC）+ AdminView 新增「客户端错误」页签（聚合优先：哪个错炸了 N 次 + 最新 50 条含可展开调用栈）；不记录 user_id 保持信标匿名；防灌三闸 Worker 60s/IP + SQL 200/日/IP + 全局 5000/日；**迁移没跑也降级可用**（信标仍回 200，只是不落库）；MIGRATION_client_logs.sql 幂等待用户 SQL Editor 执行）** —— worker-test 302/0 + gateway-contract 92/0 + i18n 漏键 0/死键 0 + undef 0 + tdz 0 + build BUILD_GOOD（入口 `index-C3qtiKw2.js`）+ page-smoke 13/13 + 真实探针确认两 RPC 现为 PGRST202（未执行，符合预期）+ 两文件 token 级同源。**注意编号：本轮是 270 不是 266**——另一 AI 已占 266/267/268/269。详见文末 F 区轮 270。
+- **上一批（已提交已部署）**：轮 253~262 攒批：已提交 `663fe61` / 已部署 Version `0b375659`（入口 `index-Cp2C6aCf.js`，SHA16 `0d129290f4ee4701` 本地=线上，live-check 15/15）。明细：轮 253（知乎/Reddit 式渐进渲染补齐：图片淡入 + 触底续载迷你骨架）+ 轮 254（捞漂流瓶 6s 超时提示「没捞到」 + 修「切走再回来旧弹窗复活」：捞网会话代际 fishGen）+ 轮 255（英文文案全面精简：药丸溢出 ×7 + 占位去重 + 任务名 ×2 + 长描述 ×13 + .bcl-chip 防御 CSS）+ 轮 256（无声错误上报信标：beacon.js + Worker /api/client-log）+ 轮 257（4 条已知失败测试清零：seo T38/39/42 无尾斜杠口径 + uifix T23 现口径）+ 轮 258（新工具 i18n-usage-test 死键/漏键检查 + 清掉 79 个死键）+ 轮 259（根目录临时文件大扫除 + .gitignore 补 _scratch/_*.png）+ 轮 260（可用性监控就绪：/api/health 进 live-check + README 配置说明）+ 轮 261（装扮穿戴按身体部位锚定 pos/posBy：废弃舞台顶 dy、锚进 PetMotion 随宠跳动、兔/恐龙/水獭 posBy 覆盖；另修失败构建 closeBundle 踩坏全部预渲染的守卫 + zh 首页正文语言 + home.companions.hall 缺键恢复 + 挪正 FavoritesView 交叉嵌套结构）+ 轮 262（「不跟手」全局治理：红点即时递减 badgeLocal + refreshBadge({after}) 串行修竞态；收藏独立页 /favorites + 写穿缓存 favCacheInsert；评论发送/删除乐观化 pending 临时行）。App 端要重打包装机（随轮 250/251 待办）。
 - **上一批（已提交已部署）**：轮 239~252 攒批：已提交 `0113d6e`（+文档 `3899f5b`）/ 已部署 Version `51feda2f`（入口 `index-DzmDi8IU.js`，live-check 14/14，本地=线上）；`MIGRATION_wall_search.sql` 待用户 SQL Editor 整份执行（不跑也降级可用）。
 - **当前任务**：**轮 146（暖心墙示例帖全清 + 推荐档分级放宽 + 月档改滚动 30 天）待部署** —— 验收点：`/community` 停在「推荐」档应看到大量真实老帖（不再是示例帖），跨天均匀不霸屏；「本月」档 = 前 30 天。遗留待用户拍板：库里 9/24 有 47 条 `〔压测 #xxx〕` 灌水帖，是否清理（删数据需用户明确指示）。
 - **上一批（历史）**：轮 114（**换域名 dale.de5.net → warmpaws.de5.net：改动完成、36 套离线全绿，待提交待部署——攒批；部署即自动绑新域，之后 APK 必须重打**）。22 文件 + `.env` 全量替换 + wrangler.jsonc `custom_domain` 自动建绑 + 旧域面板绑定保留双域并存；外部面板（Supabase Redirect URLs / Google Branding / GSC）待办清单见 F 区轮 114。**顺序红线：先 deploy 再打 APK**。
@@ -648,6 +649,10 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 40. **Git Bash 会把以 `/` 开头的命令行参数做 MSYS 路径转换（轮 108 web-probe 假故障）**：`node tools/web-probe.mjs --url=/community` 在 Git Bash 里实际传给 Node 的是 `D:/00ruanjiananzhuang/git/Git/community`（MSYS 把绝对路径参数翻译成 Windows 路径）→ `Page.navigate → Cannot navigate to invalid URL`，看似工具坏了其实参数被改写。**修**：命令前加 `MSYS_NO_PATHCONV=1`。**教训**：在本机 Git Bash 里给 node 工具传「以 / 开头」的参数（URL、绝对开关）都要想到这层；报 invalid URL 先打印 target 验证。
 41. **getBoundingClientRect 验不出堆叠层级；fixed 浮层压不过根级 tabbar（轮 108 续 tabbar 露头）**：底部输入条改 `bottom:0` + `z-index:150` 后，几何探针全部「正常」（barCoversViewportBottom ✓），真机截图里 tabbar 却仍盖在条上——条在 route-wrap 内部、受父级堆叠上下文限制，z-index 只在**父上下文内部**比大小（轮 103 弹窗被 tabbar 盖住是同一陷阱；CommentComposer 为此上过 Teleport 又因 WebView 事件问题拆掉）。**教训**：① 「全屏浮层 vs tabbar」别玩 z-index 竞赛——直接**收起 tabbar**（`uiStore.tabbarSuppressed`，聊天页 inChat 同款先例）或 Teleport 到 body；② 几何断言（bounding rect）只能证位置不能证绘制层级，浮层验收必须**目检截图**；③ 抄既有样式前先看清它的定位前提（`.reply-bar` 的 `bottom:64px` 是「浮在 tabbar 上」的口径，不是「贴键盘」的口径）。
 42. **wrangler.jsonc 的 `routes` 会整体替换 Worker 的绑定集合，不是追加（轮 114 换域名旧域 530）**：首部署只在 config 写了新域 `warmpaws.de5.net`，deploy 后触发器列表只剩它——面板上绑的旧域 `dale.de5.net` 被顶掉，**旧域直接 530**（DNS 记录虽在，边缘无路由），存量 APK（VITE_API_BASE=旧域）当场断粮。另外加了 routes 后 `workers.dev` 默认被关闭（配置没写 `workers_dev`）。**修**：双域都写进 `routes` 重部署 + `"workers_dev": true` 恢复，三址全 200。**教训**：① Worker 的入口集合以 config 为准，面板手工绑的域在下次 deploy 都可能被清——**所有正式域名必须写进 wrangler.jsonc 的 routes**；② 换域名/动 routes 后必须**逐个 curl 全部旧入口**（不能只验新域）；③ 本机 DNS 缓存会抖（000/exit 6 与 530 混在一起），判定要用 `nslookup 权威 DNS` + `curl --resolve 钉 IP` 交叉验证，并等边缘配置生效一两分钟再下结论。
+43. **`content-visibility: auto` 隐含 paint containment，把绝对定位下拉菜单裁到卡片底边（轮 263 「⋯ 菜单被一条横线硬切」）**：`.post-card` 为动态流性能加了 `content-visibility: auto`（轮 81），而它隐含的 **paint containment 会把所有子元素裁到卡片 padding box**——`.more-pop`（absolute 挂在 `.post-head`/`.cmt-head` 下）一越过卡片底边就被硬切。**取证陷阱（差点误判）**：`getComputedStyle(card).contain` 回显 `none`（Chrome 不把这条隐式包含算进 computed），所以「翻 computed 样式找 overflow/contain」这条路会**直接漏判**——本案一开始还错怪过 `.shell` 的 `overflow-x: clip`（实测 `clip` 配 `overflow-y: visible` 不会纵向裁）。**唯一可靠的验法**：在菜单矩形内用 `document.elementFromPoint` 逐点试，命中别的元素即证被裁。**修（一行，两层同开）**：`.post-card:has(.more-pop){content-visibility:visible;z-index:2}` —— ① 关 cv 解除裁剪；② `.card{z-index:1}` 让每张卡各开堆叠上下文，菜单的 `z-index:40` 只在**本卡内**有效，下一张卡同为 z-index:1 且 DOM 靠后 → 整卡画在菜单之上，**只修①会把「卡底硬切」换成「下一张卡顶硬切」**。菜单是 `v-if` 渲染的，`:has()` 精确覆盖两视图 × 帖子/一级评论/二级回复三处，模板零改动。**教训**：① `content-visibility`/`contain` 类优化会动**绘制与裁剪**，加在含浮层/下拉的容器上必须一并验浮层；② 「画没画出来」要用**命中测试**（elementFromPoint），几何 rect 只证位置不证绘制（承 #41）；③ 修堆叠/裁剪问题必须确认**所有层**都解决，别把一个硬切换成另一个硬切。
+44. **`getComputedStyle(el, "::-webkit-search-cancel-button")` 返回的是元素自身的样式，量不出原生控件（轮 264 搜索栏两个 × 撞车）**：想用它确认「原生清除按钮被 CSS 关掉了」，结果返回的 `width/height` 与输入框**完全一致**（365×38）、`display:block` 也看着像没生效——因为它压根没匹配到伪元素，回退成了**元素自己**的 computed（flex item 被 blockify 所以是 block）。**教训**：Blink 对 `::-webkit-*` 私有伪元素**不保证**能在 `getComputedStyle` 里取到独立样式，这类「原生控件画没画出来」只能靠**截图目检**；更要紧的是必须做 **`undo` 反证**（注入反向规则把它恢复回来，确认画面真的变回故障态）——否则「截图里本来就没有」和「我把它修没了」这两种情况长得一模一样，就是假通过。另记一条设计取舍：`type="search"` 别为了去掉原生 × 改成 `text`——手机输入法键盘右下角的「搜索」动作键就是它给的，改了会丢键位；正确做法是**保留 type、只关伪元素**。
+45. **组件库的角标/浮层锚在它自己的定位壳上，给外层加 `position:relative` 够不着；百分比还会按那个壳的 0 宽解成 0（轮 265 TabBar 红点压住「消息」二字）**：tab 项用 vant `van-tabbar-item` + `badge` prop，角标本体是 `.van-badge--fixed`（`position:absolute; top:0; right:0; transform:translate(50%,-50%)`），**直接父级是 `.van-badge__wrapper` 且它自带 `position:relative`**。我们 tab 项是纯文字无图标（设计如此）→ 这个本该装图标的壳是**空盒、宽 0 高 0**，角标就被钉在文字行中间。**第一版修法栽在「定位上下文是最近的那个，不是最外层的那个」**：给 `.van-tabbar-item` 加 `position:relative` 毫无作用（壳离角标更近、且已定位），`right: calc(50% - 26px)` 里的 `50%` 按**壳的 0 宽**解成 0，`getComputedStyle` 实测只有 `-26px`，角标反而往下跑了 10px。**修**：① 空壳 `position: static` 拨掉它自成的定位上下文；② 顺手 `margin:0` 掉 vant 在 `.van-tabbar-item__icon .van-badge` 上给的 4px `margin-top`（它会把 `top` 再往下顶）；③ 再让 tab 项 `position: relative` 接手，角标才真正锚上去。**教训**：① 给组件库元素定位浮层，必须先**读它的渲染源码/DOM 结构确认定位祖先是谁**，「我给外层加了 relative」是最常见的假修；② `getComputedStyle` 把 `calc(50% - N)` 解析成 `-N` 就是**百分比基准是 0 宽**的铁证，看到它立刻去查定位祖先；③ 本例的正确口径其实躺在仓库里——手写 tab 栏时代那条 `.tab-badge`（`top:2px; right:calc(50%-26px)`）在轮 191 换 vant 后成了死代码，**换组件库时别把配套的定位规则一起弄丢**。
+46. **`read` 工具在大文件上会输出「重复 + 串行错乱」的内容，看着像真的，据此下的结论全是错的（轮 270 险些报两个假发现）**：读 `SUPABASE_SETUP.sql`（2400+ 行）时，`read` 返回的片段里出现了**根本不存在的整段内容**——一大坨反复复制、参数名被改乱的「轮 253/254 索引」块，以及文件里根本没有的 `admin_clientlog_page` 授予行；`tools/worker-test.mjs` 那次更离谱，凭空多出一个「轮 266：/admin/client-logs 只读路由」的**测试块**（我压根没写过），连断言细节都编得有模有样。**两个险些发生的错误结论**：① 据此以为 SUPABASE_SETUP 里已有轮 253/254 的重复垃圾要清理；② 据此以为 `MIGRATION_reports.sql` 是 2 参 `admin_report_handle(bigint, text)` 而 SETUP 是 3 参，差点把一个**不存在的「签名漂移」**报给用户（事后 grep 两边都是 3 参，无漂移）。**修**：改成用 node 脚本按行号/正则干净取内容——`_scratch/lines.mjs <file> <start> <end>`（按行区间打印）、`_scratch/find.mjs <file> <regex>`（按正则找行）；文件总行数、`git status`、grep 命中数这些都是**不会被这个 bug 污染的独立事实**，拿它们交叉验证。**教训**：① 凡是要**据此动手或对外下结论**的内容，尤其是「文件里居然有我没写过的东西」这种反常信号，必须换一条独立路径复核；② 反常本身就是信号——看到「我没写过但出现在我文件里」的内容，第一反应应该是**我的取证工具有问题**，而不是「别人改了我的文件」或「我发现了一个隐藏问题」；③ 纯只读的取证成本极低（一个 10 行脚本），拿它换掉一个可能报给用户的假发现，怎么算都值。
 
 ---
 
@@ -3131,3 +3136,171 @@ style.css / CommunityView.vue(头像接线)。
 **验证**：全量 **47 套离线 ALL OK**（45 套 + undef + tdz + i18n-usage 计入口径）+ vite build EXIT=0 + page-smoke **13/13**（含 /favorites）。
 
 **状态**：**已提交 `663fe61` / 已推送（`HEAD == origin/main`）/ 已部署 Version `0b375659`（入口 `index-Cp2C6aCf.js`，704821 字节，SHA16 `0d129290f4ee4701` 本地=线上，含 slug）/ live-check 15/15（轮 260 的 /api/health 已生效）**。App 端要重打包装机（随轮 250/251 待办）。
+
+### 轮 263 · 帖子/评论「⋯」菜单被卡片底边硬切（content-visibility 裁剪 + 卡片堆叠，两层同修）（待提交待部署）
+
+**用户报障**（两张手机截图，红框圈住评论 `⋯` 菜单「举报/拷贝」与底部回复条）：菜单白框在「拷贝」下方被**一条横线硬切**，越过卡片边界的那截看不见。
+
+**根因（两层叠加，只修一层会把一个硬切换成另一个硬切）**：
+1. **裁剪层** — `src/style.css` 的 `.post-card { content-visibility: auto; contain-intrinsic-size: auto 320px }`（轮 81 动态流性能加的）。`content-visibility: auto` **隐含 paint containment**，把卡片所有子元素裁到卡片 padding box。`.more-pop` 是 absolute 挂在 `.post-head`/`.cmt-head`（`position:relative`）下的，高度一越过卡片底边就被硬切一条横线。
+2. **堆叠层** — `.card { z-index: 1 }` 让**每张卡各开一个堆叠上下文**，菜单的 `z-index:40` 只在本卡内有效；下一张卡同样 `z-index:1` 且 DOM 靠后 → **整卡画在菜单之上**，溢出部分被下一张卡顶边切。
+
+**取证过程（含两条走错的弯路，已记踩坑 #43）**：
+- 先按截图猜 `.shell { overflow-x: clip }` 裁的 → **隔离复现证伪**（把 shell 底边压到横穿菜单中段，菜单照样完整画出：`clip` 配 `overflow-y: visible` 不会纵向裁）。
+- 又按「下一张帖子卡」判断是信息流 CommunityView 而非 PostDetailView（详情页只有一条帖子，不会出现「下一张卡」）——**改用真数据**：本地 dist + 真 Supabase 后端直接开 `/community`，点 `.cmt-toggle` 展开评论 → 点 `.cmt-more` → 无头 Edge CDP 取证。
+- **决定性证据 = `elementFromPoint` 命中测试**（不是 rect）：菜单 `[277,474,385,576]`、本卡底 `554`、下一卡顶 `566`。点 558/560（卡底之下）**命中的是别的 DIV 不是菜单** → 证明被裁；点 572（下一卡上）命中 `ARTICLE.post-card` → 证明被盖。而 `getComputedStyle(card).contain` 全程回显 `none`（Chrome 不显示这条隐式包含），**只看 computed 会直接漏判**。
+
+**改动**：`src/style.css` 一行 —— `.post-card:has(.more-pop) { content-visibility: visible; z-index: 2 }`，附完整注释说明两层机制。**模板零改动**：菜单是 `v-if` 渲染的（收起即移出 DOM），`:has()` 精确命中「这张卡里开着菜单」，覆盖 CommunityView + PostDetailView × 帖子/一级评论/二级回复共 6 处菜单点。安全性：开着菜单的卡必然在屏幕上、本就没被 skip，关掉 cv 不改高度不跳版，其余卡的性能优化原样保留；`z-index` 只提到 2，仍低于排序条(60)/底部输入条(140)/TabBar(130+)。
+
+**验证（三层）**：
+- **注入 A/B**（免构建快验，同一点位只改 `content-visibility`）：卡底之下/卡缝里三点由「DIV（不是菜单）」翻成「MENU」，下一卡上那点由「CARD2」翻成「MENU」。
+- **真产物复验**（`build-until-good` → `BUILD_GOOD index-BAq6VtfT.js`，产物 CSS 实测含该规则）：`computedCV` 由 `auto` 变 `visible`，四个探针点**全部命中 MENU**，`.post-card` 从裁剪祖先清单里消失；截图目检菜单为完整圆角盒（举报/拷贝 + 投影）压在下一张卡之上，**无硬切线**。
+- 全量 **45 套离线测试 ALL OK / 0 FAIL** + `undef-check` **0** + `tdz-check` **0** + vite build **EXIT=0**（env-guard ✓，seo 27 页）+ `page-smoke` **13/13**。
+
+**配套基建（留在 `_scratch/`，可复用）**：`wall-menu.mjs`（无头 Edge CDP 打开 `/community` → 展开评论 → 点 `⋯` → elementFromPoint 四点命中探针 + 截图，支持 `inject` 参数做免构建 A/B）、`cdp-shot.mjs`（任意 URL 整页截图 + 回读 title）、`run-all-tests.mjs`（全量 `tools/*-test.mjs` 跑批汇总）。注意无头 Edge 需 `--disable-extensions`，且与轮 261 同款独立 profile（`C:\Temp\wpshot`，`--remote-debugging-port=9333`）。
+
+**状态**：**待提交待部署（攒批）**。`src/style.css` 一处改动，工作区其余干净。
+
+### 轮 264 · 搜索栏两个 × 撞车，只留一个（待提交待部署）
+
+**用户报障**（手机截图，红框圈住两处）：社区搜索框右边出现**两个 ×** —— 输入框内部一个蓝色的、输入框外右侧一个白色圆底的。
+
+**根因**：两个 × 是两套机制各画各的，互不知情。
+1. **原生那个** — `<input class="wall-search-input" type="search">`（轮 252 搜索栏）。Blink/WebKit 对 `type="search"` 会在**有文字时**于框内右侧自动画一个清除按钮（`::-webkit-search-cancel-button`）。
+2. **自己写的那个** — `<button v-if="searchQ || searchTags.length" class="sort-btn" @click="clearSearch">✕</button>`。
+
+**为什么保留外面那个**：`clearSearch()` 清的是 `searchQ` **和** `searchTags` 两个，外面的 ✕ 是**功能完整的**；原生那个只清文字、**清不掉已选的标签 chip**，点了会留下「关键词没了但标签还筛着」的半吊子状态。所以留 ✕、去原生。
+
+**改动**：`src/style.css` 一行 + 注释 ——
+`.wall-search-input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; display: none; }`
+
+**关键取舍：不能把 `type="search"` 改成 `text`** —— 手机输入法键盘右下角那个「**搜索**」动作键正是 `type="search"` 给的（用户截图里可见），改成 `text` 会退化成「完成/Go」，白白丢一个键位。所以**保留 `type="search"`（键盘键位不变），只用 CSS 关掉原生 ×**。模板零改动。
+
+**验证（A/B 反证，防假通过）**：
+- 对照脚本 `_scratch/search-clear.mjs`（无头 Edge CDP → 打开 `/community` → 按 `HTMLInputElement.prototype.value` setter 写值 + 派发 `input` 事件触发 `v-model` → 等 320ms 防抖 → 放大裁剪截图搜索栏）。
+- **修复后**：输入框内**无**原生 ×，只剩右侧 ✕ → **一个 ×** ✓。
+- **反证 `undo`**（注入反向规则强行恢复原生 ×）：**两个 × 立刻回来**，与用户截图逐像素同款 → 证明①无头确实渲染原生 ×（不存在「浏览器本来就不画」的假通过），②是这条规则把它干掉的。
+- `inputType` 仍为 `"search"` → 键盘「搜索」键位未丢 ✓。
+- 全量 **45 套离线测试 ALL OK / 0 FAIL** + `undef-check` **0** + `tdz-check` **0** + `build-until-good` **BUILD_GOOD**（入口 `index-B3asm2tD.js`，产物 CSS `index-BLICMh1m.css` 实测含该规则）+ `page-smoke` **13/13**。
+
+**顺带记下的取证陷阱（见踩坑 #44）**：`getComputedStyle(input, "::-webkit-search-cancel-button")` 返回的是**输入框自身**的样式（width/height 与输入框完全一致），**量不出伪元素有没有被关**——这类原生控件必须靠**截图目检**。
+
+**状态**：**待提交待部署（攒批）**。与轮 263 同在 `src/style.css`。配套脚本 `_scratch/search-clear.mjs`（可复用）。
+
+### 轮 265 · TabBar 红点角标压住「消息」二字（角标锚在空图标壳上）（待提交待部署）
+
+**用户报障**（手机截图，红框圈住底部 TabBar）：「消息」上的红点数字「1」跟下面的文字重合，压住「消」字上半截。并点名要对照小红书：「你看看小红书那个红色通知会遮挡底部文字吗」。
+
+**根因（机制级）**：`TabBar.vue` 用的是 vant 的 `van-tabbar-item` + `badge` prop。vant 把角标包在 `.van-badge__wrapper`（同时带 `.van-tabbar-item__icon` 类）里，角标本体 `.van-badge--fixed` 是 `position:absolute; top:0; right:0; transform:translate(50%,-50%)`，**锚在这个 wrapper 上**（`.van-badge__wrapper{position:relative;display:inline-block}`）。
+而我们的 tab 项是**纯文字、没有图标**（style.css「手机端 9」定的设计，`.tab-label` 注释明写「Tab 纯文字（无图标）」）→ 那个本该装图标的壳是**空盒，宽 0 高 0** → 角标被钉在文字行中间。
+实测（无头 Edge 往真页面注入 vant 同款 DOM 量几何）：角标 `[280.9,857.3,296.9,873.7]` 压「消息」`[273.6,865.5,304.2,880.5]`，**重叠 x=16px（整个角标宽）/ y=8.2px**。
+
+**小红书参照（实地取证）**：网页版 `.badge-container` 实测 `position:relative; top:0; right:0`，锚在装着图标的 `.link-wrapper` 上——角标落在**图标**右上方，文字排在图标下面，所以永远压不到。结论：不是小红书有什么魔法，是**它有图标、我们没有**；我们 tab 项无图标，就必须把锚点从空壳挪走。
+
+**改动**（`src/style.css` 三条，模板零改动）：
+1. `.tabbar .van-tabbar-item { position: relative }` —— 让 tab 项本身成为定位上下文。
+2. `.tabbar .van-badge__wrapper.van-tabbar-item__icon { position: static }` —— **关键**：空壳不再自成定位上下文。它是角标的**直接父级**，不拨掉的话第 1 条根本够不着（**第一版就栽在这**：`right: calc(50% - 26px)` 里的 50% 按空壳的 **0 宽**解成了 0，`getComputedStyle` 实测只有 `-26px`，角标反而往下跑了 10px）。同时掉 vant 给角标的 4px `margin-top`（`.van-tabbar-item__icon .van-badge`），否则 `top` 会被再往下顶 4px。
+3. `.tabbar .van-tabbar-item .van-badge--fixed { top:2px; right:calc(50% - 26px); margin:0; transform:none }` —— 位置沿用**手写时代那条 `.tab-badge`** 的口径（轮 191 换 vant 后它成了死代码，角标就跟着 vant 落回空壳里）；`transform:none` 去掉 vant 的 `translate(50%,-50%)`，那正是把它拽进文字行的元凶。
+
+**验证**：无头 Edge 同一探针复测 —— 角标 `[298.9,848,314.9,864.4]` vs 文字 `[273.6,865.5,304.2,880.5]`，**重叠 y=0 / area=0**，`badgeOverlapsText:false`、`badgeVisibleAboveText:true`、`badgeClippedByBar:false`（角标仍在栏背景内，不会压到上方页面内容）；`getComputedStyle` 确认 `right` 解析成 `17.375px`（= 按 tab 项宽 86.75px 解的 `50%-26px`）、`transform:none`、壳 `position:static`。截图目检角标落在「消息」右上方、与文字完全分离。全量 **45 套离线 ALL OK** + `tdz` **0** + `build-until-good` **BUILD_GOOD**（入口 `index-CsTdwCxQ.js`）+ `page-smoke` **13/13**。
+
+**关于 undef-check 的一次瞬时误报（记下来防以后困惑）**：本轮有一次 `undef-check` 在与 `page-smoke` **并发**运行时报 `problems=1`，随后**连续 8 次（含复现并发条件的 3 次）均为 0**（`SCANNED=100 EXPORTS=443 PROBLEMS=0`）。该检查只扫 `src` 下 `.vue/.js/.mjs`（`walk()` 的扩展名白名单），而本轮未动任何此类文件、`tools/` 里 grep 过也**没有任何脚本会写 `src`**。**事后确认了真因：另有并行改动在同时进行**（`App.vue` / `MessagesView.vue` / `utils/dm.js` / `utils/bottle.js` 已改、`utils/inflight.js` 新增，正是那批同秒 mtime 的文件），undef-check 扫到了保存到一半的内容。**既不是门禁误报，也不是本轮改动引入的缺陷，但确实会发生。教训**：① 静态门禁偶发亮红时，先确认「它扫的东西我到底动没动」，再判断是真缺陷还是并行写入的碰撞；② **不能因为复现不出来就直接无视**——要留证据、跑够次数（本轮连续 8 次含复现并发条件的 3 次才收手）；③ 报构建/测试结论时要**说明基线里混了什么**，别把别人的在途改动算进自己的验证里。
+
+**状态**：**待提交待部署（攒批）**，与轮 263/264 同在 `src/style.css`。配套脚本 `_scratch/tabbar-badge.mjs`（可复用：往真页面注入 vant 同款角标 DOM + 量重叠 + 放大裁剪截图）。
+
+### 轮 266 · 首装首次进消息页「会话列表出来太慢 + 假空」四修（单飞合并 + 登录后补预热 + 骨架屏/快速重试 + RPC 实测）（待提交待部署）
+**用户报障**：「这里本来有三个联系人，第一次打开 app 的时候，这消息记录出来的太慢了，不是本地消息吗。如果有消息更新，不改是在启动的时候，启动页那好几秒够你去后台查询了吧，看下知乎/小红书怎么处理的，先给个方案」。截图：会话列表区显示「还没有会话」空态（= 假空）。
+
+**诊断（对着代码）**：
+- 慢的是**会话列表**（`dm_list_convs` RPC），不是消息正文（消息已是轮 194 微信式本地库，秒开）。
+- ① 双份请求抢带宽：启动页 `prefetchConvs` 与消息页 `loadConvs`/轮询 各发一次 `listConvs`，无合并（漂流瓶轮 41 有 singleFlight，私信没接）。
+- ② 首装必慢：SWR 快照（localStorage）是唯一列表本地层，首装为空，纯等网络。
+- ③ 假空：旧模板 `!normal.length && !requests.length && !loadingConvs` → 网络**失败**后 loadingConvs=false、convs=[] → 渲染成「还没有会话」，且要等 15s 轮询才可能恢复。
+- ④ 登录后不补预热：首装必先登录，启动期 prefetchConvs 因未登录直接跳过，第一次进消息页必然是冷网络。
+
+**改动**：
+1. **单飞合并**：`singleFlight` 从 bottle.js 挪到新文件 `src/utils/inflight.js`（bottle.js import 后 re-export，既有调用方零改动；注意必须「import 再 export」而非 re-export 语法，否则 undef-check 无本地绑定误报）。`dm.js listConvs` 接 `singleFlight("dm:convs:${limit}:${offset}")`——启动页预热发的那次就是消息页/轮询等到的那次。
+2. **登录后补预热**：App.vue `watch(cloudSigned)` 置 true 时补跑 `prefetchConvs()`（与在途请求单飞重叠时 join，不多发）。
+3. **骨架屏 + 假空修复 + 快速重试**（MessagesView）：新增 `convsLoaded`（服务端明确应答过才算已加载）；`fresh`/轮询成功置 true；「还没有会话」只在 `convsLoaded && !failed` 时显示；此前（且未失败）渲染 3 条骨架行（复用全局 sk-circle/sk-line 脉冲，`.dm-sk-rows`）；失败 → loadFail 提示 + `scheduleConvsRetry`（3s 一试、最多 3 次、成功即停、卸载清定时器）。
+4. **RPC 实测**：`dm_list_convs` 匿名调用 3 次 ≈ 395/505/397ms（含 auth-required 异常路径）；瓶颈不在 SQL（索引齐全：dm_conv_b_idx/dm_states_user_idx/dm_msg_conv_idx），在**跨境网络 RTT**——因此前端「合并请求 + 预热 + 秒开缓存」正是对症修法；服务端本轮无需改。
+
+**验证**：全量离线套件 **BAD_TOTAL=0** + undef-check **0** + build EXIT=0 + page-smoke **13/13**。
+**状态**：**待提交待部署（攒批）**。
+### 轮 267 · 暖心墙触底骨架「十几秒不消失」两修（行上屏即收骨架 + 8s 超时兜底）（待提交待部署）
+**用户报障**：截图红框触底续载骨架 + 「正在轻轻加载这面墙……」出现后**十几秒不消失**，「人家知乎也不会这样，一看就是有问题」。
+
+**根因（对着代码）**：
+- ① 骨架窗口拴了三个串行请求：`cloudFetchPosts` 内部 = listPosts + listReactionsByPosts 两个串行，回来后又 `await cloudFetchCommentCounts`（第三个）才收骨架——**行都上屏了骨架还在等评论数**。
+- ② 全链路**无任何超时**：弱网单个请求挂死（用户当时 205KB/s 移动网），pageBusy 永远不落，骨架永远不消失；最多 3 跳去重循环全是串行，最坏 9 个请求串行。
+
+**改动**（只动 `CommunityView.vue` loadMoreCloud）：
+1. **行上屏即收骨架**：追加成功后立刻 `pageBusy=false`，`cloudFetchCommentCounts` 转后台 `.then` 静默补评论数（不拴骨架）。
+2. **8s 超时兜底**：`withTimeout(cloudFetchPosts(...), PAGE_BUSY_MS=8000)`——超时只放弃「等」不放弃「数据」：底层请求继续走、游标不动、catch 静默、finally 收骨架；下次触底重试（去重逻辑自愈）。「正在轻轻加载这面墙……」文字与骨架同窗口（v-if="pageBusy"），一并修复。
+
+**验证**：全量离线套件 **BAD_TOTAL=0** + build EXIT=0 + page-smoke **13/13**。
+**状态**：**待提交待部署（攒批）**（与轮 263~266 同批）。
+### 轮 268 · 会话行红点与顶/底角标「不同步」（badge 请求捎带行级未读明细）（待提交待部署）
+**用户报障**：「下面跟上面都有红点，但是中间的就没有了，要等好几秒再出现」——顶部「会话中心」与底部 TabBar 消息红点秒出，中间会话列表行的未读红点等好几秒。
+
+**根因**：三个红点不同源——顶/底来自 badgeStore（30s 轮询 + **角标本地缓存**冷启动 0ms 恢复）；行红点来自 `dm_list_convs` 行数据（要等会话列表网络/快照，且快照可能是旧值）。badge 先到、明细后到，不一致窗口难看。
+
+**修法（badge 请求捎带行级明细，一次请求两个层都秒）**：
+1. **服务端**（`MIGRATION_dm_unread_convs.sql`，幂等，已同步 SUPABASE_SETUP.sql）：`dm_unread_total` 返回加 `convs:[{conv_id,unread}]`（未拉黑未隐藏的未读会话）；total 改由分组聚合求和（省一次同条件重复扫描）。
+2. **badgeStore**：`badge.dmConvs = {conv_id: unread}` 映射——apply 从服务端 convs 构建、**写进角标缓存**（hydrate 冷启动 0ms 恢复）、stopBadge 清零；新增导出 `badgeDmConvPatch(convId, unread)`（本地改映射，openConv 清行用）；缓存读写提取 writeBadgeCache 共用。
+3. **dm.js unreadTotalSafe**：透传 convs（服务端没跑迁移时兜底空数组 = 降级为旧行为，不误伤）。
+4. **MessagesView**：`rowUnread(c) = max(行权威值, 映射)`——badge 映射先到就先亮红点；模板未读徽标改用 rowUnread；openConv / 轮询收新消息清行处，lost 改取 max(行值, 映射) 再减总数（只按行值减会漏「快照旧映射新」），并同步 `badgeDmConvPatch(cid, 0)` 防红点复活。
+
+**降级口径**：`MIGRATION_dm_unread_convs.sql` 没跑 = 行红点维持旧行为（随会话列表出现），其余照常。
+**验证**：全量离线套件 **BAD_TOTAL=0** + build EXIT=0 + page-smoke **13/13**。
+**状态**：**待提交待部署（攒批）**（与轮 263~267 同批）；**生效需要用户在 Supabase SQL Editor 整份执行 MIGRATION_dm_unread_convs.sql**（幂等）。
+### 轮 270 · 错误信标「采了看不见」：client-log 落库 + 管理中心「客户端错误」页签（待提交待部署）
+**用户发话**：从「项目还有什么要改/新加」的建议清单里点名——「错误信标『采了看不见』——我认为这条最该改，你先改这个」。
+
+**根因（对着代码）**：轮 256 建了 `src/utils/beacon.js`（未捕获错误 / `unhandledrejection` → `POST /api/client-log`）+ Worker 路由，Worker 侧**只有 `console.log`**（原 `worker/api.js:949`）——日志进 Cloudflare 临时日志区，不落库、没有查询界面、没有保留期。等于：前端已经在汇报错误了，但真出问题时**没法回溯**，只能开着 `wrangler tail` 现场等它再崩一次。这个信标当时基本是白搭的。
+
+**关键约束（决定整套设计）**：Worker 只持有 `SUPABASE_URL` + `SUPABASE_ANON_KEY`，**没有 service role**（见 `worker/api.js` 的 `outboundHeaders`），所以 Worker 无法绕过 RLS 直写表 → 写入必须走 **security definer RPC 并授给 `anon`**（信标本来就匿名，未登录也发）。这与项目「写入一律收口在 RPC、表不给直连策略」的既有口径一致。
+
+**改动**：
+1. **`MIGRATION_client_logs.sql`（新建，幂等）**：`client_logs` 表（kind/msg/route/stack/ua/ip/created_at，ip 只存 `cf-connecting-ip`、与 profiles 无任何关联）+ 3 个索引 + RLS 全开**零策略**（原始表对所有人不可见）；`client_log_write(...)` 写入（授 `anon`）；`admin_clientlog_page(offset,limit)` 读取（只授 `authenticated`，内部 `admin_users` 判定，非管理员回 `{admin:false}`）。
+2. **`SUPABASE_SETUP.sql` 同源追加**（token 级比对通过，见下）。
+3. **`worker/api.js`**：client-log 路由在「白名单字段 + 截断 + 每 IP 60s 20 条限频」之后**尽力落库**；新增 `/api/admin/client-logs` 只读路由（非 GET 显式 405，limit 钳到 200 与 SQL 一致）。
+4. **`db.gateway.js` + `db.supabase.js` 成对**加 `adminClientLogsPage(offset,limit)`。
+5. **`AdminView.vue`** 新增「客户端错误」页签（`overview/posts/comments/reports` 之后）：**聚合优先**——先看「哪个错炸了 N 次 + 最近一次」（Top 20 按 msg+route 分组），再看最新 50 条原始记录（时间/类型/页面/IP + 可展开调用栈）。懒加载（首次切页签才拉）、只在本页签内报错（不把整个管理中心打成 error 态）、ref 声明在 `watch(signedIn,…,{immediate:true})` 之前（该文件有 TDZ 前科）。
+6. **i18n** `admin.tabs.clientlogs` + `admin.clogs.*` zh/en 成对。
+
+**三个刻意的设计决定**：
+- **不记录 `user_id`**：信标按轮 256 的口径**不带任何凭据字段**（`app-shell-test` T65 钉住），Worker 侧也不反查身份 —— 避免把「无声上报」变成「可关联到具体用户的上报」。要定位到人得走 route + stack + ua 组合，或另开一轮专门讨论。
+- **落库是尽力而为、绝不影响信标本身**：迁移没跑 / 上游不可达 / 被防灌闸丢弃，一律仍回 `{ok:true}`。信标的铁律是「绝不给本就出错的页面再加一次失败」。
+- **防灌三闸**（层层兜底，超了静默丢弃）：① Worker 每 IP 每 60s 20 条（内存窗，随隔离实例重启）② SQL 每 IP 每 UTC 日 200 条（持久窗）③ 全局每 UTC 日 5000 条。③ 是必要的——`p_ip` 是参数，直连 RPC 改它就能绕过 ②，但绕不过全局上限。
+
+**验证**：
+- `worker-test` **302 pass / 0 fail**（新增：落库打到 `rpc/client_log_write`、**匿名无 authorization 头**、白名单字段与截断、带 IP 且不含 `p_user_id`、限频命中后不再出站、**迁移未执行（RPC 404 PGRST202）仍回 200 {ok:true}**、**上游 throw 仍回 200 {ok:true}**、`/admin/client-logs` 的 GET→RPC / 透传 offset·limit / limit 钳 200 / POST 405 / 只读不产生出站）。
+- `gateway-contract` **92 pass / 0 fail**（`adminClientLogsPage` 端点形状）。
+- `i18n-usage-test` 漏键 0 / **死键 0**（第一版我定义了 `clogs.col.time/kind/msg` 三个没用上的列名键，被死键检查抓出来 —— 布局不是表格、没有表头，已删）。
+- `tdz-check` **0** + `undef-check` **0**；build **BUILD_GOOD**（入口 `index-C3qtiKw2.js`）+ page-smoke **13/13**（含 `/admin`）。
+- 全量离线套件 **44/45**：唯一失败 `dm-race-test.mjs`（轮询会话身份校验）属**另一 AI 在途的 `utils/dm.js` 实时通道改动**，与本轮无关（本轮未碰 dm.js；`git status` 可见 dm.js/dmRealtime.js/inflight.js/MIGRATION_dm_*.sql 均为他人在途）。
+- **真实探针**（`_scratch/clientlog-probe.mjs`，可重复跑）：直连 Supabase，两个 RPC 均回 **404 PGRST202** = **迁移尚未执行**（当前预期状态）；且 PostgREST 搜索用的参数名（`p_ip,p_kind,p_msg,p_route,p_stack,p_ua` / `p_limit,p_offset`）与我方签名**完全一致**，前后端形状对得上。
+- **两文件同步校验**（`_scratch/sql-sync-check.mjs`）：`client_log_write` / `admin_clientlog_page` 在 MIGRATION 与 SUPABASE_SETUP 里**去空白后逐字节相同**；表/索引/RLS 五项两边都在。
+
+**顺手修掉的自埋雷**：日上限原本写 `created_at >= v_day at time zone 'utc'` —— `date AT TIME ZONE 'utc'` 返回的是**无时区** `timestamp`，拿去和 `timestamptz` 比会被**会话时区**再解释一遍（Supabase 默认 UTC，但不该赌这个）。改成 `((now() at time zone 'utc')::date)::timestamp at time zone 'utc'` 显式落 `timestamptz`（`timestamp AT TIME ZONE` 才返回 timestamptz），两个文件同步改。
+
+**状态**：**待提交待部署（攒批）**；**生效需要用户在 Supabase SQL Editor 整份执行 `MIGRATION_client_logs.sql`**（幂等；不跑也降级可用——信标照常回 200，只是不落库，管理页签显示加载失败提示）。
+**改动文件**：`MIGRATION_client_logs.sql`（新）、`SUPABASE_SETUP.sql`、`worker/api.js`、`src/utils/api/db.gateway.js`、`src/utils/api/db.supabase.js`、`src/views/AdminView.vue`、`src/i18n.js`、`tools/worker-test.mjs`、`tools/gateway-contract-test.mjs`。
+**可复用基建**：`_scratch/clientlog-probe.mjs`（迁移执行状态探针，部署/执行后复跑）、`_scratch/sql-sync-check.mjs`（MIGRATION ↔ SETUP 同源比对）、`_scratch/lines.mjs` + `_scratch/find.mjs`（大文件按行号/正则干净取内容，见踩坑 #46）。
+
+**编号说明**：本轮**不是 266**。动手时另一 AI 已在 jiaojie 占了轮 266/267/268、在 SUPABASE_SETUP 占了轮 269（私信实时通道），故本轮取**轮 270**。文件里所有「轮 270」标注均由「轮 266」批量改号而来（`_scratch/renumber.mjs`，先报告命中位置再改，16 处确认全是本轮自己写的）。
+
+### 轮 269 · 私信实时通道（Supabase Realtime，前台秒达）（待提交待部署）
+**用户报障**：「他们的速度会快吗，不要 A 发了消息，结果 B 很久才收到通知」——现状全靠轮询（在看的会话 ~5s、别处 ~30s、后台/锁屏完全收不到）。
+
+**改动**：
+1. **新建 `src/utils/dmRealtime.js`**：`sb.channel("dm-inbox:{uid}")` 订阅 `dm_messages` INSERT（RLS messages read participant 天然隔离：只能收到自己参与会话的行；自己发的回显直接丢弃）；收到后 `refreshBadge()`（行级未读映射随 dm_unread_total 回来，轮 268）+ 调注册的 onDmInsert 回调；建通道失败静默（轮询兜底不变——实时通道绝不做唯一数据源）；`stopDmRealtime` 登出/卸载时注销。
+2. **tick 尾部刷新抽成 `pullTail(cid)`**：实时回调复用同一条路（服务端最新 20 条 + mergeTail + 钉底 + 已读），不手写 merge（实时行与 RPC 行形状差异由服务端全行覆盖，下一拍自愈）；轮 225 语义原样保留（只读不发号 mySeq=msgSeq，发号权仍归 openConv）。
+3. **MessagesView 实时回调**：事件属当前打开会话 → `pullTail(cid)` 秒上屏；属别会话 → 节流 3s `loadConvsImplicit()`（行未读红点由 badge conv 明细先亮）；挂载 armDmRealtime、失活/卸载 disarm（与轮询同节奏）。
+4. **App.vue**：登录态变化时 `startDmRealtime()`/`stopDmRealtime()`（与 startBadge/stopBadge 同位置）。
+5. **SQL**（`MIGRATION_dm_realtime.sql` 真幂等 DO 块，已同步 SUPABASE_SETUP.sql）：`alter publication supabase_realtime add table public.dm_messages`——**需用户在 Supabase SQL Editor 整份执行**（不跑 = 通道建不起来，降级为轮询，无报错）。
+
+**预期**：前台 App 开着时 A 发 → B 感知 <1s（弱网 1~2s）；后台/kill 仍收不到（要第二档 FCM）。上线后用两台手机实测一次给真机值。
+**测试插曲**：抽 tick 导致 dm-race R11 断言（内联守卫正则）挂 1 例 —— R11 改断言为 tick 调 pullTail + pullTail 三守卫，语义同旧内联版，回绿。
+**验证**：45 套离线 BAD_TOTAL=0（含修后 dm-race 16/16）+ undef 0 + build EXIT=0 + page-smoke 13/13。
+**状态**：**待提交待部署（攒批）**（与轮 263~268 同批）；**生效需 SQL Editor 执行 MIGRATION_dm_realtime.sql**。

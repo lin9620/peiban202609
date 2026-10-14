@@ -1502,22 +1502,74 @@ function seoEnv() {
 }
 
 
-/* ══════════ 轮 256 · /api/client-log 错误信标（方法门 / 坏体 / 每 IP 限频） ══════════ */
+/* ══════════ 轮 256 · /api/client-log 错误信标（方法门 / 坏体 / 每 IP 限频 / 轮 270 落库） ══════════ */
 {
   const env = makeEnv();
   const post = (body) => worker.fetch(req("/api/client-log", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }), env, {});
+  /* 轮 270：信标现在会额外落库 → 出站必须被 stub（本套件铁律是「无需网络」） */
+  const c1 = capture([{ status: 200, body: { ok: true } }]);
   const r1 = await post({ kind: "err", msg: "boom", route: "/community", stack: "at x", ua: "test-agent" });
   ok("client-log：合法信标 200 {ok:true}", r1.status === 200 && (await r1.json()).ok === true);
+  ok("client-log：落库打到 rpc/client_log_write", c1.outbound[0].url === `${ORIGIN}/rest/v1/rpc/client_log_write`);
+  ok("client-log：匿名上送（不带 authorization）",
+    !c1.outbound[0].init.headers?.authorization && !c1.outbound[0].init.headers?.Authorization);
+  {
+    const b = JSON.parse(c1.outbound[0].init.body);
+    ok("client-log：白名单字段透传（kind/msg/route/stack/ua）",
+      b.p_kind === "err" && b.p_msg === "boom" && b.p_route === "/community"
+      && b.p_stack === "at x" && b.p_ua === "test-agent");
+    ok("client-log：带 IP 限频、且不记录 user_id",
+      typeof b.p_ip === "string" && b.p_ip.length > 0 && !("p_user_id" in b));
+  }
+  c1.restore();
+  /* 轮 270 · 降级可用：迁移还没在 Supabase 跑过 → RPC 回 404 PGRST202。
+   * 信标必须照样返回 200 {ok:true}（否则前端会因为「上报失败」再抛一次错，雪上加霜）。 */
+  const cDown = capture([{ status: 404, body: { code: "PGRST202", message: "function public.client_log_write does not exist" } }]);
+  const rDown = await post({ kind: "err", msg: "before-migration" });
+  ok("client-log：迁移未执行（RPC 404）仍回 200 {ok:true}",
+    rDown.status === 200 && (await rDown.json()).ok === true);
+  cDown.restore();
+  /* 上游彻底不可达（网络挂了）同样不能把错误抛回给已经出错的页面 */
+  const cDead = capture([{ throw: true }]);
+  const rDead = await post({ kind: "err", msg: "upstream-dead" });
+  ok("client-log：上游不可达仍回 200 {ok:true}", rDead.status === 200 && (await rDead.json()).ok === true);
+  cDead.restore();
   ok("client-log：GET 405", (await worker.fetch(req("/api/client-log"), env, {})).status === 405);
   const r2 = await worker.fetch(req("/api/client-log", { method: "POST", headers: { "content-type": "application/json" }, body: "not-json" }), env, {});
   ok("client-log：坏 JSON 400 invalid-json", r2.status === 400 && (await r2.json()).error === "invalid-json");
   /* 限频：同 IP 一分钟内 >20 条 → 429（前面 r1 已占 1 条额度；坏 JSON 在限频前被拒不占额） */
+  const c2 = capture([]);
   let limited = false;
   for (let i = 0; i < 30 && !limited; i++) {
     const r = await post({ kind: "rej", msg: "m" + i });
     limited = (r.status === 429);
   }
+  c2.restore();
   ok("client-log：每 IP 每分钟 >20 条 429 限频", limited);
+  /* 轮 270：429 在落库之前返回 —— 被限频的请求不该再打一次写 */
+  ok("client-log：限频命中后不再出站", limited && c2.outbound.length < 20);
+}
+
+/* ─── 轮 270：/admin/client-logs 只读路由（管理中心「客户端错误」页签） ─── */
+{
+  const env = makeEnv();
+  const c1 = capture([{ status: 200, body: { admin: true, total: 0, items: [], top: [] } }]);
+  const r1 = await worker.fetch(req("/api/admin/client-logs?offset=20&limit=50"), env, {});
+  ok("admin/client-logs：GET → rpc/admin_clientlog_page",
+    r1.status === 200 && c1.outbound[0].url === `${ORIGIN}/rest/v1/rpc/admin_clientlog_page`);
+  ok("admin/client-logs：透传 offset/limit",
+    JSON.parse(c1.outbound[0].init.body).p_offset === 20 && JSON.parse(c1.outbound[0].init.body).p_limit === 50);
+  c1.restore();
+  const c2 = capture([{ status: 200, body: { admin: true } }]);
+  await worker.fetch(req("/api/admin/client-logs?limit=99999"), env, {});
+  ok("admin/client-logs：limit 超上限被钳到 200（与 SQL 侧一致）",
+    JSON.parse(c2.outbound[0].init.body).p_limit === 200);
+  c2.restore();
+  const c3 = capture([]);
+  ok("admin/client-logs：POST 405（只读）",
+    (await worker.fetch(req("/api/admin/client-logs", { method: "POST" }), env, {})).status === 405);
+  ok("admin/client-logs：只读路由不产生出站", c3.outbound.length === 0);
+  c3.restore();
 }
 
 console.log(`worker-test: ${pass} pass, ${fails.length} fail`);

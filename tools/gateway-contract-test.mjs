@@ -136,6 +136,7 @@ setGatewayAuthProbe(() => true); /* 单测注入：auth 就绪（与 db.supabase
     await db.adminListComments(100);
     await db.adminDeleteComment("c1");
     await db.adminUsersPage(0, 100);
+    await db.adminClientLogsPage(0, 50);
     const u = (i) => c.calls[i].url;
     const m = (i) => c.calls[i].init.method || "GET";
     const b = (i) => c.calls[i].init.body;
@@ -148,6 +149,8 @@ setGatewayAuthProbe(() => true); /* 单测注入：auth 就绪（与 db.supabase
     ok("adminListComments 端点", u(5) === "/api/admin/comments?limit=100", u(5));
     ok("adminDeleteComment 端点（DELETE）", u(6) === "/api/admin/comments/c1" && m(6) === "DELETE", u(6));
     ok("adminUsersPage 端点", u(7) === "/api/admin/users?offset=0&limit=100", u(7));
+    /* 轮 270：客户端错误日志（只读分页；是否管理员由 DB 侧 admin_users 判定） */
+    ok("adminClientLogsPage 端点", u(8) === "/api/admin/client-logs?offset=0&limit=50", u(8));
   } finally {
     c.restore();
   }

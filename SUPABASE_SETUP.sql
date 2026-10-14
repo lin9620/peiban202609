@@ -792,6 +792,10 @@ create table if not exists public.notification_prefs (
 alter table public.dm_blocks          enable row level security;
 alter table public.dm_conversations   enable row level security;
 alter table public.dm_messages        enable row level security;
+/* 轮 269：私信实时通道——dm_messages 进 realtime publication（前台秒达）；
+ * RLS 隔离：messages read participant 只放自己参与会话的行，INSERT 事件天然按需过滤。
+ * ALTER 无 if not exists：MIGRATION_dm_realtime.sql 已提供真幂等版（DO 块查目录表）。 */
+alter publication supabase_realtime add table public.dm_messages;
 alter table public.dm_states          enable row level security;
 alter table public.notifications      enable row level security;
 alter table public.notification_prefs enable row level security;
@@ -1209,29 +1213,41 @@ begin
   ), '[]'::jsonb);
 end $$;
 
--- 未读总览（导航角标轮询用）：total + 待处理的「消息请求」数
+-- 未读总览（导航角标轮询用）：total + 待处理的「消息请求」数 + 行级明细 convs（轮 268）
 create or replace function public.dm_unread_total()
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare me uuid := auth.uid();
+declare
+  me      uuid := auth.uid();
+  v_rows  jsonb := '[]'::jsonb;
+  v_total bigint := 0;
 begin
-  if me is null then return jsonb_build_object('total', 0, 'requests', 0); end if;
-  return jsonb_build_object(
-    'total', coalesce((
-      select count(*) from public.dm_messages m
+  if me is null then
+    return jsonb_build_object('total', 0, 'requests', 0, 'convs', '[]'::jsonb);
+  end if;
+  select coalesce(jsonb_agg(jsonb_build_object('conv_id', t.conv_id, 'unread', t.n) order by t.n desc), '[]'::jsonb),
+         coalesce(sum(t.n), 0)
+    into v_rows, v_total
+    from (
+      select m.conv_id, count(*) as n
+        from public.dm_messages m
         join public.dm_states s on s.conv_id = m.conv_id and s.user_id = me
         join public.dm_conversations c on c.id = m.conv_id
        where m.sender <> me and m.deleted_at is null
          and m.id > coalesce(s.last_read_id, 0)
          and coalesce(s.hidden_until, '-infinity'::timestamptz) <= now()
          and not public.dm_is_blocked(me, case when c.user_a = me then c.user_b else c.user_a end)
-    ), 0),
+       group by m.conv_id
+    ) t;
+  return jsonb_build_object(
+    'total', v_total,
     'requests', coalesce((
       select count(*) from public.dm_states s
         join public.dm_conversations c on c.id = s.conv_id
        where s.user_id = me and coalesce(s.accepted, true) = false
          and coalesce(s.hidden_until, '-infinity'::timestamptz) <= now()
          and not public.dm_is_blocked(me, case when c.user_a = me then c.user_b else c.user_a end)
-    ), 0)
+    ), 0),
+    'convs', v_rows
   );
 end $$;
 -- (待续8)
@@ -2423,3 +2439,106 @@ $$;
 
 grant execute on function public.wall_search_posts(text, text[], int, bigint) to anon, authenticated;
 
+-- ═══ 轮 270 · 客户端错误信标落库 + 管理中心可查（与 MIGRATION_client_logs.sql 同源）════
+/* 背景：轮 256 建了前端 utils/beacon.js（未捕获错误 / unhandledrejection → POST /api/client-log），
+   但 Worker 那头只有 console.log —— 日志进 Cloudflare 临时日志区，不落库、没有查询界面。
+   结果是「采得到、看不到、回溯不了」。本轮补上「落库 + 管理中心查看」。
+   口径：Worker 只持有 SUPABASE_URL + SUPABASE_ANON_KEY（没有 service role），所以写入是
+   security definer RPC 且授给 anon（信标本来就匿名）；表 RLS 全开、零策略，读写只走 RPC；
+   不记录 user_id（信标不带凭据，app-shell-test T65 钉住）。 */
+
+create table if not exists public.client_logs (
+  id         bigserial primary key,
+  kind       text not null default 'err' check (kind in ('err','rej')),
+  msg        text not null default '',
+  route      text not null default '',
+  stack      text not null default '',
+  ua         text not null default '',
+  ip         text not null default '',
+  created_at timestamptz not null default now()
+);
+
+create index if not exists client_logs_id_desc_idx  on public.client_logs (id desc);
+create index if not exists client_logs_kind_idx     on public.client_logs (kind, id desc);
+create index if not exists client_logs_created_idx  on public.client_logs (created_at desc);
+
+alter table public.client_logs enable row level security;
+
+create or replace function public.client_log_write(
+  p_kind  text, p_msg text, p_route text, p_stack text, p_ua text, p_ip text
+)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_kind  text := case when lower(coalesce(p_kind,'')) = 'rej' then 'rej' else 'err' end;
+  v_ip    text := left(coalesce(p_ip,''), 60);
+  /* UTC 当日起点：必须显式落到 timestamptz（date AT TIME ZONE 得到的是无时区
+     timestamp，拿去和 timestamptz 比会被会话时区再解释一遍） */
+  v_from  timestamptz := ((now() at time zone 'utc')::date)::timestamp at time zone 'utc';
+  v_ip_n  bigint;
+  v_all_n bigint;
+begin
+  /* 防灌闸②：每 IP 每 UTC 日 200 条（闸①在 Worker 侧，60s 内存窗） */
+  select count(*) into v_ip_n from public.client_logs
+   where ip = v_ip and created_at >= v_from;
+  if v_ip_n >= 200 then
+    return jsonb_build_object('ok', true, 'kept', false, 'reason', 'ip-daily');
+  end if;
+  /* 防灌闸③：全局每 UTC 日 5000 条 —— 超了静默丢弃，绝不向客户端报错 */
+  select count(*) into v_all_n from public.client_logs
+   where created_at >= v_from;
+  if v_all_n >= 5000 then
+    return jsonb_build_object('ok', true, 'kept', false, 'reason', 'global-daily');
+  end if;
+  insert into public.client_logs (kind, msg, route, stack, ua, ip)
+  values (v_kind,
+          left(btrim(coalesce(p_msg,'')),   300),
+          left(btrim(coalesce(p_route,'')), 120),
+          left(btrim(coalesce(p_stack,'')), 1200),
+          left(btrim(coalesce(p_ua,'')),    160),
+          v_ip);
+  return jsonb_build_object('ok', true, 'kept', true);
+end $$;
+
+revoke all on function public.client_log_write(text, text, text, text, text, text) from public, anon;
+grant execute on function public.client_log_write(text, text, text, text, text, text) to anon, authenticated;
+
+create or replace function public.admin_clientlog_page(p_offset integer default 0, p_limit integer default 50)
+returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare
+  v_total bigint;
+begin
+  if not exists (select 1 from public.admin_users where user_id = auth.uid()) then
+    return jsonb_build_object('admin', false, 'total', 0, 'items', '[]'::jsonb, 'top', '[]'::jsonb);
+  end if;
+  select count(*) into v_total from public.client_logs;
+  return jsonb_build_object(
+    'admin', true,
+    'total', v_total,
+    'items', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'id', c.id, 'kind', c.kind, 'msg', c.msg, 'route', c.route,
+               'stack', c.stack, 'ua', c.ua, 'ip', c.ip, 'created_at', c.created_at
+             ) order by c.id desc)
+      from (select * from public.client_logs
+             order by id desc
+             limit least(greatest(coalesce(p_limit, 50), 1), 200)
+            offset greatest(coalesce(p_offset, 0), 0)) c
+    ), '[]'::jsonb),
+    /* 聚合视图才是「能用」的形态：一屏看清哪个错误炸了多少次，而不是数原始行 */
+    'top', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'msg', s.msg, 'route', s.route, 'n', s.n, 'last_at', s.last_at
+             ) order by s.n desc, s.last_at desc)
+      from (select left(msg, 160) as msg, route, count(*) as n, max(created_at) as last_at
+              from public.client_logs
+             group by left(msg, 160), route
+             order by count(*) desc, max(created_at) desc
+             limit 20) s
+    ), '[]'::jsonb)
+  );
+end $$;
+
+revoke all on function public.admin_clientlog_page(integer, integer) from public, anon;
+grant execute on function public.admin_clientlog_page(integer, integer) to authenticated;
