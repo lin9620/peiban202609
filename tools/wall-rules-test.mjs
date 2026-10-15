@@ -13,7 +13,7 @@ import {
   VIEW_KEY, ANON_KEY, POST_DAY_KEY, postRef, utcDay, pruneStamps, collectViews,
   DISLIKE_RATIO, REMOVAL_LOW_VIEWS, DISLIKE_MIN_COUNT, dislikeRatio, ratioPct, shouldRemove,
   isVisible, visibleOnly, postedOnDay, countPostedOnDay, dayCountFromStorage,
-  canPostToday, postsLeftToday, WALL_POST_DAILY_LIMIT, errorKind, fmtWhen, fmtWhenSec,
+  canPostToday, postsLeftToday, WALL_POST_DAILY_LIMIT, errorKind, fmtWhen,
   recommendPosts, RECOMMEND_DAYS, RECOMMEND_WIDE_DAYS, RECOMMEND_MIN_POOL, shuffleSeeded,
   extractTags, normTags, TAG_MAX, TAG_LEN,
 } from "../src/utils/wallRules.js";
@@ -56,25 +56,8 @@ t("#25 英文口径 → 也含 时:分", () => {
   assert.ok(/\d{1,2}:\d{2}/.test(s), `输出=${s}`);
 });
 
-/* ══════════ 帖子时间到秒：fmtWhenSec（轮 44，「我的」页帖子卡） ══════════ */
-t("轮44 当年时间 → 含 时:分:秒", () => {
-  const now = new Date(); now.setHours(14, 32, 5, 0);
-  const s = fmtWhenSec(now.getTime(), "zh", now.getTime());
-  assert.ok(/\d{1,2}:\d{2}:\d{2}/.test(s), `输出=${s}`);
-});
-t("轮44 与 fmtWhen 同口径：跨年补年份（当年不带）", () => {
-  const now = new Date();
-  const past = new Date(now); past.setFullYear(now.getFullYear() - 1);
-  const a = fmtWhenSec(past.getTime(), "zh", now.getTime());
-  const b = fmtWhenSec(now.getTime(), "zh", now.getTime());
-  assert.ok(a.includes(String(past.getFullYear())), `跨年应带年份，输出=${a}`);
-  assert.ok(!b.includes(String(now.getFullYear())), `当年不应再带年份，输出=${b}`);
-});
-t("轮44 非法时间 → 空串（不抛错；与 fmtWhen 同一守卫）", () => {
-  assert.equal(fmtWhenSec("不是时间", "zh"), "");
-  assert.equal(fmtWhenSec(null, "zh"), "");
-  assert.equal(fmtWhenSec("", "zh"), "");
-});
+/* 轮 288：fmtWhenSec（轮 44 的「帖子时间到秒」）已随用户拍板「三处个人页统一到分」退役删除，
+ * 这里的三条用例一并移除。全站时间文案只剩 fmtWhen，上面已覆盖到分 / 跨年 / 非法入参。 */
 
 /* ══════════ 排序 ══════════ */
 
@@ -560,6 +543,112 @@ t("T35 轮234 · 追加新帖（触底续载）后已有帖的相对顺序不变
     if (posOld.get(first[i - 1].id) >= posOld.get(first[i].id)) { oldKeepsOrder = false; break; }
   }
   assert.equal(oldKeepsOrder, false, "判据无效：旧洗牌算法在同样输入下也没乱序（输入构造不足以暴露问题）");
+});
+
+/* ══════════ 轮 292 · 观众盐（推荐顺序按人打散） ══════════ */
+t("T36 轮292 · 观众盐：不同人不同序 / 同一人稳定 / 续载仍不重排 / 无盐=旧版逐字节相同", () => {
+  const now = Date.parse("2026-03-10T12:00:00Z");
+  const DAY = 86400000;
+  const mk = (id, dayAgo) => ({ id, dbId: id, ts: now - dayAgo * DAY, body: "x" });
+  const seed = "2026-03-10";
+  const ids = (a) => a.map((p) => p.id).join(",");
+  const base = [];
+  for (let i = 0; i < 6; i++) base.push(mk(100 + i, 0), mk(200 + i, 1));
+
+  /* ① 盐真混进了哈希：换一台设备 → 不同顺序（用户诉求「每个人看到的不该一样」） */
+  const a = ids(recommendPosts(base, { now, seed, salt: "dev-a" }));
+  const b = ids(recommendPosts(base, { now, seed, salt: "dev-b" }));
+  assert.notEqual(a, b, "不同盐给出同一顺序 —— 盐没真正参与排序");
+
+  /* ② 同一个人稳定：同盐重算顺序不能变（否则刷新一下眼前全换了） */
+  assert.equal(ids(recommendPosts(base, { now, seed, salt: "dev-a" })), a, "同盐重算顺序变了");
+
+  /* ③ 本轮最容易被破坏的性质：加盐后「触底续载不重排已看内容」必须原样保留 */
+  const more = [mk(300, 0), mk(301, 0), mk(302, 0), mk(400, 2), mk(401, 2), mk(402, 2)];
+  const first = recommendPosts(base, { now, seed, salt: "dev-a" });
+  const second = recommendPosts([...base, ...more], { now, seed, salt: "dev-a" });
+  const pos = new Map(second.map((p, i) => [p.id, i]));
+  let keeps = true;
+  for (let i = 1; i < first.length; i++) {
+    if (pos.get(first[i - 1].id) >= pos.get(first[i].id)) { keeps = false; break; }
+  }
+  assert.ok(keeps, "加盐后续载把已有帖重排了（盐破坏了「排序键只由帖子自身决定」）");
+
+  /* ④ 不传盐 = 与旧版逐字节相同：升级当天没人被意外洗牌，存储不可用时也降级可用 */
+  assert.equal(ids(recommendPosts(base, { now, seed, salt: "" })), ids(recommendPosts(base, { now, seed })),
+    "空盐与不传盐结果不同 —— 默认行为被改了（零回归没守住）");
+
+  /* ⑤ 接线：视图真把盐传进去了（源码断言） */
+  const src = read("src/views/CommunityView.vue");
+  /* 轮 293 起 days 是 recDays.value（触底逐级放宽），salt 仍必须传 */
+  assert.ok(/recommendPosts\(visible, \{ days: recDays\.value, salt: REC_SALT \}\)/.test(src),
+    "CommunityView 没把观众盐传给 recommendPosts（所有人还是同一顺序）");
+  assert.ok(/REC_SALT_KEY = "warm-paws-rec-salt-v1"/.test(src), "盐的存储键名缺失/被改");
+});
+
+/* ══════════ 轮 293 · 推荐窗触底逐级放宽 ══════════ */
+t("T37 轮293 · 放宽只往后追加：7天 ⊂ 30天 ⊂ 全部（前缀关系 = 已看顺序一个不动）", () => {
+  const now = Date.parse("2026-03-10T12:00:00Z");
+  const DAY = 86400000;
+  const mk = (id, dayAgo) => ({ id, dbId: id, ts: now - dayAgo * DAY, body: "x" });
+  const fresh = [];
+  for (let i = 0; i < 12; i++) fresh.push(mk(100 + i, i % 6));   /* 0~5 天前 12 条：≥ minPool(10)，不会触发内部放宽 */
+  const wide = [];
+  for (let i = 0; i < 9; i++) wide.push(mk(200 + i, 8 + i));     /* 8~16 天前 9 条 */
+  const old = [];
+  for (let i = 0; i < 5; i++) old.push(mk(300 + i, 40 + i));     /* 40+ 天前 5 条 */
+  const list = [...old, ...wide, ...fresh];
+  const ids = (a) => a.map((p) => p.id).join(",");
+  const S = { now, seed: "2026-03-10", salt: "dev" };
+
+  const d7 = ids(recommendPosts(list, { ...S, days: 7 }));
+  const d30 = ids(recommendPosts(list, { ...S, days: 30 }));
+  const all = ids(recommendPosts(list, { ...S, days: Infinity }));
+
+  assert.equal(d7.split(",").length, 12, "7 天档应恰好 12 条（构造的输入没触发内部 minPool 放宽）");
+  assert.equal(d30.split(",").length, 21, "30 天档 = 12 + 9 条");
+  assert.equal(all.split(",").length, 26, "「全部」= 21 + 5 条");
+  /* 核心性质：放宽只**新增更早的天**，而排序是天倒序 → 旧结果必须是新结果的**前缀**。
+     这正是「用户往下滚、窗口逐级放宽时，眼前那批帖子不会被换掉」的保证（轮 234 同源）。 */
+  assert.ok(d30.startsWith(d7), "放宽到 30 天后 7 天那批的顺序变了（放宽不该动已看内容）");
+  assert.ok(all.startsWith(d30), "放宽到「全部」后 30 天那批的顺序变了");
+  /* 判据自检：把哈希里的「天」拿掉就会得到一个与天无关的全局序 —— 那种实现下前缀关系仍成立，
+     但「按天倒序」就没了。这里直接断言 7 天那批内部确实跨了多天，保证上面测的是真东西。 */
+  assert.ok(new Set(fresh.map((p) => utcDay(p.ts))).size >= 5, "7 天档输入应覆盖多个 UTC 天（构造失真）");
+
+  /* 接线：放宽必须真挂在滚动链路上，且换档要复位 */
+  const src = read("src/views/CommunityView.vue");
+  assert.ok(/const REC_LEVELS = \[RECOMMEND_DAYS, RECOMMEND_WIDE_DAYS, Infinity\]/.test(src),
+    "放宽档位常量缺失/被改");
+  assert.ok(/days: recDays\.value, salt: REC_SALT/.test(src),
+    "shown 没读 recDays —— 推荐窗仍是写死的 7 天（用户实测「往下拉就到底」的原始病根）");
+  assert.ok(/!hasMore\.value && !cloudDone\.value\) widenRec\(\)/.test(src),
+    "触底没接放宽（必须等「这一档亮完 + 服务端还有货」才升档）");
+  assert.ok(/recDays\.value = REC_LEVELS\[0\]/.test(src),
+    "换排序/时间档没把推荐窗复位回 7 天（切回来会一直挂在「全部」）");
+});
+
+/* ══════════ 轮 294 · 深滚点刷新「一直往上跑」 ══════════ */
+t("T38 轮294 · 刷新先归位再换内容（顺序是本轮的关键）+ 刷新复位推荐窗", () => {
+  const src = read("src/views/CommunityView.vue");
+  /* ① 刷新钮必须走带 pin 的那条路 */
+  assert.ok(/@click="manualRefresh\(\{ pin: true \}\)"/.test(src),
+    "刷新钮没传 pin —— 深滚时点它仍会边塌缩边把视口往上拽");
+  /* ② pinToTop 要同时钉容器/整页，并把记忆位置归零（否则下次回来被位置保持拽回旧位置） */
+  assert.ok(/if \(el\) el\.scrollTop = 0; else window\.scrollTo\(0, 0\)/.test(src),
+    "pinToTop 没覆盖两种滚动层（手机端墙自滚 / 桌面端整页滚）");
+  assert.ok(/wallScrollTop = 0;/.test(src), "pinToTop 没清记忆位置 wallScrollTop");
+  /* ③ 顺序：pinToTop 必须发生在 loadCloud 之前 —— 先归位，塌缩才不需要任何补偿 */
+  const fn = src.slice(src.indexOf("async function manualRefresh"), src.indexOf("async function manualRefresh") + 420);
+  assert.ok(fn.indexOf("pinToTop()") >= 0 && fn.indexOf("loadCloud({ fresh: true })") >= 0, "manualRefresh 结构变了，断言需重看");
+  assert.ok(fn.indexOf("pinToTop()") < fn.indexOf("loadCloud({ fresh: true })"),
+    "先换内容后归位 —— 塌缩已经发生，视口照样被一路拽上去（本轮病根）");
+  /* ④ 页签重按那条路径不该被 pin 波及（它自己会平滑滚顶） */
+  assert.ok(/wallScrollTop = 0;\s*\n\s*manualRefresh\(\);/.test(src),
+    "页签重按改成了带 pin 的调用（会把轮 232 的平滑回顶打断成瞬跳）");
+  /* ⑤ 刷新后推荐窗复位到 7 天 */
+  assert.ok(/recDays\.value = REC_LEVELS\[0\];\s*\/\*\s*轮 294/.test(src),
+    "刷新没把推荐窗复位（刚清空的列表会立刻又膨胀回几百条）");
 });
 
 t("T32 页面接线：范围行由 usesRange 显隐，筛选走 rangeFor 单一入口", () => {

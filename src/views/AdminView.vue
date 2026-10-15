@@ -9,6 +9,7 @@ import { NButton, NTag } from "naive-ui";
 import { t } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
 import { db } from "../utils/api/db.js";
+import { fetchLatestRelease } from "../utils/appVersion.js";   /* 轮 297：读已登记的版本 */
 import { fmtNum, fmtBytes, clip, dailySeries, barHeights, sumReactions, dayOf, dayTimeOf } from "../utils/admin.js";
 
 const state = ref("loading"); /* loading | denied | ready | error */
@@ -180,6 +181,14 @@ const relLoaded = ref(false);
 const relBusy = ref(false);
 const relMsg = ref("");
 const relInput = ref(null);
+/* —— 轮 297 · 版本登记（随包一起写进同桶的 version.json，客户端据此检查更新）—— */
+const relVer = ref("");          /* 版本名，如 1.1 —— 显示给用户看 */
+const relNotes = ref("");        /* 更新说明 —— 显示在更新弹窗里 */
+const relForce = ref(false);     /* 强制更新：用户无法关掉弹窗 */
+const relReg = ref(null);        /* 已登记的版本（读不到 = null，迁移没跑/还没登记过） */
+/* versionCode 自动在已登记的基础上 +1 —— 它是客户端拿来比大小的整数，
+ * 必须与 android/app/build.gradle 的 versionCode 一致，界面上会提示管理员同步改。 */
+const nextCode = computed(() => ((relReg.value && relReg.value.code) || 0) + 1);
 /* —— 公告发送状态 —— */
 const bcastRows = ref([]);
 const bcastLoaded = ref(false);
@@ -232,6 +241,8 @@ async function loadRelMeta() {
     relMeta.value = await db.appReleaseMeta();
   } catch (e) { /* 迁移未跑/非管理员：面板显示空态 */ }
   relLoaded.value = true;
+  /* 轮 297：已登记的版本走公开地址读（fetchLatestRelease 内部任何失败都返回 null） */
+  relReg.value = await fetchLatestRelease();
 }
 async function uploadApk(e) {
   const file = e.target.files && e.target.files[0];
@@ -241,11 +252,23 @@ async function uploadApk(e) {
     relMsg.value = t("admin.appRelease.badFile");
     return;
   }
+  const name = relVer.value.trim();
+  if (!name) { relMsg.value = t("admin.appRelease.verBad"); return; }
   relBusy.value = true;
   relMsg.value = "";
   try {
     await db.appReleaseUpload(file);
+    /* 轮 297：包传完立刻把版本登记写进同桶的 version.json —— 包与版本号同一批上线，
+     * 不存在「传了新包却忘了登记版本」的中间态（客户端据此判断有没有新版）。 */
+    await db.appReleasePublishMeta({
+      versionCode: nextCode.value,
+      versionName: name,
+      notes: relNotes.value.trim(),
+      force: !!relForce.value,
+      when: new Date().toISOString(),
+    });
     relMsg.value = t("admin.appRelease.done");
+    relVer.value = ""; relNotes.value = ""; relForce.value = false;
     await loadRelMeta();
   } catch (err) {
     relMsg.value = t("admin.appRelease.fail", { r: (err && err.message) || "" });
@@ -530,6 +553,25 @@ const recentUsers = computed(() => (Array.isArray(ov.value && ov.value.recent_us
             </p>
             <p v-else-if="relLoaded" class="sub">{{ t("admin.appRelease.none") }}</p>
             <p v-else class="sub">{{ t("admin.broadcast.historyLoading") }}</p>
+            <!-- 轮 297 · 版本登记：随包一起写进同桶的 version.json，客户端据此检查更新。
+                 versionCode 自动 +1，但必须同步进 build.gradle —— 界面上明写出来，别让人猜。 -->
+            <div v-if="relReg" class="sub" style="margin-top: 6px">
+              {{ t("admin.appRelease.registered", { v: relReg.name || relReg.code, t: dayOf(relReg.when) }) }}
+            </div>
+            <div class="rel-ver">
+              <span class="sub" style="margin: 0">{{ t("admin.appRelease.verCap") }}</span>
+              <van-field v-model="relVer" class="rel-input" :maxlength="24"
+                :placeholder="t('admin.appRelease.verPh')" />
+              <label class="rel-force">
+                <input v-model="relForce" type="checkbox" />
+                <span>{{ t("admin.appRelease.force") }}</span>
+              </label>
+            </div>
+            <van-field v-model="relNotes" type="textarea" :rows="2" :maxlength="300"
+              :placeholder="t('admin.appRelease.notesPh')" style="margin-top: 8px" />
+            <p class="sub" style="margin-top: 6px">
+              {{ t("admin.appRelease.codeHint", { n: nextCode }) }}
+            </p>
             <div class="row-between" style="margin-top: 10px">
               <span class="sub" style="margin: 0">{{ t("admin.appRelease.apkOnly") }}</span>
               <n-button type="primary" size="small" round :loading="relBusy"
@@ -811,3 +853,10 @@ const recentUsers = computed(() => (Array.isArray(ov.value && ov.value.recent_us
     </template>
   </div>
 </template>
+
+<style scoped>
+/* 轮 297 · App 版本登记区（此前本组件无样式块，这里是新增的第一块） */
+.rel-ver { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.rel-input { flex: 1 1 160px; min-width: 140px; }
+.rel-force { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--low, #8a7a6a); cursor: pointer; }
+</style>

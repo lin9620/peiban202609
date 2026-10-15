@@ -31,22 +31,10 @@ export function fmtWhen(ts, locale = "zh", now = Date.now()) {
   });
 }
 
-/**
- * 帖子时间显示到秒（轮 44，「我的」页帖子卡用；用户拍板）。
- * 与 fmtWhen 同口径（跨年补年份、非法→""），只多 second。
- * 不做成参数是为了让两处调用语义各自显式：墙上列表到分钟可读性优先，个人主页精确到秒。
- * @returns {string} 如 "9月19日 14:32:05"；跨年 "2025年9月19日 14:32:05"；非法 → ""
- */
-export function fmtWhenSec(ts, locale = "zh", now = Date.now()) {
-  const d = ts == null || ts === "" ? new Date(NaN) : new Date(ts);
-  if (isNaN(d.getTime())) return "";
-  const sameYear = d.getFullYear() === new Date(now).getFullYear();
-  return d.toLocaleString(locale === "zh" ? "zh-CN" : "en-US", {
-    month: "short", day: "numeric",
-    ...(sameYear ? {} : { year: "numeric" }),
-    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
-  });
-}
+/* 轮 288 · fmtWhenSec（轮 44 的「帖子时间到秒」）已退役并删除：
+ * 用户拍板三处个人页（我的页 / 我的帖子 / 收藏页）**统一到分**，与暖心墙、详情页同口径 ——
+ * 全站现在只剩上面的 fmtWhen 一个时间文案函数。要恢复到秒：照 jiaojie 轮 44 的写法
+ * 复制 fmtWhen 加一个 second: "2-digit" 即可（wall-rules-test 当年的三条用例也在 jiaojie 里）。 */
 
 /**
  * 给「时间文案」格式化函数加一级记忆化（轮 81 · 动态流性能）。
@@ -477,17 +465,26 @@ export function shuffleSeeded(list, seed, rand = null) {
  *   - 同一天的帖被哈希打散到各处 → 天然「某天不霸屏」（轮 146 的诉求仍然满足，不再需要交错）；
  *   - 同一天可复现（同 seed 同顺序），第二天自然换一批（seed = UTC 日）；
  *   - 哈希撞车时用时间倒序兜底，保证排序结果确定（不依赖 sort 的稳定性）。
+ *
+ * 轮 292 · 观众盐（salt）：旧版 seed 只含 UTC 日期 → 同一天**全站每个人看到的顺序一模一样**
+ *   （「随机」是可复现的随机，用户点破：「那这样不是每个人看到的内容都是一样的」）。
+ *   加一份每台设备固定的盐即可每人不同，且**不破坏上面任何一条性质** —— 盐对同一观众是常量。
  * @param {Array} list 已过滤的帖子
  * @param {string} seed 同一天内可复现
+ * @param {string} [salt] 轮 292 · 观众盐：每台设备固定 → 同一天**不同人看到不同顺序**；
+ *   不传（默认 ""）时拼出的串与旧版**逐字节相同** = 旧行为零回归
  * @returns {Array} 新数组
  */
-export function interleaveByDay(list, seed) {
+export function interleaveByDay(list, seed, salt = "") {
   const arr = Array.isArray(list) ? list : [];
   if (!arr.length) return [];
   return arr
     .map((p) => {
       const day = utcDay(p.ts);
-      return { p, day, ord: mulberry32(hashSeed(`${seed}|${day}|${postRef(p)}`))() };
+      /* 轮 292：盐只拼在最前面 —— 键依旧「只由这个帖子自己决定」（盐对同一观众是常量），
+         所以上面两条性质原样保留，变的只是「不同观众拿到不同的伪随机序列」。 */
+      const key = salt ? `${salt}|${seed}|${day}|${postRef(p)}` : `${seed}|${day}|${postRef(p)}`;
+      return { p, day, ord: mulberry32(hashSeed(key))() };
     })
     /* 轮 234 · 排序键 = **先 UTC 天倒序（新的天在前），同一天内按哈希随机**。
        为什么必须把「天」放在哈希前面（这是本轮真正的修复）：
@@ -509,11 +506,13 @@ export function interleaveByDay(list, seed) {
  * 推荐流：先取最近 RECOMMEND_DAYS（7）天，不够 RECOMMEND_MIN_POOL 条就逐级放宽
  *   —— 7 天 → 30 天 → 全部（轮 146：早先固定 7 天窗，站点发帖稀疏时整页空）。
  *   - 示例帖永远在（与 inRange 同口径：新用户一进来不能空无一物）
- *   - 同一天内顺序稳定（种子 = UTC 日），第二天自然换一批顺序
+ *   - 同一天内顺序稳定（种子 = UTC 日 + 观众盐），第二天自然换一批顺序
  *   - 未来帖（客户端时钟不准）不进推荐，宁可少一条
  *   - 窗口内按天均匀取样（interleaveByDay），不让某一天霸屏
+ *   - 轮 292：opts.salt = 观众盐（每台设备固定）→ 同一天**不同人看到不同顺序**；
+ *     不传则与旧行为逐字节相同（全站同序），调用方降级可用
  * @param {Array} list
- * @param {{days?:number, wideDays?:number, minPool?:number, now?:number, seed?:string}} [opts]
+ * @param {{days?:number, wideDays?:number, minPool?:number, now?:number, seed?:string, salt?:string}} [opts]
  * @returns {Array} 新数组
  */
 export function recommendPosts(list, opts = {}) {
@@ -522,6 +521,7 @@ export function recommendPosts(list, opts = {}) {
   const minPool = Number(opts.minPool) >= 0 ? Math.floor(Number(opts.minPool)) : RECOMMEND_MIN_POOL;
   const now = Number(opts.now) || Date.now();
   const seed = opts.seed != null ? opts.seed : utcDay(now);
+  const salt = opts.salt != null ? String(opts.salt) : "";
 
   const all = Array.isArray(list) ? list : [];
   /* 示例帖单独拎出来：它们不参与「放宽窗口」的计数，但永远要出现在结果里 */
@@ -536,7 +536,7 @@ export function recommendPosts(list, opts = {}) {
     if (pool.length >= minPool) break;
   }
 
-  const picked = interleaveByDay(pool, seed);
+  const picked = interleaveByDay(pool, seed, salt);
   if (!samples.length) return picked;
   return picked.concat(samples);   // 示例帖追加在后（不占「真帖」的名额）
 }

@@ -591,6 +591,13 @@ export const messages = {
         fail: "Upload failed: {r}",
         badFile: "Please pick an .apk file no larger than 60 MB",
         apkOnly: "Android · .apk",
+        verCap: "Version info (written with the package)",
+        verPh: "Version name, e.g. 1.1",
+        verBad: "Please fill in the version name",
+        notesPh: "What changed (shown in the update dialog)",
+        force: "Force update (users cannot dismiss the dialog)",
+        registered: "Registered version: {v} · {t}",
+        codeHint: "Next versionCode: {n} — copy it into android/app/build.gradle so the app knows it is up to date.",
       },
       recent: { title: "Newest members", posts: "{n} posts" },
       usersCol: { nick: "Nickname", email: "Email", uid: "User ID", at: "Registered" },
@@ -719,6 +726,22 @@ export const messages = {
       agreeLink: "Terms & Privacy Policy",
     },
     /* 设置页（/settings，#13）：皮肤 / 语言 / 总通知开关 / 通知四类偏好 */
+    /* 轮 297 · App 更新提示（只在 App 壳自动弹；网页端刷新即最新） */
+    appUpdate: {
+      title: "New version available",
+      versionLine: "Version {from} → {to}",
+      notes: "What changed",
+      later: "Later",
+      go: "Update now",
+      forceHint: "This update is required to keep using the app.",
+      /* 设置页「手动检查更新」的结果 */
+      upToDate: "You are on the latest version.",
+      found: "New version available: {v}",
+      checking: "Checking…",
+      checkFail: "Could not check right now — please try again later.",
+      currentVer: "Version {v}",
+      checkBtn: "Check for updates",
+    },
     settings: {
       title: "Settings",
       sub: "Skin, language and notifications — all in one gentle place.",
@@ -1470,6 +1493,13 @@ export const messages = {
         fail: "上传失败:{r}",
         badFile: "请选择 60MB 以内的 .apk 文件",
         apkOnly: "安卓 · .apk",
+        verCap: "版本信息(随包一起写入)",
+        verPh: "版本名,如 1.1",
+        verBad: "请填写版本名",
+        notesPh: "更新了什么(会显示在更新弹窗里)",
+        force: "强制更新(用户无法关闭弹窗)",
+        registered: "已登记版本:{v} · {t}",
+        codeHint: "下一个 versionCode:{n} —— 请同步写进 android/app/build.gradle,客户端才知道自己该更新了。",
       },
       recent: { title: "最新的伙伴", posts: "{n} 条帖子" },
       usersCol: { nick: "昵称", email: "邮箱", uid: "用户 ID", at: "注册时间" },
@@ -1595,6 +1625,22 @@ export const messages = {
       agreeLink: "用户协议与隐私政策",
     },
     /* 设置页（/settings，#13）：皮肤 / 语言 / 总通知开关 / 通知四类偏好 —— 与 en 键一一对应 */
+    /* 轮 297 · App 更新提示（只在 App 壳自动弹；网页端刷新即最新） */
+    appUpdate: {
+      title: "发现新版本",
+      versionLine: "版本 {from} → {to}",
+      notes: "更新内容",
+      later: "稍后再说",
+      go: "去更新",
+      forceHint: "本次更新必须安装后才能继续使用。",
+      /* 设置页「手动检查更新」的结果 */
+      upToDate: "已经是最新版本了。",
+      found: "发现新版本:{v}",
+      checking: "正在检查…",
+      checkFail: "暂时没能检查到,稍后再试。",
+      currentVer: "版本 {v}",
+      checkBtn: "检查更新",
+    },
     settings: {
       title: "设置",
       sub: "皮肤、语言和通知——都收在这个温柔的小角落。",

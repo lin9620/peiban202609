@@ -253,6 +253,31 @@ ok("暖心墙支持 ?post= 深链", community.includes("route.query.post") && co
 const mv = fs.readFileSync("src/views/MessagesView.vue", "utf8");
 ok("会话页轮询只在可见时跑", mv.includes("document.hidden") && mv.includes("visibilitychange"));
 ok("会话页进页面即抬已读水位", mv.includes("markRead"));
+
+/* ───────── 轮 296：冷开 / 刷新落在消息页，会话列表白等 5 秒 ─────────
+ * 病根不是查询慢，是根本没发查询：signedIn = cloud.ready && cloud.user，
+ * 而冷开 / F5 时路由组件挂载那一刻 initCloud() 还没跑完 → onMounted 第一句
+ * `if (!signedIn.value) return` 早退，refreshBlocks / loadConvs / 轮询 / 实时回调
+ * 全被跳过；当时全文件又没有 watch(signedIn)，早退后**没有任何东西回来补跑**，
+ * 唯一活着的恢复通道是 onActivated 挂的 5 秒轮询（且走的是不吃缓存的 loadConvsImplicit）。 */
+{
+  const om = mv.slice(mv.indexOf("onMounted(() => {"), mv.indexOf("onMounted(() => {") + 900);
+  ok("轮296：onMounted 不再用 if (!signedIn) 早退（早退 = 会话列表白等 5 秒的死路）",
+    !/if\s*\(\s*!signedIn\.value\s*\)\s*return/.test(om));
+  ok("轮296：onMounted 里调了 boot()（已登录立刻跑，不再被认证时序卡住）",
+    /boot\(\);/.test(om));
+  ok("轮296：有 watch(signedIn) 补跑通道（认证一就绪立刻拉，不再等轮询节拍）",
+    /watch\(\s*signedIn\s*,/.test(mv) && /if\s*\(\s*!v\s*\)\s*\{\s*booted = false/.test(mv));
+  ok("轮296：boot 幂等（booted 闸门 —— onMounted 与 watch 两条路径撞车只跑一次）",
+    /let booted = false/.test(mv) && /if\s*\(\s*booted \|\| !signedIn\.value\s*\)\s*return/.test(mv));
+  ok("轮296：保活期不把轮询拉回来（boot 读 wasDeactivated）",
+    /if\s*\(\s*!timer && !wasDeactivated\s*\)\s*timer = setInterval/.test(mv));
+  /* ② 兜底那条路也要回写缓存 —— 不然下次冷启动照样没有可秒开的快照 */
+  const lci = mv.slice(mv.indexOf("async function loadConvsImplicit"),
+    mv.indexOf("async function loadConvsImplicit") + 800);
+  ok("轮296：轮询兜底 loadConvsImplicit 回写 SWR 缓存（此前绕过缓存又不回写，冷启动永远没快照）",
+    /cacheSet\(\s*cacheKey\("dm:convs",\s*meId\.value\)\s*,\s*rows\s*\)/.test(lci));
+}
 const nv = fs.readFileSync("src/views/NotificationsView.vue", "utf8");
 /* #14 偏好开关移到设置页；通知页负责分栏 + 每页 20 条手动翻页 */
 ok("通知页有分栏与手动分页（每页 20 条）", nv.includes("TABS") && nv.includes("PAGE = 20") && nv.includes("goPage"));

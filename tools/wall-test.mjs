@@ -6,6 +6,7 @@ import {
   canReadWall, canUseWall, countsFromRows,
 } from "../src/utils/wall.js";
 import { canDelete, displayCount } from "../src/utils/comments.js";
+import { readFileSync } from "node:fs";
 
 let pass = 0, fail = 0;
 function ok(name, cond) {
@@ -112,6 +113,33 @@ const migrated = rowsToPosts([{ id: 5, body: "b", views: 5, dislikes: 1, removed
 const legacy = rowsToPosts([{ id: 6, body: "b" }])[0];
 ok("T32 已迁移：stats=true（界面才显示浏览数/厌恶这一行）", migrated.stats === true && migrated.views === 5);
 ok("T33 未迁移：stats=false（不虚构 0 次浏览）", legacy.stats === false && legacy.views === 0);
+
+/* —— 轮 295 · SQL 卫兵：jsonb_object_agg 的键不能是 LEFT JOIN 出来的可空列 ——
+ * 生产 wall_feed_page 就是这么废掉的：a.post_id 来自 left join，一条帖零回应它就是 NULL，
+ * 而 jsonb_object_agg 拿 NULL 当字典键会抛 22023「field name must not be null」——
+ * 整个 RPC 400，前端静默回退到「只拉最新页」，「随机换一批」白做了。
+ * coalesce(..., '{}') 救不了：它包的是聚合结果，聚合在出结果之前就炸了。
+ * 这里扫全部 SQL，凡是按 post_id 聚成字典的，必须带 filter 把 NULL 键挡在聚合之外。 */
+const SQL_FILES = [
+  "MIGRATION_wall_feed_page.sql", "MIGRATION_wall_search.sql", "SUPABASE_SETUP.sql",
+  "MIGRATION_admin.sql", "MIGRATION_reports.sql",
+];
+let aggTotal = 0, aggGuarded = 0;
+const aggBad = [];
+for (const f of SQL_FILES) {
+  const s = readFileSync(new URL("../" + f, import.meta.url), "utf8");
+  for (const m of s.matchAll(/jsonb_object_agg\(\s*([ab])\.post_id/g)) {
+    aggTotal++;
+    /* 往后 220 字符够覆盖到 jsonb_build_object(...) 收尾和紧随其后的 filter */
+    const guarded = new RegExp(`filter \\(where ${m[1]}\\.post_id is not null\\)`)
+      .test(s.slice(m.index, m.index + 220));
+    if (guarded) aggGuarded++;
+    else aggBad.push(`${f}:${s.slice(0, m.index).split("\n").length}`);
+  }
+}
+ok(`T34 SQL 卫兵：按 post_id 聚成字典的 ${aggGuarded}/${aggTotal} 处都带了 filter（NULL 键会抛 22023 拖垮整个 RPC）`,
+   aggTotal >= 4 && aggGuarded === aggTotal);
+if (aggBad.length) console.log("       未防护 →", aggBad.join(", "));
 
 console.log(`\nTOTAL ${pass + fail}  PASS ${pass}  FAIL ${fail}`);
 process.exit(fail ? 1 : 0);

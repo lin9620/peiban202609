@@ -10,6 +10,15 @@
 --   * 评论数 = 该帖全部评论行（与 listCommentPostIds 现口径一致，不过滤 removed）；
 --   * 匿名调用 auth.uid() 为空 → mine 为空对象，计数照常。
 -- 安全：security definer 只为跨行聚合；查询固定 removed=false、只读、参数只有条数。
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 轮 295 · 本文件此前已在生产建过一版，**而那一版是坏的**（第 ③ 步 NULL 键必炸，
+--   生产实测 POST /rest/v1/rpc/wall_feed_page → 400 / 22023）。
+--   本文件是修好后的版本，**原样重跑一次即可替换**：
+--   create or replace function 只换函数体，不动表、不动数据、不动别的函数。
+--   跑完后刷新会第一次真正走「最新 4 条钉顶 + 随机换一批」的合并包，
+--   前端不用改任何代码（现在那条回退链路会自然失效）。
+-- ─────────────────────────────────────────────────────────────────────────────
 
 create or replace function public.wall_feed_page(p_limit int default 20)
 returns jsonb
@@ -62,11 +71,22 @@ begin
     ) t;
 
   -- ③ 回应计数（按 kind 分组 JOIN）+ 我的回应；评论数——全部对并集一次聚合
+  --
+  -- ⚠ 轮 295 修复（生产实测 400 / code 22023「field name must not be null」）：
+  --   a.post_id、b.post_id 是 LEFT JOIN 出来的**可空列**。一条帖只要没有任何回应或评论，
+  --   它就是 NULL —— 而 jsonb_object_agg 拿 NULL 当字典键会直接抛错，于是**整个函数失败**。
+  --   外面那层 coalesce(..., '{}') 救不了：它包的是聚合的「结果」，可聚合在出结果之前就炸了。
+  --   墙上绝大多数帖都是 0 回应 0 评论 → 本函数基本必炸。
+  --   后果：前端每次刷新都回退到「只拉最新页」，轮 169/170 的「随机换一批 + 合并包」一直静默失效，
+  --         且每次白等一次往返才兜底（生产实测该 RPC 烧掉 2.3s）。
+  --   修法：给两个 jsonb_object_agg 各加 filter —— NULL 键根本不进聚合，也就无从抛错；
+  --         没有匹配行时 coalesce 照旧给 {}，语义与「有回应/有评论时照常出包」完全一致。
   select coalesce(jsonb_object_agg(
            a.post_id,
            jsonb_build_object('hug', a.hug, 'warm', a.warm, 'relate', a.relate, 'mine', a.mine)
-         ), '{}'::jsonb),
-         coalesce(jsonb_object_agg(b.post_id, b.cmt), '{}'::jsonb)
+         ) filter (where a.post_id is not null), '{}'::jsonb),
+         coalesce(jsonb_object_agg(b.post_id, b.cmt)
+                  filter (where b.post_id is not null), '{}'::jsonb)
     into v_react, v_comment
     from (
       select p.id

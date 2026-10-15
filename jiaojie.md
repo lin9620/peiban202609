@@ -280,7 +280,7 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
 ## 二、现在在做什么
 
-- **当前批次（改动完成、测试过了、待提交待部署——攒批）**：**轮 263（帖子/评论「⋯」菜单被卡片底边硬切：`.post-card` 的 `content-visibility:auto` 隐含 paint containment 裁掉菜单溢出部分 + `.card{z-index:1}` 各开堆叠上下文致下一张卡盖住菜单；一行 `.post-card:has(.more-pop){content-visibility:visible;z-index:2}` 两层同修，模板零改动）+ 轮 264（搜索栏两个 × 撞车只留一个：`.wall-search-input::-webkit-search-cancel-button` 关掉原生清除按钮，**保留 `type=search`** 以不丢手机键盘「搜索」键位，留下的 ✕ 走 clearSearch() 关键词+标签一起清）+ **轮 265（TabBar 红点角标压住「消息」二字：tab 项纯文字无图标 → vant 角标锚在空的 .van-badge__wrapper（宽0高0）上被钉进文字行；拨掉空壳的 position:relative 改锚 tab 项，位置沿用手写时代 .tab-badge 的口径）** —— 三轮均只改 `src/style.css`，模板零改动；全量 45 套离线 ALL OK + tdz 0 + build EXIT=0（入口 `index-CsTdwCxQ.js`）+ page-smoke 13/13 + 无头几何复验/目检（轮 263：elementFromPoint 四点全 MENU 无硬切；轮 264：undo 反证两个 × 回来=无假通过；轮 265：角标与文字重叠 y=0、`badgeVisibleAboveText:true`）。详见文末 F 区轮 263/264/265、踩坑 #43/#44/#45。**+ 轮 266（首装首次进消息页「会话列表出来太慢 + 假空」四修：listConvs 单飞合并（singleFlight 挪 utils/inflight.js）+ 登录后补预热 + 会话列表骨架屏/「还没有会话」只认服务端应答/失败 3s 快速重试×3 + RPC 实测 ≈400ms 定位瓶颈为跨境 RTT 非 SQL）** —— 全量离线 BAD_TOTAL=0 + undef 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 266。**+ 轮 267（暖心墙触底骨架「十几秒不消失」两修：行上屏即收骨架（评论数转后台补，不再拴在 pageBusy 里）+ withTimeout 8s 超时兜底（超时只放弃等不放弃数据：游标不动、下次触底重试自愈））** —— 全量离线 BAD_TOTAL=0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 267。**+ 轮 268（会话行红点与顶/底角标不同步：dm_unread_total 捎带行级未读明细 convs → badgeStore 存映射+进角标缓存秒恢复，行未读 = max(行权威值, 映射)，openConv 清行同步清映射防复活；MIGRATION_dm_unread_convs.sql 幂等待用户 SQL Editor 执行，不跑降级为旧行为）** —— 全量离线 BAD_TOTAL=0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 268。**+ 轮 269（私信实时通道：dmRealtime.js 订阅 dm_messages INSERT（RLS 天然隔离+自发回显丢弃+失败静默轮询兜底），tick 尾部刷新抽 pullTail 供实时复用（轮 225 只读不发号语义保留），MessagesView 当前会话 pullTail 秒上屏/别会话节流 3s 刷列表，App 登录态起停通道；MIGRATION_dm_realtime.sql 真幂等待用户 SQL Editor 执行，不跑降级轮询；R11 断言随重构更新）** —— 45 套 BAD_TOTAL=0（含 dm-race 16/16）+ undef 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 269。**+ 轮 270（错误信标「采了看不见」：/api/client-log 从只 console.log 改为落库 `client_logs`（Worker 无 service role → 写入走授给 anon 的 security definer RPC；表 RLS 零策略，读写只走 RPC）+ AdminView 新增「客户端错误」页签（聚合优先：哪个错炸了 N 次 + 最新 50 条含可展开调用栈）；不记录 user_id 保持信标匿名；防灌三闸 Worker 60s/IP + SQL 200/日/IP + 全局 5000/日；**迁移没跑也降级可用**（信标仍回 200，只是不落库）；MIGRATION_client_logs.sql 幂等待用户 SQL Editor 执行）** —— worker-test 302/0 + gateway-contract 92/0 + i18n 漏键 0/死键 0 + undef 0 + tdz 0 + build BUILD_GOOD（入口 `index-C3qtiKw2.js`）+ page-smoke 13/13 + 真实探针确认两 RPC 现为 PGRST202（未执行，符合预期）+ 两文件 token 级同源。**注意编号：本轮是 270 不是 266**——另一 AI 已占 266/267/268/269。详见文末 F 区轮 270。**【本轮交付】整批轮 263~270 已提交 `3e6dd19` / 已推送 / 已部署 Version `0125959d`（入口 `index-C3qtiKw2.js`，706854 字节，SHA16 `d826f16641633ac1` 本地=线上，live-check 15/15）/ APK 已重打并装机（state:5 前台化 + 2679 色真实渲染）。SQL 迁移（wall_search/dm_unread_convs/dm_realtime/client_logs）用户已全部执行。****+ 轮 271（他人主页点帖子无反应：WallerView 加 goDetail，正文/图进 /post/:id，暖心墙轮 84 同款口径）** —— undef 0 + wall-test 34/34 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 271。**+ 轮 272（暖心墙触底续载底部骨架退役：删 pageBusy 文字 + .sk-more 骨架块（轮 253 产物），续载机制原样保留后台静默拉，底部只剩到底 noMore；首屏/评论区/搜索态不动）** —— i18n 漏键 0/死键 0 + uifix 24/24 + undef 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 272。**+ 轮 273（详情页点收藏「菜单文案不动」= 不跟手：点了立刻 closeMore()（菜单文案是打开瞬间快照，点完不变=以为没点上）+ hint 反馈先行不等网络，失败照常回滚）** —— undef 0 + wall-test 34/34 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 273。**+ 轮 274（详情页点作者进不了主页：PostDetailView 加 goUser，头像/名字进 /u/:id，暖心墙#15同款，全局 clickable 样式已有）** —— undef 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 274。**+ 轮 275（评论区「第二个请求堵住第一个」：cloudFetchComments 列表先行返回、我的回应高亮包进 rows.mineReady 后台补；详情页/墙内评论列表到手先上屏再挂 mineReady 响应式合并；操作后刷新仍走原 loadCmtMine）** —— undef 0 + wall-test 34/34 + i18n 漏键 0/死键 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 275。**+ 轮 276（消息会话列表底部骨架退役：删 dm-sk-rows 3 条骨架行 + 样式规则（轮 266 产物），与暖心墙轮 272 同口径；缓存秒出/单飞/预热/快速重试/空态门控全部保留）** —— undef 0 + uifix 24/24 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 276。**+ 轮 277（其余骨架屏一并退役：暖心墙桌面/手机首屏 2 处 + StoryFeed 首访 1 处，模板摘块 + 删 .sk-block/.st-skel 系样式；数据链路零改动）** —— undef 0 + uifix 24/24 + i18n 漏键 0/死键 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 277。**+ 轮 280（App 图标重设计为 C 暖窝：珊瑚环抱爪 + 米底，全密度 mipmap 重出 + ic_launcher_background #2C3550→#F5F0E8；首版图案过大裁切已修正）+ 轮 279（「我的」页返回自动下拉：全局 html{scroll-behavior:smooth} 污染程序化回位 → scrollMem/scrollBehavior 显式 behavior:"instant"，返回即在原位零可见滚动，与暖心墙同观感）** —— undef 0 + app-shell 66/66 + uifix 24/24 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 280/279。**+ 轮 281（「我的」页三条帖子经常很久才出现：登录后补 prefetchProfilePosts（首装预热漏跑）+ 挂载同步读 uid 兜底（wp-uid 未落位退 cloud.user.id）+ 加载抽 loadMyPosts 供 onActivated 切回页签静默 SWR 新鲜化；大厂调研：微信本地库/小红书磁盘缓存首帧出，本项目已有同款链路，慢在命中率三断点）** —— undef 0 + app-shell 66/66 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 281。**+ 轮 278（信标首条真错误定案：`/admin` 一打开就报 `Cannot access 'Se' before initialization` —— AdminView 的 `immediate` watch 在 setup 中途就同步调 `loadRelMeta`/`loadBroadcasts`，而这 11 个 ref 却声明在 watch **之后**；空 `catch` 吞掉第一个 TDZ、第二个抛在 try 外，async 让它变成「未处理的 Promise 拒绝」；11 个 ref 连注释整体上移到 watch 之前）** —— 自检过的 AST 检测器全量 RISKS=0 + tdz 0 + undef 0 + build 成功 + 全量离线 45/45 + page-smoke 13/13。详见文末 F 区轮 278。**+ 轮 283（帖子详情页左右滑看上一条/下一条：新 `utils/postNav.js` 存「这次点开的是哪张列表」的 id 快照（内存+sessionStorage，刷新/同设备分享链接打开仍可滑），入口侧一行 `setPostNav`（暖心墙 shown / 我的 rows·myPosts / 他人 posts），详情页 `transform` 跟手 + 过半(50%)才切 + 边界 32% 阻尼回弹；两端差异只落手势来源——App 端只挂 touch、网页端额外挂鼠标拖拽与 ←/→；切换用 `router.replace` 且**先 await 路由换完再归零位移**，防旧内容闪回中央；位移层只包内容区，`.cmt-main-bar` 与 ReportDialog 留在外面避开 fixed 被 transform 劫持；相邻两条预取进 SWR 缓存）** —— 新工具 `post-nav-test.mjs` 35/35（含 fixed 陷阱结构断言）+ 全量离线 **46/46** + tdz 0 + undef 0 + i18n 19/19 死键 0 + build EXIT=0（入口 `index-CN9MgczV.js`，新 chunk `postNav-yGwlF_XV.js`）+ page-smoke 13/13 + **真浏览器实测**（SPA 点进 695→拖→694、整页刷新 694→拖→686、键盘 686→690→689、`history.back()` 一步回 `/community`、第一条右滑位移 +96px=600×32% 且提示「已经是第一条了」）。详见文末 F 区轮 283、踩坑 #49。**+ 轮 282（评论区出来特别慢：实测定位（裸 RTT 800~2552ms、评论查询只比空请求多 ~100ms → 慢在网络不在 SQL）+ 结构放大（详情页帖子/评论两个 RTT 串行 + 评论零本地缓存）；修法 = 帖子与评论并行首发（load() 开头 loadComments(uid)）+ 数据层 cmtCacheKey/cmtCacheSet 评论磁盘缓存落盘 + 详情页 SWR 缓存先屏/墙内 loadThread 展开即 cacheGet 渲染 + 发删评论回写；自产 TDZ 一处（immediate watch 同步栈撞 comments/cmtLoading 声明在后 → await Promise.resolve 让出）+ swr 对 null 不回调致 cmtLoading 卡死（复位塞 fetcher 包装）** —— undef 0 + wall 34/34 + comment 35/35 + post-detail 17/17 + cache 12/12 + app-shell 66/66 + i18n-usage 2/2 + build EXIT=0 + page-smoke 13/13（首轮 12/13 即 TDZ，修复复验）。详见文末 F 区轮 282。**+ 轮 284（刷新失败提示减时 1/3：NOTE_FAIL_MS 1200→800ms；刷新图标动画三处：下拉指示条 ↓→循环箭头 SVG 跟手旋转（拉满 90px 转一圈、过 62px 阈值变主题色）、网页刷新按钮 ↻→SVG 且 spin 只转图标不晃按钮、刷新中药丸 border 圆环→轨道+圆头弧线 spinner 并补 reduced-motion 降级）** —— undef 0 + build EXIT=0 + page-smoke 13/13 + web-refresh 6/6 + uifix 24/24 + wall 34/34 + i18n-usage 2/2。详见文末 F 区轮 284。**【本轮交付】整批轮 271~285 已提交 `fbd519c` / 已推送（e06e4da..fbd519c）/ 已部署 Version `c1a3bd06`（入口 `index-ByNj7T6r.js`，708136 字节，SHA16 `0da3a45789b7fee8` 本地=线上，live-check 15/15）/ APK 已装机（app-debug.apk 5.26MB，lastUpdateTime 2026-10-14 23:13，topResumedActivity 前台化）——含另一会话的轮 278/283/285。全量 46/46 + undef 0 + tdz 0（提交前顺手修 arity：`loadComments(idOverride = null)` 补默认值，正是轮 283 遗留提醒）。**注意：轮 285 的 `MIGRATION_comment_delete.sql`（评论软删 RPC）待用户 SQL Editor 执行，不跑则删评论回退旧行为。****【追加交付】轮 286（下拉箭头改 Material 翻转，轮 284 跟手旋转被吐槽）已提交 `bcac3a7` / 已部署 Version `385b3823` / live-check 15/15（SHA16 `3dac08f7c6ee6311`），**装机未完成（adb 掉线待重插）**。**+ 轮 287（「我的」页返回帖子被 busy 占位盖几秒：ProfileView L489 `v-if="myPostsBusy"` 无条件遮屏 → 改 `myPostsBusy && !myPosts.length`，有内容在屏永不遮、网络静默回填，暖心墙口径）** —— undef 0 + build 0 + page-smoke 13/13 + uifix 24/24 + app-shell 66/66。详见文末 F 区轮 286/287。**
+- **当前批次（改动完成、测试过了、待提交待部署——攒批）**：**轮 263（帖子/评论「⋯」菜单被卡片底边硬切：`.post-card` 的 `content-visibility:auto` 隐含 paint containment 裁掉菜单溢出部分 + `.card{z-index:1}` 各开堆叠上下文致下一张卡盖住菜单；一行 `.post-card:has(.more-pop){content-visibility:visible;z-index:2}` 两层同修，模板零改动）+ 轮 264（搜索栏两个 × 撞车只留一个：`.wall-search-input::-webkit-search-cancel-button` 关掉原生清除按钮，**保留 `type=search`** 以不丢手机键盘「搜索」键位，留下的 ✕ 走 clearSearch() 关键词+标签一起清）+ **轮 265（TabBar 红点角标压住「消息」二字：tab 项纯文字无图标 → vant 角标锚在空的 .van-badge__wrapper（宽0高0）上被钉进文字行；拨掉空壳的 position:relative 改锚 tab 项，位置沿用手写时代 .tab-badge 的口径）** —— 三轮均只改 `src/style.css`，模板零改动；全量 45 套离线 ALL OK + tdz 0 + build EXIT=0（入口 `index-CsTdwCxQ.js`）+ page-smoke 13/13 + 无头几何复验/目检（轮 263：elementFromPoint 四点全 MENU 无硬切；轮 264：undo 反证两个 × 回来=无假通过；轮 265：角标与文字重叠 y=0、`badgeVisibleAboveText:true`）。详见文末 F 区轮 263/264/265、踩坑 #43/#44/#45。**+ 轮 266（首装首次进消息页「会话列表出来太慢 + 假空」四修：listConvs 单飞合并（singleFlight 挪 utils/inflight.js）+ 登录后补预热 + 会话列表骨架屏/「还没有会话」只认服务端应答/失败 3s 快速重试×3 + RPC 实测 ≈400ms 定位瓶颈为跨境 RTT 非 SQL）** —— 全量离线 BAD_TOTAL=0 + undef 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 266。**+ 轮 267（暖心墙触底骨架「十几秒不消失」两修：行上屏即收骨架（评论数转后台补，不再拴在 pageBusy 里）+ withTimeout 8s 超时兜底（超时只放弃等不放弃数据：游标不动、下次触底重试自愈））** —— 全量离线 BAD_TOTAL=0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 267。**+ 轮 268（会话行红点与顶/底角标不同步：dm_unread_total 捎带行级未读明细 convs → badgeStore 存映射+进角标缓存秒恢复，行未读 = max(行权威值, 映射)，openConv 清行同步清映射防复活；MIGRATION_dm_unread_convs.sql 幂等待用户 SQL Editor 执行，不跑降级为旧行为）** —— 全量离线 BAD_TOTAL=0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 268。**+ 轮 269（私信实时通道：dmRealtime.js 订阅 dm_messages INSERT（RLS 天然隔离+自发回显丢弃+失败静默轮询兜底），tick 尾部刷新抽 pullTail 供实时复用（轮 225 只读不发号语义保留），MessagesView 当前会话 pullTail 秒上屏/别会话节流 3s 刷列表，App 登录态起停通道；MIGRATION_dm_realtime.sql 真幂等待用户 SQL Editor 执行，不跑降级轮询；R11 断言随重构更新）** —— 45 套 BAD_TOTAL=0（含 dm-race 16/16）+ undef 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 269。**+ 轮 270（错误信标「采了看不见」：/api/client-log 从只 console.log 改为落库 `client_logs`（Worker 无 service role → 写入走授给 anon 的 security definer RPC；表 RLS 零策略，读写只走 RPC）+ AdminView 新增「客户端错误」页签（聚合优先：哪个错炸了 N 次 + 最新 50 条含可展开调用栈）；不记录 user_id 保持信标匿名；防灌三闸 Worker 60s/IP + SQL 200/日/IP + 全局 5000/日；**迁移没跑也降级可用**（信标仍回 200，只是不落库）；MIGRATION_client_logs.sql 幂等待用户 SQL Editor 执行）** —— worker-test 302/0 + gateway-contract 92/0 + i18n 漏键 0/死键 0 + undef 0 + tdz 0 + build BUILD_GOOD（入口 `index-C3qtiKw2.js`）+ page-smoke 13/13 + 真实探针确认两 RPC 现为 PGRST202（未执行，符合预期）+ 两文件 token 级同源。**注意编号：本轮是 270 不是 266**——另一 AI 已占 266/267/268/269。详见文末 F 区轮 270。**【本轮交付】整批轮 263~270 已提交 `3e6dd19` / 已推送 / 已部署 Version `0125959d`（入口 `index-C3qtiKw2.js`，706854 字节，SHA16 `d826f16641633ac1` 本地=线上，live-check 15/15）/ APK 已重打并装机（state:5 前台化 + 2679 色真实渲染）。SQL 迁移（wall_search/dm_unread_convs/dm_realtime/client_logs）用户已全部执行。****+ 轮 271（他人主页点帖子无反应：WallerView 加 goDetail，正文/图进 /post/:id，暖心墙轮 84 同款口径）** —— undef 0 + wall-test 34/34 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 271。**+ 轮 272（暖心墙触底续载底部骨架退役：删 pageBusy 文字 + .sk-more 骨架块（轮 253 产物），续载机制原样保留后台静默拉，底部只剩到底 noMore；首屏/评论区/搜索态不动）** —— i18n 漏键 0/死键 0 + uifix 24/24 + undef 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 272。**+ 轮 273（详情页点收藏「菜单文案不动」= 不跟手：点了立刻 closeMore()（菜单文案是打开瞬间快照，点完不变=以为没点上）+ hint 反馈先行不等网络，失败照常回滚）** —— undef 0 + wall-test 34/34 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 273。**+ 轮 274（详情页点作者进不了主页：PostDetailView 加 goUser，头像/名字进 /u/:id，暖心墙#15同款，全局 clickable 样式已有）** —— undef 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 274。**+ 轮 275（评论区「第二个请求堵住第一个」：cloudFetchComments 列表先行返回、我的回应高亮包进 rows.mineReady 后台补；详情页/墙内评论列表到手先上屏再挂 mineReady 响应式合并；操作后刷新仍走原 loadCmtMine）** —— undef 0 + wall-test 34/34 + i18n 漏键 0/死键 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 275。**+ 轮 276（消息会话列表底部骨架退役：删 dm-sk-rows 3 条骨架行 + 样式规则（轮 266 产物），与暖心墙轮 272 同口径；缓存秒出/单飞/预热/快速重试/空态门控全部保留）** —— undef 0 + uifix 24/24 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 276。**+ 轮 277（其余骨架屏一并退役：暖心墙桌面/手机首屏 2 处 + StoryFeed 首访 1 处，模板摘块 + 删 .sk-block/.st-skel 系样式；数据链路零改动）** —— undef 0 + uifix 24/24 + i18n 漏键 0/死键 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 277。**+ 轮 280（App 图标重设计为 C 暖窝：珊瑚环抱爪 + 米底，全密度 mipmap 重出 + ic_launcher_background #2C3550→#F5F0E8；首版图案过大裁切已修正）+ 轮 279（「我的」页返回自动下拉：全局 html{scroll-behavior:smooth} 污染程序化回位 → scrollMem/scrollBehavior 显式 behavior:"instant"，返回即在原位零可见滚动，与暖心墙同观感）** —— undef 0 + app-shell 66/66 + uifix 24/24 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 280/279。**+ 轮 281（「我的」页三条帖子经常很久才出现：登录后补 prefetchProfilePosts（首装预热漏跑）+ 挂载同步读 uid 兜底（wp-uid 未落位退 cloud.user.id）+ 加载抽 loadMyPosts 供 onActivated 切回页签静默 SWR 新鲜化；大厂调研：微信本地库/小红书磁盘缓存首帧出，本项目已有同款链路，慢在命中率三断点）** —— undef 0 + app-shell 66/66 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 281。**+ 轮 278（信标首条真错误定案：`/admin` 一打开就报 `Cannot access 'Se' before initialization` —— AdminView 的 `immediate` watch 在 setup 中途就同步调 `loadRelMeta`/`loadBroadcasts`，而这 11 个 ref 却声明在 watch **之后**；空 `catch` 吞掉第一个 TDZ、第二个抛在 try 外，async 让它变成「未处理的 Promise 拒绝」；11 个 ref 连注释整体上移到 watch 之前）** —— 自检过的 AST 检测器全量 RISKS=0 + tdz 0 + undef 0 + build 成功 + 全量离线 45/45 + page-smoke 13/13。详见文末 F 区轮 278。**+ 轮 283（帖子详情页左右滑看上一条/下一条：新 `utils/postNav.js` 存「这次点开的是哪张列表」的 id 快照（内存+sessionStorage，刷新/同设备分享链接打开仍可滑），入口侧一行 `setPostNav`（暖心墙 shown / 我的 rows·myPosts / 他人 posts），详情页 `transform` 跟手 + 过半(50%)才切 + 边界 32% 阻尼回弹；两端差异只落手势来源——App 端只挂 touch、网页端额外挂鼠标拖拽与 ←/→；切换用 `router.replace` 且**先 await 路由换完再归零位移**，防旧内容闪回中央；位移层只包内容区，`.cmt-main-bar` 与 ReportDialog 留在外面避开 fixed 被 transform 劫持；相邻两条预取进 SWR 缓存）** —— 新工具 `post-nav-test.mjs` 35/35（含 fixed 陷阱结构断言）+ 全量离线 **46/46** + tdz 0 + undef 0 + i18n 19/19 死键 0 + build EXIT=0（入口 `index-CN9MgczV.js`，新 chunk `postNav-yGwlF_XV.js`）+ page-smoke 13/13 + **真浏览器实测**（SPA 点进 695→拖→694、整页刷新 694→拖→686、键盘 686→690→689、`history.back()` 一步回 `/community`、第一条右滑位移 +96px=600×32% 且提示「已经是第一条了」）。详见文末 F 区轮 283、踩坑 #49。**+ 轮 282（评论区出来特别慢：实测定位（裸 RTT 800~2552ms、评论查询只比空请求多 ~100ms → 慢在网络不在 SQL）+ 结构放大（详情页帖子/评论两个 RTT 串行 + 评论零本地缓存）；修法 = 帖子与评论并行首发（load() 开头 loadComments(uid)）+ 数据层 cmtCacheKey/cmtCacheSet 评论磁盘缓存落盘 + 详情页 SWR 缓存先屏/墙内 loadThread 展开即 cacheGet 渲染 + 发删评论回写；自产 TDZ 一处（immediate watch 同步栈撞 comments/cmtLoading 声明在后 → await Promise.resolve 让出）+ swr 对 null 不回调致 cmtLoading 卡死（复位塞 fetcher 包装）** —— undef 0 + wall 34/34 + comment 35/35 + post-detail 17/17 + cache 12/12 + app-shell 66/66 + i18n-usage 2/2 + build EXIT=0 + page-smoke 13/13（首轮 12/13 即 TDZ，修复复验）。详见文末 F 区轮 282。**+ 轮 284（刷新失败提示减时 1/3：NOTE_FAIL_MS 1200→800ms；刷新图标动画三处：下拉指示条 ↓→循环箭头 SVG 跟手旋转（拉满 90px 转一圈、过 62px 阈值变主题色）、网页刷新按钮 ↻→SVG 且 spin 只转图标不晃按钮、刷新中药丸 border 圆环→轨道+圆头弧线 spinner 并补 reduced-motion 降级）** —— undef 0 + build EXIT=0 + page-smoke 13/13 + web-refresh 6/6 + uifix 24/24 + wall 34/34 + i18n-usage 2/2。详见文末 F 区轮 284。**【本轮交付】整批轮 271~285 已提交 `fbd519c` / 已推送（e06e4da..fbd519c）/ 已部署 Version `c1a3bd06`（入口 `index-ByNj7T6r.js`，708136 字节，SHA16 `0da3a45789b7fee8` 本地=线上，live-check 15/15）/ APK 已装机（app-debug.apk 5.26MB，lastUpdateTime 2026-10-14 23:13，topResumedActivity 前台化）——含另一会话的轮 278/283/285。全量 46/46 + undef 0 + tdz 0（提交前顺手修 arity：`loadComments(idOverride = null)` 补默认值，正是轮 283 遗留提醒）。**注意：轮 285 的 `MIGRATION_comment_delete.sql`（评论软删 RPC）待用户 SQL Editor 执行，不跑则删评论回退旧行为。****【追加交付】轮 286（下拉箭头改 Material 翻转，轮 284 跟手旋转被吐槽）已提交 `bcac3a7` / 已部署 Version `385b3823` / live-check 15/15（SHA16 `3dac08f7c6ee6311`），**装机未完成（adb 掉线待重插）**。**+ 轮 287（「我的」页返回帖子被 busy 占位盖几秒：ProfileView L489 `v-if="myPostsBusy"` 无条件遮屏 → 改 `myPostsBusy && !myPosts.length`，有内容在屏永不遮、网络静默回填，暖心墙口径）** —— undef 0 + build 0 + page-smoke 13/13 + uifix 24/24 + app-shell 66/66。详见文末 F 区轮 286/287。**+ 轮 298（b 删一级评论后点 cde「回复」没反应：轮 285 的 5 处守卫连坐 `if (cm && cm.deleted) return` 不看 rp，把墓碑线程内活回复的入口全拦死；判据改「回复目标被删没」——`cm.deleted && !rp` 才拦（直接回墓碑仍禁），sendCmt 加 rp 第三参从手机底部条/桌面就地框透传）** —— 全量 46/46 + tdz 0 + undef 0 + arity 8/8 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 298。**
 - **上一批（已提交已部署）**：轮 253~262 攒批：已提交 `663fe61` / 已部署 Version `0b375659`（入口 `index-Cp2C6aCf.js`，SHA16 `0d129290f4ee4701` 本地=线上，live-check 15/15）。明细：轮 253（知乎/Reddit 式渐进渲染补齐：图片淡入 + 触底续载迷你骨架）+ 轮 254（捞漂流瓶 6s 超时提示「没捞到」 + 修「切走再回来旧弹窗复活」：捞网会话代际 fishGen）+ 轮 255（英文文案全面精简：药丸溢出 ×7 + 占位去重 + 任务名 ×2 + 长描述 ×13 + .bcl-chip 防御 CSS）+ 轮 256（无声错误上报信标：beacon.js + Worker /api/client-log）+ 轮 257（4 条已知失败测试清零：seo T38/39/42 无尾斜杠口径 + uifix T23 现口径）+ 轮 258（新工具 i18n-usage-test 死键/漏键检查 + 清掉 79 个死键）+ 轮 259（根目录临时文件大扫除 + .gitignore 补 _scratch/_*.png）+ 轮 260（可用性监控就绪：/api/health 进 live-check + README 配置说明）+ 轮 261（装扮穿戴按身体部位锚定 pos/posBy：废弃舞台顶 dy、锚进 PetMotion 随宠跳动、兔/恐龙/水獭 posBy 覆盖；另修失败构建 closeBundle 踩坏全部预渲染的守卫 + zh 首页正文语言 + home.companions.hall 缺键恢复 + 挪正 FavoritesView 交叉嵌套结构）+ 轮 262（「不跟手」全局治理：红点即时递减 badgeLocal + refreshBadge({after}) 串行修竞态；收藏独立页 /favorites + 写穿缓存 favCacheInsert；评论发送/删除乐观化 pending 临时行）。App 端要重打包装机（随轮 250/251 待办）。
 - **上一批（已提交已部署）**：轮 239~252 攒批：已提交 `0113d6e`（+文档 `3899f5b`）/ 已部署 Version `51feda2f`（入口 `index-DzmDi8IU.js`，live-check 14/14，本地=线上）；`MIGRATION_wall_search.sql` 待用户 SQL Editor 整份执行（不跑也降级可用）。
 - **当前任务**：**轮 146（暖心墙示例帖全清 + 推荐档分级放宽 + 月档改滚动 30 天）待部署** —— 验收点：`/community` 停在「推荐」档应看到大量真实老帖（不再是示例帖），跨天均匀不霸屏；「本月」档 = 前 30 天。遗留待用户拍板：库里 9/24 有 47 条 `〔压测 #xxx〕` 灌水帖，是否清理（删数据需用户明确指示）。
@@ -3549,6 +3549,24 @@ style.css / CommunityView.vue(头像接线)。
 
 **状态**：**待提交待部署（攒批）**（与轮 271~284 同批；轮 284 是另一 AI 的刷新图标优化）。
 
+### 【已作废 · 并入轮 288】「我在暖心墙的帖子」时间先改成精确到秒（用户随即更正为到分）
+
+**用户需求**：截图指出「我在暖心墙的帖子」页帖子时间只显示 `2026/10/14`，要求精确到秒。
+
+**真因（不是缺功能，是口径回退）**：`wallRules.js` 早就有 `fmtWhenSec`，注释白纸黑字写着「帖子时间显示到秒（**轮 44**，「我的」页帖子卡用；**用户拍板**）」——`ProfileView.vue`（我的页）与 `FavoritesView.vue`（收藏页）都在用、都显示到秒。唯独 `MyPostsView.vue:118` 是个裸 `function whenPost(ts) { return new Date(ts).toLocaleDateString(); }`：**没传 locale、没到秒，连时分都没有**（浏览器按运行环境给 `2026/10/14`）。所以这不是「加个秒」，是把轮 44 已拍板的口径丢了。
+
+**改法**（只动 `src/views/MyPostsView.vue`，`wallRules.js` 一字不改）：删掉 `whenPost`，模板 `{{ whenPost(p.ts) }}` → `{{ fmtWhenSec(p.ts) }}`，与两个兄弟页完全同口径（跨年自动补年份、非法时间→""、zh/en 由 `fmtWhenSec` 内部按 locale 分派）。
+
+**验证**：undef 0 + tdz 0 + **wall-rules 49/49**（`fmtWhenSec` 纯函数，覆盖 locale / 跨年 / 非法入参）+ post-detail 17/17 + uifix 24/24 + build EXIT=0 + page-smoke 13/13 + 真浏览器 `/my-posts` 渲染正常、**控制台零报错**（未登录态只能验到空态壳；秒级文案由 wall-rules-test + 已在生产跑着的两个兄弟页覆盖）。
+
+**取证插曲**：验证途中 `localhost:4173` 的 `vite preview`（PID 5496）**进程已死**，`/my-posts` 返 502 是文档请求本身、不是应用报错；已重新起一个（仍是 4173）。构建期 `Select-Object -First` 提前断管会让 `$LASTEXITCODE` 变 -1，属工具假信号——复验 `EXIT=0`。
+
+**顺带记两笔未动的小账**（不在本轮范围，等用户发话）：
+1. **暖心墙 / 详情页的时间走 `fmtWhen`（只到分）**：如也要精确到秒，是另一个决定（墙上列表到分是轮 44 当年「可读性优先」的取舍，`wallRules.js` 注释里也写了「墙上列表到分钟可读性优先，个人主页精确到秒」）。
+2. **`fmtWhenSec` / `fmtWhen` 的三处调用都没传 locale**，默认 `"zh"` → 英文界面用户会看到中文格式日期（`ProfileView` / `FavoritesView` 同病，本轮未顺手改以免与兄弟页口径分叉）。
+
+**状态**：**已作废** —— 用户下一句就更正「个人主页精确到分，说错了」，本条改成到秒的方向被推翻，最终口径见 **轮 288**（下拉刷新指示条那条才是轮 286，见后）。
+
 ### 轮 286 · 下拉刷新指示条改 Material 箭头翻转（轮 284 跟手旋转被吐槽）（已提交部署）
 
 **用户吐槽**：「刷新，有这么刷新的吗，转来转去的，那是个什么玩意」——轮 284 把下拉指示条做成了跟手连续旋转（`rotate = pullDist/90 × 360°`），拉动过程中图标转个不停，像个坏掉的风扇。
@@ -3567,4 +3585,337 @@ style.css / CommunityView.vue(头像接线)。
 **改动**：条件改 `v-if="myPostsBusy && !myPosts.length"`——busy 占位只在「屏上本来就没帖子」（首拉无缓存）时显示；有内容在屏就永不遮，网络静默回填。四分支自洽：busy 无货=…、非 busy 无货=「还没有帖子」、有货=列表。
 
 **验证**：undef 0 + build 0 + page-smoke 13/13 + uifix 24/24 + app-shell 66/66。
+**状态**：**待提交待部署（攒批）**。
+
+### 轮 288 · 个人页帖子时间统一到分（`fmtWhenSec` 退役删除）（待提交待部署）
+
+**用户需求**：先截图「我在暖心墙的帖子」时间只显示 `2026/10/14`、要求「改成精确到秒」；改完随即更正：「**个人主页精确到分，说错了**」。经确认范围 = **三处个人页统一到分**（「我的」页 / 我在暖心墙的帖子 / 收藏页），与暖心墙、详情页同口径。
+
+**为什么原先是到秒**：轮 44（2026-09-25）用户原话「…而且时间显示到秒」，为此专门加了纯函数 `fmtWhenSec`，并刻意与 `fmtWhen` 分成两个函数（注释写「墙上列表到分钟可读性优先，个人主页精确到秒」）。**本轮等于推翻轮 44 的这条取舍**——全站时间文案函数只剩 `fmtWhen` 一个。
+
+**顺带发现的一处口径回退（已一并修）**：`MyPostsView.vue` 当年根本没接上 `fmtWhenSec`，是裸 `new Date(ts).toLocaleDateString()` —— 没到秒、没传 locale，**连时分都没有**（这正是用户看到 `2026/10/14` 的直接原因，不是「少了秒」而是「少了时分」）。
+
+**改动**：
+1. `MyPostsView.vue` / `ProfileView.vue` / `FavoritesView.vue`：三处 `fmtWhenSec(...)` → 各自新增同名小帮手 `const when = (ts) => fmtWhen(ts, i18n.locale)`（与 `WallerView` / `PostDetailView` / `CommunityView` **完全同名同口径**），模板改 `{{ when(...) }}`；三个文件的 i18n 导入由 `{ t }` 补成 `{ t, i18n }`。
+2. **locale 一并传进去**：此前三处都没传 locale、默认 `"zh"` → 英文界面用户会看到中文格式日期（上一条留的小账，本轮顺手清掉——反正这三个调用点都要动）。
+3. `wallRules.js`：**删除 `fmtWhenSec`**（已无任何调用方），原地留退役说明（要恢复到秒怎么写、当年用例在哪）。
+4. `tools/wall-rules-test.mjs`：移除 `fmtWhenSec` 的 import 与三条用例（49 → **46**），留一行退役说明防回潮。
+5. `README.md`：测试行说明同步（并修正早已过期的「44 项」→ 46 项、「到分钟与到秒」→「到分」）。
+6. `jiaojie.md`：把上一条「改到秒」的记录标记为**已作废并入本条**（用户下一句就更正了）。
+
+**改动文件**：`src/views/MyPostsView.vue`、`src/views/ProfileView.vue`、`src/views/FavoritesView.vue`、`src/utils/wallRules.js`、`tools/wall-rules-test.mjs`、`README.md`、`jiaojie.md`。
+
+**验证**：tdz 0 + undef 0 + **wall-rules 46/46** + build EXIT=0（无 error）+ page-smoke 13/13 + **全量批跑 NO_FAILING_SUITE（46 套全绿）**。到秒文案已**无法回归**——函数连同用例一起删了。
+
+**状态**：**待提交待部署（攒批）**。
+
+### 轮 289 · 暖心墙帖子左右宽度对齐「我的帖子」页（补回 `.shell` 的 18px 内边距）（待提交待部署）
+
+**用户需求**：「把暖心墙帖子左右的宽度改成第二张那个宽度」（第二张截图 = `/my-posts`「我在暖心墙的帖子」）。
+
+**真因（不是卡片样式，是容器逃逸）**：两页用的是**同一个** `.post-card card`，差别在外层。`.shell` 有 `padding: 0 18px 48px`（`style.css:58`）——`/my-posts` 是正常文档流，老老实实吃这 18px；而**暖心墙手机端的滚动层是 `position: fixed; inset: 0`**（轮 18 的原生下拉刷新要自己接管滚动容器；查过 HEAD，是既有设计、不是在途改动）→ 整个元素**逃出 `.shell`**，帖子卡满宽贴边。桌面分支不在 fixed 里、本来就在 `.shell` 内 —— **所以只有手机端差这一截**。
+
+**改动**（只动 `CommunityView.vue`，没碰 `style.css`——另一 AI 在途）：根节点加 `class="wall-scroller"`，scoped 样式补一条自适应规则（**不是写死 18px**，见下）：
+
+```css
+.shell--mobile-nav .wall-scroller {
+  padding-left: max(18px, calc((100% - 780px) / 2 + 18px));
+  padding-right: max(18px, calc((100% - 780px) / 2 + 18px));
+}
+```
+
+四条自我约束一并写进注释：① 限定 `.shell--mobile-nav`（≥900px 时墙本来就在 `.shell` 内，再加会叠两份）；② **只加左右**，纵向一概不动（下拉指示条 / 虚拟窗口占位块高度 / 底部 70px TabBar 让位）；③ 18px / 780px 与 `style.css` 的 `.shell` 同值，将来改要两处一起改；④ 为什么不能写死 18px，见下段。
+
+**为什么不是写死 18px（用户追问「不同的手机宽度一致吗」抓出来的缺口）**：初版就是写死 18px，实测视口 716 完全对齐。但 `.shell` 在 `<900` 档是 `max-width: 780px` + `margin: 0 auto`（全局 `* { box-sizing: border-box }`，所以 780 卡的是**边框盒**），于是**视口 780~900 时别的页会被压到 744 宽并居中**（左边距 = `(vw-780)/2 + 18`），而这个 fixed 滚动层是满宽的 —— 单写死 18px 就会在这里错开。`max()` 把 `.shell` 的「封顶 780 + 居中 + 18px」整个复刻：窄屏 max 取 18px，宽屏取居中量。
+
+**跨宽度实测（iframe 模拟视口，`position:fixed` 以 iframe 视口为准，等价真机视口）**，改前 → 改后：
+
+| 视口 | 墙 左/宽（改前） | 墙 左/宽（改后） | 别的页 左/宽 |
+|---|---|---|---|
+| 360（小屏机） | — | **18** / 309 | 18 / 324 |
+| 400（主流机） | — | **18** / 349 | 18 / 364 |
+| 780（封顶临界） | — | **18** / 729 | 18 / 744 |
+| **850（横屏机/小平板）** | 18 / 799 ✗ | **53** / 729 ✓ | 53 / 744 |
+| 1000（桌面） | 266 / 708 ✓ | 266 / 708 ✓ | 266 / 708 ✓ |
+
+**左边距五档全部与别的页逐像素一致**（850 那档由 18 → 53，`scPad` 实测 `53.2px|53.2px`）。
+
+**宽度恒定差 15px 的定性（已查实，不是布局偏移）**：`scBoxMinusClient = 15` / `docBoxMinusClient = 0` —— 那 15px 是**墙自带滚动层自己的滚动条占位**（`overflow-y: auto` 的经典滚动条），别的页的滚动条在文档层、不进卡片区。**手机上是 0**：Android / iOS 用覆盖式滚动条，不吃布局宽度 → 真机上两页卡宽逐像素相同。会吃到这 15px 的只有带经典滚动条的环境（桌面窄窗口、部分安卓系统开了常显滚动条）。要彻底消掉给这条规则加 `scrollbar-width: none` + `::-webkit-scrollbar { width: 0 }` 即可（代价是该滚动层在桌面窄窗口下不再显示滚动条），**本轮未做**，等用户定夺。
+
+**验证**：tdz 0 + undef 0 + wall 36/36 + wall-rules 46/46 + web-refresh 6/6 + app-shell 66/66 + feed-window 19/19 + feed-perf 27/27 + page-smoke 13/13 + build EXIT=0 + **全量批跑 46/46 OK、0 FAIL（NO_FAILING_SUITE）** + iframe 跨宽度实测（360/400/780/850/1000 三轮两页对比）。
+
+**状态**：**待提交待部署（攒批）**。
+
+### 轮 290 · 「刷新中…」整颗药丸原地转圈（`.rn-busy` 类名撞车，轮 284 埋的雷）（待提交待部署）
+
+**用户报障**：截图圈出暖心墙搜索框上方一坨**倾斜的「刷新中…」+ 圆圈**，「这玩意不是说修了吗，怎么还在」（应是指轮 286 把下拉箭头改回 Material 静止口径，以为转圈的都清干净了）。
+
+**真因（两个 `.rn-busy` 同名撞车）**：
+- 药丸的**状态类**：模板 `:class="'rn-' + refreshNote"` → busy 时正好是 **`rn-busy`**；
+- 轮 284 把药丸**内部 spinner** 从旧的 `.rn-busyic` 改名成 **`.rn-busy`**（jiaojie 3521 记着这次改名，旧类已删）；
+- 于是 `width:16px; height:16px; display:block; animation: rn-spin .8s linear infinite` 打在了**整颗药丸**上 —— `.rn-busy` 在 `style.css:2760`，晚于 `.refresh-note`（2733）且同特异性，**后写者胜**；
+- 结果：药丸被压成 16×16 的块级盒子、**文字随药丸一起无限转圈**，药丸自己的 `fit-content` / `display:flex` / `rn-rise` 全被覆盖。
+
+**取证（不猜，逐帧读 computed）**：点 `.wall-refresh` 后连抓 7 帧 `.refresh-note` 的 transform —— `matrix(-0.501,0.865,-0.865,-0.501,0,0)` → `matrix(-0.381,-0.925,0.925,-0.381,…)` → `matrix(0.991,0.133,-0.133,0.991,…)`…（角度 120°→-112°→8° 连续变化）= 无限旋转；同时**全页除它以外没有任何含文字的节点带 transform** —— 据此排除「`t-swap` / `rn-rise` 自带旋转」的假设（那两条只做 translateY），锁死药丸本体被 `rn-spin` 接管。
+
+**修法（只动 `CommunityView.vue`，不碰 `style.css`）**：状态类前缀 `rn-` → **`rnote-`**，从根上让开撞车；3 条状态配色（ok/batch=`--accent-deep`、fail=`--low`）随之搬进该组件 `<style scoped>`（带 `data-v-0f563b73`，特异性 (0,3,0)，稳压基础规则 `.refresh-note{color:var(--ink-soft)}`）。**`style.css` 的 `.refresh-note.rn-ok/.rn-batch/.rn-fail` 自此是死规则** —— 留着没删（那是另一 AI 的在途文件，本轮不越界），已在模板处写明「别再改回来」。
+
+**为什么不用「特异性压回去」那种补丁**（`.refresh-note[data-v]{...}` 覆盖 4 条声明）：那只是遮住撞车，`.rn-busy` 仍然命中药丸，日后给 spinner 再加任何规则都会二次中招；改前缀是根治，且代价同样只有 3 行配色。
+
+**复测（真浏览器点刷新逐帧）**：
+- 药丸：`cls = refresh-note rnote-busy`、`transform = none`（仅余 `rn-rise`/`t-swap` 的纯位移 `matrix(1,0,0,1,0,0.12)`）、`box 108x34`、`display:flex`、`anim: rn-rise` ✓ —— 修复前是 `16x16` + 持续旋转；
+- 内部 spinner：`rn-spin matrix(-0.5006,0.8656,…)` **照常在转**（AABB 22px = 16px 方块旋转的包络，尺寸自洽）✓；
+- `fail` 态（本环境刷新必失败 —— 就是那个待办的 `wall_feed_page` 400，正好白捡一个复现场景）：`color: rgb(198,69,69)` = `var(--low)` ✓；构建产物 `CommunityView-*.css` 里 `rnote-ok/batch/fail` 三条配色齐全；
+- 截图目检：药丸横平、spinner 正常、文字不再打转。
+
+**验证**：tdz 0 + undef 0 + app-shell 66/66 + wall 36/36 + page-smoke 13/13 + build EXIT=0 + **全量批跑 46/46 OK、0 FAIL（NO_FAILING_SUITE）**。
+
+**改动文件**：`src/views/CommunityView.vue`（模板 1 处前缀 + 说明注释、scoped 3 条配色）。
+
+**状态**：**待提交待部署（攒批）**。
+
+### 轮 291 · 首页「此刻状态」点一次等 2.1 秒（大厅计数没做本地先改）（待提交待部署）
+
+**用户点单**：「这个点击切换，速度非常慢，你测一下，然后提速」（首页今日 → 陪你大厅 2×2 状态卡 + 右侧「大厅此刻」四格）。
+
+**实测（真浏览器，逐 20ms 轮询三处时刻 + 抓点击后的全部 resource）**：
+
+| 指标 | 修前 | 修后 |
+|---|---|---|
+| 卡片高亮 `.status-card.is-on` | 27ms ✓ | 21ms |
+| 联动点亮 `.hall-now-cell.on` | （同帧） | 21ms |
+| **大厅计数数字变化** | **2118ms** ❌ | **21ms** |
+
+**病根**：轮 238 只让**卡片**本地先翻，「大厅此刻」的**数字**仍串在网络后面 —— `PATCH /profiles (864ms)` **落库后**才发计数查询（`countRecentStatuses` = 4 条 `head-count` 用 `Promise.all` **并行**，实测各 1022~1247ms，**合计就是 1 次往返 ~1.25s**）→ 864 + 1250 ≈ 2118ms，逐帧对得上。
+> 顺带纠正一个想当然：4 条查询并行，**合不合并成 1 条并不影响延迟**（都是 1 RTT），所以没动 `countRecentStatuses`（直连）与 worker 的 `/statuses/counts` 实现——瓶颈从来不在查询条数，而在「等写完才读」+「数字压根不需要等网络」。
+
+**修法（只动 `TodayPane.vue`）**：
+1. **`bumpCounts(prev, next)` 本地记账**：我必然就站在自己那一格的计数里 → 离开 `-1`、进来 `+1`（`Math.max(0,…)` 下限），与卡片**同帧**更新；游客没有 profiles 行、本就不计入统计 → 直接 return。服务端那趟照旧回填对账，**对上就不动、看不见**。
+2. **`refreshStatusCounts` 在途改「记账待补跑」**（`statusCountsPending` + `do/while`）：旧版在途时**直接丢弃**这次刷新 —— 若在途的恰是点击前那趟，落库后就再也没人来对账，数字会永远停在本地预估值。这是给①加的**防漂移保险**（乐观更新必须保证最终一定有一次真对账）。
+
+**为什么不让计数与 PATCH 并行**（那样能早 ~0.9s 拿到服务端值）：并行读会**抢在写之前**返回旧值，把刚做的乐观数字**打回旧数**，肉眼可见地闪一下；写→读的顺序是对的，而有了①，UI 已经 0 等待，顺序不再有代价。
+
+**复测（真浏览器，含压力项）**：
+- 两轮点击：card/link/count 全 **21~22ms**，3 秒后计数**纹丝不动** = 乐观值与服务端真相一致；
+- **连点 4 次**（间隔 160ms，刻意叠压在途请求）：逐次记账全对（`1→2→1→0` 往返正确），6 秒后稳定；
+- **重进页面拉服务端真值 = 本地完全一致**（`工作中=1|学习里=1|睡不着=0|随便待着=0`）→ **零漂移**。
+
+**踩坑**：改 `const next = myStatus.value === k ? "" : k` 成 `prev === k` 会让 `status-test` 的源码串断言红灯（该断言防的正是「再点一次即清除」）。**改回原句、另起一行取 `prev`**（行为不变、diff 更小），而不是去动测试。
+
+**验证**：tdz 0 + undef 0 + **status-test 56/56** + home-panes 9/9 + status-counts PASS + app-shell 66/66 + page-smoke 13/13 + build EXIT=0 + **全量批跑 46/46 OK、0 FAIL（NO_FAILING_SUITE）**。
+
+**改动文件**：`src/components/TodayPane.vue`（`bumpCounts` + `setStatus` 取旧值 + `refreshStatusCounts` 待补跑）。
+
+**状态**：**待提交待部署（攒批）**。
+
+---
+
+### 轮 292 · 推荐顺序「每个人看到的都一样」（加观众盐）（待提交待部署）
+
+**用户点单**：听完推荐算法解释后点破 ——「那这样不是每个人看到的内容都是一样的，加点随机数吧」。
+
+**病根**：那套「随机」是**可复现的随机**（`mulberry32` + 固定种子），而种子只含 `utcDay(今天)` → **同一天全站每个人看到的顺序一模一样**。随机确实有，但没有观众维度。
+
+**修法（`wallRules.js` + `CommunityView.vue`）**：给排序键加一份**每台设备固定**的观众盐。
+
+| | |
+|---|---|
+| 键 | 旧：`hash(种子 \| UTC天 \| 帖子ID)` → 新：`hash(盐 \| 种子 \| UTC天 \| 帖子ID)` |
+| 盐 | `warm-paws-rec-salt-v1`，首次进墙时生成一次（`Math.random`+时间戳 36 进制），**落 localStorage 后永不再写** |
+| 效果 | 不同手机/浏览器 → 不同顺序；同一个人刷新 → 顺序不变 |
+
+**为什么盐必须是常量（这是本轮能不能成立的关键）**：键里盐是常数 → 键仍然「只由这个帖子自己决定」→ **轮 234 苦心保住的「触底续载不重排已看内容」性质原样保留**。若盐会变（比如按会话随机），每刷新都洗一次牌，那条性质立刻就没了。
+
+**三个「为什么不用现成的」**（都踩过/算过账）：
+1. **不用现成的 `anonKey()`**（浏览数去重那个匿名 id）：它按**账号域**存，登录/登出/域迁移会让它变 → 盐一变顺序就翻一次，用户会觉得「怎么刷一下全换了」。所以盐用**独立键、永不改**。
+2. **盐里不放 uid**：`wp-uid` 是会话恢复时**异步落位**的，算进去会让「首屏渲染 vs 登录态到位」之间翻一次序，跨刷新也不稳定。稳定优先，代价只是「同一浏览器同一顺序」。
+3. **不改成每会话随机**：那等于放弃「同一个人今天看到的是同一批」，无限流下滚会错乱。
+
+**零回归**：不传 `salt` 时拼出的串与旧版**逐字节相同**（`key = salt ? ... : 旧串`）→ 单测老用例一行没改全绿；存储被隐私模式拦掉时 `viewerSalt()` 返回 `""` → **降级成旧的全站同序**，功能不受影响。
+
+**实测（真浏览器，三步闭环）**：
+
+| 步骤 | 操作 | 结果 |
+|---|---|---|
+| ① | 同盐刷新页面 | **10/10 条顺序逐条相同** ✓ 同一个人稳定 |
+| ② | 换成另一个盐（=另一个人） | **7/10 位次变了**，还浮出 3 条原本不在前 10 的帖 ✓ 真的不同了；且**最新那天仍排最前** —— 新鲜度没被盐破坏 |
+| ③ | 把盐换回原值 | 与基线**逐条相同** → 证明池子没变，纯粹是盐在起作用 |
+
+**测试**：`wall-rules-test` 新增 **T36**（46→**47** 项），锁死 5 条：①换盐换序（盐真参与哈希）②同盐稳定（刷新不闪）③**加盐后续载仍不重排**（本轮最易被破坏的性质）④空盐与不传盐结果相同（零回归）⑤`CommunityView` 确实把 `salt: REC_SALT` 传进去了（源码断言）。
+
+**验证**：tdz 0 + undef 0 + **wall-rules 47/47** + build EXIT=0 + page-smoke 13/13 + **全量批跑 46/46 OK、0 FAIL（NO_FAILING_SUITE）**。
+
+**改动文件**：`src/utils/wallRules.js`（`interleaveByDay` 加 `salt` 形参 + `recommendPosts` 透传 `opts.salt`）、`src/views/CommunityView.vue`（`viewerSalt()` + `REC_SALT` + 调用处传盐）、`tools/wall-rules-test.mjs`（T36）、`README.md`（计数 46→47）。
+
+**状态**：**待提交待部署（攒批）**。
+
+---
+
+### 轮 293 · 推荐流「往下拉就到底了」（放宽是一次性判定，没跟着滚动走）（待提交待部署）
+
+**用户点单**：「你上面都说内容不够，继续往下拉会放宽到 30 天的内容，那为什么在推荐下面，我往下拉就到底了呢？你这压根没有实现啊」
+
+**先认错**：我把算法解释讲错了 —— 说成「往下拉会放宽到 30 天」，实际 `recommendPosts` 的放宽是**一次性判定**：7 天池里够 `minPool(10)` 条就永远停在 7 天，30 天那一档根本用不上。
+
+**取证（真浏览器 + fetch 挂钩抓调用栈）**：
+
+| 排序 | 卡片数 | 说明 |
+|---|---|---|
+| 推荐 | **13** | 滚到底反复拉，恒为 13 |
+| 同感最多 + 近30天 | 100 → **280** | 正常续载 |
+
+网络层铁证：刷新后滚到底抓到 **9 次分页请求**，游标 `676 → 626 → … → 326`，每次 50 条 —— **约 450 条被成功加载进内存，然后被 7 天窗全部扔掉**。所以「没实现」不成立：触底续载一直好着，是推荐模式看不见它。顺带查出一个真浪费：**推荐模式下这些续载纯属白烧流量**。
+
+> 排查过程沉淀：`browser.evaluate` 有 60s 上限，538 张卡 + 逐级放宽的持续重渲染会把页面拖到采样脚本跑不完（连挂两次）；换轻量脚本才拿到数据。另外 `network.list` 不带过滤时返回正好 100 条，看着像被截断 —— 用 `urlContains` 精确过滤复核过，确认无丢弃。
+
+**修法（只动 `CommunityView.vue`）**：把「放宽」从一次性判定改成**跟着滚动走**。
+
+1. `REC_LEVELS = [7, 30, Infinity]` + `recDays` ref，`shown` 读 `recDays.value`（`Infinity` = 不筛天，`recommendPosts` 原生支持）；
+2. `feedTick` 里**当前档位亮完且服务端还有货**才升档：`!hasMore && !cloudDone → widenRec()`。放在 `reveal` 补齐之后，否则一进页就一路升到「全部」；
+3. 换排序/时间档、刷新 → `recDays` 复位 7 天。
+
+**为什么不破坏轮 234 的「续载不重排」**：放宽只**新增更早的天**，而排序是**天倒序** → 更早的天整体排在后面 → 已看过的帖子相对顺序一个不动。T37 直接断言**前缀性质**（7 天结果 ⊂ 30 天 ⊂ 全部）。
+
+**实测**：推荐模式反复滚到底，卡片数 `10 → 13 → 20 → 50 → 100 → … → 538`，最后底部正确出现「就到这里啦——晚点再来看新的吧 🐾」（此前永远停在 13）。
+
+**测试**：新增 **T37**（前缀性质 + 4 条接线断言），`wall-rules-test` 47→**48** 项。T36⑤ 的调用串断言随轮 293 更新为 `days: recDays.value, salt: REC_SALT`（盐仍必须传）。
+
+**改动文件**：`src/views/CommunityView.vue`（`REC_LEVELS`/`recDays`/`widenRec` + `shown` + `feedTick` + 换档复位）、`tools/wall-rules-test.mjs`（T37）、`README.md`（47→48）。
+
+**状态**：**待提交待部署（攒批）**。
+
+---
+
+### 轮 294 · 深滚时点刷新「一直往上跑」（内容先塌缩、位置后被动调整）（待提交待部署）
+
+**用户点单**：「当往下拉很长的时候再点击暖心墙刷新，结果一直往上跑，观感很不好，优化一下」
+
+**病根是顺序**：刷新 = `consume()` 把整表替换成最新一批（实测 538 条 → 20 条，`reveal` 还复位 10），而视口还在几百条深处 → 列表一边塌缩、浏览器一边把视口往上拽；拽到底又立刻满足触底判定、拉下一页、列表再长高、再拽…… 就是用户看到的「一直往上跑」。
+
+**修法：先归位，再换内容**。
+
+1. 新增 `pinToTop()`：瞬时把视口钉到顶（覆盖手机端墙自滚 + 桌面端整页滚两种滚动层），并把记忆位置 `wallScrollTop` 归零 —— 不清的话下次离开再回来会被「位置保持」拽回旧位置（轮 232 踩过）；
+2. `manualRefresh(opts)` 收 `pin` 选项，**只有刷新钮传** `@click="manualRefresh({ pin: true })"`；页签重按那条路径保持轮 232 的平滑回顶不变；
+3. 刷新后 `recDays` 复位 7 天（否则刚清空的列表立刻又膨胀回几百条，观感同样糟）。
+
+**为什么瞬时而不是平滑**：从十几万像素滚回顶部的平滑动画要跑好几秒，比塌缩本身更难受；一次干净的画面切换最稳。
+
+**实测（真浏览器，逐 100ms 采样 16 点）**：刷新前视口在 `top=3178px` 深处 → 点刷新后**第一个采样点就归 0**，16 点全程稳在 0，卡片数回到 10。不再有任何往上跑的漂移。
+
+**测试**：新增 **T38**（5 条：按钮必须带 pin / 覆盖两种滚动层 / 清记忆位置 / **pinToTop 必须在 loadCloud 之前** / 页签重按不被 pin 波及 / 刷新复位推荐窗），`wall-rules-test` 48→**49** 项。`web-refresh-test` T1 钉的是旧的 `@click="manualRefresh"` 串，随本轮同步更新（源码改动是有意的，改断言不改回源码）。
+
+**改动文件**：`src/views/CommunityView.vue`（`pinToTop` + `manualRefresh({pin})` + 按钮接线 + 刷新复位 `recDays`）、`tools/wall-rules-test.mjs`（T38）、`tools/web-refresh-test.mjs`（T1 断言同步）、`README.md`（48→49）。
+
+**状态**：**待提交待部署（攒批）**。
+
+---
+
+### 轮 295 · `wall_feed_page` RPC 一直 400（JSON 字典的键用了 LEFT JOIN 的可空列）（待用户执行迁移）
+
+**起因**：用户问「`wall_feed_page` 400 的修复迁移要不要我准备，这是什么」。
+
+**这是什么**：Supabase 里的一个数据库函数，轮 170 建的 —— 一次 SQL 打包整个刷新包「最新页 + 7 天随机批 + 每帖回应计数 + 我的回应 + 评论数」，省掉客户端打 4 个查询再拼。
+
+**病根（`MIGRATION_wall_feed_page.sql` 第 ③ 步）**：用 `LEFT JOIN` 出来的 `a.post_id` / `b.post_id` 当 `jsonb_object_agg` 的**字典键**。一条帖只要**没有任何回应或评论**，那列就是 NULL，而 `jsonb_object_agg` 拿 NULL 当键会直接抛 `22023 field name must not be null` → **整个函数 400**。外面那层 `coalesce(..., '{}')` 救不了：它包的是聚合的**结果**，可聚合在出结果之前就炸了。墙上绝大多数帖都是 0 回应 0 评论 → **基本必炸**。
+
+**线上取证**（`warmpaws.de5.net`，与本机预览打的是同一个库）：
+
+| 请求 | 结果 |
+|---|---|
+| `POST /rest/v1/rpc/wall_feed_page` | **400**，烧掉 2264ms |
+| 兜底 `GET /rest/v1/wall_posts?...limit=20` | 200 |
+
+**代价（一直在发生，没人报障是因为界面上帖子照常显示）**：
+
+1. **「刷新换一批」是死的** —— 兜底那条固定拉最新 20 条，每次刷新看到同一批。轮 79 想做的「随机换一批 + 最新 4 条钉顶」、轮 170 的「合并包」**一直静默失效**。
+2. **每次刷新白等 2.3 秒**（先发一个注定 400 的请求，超时了才兜底）。
+3. 控制台多一条 `[cloud] wallRefresh: Object` 的 warn。
+
+**修法**：给两个 `jsonb_object_agg` 各加一句 `filter (where x.post_id is not null)` —— NULL 键根本不进聚合，也就无从抛错；没有匹配行时 `coalesce` 照旧给 `{}`，语义一点没变。
+
+**顺手扫了全库，同款病灶共 4 处，一并修完**：
+
+| 位置 | 状态 |
+|---|---|
+| `MIGRATION_wall_feed_page.sql` | 有病，且**线上已建（坏的那版）**→ 重跑替换 |
+| `MIGRATION_wall_search.sql` | 有病，**还没执行过** → 跑的时候直接就是修好的版本 |
+| `SUPABASE_SETUP.sql` 两份拷贝 | 有病，一并修 |
+
+另有 3 处（`MIGRATION_admin.sql:89`、`MIGRATION_reports.sql:347`、`SUPABASE_SETUP.sql:637`）是**虚惊**：它们的键是 `group by kind` 的分组列，不可能为 NULL。
+
+**回归哨兵**：`wall-test` 新增 **T34** —— 扫全部 SQL，凡是按 `post_id` 聚成字典的必须带 `filter`，防止以后再复制出同款病。`wall-test` 36→**37** 项。
+
+**验证**：`wall-test` 37/37 · `unbalanced=0`（按 `$$` 函数体分块、剥掉行注释与字符串后括号全平）。三个文件都只是加 `filter` 与注释，函数体结构未动。
+
+**风险 / 降级**：`create or replace function` 只换函数体，不动表、不动数据、不动别的函数。**现在坏着也能用**（走兜底），跑好是净赚。前端一行都不用改 —— 跑完那条回退链路自然失效。
+
+> ⚠ **迁移未执行**：需你在 Supabase SQL Editor 跑一次 `MIGRATION_wall_feed_page.sql`（整个文件原样粘贴执行）。我没有 psql / docker，连不上你的库。
+
+**改动文件**：`MIGRATION_wall_feed_page.sql`（第 ③ 步加 filter + 文件头说明）、`MIGRATION_wall_search.sql`（同款修复）、`SUPABASE_SETUP.sql`（两份拷贝）、`tools/wall-test.mjs`（T34 卫兵）、`README.md`（34→37，原文档计数早已过期）。
+
+**状态**：**待提交待部署（攒批）+ 待你执行迁移**。
+
+---
+
+### 轮 296 · 冷开 / 刷新落在消息页，会话列表白等 5 秒（待提交待部署）
+
+**用户点单**：「现在重新打开 app 或者电脑刷新，那个消息的会话列表还是出现的非常慢，你测一下，然后告诉我解决方案」
+
+**先说结论：不是查询慢，是根本没发查询。**
+
+`MessagesView.vue` 的 `signedIn = computed(() => !!(cloud.ready && cloud.user))`。冷开 / F5 时路由组件挂载的那一刻 `initCloud()` 还没跑完 → `signedIn` 为 false → `onMounted` 第一句 `if (!signedIn.value) return` 直接早退，`refreshBlocks` / `loadConvs` / `setInterval(tick)` / `armDmRealtime` **全部被跳过**。
+
+致命的是：**全文件没有任何 `watch(signedIn)`**（grep 出来的 watch 只有 `listRevealed`/`seg`/`route.params.id`）—— 早退之后**没有任何东西回来补跑**。唯一活着的恢复通道是 `onActivated` 挂的 `setInterval(tick, 5000)`，而 `tick` 里是 `if (tickN % 3 === 1) await loadConvsImplicit()`。
+
+算出来就是：**从视图挂载到列表出现 = 至少 5 秒 + 一次完整 RPC。**
+
+**对照组锁死了病因**：从别的页签点进消息是**毫秒级**的 —— 那时 `signedIn` 已是 true，`loadConvs` 的 SWR `cached` 钩子同步渲染。同一页面两种体验，差别只在**认证就绪了没有**。这也解释了「有时候快有时候慢」。
+
+**两个场景同一个病根**：
+
+| 场景 | 发生了什么 |
+|---|---|
+| 电脑刷新 | F5 时 URL 就是 `/messages` → 早退 → 5 秒 |
+| 重新打开 App | Capacitor 重开时 WebView 恢复到上次路由，上次在消息页 → 同一条死路 |
+
+**雪上加霜**：那唯一那条兜底走的是 `loadConvsImplicit`（890 行）—— **纯网络，不吃 SWR 缓存，也不回写**。所以哪怕本地有秒开快照也白搭，而且下次冷启动照样没快照可吃。
+
+**修法**：
+
+1. **① 治本** —— 把「就绪后该干的事」抽成 `boot()`，`onMounted` 与新的 `watch(signedIn)` 共用。认证一就绪立刻跑，不再等轮询节拍。`boot` 幂等（`booted` 闸门），两条路径撞车只跑一次；`watch` 在登出时把闸门放下，重新登录当冷启动重跑（App 侧登出会 `cacheDrop("dm:")`）。另：`wasDeactivated` 声明挪到 `boot()` 上方 —— `boot` 要读它，避免保活期（视图不在前台）把轮询又拉起来。
+2. **② 兜底补强** —— `loadConvsImplicit` 拿到列表后 `cacheSet` 回写 SWR 缓存。
+
+**没做 ③（加载期占位）**：轮 276 是**用户拍板**退役会话列表骨架的，不擅自加回。① 修完列表本该 <1 秒出现，占位的必要性大幅下降。
+
+**⚠ 一条自我纠正（重要）**：我先依据子代理的报告说「`dm_blocks` 没有 `(blocker, blocked)` 索引，补上是纯赚」——**这是错的**。`MIGRATION_dm_notifications.sql:28` 写着 `primary key (blocker, blocked)`，主键本身就是这个索引，`dm_is_blocked` 的 `where blocker = a and blocked = b` 整行命中。子代理只 grep 了 `create index`、漏看了主键。**服务端那条（④）就此撤销，没有建任何迁移。** 教训：子代理的结论必须自己复核主键 / 唯一约束。
+
+**顺带测到（打折扣，记一笔不行动手）**：线上 JS 包 brotli 后约 **1.4 MB**（`index` 718KB + `lottie` 300KB + `naive` 299KB + `vue` 110KB）。我这台机器下 `index` 要 8~9 秒，浏览器里 vue chunk 报 26 秒。但 CDN 配置本身是对的（`cf-cache-status: HIT`、`content-encoding: br`、`max-age=31536000, immutable` 全齐），且同一文件二次下载有时反而更慢（12.8s vs 2.9s）—— **是我这条链路不稳，不能算到用户头上**。等用户在自己电脑上开 DevTools 看真实下载时间再定。
+
+**⚠ 范围说明（用户已拍板）**：本轮动了 `src/views/MessagesView.vue` —— 该文件按约定属**另一个 AI 的负责范围**。用户明确选择「我直接改，你去协调」。**另一个 AI 接手前请先读本轮条目**，重点：`onMounted` 已拆成 `onMounted` + `boot()` + `watch(signedIn)` 三段，别把早退写回去。
+
+**测试**：`dm-test` 新增 **6 条**（① `onMounted` 不许再出现 `if (!signedIn.value) return` —— 死路原始形态的哨兵；② `onMounted` 调 `boot()`；③ 有 `watch(signedIn)` 补跑且登出清闸门；④ `boot` 幂等闸门；⑤ 保活期不拉轮询；⑥ `loadConvsImplicit` 回写缓存）。`dm-test` 286→**333**（原文档计数早已过期）。
+
+**验证**：tdz 0 · undef 0 · build EXIT=0 · `dm-test` 333/333 · 全量 46/46 OK、0 FAIL。
+
+**改动文件**：`src/views/MessagesView.vue`（`boot()` 抽取 + `watch(signedIn)` 补跑 + `loadConvsImplicit` 回写缓存 + `cacheSet` 导入）、`tools/dm-test.mjs`（6 条哨兵）、`README.md`（286→333）。
+
+**状态**：**待提交待部署（攒批）**。
+
+### 轮 298 · b 删一级评论后，点它下面 cde 的「回复」没反应（轮 285 守卫连坐）（待提交待部署）
+
+**用户报障**：「b 删除了自己的评论，cde 下面的二级评论还在，但是别人无法再点 cde 的评论进行回复了」——轮 285 的软删占位本身工作正常（回复没被 cascade 删掉），坏在回复入口的守卫。
+
+**病根（5 处守卫连坐）**：轮 285 为了「不给墓碑挂新回复」写的是 `if (cm && cm.deleted) return`——**不看回复目标 rp**。而所有回复函数里 `cm` = 这串回复挂靠的一级评论（b 的墓碑）、`rp` = 被回复的那条二级评论（cde）：点 cde 的「回复」时 `cm.deleted` 恒为 true → 整条线程的回复入口被连坐拦死（点了没反应，不报错）。PostDetailView 2 处（startReply / sendCmt）+ CommunityView 3 处（openReplyTo / replyViaBar / sendCmt）。
+
+**修法（判据从「父级被删没」改成「回复目标被删没」）**：
+1. **直接回墓碑本身**（`rp` 为空）→ 仍拦（墓碑没有回复入口，轮 285 口径保留）：`if (cm && cm.deleted && !rp) return;`
+2. **回墓碑下活着的 cde**（`rp` 非空）→ 放行：新回复照旧挂 `parent_id = 墓碑 dbId`（软删行还在，FK 过；RLS insert 只查 `auth.uid()`，与父评论状态无关——`cloudInsertComment` 本就不校验父评论）。
+3. `rp` 自己被软删的兜底 `if (rp && rp.deleted) return`（渲染层 renderReplies 本就不画软删回复，这是防状态竞争）。
+4. **rp 参数透传**：CommunityView `sendCmt(p, cm)` → `sendCmt(p, cm, rp)`（签名加第三参），两处调用点补传——手机底部条 `sendMainBar` 传 `r.rp`、桌面二级就地框传 `rp`；否则发送端拿不到 rp、守卫分不清「回墓碑」还是「回 cde」。PostDetailView `sendCmt(cm, rp)` 本来就有 rp，只改判据。
+
+**为什么不是放开墓碑**：直接在「该评论已删除」下面新开回复没有意义（@ 不到人、语境已失效）；主流社区（微博/知乎/Reddit）同样是墓碑不可回、线程内活评论可回。
+
+**编号**：注释先写成 290、再 297（均撞车——另一会话已在 main.js 用掉 297 做 App 更新检查），最终 **298**——动手时 286~296 已全被另一会话占用。
+
+**验证**：全量 46/46 + tdz 0 + undef 0 + arity 8/8 + comment 40/40 + post-detail 17/17 + app-shell 66/66 + wall 37/37 + build EXIT=0 + page-smoke 13/13。
 **状态**：**待提交待部署（攒批）**。

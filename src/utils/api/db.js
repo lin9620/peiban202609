@@ -21,3 +21,11 @@ export { setDbClient, IMAGE_BUCKET };
 export const APP_RELEASE_URL =
   String(env.VITE_API_BASE || "").replace(/\/$/, "") +
   "/sb/storage/v1/object/public/app-releases/warm-paws.apk";
+
+/* 轮 297 · 版本登记文件（与 APK 同桶同为公开对象，管理中心上传包时一并写）。
+ * 为什么不做成数据库表 + RPC：桶已是 public（MIGRATION_app_release.sql:11），
+ * 一个公开 JSON 就能让任意客户端匿名读到最新版本 —— 不引入新的权限面、不需要
+ * 用户先跑迁移，读不到也只是静默不提示（降级可用）。 */
+export const APP_RELEASE_META_URL =
+  String(env.VITE_API_BASE || "").replace(/\/$/, "") +
+  "/sb/storage/v1/object/public/app-releases/version.json";

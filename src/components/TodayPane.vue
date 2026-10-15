@@ -46,7 +46,8 @@ const statusCounts = ref(null);  // 只有 { status, count }，不含昵称或�
 /* 轮 209：先渲染上次缓存的计数（本地秒出），网络回来原地更新——
  * 之前每次进入都从 0 等网络（用户实测「慢一拍，影响使用」）。 */
 try { statusCounts.value = JSON.parse(getItem("wp-status-counts") || "null"); } catch (e) { /* 忽略 */ }
-let statusCountsBusy = false;   /* 轮 238：计数刷新在途标记（并发触发跳过，不叠请求） */
+let statusCountsBusy = false;   /* 轮 238：计数刷新在途标记（并发触发不叠请求） */
+let statusCountsPending = false;   /* 轮 291：在途时又被请求 → 记账，当前这趟跑完立刻补跑 */
 let statusRevision = 0;
 const isMember = computed(() => !!(cloud.user && cloud.user.id));
 
@@ -56,26 +57,51 @@ function statusLabel(k) {
 }
 
 async function refreshStatusCounts() {
-  if (statusCountsBusy) return;   /* 轮 238：在途就跳过（下个状态点击会再触发），不叠请求 */
+  /* 轮 238：在途不叠请求。轮 291 补：旧版在途时**直接丢弃**这次刷新 ——
+   * 若在途的恰是点击前那趟，落库后就再也没人来对账，数字会一直停在本地预估值。
+   * 改为记账待补跑，最多多发一趟，但保证最后一定是服务端真相。 */
+  if (statusCountsBusy) { statusCountsPending = true; return; }
   statusCountsBusy = true;
   try {
-    const got = await cloudFetchStatusCounts();
-    if (got) {
-      statusCounts.value = got;
-      try { setItem("wp-status-counts", JSON.stringify(got)); } catch (e) { /* 忽略 */ }
-    }
+    do {
+      statusCountsPending = false;
+      const got = await cloudFetchStatusCounts();
+      if (got) {
+        statusCounts.value = got;
+        try { setItem("wp-status-counts", JSON.stringify(got)); } catch (e) { /* 忽略 */ }
+      }
+    } while (statusCountsPending);
   } finally { statusCountsBusy = false; }
 }
 
 /* 选状态：再点一次清除；登录用户同步上云（RLS self update），游客只留本机。
  * 轮 238：本地状态**先翻转、界面先动**，云端 PATCH 与计数刷新转后台**串行队列**——
  * 旧版 statusBusy 锁要等两个串行网络请求才放（生产代理下一次 7s+），
- * 四个按钮点一次就暗住十几秒（用户实测）。PATCH 按点击顺序入队，不会乱序。 */
+ * 四个按钮点一次就暗住十几秒（用户实测）。PATCH 按点击顺序入队，不会乱序。
+ * 轮 291（用户：「这个点击切换，速度非常慢，你测一下」）：轮 238 只让**卡片**27ms 先亮，
+ * 右边「大厅此刻」的**数字**仍要等「PATCH 落库 864ms → 4 条 head-count ~1.25s」两段串行网络，
+ * 真浏览器实测 **2118ms** 才变。数字其实也是纯本地的事：我必然站在自己那一格的计数里，
+ * 离开 -1、进来 +1（下限 0），服务端回来对账，对上就不动、看不见 → 数字与卡片同帧到手。 */
+function bumpCounts(prev, next) {
+  if (!isMember.value) return;   /* 游客没有 profiles 行，本就不计入大厅统计 */
+  const arr = statusCounts.value;
+  if (!arr || !arr.length || prev === next) return;
+  const delta = Object.create(null);
+  if (prev) delta[prev] = (delta[prev] || 0) - 1;
+  if (next) delta[next] = (delta[next] || 0) + 1;
+  statusCounts.value = arr.map((r) => {
+    const d = delta[r.status];
+    return d ? { ...r, count: Math.max(0, r.count + d) } : r;
+  });
+}
+
 let statusSyncChain = Promise.resolve();
 function setStatus(k) {
+  const prev = myStatus.value;   /* 轮 291：切换前的旧值，给 bumpCounts 记账（离开的那格要 -1） */
   const next = myStatus.value === k ? "" : k;
   myStatus.value = next;
   myStatusHint.value = "";
+  bumpCounts(prev, next);
   if (next) setItem("wp-status", next);
   else removeItem("wp-status");
   if (!isMember.value) return;   /* 游客只留本机，无云端可同步 */

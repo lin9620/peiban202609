@@ -11,14 +11,18 @@
 import { ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { NButton, NAvatar } from "naive-ui";
-import { t } from "../i18n.js";
+import { t, i18n } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
 import { cloudFavListMine, cloudFavRemove, favCacheRemove } from "../utils/wall.js";
 import { cacheKey, cachePeek, cacheSet, swr } from "../utils/cache.js";
 import { getItem } from "../utils/storage.js";
 import { avatarUrlFor } from "../utils/avatar.js";
-import { fmtWhenSec } from "../utils/wallRules.js";
+/* 轮 288：帖子时间统一到分（fmtWhen），与暖心墙 / 详情页 / 我的页 / 我的帖子同口径，
+ * 并把 locale 传进去（此前默认 zh，英文界面会看到中文日期）。 */
+import { fmtWhen } from "../utils/wallRules.js";
 
+/* 轮 288：与 WallerView / PostDetailView 同名同口径的时间文案（到分） */
+const when = (ts) => fmtWhen(ts, i18n.locale);
 const router = useRouter();
 const uid = ref((cloud.user && cloud.user.id) || "");
 const signedIn = ref(!!(cloud.ready && cloud.user));
@@ -136,7 +140,7 @@ function refresh() {
           </n-avatar>
           <div class="post-meta">
             <div class="post-name">{{ r.post.name }}</div>
-            <div class="post-time">{{ fmtWhenSec(r.post.ts) }}</div>
+            <div class="post-time">{{ when(r.post.ts) }}</div>
           </div>
         </div>
         <p class="post-text">{{ r.post.text || "🖼️" }}</p>

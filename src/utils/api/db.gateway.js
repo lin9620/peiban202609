@@ -605,6 +605,20 @@ export const db = {
       : null;
   },
 
+  /* ═══ 轮 297 · 版本登记（与 APK 同桶，客户端匿名可读；口径与直连适配层一致）═══ */
+  async appReleasePublishMeta(meta) {
+    const res = await fetch(`${BASE}/sb/storage/v1/object/app-releases/version.json`, {
+      method: "POST",
+      headers: authHeaders({ "content-type": "application/json", "x-upsert": "true" }),
+      body: JSON.stringify(meta),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => null);
+      throw new Error((j && (j.message || j.error)) || `HTTP ${res.status}`);
+    }
+    return true;
+  },
+
   /** 清空我的全部通知 */
   async notifClear() {
     return call("/notifications/clear", { method: "POST", body: {} });

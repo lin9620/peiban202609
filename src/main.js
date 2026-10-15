@@ -3,10 +3,12 @@ import Vant from "vant";
 import "vant/lib/index.css";
 import { Capacitor } from "@capacitor/core";
 import App from "./App.vue";
+import UpdateDialog from "./components/UpdateDialog.vue";   /* 轮 297 */
 import { router } from "./router.js";
 import { initPet, tickPet, savePet, tickAdventure } from "./stores/petStore.js";
 import { initUserScope } from "./utils/userScope.js";
 import { installErrorBeacon } from "./utils/beacon.js";
+import { isApp, checkForUpdate, takePromptOnce } from "./utils/appVersion.js";   /* 轮 297 */
 import "./style.css";
 
 /* 轮 38：启动页显示的权威判据。
@@ -43,7 +45,48 @@ app.config.errorHandler = (err, instance, info) => {
   console.error("[Warm Paws] 渲染出错 (" + info + ")：", err);
 };
 
+/* ═════════ 轮 297 · 启动后静默检查 App 更新 ═════════
+ * · 只在 App 壳里弹：网页端刷新即最新，提示更新毫无意义（appVersion 铁律 2）。
+ * · 挂在首屏渲染之后的空闲期：检查更新是锦上添花，绝不抢启动带宽与主线程。
+ * · 弹窗用一个独立的小 Vue app 挂到 body 上 —— App.vue 属于另一个 AI 的地面，
+ *   这里连一行都不碰（UpdateDialog 只依赖 naive-ui 局部导入 + i18n 纯函数，
+ *   不需要 router / 全局状态，独立 app 实例完全够用）。
+ * · 任何失败都静默：checkForUpdate 内部绝不抛错，外层再兜一层 try。 */
+async function checkAppUpdate() {
+  try {
+    if (!isApp()) return;                                /* 网页端不弹更新窗 */
+    const r = await checkForUpdate();
+    if (!r || !r.hasUpdate || !r.latest) return;
+    if (!takePromptOnce(r.latest.code)) return;          /* 同版本同会话只提示一次 */
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    let vm = null;
+    const unmount = () => {
+      try { if (vm) vm.unmount(); } catch (e) { /* 已卸载 */ }
+      try { host.remove(); } catch (e) { /* 已移除 */ }
+      vm = null;
+    };
+    vm = createApp(UpdateDialog, {
+      show: true,
+      current: r.current,
+      latest: r.latest,
+      "onUpdate:show": (v) => { if (!v) unmount(); },
+      onLater: unmount,
+    });
+    vm.mount(host);
+  } catch (e) { /* 检查更新绝不打扰用户 */ }
+}
+function scheduleUpdateCheck() {
+  const run = () => { checkAppUpdate(); };
+  try {
+    /* 与 App.vue 的 chunk 预热同款节奏：空闲才跑，4 秒兜底 */
+    if (typeof requestIdleCallback === "function") requestIdleCallback(run, { timeout: 4000 });
+    else setTimeout(run, 3000);
+  } catch (e) { setTimeout(run, 3000); }
+}
+
 app.use(router).mount("#app");
+scheduleUpdateCheck();
 
 /* 轮 219：关掉浏览器的历史滚动接管——新导航条目的内容延迟变高时，Chrome 会把滚动
  * 重置回该条目的初始位置（0）= 用户实测「切页签回来总在顶部」。滚动完全由应用管理

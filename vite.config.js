@@ -401,11 +401,46 @@ function envGuard() {
   };
 }
 
+/* —— 轮 297 · 把 Android 的版本号烤进前端 ——
+ * 权威来源是 android/app/build.gradle 的 versionCode / versionName —— 用户设备上
+ * 装着的就是它，检查更新必须拿它跟服务端比。这里在构建期读出来塞进 define，
+ * 前端才知道「我现在是第几版」。
+ * 读不到（纯 web 构建、没有 android 目录）时退到 package.json 的 version，
+ * 保证构建永远能出包、不会因为缺 gradle 就崩。
+ * 「gradle 与产物不漂移」由 tools/app-version-test.mjs 钉住。 */
+function appVersion() {
+  const read = () => {
+    try {
+      const g = fs.readFileSync(path.join(rootDir, "android/app/build.gradle"), "utf8");
+      const code = (g.match(/versionCode\s+(\d+)/) || [])[1];
+      const name = (g.match(/versionName\s+"([^"]+)"/) || [])[1];
+      if (code && name) return { code, name };
+    } catch (e) { /* 没有 Android 工程 → 退 package.json */ }
+    try {
+      const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, "package.json"), "utf8"));
+      return { code: "1", name: String(pkg.version || "0.0.0") };
+    } catch (e2) { /* 极端兜底：总得给个值，前端拿不到合法数字就不弹更新窗 */ }
+    return { code: "0", name: "0.0.0" };
+  };
+  return {
+    name: "app-version",
+    config() {
+      const v = read();
+      return {
+        define: {
+          __APP_VERSION_CODE__: JSON.stringify(v.code),
+          __APP_VERSION_NAME__: JSON.stringify(v.name),
+        },
+      };
+    },
+  };
+}
+
 export default defineConfig({
   plugins: [vue({
     /* 轮 188：emoji-picker-element 是 Web Component（自定义元素），别让 Vue 当组件解析 */
     template: { compilerOptions: { isCustomElement: (tag) => tag === "emoji-picker" } },
-  }), seoSitemap(), seoRoutes(), envGuard()],
+  }), seoSitemap(), seoRoutes(), envGuard(), appVersion()],
   server: {
     port: 5173,
     open: true,

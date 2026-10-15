@@ -15,7 +15,7 @@ import { NButton, NInput, NAvatar, NTag } from "naive-ui";
 import { t, i18n } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
 import * as dmApi from "../utils/dm.js";
-import { cacheKey, swr } from "../utils/cache.js";
+import { cacheKey, cacheSet, swr } from "../utils/cache.js";
 import { dmStoreLoad, dmStoreSave, dmStoreDrop } from "../utils/dmStore.js";
 import { restoreScroll } from "../utils/scrollMem.js";
 import { avatarUrlFor } from "../utils/avatar.js";   /* 轮 238:萌宠头像池 */
@@ -889,10 +889,16 @@ async function pullTail(cid) {
 /* 轮询里的列表刷新：不动 loadingConvs，避免列表闪「载入中」 */
 async function loadConvsImplicit() {
   try {
-    convs.value = withBlockedTombstones((await dmApi.listConvs(200, 0)) || []);
+    const rows = (await dmApi.listConvs(200, 0)) || [];
+    convs.value = withBlockedTombstones(rows);
     convsLoaded.value = true;   /* 轮 266：轮询也算服务端应答（首拉失败后轮询救回 = 空态可信） */
     failed.value = false;
     convsRetryN = 0;
+    /* 轮 296：把这份最新列表**回写 SWR 缓存**。此前它绕过缓存、也不回写 ——
+     * 于是「冷开 / 刷新落在消息页」那条兜底路（loadConvsImplicit 是那里唯一的加载器）
+     * 永远吃不到快照，每次都得等一次完整 RPC；下次冷启动照样没有可秒开的数据。
+     * 回写之后 loadConvs 的 cached 钩子才可能命中。 */
+    if (meId.value) cacheSet(cacheKey("dm:convs", meId.value), rows);
   } catch (e) { /* 静默 */ }
 }
 
@@ -926,10 +932,24 @@ function onVisible() {
   if (typeof document !== "undefined" && !document.hidden) { tickN = 0; tick(); }
 }
 
-onMounted(async () => {
-  pushBack(segBack);
-  document.addEventListener("pointerdown", onDocPointerDown);   /* 轮144：⋯菜单点空白关 */
-  if (!signedIn.value) return;
+/* ═════════ 轮 296 · 冷开 / 刷新落在本页，会话列表白等 5 秒 ═════════
+ * 用户点单：「重新打开 app 或者电脑刷新，消息的会话列表还是出现得非常慢」。
+ * 病根不是查询慢，是**根本没发查询**：
+ *   signedIn = computed(() => !!(cloud.ready && cloud.user))（51 行），
+ *   冷开 / F5 时路由组件挂载的那一刻 initCloud() 还没跑完 → signedIn 为 false
+ *   → onMounted 第一句直接 return，refreshBlocks / loadConvs / 轮询 / 实时回调全被跳过。
+ *   全文件又没有任何 watch(signedIn)，早退之后**没有任何东西回来补跑**。
+ *   唯一活着的恢复通道是 onActivated 挂的 5 秒轮询，且它走的是 loadConvsImplicit
+ *   （不吃 SWR 缓存、纯网络）。所以「落在消息页」= 至少 5 秒 + 一次完整 RPC。
+ *   对照：从别的页签点进来是毫秒级 —— 那时 signedIn 已是 true，走 loadConvs 的
+ *   cached 钩子同步渲染（272 行）。同一页面两种体验，差别只在认证就绪了没有。
+ * 修法：把「就绪后该干的事」抽成 boot()，onMounted 与 watch(signedIn) 共用 ——
+ *   认证一就绪立刻跑，不再等轮询节拍。boot 幂等（booted 闸门），两条路径撞车只跑一次。 */
+let booted = false;
+let wasDeactivated = false;   /* 原本声明在 onActivated 上面，挪上来：boot() 里要读它 */
+async function boot() {
+  if (booted || !signedIn.value) return;
+  booted = true;
   refreshBlocks();   /* 轮 34：进消息页同步拉黑名单（内容过滤与私信名单同源） */
   /* 轮 245（用户实测冷启动「漂流瓶→进聊天停顶/跳闪」）：openConv 不再等会话列表 ——
    * loadConvs 冷启动要走网络+本地库，把它 await 完才 openConv 会把钉底/揭示链堵在后面：
@@ -939,16 +959,31 @@ onMounted(async () => {
   const firstOpen = activeId.value ? openConv(activeId.value) : null;
   await loadConvs();
   if (firstOpen) await firstOpen;
-  timer = setInterval(tick, 5000);
+  /* 保活期 onDeactivated 已把 timer 清了：视图不在前台时别把轮询又拉起来（onActivated 会自己重挂） */
+  if (!timer && !wasDeactivated) timer = setInterval(tick, 5000);
   armDmRealtime();   /* 轮 269：实时回调挂载（本视图卸载即注销） */
+}
+
+onMounted(() => {
+  pushBack(segBack);
+  document.addEventListener("pointerdown", onDocPointerDown);   /* 轮144：⋯菜单点空白关 */
   if (typeof document !== "undefined") document.addEventListener("visibilitychange", onVisible);
+  boot();   /* 已登录 → 立刻跑；未登录 → 等下面的 watch(signedIn) 补跑（轮 296） */
+});
+
+/* 轮 296：认证就绪后补跑。这是上面那条死路（早退后没人管）唯一的恢复通道，
+ * 原先只能干等 5 秒轮询。登出时把闸门放下，重新登录当作冷启动重跑一遍
+ * （App 侧登出会 cacheDrop("dm:")，本页的 convs 也该重新拉）。 */
+watch(signedIn, (v) => {
+  if (!v) { booted = false; return; }
+  boot();
 });
 
 /* 轮 218：保活期暂停轮询/监听（KeepAlive 下 onBeforeUnmount 不触发） */
 /* 轮 247：区分「首次激活」与「真恢复」——KeepAlive 首次挂载也会触发 onActivated，
  * 无差别强制揭示会把 openConv 刚设的「隐藏待钉稳」立刻改回可见，钉底震荡全程裸奔
- * （真机逐帧实证：vis 从第一帧就是 visible、top 0→1811→1433→2841 折返跑 = 用户报的跳闪）。 */
-let wasDeactivated = false;
+ * （真机逐帧实证：vis 从第一帧就是 visible、top 0→1811→1433→2841 折返跑 = 用户报的跳闪）。
+ * （轮 296：wasDeactivated 的声明挪到了上方 boot() 处 —— boot 要读它判断保活期别拉轮询） */
 onActivated(() => {
   if (!timer) timer = setInterval(tick, 5000);
   armDmRealtime();   /* 轮 269：保活恢复时重挂实时回调（与轮询同节奏） */

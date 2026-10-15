@@ -27,10 +27,11 @@ const css = read("src/style.css");
 
 /* ══════════ 按钮 ══════════ */
 
-t("T1 排序行里有刷新按钮：class=wall-refresh、@click=manualRefresh、disabled 绑 loadingCloud", () => {
+t("T1 排序行里有刷新按钮：class=wall-refresh、@click=manualRefresh({ pin:true })、disabled 绑 loadingCloud", () => {
   const row = view.slice(view.indexOf('class="sort-row"'));
   assert.ok(row.includes('class="sort-btn wall-refresh"'), "排序行后没有 .wall-refresh 按钮");
-  assert.ok(row.includes('@click="manualRefresh"'), "按钮没接 manualRefresh");
+  /* 轮 294 起必须带 pin：深滚时点刷新要「先归位再换内容」，否则列表塌缩会把视口一路往上拽 */
+  assert.ok(row.includes('@click="manualRefresh({ pin: true })"'), "按钮没接 manualRefresh（或丢了轮 294 的 pin）");
   assert.ok(row.includes(':disabled="loadingCloud"'), "按钮没绑 loadingCloud 防重入");
 });
 

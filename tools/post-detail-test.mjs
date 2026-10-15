@@ -74,6 +74,11 @@ ok("PostDetailView：删自己的评论（云端比对 userId；轮 285 软删 �
     && has(detail, "markDeleted(comments.value, cm.id)")
     && !has(detail, "c.id !== cm.id && c.parentId !== cm.id")
     && has(detail, "t(\"comment.deleted\")"));
+/* ─── 轮 298 · 墓碑线程内活回复可回（轮 285 守卫连坐的回归锁）─── */
+ok("PostDetailView 轮298：守卫按「回复目标被删没」判——直接回墓碑（rp 空）拦、回墓碑下活的 cde 放行",
+  has(detail, "if (cm && cm.deleted && !rp) return;")
+    && !/if\s*\(\s*cm\s*&&\s*cm\.deleted\s*\)\s*return/.test(detail)   /* 裸连坐判断不许回来 */
+    && has(detail, "if (rp && rp.deleted) return;"));
 ok("PostDetailView：进页计一次浏览（cloudAddView 幂等）+ 返回上一页",
   has(detail, "await cloudAddView(post.value.dbId, myId.value)")   /* 轮 172：p → post.value */
     && has(detail, "function goBack()") && has(detail, "router.back()"));

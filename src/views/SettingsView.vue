@@ -16,6 +16,9 @@ import {
   langOptions, onLangPick, isMobileNav,
 } from "../stores/uiStore.js";
 import { getItem } from "../utils/storage.js";
+/* 轮 297 · 版本与检查更新 */
+import { currentVersion, checkForUpdate } from "../utils/appVersion.js";
+import UpdateDialog from "../components/UpdateDialog.vue";
 
 const router = useRouter();
 const cloudSigned = computed(() => !!(cloud.ready && cloud.user));
@@ -33,6 +36,37 @@ function goBack() {
   } else {
     router.replace("/profile").catch(() => {});
   }
+}
+
+/* ═════════ 轮 297 · 版本行 + 手动检查更新 ═════════
+ * 自动弹窗只在 App 壳里做（main.js 启动后静默检查）；设置页这一处是给两端
+ * 都能主动看一眼用的 —— 拿不到登记（404 / 迁移没跑 / 断网）时统一显示
+ * 「已经是最新版本了」，不把技术细节暴露给用户（appVersion.checkForUpdate 绝不抛错）。 */
+const curVer = currentVersion();
+const updOpen = ref(false);
+const updLatest = ref(null);
+const updChecking = ref(false);
+const updMsg = ref("");
+
+async function checkUpdates() {
+  if (updChecking.value) return;
+  updChecking.value = true;
+  updMsg.value = t("appUpdate.checking");
+  const r = await checkForUpdate();
+  updChecking.value = false;
+  if (r.hasUpdate) {
+    updLatest.value = r.latest;
+    updOpen.value = true;
+    /* 行下留一句「发现新版本」：弹窗被关掉后这行还在，用户不用重新触发检查就知道有新版 */
+    updMsg.value = t("appUpdate.found", { v: r.latest.name || String(r.latest.code) });
+    return;
+  }
+  updLatest.value = null;
+  /* 关键区分：没查到 ≠ 已是最新。离线/迁移没跑/还没登记时谎称「已是最新」是骗用户，
+   * 所以这两种情况分开说。unknown-current 是构建期没注入版本号，对用户等同于查不到。 */
+  updMsg.value = (r.reason === "up-to-date")
+    ? t("appUpdate.upToDate")
+    : t("appUpdate.checkFail");
 }
 
 /* —— Soul 风格行交互：点行展开对应控件，再次点收起 —— */
@@ -359,7 +393,19 @@ onMounted(() => { loadPrefs(); });
         <span class="set-val"></span>
         <span class="set-arrow on">&#8250;</span>
       </div>
+      <!-- 轮 297 · 版本行 + 手动检查更新（两端都能看一眼；自动弹窗只在 App 壳做） -->
+      <div class="set-row">
+        <span class="set-ico" aria-hidden="true">&#128241;</span>
+        <span class="set-label">{{ t("appUpdate.currentVer", { v: curVer ? curVer.name : "—" }) }}</span>
+        <span class="set-val"></span>
+        <button class="set-check" :disabled="updChecking" @click="checkUpdates">
+          {{ t("appUpdate.checkBtn") }}
+        </button>
+      </div>
+      <p v-if="updMsg" class="streak-note">{{ updMsg }}</p>
     </section>
+
+    <UpdateDialog v-model:show="updOpen" :current="curVer" :latest="updLatest" />
   </div>
 </template>
 
@@ -447,4 +493,14 @@ onMounted(() => { loadPrefs(); });
 .set-switch.on { background: var(--accent); }
 .set-switch.on .knob { transform: translateX(18px); }
 .set-switch.sm.on .knob { transform: translateX(16px); }
+
+/* 轮 297 · 「检查更新」小按钮（跟在版本号右侧，不做成整行可点以免误触） */
+.set-check {
+  appearance: none; font: inherit; font-size: 12px; cursor: pointer;
+  padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(160, 110, 60, .28);
+  background: transparent; color: var(--low, #8a7a6a);
+  transition: background .18s ease, color .18s ease;
+}
+.set-check:not(:disabled):hover { background: var(--glass, rgba(255, 240, 226, .6)); color: var(--accent, #e58a3a); }
+.set-check:disabled { opacity: .55; cursor: default; }
 </style>

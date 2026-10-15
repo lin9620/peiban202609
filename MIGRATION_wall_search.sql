@@ -48,11 +48,15 @@ begin
       order by id desc
       limit greatest(p_limit, 1)
     ) t;
+  -- ⚠ 轮 295 修复：与 wall_feed_page 同款病 —— a.post_id / b.post_id 是 LEFT JOIN 出来的
+  --   可空列，零回应或零评论的帖会让它变 NULL，而 jsonb_object_agg 拿 NULL 当字典键会抛
+  --   22023「field name must not be null」，整个函数 400。加 filter 把 NULL 键挡在聚合之外。
   select coalesce(jsonb_object_agg(
            a.post_id,
            jsonb_build_object('hug', a.hug, 'warm', a.warm, 'relate', a.relate, 'mine', a.mine)
-         ), '{}'::jsonb),
-         coalesce(jsonb_object_agg(b.post_id, b.cmt), '{}'::jsonb)
+         ) filter (where a.post_id is not null), '{}'::jsonb),
+         coalesce(jsonb_object_agg(b.post_id, b.cmt)
+                  filter (where b.post_id is not null), '{}'::jsonb)
     into v_react, v_comment
     from (
       select p.id

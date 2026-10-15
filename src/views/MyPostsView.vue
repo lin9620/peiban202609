@@ -4,12 +4,18 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { NButton, NAvatar } from "naive-ui";
-import { t } from "../i18n.js";
+import { t, i18n } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
 import { cloudFetchUserPosts } from "../utils/wall.js";
 import { cacheKey, swr } from "../utils/cache.js";
 import { avatarUrlFor } from "../utils/avatar.js";   /* 轮 238:萌宠头像池 */
 import { setPostNav } from "../utils/postNav.js";    /* 轮 279:进详情前存列表快照,左右滑用 */
+
+/* 轮 286:帖子时间接上统一的格式化函数 —— 此前这里是个裸 toLocaleDateString(),
+ * 只出「2026/10/14」,连时分都没有。
+ * 轮 288:三处个人页（我的页/我的帖子/收藏页）**统一到分**,与暖心墙、详情页同口径,
+ * 顺带把 locale 传进去(此前默认 zh,英文界面会看到中文日期)。 */
+import { fmtWhen } from "../utils/wallRules.js";
 
 /* 与暖心墙同款的三种回应（计数只读展示；点卡片回墙里互动） */
 const REACTIONS = [
@@ -115,7 +121,8 @@ async function te() {
   pullDist.value = 0;
 }
 
-function whenPost(ts) { return new Date(ts).toLocaleDateString(); }
+/* 轮 288:与 WallerView / PostDetailView 同名同口径的时间文案 */
+const when = (ts) => fmtWhen(ts, i18n.locale);
 function openWall(p) {
   /* 轮 19：独立详情页（完整帖子 + 评论展开），不再跳回暖心墙信息流 */
   if (p.dbId == null) return;
@@ -155,7 +162,7 @@ function openWall(p) {
           <n-avatar round :size="42" class="post-avatar" :src="avatarUrlFor(uid) || undefined"><template v-if="!avatarUrlFor(uid)" #default>🙂</template><template v-else #fallback>🙂</template></n-avatar>
           <div class="post-meta">
             <div class="post-name">{{ p.name }}</div>
-            <div class="post-time">{{ whenPost(p.ts) }}</div>
+            <div class="post-time">{{ when(p.ts) }}</div>
           </div>
           <span class="mypage-go">{{ t("community.viewHome") }} →</span>
         </div>

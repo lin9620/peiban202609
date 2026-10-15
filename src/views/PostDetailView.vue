@@ -417,7 +417,11 @@ function toggleReplies(cm) {
 }
 function startReply(cm, rp = null, e = null) {
   if (!signedIn.value) return;
-  if (cm && cm.deleted) return;   /* 轮 285：已删除的评论不留回复入口（它下面的既有回复仍可看） */
+  /* 轮 285：已删除的评论不留回复入口；轮 298 修连坐——回复目标是 rp（墓碑下活着的
+   * cde 二级评论）时放行，只有「直接回墓碑本身」（rp 为空）才拦。
+   * 用户报障：b 删一级评论后 cde 的回复还在，却点「回复」没反应，正是这行拦的。 */
+  if (cm && cm.deleted && !rp) return;
+  if (rp && rp.deleted) return;   /* 轮 298：软删的回复不渲染，这里兜一手 */
   /* 轮 108 续5：手机端 = 底部输入条回复模式（再点同目标 = 收起）；桌面 = 就地内联框原路。
    * 回复「回复」仍是两级封顶：挂同一级下，@那位回复者（与墙规则一致） */
   if (isMobileNav.value) {
@@ -499,7 +503,10 @@ async function sendDetailBar() {
 async function sendCmt(cm = null, rp = null) {
   const text = cm ? (repDraft.value[cm.id] || "") : cmtDraft.value;
   if (!normalizeText(text) || !post.value) return;
-  if (cm && cm.deleted) return;   /* 轮 285：不给已删除的评论继续挂新回复 */
+  /* 轮 298：只拦「直接回墓碑本身」；回复墓碑下活着的二级评论（rp 非空）照常发，
+   * 新回复仍挂 parent_id = 墓碑的 dbId（软删行还在，FK 与 RLS 都过）。 */
+  if (cm && cm.deleted && !rp) return;
+  if (rp && rp.deleted) return;
   if (!signedIn.value) return;   /* #28：云端帖未登录不评论（只存本机会误导） */
   cmtErr.value = "";
   const at = cm ? (rp ? rp.name : atName.value) : "";

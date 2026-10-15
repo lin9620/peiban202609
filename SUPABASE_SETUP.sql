@@ -2328,11 +2328,14 @@ begin
     ) t;
 
   -- ③ 回应计数（按 kind 分组 JOIN）+ 我的回应；评论数——全部对并集一次聚合
+  -- 轮 295：a.post_id / b.post_id 来自 LEFT JOIN，零回应或零评论时为 NULL；
+  -- jsonb_object_agg 拿 NULL 当字典键会抛 22023 → 整个 RPC 400。加 filter 跳过 NULL 键。
   select coalesce(jsonb_object_agg(
            a.post_id,
            jsonb_build_object('hug', a.hug, 'warm', a.warm, 'relate', a.relate, 'mine', a.mine)
-         ), '{}'::jsonb),
-         coalesce(jsonb_object_agg(b.post_id, b.cmt), '{}'::jsonb)
+         ) filter (where a.post_id is not null), '{}'::jsonb),
+         coalesce(jsonb_object_agg(b.post_id, b.cmt)
+                  filter (where b.post_id is not null), '{}'::jsonb)
     into v_react, v_comment
     from (
       select p.id
@@ -2435,11 +2438,14 @@ begin
       order by id desc
       limit greatest(p_limit, 1)
     ) t;
+  -- 轮 295：a.post_id / b.post_id 来自 LEFT JOIN，零回应或零评论时为 NULL；
+  -- jsonb_object_agg 拿 NULL 当字典键会抛 22023 → 整个 RPC 400。加 filter 跳过 NULL 键。
   select coalesce(jsonb_object_agg(
            a.post_id,
            jsonb_build_object('hug', a.hug, 'warm', a.warm, 'relate', a.relate, 'mine', a.mine)
-         ), '{}'::jsonb),
-         coalesce(jsonb_object_agg(b.post_id, b.cmt), '{}'::jsonb)
+         ) filter (where a.post_id is not null), '{}'::jsonb),
+         coalesce(jsonb_object_agg(b.post_id, b.cmt)
+                  filter (where b.post_id is not null), '{}'::jsonb)
     into v_react, v_comment
     from (
       select p.id

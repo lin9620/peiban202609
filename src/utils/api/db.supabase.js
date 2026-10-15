@@ -701,6 +701,17 @@ export const db = {
       : null;
   },
 
+  /* ═══ 轮 297 · 版本登记（与 APK 同一个公开桶，客户端匿名可读）═══
+   * 上传包时把版本号/更新说明一起写进 version.json —— 包与版本号永远同一批上线，
+   * 不存在「传了新包但忘了登记版本」的中间态。读取方见 utils/appVersion.js。 */
+  async appReleasePublishMeta(meta) {
+    const body = new Blob([JSON.stringify(meta)], { type: "application/json" });
+    const { error } = await sb().storage.from("app-releases")
+      .upload("version.json", body, { upsert: true, contentType: "application/json" });
+    if (error) throw error;
+    return true;
+  },
+
   /** 清空我的全部通知（返回 {ok, removed}） */
   notifClear() {
     return unwrap(sb().rpc("notif_clear"));

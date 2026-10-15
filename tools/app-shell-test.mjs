@@ -203,6 +203,14 @@ ok("T39 二级评论回复框就地渲染（replyRp + 只在被回复那条下�
   && cmt.includes("function openReplyTo(p, cm, rp)")
   && cmt.includes("replyRp.value = { ...replyRp.value, [repKey(p, cm)]: rp.id };")
   && cmt.includes('v-if="replyRpOf(p, cm) === rp.id'));
+/* ─── 轮 298 · 墓碑线程内活回复可回（轮 285 守卫连坐的回归锁）─── */
+ok("T39b 轮298：守卫按「回复目标被删没」判——直接回墓碑拦、回墓碑下活的 cde 放行（sendCmt 带 rp 第三参并从两处透传）",
+  cmt.includes("if (cm && cm.deleted && !rp) return;")
+  /* 裸连坐判断只许剩 openReply 一处（直接回墓碑，函数里没有 rp 参）；其余入口必须带 !rp */
+  && (cmt.match(/if \(cm && cm\.deleted\) return;/g) || []).length === 1
+  && cmt.includes("sendCmt(p, cm = null, rp = null)")
+  && cmt.includes("sendCmt(p, r.cm, r.rp)")
+  && cmt.includes("sendCmt(p, cm, rp)"));
 
 /* ─── 轮 109 · 网页端主评论输入框位置（用户：「放在评论按钮跟浏览次数按钮中间，每条都是，
          app端不改，只改网页端」）─── */

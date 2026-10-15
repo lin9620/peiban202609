@@ -2,7 +2,7 @@
 import { ref, computed, watch, onActivated } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { NButton, NInput, NAvatar, NTag, NProgress } from "naive-ui";
-import { t } from "../i18n.js";
+import { t, i18n } from "../i18n.js";
 import { getItem, setItem, removeItem } from "../utils/storage.js";
 import { restoreScroll } from "../utils/scrollMem.js";
 import { cookbook, removeDish, moodLog, moodStreak, wallet } from "../stores/petStore.js";
@@ -16,13 +16,17 @@ import {
 } from "../utils/supabase.js";
 /* 登录规则（纯函数，Node 单测覆盖）：本地校验 / 昵称兜底 / 邮件链接解析 / 回跳地址 */
 import { MIN_PASSWORD, NICK_MAX, passwordProblem } from "../utils/authRules.js";
-/* 轮 44：帖子时间显示到秒（fmtWhenSec 纯函数，wall-rules-test 覆盖） */
-import { fmtWhenSec } from "../utils/wallRules.js";
+/* 轮 44：帖子卡时间从「只有日期」改为格式化文案；轮 288：**统一到分**（fmtWhen），
+ * 与暖心墙 / 详情页 / 我的帖子 / 收藏页同一口径，并把 locale 传进去。 */
+import { fmtWhen } from "../utils/wallRules.js";
 import { db } from "../utils/api/db.js";
 import { rowsToPosts, publicUrl, aggregateReactions } from "../utils/wall.js";
 import { cacheKey, cachePeek, cacheSet, swr } from "../utils/cache.js";
 import { avatarUrlFor } from "../utils/avatar.js";   /* 轮 238:萌宠头像池 */
 import { setPostNav } from "../utils/postNav.js";    /* 轮 279:进详情前存列表快照,左右滑用 */
+
+/* 轮 288:与 WallerView / PostDetailView 同名同口径的时间文案（到分） */
+const when = (ts) => fmtWhen(ts, i18n.locale);
 
 /* 心情图标：一律用 Unicode 转义，避免源码中的 emoji 编码损坏 */
 /* 轮 155：日历表情与打卡统一——旧系统 emoji 数组退役，格子改用 MoodFace 手绘脸。
@@ -480,7 +484,7 @@ const brightRatio = computed(() => {
 
     <!-- #9 我在暖心墙的帖子（共有 5：默认最新 3 条 + 「更多」→ /my-posts 分页看全部）。
          轮 44：整块从「改昵称」下方挪到页面最底（用户拍板：在我的食谱下面）；
-         帖子时间从「只有日期」改为显示到秒（fmtWhenSec）。 -->
+         轮 288：帖子时间统一到分（fmtWhen），与暖心墙 / 详情页同口径。 -->
     <section v-if="cloudSigned" class="card">
       <div class="row-between">
         <h2>{{ t("profile.myPosts") }}</h2>
@@ -503,7 +507,7 @@ const brightRatio = computed(() => {
             <n-avatar round :size="42" class="post-avatar" :src="avatarUrlFor(cloud.user && cloud.user.id) || undefined"><template v-if="!avatarUrlFor(cloud.user && cloud.user.id)" #default>🙂</template><template v-else #fallback>🙂</template></n-avatar>
             <div class="post-meta">
               <div class="post-name">{{ p.name }}</div>
-              <div class="post-time">{{ fmtWhenSec(p.ts) }}</div>
+              <div class="post-time">{{ when(p.ts) }}</div>
             </div>
           </div>
           <p class="post-text">{{ p.text || "🖼️" }}</p>

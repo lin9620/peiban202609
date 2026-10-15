@@ -53,7 +53,7 @@ import {
   canPostToday, postsLeftToday, dayCountFromStorage, WALL_POST_DAILY_LIMIT,
   errorKind, VIEW_KEY, ANON_KEY, POST_DAY_KEY, POSTS_KEY, REACTS_KEY,
   RANGES, inRange, usesRange, rangeFor, fmtWhen, memoWhen,
-  recommendPosts, RECOMMEND_DAYS,
+  recommendPosts, RECOMMEND_DAYS, RECOMMEND_WIDE_DAYS,
 } from "../utils/wallRules.js";
 import { isMobileNav, tabbarSuppressed, retapSeq, retapPath } from "../stores/uiStore.js";
 /* 轮 33：举报弹窗 + 全站拉黑过滤（我拉黑的人，TA 的帖子/评论在我这里渲染前剔除） */
@@ -350,6 +350,7 @@ async function loadCloud({ fresh = false, quiet = false } = {}) {
       lastPulledRows.value = box.rows;
       consume({ rows: box.rows, counts: box.counts || {}, fromFetch: true });
       reveal.value = PAGE_SIZE;
+      recDays.value = REC_LEVELS[0];   /* 轮 294：刷新 = 从头看，推荐窗退回 7 天（否则刚清空的列表立刻又膨胀回几百条） */
       cacheSet(key, { rows: box.rows, counts: box.counts || {}, fromFetch: true });
       refreshNote.value = hasNew ? "ok" : "batch";
     } else {
@@ -457,6 +458,56 @@ if (getItem(SORT_KEY) === "new") setItem(SORT_KEY, SORT_BTNS[0].key);
 function pickSort(key) {
   sortMode.value = key;
   setItem(SORT_KEY, key);
+}
+
+/* ═════════ 轮 292 · 推荐的「观众盐」 ═════════
+ * 旧版种子只含 UTC 日期 → 同一天**全站每个人看到的顺序一模一样**（那里的「随机」是可复现的随机，
+ * 用户点破：「那这样不是每个人看到的内容都是一样的」）。
+ * 加一份每台设备固定、**永不改动**的盐，不同手机/浏览器就拿到不同顺序；同一个人刷新也不变。
+ *
+ * 为什么盐必须是常量：排序键 = hash(盐 | 种子 | UTC天 | 帖子ID) 仍然「只由这个帖子自己决定」
+ *   → 轮 234 苦心保住的「触底续载不重排已看内容」性质原样保留（键里盐是常数）。
+ *
+ * 为什么不用现成的 anonKey()（浏览数去重的匿名 id）：那个按账号域存，登录/登出/域迁移会让它变
+ *   → 盐一变顺序就翻一次，用户会觉得「怎么刷一下全换了」。这里用独立键，生成后永不再写。
+ *
+ * 为什么盐里不放 uid：wp-uid 是会话恢复时异步落位的，算进去会让「首屏渲染 vs 登录态到位」之间
+ *   翻一次序，跨刷新也不稳定 —— 稳定优先，代价只是「同一浏览器同一顺序」。 */
+const REC_SALT_KEY = "warm-paws-rec-salt-v1";
+function viewerSalt() {
+  try {
+    let s = getItem(REC_SALT_KEY);
+    if (!s) {
+      s = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+      setItem(REC_SALT_KEY, s);
+    }
+    return s;
+  } catch (e) {
+    return "";   /* 存不了（隐私模式/存储被禁）→ 退化成旧的「全站同序」，功能不受影响 */
+  }
+}
+const REC_SALT = viewerSalt();
+
+/* ═════════ 轮 293 · 推荐窗逐级放宽（7 → 30 → 全部） ═════════
+ * 病根（用户点单：「继续往下拉不就该放宽到 30 天吗？你这压根没有实现啊」）：
+ * 旧版 recommendPosts 的放宽是**一次性判定** —— 7 天池里够 10 条就永远停在 7 天。
+ * 于是真机实测：服务端约 370+ 条，触底续载**确实**一路拉了 ~450 条进内存
+ * （游标 676→626→…→326，9 次分页请求，网络层有据），却全被 7 天窗滤掉
+ * → 卡片恒为 13，表现就是「拉到底了」，还白烧流量。
+ * 对照：同感最多 + 近30天 正常能滚到 280 张 —— 数据在，只是推荐模式看不见。
+ *
+ * 做法：把「放宽」从一次性判定改成**跟着滚动走** —— 当前档位已亮完（!hasMore）、
+ * 服务端还有货（!cloudDone）→ 窗口放宽一档。
+ *
+ * 为什么不破坏轮 234 的「续载不重排」：放宽只**新增更早的天**，而排序是**天倒序**，
+ * 更早的天必然整体排在现有内容之后 → 已看过的帖子相对顺序一个不动（T37 断言「前缀」性质）。 */
+const REC_LEVELS = [RECOMMEND_DAYS, RECOMMEND_WIDE_DAYS, Infinity];   /* Infinity = 不筛天 */
+const recDays = ref(REC_LEVELS[0]);
+function widenRec() {
+  const i = REC_LEVELS.indexOf(recDays.value);
+  const next = REC_LEVELS[i + 1];
+  if (next == null) return;      /* 已在「全部」，没有下一档了（再触底只会去要服务端下一页） */
+  recDays.value = next;
 }
 
 /* ═════════ 时间范围（只属于「最新」之外的排序） ═════════
@@ -719,9 +770,25 @@ async function te() {
  * 点它 = 与下拉同一条强制取新路径（loadCloud({ fresh: true })，轮 79 取舍逻辑在内部），
  * 提示语（刷新中/已刷新/换一批/失败）也由 loadCloud 内部管理，这里不再重复置。
  * App 壳里隐藏（style.css 的 html.cap-app 规则）：App 有原生下拉，两处入口重复。 */
-async function manualRefresh() {
+async function manualRefresh(opts = {}) {
   if (loadingCloud.value) return;   /* 刷新进行中防重入（按钮同时 disabled 兜底） */
+  if (opts.pin) pinToTop();         /* 轮 294：刷新钮深滚时点 → 先归位再换内容（页签重按自己滚顶，不传 pin） */
   await loadCloud({ fresh: true });
+}
+
+/* ═════════ 轮 294 · 深滚时点刷新「一直往上跑」 ═════════
+ * 用户点单：「往下拉很长的时候再点刷新，结果一直往上跑，观感很不好」。
+ * 病根是**顺序**：刷新 = consume() 把整表替换成最新一批（538 条 → 20 条，reveal 还复位 10），
+ * 列表塌缩时视口还在几百条深处 → 浏览器只能一边塌一边把视口往上拽，拽的过程中触底判定
+ * 又立刻拉下一页、列表再长高、再拽…… 就是用户看到的「一直往上跑」。
+ * 修法：**先归位，再换内容** —— 瞬时把视口钉到顶，随后塌缩发生在顶部，不需要任何补偿。
+ * 为什么瞬时而不是平滑：从十几万像素滚回顶部的平滑动画要跑好几秒，比塌缩更难受；
+ * 一次干净的画面切换反而最稳。
+ * 只给刷新钮开（页签重按那条路径自己会滚顶，见下面的 watch，不受影响）。 */
+function pinToTop() {
+  const el = wallScrollerEl.value;
+  if (el) el.scrollTop = 0; else window.scrollTo(0, 0);
+  wallScrollTop = 0;   /* 记忆位置一并归零：否则下次离开再回来，「位置保持」会把人拽回旧位置（轮 232 踩过） */
 }
 
 /* 轮 232：**再点一次底部「暖心墙」页签 = 回到顶部 + 刷新**（主流做法，用户点名要的口径）。
@@ -997,8 +1064,10 @@ function clearReplyToRp(p, cm) {
 }
 /* 回复某条回复：输入框就地出现在「这条二级评论」下方（仍挂在同一个一级评论下，两级封顶），并 @ 这位回复者 */
 function openReplyTo(p, cm, rp) {
-  if (cm && cm.deleted) return;                 /* 轮 285：墓碑没有回复入口 */
   if (rp && rp.deleted) return;                 /* 轮 285：软删的回复本来也不渲染，兜一手 */
+  /* 轮 298：这里原有「cm 被删就 return」的连坐判断 —— 回复目标是 rp（墓碑下
+   * 活着的 cde），cm 只是它挂靠的一级评论（b 已删 = 墓碑）。直接回墓碑走 openReply，
+   * 那边仍拦；这里删掉 cm.deleted 判断，点 cde 的「回复」恢复正常。 */
   /* #28 未登录不能回复云端帖 */
   if (p.cloud && !signedIn.value) return showWallMsg("community.commentSignIn");
   /* 轮 98：再点同一条回复的「回复」= 收起该框 */
@@ -1290,7 +1359,10 @@ async function openMainBar(p) {
  * 云端帖未登录 = 原拦截提示（两平台一致）。再点同目标的「回复」= 收起底部条 */
 function replyViaBar(p, cm, rp = null, e = null) {
   if (e) e.stopPropagation();   /* 不让同一击冒泡去触发「点空白收起」/整层评论接管 */
-  if (cm && cm.deleted) return;   /* 轮 285：墓碑没有回复入口（手机端整条评论可点的接管层也拦在这） */
+  /* 轮 298：只拦「直接回墓碑本身」（rp 为空）；点墓碑下活着的 cde 回复（rp 非空）放行——
+   * 轮 285 原判断不看 rp，把整条线程的回复入口连坐拦死（用户报障「无法点 cde 的评论回复」）。 */
+  if (cm && cm.deleted && !rp) return;
+  if (rp && rp.deleted) return;
   if (!isMobileNav.value || (p.cloud && !signedIn.value)) {
     if (rp) openReplyTo(p, cm, rp); else openReply(p, cm);
     return;
@@ -1328,7 +1400,7 @@ async function sendMainBar() {
   const p = mainBarPost.value;
   if (!p) return;
   const r = mainBarReply.value;
-  await (r ? sendCmt(p, r.cm) : sendCmt(p));
+  await (r ? sendCmt(p, r.cm, r.rp) : sendCmt(p));   /* 轮 298：rp 透传——墓碑下回 cde 靠它过守卫 */
   if (!isOpen(p)) toggleCmt(p);   /* 成败都展开评论区：成功看到新评论，失败看到 cmtErr 提示 */
   /* 草稿被清空 = 发送成功 → 收起输入条；失败时草稿留着（sendCmt 语义），输入条不收 */
   const k = r ? repKey(p, r.cm) : cmtKey(p);
@@ -1350,13 +1422,17 @@ async function sendTopCmt(p) {
  *  - 不传 → 一级评论
  * 草稿取 `cmtDraft`（一级）或 `repDraft`（二级），两者互不干扰。
  */
-async function sendCmt(p, cm = null) {
+async function sendCmt(p, cm = null, rp = null) {
   const k = cmtKey(p);
   const rk = cm ? repKey(p, cm) : k;
   const draftRef = cm ? repDraft : cmtDraft;
   const text = draftRef.value[rk];
   if (!normalizeText(text)) return;
-  if (cm && cm.deleted) return;   /* 轮 285：不给已删除的评论继续挂新回复 */
+  /* 轮 298：只拦「直接回墓碑本身」（rp 为空）；回复墓碑下活着的 cde（rp 非空）照常发，
+   * 新回复仍挂 parent_id = 墓碑 dbId（软删行还在，FK/RLS 都过）。
+   * rp 由调用点显式传入：手机底部条 r.rp / 桌面二级就地框 rp，否则发送端分不出来。 */
+  if (cm && cm.deleted && !rp) return;
+  if (rp && rp.deleted) return;
   /* #28 未登录不能评论云端帖（评论只存本机、别人看不到，会误导）；示例帖保持本地演示 */
   if (p.cloud && !signedIn.value) return;
   /* 回复某条回复时记下的 @ 对象（回复一级评论时为空） */
@@ -1457,7 +1533,9 @@ const shown = computed(() => {
   /* 轮 252：搜索激活 → 直接展示搜索结果（正常流的游标/缓存不动，清空搜索即原样回来） */
   if (searchActive.value) return searchRows.value;
   const visible = visibleOnly(all.value);
-  if (sortMode.value === "recommend") return recommendPosts(visible, { days: RECOMMEND_DAYS });
+  /* 轮 292：salt = 每台设备固定的观众盐 → 同一天不同人看到不同顺序；REC_SALT 为空时退化成旧的全站同序
+     轮 293：days 不再写死 7 —— 跟着 recDays 走，触底逐级放宽（Infinity = 不筛天） */
+  if (sortMode.value === "recommend") return recommendPosts(visible, { days: recDays.value, salt: REC_SALT });
   return sortPosts(
     visible.filter((p) => inRange(p, rangeFor(sortMode.value, rangeMode.value))),
     sortMode.value
@@ -1473,7 +1551,8 @@ const PAGE_SIZE = 10;
    改成 3 屏（30 条）：一次滚完大半页，DOM 增量也还在可控范围（退役后一张卡 ≈ 300px）。 */
 const REVEAL_STEP = 30;
 const reveal = ref(PAGE_SIZE);
-watch([sortMode, rangeMode], () => { reveal.value = PAGE_SIZE; });
+/* 换排序/换时间档 → 从头开始：亮出条数归位；推荐窗也退回 7 天（轮 293，否则切回来还挂在「全部」上） */
+watch([sortMode, rangeMode], () => { reveal.value = PAGE_SIZE; recDays.value = REC_LEVELS[0]; });
 const shownPage = computed(() => shown.value.slice(0, reveal.value));
 const hasMore = computed(() => shown.value.length > reveal.value);
 const sentEl = ref(null);
@@ -1645,6 +1724,10 @@ function feedTick() {
      ② 拉：只要已亮的快到「已拉取」的尾部（余量不足半屏），就**提前**向服务器要下一页（预加载）。
      串行版本里，用户每次滚到底都得先把剩下的 10 条熬完，才等到一次网络往返 —— 卡顿感就来自这里。 */
   if (hasMore.value) reveal.value = Math.min(shown.value.length, reveal.value + REVEAL_STEP);
+  /* 轮 293：推荐流触底逐级放宽 —— 当前档位已亮完（!hasMore）、服务端还有货（!cloudDone）→ 升一档。
+     必须放在 reveal 补齐之后：等「这一档真的亮完了」才升档，否则一进页就一路升到「全部」。
+     升档后 shown 变长（更早的天整体排在后面），下面的 notShown 随之变大 → 不会误触发分页。 */
+  if (sortMode.value === "recommend" && !hasMore.value && !cloudDone.value) widenRec();
   const notShown = shown.value.length - reveal.value;
   if (!cloudDone.value && notShown < REVEAL_STEP / 2) loadMoreCloud();
 }
@@ -1875,7 +1958,7 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
 
 <template>
   <!-- 轮 18：原生下拉刷新（顶部下拉 → 松手重拉；此前函数未绑定，用户看到「完全没做」） -->
-  <div ref="wallScrollerEl" @touchstart.passive="ts" @touchmove.passive="tm" @touchend.passive="te"
+  <div ref="wallScrollerEl" class="wall-scroller" @touchstart.passive="ts" @touchmove.passive="tm" @touchend.passive="te"
     @scroll.passive="onScroll"
     :style="isMobileNav
       ? { position: 'fixed', inset: 0, overflowY: 'auto', zIndex: 1,
@@ -1948,9 +2031,16 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
       </div>
     </section>
 
-    <!-- 轮 60：「已刷新」提示放列表顶部（原来插在底部哨兵旁，下拉的人看不见） -->
+    <!-- 轮 60：「已刷新」提示放列表顶部（原来插在底部哨兵旁，下拉的人看不见）
+         轮 291（用户：「这玩意不是说修了吗，怎么还在」——截图里「刷新中…」四个字一直原地转圈）：
+         状态类原来写 `'rn-' + refreshNote` → busy 时是 **rn-busy**，与轮 284 新给内部 spinner 起的
+         `.rn-busy`（style.css，替代旧的 `.rn-busyic`）**同名撞车** —— 结果 `rn-spin .8s linear infinite`
+         + `width/height:16px` + `display:block` 打在**整颗药丸**上，把药丸自己的 `fit-content`/`flex`/
+         `rn-rise` 全覆盖：文字随之无限转圈（实测逐帧 matrix 120°→-112°→8°…）。
+         改 `rnote-` 前缀从根上让开；3 条状态配色随之挪到下方 scoped（style.css 的
+         `.refresh-note.rn-ok/.rn-batch/.rn-fail` 自此是死规则，别再改回来）。 -->
     <transition name="t-swap" mode="out-in">
-      <div v-if="refreshNote" :key="refreshNote" class="refresh-note" :class="'rn-' + refreshNote">
+      <div v-if="refreshNote" :key="refreshNote" class="refresh-note" :class="'rnote-' + refreshNote">
         <span v-if="refreshNote === 'ok'" class="rn-ic" aria-hidden="true">
           <svg class="rn-heart" viewBox="0 0 24 24">
             <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
@@ -2006,7 +2096,7 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
         class="sort-btn wall-refresh" :class="{ spin: loadingCloud }"
         :disabled="loadingCloud"
         :title="t('community.refreshBtn')" :aria-label="t('community.refreshBtn')"
-        @click="manualRefresh">
+        @click="manualRefresh({ pin: true })">
         <!-- 轮 284：字符 ↻ 换 SVG 循环箭头——只转图标不晃按钮，线条图标更精致 -->
         <svg class="wr-ic" viewBox="0 0 24 24" aria-hidden="true">
           <polyline points="21 4 21 10 15 10" />
@@ -2256,7 +2346,7 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
                     rows="1" autosize
                     :placeholder="repPlaceholder(p, cm, rp)"
                     :maxlength="MAX_LEN" />
-                  <n-button type="primary" size="small" round @click="sendCmt(p, cm)">
+                  <n-button type="primary" size="small" round @click="sendCmt(p, cm, rp)">
                     {{ t("common.send") }}
                   </n-button>
                 </div>
@@ -2321,4 +2411,31 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
   transform: rotate(0deg);
   transition: transform .25s cubic-bezier(.4, 0, .2, 1), color .15s ease; }
 .wp-ic.ready { color: var(--accent-deep); transform: rotate(180deg); }
+
+/* ═══ 轮 289 · 手机端滚动层补回 .shell 的左右内边距 ═══
+   用户：「把暖心墙帖子左右的宽度改成第二张那个宽度」（第二张 = /my-posts「我在暖心墙的帖子」）。
+   真因：手机端这个滚动层是 `position: fixed; inset: 0`（轮 18 的原生下拉刷新要自己接管滚动容器），
+   整个元素因此**逃出了 .shell 的 `padding: 0 18px`**，帖子卡满宽贴边；而 /my-posts 是正常文档流、
+   老老实实吃这 18px，两边自然不齐。桌面分支不在 fixed 里、本来就在 .shell 内 —— 所以只有手机端差这一截，
+   这条补的是「与桌面分支、与其它页面重新对齐」，不是新设计。
+   ① 限定 .shell--mobile-nav：桌面不加（≥900px 时墙本来就在 .shell 内，再加会叠成两份）；
+   ② 只加左右内边距，纵向（下拉指示条 / 虚拟窗口占位块高度 / 底部 70px TabBar 让位）一概不动；
+   ③ 18px / 780px 与 style.css 里 .shell 的 padding、max-width 同值，将来改要两处一起改。
+   ④ **为什么不是写死 18px**（轮 290 · 用户问「不同的手机宽度一致吗」，iframe 实测 400/850/1000 三档抓出来的）：
+      .shell 在 <900 档是 `max-width: 780px` + `margin: 0 auto`（全局 border-box），所以视口 >780 时
+      别的页会被**压到 744 宽并居中**（左边距 = (vw-780)/2 + 18），而这个 fixed 滚动层是满宽的 ——
+      单写死 18px 会让「横屏手机 / 小平板（780~900）」上墙卡比别的页宽出一大截（实测 850px 时
+      墙 L=18 W=799，别的页 L=53 W=744，差 55px）。max() 把 .shell 的
+      「封顶 780 + 居中 + 18px」整个复刻：窄屏 max 取 18px，宽屏取居中量，两档都严丝合缝。 */
+.shell--mobile-nav .wall-scroller {
+  padding-left: max(18px, calc((100% - 780px) / 2 + 18px));
+  padding-right: max(18px, calc((100% - 780px) / 2 + 18px));
+}
+
+/* ═══ 轮 291 · 药丸状态配色（随 rnote- 改名从 style.css 挪过来，撞车说明见模板处）═══
+   原在 style.css 的 `.refresh-note.rn-ok/.rn-batch/.rn-fail` 随改名失效，这里按新前缀补回；
+   带 data-v 特异性 (0,3,0)，稳压基础规则 `.refresh-note { color: var(--ink-soft) }`。 */
+.refresh-note.rnote-ok,
+.refresh-note.rnote-batch { color: var(--accent-deep); }
+.refresh-note.rnote-fail { color: var(--low); }
 </style>
