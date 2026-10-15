@@ -8,6 +8,8 @@ import {
   topComments, repliesOf, replyCount, displayCount,
   /* 轮 285：软删口径（删一级评论不再连带删掉它的二级回复） */
   renderTops, renderReplies, liveComments, markDeleted, isDeleted,
+  /* 轮 301：回复守卫收口（两视图同判据，防轮 298 连坐 bug 回潮） */
+  replyBlocked, replyTarget, buildCommentRow,
   /* 轮 84：评论回应 / 排序 / 墙内前 3 条 / 拷贝文本 */
   CMT_REACT_KINDS, WALL_TOP_LIMIT, SORT_MODES, reactCount, hasReacted, toggleReact,
   sortComments, wallTopComments, hasMoreComments, postCopyText, commentCopyText,
@@ -402,6 +404,39 @@ t("R9 commentCopyText：带署名前缀", () => {
   assert.equal(commentCopyText({ name: "压测员68", text: "好天气" }), "压测员68：好天气");
   assert.equal(commentCopyText({ text: "匿名" }), "匿名");
   assert.equal(commentCopyText(null), "");
+});
+
+/* ══════════ 轮 301 · G 组：回复守卫 + 目标判定（防轮 298 连坐 bug 回潮） ══════════ */
+
+t("G1 replyBlocked：直接回墓碑拦、回墓碑下活回复放行（轮 298 判据收口）", () => {
+  const tomb = { id: "b", deleted: true };
+  const live = { id: "c" };
+  assert.equal(replyBlocked(tomb, null), true, "直接回墓碑 → 拦");
+  assert.equal(replyBlocked(tomb, live), false, "回墓碑下的活回复 → 放行");
+  assert.equal(replyBlocked(live, null), false, "回活评论 → 放行");
+  assert.equal(replyBlocked(null, null), false, "直接评帖子 → 放行");
+  assert.equal(replyBlocked({ id: "x", deleted: false }, null), false);
+});
+
+t("G2 replyTarget：parentId 恒为一级 id；replyTo 有 rp 取 rp 作者、无 rp 取一级作者", () => {
+  const cm = { id: "b", name: "B" };
+  const rp = { id: "c", name: "C" };
+  assert.deepEqual(replyTarget(cm, rp), { parentId: "b", replyTo: "C" });
+  assert.deepEqual(replyTarget(cm, null), { parentId: "b", replyTo: "B" });
+  assert.deepEqual(replyTarget(null, null), { parentId: null, replyTo: "" });
+});
+
+t("G3 buildCommentRow：载荷与两视图发送体同形（parent_id 恒取一级 dbId，两级封顶）", () => {
+  const cm = { id: "b", dbId: 7, name: "B" };
+  const rp = { id: "c", name: "C" };
+  const r1 = buildCommentRow({ postDbId: 9, userId: "u", name: "A", text: " hi ", cm, rp, at: "" });
+  assert.deepEqual(r1.row, { post_id: 9, user_id: "u", author_name: "A", body: "hi", parent_id: 7, reply_to_name: "C" });
+  const r2 = buildCommentRow({ postDbId: 9, userId: "u", name: "A", text: "x", cm, rp: null, at: "" });
+  assert.equal(r2.row.parent_id, 7, "回一级也挂同一 dbId");
+  assert.equal(r2.row.reply_to_name, "B", "无 rp 时默认 @ 一级作者");
+  const r3 = buildCommentRow({ postDbId: 9, userId: "u", name: "A", text: "x", cm: null, rp: null, at: "" });
+  assert.equal(r3.row.parent_id, null, "直接评帖子无 parent");
+  assert.equal(r3.row.reply_to_name, null);
 });
 
 out.push("");

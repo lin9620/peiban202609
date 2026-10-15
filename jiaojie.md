@@ -280,7 +280,7 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
 ## 二、现在在做什么
 
-- **当前批次（改动完成、测试过了、待提交待部署——攒批）**：**轮 263（帖子/评论「⋯」菜单被卡片底边硬切：`.post-card` 的 `content-visibility:auto` 隐含 paint containment 裁掉菜单溢出部分 + `.card{z-index:1}` 各开堆叠上下文致下一张卡盖住菜单；一行 `.post-card:has(.more-pop){content-visibility:visible;z-index:2}` 两层同修，模板零改动）+ 轮 264（搜索栏两个 × 撞车只留一个：`.wall-search-input::-webkit-search-cancel-button` 关掉原生清除按钮，**保留 `type=search`** 以不丢手机键盘「搜索」键位，留下的 ✕ 走 clearSearch() 关键词+标签一起清）+ **轮 265（TabBar 红点角标压住「消息」二字：tab 项纯文字无图标 → vant 角标锚在空的 .van-badge__wrapper（宽0高0）上被钉进文字行；拨掉空壳的 position:relative 改锚 tab 项，位置沿用手写时代 .tab-badge 的口径）** —— 三轮均只改 `src/style.css`，模板零改动；全量 45 套离线 ALL OK + tdz 0 + build EXIT=0（入口 `index-CsTdwCxQ.js`）+ page-smoke 13/13 + 无头几何复验/目检（轮 263：elementFromPoint 四点全 MENU 无硬切；轮 264：undo 反证两个 × 回来=无假通过；轮 265：角标与文字重叠 y=0、`badgeVisibleAboveText:true`）。详见文末 F 区轮 263/264/265、踩坑 #43/#44/#45。**+ 轮 266（首装首次进消息页「会话列表出来太慢 + 假空」四修：listConvs 单飞合并（singleFlight 挪 utils/inflight.js）+ 登录后补预热 + 会话列表骨架屏/「还没有会话」只认服务端应答/失败 3s 快速重试×3 + RPC 实测 ≈400ms 定位瓶颈为跨境 RTT 非 SQL）** —— 全量离线 BAD_TOTAL=0 + undef 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 266。**+ 轮 267（暖心墙触底骨架「十几秒不消失」两修：行上屏即收骨架（评论数转后台补，不再拴在 pageBusy 里）+ withTimeout 8s 超时兜底（超时只放弃等不放弃数据：游标不动、下次触底重试自愈））** —— 全量离线 BAD_TOTAL=0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 267。**+ 轮 268（会话行红点与顶/底角标不同步：dm_unread_total 捎带行级未读明细 convs → badgeStore 存映射+进角标缓存秒恢复，行未读 = max(行权威值, 映射)，openConv 清行同步清映射防复活；MIGRATION_dm_unread_convs.sql 幂等待用户 SQL Editor 执行，不跑降级为旧行为）** —— 全量离线 BAD_TOTAL=0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 268。**+ 轮 269（私信实时通道：dmRealtime.js 订阅 dm_messages INSERT（RLS 天然隔离+自发回显丢弃+失败静默轮询兜底），tick 尾部刷新抽 pullTail 供实时复用（轮 225 只读不发号语义保留），MessagesView 当前会话 pullTail 秒上屏/别会话节流 3s 刷列表，App 登录态起停通道；MIGRATION_dm_realtime.sql 真幂等待用户 SQL Editor 执行，不跑降级轮询；R11 断言随重构更新）** —— 45 套 BAD_TOTAL=0（含 dm-race 16/16）+ undef 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 269。**+ 轮 270（错误信标「采了看不见」：/api/client-log 从只 console.log 改为落库 `client_logs`（Worker 无 service role → 写入走授给 anon 的 security definer RPC；表 RLS 零策略，读写只走 RPC）+ AdminView 新增「客户端错误」页签（聚合优先：哪个错炸了 N 次 + 最新 50 条含可展开调用栈）；不记录 user_id 保持信标匿名；防灌三闸 Worker 60s/IP + SQL 200/日/IP + 全局 5000/日；**迁移没跑也降级可用**（信标仍回 200，只是不落库）；MIGRATION_client_logs.sql 幂等待用户 SQL Editor 执行）** —— worker-test 302/0 + gateway-contract 92/0 + i18n 漏键 0/死键 0 + undef 0 + tdz 0 + build BUILD_GOOD（入口 `index-C3qtiKw2.js`）+ page-smoke 13/13 + 真实探针确认两 RPC 现为 PGRST202（未执行，符合预期）+ 两文件 token 级同源。**注意编号：本轮是 270 不是 266**——另一 AI 已占 266/267/268/269。详见文末 F 区轮 270。**【本轮交付】整批轮 263~270 已提交 `3e6dd19` / 已推送 / 已部署 Version `0125959d`（入口 `index-C3qtiKw2.js`，706854 字节，SHA16 `d826f16641633ac1` 本地=线上，live-check 15/15）/ APK 已重打并装机（state:5 前台化 + 2679 色真实渲染）。SQL 迁移（wall_search/dm_unread_convs/dm_realtime/client_logs）用户已全部执行。****+ 轮 271（他人主页点帖子无反应：WallerView 加 goDetail，正文/图进 /post/:id，暖心墙轮 84 同款口径）** —— undef 0 + wall-test 34/34 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 271。**+ 轮 272（暖心墙触底续载底部骨架退役：删 pageBusy 文字 + .sk-more 骨架块（轮 253 产物），续载机制原样保留后台静默拉，底部只剩到底 noMore；首屏/评论区/搜索态不动）** —— i18n 漏键 0/死键 0 + uifix 24/24 + undef 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 272。**+ 轮 273（详情页点收藏「菜单文案不动」= 不跟手：点了立刻 closeMore()（菜单文案是打开瞬间快照，点完不变=以为没点上）+ hint 反馈先行不等网络，失败照常回滚）** —— undef 0 + wall-test 34/34 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 273。**+ 轮 274（详情页点作者进不了主页：PostDetailView 加 goUser，头像/名字进 /u/:id，暖心墙#15同款，全局 clickable 样式已有）** —— undef 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 274。**+ 轮 275（评论区「第二个请求堵住第一个」：cloudFetchComments 列表先行返回、我的回应高亮包进 rows.mineReady 后台补；详情页/墙内评论列表到手先上屏再挂 mineReady 响应式合并；操作后刷新仍走原 loadCmtMine）** —— undef 0 + wall-test 34/34 + i18n 漏键 0/死键 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 275。**+ 轮 276（消息会话列表底部骨架退役：删 dm-sk-rows 3 条骨架行 + 样式规则（轮 266 产物），与暖心墙轮 272 同口径；缓存秒出/单飞/预热/快速重试/空态门控全部保留）** —— undef 0 + uifix 24/24 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 276。**+ 轮 277（其余骨架屏一并退役：暖心墙桌面/手机首屏 2 处 + StoryFeed 首访 1 处，模板摘块 + 删 .sk-block/.st-skel 系样式；数据链路零改动）** —— undef 0 + uifix 24/24 + i18n 漏键 0/死键 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 277。**+ 轮 280（App 图标重设计为 C 暖窝：珊瑚环抱爪 + 米底，全密度 mipmap 重出 + ic_launcher_background #2C3550→#F5F0E8；首版图案过大裁切已修正）+ 轮 279（「我的」页返回自动下拉：全局 html{scroll-behavior:smooth} 污染程序化回位 → scrollMem/scrollBehavior 显式 behavior:"instant"，返回即在原位零可见滚动，与暖心墙同观感）** —— undef 0 + app-shell 66/66 + uifix 24/24 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 280/279。**+ 轮 281（「我的」页三条帖子经常很久才出现：登录后补 prefetchProfilePosts（首装预热漏跑）+ 挂载同步读 uid 兜底（wp-uid 未落位退 cloud.user.id）+ 加载抽 loadMyPosts 供 onActivated 切回页签静默 SWR 新鲜化；大厂调研：微信本地库/小红书磁盘缓存首帧出，本项目已有同款链路，慢在命中率三断点）** —— undef 0 + app-shell 66/66 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 281。**+ 轮 278（信标首条真错误定案：`/admin` 一打开就报 `Cannot access 'Se' before initialization` —— AdminView 的 `immediate` watch 在 setup 中途就同步调 `loadRelMeta`/`loadBroadcasts`，而这 11 个 ref 却声明在 watch **之后**；空 `catch` 吞掉第一个 TDZ、第二个抛在 try 外，async 让它变成「未处理的 Promise 拒绝」；11 个 ref 连注释整体上移到 watch 之前）** —— 自检过的 AST 检测器全量 RISKS=0 + tdz 0 + undef 0 + build 成功 + 全量离线 45/45 + page-smoke 13/13。详见文末 F 区轮 278。**+ 轮 283（帖子详情页左右滑看上一条/下一条：新 `utils/postNav.js` 存「这次点开的是哪张列表」的 id 快照（内存+sessionStorage，刷新/同设备分享链接打开仍可滑），入口侧一行 `setPostNav`（暖心墙 shown / 我的 rows·myPosts / 他人 posts），详情页 `transform` 跟手 + 过半(50%)才切 + 边界 32% 阻尼回弹；两端差异只落手势来源——App 端只挂 touch、网页端额外挂鼠标拖拽与 ←/→；切换用 `router.replace` 且**先 await 路由换完再归零位移**，防旧内容闪回中央；位移层只包内容区，`.cmt-main-bar` 与 ReportDialog 留在外面避开 fixed 被 transform 劫持；相邻两条预取进 SWR 缓存）** —— 新工具 `post-nav-test.mjs` 35/35（含 fixed 陷阱结构断言）+ 全量离线 **46/46** + tdz 0 + undef 0 + i18n 19/19 死键 0 + build EXIT=0（入口 `index-CN9MgczV.js`，新 chunk `postNav-yGwlF_XV.js`）+ page-smoke 13/13 + **真浏览器实测**（SPA 点进 695→拖→694、整页刷新 694→拖→686、键盘 686→690→689、`history.back()` 一步回 `/community`、第一条右滑位移 +96px=600×32% 且提示「已经是第一条了」）。详见文末 F 区轮 283、踩坑 #49。**+ 轮 282（评论区出来特别慢：实测定位（裸 RTT 800~2552ms、评论查询只比空请求多 ~100ms → 慢在网络不在 SQL）+ 结构放大（详情页帖子/评论两个 RTT 串行 + 评论零本地缓存）；修法 = 帖子与评论并行首发（load() 开头 loadComments(uid)）+ 数据层 cmtCacheKey/cmtCacheSet 评论磁盘缓存落盘 + 详情页 SWR 缓存先屏/墙内 loadThread 展开即 cacheGet 渲染 + 发删评论回写；自产 TDZ 一处（immediate watch 同步栈撞 comments/cmtLoading 声明在后 → await Promise.resolve 让出）+ swr 对 null 不回调致 cmtLoading 卡死（复位塞 fetcher 包装）** —— undef 0 + wall 34/34 + comment 35/35 + post-detail 17/17 + cache 12/12 + app-shell 66/66 + i18n-usage 2/2 + build EXIT=0 + page-smoke 13/13（首轮 12/13 即 TDZ，修复复验）。详见文末 F 区轮 282。**+ 轮 284（刷新失败提示减时 1/3：NOTE_FAIL_MS 1200→800ms；刷新图标动画三处：下拉指示条 ↓→循环箭头 SVG 跟手旋转（拉满 90px 转一圈、过 62px 阈值变主题色）、网页刷新按钮 ↻→SVG 且 spin 只转图标不晃按钮、刷新中药丸 border 圆环→轨道+圆头弧线 spinner 并补 reduced-motion 降级）** —— undef 0 + build EXIT=0 + page-smoke 13/13 + web-refresh 6/6 + uifix 24/24 + wall 34/34 + i18n-usage 2/2。详见文末 F 区轮 284。**【本轮交付】整批轮 271~285 已提交 `fbd519c` / 已推送（e06e4da..fbd519c）/ 已部署 Version `c1a3bd06`（入口 `index-ByNj7T6r.js`，708136 字节，SHA16 `0da3a45789b7fee8` 本地=线上，live-check 15/15）/ APK 已装机（app-debug.apk 5.26MB，lastUpdateTime 2026-10-14 23:13，topResumedActivity 前台化）——含另一会话的轮 278/283/285。全量 46/46 + undef 0 + tdz 0（提交前顺手修 arity：`loadComments(idOverride = null)` 补默认值，正是轮 283 遗留提醒）。**注意：轮 285 的 `MIGRATION_comment_delete.sql`（评论软删 RPC）待用户 SQL Editor 执行，不跑则删评论回退旧行为。****【追加交付】轮 286（下拉箭头改 Material 翻转，轮 284 跟手旋转被吐槽）已提交 `bcac3a7` / 已部署 Version `385b3823` / live-check 15/15（SHA16 `3dac08f7c6ee6311`），**装机未完成（adb 掉线待重插）**。**+ 轮 287（「我的」页返回帖子被 busy 占位盖几秒：ProfileView L489 `v-if="myPostsBusy"` 无条件遮屏 → 改 `myPostsBusy && !myPosts.length`，有内容在屏永不遮、网络静默回填，暖心墙口径）** —— undef 0 + build 0 + page-smoke 13/13 + uifix 24/24 + app-shell 66/66。详见文末 F 区轮 286/287。**+ 轮 298（b 删一级评论后点 cde「回复」没反应：轮 285 的 5 处守卫连坐 `if (cm && cm.deleted) return` 不看 rp，把墓碑线程内活回复的入口全拦死；判据改「回复目标被删没」——`cm.deleted && !rp` 才拦（直接回墓碑仍禁），sendCmt 加 rp 第三参从手机底部条/桌面就地框透传）** —— 全量 46/46 + tdz 0 + undef 0 + arity 8/8 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 298。**
+- **当前批次（改动完成、测试过了、待提交待部署——攒批）**：**轮 263（帖子/评论「⋯」菜单被卡片底边硬切：`.post-card` 的 `content-visibility:auto` 隐含 paint containment 裁掉菜单溢出部分 + `.card{z-index:1}` 各开堆叠上下文致下一张卡盖住菜单；一行 `.post-card:has(.more-pop){content-visibility:visible;z-index:2}` 两层同修，模板零改动）+ 轮 264（搜索栏两个 × 撞车只留一个：`.wall-search-input::-webkit-search-cancel-button` 关掉原生清除按钮，**保留 `type=search`** 以不丢手机键盘「搜索」键位，留下的 ✕ 走 clearSearch() 关键词+标签一起清）+ **轮 265（TabBar 红点角标压住「消息」二字：tab 项纯文字无图标 → vant 角标锚在空的 .van-badge__wrapper（宽0高0）上被钉进文字行；拨掉空壳的 position:relative 改锚 tab 项，位置沿用手写时代 .tab-badge 的口径）** —— 三轮均只改 `src/style.css`，模板零改动；全量 45 套离线 ALL OK + tdz 0 + build EXIT=0（入口 `index-CsTdwCxQ.js`）+ page-smoke 13/13 + 无头几何复验/目检（轮 263：elementFromPoint 四点全 MENU 无硬切；轮 264：undo 反证两个 × 回来=无假通过；轮 265：角标与文字重叠 y=0、`badgeVisibleAboveText:true`）。详见文末 F 区轮 263/264/265、踩坑 #43/#44/#45。**+ 轮 266（首装首次进消息页「会话列表出来太慢 + 假空」四修：listConvs 单飞合并（singleFlight 挪 utils/inflight.js）+ 登录后补预热 + 会话列表骨架屏/「还没有会话」只认服务端应答/失败 3s 快速重试×3 + RPC 实测 ≈400ms 定位瓶颈为跨境 RTT 非 SQL）** —— 全量离线 BAD_TOTAL=0 + undef 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 266。**+ 轮 267（暖心墙触底骨架「十几秒不消失」两修：行上屏即收骨架（评论数转后台补，不再拴在 pageBusy 里）+ withTimeout 8s 超时兜底（超时只放弃等不放弃数据：游标不动、下次触底重试自愈））** —— 全量离线 BAD_TOTAL=0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 267。**+ 轮 268（会话行红点与顶/底角标不同步：dm_unread_total 捎带行级未读明细 convs → badgeStore 存映射+进角标缓存秒恢复，行未读 = max(行权威值, 映射)，openConv 清行同步清映射防复活；MIGRATION_dm_unread_convs.sql 幂等待用户 SQL Editor 执行，不跑降级为旧行为）** —— 全量离线 BAD_TOTAL=0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 268。**+ 轮 269（私信实时通道：dmRealtime.js 订阅 dm_messages INSERT（RLS 天然隔离+自发回显丢弃+失败静默轮询兜底），tick 尾部刷新抽 pullTail 供实时复用（轮 225 只读不发号语义保留），MessagesView 当前会话 pullTail 秒上屏/别会话节流 3s 刷列表，App 登录态起停通道；MIGRATION_dm_realtime.sql 真幂等待用户 SQL Editor 执行，不跑降级轮询；R11 断言随重构更新）** —— 45 套 BAD_TOTAL=0（含 dm-race 16/16）+ undef 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 269。**+ 轮 270（错误信标「采了看不见」：/api/client-log 从只 console.log 改为落库 `client_logs`（Worker 无 service role → 写入走授给 anon 的 security definer RPC；表 RLS 零策略，读写只走 RPC）+ AdminView 新增「客户端错误」页签（聚合优先：哪个错炸了 N 次 + 最新 50 条含可展开调用栈）；不记录 user_id 保持信标匿名；防灌三闸 Worker 60s/IP + SQL 200/日/IP + 全局 5000/日；**迁移没跑也降级可用**（信标仍回 200，只是不落库）；MIGRATION_client_logs.sql 幂等待用户 SQL Editor 执行）** —— worker-test 302/0 + gateway-contract 92/0 + i18n 漏键 0/死键 0 + undef 0 + tdz 0 + build BUILD_GOOD（入口 `index-C3qtiKw2.js`）+ page-smoke 13/13 + 真实探针确认两 RPC 现为 PGRST202（未执行，符合预期）+ 两文件 token 级同源。**注意编号：本轮是 270 不是 266**——另一 AI 已占 266/267/268/269。详见文末 F 区轮 270。**【本轮交付】整批轮 263~270 已提交 `3e6dd19` / 已推送 / 已部署 Version `0125959d`（入口 `index-C3qtiKw2.js`，706854 字节，SHA16 `d826f16641633ac1` 本地=线上，live-check 15/15）/ APK 已重打并装机（state:5 前台化 + 2679 色真实渲染）。SQL 迁移（wall_search/dm_unread_convs/dm_realtime/client_logs）用户已全部执行。****+ 轮 271（他人主页点帖子无反应：WallerView 加 goDetail，正文/图进 /post/:id，暖心墙轮 84 同款口径）** —— undef 0 + wall-test 34/34 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 271。**+ 轮 272（暖心墙触底续载底部骨架退役：删 pageBusy 文字 + .sk-more 骨架块（轮 253 产物），续载机制原样保留后台静默拉，底部只剩到底 noMore；首屏/评论区/搜索态不动）** —— i18n 漏键 0/死键 0 + uifix 24/24 + undef 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 272。**+ 轮 273（详情页点收藏「菜单文案不动」= 不跟手：点了立刻 closeMore()（菜单文案是打开瞬间快照，点完不变=以为没点上）+ hint 反馈先行不等网络，失败照常回滚）** —— undef 0 + wall-test 34/34 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 273。**+ 轮 274（详情页点作者进不了主页：PostDetailView 加 goUser，头像/名字进 /u/:id，暖心墙#15同款，全局 clickable 样式已有）** —— undef 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 274。**+ 轮 275（评论区「第二个请求堵住第一个」：cloudFetchComments 列表先行返回、我的回应高亮包进 rows.mineReady 后台补；详情页/墙内评论列表到手先上屏再挂 mineReady 响应式合并；操作后刷新仍走原 loadCmtMine）** —— undef 0 + wall-test 34/34 + i18n 漏键 0/死键 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 275。**+ 轮 276（消息会话列表底部骨架退役：删 dm-sk-rows 3 条骨架行 + 样式规则（轮 266 产物），与暖心墙轮 272 同口径；缓存秒出/单飞/预热/快速重试/空态门控全部保留）** —— undef 0 + uifix 24/24 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 276。**+ 轮 277（其余骨架屏一并退役：暖心墙桌面/手机首屏 2 处 + StoryFeed 首访 1 处，模板摘块 + 删 .sk-block/.st-skel 系样式；数据链路零改动）** —— undef 0 + uifix 24/24 + i18n 漏键 0/死键 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 277。**+ 轮 280（App 图标重设计为 C 暖窝：珊瑚环抱爪 + 米底，全密度 mipmap 重出 + ic_launcher_background #2C3550→#F5F0E8；首版图案过大裁切已修正）+ 轮 279（「我的」页返回自动下拉：全局 html{scroll-behavior:smooth} 污染程序化回位 → scrollMem/scrollBehavior 显式 behavior:"instant"，返回即在原位零可见滚动，与暖心墙同观感）** —— undef 0 + app-shell 66/66 + uifix 24/24 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 280/279。**+ 轮 281（「我的」页三条帖子经常很久才出现：登录后补 prefetchProfilePosts（首装预热漏跑）+ 挂载同步读 uid 兜底（wp-uid 未落位退 cloud.user.id）+ 加载抽 loadMyPosts 供 onActivated 切回页签静默 SWR 新鲜化；大厂调研：微信本地库/小红书磁盘缓存首帧出，本项目已有同款链路，慢在命中率三断点）** —— undef 0 + app-shell 66/66 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 281。**+ 轮 278（信标首条真错误定案：`/admin` 一打开就报 `Cannot access 'Se' before initialization` —— AdminView 的 `immediate` watch 在 setup 中途就同步调 `loadRelMeta`/`loadBroadcasts`，而这 11 个 ref 却声明在 watch **之后**；空 `catch` 吞掉第一个 TDZ、第二个抛在 try 外，async 让它变成「未处理的 Promise 拒绝」；11 个 ref 连注释整体上移到 watch 之前）** —— 自检过的 AST 检测器全量 RISKS=0 + tdz 0 + undef 0 + build 成功 + 全量离线 45/45 + page-smoke 13/13。详见文末 F 区轮 278。**+ 轮 283（帖子详情页左右滑看上一条/下一条：新 `utils/postNav.js` 存「这次点开的是哪张列表」的 id 快照（内存+sessionStorage，刷新/同设备分享链接打开仍可滑），入口侧一行 `setPostNav`（暖心墙 shown / 我的 rows·myPosts / 他人 posts），详情页 `transform` 跟手 + 过半(50%)才切 + 边界 32% 阻尼回弹；两端差异只落手势来源——App 端只挂 touch、网页端额外挂鼠标拖拽与 ←/→；切换用 `router.replace` 且**先 await 路由换完再归零位移**，防旧内容闪回中央；位移层只包内容区，`.cmt-main-bar` 与 ReportDialog 留在外面避开 fixed 被 transform 劫持；相邻两条预取进 SWR 缓存）** —— 新工具 `post-nav-test.mjs` 35/35（含 fixed 陷阱结构断言）+ 全量离线 **46/46** + tdz 0 + undef 0 + i18n 19/19 死键 0 + build EXIT=0（入口 `index-CN9MgczV.js`，新 chunk `postNav-yGwlF_XV.js`）+ page-smoke 13/13 + **真浏览器实测**（SPA 点进 695→拖→694、整页刷新 694→拖→686、键盘 686→690→689、`history.back()` 一步回 `/community`、第一条右滑位移 +96px=600×32% 且提示「已经是第一条了」）。详见文末 F 区轮 283、踩坑 #49。**+ 轮 282（评论区出来特别慢：实测定位（裸 RTT 800~2552ms、评论查询只比空请求多 ~100ms → 慢在网络不在 SQL）+ 结构放大（详情页帖子/评论两个 RTT 串行 + 评论零本地缓存）；修法 = 帖子与评论并行首发（load() 开头 loadComments(uid)）+ 数据层 cmtCacheKey/cmtCacheSet 评论磁盘缓存落盘 + 详情页 SWR 缓存先屏/墙内 loadThread 展开即 cacheGet 渲染 + 发删评论回写；自产 TDZ 一处（immediate watch 同步栈撞 comments/cmtLoading 声明在后 → await Promise.resolve 让出）+ swr 对 null 不回调致 cmtLoading 卡死（复位塞 fetcher 包装）** —— undef 0 + wall 34/34 + comment 35/35 + post-detail 17/17 + cache 12/12 + app-shell 66/66 + i18n-usage 2/2 + build EXIT=0 + page-smoke 13/13（首轮 12/13 即 TDZ，修复复验）。详见文末 F 区轮 282。**+ 轮 284（刷新失败提示减时 1/3：NOTE_FAIL_MS 1200→800ms；刷新图标动画三处：下拉指示条 ↓→循环箭头 SVG 跟手旋转（拉满 90px 转一圈、过 62px 阈值变主题色）、网页刷新按钮 ↻→SVG 且 spin 只转图标不晃按钮、刷新中药丸 border 圆环→轨道+圆头弧线 spinner 并补 reduced-motion 降级）** —— undef 0 + build EXIT=0 + page-smoke 13/13 + web-refresh 6/6 + uifix 24/24 + wall 34/34 + i18n-usage 2/2。详见文末 F 区轮 284。**【本轮交付】整批轮 271~285 已提交 `fbd519c` / 已推送（e06e4da..fbd519c）/ 已部署 Version `c1a3bd06`（入口 `index-ByNj7T6r.js`，708136 字节，SHA16 `0da3a45789b7fee8` 本地=线上，live-check 15/15）/ APK 已装机（app-debug.apk 5.26MB，lastUpdateTime 2026-10-14 23:13，topResumedActivity 前台化）——含另一会话的轮 278/283/285。全量 46/46 + undef 0 + tdz 0（提交前顺手修 arity：`loadComments(idOverride = null)` 补默认值，正是轮 283 遗留提醒）。**注意：轮 285 的 `MIGRATION_comment_delete.sql`（评论软删 RPC）待用户 SQL Editor 执行，不跑则删评论回退旧行为。****【追加交付】轮 286（下拉箭头改 Material 翻转，轮 284 跟手旋转被吐槽）已提交 `bcac3a7` / 已部署 Version `385b3823` / live-check 15/15（SHA16 `3dac08f7c6ee6311`），**装机未完成（adb 掉线待重插）**。**+ 轮 287（「我的」页返回帖子被 busy 占位盖几秒：ProfileView L489 `v-if="myPostsBusy"` 无条件遮屏 → 改 `myPostsBusy && !myPosts.length`，有内容在屏永不遮、网络静默回填，暖心墙口径）** —— undef 0 + build 0 + page-smoke 13/13 + uifix 24/24 + app-shell 66/66。详见文末 F 区轮 286/287。**+ 轮 298（b 删一级评论后点 cde「回复」没反应：轮 285 的 5 处守卫连坐 `if (cm && cm.deleted) return` 不看 rp，把墓碑线程内活回复的入口全拦死；判据改「回复目标被删没」——`cm.deleted && !rp` 才拦（直接回墓碑仍禁），sendCmt 加 rp 第三参从手机底部条/桌面就地框透传）** —— 全量 46/46 + tdz 0 + undef 0 + arity 8/8 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 298。**【本轮交付】轮 298 已提交 `903b06c`（攒批含同仓轮 291~297 另一会话在途）/ 已推送 / 已部署 Version `8318756f`（live-check 15/15；抓线上编译产物核对 SDK 修复在：`t&&t.deleted&&!a`）/ **APK 未装机（usb 仍未连接，等用户插线）**。**+ 轮 300（首页「大厅此刻」四类人数 4 次并行查询合 1 条 RPC `status_counts(p_since)`：`VALUES` 骨架 `LEFT JOIN profiles` 一次出全四类、0 人也出一行；**刻意不写 security definer** 保 RLS 口径与旧 4 次 HEAD 一致；双链路（`db.supabase.js` 直连 + `worker/api.js` 网关）都先试 RPC、能力标记**只试一次**、判定复用 `isMissingFnError` 只认「函数没建」，缺行/脏值**一律报错绝不补 0**；`MIGRATION_status_counts.sql` **已由用户执行、线上已生效**（RPC↔旧 4 次 HEAD 逐格对账 + 生产 Worker 6/6 全 200 + 首页 DOM 真渲染 1/1/0/0）；网络层旧路径 8 次 → 0 次、新路径 2 次（「2 轮」是轮 291 记账待补跑的既定设计）；打的是轮 291 实测的「4 条 head-count ~1.25s → 叠 PATCH 共 2118ms」）** —— `status-counts-test` **92/92** + undef 0 + tdz 0 + build EXIT=0。**撞号已退让：299 被对方占（它有 `MIGRATION_comment_counts_299.sql`），本方 8 处全改 300；全量 **48/48 OK · 0 FAIL**（中途 3 处红灯全归对方在飞，收尾已由对方补齐转绿）；覆盖本轮两条链路的 `gateway-contract` 93/93 与 `status-test` 56/56 均绿。**详见文末 F 区轮 300。 **+ 轮 302（浏览计数批量化：20 次 `wall_add_view` 合成 1 次 `wall_add_views`** —— 免费额度实测确认卡点是 **Cloudflare Workers 免费档 10 万请求/天**，而暖心墙首屏恰是 1× `wall_feed_page` + **20× `wall_add_view`**（逐条且串行）；新 RPC `wall_add_views(bigint[],text)` 把循环搬进函数（`distinct` 去重 / `on conflict do nothing` 记 `found` / 帖不存在该条 `not-found` 整体仍 `ok:true` / **security definer**），语义与单帖版**逐格等价**；纯层 `wallRules.wallViewIds` + `normalizeWallAddViews`（严格非负整数，脏值一律报错**绝不补 0**）；直连与网关双链路各加 `addViews`（**返回 Map**，RPC 不承诺行序）、能力标记**只试一次**、迁移没跑自动**退回逐帖循环**（只认「函数没建」，别的错误照抛）；Worker 新增 `POST /api/posts/views`（抢在「单帖 id」分支前拦下，且必须 `return await` —— 否则异步拒绝漏成未捕获）；`CommunityView.countViews` 从 `for…await` 逐条改成**一批一次**。标准访问 28 → **9 请求**，免费容量 ~3,520 → **~10,900 日活**，此后 egress 才成新瓶颈）** —— 新 `wall-addviews-test` **100/100** + `api-contract` 99→**102** + `gateway-contract` 93→**95** + `worker-test` 306→**309**；全量 **49/49 OK · 0 FAIL** + undef 0 + tdz 0 + build EXIT=0（入口 `index-BR8vcHYa.js`）+ page-smoke 13/13。`MIGRATION_wall_add_views.sql` **待用户 SQL Editor 执行**（不跑=自动逐帖回退，行为零变）。详见文末 F 区轮 302。
 - **上一批（已提交已部署）**：轮 253~262 攒批：已提交 `663fe61` / 已部署 Version `0b375659`（入口 `index-Cp2C6aCf.js`，SHA16 `0d129290f4ee4701` 本地=线上，live-check 15/15）。明细：轮 253（知乎/Reddit 式渐进渲染补齐：图片淡入 + 触底续载迷你骨架）+ 轮 254（捞漂流瓶 6s 超时提示「没捞到」 + 修「切走再回来旧弹窗复活」：捞网会话代际 fishGen）+ 轮 255（英文文案全面精简：药丸溢出 ×7 + 占位去重 + 任务名 ×2 + 长描述 ×13 + .bcl-chip 防御 CSS）+ 轮 256（无声错误上报信标：beacon.js + Worker /api/client-log）+ 轮 257（4 条已知失败测试清零：seo T38/39/42 无尾斜杠口径 + uifix T23 现口径）+ 轮 258（新工具 i18n-usage-test 死键/漏键检查 + 清掉 79 个死键）+ 轮 259（根目录临时文件大扫除 + .gitignore 补 _scratch/_*.png）+ 轮 260（可用性监控就绪：/api/health 进 live-check + README 配置说明）+ 轮 261（装扮穿戴按身体部位锚定 pos/posBy：废弃舞台顶 dy、锚进 PetMotion 随宠跳动、兔/恐龙/水獭 posBy 覆盖；另修失败构建 closeBundle 踩坏全部预渲染的守卫 + zh 首页正文语言 + home.companions.hall 缺键恢复 + 挪正 FavoritesView 交叉嵌套结构）+ 轮 262（「不跟手」全局治理：红点即时递减 badgeLocal + refreshBadge({after}) 串行修竞态；收藏独立页 /favorites + 写穿缓存 favCacheInsert；评论发送/删除乐观化 pending 临时行）。App 端要重打包装机（随轮 250/251 待办）。
 - **上一批（已提交已部署）**：轮 239~252 攒批：已提交 `0113d6e`（+文档 `3899f5b`）/ 已部署 Version `51feda2f`（入口 `index-DzmDi8IU.js`，live-check 14/14，本地=线上）；`MIGRATION_wall_search.sql` 待用户 SQL Editor 整份执行（不跑也降级可用）。
 - **当前任务**：**轮 146（暖心墙示例帖全清 + 推荐档分级放宽 + 月档改滚动 30 天）待部署** —— 验收点：`/community` 停在「推荐」档应看到大量真实老帖（不再是示例帖），跨天均匀不霸屏；「本月」档 = 前 30 天。遗留待用户拍板：库里 9/24 有 47 条 `〔压测 #xxx〕` 灌水帖，是否清理（删数据需用户明确指示）。
@@ -3901,6 +3901,170 @@ style.css / CommunityView.vue(头像接线)。
 
 **状态**：**待提交待部署（攒批）**。
 
+### 轮 297 · App 版本管理 + 版本检测更新（待提交待部署）
+
+**用户点单**：「做一下app的版本管理功能，以及版本检测更新的功能」
+
+**先盘点现状（别重复造轮 238 已有的东西）**：轮 238 已经建好 `app-releases` **公开桶**（`MIGRATION_app_release.sql:11` `public = true`，18-19 行 `for select using (bucket_id='app-releases')` 任何人可读）、管理中心 `uploadApk()` 上传、下载按钮与二维码固定指向 `/sb/storage/v1/object/public/app-releases/warm-paws.apk`。
+
+**缺的三样**：
+
+| 缺口 | 后果 |
+|---|---|
+| `android/app/build.gradle:10-11` 恒 `versionCode 1` / `versionName "1.0"` | 客户端根本不知道自己是第几版，无从比较 |
+| `appReleaseMeta()` 只返回 `{sizeMb, when}` | 上传包时**不登记版本号**，服务端也说不出「最新是几」 |
+| 没有任何检查更新的代码 | 就算知道有新版也无处提示 |
+
+**设计决策（三个，都值得记）**：
+
+**① 版本登记放 Storage 的 `version.json`，不建表、不写 RPC。** 子代理的原始方案是「建 `app_releases` 表 + `app_latest_get()` RPC + 授 anon + RLS 策略」。**我否掉了**：`app-releases` 桶**已经是 public**，一个公开 JSON 就能让任意客户端（含**未登录**的 App 用户）匿名读到最新版本 —— 建表等于凭空多出一个权限面、多一份 RLS 要审、还要用户先去 Supabase 跑迁移（这个项目里迁移是老大难）。**且 `version.json` 与 APK 同桶、同一次上传动作写入，包与版本号永远同一批上线**，不存在「传了新包却忘了登记版本」的中间态。
+
+**② 版本号权威 = `build.gradle`，用 vite 插件在构建期烤进产物。** 手填两处必漂移，所以 `vite.config.js` 新增 `appVersion()` 插件，构建期读 gradle 的 `versionCode`/`versionName` 注入 `__APP_VERSION_CODE__`/`__APP_VERSION_NAME__`。**读不到 gradle 时退 `package.json` 的 version**（纯 web 构建也能出包），再退不到给 `{code:"0"}`。产物已验证：`function C$(){try{const e="1",t="1.0"` —— 插件确实读到了 gradle 里的值。
+
+**③ 只有 App 壳才谈「更新」。** `version.json` 描述的是 **APK** 的版本，不是 web 构建。网页端「发现新版本」只会让人困惑（他刷新就是最新了）。所以：自动弹窗**仅 App 壳**（`isApp()` 闸），网页端只在设置页给版本行 + 手动检查。
+
+**⚠ 版本号不一致的语义要认**：`versionCode` 必须与 `build.gradle` 一致，否则比较无意义。让管理员手填两个数字太容易错，所以 `nextCode = 已登记 code + 1` **自动算**，界面上明写「下一个 versionCode: {n} —— 请同步写进 android/app/build.gradle」，不让人猜。
+
+**不碰 `App.vue`（另一个 AI 的地面）**：自动弹窗的挂载点放 `main.js`，用 `createApp(UpdateDialog, {...})` 挂一个**独立小 app** 到 body。`UpdateDialog` 只依赖 `naive-ui` 局部导入 + `i18n.t()` 纯函数，不需要 router/全局状态，独立实例完全够用。卸载时连 host 节点一起摘掉。
+
+**节奏**：`requestIdleCallback`（4s 兜底）才跑检查 —— 检查更新是锦上添花，绝不抢首屏带宽与主线程。
+
+**⚠ 一条被测试逼出来的真缺陷（不是措辞问题）**：我最初把「没查到」和「已是最新」合并成一句「已经是最新版本了」。`i18n-usage-test` 的死键检查立刻报 `appUpdate.checkFail`/`found` 未使用 —— 但**真正的问题不是死键，是这句话在骗人**：离线 / 迁移没跑 / 还没登记时，点「检查更新」会得到一句它根本没验证过的断言。改为按 `reason` 分流：`up-to-date` 才说「已经是最新」，其余（`no-latest`/`unknown-current`）说「暂时没能检查到,稍后再试。」。已加 2 条测试钉死这个分流。
+
+**其余守则**（都进了测试）：`checkForUpdate` **绝不抛错**（三处失败路径一律 `return null`，外层再兜 try）；比较用 `latest.code <= current.code`（管理员把登记**回退**了不该逼用户「降级」）；`takePromptOnce(code)` 同版本同会话只提示一次（否则每次切后台回来都弹窗），记的是 code 不是布尔开关 —— 推了新版本 code 变了就该再提示；`resetPromptGate()` 给手动检查放行；版本登记 `cache: "no-store"`（传了新包要立刻能查到）；弹窗 `n-modal` **显式给宽度**（轮 40 在 BottleView 踩过，不给会被容器撑满，实测 480px）。
+
+**强制更新**：`force` 时 `:closable="!force"` + `:mask-closable="!force"` + 不渲染「稍后再说」——**没有 ×、点遮罩也关不掉**，只剩「去更新」+「本次更新必须安装后才能继续使用。」。
+
+**浏览器实测（localhost:4173 旧 preview 进程在吐新构建，`vite preview` 每请求读盘）**：
+
+| 场景 | 结果 |
+|---|---|
+| 设置页 | 渲染出「📱 版本 1.0 / 检查更新」—— gradle→vite→前端全链路通 |
+| 点检查（无 version.json） | 「暂时没能检查到,稍后再试。」**没谎报最新** |
+| 拦截 fetch 喂 `{versionCode:2, versionName:"1.1"}` | 弹窗「版本 1.0 → 1.1 / 更新内容 / 修复消息页打开慢 / 稍后再说 / 去更新」，宽 **480px**，行下留「发现新版本:1.1」 |
+| 喂 `force:true` | **无 ×、无「稍后再说」**，点遮罩 `stillOpen: true`（关不掉） |
+| 网页端冷开 | 没自动弹 —— `isApp()` 闸生效 |
+
+**生产取证**（`_scratch/probe-appver.mjs`）：`warm-paws.apk` → **206**，桶存在、公开可读、ZIP 魔数 `PK` 是真包；`version.json` → **404 NoSuchKey** —— **不是桶不存在、也不是策略拒绝，就是这个对象还没写**。正是设计好的降级态：桶已就位、登记未写 → 客户端静默。
+
+**⚠ 未端到端验证的部分（说清楚不装）**：管理端「写入 version.json」这条**没有实测过** —— 生产桶的写入策略要求 `admin_users` 白名单，我手上没有管理员凭据。风险很低（`appReleasePublishMeta` 与已上线的 `appReleaseUpload` 同桶、同 POST、同 `authHeaders`，唯一差别是 JSON blob 与文件名），但**第一次管理员上传时请盯一眼**是否成功写出 `version.json`。
+
+**包体积**：index 718 → 723 KB（+5KB），`naive` 仍是独立 chunk（UpdateDialog 里的 NButton/NModal 落在 manualChunk）。
+
+**+ 轮 301（评论计数三处口径对齐：软删行不计——countsFromRows 跳过 deleted_at/deleted + Worker/直连 listCommentPostIds 改 deleted_at is.null 带老库回退 + MIGRATION_comment_counts_301.sql 两 RPC 聚合过滤**；回复守卫收口 comments.replyBlocked/replyTarget/buildCommentRow 纯函数（G 组 3 单测锁，两视图三处守卫改调，行为零变）；迁移自检 migrationCheck.js 纯层 + 3 单测，AdminView 接线因并行编辑延后；轮号 299/300 被占退 301）** —— 全量 48/48 + undef 0 + tdz 0。详见文末 F 区轮 301。**⚠ 并发提示**：**另一会话已在并行编辑 `jiaojie.md`**（轮 298 条目里写着「另一会话已在 main.js 用掉 297 做 App 更新检查」）。我的轮号 **297 已被对方确认占用**，它自己退到了 298。两轮改的文件不重叠（我：main.js/vite.config/db*/appVersion/UpdateDialog/Settings/Admin/i18n；它：CommunityView/PostDetailView）。
+
+**测试**：新建 `tools/app-version-test.mjs` **64 项**（版本权威与注入 / 取不到合法版本返回 null / `<=` 比较 / 同版本只提示一次 / **查不到≠已是最新** / 弹窗显式宽度 / 强制更新不可关 / 走 `@capacitor/browser` 不裸 `window.open` / **只在 App 壳弹且 App.vue 里零接线** / 双适配层成对 / i18n en-zh 成对）。跑批器自动扫 `tools/`，无需登记。
+
+**验证**：tdz 0 · undef 0 · build EXIT=0 · `app-version-test` 64/64 · `i18n-usage-test` 2/2 · **全量 47/47 OK、0 FAIL**。
+
+**改动文件**：`vite.config.js`（`appVersion()` 插件）、`src/utils/appVersion.js`（新建）、`src/components/UpdateDialog.vue`（新建）、`src/utils/api/db.js`（`APP_RELEASE_META_URL`）、`db.supabase.js` / `db.gateway.js`（`appReleasePublishMeta` 成对）、`src/main.js`（`scheduleUpdateCheck`）、`src/views/SettingsView.vue`（版本行 + 手动检查）、`src/views/AdminView.vue`（版本名/说明/强制更新 + 随包写登记 + 本组件新增首个 `<style scoped>`）、`src/i18n.js`、`tools/app-version-test.mjs`、`README.md`。
+
+**状态**：**待提交待部署（攒批）**。**生产 `version.json` 尚未写入** —— 需管理员在管理中心传一次带版本信息的 APK（或直接往桶里放 `version.json`）才会开始有更新提示；在此之前客户端全程静默、无任何副作用。
+
+#### 轮 297b · 用户追加两点：按钮居中 + 非必须更新不许自动弹
+
+**用户点单**：「① 这个按钮移到中间。② 上传apk时候给个按钮，是必须更新，还是非必须更新，**只有在必须更新的时候**，用户那里才在下次打开的时候跳出这个弹窗提示」
+
+**① 按钮居中**：`.upd-acts` 的 `justify-content: flex-end` → `center`。实测（弹窗宽 480）：按钮中心 X **358** = 弹窗中心 X **358**，偏移 **0**。非强制时两个按钮成组居中（「稍后再说」-35 /「去更新」+42，对称）。
+
+**② 只有「必须更新」才自动弹**（这条改的是**行为**，不只是外观）：`main.js` 的 `checkAppUpdate` 加 `if (!r.force) return;`。此前**任何**新版都会在启动时弹窗 —— 非强制更新用户自己决定什么时候装，每次开 App 弹一个窗只会招人烦。现在非强制的**完全不自动弹**，只在设置页「检查更新」里被动发现。语义因此变成：
+
+| | 启动时自动弹 | 弹窗可关 | 设置页手动检查 |
+|---|---|---|---|
+| 必须更新 `force:true` | ✅ | ❌（无 ×、无「稍后再说」、点遮罩关不掉） | ✅ |
+| 非必须更新 `force:false` | ❌ | ✅（× 与「稍后再说」都在） | ✅ |
+
+**③ 管理端改成真·二选一**：原来只是个埋在输入框右侧的勾选框，容易漏看。改成两张可点卡片（`role="radiogroup"`，带说明文案）：「非必须更新 —— 不自动弹窗，用户可在设置页自行检查」/「必须更新 —— 下次打开 App 自动弹出，且无法关闭」。
+
+**④ 这一条超出点单，但必须做 —— `force` 改白名单判定**：我原来写的是 `force: !!j.force`。而 **`!!"false"` 是 `true`** —— 万一哪天有人手改 `version.json` 把它写成字符串 `"false"`，全体用户下次开 App 就会被一个**关不掉**的窗糊脸，只能重装才躲得开。改成 `j.force === true || j.force === 1 || j.force === "true"`，其余（含缺失/`null`/`"false"`/`"0"`/`""`/`{}`）一律 false。**宁可少弹一次，绝不误弹一次。** 浏览器已实测喂 `force:"false"` 字符串 → 弹窗**可关**（有「稍后再说」、无必装提示）。
+
+**`v-model` + `:value="true"` 绑布尔 radio 会不会退化成字符串？** 这个开关决定用户会不会被打扰，没敢靠印象 —— 直接查了装的 Vue 源码（`@vue/runtime-dom`）：`vModelRadio` 比的是 `looseEqual(value, vnode.props.value)`（**vnode 里的原始值，不是 DOM 字符串**），change 时 `getValue(el)` 返回 `el._value`，而 `patchDOMProp` 在 `key === "value"` 时执行 `el._value = value` **保留原始布尔**。链路 `:value="false"` → `el._value = false` → v-model 赋回真布尔 ✓。
+
+**⚠ 一条自我纠正（我先前的验证是假阳性）**：我早先在浏览器里断言「强制更新时没有关闭 ×」，用的选择器是 `.n-card__close` —— **类名写错了**，真实是 `.n-card-header__close`。于是**强制与非强制两种情况下都返回 false**，我把两者都解读成了「没有 ×」。用正确选择器双向复测，**结论仍然成立**（force=true 时该元素**根本不存在**，force=false 时 `display:flex` 可见、点击后节点被移除），但过程是错的。教训：**断言要双向验证** —— 只测「坏情况下为 false」而没测「好情况下为 true」，选择器写错时会得到一个看起来完全正常的绿灯。
+
+**验证**：tdz 0 · undef 0 · build EXIT=0 · `app-version-test` 64→**77**/77 · `i18n-usage-test` 2/2 · 全量 **47/47 OK、0 FAIL** · page-smoke 13/13。
+
+**改动文件**：`src/components/UpdateDialog.vue`（按钮居中）、`src/main.js`（`if (!r.force) return;`）、`src/views/AdminView.vue`（二选一 radiogroup + 首个 `<style scoped>` 扩充）、`src/utils/appVersion.js`（force 白名单）、`src/i18n.js`（`force` → `forceCap`/`optNormal`/`optNormalHint`/`optForce`/`optForceHint`，en+zh）、`tools/app-version-test.mjs`（+13）、`README.md`（64→77）。
+
+#### 轮 297c · 回头复查自己：两个真问题 + 一份发版顺序
+
+**触发**：用户问「还有什么需要做的，你检查一下给些建议」。回头逐条复查轮 297 自己写的代码，查出**两个真问题**（都已修）。
+
+**问题① `versionCode` 用「已登记 + 1」推算是错的设计 —— 会死循环。**
+
+原实现 `nextCode = (已登记 code || 0) + 1`。它只在「每次发版恰好 bump 1、且从不重传同一个包」的理想流程下才对。偏离一次就出事：同一个 versionCode 重传了包（比如只重签没 bump），登记变成 N+1，而装上去的包里还是 N → 客户端算出「还有新版」→ 再装还是 N → **无限循环**。再叠上轮 297b 的「必须更新」，用户会被一个**永远关不掉**的窗拦死，只能重装。
+
+**改成**：`versionCode` 默认 = **当前网页构建**的值（`currentVersion()` → vite 从 `build.gradle` 读来的那个，即 `buildCode`）。管理员传的包几乎总是他本地刚打的，那个 APK 里的 versionCode 就是 gradle 的值 —— **抄过来永远对，而「+1」是在猜**。同时加两道护栏：
+- **上传前校验** `versionCode` 必须是正整数，非法直接拦下不传 —— 否则包已经换了、登记却写不进去，下载链接指向新包而 `version.json` 还是旧的，这种中间态最难查。
+- **不一致即警告**：填的值 ≠ 当前构建值时显示「你填的是 {x}，当前网页构建是 {b}。请确认 APK 里确实是 {x}，否则用户会永远困在更新弹窗里」。这正是「用旧网页传新包」的高发场景。
+
+**问题② 强制更新弹窗没吞系统返回键。**
+
+`App.vue:165-173` 的 `backButton` 监听先问 `runBack()`（拦截栈），没拦住就 `router.back()`（非根视图）或 `minimizeApp()`（根视图）。我的弹窗**没注册进栈** —— 强制更新时按返回，弹窗底下那页会跟着变，看着像「按返回就能绕过更新」。
+
+**修法**：`UpdateDialog` 自己在 `show && force` 时 `pushBack(() => true)` 吞掉，关闭时 `popBack`，`onBeforeUnmount` 必弹栈（**拦截器泄漏会让之后所有返回键都被吞掉，App 直接变砖** —— 这条也进了测试）。放在组件里而不是 `main.js`，这样设置页手动检查弹出的强制窗同样受保护，不写两遍。
+
+**顺带补了 README 的「发安卓包固定顺序」**（6 步）：bump gradle → `build` → `cap:sync` → `apk:web` → 管理中心传包（versionCode 默认已对，别手改）→ 跑测试。**第 2 步省不得** —— 它决定了管理页里的默认值对不对。
+
+**复查过、确认不用改的**：
+- **返回键关不掉强制窗**（吞掉前）：虽然底下页会变，但弹窗本身一直在，没有「绕过」。修的是观感与语义，不是漏洞。
+- `takePromptOnce` 是模块级内存态：杀掉 App 重开 → 内存清空 → 会再弹 ✓；不杀一直挂着 → 不再弹，但弹窗挡着底下所有操作，用户实际上用不了 App，只能杀掉或去更新。可接受。
+- 服务端登记回退（code 变小）：`latest.code <= current.code` → 不提示，不逼用户降级 ✓。
+- **`v-model` + `:value="true"` 绑布尔 radio**：查了 `@vue/runtime-dom` 源码确认无坑 —— `vModelRadio` 比的是 `looseEqual(value, vnode.props.value)`（vnode 原始值），change 时 `getValue(el)` 返回 `el._value`，而 `patchDOMProp` 在 `key === "value"` 时执行 `el._value = value` 保留原始布尔。
+
+**剩下没做、需要你决定或动手的**：
+1. **`build.gradle` 还是 `versionCode 1` / `versionName "1.0"`** —— 第一次发版前必须 bump，否则客户端认为自己已是最新，整套功能等于没开。
+2. **`appReleasePublishMeta`（写 version.json）仍未端到端实测** —— 生产桶写入策略要 `admin_users` 白名单，我手上没凭据。风险低（与已上线的 `appReleaseUpload` 同桶同 POST 同 header），但**第一次传包时请盯一眼**。
+3. **APK 安装链路没在真机验证过** —— App 壳里「去更新」用 `@capacitor/browser` 打开 APK 地址，Android 10+ 还要用户给「安装未知应用」权限，且从内置浏览器下载后得手动去装。这条我无真机测不了，**建议你走一遍**。
+4. **没有版本历史** —— 只存最新。以后要回滚得改成数组，目前够用。
+5. **生产 `version.json` 尚未写入** —— 404 是设计好的静默降级，写入后才会开始有更新提示。
+
+**验证**：tdz 0 · undef 0 · build EXIT=0 · `app-version-test` 77→**84**/84 · `i18n-usage-test` 2/2 · 全量 **47/47 OK、0 FAIL** · page-smoke 13/13。
+
+**改动文件**：`src/views/AdminView.vue`（`buildCode` 取代 `nextCode` + versionCode 输入框 + 上传前校验 + 不一致警告 + `.rel-code`/`.rel-warn` 样式）、`src/components/UpdateDialog.vue`（返回键拦截栈）、`src/i18n.js`（`codePh`/`codeBad`/`codeDiffers` 新增，`codeHint` 改写，en+zh）、`tools/app-version-test.mjs`（+7）、`README.md`（发安卓包固定顺序）。
+
+#### 轮 297d · 发版 bump 固化成一条命令（`npm run release -- 1.2`）
+
+**触发**：用户问「等部署发包的时候会自动改吗」。**答：不会，纯手工** —— 查了 `tools/`，三个脚本对 gradle 全是**只读**：`build` 读 versionCode 烤进网页端、`cap:sync` 不碰、`apk:web` 只复制 APK 文件。唯一提到 build.gradle 的是测试，只断言「有这两行」。**没有任何东西会帮你 +1。**
+
+**一个刻意的设计判断：绝不让 `npm run build` 自动 bump。** 看着方便，实际是坑 —— 开发期天天跑 build，自动 bump 会让 versionCode 变成「今天构建了几次」，与发了几个版本毫无关系；更糟的是它必然与用户手机上**已经装着**的 APK 对不上，而那正是死循环的源头。**版本号必须是人决定的发版动作，不能跟着构建走。**
+
+**改法**：新增 `tools/bump-version.mjs` + `package.json` 的 `release` 脚本。一条命令把最容易漏、最容易写错的那步固化下来：
+
+```
+npm run release -- 1.2     # versionCode 1 -> 2, versionName "1.0" -> "1.2"，并打印后续五步
+npm run release -- 1.2 --dry-run   # 只打印，不落盘
+```
+
+**脚本的几处防线**：
+- **纯函数 `applyBump()` 导出** —— 核心逻辑可被单测直接喂假文本，不必动真文件。
+- **版本名白名单** `^\d+(\.\d+){0,3}([-+][0-9A-Za-z.-]+)?$`：`../evil`（路径注入）、空串、`abc`、`1 2`、`1.2/../../x` 一律拒。宁可报错也别写出个 JSON 读不回来的东西。
+- **gradle 缺任一行 → 返回 null**，不猜一个出来。
+- **写盘后回读校验**：`writeFileSync` 没抛异常 ≠ 写对了，回读比对不上就 `VERIFY_FAILED` 退出。
+- **`--file=`** 让测试用临时副本跑，绝不碰真 `build.gradle`。
+- 所有失败路径 `process.exit(1)`，CI / 脚本链才拦得住。
+- 输出**以 ASCII 行为主**（`[bump-version] OK  versionCode 1 -> 2 ...`）—— 项目已知 PowerShell 看中文会 GBK 乱码，关键数字必须不靠中文也能读。
+
+**实测**（全程用 `_scratch/gradle-echo.tmp` 临时副本，真文件未动）：
+
+| 用例 | 结果 |
+|---|---|
+| 无参数 | 打印 USAGE + `CURRENT versionCode 1 versionName "1.0"` + exit 1 |
+| `1.2 --dry-run` | `DRY_RUN versionCode 1 -> 2 ...` / `NOTHING WRITTEN` / exit 0 |
+| `"../evil"` | `BAD_VERSION_NAME` + exit 1 |
+| 空串 | 当作没传参数 → USAGE + exit 1 |
+| 连跑两次 `1.1` 再 `1.2` | `1 -> 2`、`2 -> 3`，稳定递增 |
+| 写入结果 | 缩进原样保留（8 空格）、`applicationId` 不受影响、总行数不变、无重复行 |
+| 真 `build.gradle` | 仍为 `versionCode 1` / `versionName "1.0"` ✓ |
+
+**验证**：`app-version-test` 84→**117**/117 · 全量 **47/47 OK、0 FAIL** · build EXIT=0。
+
+**改动文件**：`tools/bump-version.mjs`（新建）、`package.json`（`release` 脚本）、`tools/app-version-test.mjs`（+33：纯逻辑 / 版本名白名单 / 缺行拒绝 / CLI 守卫 / **真文件未被测试改脏**）、`README.md`（发版顺序第 1 步改成一条命令 + 工具清单）。
+
+**当前状态**：`build.gradle` 仍是 `versionCode 1` / `versionName "1.0"` —— **保持不动**，bump 属于发版动作，等你决定什么时候发。届时跑 `npm run release -- <版本名>` 即可。
+
+
+
 ### 轮 298 · b 删一级评论后，点它下面 cde 的「回复」没反应（轮 285 守卫连坐）（待提交待部署）
 
 **用户报障**：「b 删除了自己的评论，cde 下面的二级评论还在，但是别人无法再点 cde 的评论进行回复了」——轮 285 的软删占位本身工作正常（回复没被 cascade 删掉），坏在回复入口的守卫。
@@ -3919,3 +4083,67 @@ style.css / CommunityView.vue(头像接线)。
 
 **验证**：全量 46/46 + tdz 0 + undef 0 + arity 8/8 + comment 40/40 + post-detail 17/17 + app-shell 66/66 + wall 37/37 + build EXIT=0 + page-smoke 13/13。
 **状态**：**待提交待部署（攒批）**。
+
+---
+
+### 轮 300 · 首页「大厅此刻」四类人数：4 次并行查询合成 1 条 RPC（待提交待部署）
+
+**用户要求**：「你先合并首页 4 个状态计数 —— 4 个并行查询可并成 1 个 RPC」。
+
+**现状（两条链路各打 4 次）**：直连模式 `db.supabase.js.countRecentStatuses` 发 **4 次** `HEAD + prefer:count=exact`（4 个来回、扫 4 次 `profiles`）；网关模式 `worker/api.js /api/statuses/counts` 把**同样的 4 次上游 HEAD** 包进来——对外只算 1 次请求，上游仍是 4 次。`TodayPane` 轮 291 的注释记着实测：这 4 条 head-count 约 **1.25s**，叠在状态 PATCH 落库之后，**点一下到数字变要 2118ms**。数字其实也是纯本地的事（`bumpCounts` 已同帧预扣），网络那一段就是这 4 次。
+
+**改法**（新 RPC `status_counts(p_since timestamptz)`）：
+1. **`MIGRATION_status_counts.sql`（新）**：`VALUES` 造出四行状态骨架 → `LEFT JOIN profiles` 聚合，一条 SQL 出全四类（**0 人的状态也返回一行 `cnt=0`**，不会少行）；`array_position` 钉死顺序 `working → studying → sleepless → chilling`（前端按行 `v-for` 渲染，顺序不能飘——老链路靠 `Promise.all` over 字面量天然保序，合并后必须显式钉）。
+2. **刻意不写 `security definer`**（Postgres 默认 = **security invoker**）：RLS 照常生效，调用方能看到哪些 `profiles` 行就数哪些——**与旧的 4 次 HEAD 完全同口径**。写 definer 会让匿名/登录的可见范围变掉、人数对不上。返回列只有 `status`/`cnt`，**零身份字段**，与「大厅只返回精确人数」的约定一致。
+3. **双链路同改**：`db.supabase.js` 与 `worker/api.js` 都先试 RPC；**模块级能力标记 `statusCountsRpc` 只试一次**——迁移没跑时若每趟都先白试一趟 RPC，反而比旧链路**多一个来回**（TodayPane 有 pending 补跑循环会连着触发）。
+4. **降级判定复用现成的 `authRules.isMissingFnError`**（轮 285 为删评论写的，`PGRST202` code+message 双认）——**只认「函数还没建」**，别的错误照旧上抛。Worker 是零依赖单文件不能 import，按同一份 code 口径重述 `MISSING_FN_CODES`（`PGRST202/42883/42703/42P01`）。
+5. **绝不补 0**：`normalizeStatusCounts` 要求**四行齐、状态合法、无重复、`cnt` 是非负安全整数**，缺行/多行/脏值/`null` 一律抛——把「没取到」说成「没人在」比直接报错更糟（旧链路的 `Number.isSafeInteger` 守卫语义原样保留）。
+
+**✅ 迁移已执行（用户 2026-10-15 在 Supabase 跑过）—— 三道线上取证全绿**：
+① **RPC ↔ 旧链路对账**（`_scratch/verify-status-counts-rpc.mjs`，anon key）：返回 `working=1 / studying=1 / sleepless=0 / chilling=0`，与旧的 4 次 `HEAD + count=exact` **逐格相等**；顺序正确、`cnt=0` 的两行照样出（LEFT JOIN 生效）、`grant execute … to anon` 也生效。
+② **生产 Worker 路径直探**（`_scratch/probe-sb-rpc.mjs`）：`POST https://warmpaws.de5.net/sb/rest/v1/rpc/status_counts` 连打 3 次 **6/6 全 200**（直连上游对照同样 6/6 200），返回体逐字正确。
+③ **端到端 DOM**（`tools/web-probe.mjs --serve=dist --file=./tools/_expr_hall_counts.js`，真无头 Edge）：首页 `.hall-now` 真渲染出 4 格 `1 / 1 / 0 / 0`，顺序 `工作中·学习里·睡不着·随便待着`，与①②一致。
+
+**网络层对照（`_scratch/net-capture.mjs`）**：旧抓包是 4 类 × 2 轮 = **8 次** `profiles?select=id&status=eq.*`；现在旧路径 **0 次**、改为 **2 次** `POST /sb/rest/v1/rpc/status_counts`（`200` + `204`）。**「2 轮」不是我引入的**——`TodayPane.vue:59-75` 轮 291 的「记账待补跑」设计（在途时 `statusCountsPending=true`，当前趟跑完 `do/while` 立刻补跑一趟，保证末趟是服务端真相），旧抓包同样是两轮。那条 **204** 是第二趟（被顶替）请求被客户端 abort 的产物：`probe-sb-rpc.mjs` 直打端点 6/6 全 200，且旧抓包里 4 条 HEAD 也全是 204——**改动前就有，与本次无关**。降级链路（未跑迁移才走的 4 次 HEAD）仍在且被单测钉死，只是本机与线上都已不再走。
+
+**撞号（并发会话，已解决）**：注释最初写成 **299**，已被对方占用——它有 `MIGRATION_comment_counts_299.sql`（文件名自带轮号），并改了 `SUPABASE_SETUP.sql` / `src/utils/comments.js` / `CommunityView.vue` / `db.supabase.js:292` / `worker/api.js:393`。本轮 **8 处全部退到 300**（migration 1 + README 1 + `worker/api.js` 3 + `db.supabase.js` 2 + `status-counts-test.mjs` 1），grep `轮 299` 现在只剩对方的 10 处。
+
+**全量回归（中途红灯 → 收尾转绿，全程与本轮无关）**：本轮中途一度出现 **3 处红灯**，取证后**全归对方在飞的评论软删改动**——`api-contract-test.mjs`（假 client 没有对方新加的 `.is("deleted_at", null)` → `TypeError: .is is not a function`）+ `worker-test comment-post-id`（期望 `select=post_id`，源码已被对方改成 `select=post_id,deleted_at`）+ `post-detail-test`（失败文案自报是 `PostDetailView 轮 298 守卫`，第一轮跑时还是绿的）。**取证**：本轮早些时候读 `listCommentPostIds`（原第 248 行）**还没有** `.is(...)`，是对方在我读之后加的；三处栈/文案全落在 `comment-post-ids` 与 `PostDetailView`，与 `status_counts` 毫不相干——**我方始终没动对方断言**（会撞车）。**收尾时对方已补齐自己的测试，全量转绿**：`run-all-tests` **48/48 OK · 0 FAIL**（对方还新增了 `migration-check-test.mjs`，46→47→48）。**本轮自证**：覆盖我这两条链路的 `gateway-contract-test` **93/93** 全程绿（Worker `/statuses/counts` 形状没破）、`status-test` **56/56** 绿（双适配器契约照旧）。
+
+**改动文件**：`MIGRATION_status_counts.sql`（新）· `SUPABASE_SETUP.sql`（新装库镜像同款函数 + `grant`）· `src/utils/api/db.supabase.js`（helpers + `countRecentStatuses`）· `worker/api.js`（常量 + `statusCountsByRpc` + 路由入口）· `tools/status-counts-test.mjs`（重写 9 场景）· `README.md`（迁移清单 #14 + 工具说明）。
+
+**验证**：`node tools/status-counts-test.mjs` **96 checks / 0 fail**（RPC 成功形状与参数名 / 能力标记只试一次 / 迁移未跑回退 4 次 HEAD 且不白试 / 非「函数缺失」不降级 / 上游不可用与 **8 例**脏值一律报错不补 0 / 非法 since 零上游调用 / 迁移 SQL ↔ 双实现 ↔ `SUPABASE_SETUP.sql` 三处同源且都是 invoker）+ `undef-check problems=0` + `tdz-check problems=0` + `build EXIT=0`（`seo-routes 27 pages`、`env-guard VITE_SUPABASE_URL 已进产物`）+ 全量 `run-all-tests` **48/48 OK · 0 FAIL**（中途 3 处红灯全归对方在飞，收尾时对方已补齐并转绿，见上）。
+**状态**：**待提交待部署（攒批）**；`MIGRATION_status_counts.sql` **用户已执行、线上已生效**（对账/DOM 三道取证全绿，见上）。
+### 轮 301 · 评论计数口径对齐（软删不计）+ 回复守卫/载荷纯逻辑收口 + 迁移自检层（待提交待部署）
+
+**背景（三笔债）**：① 轮 285 删评论改软删后，**计数三处口径没跟上**——`wall_feed_page`/`wall_search_posts` 聚合与 `listCommentPostIds`（Worker + 直连）仍 count 全部行，前端点开明细按 `liveComments()`（剔软删）显示 → 用户看到「标题 5 条、点开 3 条」；② 轮 298 修的「墓碑守卫」判据（`cm.deleted && !rp` 才拦）在 CommunityView/PostDetailView **两处手写**，极易再写岔（轮 285 连坐 bug 就是守卫写岔的产物）；③ 迁移越堆越多，跑没跑全靠口头确认（轮 295 坏 RPC 就是这么漏到生产的）。
+
+**改法**：
+1. **计数对齐（软删行一律不计）**：`wall.js countsFromRows` 聚合时跳过 `deleted_at/deleted` 行；`worker/api.js listCommentPostIds` 改 `select=post_id,deleted_at&deleted_at=is.null`，老库无列（400）退回旧查询；直连 `db.supabase.js.listCommentPostIds` 同款 `.is("deleted_at", null)` + 42703/400 退回；新增 `MIGRATION_comment_counts_301.sql`：两 RPC 的评论子查询加 `deleted_at is null`（`create or replace`，幂等，**待用户 SQL Editor 执行**；不跑=标题数偏大不挡用，跑了=标题与明细一致）；`SUPABASE_SETUP.sql` 两函数同源同步。
+2. **回复守卫/载荷收口**（`src/utils/comments.js` 新增纯函数，`tools/comment-test.mjs` G 组锁）：`replyBlocked(cm, rp)` = 轮 298 判据唯一来源（直接回墓碑拦、回墓碑下活回复放行），两视图三处守卫改调它；`replyTarget(cm, rp)` 定 `parentId/replyTo`（两级封顶语义）；`buildCommentRow(...)` 组装写库载荷（parent_id 恒取一级 dbId、reply_to_name 优先级 rp 作者 > 显式 at > 一级作者）。**刻意不整函数搬家**：两视图发送体的草稿键/持久化/乐观行形状分叉太大，只抽纯逻辑，视图行为零变。
+3. **迁移自检**（`src/utils/migrationCheck.js` 新增 + `tools/migration-check-test.mjs`）：`probeRow/probeSummary` 纯归一化（脏输入一律按未通过计——不许把「没测到」说成「通过了」）+ `MIGRATION_PROBES_301` 三项探测定义（comment_delete / feed 修后版 / counts_301，各写清「怎么测」）。**AdminView 页签接线未做**——另一会话在并行编辑 AdminView.vue/i18n.js（轮 297 更新检查），零碰撞优先，等对方合完再接。
+
+**验证**：全量离线 `48/48` 套 0 FAIL（含 `comment-test` 43/43 新增 G1/G2/G3、`migration-check-test` 3/3、`worker-test` 306/306 含 comment-post-ids 软删 URL + 老库回退两条新断言、`api-contract` 99/99 含 `.is()` 形状 + 42703 回退、`post-detail-test` 18/18 守卫断言同步收口后形状、`status-counts-test` 96/96 对方链路不受影响）+ `undef-check problems=0` + `tdz-check problems=0`。**未 build/部署（攒批等用户发话）**。
+
+**改动文件**：`MIGRATION_comment_counts_301.sql`（新）· `SUPABASE_SETUP.sql` · `src/utils/wall.js` · `src/utils/comments.js` · `src/utils/migrationCheck.js`（新）· `worker/api.js` · `src/utils/api/db.supabase.js` · `src/views/CommunityView.vue` · `src/views/PostDetailView.vue` · `tools/comment-test.mjs` · `tools/migration-check-test.mjs`（新）· `tools/worker-test.mjs` · `tools/api-contract-test.mjs` · `tools/post-detail-test.mjs`。
+
+**撞号（已解决）**：本轮最初沿用 299，发现 299 已被并行会话占用（其占位在途），按用户拍板**全部退让到 301**：迁移文件改名 `MIGRATION_comment_counts_301.sql`、全部源码/测试标记 grep `轮 299` 归零（`MIGRATION_PROBES_301`/`comment_counts_301` 键同步）。300 亦被对方占用，301 为下一可用号。
+**状态**：**待提交待部署（攒批）**；`MIGRATION_comment_counts_301.sql` **待用户 SQL Editor 执行**（不跑计数退回旧口径不挡用）。
+
+### 轮 302 · 浏览计数批量化：20 次 `wall_add_view` 合成 1 次 `wall_add_views`（待提交待部署）
+
+**起因（接轮 300 之后那次额度测算）**：测算（零源码改动、只打只读端点）的结论是——卡点是 **Cloudflare Workers 免费档 10 万请求/天**，不是 Supabase 的 5GB egress / 5 万 MAU / 500MB 库。而暖心墙首屏的请求账本（源码为准）是 **1× `wall_feed_page` + 20× `wall_add_view`**：`CommunityView.countViews` 对「今天还没看过的每条帖」`for…await` **逐条串行**发，20 条小请求就是全站请求数的最大头。标准访问（首页+暖心墙+1 帖）≈ **28 请求**/21KB；20 合成 1 → **9 请求**，免费额度容量从 ~3,520 日活抬到 **~10,900**，之后才开始撞 egress。
+
+**改法（合并，不改口径）**：
+1. **SQL**（`MIGRATION_wall_add_views.sql` 新增）：`wall_add_views(p_posts bigint[], p_viewer text)` 把循环搬进函数 —— `select distinct x from unnest(p_posts)`（同一 id 传两次只记一次，与单帖版「第二次必然 `on conflict`」等价，不承诺行序）→ 每条 `insert … on conflict do nothing` + `v_counted := found` → 计到数才 `views = views + 1` → 帖不存在该条回 `{ok:false,reason:'not-found'}`（**整体仍 `ok:true`**，不让一条坏 id 拖垮整批）→ 返回 `{ok:true, results:[{post,ok,counted,views,dislikes,removed}]}`。viewer 缺省口径与单帖版一字不差（本机匿名 id → `auth.uid()` → `'anon'`）；**`security definer`**（`wall_post_views` 不开 insert 策略，写入只能走函数）；`grant` 给 anon+authenticated（游客也计数）。`SUPABASE_SETUP.sql` 在单帖版下面**同源镜像** + grant。
+2. **纯层**（`src/utils/wallRules.js`）：`wallViewIds(list)`（正整数、去重、保序、上限 `WALL_VIEW_BATCH_MAX=100`）与 `normalizeWallAddViews(data)`（→ `Map<postId,{views,dislikes,removed,counted}>`；**严格非负整数校验，`null`/`""`/小数/超安全整数/重复 post 一律上抛** —— 红线同 `status_counts`：绝不「补 0」把没取到说成 0 次浏览；`ok:false` 的行不进 map）。
+3. **双链路同改**：`db.supabase.js` 与 `db.gateway.js` 各加 `addViews(postIds, viewer)`，**两条实现都返回 Map**（RPC 不承诺行序，调用方按 id 认领）。**能力标记只试一次**（`wallAddViewsRpc` / `wallAddViewsRoute`）：迁移没跑（`isMissingFnError` 判定 / 网关 404）→ 自动退回旧的**逐帖循环**（单条失败只跳过那一条，与原来 `for…await` 口径一致），此后本会话不再白试（否则比旧链路还多一个来回）；**非「函数没建」的错误照抛**，绝不静默吞。
+4. **Worker 网关**（`worker/api.js`）：新增 `POST /api/posts/views`（body `{ids,viewer}`）—— **抢在「单帖 id」分支前拦下**（`decodeSeg("views")` 不是空值，否则会被当 id 判 400）；零依赖单文件里重述一份 `viewIds`/`normalizeAddViews`（与前端同口径）；函数没建时逐帖回退，**响应形状与 RPC 版完全一致**（调用方零改动）。⚠ **踩坑**：路由必须 `return await addViewsBatch(...)` —— `return asyncFn()` 的**异步拒绝不会被外层 `try/catch` 接住**（轮 300 的 `statusCountsByRpc` 就是为此显式 `await` 的），漏出去会是未捕获拒绝而不是 500。
+5. **调用点**：`CommunityView.countViews` 的 `for (const p of pending) await cloudAddView(...)` → `cloudAddViews(pending.map(p => p.dbId))` **一次**；本地去重（`viewStamps` / `collectViews`）保留不动，只是把发送合并了。`wall.js` 新增 `cloudAddViews`（`cloudAddView` 保留给帖子详情页单帖用 —— 那个场景本来就只有 1 条，无需批量）。
+
+**验证**：新 `tools/wall-addviews-test.mjs` **100 项**（id 整形 6 例 / 返回校验 **11 例脏值全报错** / 直连批量只 1 次上游 + Map 形状 / 能力标记只试一次 / 迁移未跑逐帖回退且形状一致 / 非缺失错误上抛 / 空列表零上游 / Worker 与网关批量 + 404 回退 / 迁移 SQL 与三处实现 + CommunityView 调用点同源）；契约测试补齐（`api-contract` 99→**102**、`gateway-contract` 93→**95**、`worker-test` 306→**309**，含批量 rpc URL+body、去重滤脏 id、空 ids 零上游）。全量 **49/49 OK · 0 FAIL** + `undef-check` problems=0 + `tdz-check` problems=0 + build EXIT=0（入口 `index-BR8vcHYa.js`）+ `page-smoke` 13/13。**未部署（攒批等用户发话）**。
+
+**改动文件**：`MIGRATION_wall_add_views.sql`（新）· `SUPABASE_SETUP.sql` · `src/utils/wallRules.js` · `src/utils/wall.js` · `src/utils/api/db.supabase.js` · `src/utils/api/db.gateway.js` · `worker/api.js` · `src/views/CommunityView.vue` · `tools/wall-addviews-test.mjs`（新）· `tools/wall-addviews-e2e.mjs`（新）· `tools/api-contract-test.mjs` · `tools/gateway-contract-test.mjs` · `tools/worker-test.mjs` · `README.md`。
+
+**状态**：**待提交待部署（攒批）**；`MIGRATION_wall_add_views.sql` **待用户 SQL Editor 执行**（不跑=前端与 Worker 自动逐帖回退，行为与现在完全一致，不挡用）。跑完可 `node tools/wall-addviews-e2e.mjs` 对账（⚠ 会真 +2 帖各 1~2 次浏览，脚本末尾给回滚 SQL）。
+

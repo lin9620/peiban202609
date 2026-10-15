@@ -26,7 +26,7 @@ import { cacheKey, cacheSet, cacheGet, swr } from "../utils/cache.js";
 import {
   CMT_KEY, addComment, removeComment, displayCount,
   canDelete, normalizeText, postKey, MAX_LEN,
-  renderTops, renderReplies, liveComments,
+  renderTops, renderReplies, liveComments, replyBlocked,
   wallTopComments, hasMoreComments, reactCount, toggleReact,
   hasReacted as cmtHasReacted, postCopyText, commentCopyText,
 } from "../utils/comments.js";
@@ -42,7 +42,7 @@ import { createWriteQueue } from "../utils/reactQueue.js";
 import {
   cloudFetchPosts, cloudFetchPostsSample, cloudFetchWallRefresh, cloudInsertPost, cloudFetchComments, cloudInsertComment,
   cloudDeleteComment, cloudSetReaction, cloudFetchCommentCounts, canUseWall, canReadWall,
-  cloudAddView, cloudToggleDislike,
+  cloudAddViews, cloudToggleDislike,
   cloudFetchMyCommentReactions, cloudToggleCommentReaction,
   cloudFavIds, cloudFavAdd, cloudFavRemove, cloudSearchPosts, favCacheInsert, favCacheRemove,
   cmtCacheKey, cmtCacheSet,
@@ -534,13 +534,19 @@ function anonKey() {
 const viewerKey = computed(() => (cloud.user && cloud.user.id) || anonKey());
 let viewStamps = {};
 viewStamps = scopeGet(VIEW_KEY, {}) || {};
-/* 把「今天还没看过的帖」告诉服务端 +1（服务端 wall_post_views 再兜一层去重） */
+/* 把「今天还没看过的帖」告诉服务端 +1（服务端 wall_post_views 再兜一层去重）
+ * 轮 302：合并成**一条**批量 RPC —— 原来这里是 for…await 逐条发，20 条帖就是 20 个串行
+ * 小请求（额度实测：全站请求数最大头，直接决定 Cloudflare Workers 免费档能撑多少日活），
+ * 而且慢链路上要跑十几秒。语义不变：同人同帖同日仍只 +1（服务端去重）。 */
 async function countViews(list) {
   const { stamps, pending } = collectViews(viewStamps, list, viewerKey.value);
   viewStamps = stamps;
   scopeSetRaw(VIEW_KEY, JSON.stringify(stamps));
+  if (!pending.length) return;
+  const got = await cloudAddViews(pending.map((p) => p.dbId), viewerKey.value);
+  if (!got) return;   /* 云不可用 / 整批失败：本次不认领（下次进页会重试），不打断阅读 */
   for (const p of pending) {
-    const r = await cloudAddView(p.dbId, viewerKey.value);
+    const r = got.get(Number(p.dbId));
     if (!r) continue;
     p.views = r.views;
     p.reacts = { ...p.reacts, dislike: r.dislikes };
@@ -1361,7 +1367,7 @@ function replyViaBar(p, cm, rp = null, e = null) {
   if (e) e.stopPropagation();   /* 不让同一击冒泡去触发「点空白收起」/整层评论接管 */
   /* 轮 298：只拦「直接回墓碑本身」（rp 为空）；点墓碑下活着的 cde 回复（rp 非空）放行——
    * 轮 285 原判断不看 rp，把整条线程的回复入口连坐拦死（用户报障「无法点 cde 的评论回复」）。 */
-  if (cm && cm.deleted && !rp) return;
+  if (replyBlocked(cm, rp)) return; // 轮 301：判据收口到 comments.replyBlocked（与详情页同源）
   if (rp && rp.deleted) return;
   if (!isMobileNav.value || (p.cloud && !signedIn.value)) {
     if (rp) openReplyTo(p, cm, rp); else openReply(p, cm);

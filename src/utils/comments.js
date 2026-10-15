@@ -105,6 +105,60 @@ export function renderReplies(all, topId) {
   return arr.filter((c) => c && typeof c === "object" && c.parentId === topId && !isDeleted(c));
 }
 
+/* ══════════ 轮 301 · 回复守卫 + 目标判定（两视图同形逻辑收口） ══════════
+ * 背景：CommunityView（replyViaBar/sendCmt）与 PostDetailView（sendCmt）各写了一份
+ *   「墓碑能不能回 + 回谁（parentId/replyTo 取谁）」—— 轮 298 刚修过连坐 bug
+ *   （判据从「cm 被删没」改成「回复目标被删没」：cm.deleted && !rp 才拦），
+ *   两处手写极易再次写岔（比如只改一处、判据回退）。
+ * 这里收口成纯函数，视图只调不动行为；单测锁口径（tools/comment-test.mjs G 组）。
+ * 注意：墓碑本身被点回复（!rp）仍拦；回墓碑下的活回复（rp 存活）放行 ——
+ *   回复仍挂同一一级评论下（parentId = cm.id），@ 的是 rp 作者。 */
+
+/** 能不能对这组目标发起回复：直接回墓碑（cm 删了且没给 rp）→ true（拦），其余 false */
+export function replyBlocked(cm, rp = null) {
+  return !!(cm && isDeleted(cm) && !rp);
+}
+
+/**
+ * 回复目标判定：返回 { parentId, replyTo }。
+ * parentId 永远是 cm.id（两级封顶，见 addComment T20）；
+ * replyTo：有 rp → rp 作者；无 rp → cm 作者（默认，调用方显式传了就用调用方的）。
+ */
+export function replyTarget(cm, rp = null) {
+  if (!cm) return { parentId: null, replyTo: "" };
+  const replyTo = rp && rp.name ? String(rp.name)
+    : cm && cm.name ? String(cm.name) : "";
+  return { parentId: cm.id != null ? cm.id : null, replyTo };
+}
+
+/**
+ * 组装一条评论/回复的写库载荷（纯函数，不碰网络/存储）。
+ * @param {object} opts { postDbId, userId, name, text, cm, rp, at }
+ *   cm = 一级评论（可空 = 直接评帖子）；rp = 被回复的二级（可空）；
+ *   at = 调用方显式记下的 @ 对象（回复一级时用，优先级高于默认）。
+ * 返回 { row, parentDbId, replyTo }：row 直接喂 insertComment；
+ * parentDbId/replyTo 给乐观行与 atName 回填用。
+ * 两级封顶：parentDbId 永远取 cm.dbId（回 rp 也不产生第三层，见 addComment T20）。
+ */
+export function buildCommentRow({ postDbId, userId, name, text, cm = null, rp = null, at = "" } = {}) {
+  const parentDbId = cm ? (cm.dbId != null ? cm.dbId : null) : null;
+  const replyTo = rp && rp.name ? String(rp.name)
+    : at ? String(at)
+    : cm && cm.name ? String(cm.name) : "";
+  return {
+    row: {
+      post_id: postDbId,
+      user_id: userId,
+      author_name: name,
+      body: normalizeText(text),
+      parent_id: parentDbId,
+      reply_to_name: replyTo || null,
+    },
+    parentDbId,
+    replyTo,
+  };
+}
+
 /**
  * 是否可以删除：
  *  - 云端评论（comment.cloud）：与当前登录 userId 比对（RLS 双保险）

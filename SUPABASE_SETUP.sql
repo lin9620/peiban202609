@@ -31,6 +31,26 @@ alter table public.profiles add column if not exists status    text;
 alter table public.profiles add column if not exists status_at timestamptz;
 create index if not exists profiles_status_at_idx on public.profiles (status_at desc);
 
+-- 大厅四类人数：一条 SQL 出全四类（轮 300；详见 MIGRATION_status_counts.sql）。
+-- VALUES 造四行状态骨架 → LEFT JOIN profiles 聚合，0 人的状态也返回一行 cnt=0。
+-- security invoker（Postgres 默认，刻意不写 definer）→ RLS 照常生效，
+-- 口径与旧的「4 次 HEAD + prefer:count=exact」逐格一致。
+create or replace function public.status_counts(p_since timestamptz)
+returns table (status text, cnt bigint)
+language sql
+stable
+as $$
+  select k.status, count(p.id) as cnt
+  from (values ('working'), ('studying'), ('sleepless'), ('chilling')) as k(status)
+  left join public.profiles p
+    on p.status = k.status
+   and p.status_at >= $1
+  group by k.status
+  order by array_position(array['working', 'studying', 'sleepless', 'chilling'], k.status);
+$$;
+
+grant execute on function public.status_counts(timestamptz) to anon, authenticated;
+
 -- 注册后自动建档（昵称先取注册时填的 metadata.nickname）
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
@@ -425,6 +445,51 @@ begin
                             'views', v_views, 'dislikes', v_dis, 'removed', v_rm);
 end $$;
 
+-- RPC：轮 302 批量记浏览 —— 20 次 wall_add_view 合成 1 次（暖心墙首屏 21 → 2 个请求）。
+-- 与上面单帖版逐格等价（同人同帖同日只 +1 / 帖不存在该条 not-found / viewer 缺省口径同款）；
+-- 没建这个函数时前端与 Worker 会自动退回逐帖循环。详见 MIGRATION_wall_add_views.sql。
+create or replace function public.wall_add_views(p_posts bigint[], p_viewer text default '')
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_viewer  text := coalesce(nullif(trim(coalesce(p_viewer, '')), ''),
+                             coalesce(auth.uid()::text, 'anon'));
+  v_post    bigint;
+  v_counted boolean;
+  v_views   integer;
+  v_dis     integer;
+  v_rm      boolean;
+  v_out     jsonb := '[]'::jsonb;
+begin
+  for v_post in
+    select distinct x from unnest(coalesce(p_posts, '{}'::bigint[])) as t(x)
+  loop
+    insert into public.wall_post_views (post_id, viewer_key)
+    values (v_post, v_viewer)
+    on conflict do nothing;
+    v_counted := found;
+
+    if v_counted then
+      update public.wall_posts set views = views + 1 where id = v_post
+        returning views, dislikes, removed into v_views, v_dis, v_rm;
+    else
+      select views, dislikes, removed into v_views, v_dis, v_rm
+        from public.wall_posts where id = v_post;
+    end if;
+
+    if v_views is null then
+      v_out := v_out || jsonb_build_object('post', v_post, 'ok', false, 'reason', 'not-found');
+    else
+      v_out := v_out || jsonb_build_object('post', v_post, 'ok', true,
+                                           'counted', v_counted,
+                                           'views', v_views,
+                                           'dislikes', v_dis,
+                                           'removed', v_rm);
+    end if;
+  end loop;
+
+  return jsonb_build_object('ok', true, 'results', v_out);
+end $$;
+
 -- RPC：切换厌恶；达 #26 双档下架线 → 下架（假删除，不再自动恢复）
 create or replace function public.wall_toggle_dislike(p_post bigint)
 returns jsonb language plpgsql security definer set search_path = public as $$
@@ -479,6 +544,7 @@ begin
 end $$;
 
 grant execute on function public.wall_add_view(bigint, text) to anon, authenticated;
+grant execute on function public.wall_add_views(bigint[], text) to anon, authenticated;
 grant execute on function public.wall_toggle_dislike(bigint) to authenticated;
 
 -- 7) 主页的伙伴（/u/:id）：宠物 + 手绘厨房镜像 + 访客互动
@@ -2273,7 +2339,7 @@ create index if not exists wall_posts_user_idx
 --   * 最新页 = 按 id 倒序（id 串行 = 发布序，轮 62 keyset 同源）；
 --   * 随机批 = 7 天池内 random() 抽样，不含最新页已有的帖；
 --   * 厌恶数用权威列 wall_posts.dislikes（回应行聚合仅作旧库回退，见 rowsToPosts）；
---   * 评论数 = 该帖全部评论行（与 listCommentPostIds 现口径一致，不过滤 removed）；
+--   * 评论数 = 该帖未软删评论行（deleted_at is null；轮 301 与渲染口径对齐）；
 --   * 匿名调用 auth.uid() 为空 → mine 为空对象，计数照常。
 -- 安全：security definer 只为跨行聚合；查询固定 removed=false、只读、参数只有条数。
 
@@ -2356,6 +2422,7 @@ begin
       select c.post_id, count(*) as cmt
       from wall_comments c
       where c.post_id in (select id from (select unnest(v_ids) as id union select unnest(coalesce(v_rnd, '{}'::bigint[])) as id) u)
+        and c.deleted_at is null   /* 轮 301：软删行不计，与渲染（liveComments）口径一致 */
       group by c.post_id
     ) b on b.post_id = pool.id;
 
@@ -2466,6 +2533,7 @@ begin
       select c.post_id, count(*) as cmt
       from wall_comments c
       where c.post_id in (select id from (select unnest(v_ids) as id) u)
+        and c.deleted_at is null   /* 轮 301：软删行不计，与渲染（liveComments）口径一致 */
       group by c.post_id
     ) b on b.post_id = pool.id;
   return jsonb_build_object('posts', v_posts, 'react', v_react, 'comment', v_comment);

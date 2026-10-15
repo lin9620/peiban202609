@@ -29,6 +29,7 @@ function makeFake(script = []) {
       in: (k, a) => { ops.push(`in:${k}:${JSON.stringify(a)}`); return b; },
       order: (k, o = {}) => { ops.push(`order:${k}:${o && o.ascending === false ? "desc" : "asc"}`); return b; },
       limit: (n) => { ops.push(`limit:${n}`); return b; },
+      is: (k, v) => { ops.push(`is:${k}:${JSON.stringify(v)}`); return b; },
       insert: (row) => { ops.push(`insert:${JSON.stringify(row)}`); return b; },
       update: (row) => { ops.push(`update:${JSON.stringify(row)}`); return b; },
       upsert: (row) => { ops.push(`upsert:${JSON.stringify(row)}`); return b; },
@@ -202,7 +203,18 @@ const rows = [{ id: 1 }, { id: 2 }];
 }
 {
   const { fake } = await run([{ data: [] }], () => db.listCommentPostIds([1, 2], 2000));
-  ok("listCommentPostIds 形状", fake.calls[0] === "from:wall_comments|select:post_id|in:post_id:[1,2]|limit:2000", fake.calls[0]);
+  ok("listCommentPostIds 形状（轮 301 先带软删过滤）", fake.calls[0] === "from:wall_comments|select:post_id|in:post_id:[1,2]|is:deleted_at:null|limit:2000", fake.calls[0]);
+}
+{
+  /* 轮 301：老库无 deleted_at 列（42703）→ 退回旧查询（全量计，不挡列表） */
+  const { fake, out } = await run([
+    { throw: { code: "42703", message: "column deleted_at does not exist" } },
+    { data: [] },
+  ], () => db.listCommentPostIds([1, 2], 2000));
+  ok("listCommentPostIds 老库回退（无 deleted_at 列 → 旧查询）",
+    fake.calls.length === 2 && fake.calls[1] === "from:wall_comments|select:post_id|in:post_id:[1,2]|limit:2000",
+    fake.calls.join(" ## "));
+  ok("listCommentPostIds 回退仍返回数组", Array.isArray(out));
 }
 {
   /* 轮 285 · 软删：删评论不再 DELETE 行（行留着 → parent_id 的 on delete cascade 不触发 → 二级回复活下来） */
@@ -266,6 +278,16 @@ const rows = [{ id: 1 }, { id: 2 }];
   const { fake, out } = await run([{ data: { ok: true, views: 3 } }], () => db.addView(1, "v"));
   ok("addView RPC 形状", fake.calls[0] === 'rpc:wall_add_view:{"p_post":1,"p_viewer":"v"}', fake.calls[0]);
   ok("addView 返回", out && out.views === 3);
+}
+/* 轮 302：批量记浏览（20 次 wall_add_view → 1 次；暖心墙首屏 21 → 2 个请求） */
+{
+  const { fake, out } = await run(
+    [{ data: { ok: true, results: [{ post: 4, ok: true, counted: true, views: 2, dislikes: 0, removed: false }] } }],
+    () => db.addViews([4, 4, "x", 0], "v"),
+  );
+  ok("addViews RPC 形状（去重 + 滤脏 id）", fake.calls[0] === 'rpc:wall_add_views:{"p_posts":[4],"p_viewer":"v"}', fake.calls[0]);
+  ok("addViews 只发 1 次请求", fake.calls.length === 1, String(fake.calls.length));
+  ok("addViews 返回 Map", out instanceof Map && out.get(4).views === 2);
 }
 {
   const { fake } = await run([{ data: { ok: true } }], () => db.toggleDislike(1));

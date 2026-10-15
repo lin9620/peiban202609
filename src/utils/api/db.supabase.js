@@ -19,6 +19,8 @@
 import { getClient } from "../supabase.js";
 /* 轮 285：删评论改软删 —— 老库没跑迁移时认出「函数还没建」再退回硬删（不把没跑迁移当删除失败） */
 import { isMissingFnError } from "../authRules.js";
+/* 轮 302：批量记浏览的整形与校验（纯函数，与网关实现共用同一份口径） */
+import { wallViewIds, normalizeWallAddViews } from "../wallRules.js";
 
 /** 表名集中在此：换库时只改这里的映射 */
 const T = {
@@ -59,6 +61,41 @@ async function unwrap(p) {
   const r = await p;
   if (r && r.error) throw r.error;
   return r ? r.data : null;
+}
+
+/* ──────── 轮 300：大厅四类人数（4 次精确计数 → 1 条 RPC） ──────── */
+
+/** 四类状态的固定顺序。老链路 Promise.all over 字面量数组天然保序；
+ *  合并成一条 RPC 后行序交给 SQL 决定 —— 这里再钉一次，前端按行渲染，顺序不能飘。 */
+const STATUS_ORDER = ["working", "studying", "sleepless", "chilling"];
+
+/** status_counts 这条 RPC 是否已确认可用（null = 还没试过）。
+ *  必须只试一次：迁移没跑时，若每次刷新都先白试一趟 RPC，反而比旧链路还多一个来回
+ *  （TodayPane 轮 291 有 pending 补跑循环，会连着触发）。 */
+let statusCountsRpc = null;
+
+/** wall_add_views（轮 302 批量记浏览）是否已确认可用（null = 还没试过）。同上：只试一次 ——
+ *  迁移没跑时每趟都先白试一趟，反而比逐帖链路还多一个上游往返。 */
+let wallAddViewsRpc = null;
+
+/** RPC 行 → 老契约 [{status, count}]，四行、按 STATUS_ORDER 排。
+ *  缺行/多行/重复/脏值一律上抛 —— 宁可这一格整格不显示，也不能补 0
+ *  （那等于把「没取到」说成「没人在」）。 */
+function normalizeStatusCounts(rows) {
+  if (!Array.isArray(rows) || rows.length !== STATUS_ORDER.length) throw new Error("invalid-status-count");
+  const seen = new Map();
+  for (const row of rows) {
+    const s = row ? row.status : undefined;
+    if (!STATUS_ORDER.includes(s) || seen.has(s)) throw new Error("invalid-status-count");
+    seen.set(s, row.cnt);
+  }
+  return STATUS_ORDER.map((status) => {
+    const cnt = seen.get(status);
+    if (cnt == null || cnt === "") throw new Error("invalid-status-count");
+    const n = Number(cnt);
+    if (!Number.isSafeInteger(n) || n < 0) throw new Error("invalid-status-count");
+    return { status, count: n };
+  });
 }
 
 export const db = {
@@ -220,9 +257,23 @@ export const db = {
     );
   },
 
-  /** 大厅只取四类精确人数，不下载个人资料，也不受分页上限影响。 */
+  /** 大厅只取四类精确人数，不下载个人资料，也不受分页上限影响。
+   *  轮 300：优先走单条 RPC status_counts（MIGRATION_status_counts.sql）——
+   *  4 个来回变 1 个、4 次扫表变 1 次；口径与下面的回退链路逐条对齐（同样精确、同样不下载行）。
+   *  函数还没建（迁移未执行）时自动退回旧链路，页面照常；判定复用 isMissingFnError，
+   *  只认「函数还没建」，别的错误照旧上抛 —— 绝不把「取不到」冒充成 0 人。 */
   async countRecentStatuses(since) {
-    return Promise.all(["working", "studying", "sleepless", "chilling"].map(async (status) => {
+    if (statusCountsRpc !== false) {
+      try {
+        const out = normalizeStatusCounts(await unwrap(sb().rpc("status_counts", { p_since: since })));
+        statusCountsRpc = true;
+        return out;
+      } catch (e) {
+        if (!isMissingFnError(e && e.message, e && e.code)) throw e;
+        statusCountsRpc = false;   /* 本次及本会话此后都走旧链路，不再每趟白试一次往返 */
+      }
+    }
+    return Promise.all(STATUS_ORDER.map(async (status) => {
       const r = await sb().from(T.profiles).select("id", { count: "exact", head: true })
         .eq("status", status).gte("status_at", since);
       if (r.error) throw r.error;
@@ -243,9 +294,22 @@ export const db = {
     return unwrap(sb().from(T.comments).insert(row).select("*").single());
   },
 
-  /** 只取 post_id，用于聚合「每帖几条」（含回复） */
-  listCommentPostIds(postIds, limit) {
-    return unwrap(sb().from(T.comments).select("post_id").in("post_id", postIds).limit(limit));
+  /** 只取 post_id，用于聚合「每帖几条」（含回复）。
+   * 轮 301：与渲染口径对齐——只取 deleted_at 为空的行（软删不计）。
+   * 老库没跑 MIGRATION_comment_delete.sql 时 deleted_at 列不存在 → PostgREST 400，
+   * 退回旧查询（全量计，与迁移前一致，不挡列表）。 */
+  async listCommentPostIds(postIds, limit) {
+    try {
+      return await unwrap(sb().from(T.comments).select("post_id").in("post_id", postIds).is("deleted_at", null).limit(limit));
+    } catch (e) {
+      /* 列不存在（42703 未定义列 / 400）→ 旧查询兜底；其他错误照常上抛 */
+      const code = String((e && (e.code || e.status)) || "");
+      const msg = String((e && e.message) || "");
+      if (code === "42703" || code === "400" || /deleted_at/i.test(msg)) {
+        return unwrap(sb().from(T.comments).select("post_id").in("post_id", postIds).limit(limit));
+      }
+      throw e;
+    }
   },
 
   /** 删除评论（RLS 兜底：只能删自己的）
@@ -317,6 +381,40 @@ export const db = {
   /** 记一次浏览（同访客同日只计一次，服务端去重） */
   addView(postId, viewer) {
     return unwrap(sb().rpc("wall_add_view", { p_post: postId, p_viewer: viewer }));
+  },
+
+  /** 轮 302：批量记浏览 —— 20 次 wall_add_view 合成 1 条 RPC（暖心墙首屏 21 → 2 个请求）。
+   *  语义与单帖版逐格等价（同人同帖同日只 +1 / 帖不存在该条不计）；函数还没建
+   *  （迁移未跑）时自动退回逐帖循环，行为与现在完全一致。
+   *  ⚠ 返回类型与其它方法不同：Map<postId, {views,dislikes,removed,counted}> ——
+   *    调用方要按帖子 id 认领结果（RPC 不承诺行序），所以这里直接给 Map。两条实现同款。
+   *  帖不存在 / 单条失败不进 map（调用方按「这条没认领到」处理），不冒充。 */
+  async addViews(postIds, viewer) {
+    const ids = wallViewIds(postIds);
+    if (!ids.length) return new Map();
+    if (wallAddViewsRpc !== false) {
+      try {
+        const out = normalizeWallAddViews(
+          await unwrap(sb().rpc("wall_add_views", { p_posts: ids, p_viewer: viewer })),
+        );
+        wallAddViewsRpc = true;
+        return out;
+      } catch (e) {
+        if (!isMissingFnError(e && e.message, e && e.code)) throw e;
+        wallAddViewsRpc = false;   /* 本次及本会话此后都走逐帖，不再每趟白试一次往返 */
+      }
+    }
+    /* 回退：逐帖单发（旧链路）。单条失败只跳过那一条 —— 与调用方原来的 for…await 口径一致。 */
+    const map = new Map();
+    for (const id of ids) {
+      try {
+        const d = await unwrap(sb().rpc("wall_add_view", { p_post: id, p_viewer: viewer }));
+        if (!d || d.ok !== true) continue;
+        const got = normalizeWallAddViews({ ok: true, results: [{ post: id, ...d }] }).get(id);
+        if (got) map.set(id, got);
+      } catch (e) { /* 单条失败：跳过，不打断整批 */ }
+    }
+    return map;
   },
 
   /** 切换厌恶（服务端计数，达 #26 双档阈值时把帖子假删除：浏览<100 超 3 个 / ≥100 超 0.5%） */

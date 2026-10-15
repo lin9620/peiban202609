@@ -94,7 +94,7 @@ node tools/worker-test.mjs    # API 网关 Worker 契约测试（247 项：/api/
 node tools/dm-test.mjs        # 私信规则层单测（333 项：撤回窗口 / 未读计数 / 日期分隔 / 错误码→i18n 映射 / 迁移覆盖 / 轮296 冷开落在消息页的认证就绪补跑通道 + 轮询兜底回写 SWR 缓存）
 node tools/notify-test.mjs    # 通知规则层单测（149 项：分栏白名单(私信已退出) / 聚合语义 / 点击落点 / 未读兜底）
 node tools/status-test.mjs    # 陪你大厅状态规则层单测（49 项：四键前后端一致 / 24h 窗口纯函数 / emoji 归文案不重复 / 两条链路契约 / 降级分支 / 迁移与文档覆盖）
-node tools/status-counts-test.mjs # 大厅人数接口单测（11 项：只取四类人数不下载资料 / 零人 / 不显示昵称 / 非法日期 / 计数失败降级）
+node tools/status-counts-test.mjs # 大厅人数接口单测（92 项：单条 RPC status_counts 成功形状 / 能力标记只试一次 / 迁移未跑自动回退 4 次 HEAD 精确计数 / 非「函数缺失」不降级 / 上游不可用与 8 例脏值一律报错绝不补 0 / 非法日期零上游调用 / 迁移 SQL 与直连·网关双实现同源）
 node tools/bottle-test.mjs    # 温暖漂流瓶规则层单测（60 项：每日 3 封 7 瓶 / 48h 回海 / 1000 字上限 / 错误码↔i18n 闭环 / 六 RPC 与 Worker 路由契约 / RLS 可见性 / 旧信箱清理）
 node tools/bottle-chat-test.mjs # 漂流瓶续聊离线回归（86 项：规则与状态机 / 通知文案与跳转落点 / 双适配器与 Worker 转发 / SQL 与 SUPABASE_SETUP 同源检查；不执行数据库迁移）
 node tools/i18n-test.mjs      # 文案完整性与插值回归（19 项：en/zh 键集合对称、修复过的 key、$ 特殊字符）
@@ -131,7 +131,10 @@ node tools/story-test.mjs  # 故事栏单测（101 项：3 万字/标题/标签�
 node tools/react-queue-test.mjs # 回应按钮连点收敛器单测（12 项：同键串行不并发 · 前一个失败不卡后一个 · 过期响应不回写 · 连点三下奇偶正确 · 单次点击照常回写；纯逻辑无网络）
 node tools/back-stack-test.mjs # 系统返回键拦截栈单测（9 项：空栈不吞键 / true 才算已处理 / 后进先出 / 顶层 false 下层接手 / 拦截器异常不吞键 / 卸载弹栈 / 陌生函数不误删）
 node tools/post-detail-test.mjs # 帖子详情页回归（15 项：/post/:id 路由与数据链单帖读取 / 评论两级展开与就地回复 / 与暖心墙同款结构）
-node tools/app-version-test.mjs # App 版本管理与检查更新回归（64 项：版本号权威是 build.gradle + vite 插件烤进产物 / 拿不到合法版本返回 null / 比较用 <= 不逼用户降级 / 同版本同会话只提示一次 / 查不到≠已是最新（不许谎报）/ 弹窗显式宽度与强制更新不可关 / App 端走 @capacitor/browser / 只在 App 壳自动弹且不碰 App.vue / 双适配层成对写 version.json / i18n en-zh 成对）
+node tools/wall-addviews-test.mjs # 浏览计数批量化回归（100 项：20 次 wall_add_view 合成 1 次 —— id 整形与去重 / 返回校验 11 例脏值一律报错不补 0 / 直连与网关两条链路的批量形状 / 迁移未跑自动逐帖回退 / 能力标记只试一次 / 非「函数没建」错误照抛 / 空 id 零上游 / 迁移 SQL 与三处实现 + CommunityView 调用点同源）
+node tools/wall-addviews-e2e.mjs # 浏览批量线上实测（跑完 MIGRATION_wall_add_views.sql 后：批量 ↔ 逐帖两访客对账 / 重复 id 去重 / 同访客第二次不计 / 帖不存在单条降级。⚠ 会真 +2 帖各 1~2 次浏览，脚本末尾给回滚 SQL）
+node tools/app-version-test.mjs # App 版本管理与检查更新回归（117 项：版本号权威是 build.gradle + vite 插件烤进产物 / 拿不到合法版本返回 null / 比较用 <= 不逼用户降级 / 同版本同会话只提示一次 / 查不到≠已是最新（不许谎报）/ force 走白名单判定（!!\"false\" 是 true，会误弹关不掉的窗）/ 只有「必须更新」才启动时自动弹 / 弹窗显式宽度、按钮居中、强制更新不可关（无×无稍后再说、点遮罩关不掉、系统返回键也被吞）/ App 端走 @capacitor/browser / 只在 App 壳自动弹且不碰 App.vue / 管理端更新方式是二选一 radiogroup + versionCode 取自当前构建（非「已登记+1」，防死循环）+ 不一致即警告 / 双适配层成对写 version.json / i18n en-zh 成对 / bump 脚本纯逻辑与 CLI 守卫）
+node tools/bump-version.mjs # 发版 bump 版本号（`npm run release -- 1.2`）：versionCode 自动 +1、versionName 写入 build.gradle，写后回读校验，失败非零退出；--dry-run 只打印不落盘；版本名非法（../evil、空、abc）直接拒。**别让 npm run build 自动 bump** —— 开发期天天跑会让 versionCode 变成「今天构建了几次」，与发版数无关且必然与已装 APK 对不上
 node tools/splash-test.mjs    # 启动页回归（18 项：静态层结构与加厚内容 / 2.5s 兜底放行 / 看门狗摘除 / 只在 App 壳保留 / 深色模式三道闸）
 node tools/userScope-test.mjs # 账号域单测（8 项：分域读写往返 / 老档迁移进 guest(幂等+触发reload) / 首次登录认领(不覆盖已有档·只认一次) / 换域 flush→reload 顺序 / 新注册账号必为全新档）
 node tools/page-smoke.mjs    # 页面挂载冒烟（12 条关键路由真实无头挂载：无崩溃盒 + 挂载成功；抓构建查不到的 TDZ/运行时崩溃）
@@ -187,6 +190,10 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 > 12. `MIGRATION_notif_dedupe.sql` —— **通知降噪**（轮 15，老库升级用；新装库跑 `SUPABASE_SETUP.sql` 已含同款）：回应（抱抱/暖暖/同感）同人同帖同类**未读只留最新一条**；**删除回应 = 撤销对应未读通知**（取消就当没发生过，不再留「谁抱了你」的假消息）；宠物互动同人同动作 24 小时内只留一条未读；末尾自动清理历史重复未读。没跑它时：反复点/取消回应会把收件人未读刷高（本轮用户抱怨的核心）。
 >
 > 13. `MIGRATION_wall_daily_7.sql` —— **发帖每日上限 1 → 7**（轮 15，老库升级用；新装库跑 SETUP 已含同款）：`wall_daily_limit()` 改为按 7 条计数（第 8 条抛 `wall_daily_limit`），并拆掉旧版「一天一条」唯一索引 `wall_posts_one_per_day_idx`。没跑它时：前端已放开 7 条，但第 2 条帖会被数据库打回。跑完后 `node tools/cloud-e2e.mjs` 的 T23/T24 即验证线上口径。
+>
+> 14. `MIGRATION_status_counts.sql` —— **大厅四类人数合并成一条查询**（轮 300，老库升级用；新装库跑 `SUPABASE_SETUP.sql` **已含同款**，见「陪你大厅状态」区块）：RPC `status_counts(p_since timestamptz)` 用 `VALUES` 造四行状态骨架再 `LEFT JOIN profiles` 聚合，一次出全四类（0 人的状态也返回一行 `cnt=0`）。之前是**4 次** `HEAD + prefer:count=exact`（4 个来回、扫 4 次表）——`TodayPane` 轮 291 的注释里记着实测：这 4 条约 1.25s，叠在状态 PATCH 落库之后，点一下到数字变要 2118ms。合并后 4 个来回变 1 个。**必须是 security invoker（默认，文件里刻意不写 `security definer`）**，RLS 才照旧生效、人数口径才和旧链路一致。**没跑它时**：页面照常 —— 直连模式与网关模式都会自动退回旧的 4 次精确计数（判定复用 `authRules.isMissingFnError`，只认「函数还没建」，别的错误照旧报错、绝不把「取不到」冒充成 0 人），且能力标记只试一次、不会每趟白多一个来回。跑完后刷新页面自动切到单查询，**不用改前端代码、也不用先发版**。离线回归：`node tools/status-counts-test.mjs`（92 项：RPC 成功形状 / 能力标记只试一次 / 迁移未跑回退 4 次 HEAD / 非函数缺失不降级 / 上游不可用与 8 例脏值一律报错不补 0 / 非法参数零上游调用 / 迁移 SQL 与双实现同源）。
+
+> 15. `MIGRATION_wall_add_views.sql` —— **浏览计数批量化：20 次 `wall_add_view` 合成 1 次 `wall_add_views`**（轮 302，老库升级用；新装库跑 `SUPABASE_SETUP.sql` **已含同款**，就在单帖版 `wall_add_view` 下面）：RPC `wall_add_views(p_posts bigint[], p_viewer text)` 把「今天还没看过的每条帖」的逐条计数搬进一个函数里循环（`distinct` 去重、`on conflict do nothing` 记 `found`、帖不存在该条回 `not-found`、整体仍 `ok:true`）。**语义与单帖版逐格等价**，只是把 20 个串行往返压成 1 个。为什么值得：按 2026-10 免费额度实测，暖心墙首屏 = 1× `wall_feed_page` + **20× `wall_add_view`**（串行），是全站请求数的最大头，而 **Cloudflare Workers 免费档硬上限 10 万请求/天** —— 这一项直接决定免费额度能撑多少日活（标准访问 28 请求 → 9 请求，容量约翻 2~3 倍）。**必须是 security definer**（`wall_post_views` 不开 insert 策略，写入只能走函数，与单帖版一致）。**没跑它时**：页面照常 —— 直连模式、网关模式都会自动退回旧的「逐帖 `wall_add_view` 循环」（判定复用 `authRules.isMissingFnError` / Worker 的 `MISSING_FN_CODES`，只认「函数还没建」，别的错误照旧报错、绝不把脏值当成浏览数），且能力标记只试一次、不会每趟白多一个来回。跑完后前端自动切到批量，**不用改前端代码、也不用先发版**。离线回归：`node tools/wall-addviews-test.mjs`（100 项）；线上实测：`node tools/wall-addviews-e2e.mjs`。
 
 **② 配置密钥**（二选一，anon key 是公开密钥，安全由 RLS 保证）：
 - 左侧 **Settings → API** 复制 `Project URL` 和 `anon public key`，然后：
@@ -301,6 +308,16 @@ npm run deploy   # wrangler deploy 发布到 Worker warm-paws（warmpaws.de5.net
 > 路由已是 **history 模式**（`/pet`、`/community`、`/profile` 可直接访问与分享），构建时会为每条路由产出独立静态 HTML（含各自的 title / canonical / OG）；SPA 回退由 `wrangler.jsonc` 的 `not_found_handling` 兜底。部署后可用 `node tools/live-check.mjs` 验证线上站点（页面 / 缓存 / 安全头 / SEO 资产）。
 > 备选方案：推 GitHub → Vercel 导入（根目录 vercel.json 已配好 rewrites），环境变量在 Vercel 项目 Settings 里配 `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`。
 
+> **发安卓包的固定顺序**（轮 297；顺序错了会让用户死循环在更新弹窗里）：
+> 1. `npm run release -- 1.2` —— **一条命令 bump 版本号**（`versionCode` 自动 +1、`versionName` 写成 `"1.2"`，并打印后续步骤）。别手改 `build.gradle`：漏 bump 不是「没提示更新」这么轻，而是要么功能永不触发、要么 `version.json` 比包里的值大 → 无限循环。`--dry-run` 可先看不落盘
+> 2. `npm run build` —— vite 的 `appVersion` 插件从 gradle 读这两个值烤进前端；**先构建网页端再传包**，管理页里 versionCode 的默认值才正确
+> 3. `npm run cap:sync` → 打 APK（`assembleDebug`）
+> 4. `npm run apk:web`（复制进 `public/apk/`，网页端下载与二维码用）
+> 5. 管理中心「App 版本」上传 APK：**versionCode 默认已按当前构建预填，别手改**（除非你确认 APK 里确实是别的值）；选「必须更新 / 非必须更新」
+> 6. `node tools/app-version-test.mjs` 全绿
+>
+> ⚠️ 第 2 步省不得：`version.json` 里的 `versionCode` 一旦**大于 APK 里实际的值**，客户端装完仍算「有新版」→ 无限循环；叠上「必须更新」就是用户永远关不掉、只能重装的窗。管理中心会在 versionCode 与当前构建不一致时显式警告，但拦不住「构建本身太旧」。
+
 ## 📁 结构
 
 ```
@@ -346,7 +363,7 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 | 体验 | `#/` 路由直接访问 `/pet` 会 404 | 迁移到 history 模式 + 每条路由独立静态 HTML + SPA 回退 | `router.js` / `vite.config.js` / `wrangler.jsonc` |
 | 体验 | 「在线陪伴数」是本地随机数，易误导 | 去掉虚构人数，改如实文案（路线图保留"等有真实统计再接"） | `views/HomeView.vue` / `i18n.js` |
 
-回归验证（全部本地可跑）：`wall-rules-test` 49 项 · `comment-test` 35 项 · `wall-test` 37 项 · `pet-home-test` 19 项 · `pet-visual-test` 163 项 · `food-painter-test` 20 项 · `uifix-test` 24 项 · `image-fit` 20 项 · `snack-test` 24 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 130 项 · `privacy-test` 34 项 · `arity-test` 8 项 · `seo-test` 50 项 · `dm-test` 333 项 · `notify-test` 149 项 · `status-test` 49 项 · `status-counts-test` 11 项 · `bottle-test` 71 项 · `bottle-chat-test` 94 项 · `api-contract-test` 87 项 · `gateway-contract-test` 80 项 · `worker-test` 247 项 · `cache-test` 12 项 · `home-panes-test` 9 项 · `app-shell-test` 64 项 · `react-queue-test` 12 项 · `back-stack-test` 9 项 · `post-detail-test` 17 项 · `splash-test` 21 项 · `userScope-test` 8 项 · `report-test` 61 项 · `feed-perf-test` 27 项 · `feed-window-test` 19 项 · `feed-window-live` 10 项（需 dev 服务器）· `web-refresh-test` 6 项 · `story-test` 101 项 · `rail-test` 31 项 · `rps-test` 14 项 · `page-smoke` 12 项 · `undef-check`（`--selftest` 10 项）· `tdz-check`。
+回归验证（全部本地可跑）：`wall-rules-test` 49 项 · `comment-test` 35 项 · `wall-test` 37 项 · `pet-home-test` 19 项 · `pet-visual-test` 163 项 · `food-painter-test` 20 项 · `uifix-test` 24 项 · `image-fit` 20 项 · `snack-test` 24 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 130 项 · `privacy-test` 34 项 · `arity-test` 8 项 · `seo-test` 50 项 · `dm-test` 333 项 · `notify-test` 149 项 · `status-test` 49 项 · `status-counts-test` 92 项 · `bottle-test` 71 项 · `bottle-chat-test` 94 项 · `api-contract-test` 87 项 · `gateway-contract-test` 80 项 · `worker-test` 247 项 · `cache-test` 12 项 · `home-panes-test` 9 项 · `app-shell-test` 64 项 · `react-queue-test` 12 项 · `back-stack-test` 9 项 · `post-detail-test` 17 项 · `splash-test` 21 项 · `app-version-test` 117 项 · `userScope-test` 8 项 · `report-test` 61 项 · `feed-perf-test` 27 项 · `feed-window-test` 19 项 · `feed-window-live` 10 项（需 dev 服务器）· `web-refresh-test` 6 项 · `story-test` 101 项 · `rail-test` 31 项 · `rps-test` 14 项 · `page-smoke` 12 项 · `undef-check`（`--selftest` 10 项）· `tdz-check`。
 
 ## 🗺️ 路线图
 

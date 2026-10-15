@@ -229,9 +229,17 @@ async function hit(script, path, init) {
 }
 {
   const { c } = await hit([{ body: [] }], "/api/comment-post-ids?ids=a,b&limit=500");
-  ok("comment-post-ids 出站 URL（in-list）",
-    c.outbound[0].url === `${ORIGIN}/rest/v1/wall_comments?select=post_id&post_id=${enc(`in.("a","b")`)}&limit=500`,
+  ok("comment-post-ids 出站 URL（in-list；轮 301 先带软删过滤）",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/wall_comments?select=${enc("post_id,deleted_at")}&post_id=${enc(`in.("a","b")`)}&deleted_at=is.null&limit=500`,
     c.outbound[0].url);
+}
+{
+  /* 轮 301：老库无 deleted_at 列（400）→ 退回旧查询（全量计，不挡列表） */
+  const { c } = await hit([{ status: 400, body: {} }, { body: [] }], "/api/comment-post-ids?ids=a,b&limit=500");
+  ok("comment-post-ids 老库回退（无 deleted_at 列 → 旧查询）",
+    c.outbound.length === 2
+      && c.outbound[1].url === `${ORIGIN}/rest/v1/wall_comments?select=post_id&post_id=${enc(`in.("a","b")`)}&limit=500`,
+    JSON.stringify(c.outbound.map((x) => x.url)));
 }
 {
   const { res, c } = await hit([{ status: 204 }], "/api/comments/c1", { method: "DELETE" });
@@ -333,6 +341,25 @@ async function hit(script, path, init) {
   ok("addView rpc URL + body",
     c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/wall_add_view` &&
     c.outbound[0].init.body === JSON.stringify({ p_post: "p1", p_viewer: "v1" }));
+}
+/* 轮 302：批量记浏览（20 次 wall_add_view → 1 次；暖心墙首屏 21 → 2 个请求） */
+{
+  const { res, c } = await hit(
+    [{ body: { ok: true, results: [{ post: 1, ok: true, counted: true, views: 5, dislikes: 0, removed: false }] } }],
+    "/api/posts/views",
+    { method: "POST", body: JSON.stringify({ ids: [1, 1, "x"], viewer: "v1" }) },
+  );
+  const body = await res.json();
+  ok("addViews 批量 rpc URL + body（去重 + 滤脏 id）",
+    res.status === 200 && c.outbound.length === 1 &&
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/wall_add_views` &&
+    c.outbound[0].init.body === JSON.stringify({ p_posts: [1], p_viewer: "v1" }),
+    c.outbound[0] && c.outbound[0].init.body);
+  ok("addViews 响应形状 {ok,results}", body.ok === true && body.results[0].views === 5);
+}
+{
+  const { res, c } = await hit([], "/api/posts/views", { method: "POST", body: JSON.stringify({ ids: [0, "x"], viewer: "v" }) });
+  ok("addViews 无有效 id → 200 空结果且零上游", res.status === 200 && c.outbound.length === 0 && (await res.json()).results.length === 0);
 }
 {
   const { c } = await hit([{ body: { ok: true } }], "/api/posts/p1/dislike", { method: "POST" });

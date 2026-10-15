@@ -9,7 +9,7 @@ import { cloud } from "./supabase.js";
 import { normalizeText, CMT_KEY } from "./comments.js";
 import { isUsableDataUrl } from "./imaging.js";
 import { STATUS_WINDOW_MS } from "./statuses.js";
-import { VIEW_KEY, ANON_KEY, POST_DAY_KEY, POSTS_KEY, REACTS_KEY, extractTags } from "./wallRules.js";
+import { VIEW_KEY, ANON_KEY, POST_DAY_KEY, POSTS_KEY, REACTS_KEY, extractTags, wallViewIds } from "./wallRules.js";
 import { registerScopeBases } from "./userScope.js";
 import { cacheKey, cachePeek, cacheSet } from "./cache.js";
 /* 所有云端数据访问都走适配层：换库 / 换托管时只改 utils/api/db.js（见那里的文件头说明） */
@@ -114,13 +114,15 @@ export function rowsToComments(rows) {
 /**
  * 评论行 → 「每帖评论条数」表： { [postId]: n }
  * 进页面时用它一次性把评论数显示出来（不必等用户点开评论区再拉）
- * @param {Array} rows wall_comments 行（至少含 post_id）
+ * @param {Array} rows wall_comments 行（至少含 post_id；软删行不计，与渲染口径对齐）
  */
 export function countsFromRows(rows) {
   const out = {};
   if (!Array.isArray(rows)) return out;
   for (const r of rows) {
-    if (r && r.post_id != null) out[r.post_id] = (out[r.post_id] || 0) + 1;
+    if (!r || r.post_id == null) continue;
+    if (r.deleted_at != null || r.deleted === true) continue;
+    out[r.post_id] = (out[r.post_id] || 0) + 1;
   }
   return out;
 }
@@ -533,6 +535,31 @@ export async function cloudAddView(dbPostId, viewer = "") {
   } catch (e) {
     /* 未跑迁移时这里会 404/PGRST202：静默降级（浏览数就不显示了），不打断阅读 */
     console.warn("[cloud] addView:", e);
+    cloud.error = e && e.message ? e.message : String(e);
+    return null;
+  }
+}
+
+/**
+ * 轮 302：批量记浏览 —— 一次网络往返记一批。
+ * 额度实测（2026-10）：暖心墙首屏 = 1× wall_feed_page + **20× wall_add_view**（逐条、
+ * 且串行），是全站请求数最大头；而 Cloudflare Workers 免费档硬上限 10 万请求/天，
+ * 这一项直接决定能撑多少日活。合成 1 条后首屏 21 → 2 个请求。
+ * 语义与 cloudAddView 逐格等价（同人同帖同日只 +1 / 帖不存在该条不计）；迁移未跑时
+ * db 层自动退回逐帖循环，行为与现在一致。
+ * @param {Array<number|string>} dbPostIds
+ * @param {string} viewer 登录用户 = uid；游客 = 匿名 id
+ * @returns {Promise<Map<number,{views:number,dislikes:number,removed:boolean,counted:boolean}>|null>}
+ *          null = 云不可用 / 整批失败（调用方按「这次没认领到」处理）
+ */
+export async function cloudAddViews(dbPostIds, viewer = "") {
+  if (!canReadWall()) return null;
+  const ids = wallViewIds(dbPostIds);
+  if (!ids.length) return new Map();
+  try {
+    return await db.addViews(ids, String(viewer || "").slice(0, 64));
+  } catch (e) {
+    console.warn("[cloud] addViews:", e);
     cloud.error = e && e.message ? e.message : String(e);
     return null;
   }

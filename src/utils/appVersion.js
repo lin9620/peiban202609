@@ -49,7 +49,12 @@ export async function fetchLatestRelease() {
       code,
       name: String(j.versionName || "").trim(),
       notes: String(j.notes || "").trim(),
-      force: !!j.force,
+      /* ★ force 的语义是「关不掉的弹窗」，必须白名单判定，不能写 `!!j.force`：
+       *   `!!"false"` === true —— 万一有人手改 version.json 把它写成字符串，
+       *   全体用户下次开 App 就会被一个关不掉的窗糊脸，且只能重装才躲得开。
+       *   白名单 = 允许的真值形式；其余（含缺失、null、"false"、"0"）一律 false。
+       *   宁可少弹一次，绝不误弹一次。 */
+      force: j.force === true || j.force === 1 || j.force === "true",
       when: String(j.when || "").trim(),
       apkUrl: String(j.apkUrl || "").trim() || APP_RELEASE_URL,
     };

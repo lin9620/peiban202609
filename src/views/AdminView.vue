@@ -9,7 +9,7 @@ import { NButton, NTag } from "naive-ui";
 import { t } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
 import { db } from "../utils/api/db.js";
-import { fetchLatestRelease } from "../utils/appVersion.js";   /* 轮 297：读已登记的版本 */
+import { fetchLatestRelease, currentVersion } from "../utils/appVersion.js";   /* 轮 297：读已登记的版本 + 当前构建的 versionCode */
 import { fmtNum, fmtBytes, clip, dailySeries, barHeights, sumReactions, dayOf, dayTimeOf } from "../utils/admin.js";
 
 const state = ref("loading"); /* loading | denied | ready | error */
@@ -184,11 +184,21 @@ const relInput = ref(null);
 /* —— 轮 297 · 版本登记（随包一起写进同桶的 version.json，客户端据此检查更新）—— */
 const relVer = ref("");          /* 版本名，如 1.1 —— 显示给用户看 */
 const relNotes = ref("");        /* 更新说明 —— 显示在更新弹窗里 */
-const relForce = ref(false);     /* 强制更新：用户无法关掉弹窗 */
+const relForce = ref(false);     /* 必须更新：用户下次打开时弹窗且关不掉 */
 const relReg = ref(null);        /* 已登记的版本（读不到 = null，迁移没跑/还没登记过） */
-/* versionCode 自动在已登记的基础上 +1 —— 它是客户端拿来比大小的整数，
- * 必须与 android/app/build.gradle 的 versionCode 一致，界面上会提示管理员同步改。 */
-const nextCode = computed(() => ((relReg.value && relReg.value.code) || 0) + 1);
+/* ★ versionCode 的默认值 = **当前网页构建**的 versionCode（vite 从 build.gradle 读来，
+ *   见 vite.config.js 的 appVersion 插件），管理员可改。
+ *
+ *   为什么不是「已登记 code + 1」：管理员传的包几乎总是他本地刚打的那个，那个 APK 里的
+ *   versionCode 就是 gradle 里的值 —— 抄过来永远对。而「+1」只在「每次发版恰好 bump 1、
+ *   且从不重传同一个包」的理想流程下才对。
+ *
+ *   偏离一次的后果很严重：同一个 versionCode 重传了包（比如只重签没 bump），登记就变成
+ *   N+1，而装上去的包里还是 N → 客户端算出「还有新版」→ 再装还是 N → **死循环**。
+ *   再叠上「必须更新」，用户会被一个永远关不掉的窗拦死，只能重装。
+ *   所以默认值必须来自 gradle，而不是推算。 */
+const buildCode = String((currentVersion() || {}).code || "");
+const relCode = ref(buildCode);
 /* —— 公告发送状态 —— */
 const bcastRows = ref([]);
 const bcastLoaded = ref(false);
@@ -254,6 +264,13 @@ async function uploadApk(e) {
   }
   const name = relVer.value.trim();
   if (!name) { relMsg.value = t("admin.appRelease.verBad"); return; }
+  /* ★ 先校验 versionCode 再传包：非法就别传，否则包已经换了、登记却写不进去，
+   *   下载链接指向新包而 version.json 还是旧的 —— 中间态最难查。 */
+  const codeNum = parseInt(relCode.value, 10);
+  if (!Number.isFinite(codeNum) || codeNum <= 0 || String(codeNum) !== relCode.value.trim()) {
+    relMsg.value = t("admin.appRelease.codeBad");
+    return;
+  }
   relBusy.value = true;
   relMsg.value = "";
   try {
@@ -261,7 +278,7 @@ async function uploadApk(e) {
     /* 轮 297：包传完立刻把版本登记写进同桶的 version.json —— 包与版本号同一批上线，
      * 不存在「传了新包却忘了登记版本」的中间态（客户端据此判断有没有新版）。 */
     await db.appReleasePublishMeta({
-      versionCode: nextCode.value,
+      versionCode: codeNum,
       versionName: name,
       notes: relNotes.value.trim(),
       force: !!relForce.value,
@@ -554,7 +571,8 @@ const recentUsers = computed(() => (Array.isArray(ov.value && ov.value.recent_us
             <p v-else-if="relLoaded" class="sub">{{ t("admin.appRelease.none") }}</p>
             <p v-else class="sub">{{ t("admin.broadcast.historyLoading") }}</p>
             <!-- 轮 297 · 版本登记：随包一起写进同桶的 version.json，客户端据此检查更新。
-                 versionCode 自动 +1，但必须同步进 build.gradle —— 界面上明写出来，别让人猜。 -->
+                 versionCode 默认取**当前网页构建**的值（vite 从 build.gradle 读来），可改 ——
+                 它是客户端比大小的唯一依据，对不上会让用户死循环在更新弹窗里。 -->
             <div v-if="relReg" class="sub" style="margin-top: 6px">
               {{ t("admin.appRelease.registered", { v: relReg.name || relReg.code, t: dayOf(relReg.when) }) }}
             </div>
@@ -562,15 +580,33 @@ const recentUsers = computed(() => (Array.isArray(ov.value && ov.value.recent_us
               <span class="sub" style="margin: 0">{{ t("admin.appRelease.verCap") }}</span>
               <van-field v-model="relVer" class="rel-input" :maxlength="24"
                 :placeholder="t('admin.appRelease.verPh')" />
-              <label class="rel-force">
-                <input v-model="relForce" type="checkbox" />
-                <span>{{ t("admin.appRelease.force") }}</span>
+              <van-field v-model="relCode" class="rel-code" inputmode="numeric" :maxlength="9"
+                :placeholder="t('admin.appRelease.codePh')" />
+            </div>
+            <!-- 更新方式二选一：只有「必须更新」才会在用户下次打开 App 时**自动弹**且关不掉；
+                 「非必须」完全不自动弹，用户想看就去设置页点「检查更新」。 -->
+            <div class="rel-force" role="radiogroup" :aria-label="t('admin.appRelease.forceCap')">
+              <label class="rel-opt" :class="{ on: !relForce }">
+                <input v-model="relForce" type="radio" :value="false" />
+                <span class="rel-opt-t">{{ t("admin.appRelease.optNormal") }}</span>
+                <span class="rel-opt-h">{{ t("admin.appRelease.optNormalHint") }}</span>
+              </label>
+              <label class="rel-opt" :class="{ on: relForce }">
+                <input v-model="relForce" type="radio" :value="true" />
+                <span class="rel-opt-t">{{ t("admin.appRelease.optForce") }}</span>
+                <span class="rel-opt-h">{{ t("admin.appRelease.optForceHint") }}</span>
               </label>
             </div>
             <van-field v-model="relNotes" type="textarea" :rows="2" :maxlength="300"
               :placeholder="t('admin.appRelease.notesPh')" style="margin-top: 8px" />
             <p class="sub" style="margin-top: 6px">
-              {{ t("admin.appRelease.codeHint", { n: nextCode }) }}
+              {{ t("admin.appRelease.codeHint", { n: buildCode }) }}
+            </p>
+            <!-- 管理员把 versionCode 改得和当前网页构建不一样时才提示 ——
+                 最常见的原因是「用旧网页传了新包」，也正是死循环最容易发生的时候。 -->
+            <p v-if="relCode.trim() && buildCode && relCode.trim() !== buildCode"
+              class="sub rel-warn" style="margin-top: 4px">
+              {{ t("admin.appRelease.codeDiffers", { x: relCode.trim(), b: buildCode }) }}
             </p>
             <div class="row-between" style="margin-top: 10px">
               <span class="sub" style="margin: 0">{{ t("admin.appRelease.apkOnly") }}</span>
@@ -858,5 +894,20 @@ const recentUsers = computed(() => (Array.isArray(ov.value && ov.value.recent_us
 /* 轮 297 · App 版本登记区（此前本组件无样式块，这里是新增的第一块） */
 .rel-ver { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
 .rel-input { flex: 1 1 160px; min-width: 140px; }
-.rel-force { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--low, #8a7a6a); cursor: pointer; }
+.rel-code { flex: 0 1 110px; min-width: 96px; }
+.rel-warn { color: var(--accent, #e58a3a); font-weight: 600; }
+/* 更新方式二选一：两张可点的卡片，选中的那张描边高亮 */
+.rel-force { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.rel-opt {
+  position: relative; flex: 1 1 200px; display: flex; flex-direction: column; gap: 2px;
+  padding: 8px 10px; border-radius: 10px; cursor: pointer;
+  border: 1px solid rgba(160, 110, 60, .28);
+  transition: border-color .18s ease, background .18s ease;
+}
+.rel-opt.on { border-color: var(--accent, #e58a3a); background: var(--glass, rgba(255, 240, 226, .6)); }
+/* 原生 radio 隐藏但保留可聚焦与键盘操作（display:none 会让 Tab 跳不过去） */
+.rel-opt input { position: absolute; opacity: 0; width: 0; height: 0; }
+.rel-opt:focus-within { outline: 2px solid var(--accent, #e58a3a); outline-offset: 2px; }
+.rel-opt-t { font-weight: 600; font-size: 13px; }
+.rel-opt-h { font-size: 12px; color: var(--low, #8a7a6a); }
 </style>

@@ -23,6 +23,7 @@ _*.mjs
 _*.txt
 _*.ps1
 _*.png
+tools/_*.js
 
 # Android / Capacitor（App 轨道红线：密钥与本地构建产物绝不提交）
 *.keystore

@@ -39,6 +39,17 @@ const UPLOAD_BODY_MAX = 512 * 1024; /* 前端单图上限 200KB，这里留一�
 const CACHE_IMMUTABLE = "public, max-age=31536000, immutable";
 /* 陪你大厅状态 key 白名单（与前端 src/utils/statuses.js 的 STATUS_KEYS 一致） */
 const VALID_STATUS = new Set(["working", "studying", "sleepless", "chilling"]);
+/* 轮 300：四类人数的固定顺序。VALID_STATUS 是 Set，展开顺序靠插入序、太隐晦，
+   渲染端按行渲染、顺序不能飘 —— 另立显式数组（与 db.supabase.js 的 STATUS_ORDER 同序）。 */
+const STATUS_ORDER = ["working", "studying", "sleepless", "chilling"];
+/** status_counts 这条 RPC 是否已确认可用（null = 还没试过）。
+ *  只试一次：迁移没跑时若每趟都先白试一趟，反而比旧链路还多一个上游往返。 */
+let statusCountsRpc = null;
+/** 轮 302：wall_add_views（批量记浏览）是否已确认可用（null = 还没试过）。同上只试一次。 */
+let wallAddViewsRpc = null;
+/** PostgREST 找不到 RPC 的典型信号（与前端 authRules.isMissingFnError 同一份口径；
+ *  Worker 是零依赖单文件，不能 import 前端工具，故在此重述）。 */
+const MISSING_FN_CODES = new Set(["PGRST202", "42883", "42703", "42P01"]);
 /* 图片路径白名单：uid 段不允许点号，文件段允许扩展名点号 —— ".." 穿越直接拒绝 */
 const UID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const FILE_RE = /^[A-Za-z0-9_.-]{1,128}$/;
@@ -169,6 +180,133 @@ async function upstream(env, request, url, init = {}) {
 }
 
 const restUrl = (env, path, qs) => `${env.SUPABASE_URL}/rest/v1/${path}${qs ? `?${qs}` : ""}`;
+
+/** 轮 300：大厅四类人数改走单条 RPC status_counts（MIGRATION_status_counts.sql）。
+ *  返回 [{status,count}]（顺序固定，四行齐）；函数还没建 → 返回 null，由调用方回退旧链路。
+ *  其余错误一律上抛 —— 取不到就说取不到，绝不把「取不到」冒充成 0 人。 */
+async function statusCountsByRpc(env, request, since) {
+  const res = await upstream(env, request, restUrl(env, "rpc/status_counts"), {
+    method: "POST",
+    body: JSON.stringify({ p_since: since }),
+  });
+  if (!res) throw new Error("status-count-unavailable");
+  if (!res.ok) {
+    /* 404 = 确实没有这个函数（PostgREST 的默认表现）；400/404 带 PGRST202/42883 也同解 —— 都是「没跑迁移」。 */
+    let code = "";
+    try {
+      const body = await res.clone().json();
+      code = String((body && body.code) || "").toUpperCase();
+    } catch (e) { /* 非 JSON 错误体：按 code 空处理 */ }
+    if (res.status === 404 || MISSING_FN_CODES.has(code)) { statusCountsRpc = false; return null; }
+    throw new Error("status-count-unavailable");
+  }
+  const rows = await res.json();
+  if (!Array.isArray(rows) || rows.length !== STATUS_ORDER.length) throw new Error("invalid-status-count");
+  const seen = new Map();
+  for (const row of rows) {
+    const s = row && row.status;
+    if (!STATUS_ORDER.includes(s) || seen.has(s)) throw new Error("invalid-status-count");
+    seen.set(s, row.cnt);
+  }
+  const out = STATUS_ORDER.map((status) => {
+    const cnt = seen.get(status);
+    const n = Number(cnt);
+    if (cnt == null || cnt === "" || !Number.isSafeInteger(n) || n < 0) throw new Error("invalid-status-count");
+    return { status, count: n };
+  });
+  statusCountsRpc = true;
+  return out;
+}
+
+/* ──────── 轮 302：批量记浏览（20 次 wall_add_view → 1 次） ──────── */
+
+/** 请求体里的 ids / RPC 回来的计数 → 非负整数；其余一律 NaN（不静默当 0，与前端同口径） */
+const asInt = (v) => {
+  const n = typeof v === "string" && /^\d+$/.test(v) ? Number(v) : v;
+  return typeof n === "number" && Number.isSafeInteger(n) ? n : NaN;
+};
+
+/** 去重重正整数 id 列表（上限 100，与前端 wallRules.WALL_VIEW_BATCH_MAX 同口径） */
+function viewIds(list) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(list) ? list : []) {
+    const n = asInt(raw);
+    if (Number.isNaN(n) || n <= 0 || seen.has(n)) continue;
+    seen.add(n);
+    out.push(n);
+    if (out.length >= 100) break;
+  }
+  return out;
+}
+
+/** wall_add_views 的返回 → 干净的 results 数组（与前端 wallRules.normalizeWallAddViews 同口径）。
+ *  形状不对一律抛 —— 取不到就说取不到，绝不把脏值当成浏览数。 */
+function normalizeAddViews(data) {
+  const results = data && data.ok === true && Array.isArray(data.results) ? data.results : null;
+  if (!results) throw new Error("invalid-add-views");
+  const out = [];
+  const seen = new Set();
+  for (const row of results) {
+    if (!row || typeof row !== "object") throw new Error("invalid-add-views");
+    if (row.ok !== true) continue;             /* not-found / 单条失败：不进结果，不冒充有数据 */
+    const id = asInt(row.post);
+    const views = asInt(row.views);
+    const dislikes = asInt(row.dislikes);
+    if (Number.isNaN(id) || id <= 0 || seen.has(id)) throw new Error("invalid-add-views");
+    if (Number.isNaN(views) || views < 0 || Number.isNaN(dislikes) || dislikes < 0) throw new Error("invalid-add-views");
+    seen.add(id);
+    out.push({ post: id, ok: true, counted: row.counted === true, views, dislikes, removed: row.removed === true });
+  }
+  return out;
+}
+
+/** 批量记浏览 RPC：函数还没建 → 返回 null（调用方回退逐帖）；别的错误照抛。
+ *  与 statusCountsByRpc 同款判定 —— 只认「函数没建」才降级。 */
+async function wallAddViewsByRpc(env, request, ids, viewer) {
+  const res = await upstream(env, request, restUrl(env, "rpc/wall_add_views"), {
+    method: "POST",
+    body: JSON.stringify({ p_posts: ids, p_viewer: viewer }),
+  });
+  if (!res) throw new Error("add-views-unavailable");
+  if (!res.ok) {
+    let code = "";
+    try {
+      const body = await res.clone().json();
+      code = String((body && body.code) || "").toUpperCase();
+    } catch (e) { /* 非 JSON 错误体：按 code 空处理 */ }
+    if (res.status === 404 || MISSING_FN_CODES.has(code)) { wallAddViewsRpc = false; return null; }
+    throw new Error("add-views-unavailable");
+  }
+  return normalizeAddViews(await res.json());
+}
+
+/** POST /api/posts/views —— 批量记浏览（一条 RPC 记一批）。
+ *  函数没建（或已确认没有）时逐帖回退，返回形状与 RPC 版完全一致。 */
+async function addViewsBatch(env, request) {
+  const b = await readJson(request);
+  if (b.err) return b.err;
+  const ids = viewIds(b.body && b.body.ids);
+  if (!ids.length) return json({ ok: true, results: [] }, 200);
+  const viewer = String((b.body && b.body.viewer) || "").slice(0, 64);
+
+  if (wallAddViewsRpc !== false) {
+    const viaRpc = await wallAddViewsByRpc(env, request, ids, viewer);
+    if (viaRpc) return json({ ok: true, results: viaRpc }, 200);
+  }
+  const results = [];
+  for (const id of ids) {
+    const res = await upstream(env, request, restUrl(env, "rpc/wall_add_view"), {
+      method: "POST", body: JSON.stringify({ p_post: id, p_viewer: viewer }),
+    });
+    if (!res || !res.ok) throw new Error("add-views-unavailable");
+    const d = await res.json();
+    for (const r of normalizeAddViews({ ok: true, results: [{ post: id, ...(d && typeof d === "object" ? d : {}) }] })) {
+      results.push(r);
+    }
+  }
+  return json({ ok: true, results }, 200);
+}
 
 /** Accept object 的 406(PGRST116) → 200 null：与 supabase-js maybeSingle 对齐（行不存在不算错） */
 async function objectOrPassthrough(res) {
@@ -343,10 +481,17 @@ async function listMyCommentReactions(env, request, ids, uid, limit) {
   return res || fail(502, "upstream-unreachable");
 }
 
-/** 评论只取 post_id（聚合每帖条数） */
+/** 评论只取 post_id（聚合每帖条数）
+ * 轮 301：与渲染口径对齐——只取 deleted_at 为空的行（软删不计）。
+ * 老库没跑 MIGRATION_comment_delete.sql 时 deleted_at 列不存在 → 上游 400，
+ * 退回旧查询（全量计，与迁移前一致，不挡列表）。 */
 async function listCommentPostIds(env, request, ids, limit) {
   const inList = encodeURIComponent(`in.(${ids.map((x) => `"${x}"`).join(",")})`);
-  const res = await upstream(env, request, restUrl(env, TABLE.comments, `select=post_id&post_id=${inList}&limit=${limit}`));
+  const sel = encodeURIComponent("post_id,deleted_at");
+  let res = await upstream(env, request, restUrl(env, TABLE.comments, `select=${sel}&post_id=${inList}&deleted_at=is.null&limit=${limit}`));
+  if (res && !res.ok && res.status === 400) {
+    res = await upstream(env, request, restUrl(env, TABLE.comments, `select=post_id&post_id=${inList}&limit=${limit}`));
+  }
   return res || fail(502, "upstream-unreachable");
 }
 
@@ -1030,6 +1175,12 @@ async function handleApi(request, env, ctx) {
         /* 轮 252：搜索 / 列探测要抢在「单帖 id」分支前拦下（decodeSeg("search") 不是空值） */
         if (seg.length === 2 && seg[1] === "columns" && m === "GET") return probePostColumns(env, request);
         if (seg.length === 2 && seg[1] === "search" && m === "GET") return searchPosts(env, request, q);
+        /* 轮 302：批量记浏览，同样要抢在「单帖 id」分支前拦下（decodeSeg("views") 不是空值）。
+           ⚠ 必须 await：`return asyncFn()` 的**异步**拒绝不会被外层 try/catch 接住（轮 300 同款坑），
+           那样脏返回会漏成未捕获拒绝，而不是这里要的 500。 */
+        if (seg.length === 2 && seg[1] === "views" && m === "POST") {
+          return await addViewsBatch(env, request);
+        }
         if (seg.length === 1) {
           if (m === "GET") {
             const bidRaw = q.get("before_id") || "";
@@ -1184,7 +1335,13 @@ async function handleApi(request, env, ctx) {
       if (seg[0] === "statuses" && seg[1] === "counts" && seg.length === 2 && m === "GET") {
         const since = q.get("since") || new Date(Date.now() - 86400000).toISOString();
         if (!Number.isFinite(Date.parse(since))) return fail(400, "bad-since");
-        const counts = await Promise.all([...VALID_STATUS].map(async (status) => {
+        /* 轮 300：优先一条 RPC 出全部四类（1 次上游往返）；没跑迁移时 statusCountsByRpc
+           返回 null，落到下面的 4 次 HEAD 精确计数，行为与迁移前完全一致。 */
+        if (statusCountsRpc !== false) {
+          const viaRpc = await statusCountsByRpc(env, request, since);
+          if (viaRpc) return json(viaRpc, 200);
+        }
+        const counts = await Promise.all(STATUS_ORDER.map(async (status) => {
           const res = await upstream(env, request, restUrl(env, TABLE.profiles,
             `select=id&status=eq.${status}&status_at=gte.${encodeURIComponent(since)}`), {
             method: "HEAD", headers: { prefer: "count=exact" },

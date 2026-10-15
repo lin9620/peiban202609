@@ -17,6 +17,8 @@ import { getClient, refreshAccessToken } from "../supabase.js";
 import { getAuthToken } from "./authToken.js";
 /* 轮 285：删评论改软删 —— 老库没跑迁移时认出「函数还没建」再退回硬删（不把没跑迁移当删除失败） */
 import { isMissingFnError } from "../authRules.js";
+/* 轮 302：批量记浏览的整形与校验（纯函数，与直连实现共用同一份口径） */
+import { wallViewIds, normalizeWallAddViews } from "../wallRules.js";
 
 /* 轮 160：单测可注入的「刷新会话」替身；生产走 supabase.js 的 refreshAccessToken */
 let refresher = null;
@@ -29,6 +31,10 @@ async function refreshTokenOnce() {
 }
 
 const BASE = "/api";
+
+/** 轮 302：批量记浏览路由（POST /api/posts/views）是否可用（null = 还没试过）。
+ *  老 Worker 没这条路由（404）→ 本会话此后都走逐帖 /view，不再每趟白试。 */
+let wallAddViewsRoute = null;
 
 let probe = null;
 /** 单测注入「auth 就绪」探针；生产代码不要调用（与 db.supabase 的 setDbClient 对称） */
@@ -251,6 +257,34 @@ export const db = {
   /** 记一次浏览（同访客同日只计一次，服务端去重） */
   async addView(postId, viewer) {
     return call(`/posts/${enc(postId)}/view`, { method: "POST", body: { viewer } });
+  },
+
+  /** 轮 302：批量记浏览（一条请求记一批；直连实现同款）。
+   *  老 Worker 没有这条路由（404）时自动退回逐帖 /view，行为与现在一致；其余错误照抛。
+   *  ⚠ 返回 Map<postId, {views,dislikes,removed,counted}>（原因见 db.supabase.js 同名方法）。 */
+  async addViews(postIds, viewer) {
+    const ids = wallViewIds(postIds);
+    if (!ids.length) return new Map();
+    if (wallAddViewsRoute !== false) {
+      try {
+        const out = normalizeWallAddViews(await call("/posts/views", { method: "POST", body: { ids, viewer } }));
+        wallAddViewsRoute = true;
+        return out;
+      } catch (e) {
+        if (!(e && e.status === 404)) throw e;
+        wallAddViewsRoute = false;   /* 老 Worker：本会话此后都走逐帖 */
+      }
+    }
+    const map = new Map();
+    for (const id of ids) {
+      try {
+        const d = await call(`/posts/${enc(id)}/view`, { method: "POST", body: { viewer } });
+        if (!d || d.ok !== true) continue;
+        const got = normalizeWallAddViews({ ok: true, results: [{ post: id, ...d }] }).get(id);
+        if (got) map.set(id, got);
+      } catch (e) { /* 单条失败：跳过，不打断整批 */ }
+    }
+    return map;
   },
 
   /** 切换厌恶（服务端计数，达 #26 双档阈值时把帖子假删除：浏览<100 超 3 个 / ≥100 超 0.5%） */

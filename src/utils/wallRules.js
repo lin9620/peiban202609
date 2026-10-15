@@ -560,3 +560,76 @@ export function errorKind(message, code) {
     || m.includes("could not find the function")) return "not-migrated";
   return "";
 }
+
+/* ══════════ 轮 302：浏览计数批量化（20 次 wall_add_view → 1 次） ══════════
+ * 额度实测（2026-10 官方文档 + 线上抓包）：暖心墙首屏 = 1× wall_feed_page +
+ * 20× wall_add_view（对「今天还没看过的每条帖」逐条发，且是串行），是全站请求数的
+ * 最大头；Cloudflare Workers 免费档硬上限 10 万请求/天，这一项直接决定能撑多少日活。
+ * 这里只放两个纯函数（整形 + 校验），传输与降级在 api/db.*.js，SQL 在
+ * MIGRATION_wall_add_views.sql（未跑迁移时自动退回逐帖循环）。
+ */
+
+/** 一次批量最多记多少条浏览。首屏 REFRESH_PAGE 是 20，留 5 倍余量；
+ *  上限存在的意义是别让一条畸形调用把上游 SQL 拖住。 */
+export const WALL_VIEW_BATCH_MAX = 100;
+
+/** 严格非负整数：null / "" / true / "abc" / 小数 / 超安全整数一律 NaN（不静默当 0）。 */
+function safeCount(v) {
+  if (typeof v === "number") return Number.isSafeInteger(v) ? v : NaN;
+  if (typeof v === "string" && /^\d+$/.test(v)) {
+    const n = Number(v);
+    return Number.isSafeInteger(n) ? n : NaN;
+  }
+  return NaN;
+}
+
+/**
+ * 把「帖子引用列表」归一成批量 RPC 要的 id 数组：正整数、去重、保序、截断到上限。
+ * 只做数据整形，不做业务判断（该不该记由 collectViews 决定）。
+ * @param {Array<number|string>} list
+ * @returns {number[]}
+ */
+export function wallViewIds(list) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(list) ? list : []) {
+    const n = safeCount(raw);
+    if (Number.isNaN(n) || n <= 0) continue;
+    if (seen.has(n)) continue;
+    seen.add(n);
+    out.push(n);
+    if (out.length >= WALL_VIEW_BATCH_MAX) break;
+  }
+  return out;
+}
+
+/**
+ * wall_add_views 的返回 → Map<postId, {views,dislikes,removed,counted}>。
+ * 形状不对一律上抛 —— 宁可不显示浏览数，也不把脏值当真（与 status_counts 同一条红线：
+ * 绝不「补 0」）；帖不存在（ok:false）不进 map，调用方按「这条没认领到」处理。
+ * @param {{ok:boolean,results:Array}} data
+ * @returns {Map<number,{views:number,dislikes:number,removed:boolean,counted:boolean}>}
+ */
+export function normalizeWallAddViews(data) {
+  const results = data && data.ok === true && Array.isArray(data.results) ? data.results : null;
+  if (!results) throw new Error("invalid-add-views");
+  const map = new Map();
+  for (const row of results) {
+    if (!row || typeof row !== "object") throw new Error("invalid-add-views");
+    if (row.ok !== true) continue;          /* not-found / 单条失败：不进 map，不冒充有数据 */
+    const id = safeCount(row.post);
+    const views = safeCount(row.views);
+    const dislikes = safeCount(row.dislikes);
+    if (Number.isNaN(id) || id <= 0) throw new Error("invalid-add-views");
+    if (Number.isNaN(views) || views < 0 || Number.isNaN(dislikes) || dislikes < 0) throw new Error("invalid-add-views");
+    if (map.has(id)) throw new Error("invalid-add-views");
+    map.set(id, {
+      views,
+      dislikes,
+      removed: row.removed === true,
+      counted: row.counted === true,
+    });
+  }
+  return map;
+}
+

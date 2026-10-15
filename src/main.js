@@ -57,6 +57,10 @@ async function checkAppUpdate() {
     if (!isApp()) return;                                /* 网页端不弹更新窗 */
     const r = await checkForUpdate();
     if (!r || !r.hasUpdate || !r.latest) return;
+    /* ★ 只有「必须更新」才在启动时自动弹。非强制更新用户自己决定什么时候装，
+     *   每次开 App 都弹一个窗只会招人烦（而且这次还关不掉）——
+     *   非强制的只在设置页「检查更新」里被动发现，不主动打扰。 */
+    if (!r.force) return;
     if (!takePromptOnce(r.latest.code)) return;          /* 同版本同会话只提示一次 */
     const host = document.createElement("div");
     document.body.appendChild(host);

@@ -11,6 +11,7 @@
     "deploy": "wrangler deploy",
     "deploy:dry": "wrangler deploy --dry-run --outdir .edge-final",
     "cap:sync": "cap sync android && node tools/cap-strip-hero.mjs",
+    "release": "node tools/bump-version.mjs",
     "apk:web": "node tools/apk-to-web.mjs"
   },
   "dependencies": {

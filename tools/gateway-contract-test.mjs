@@ -64,6 +64,29 @@ setGatewayAuthProbe(() => true); /* 单测注入：auth 就绪（与 db.supabase
   }
 }
 
+/* ── 轮 302：批量记浏览（POST /api/posts/views） ── */
+{
+  const calls = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push({ url: String(url), init });
+    return new Response(JSON.stringify({
+      ok: true,
+      results: [{ post: 7, ok: true, counted: true, views: 3, dislikes: 0, removed: false }],
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  try {
+    const map = await db.addViews([7, 7, "x"], "v");
+    ok("addViews 端点+body（轮 302 批量）",
+      calls[0].url === "/api/posts/views" && (calls[0].init.method || "GET") === "POST"
+      && calls[0].init.body === JSON.stringify({ ids: [7], viewer: "v" }),
+      calls[0].url + " " + calls[0].init.body);
+    ok("addViews 返回 Map", map instanceof Map && map.get(7).views === 3);
+  } finally {
+    globalThis.fetch = real;
+  }
+}
+
 /* ── 端点形状（21 个方法一次跑完） ── */
 {
   const c = capture();
