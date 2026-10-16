@@ -4512,3 +4512,18 @@ delete from public.dm_messages where id in (256, 257);
 **状态**：**待提交待部署（攒批）**；不 commit / 不 deploy / 不打包，等用户发话。
 **⚠️ 与另一个会话的交叉**：他们同一时间在写**轮 315**（`BottleView.vue` / `i18n.js` / `style.css` / `tools/bottle-chat-test.mjs`，未提交）。本轮**没碰**那四个文件；但本轮 build 出来的 `dist` **包含**他们 315 的在途源码 —— 所以这一批要发就得**两会话一起发**（或等他们收尾后我再单独重打 dist）。
 
+
+### 发版记录 · 1.0.2（versionCode 3）— 轮 315~316 两会话合提（**已提交 · 已推送 · 已部署 · 已打 APK**）
+
+- **用户前置动作**：跑了清理 SQL，删掉我第一版探针误写进真库的 2 条测试消息（`public.dm_messages` id 256/257）✓；并确认另一个会话的轮 315 已收尾 ✓ → 授权「提交+部署+重打 APK」。
+- **提交**：`dc16c75`「轮 315~316 攒批（两会话合提）」= **9 files, +295/−60**（对方 315 的 `BottleView.vue`/`i18n.js`/`style.css`/`bottle-chat-test.mjs` + 我的 `MessagesView.vue`/`BottleChat.vue`/`tools/dm-send-ux-test.mjs`/`tools/i18n-usage-test.mjs`/`jiaojie.md`）；随后 `ebdb9a2`（bump 版本号）单独一笔。推送：`457b955..dc16c75`、`dc16c75..ebdb9a2` → `main ✓`，无 ahead/behind（显式列文件 `git add`，未用 `-A`、未 stash；`_scratch/`、`apk/` 未跟踪）。
+- **发版闸门**：全量 **51/51 OK, 0 FAIL**、undef **0**、tdz **0**、build **EXIT=0**。
+- **版本**：`npm run release -- 1.0.2` → **versionCode 2 → 3、versionName "1.0.1" → "1.0.2"**。脚本自己写明理由：versionCode 是客户端判断「有没有新版」的唯一依据，登记 +1 才不会「装完还说有新版」死循环；且 versionCode 必须由人决定（不许 build 自动 bump）。
+- **打包顺序**（严格按 bump 脚本提示）：`npm run build`（把 versionCode 3 烤进网页端 → 入口 `index-Dy-B5ff6.js`）→ `npm run cap:sync`（EXIT=0，cap-strip-hero 剥 SEO 占位 ×12、剥内嵌 apk）→ `JAVA_HOME=D:\00ruanjiananzhuang\jdk-21\jdk-21` `.\gradlew.bat assembleDebug`（BUILD SUCCESSFUL；核对包内只含当前 3 个产物，无残留旧 bundle）→ `npm run apk:web` → 再 `npm run build`（dist 里 `apk/warm-paws.apk` = 5,109,590 B）→ `npm run deploy`。
+- **APK**：`app-debug.apk` **5,109,590 B**、`sha256 8bada36704f3bed41d0f58d1eb1f6c9b3b9a434e8758dcac40a7d53cba01903b`（md5 `9c39405682a912fbf6b89f16c746469f`）；已换入分发点 `public/apk/warm-paws.apk`，本地归档 `apk/warm-paws.apk` + `apk/warm-paws-1.0.2.apk`（三份同哈希）。
+- **部署**：wrangler OAuth 先续期（1 小时就过期；旧到期 `2026-10-16T13:45:42Z` → 新 `13:46:53Z`，备份 `default.toml.bak-1792154766039`）→ `npm run deploy`（Uploaded warm-paws 34.21s）→ **Version ID `a0b663da-0f8a-4905-803b-3bc595c35c5f`**，域名 `warmpaws.de5.net` + `warm-paws.yi1614351.workers.dev`。
+- **线上复验**：`tools/live-check.mjs` → **LIVE ALL PASS (15)**；`tools/live-bundle-check.mjs` → 线上 `index-Dy-B5ff6.js` **718491 B / sha256 29d04c50d279925a = 本地**（`hasSlug: true`）⇒ **线上产物 = 本地构建** ✅。
+- **线上 APK 整包/Range 复验再次被跨境链路卡死**（`HEAD /apk/warm-paws.apk` → 200 + `content-type: application/vnd.android.package-archive` ✓ 分发点内容类型正确；5MB 整包与 Range 前缀都超时/`fetch failed`，与上一版同样老问题）→ 最终由「网页下载 → 安装」这一跳验证（装完应显示 **1.0.2**）。**未验证项就这一条，明说。**
+- **仍需用户手动**：管理中心 → App 版本 → 上传 APK（**versionCode 会预填 3，别改**）+ 写 `version.json`。在此之前客户端读 `app-releases/version.json` 仍是「不存在」（现测 400）= **静默不提示更新**，不影响网页下载与安装。
+- 老待办继续挂着：UptimeRobot 盯 `/api/health`、Cloudflare Always Use HTTPS、47 条压测灌水帖清理、以及那 9 个待执行迁移（清单见上一节发版记录）。
+
