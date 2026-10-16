@@ -90,6 +90,7 @@ for (const f of files) {
 /* ③ 死键：定义了但没人用，且不在动态前缀豁免里，也不在 KEEP 里 */
 const KEEP = new Map([
   ["home.hello", "i18n-test 双语平衡探针键（测试专用占位，勿删）"],
+  ["dm.sending", "轮 316：会话/瓶子聊天不再显示「发送中…」（用户明确不要这个提示，改行内「发送失败」）；键留给将来可能的静默重试提示，dm-test 也钉着 en/zh 对称"],
 ]);
 const dead = [];
 const deadKept = [];

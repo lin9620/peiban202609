@@ -54,8 +54,14 @@ const chatting = computed(() => state.value === "accepted" && !!convId.value);
 const msgs = ref([]);
 let msgsConv = "";           /* msgs 现在装的是哪个会话（轮 157b：防跨会话误合并） */
 const body = ref("");
-const sending = ref(false);
 const sendErr = ref("");
+/* 轮 316 · 乐观行临时 id 生成器（同会话段）：同一毫秒连发两条不撞 id */
+let lastTempId = 0;
+function nextTempId() {
+  const t = -Date.now();
+  lastTempId = t < lastTempId ? t : lastTempId - 1;
+  return lastTempId;
+}
 const loadingMsgs = ref(false);
 const hasMore = ref(true);
 const oldestId = ref(null);
@@ -172,7 +178,9 @@ async function loadMessages(id, { before = null } = {}) {
   const applyRows = (rows, more) => {
     const asc = rows.slice().reverse();
     if (before == null || msgsConv !== id) {
-      msgs.value = asc;
+      /* 轮 316：整窗替换不许吞掉在飞的乐观行（同会话段） */
+      const pend = msgs.value.filter((m) => m.id < 0);
+      msgs.value = pend.length ? asc.concat(pend) : asc;
     } else {
       /* 轮 157：翻历史锚点保持（与会话段同款）——下一帧补 scrollTop 差值，视口不跳 */
       const el = listEl.value;
@@ -284,8 +292,7 @@ async function decide(accept) {
 }
 
 async function send() {
-  /* 轮 229：同私信页——发送中不置 disabled（否则整颗变淡、转圈挂在淡底上），防重入在这里挡 */
-  if (sending.value) return;
+  /* 轮 316：同会话段——去掉「发送中」阻塞与按钮转圈：发出去立刻上屏、立刻能写下一句 */
   const err = validateSend(body.value, null);
   if (err) { sendErr.value = t(err); return; }
   const text = body.value.trim();
@@ -293,37 +300,41 @@ async function send() {
   if (!id) return;
   body.value = "";
   sendErr.value = "";
-  sending.value = true;
   const temp = {
-    id: -Date.now(), sender: props.meId, body: text, image_path: null,
+    id: nextTempId(), sender: props.meId, body: text, image_path: null,
     created_at: new Date().toISOString(), pending: true,
   };
   msgs.value = msgs.value.concat([temp]);
+  /* 轮 316：用户主动发消息 = 立即亮出消息区并钉底（旧版要等 entryReady 门控） */
+  pinning.value = false;
+  listRevealed.value = true;
   scrollBottom(true);
   try {
     const r = await dmApi.send(id, text, null);
     /* 轮 157：dm_send 回传 {msg_id, created_at} → 就地落位，免整段重载（与会话段同款） */
     const mid = r && r.msg_id;
     if (mid != null) {
-      const rowSrv = {
-        id: mid, sender: props.meId, body: text, image_path: null,
-        created_at: r.created_at || temp.created_at, deleted_at: null,
-      };
-      msgs.value = msgs.value.map((m) => (m.id === temp.id ? rowSrv : m));
-      oldestId.value = msgs.value.length ? msgs.value[0].id : null;
-      /* 轮 194：本地库同步补上这条（不补的话退出重进会先看到本地库少一条） */
+      const rowSrv = { id: mid, sender: props.meId, body: text, image_path: null,
+        created_at: r.created_at || temp.created_at, deleted_at: null };
+      /* 轮 316：找不到乐观行就补回（整窗替换会抹掉它），已有同 id 只去重 */
+      const rest = msgs.value.filter((m) => m.id !== temp.id);
+      msgs.value = rest.some((m) => m.id === mid) ? rest : rest.concat([rowSrv]);
       dmStoreSave(props.meId, id, msgs.value, hasMore.value);
       idbMerge(id, msgs.value);   /* 轮 204：发送镜像全量库 */
+      oldestId.value = msgs.value.length ? msgs.value[0].id : null;
     } else {
       await loadMessages(id);
     }
     scrollBottom(true);
     refreshBadge();
   } catch (e) {
-    msgs.value = msgs.value.map((m) => (m.id === temp.id ? { ...m, pending: false, failed: true } : m));
+    /* 轮 316：失败行必须留在列表里（哪怕乐观行已被抹掉）——用户要的是行内红标，不是弹窗 */
+    const failedRow = { ...temp, pending: false, failed: true };
+    msgs.value = msgs.value.some((m) => m.id === temp.id)
+      ? msgs.value.map((m) => (m.id === temp.id ? failedRow : m))
+      : msgs.value.concat([failedRow]);
     sendErr.value = t(sendErrKey(e));
   }
-  sending.value = false;
 }
 
 async function recall(m) {
@@ -429,7 +440,7 @@ onBeforeUnmount(() => { clearInterval(timer); });
                   <p v-else class="dm-text">{{ it.msg.body }}</p>
                 </div>
                 <span class="dm-stamp">
-                  {{ it.msg.pending ? t("dm.sending") : it.msg.failed ? t("dm.sendFailed") : clock(it.msg.created_at) }}
+                  <span v-if="it.msg.failed" class="dm-err">{{ t("dm.sendFailed") }}</span><template v-else-if="!it.msg.pending">{{ clock(it.msg.created_at) }}</template>
                   <button
                     v-if="canRecall(it.msg, meId) && !it.msg.pending"
                     class="dm-recall" :title="t('dm.recall')"
@@ -449,9 +460,9 @@ onBeforeUnmount(() => { clearInterval(timer); });
             <van-field
               v-model="body" type="textarea" rows="1" autosize :maxlength="2000"
               :placeholder="t('dm.placeholder')" @keydown.enter.exact.prevent="send" />
-            <n-button type="primary" round size="small" class="dm-send-btn" :disabled="!sending && !body.trim()" @click="send">
-              <span :style="{ visibility: sending ? 'hidden' : 'visible' }">{{ t("dm.send") }}</span>
-              <span v-if="sending" class="dm-send-spin" aria-hidden="true"></span>
+            <n-button type="primary" round size="small" class="dm-send-btn" :disabled="!body.trim()" @click="send">
+              {{ t("dm.send") }}
+              <!-- 轮 316：不再有「发送中」转圈——发出去就完事；失败在那条消息行内标红 -->
             </n-button>
           </div>
         </footer>

@@ -76,11 +76,17 @@ eq(read("src/views/MessagesView.vue").includes("<BottleRecords"), true);
 eq(read("src/views/NotificationsView.vue").includes('tg.type === "bottle"'), true);
 /* 轮 303 · 投信反馈与记录自动刷新（用户报「投了信啥都没有、记录也不自己加」） */
 const bv = read("src/components/BottleView.vue");
-eq(bv.includes('t("bottle.sentOk")'), true);                                   /* 成功弹窗文案 */
 eq(/fishPop\.value = \{ show: true, mode: "msg", letter: null, msg: t\(k\) \}/.test(bv), true); /* 失败也弹窗 */
 eq(bv.includes("loadRecords(true);    /* 轮 303"), true);                       /* 成功后台重拉记录 */
-eq(bv.includes("sendGen++"), true);                                             /* 投信代际守卫（切走不复活弹窗） */
-for (const lang of ["zh", "en"]) eq(typeof messages[lang].bottle.sentOk === "string" && messages[lang].bottle.sentOk.length > 0, true);
+eq(bv.includes("sendGen++") && /if \(alive\(\)\) fishPop/.test(bv), true);       /* 投信代际守卫（失败弹窗切走不复活；轮 315 改为只护失败路径） */
+/* 轮 315 · 投信成功行内绿 flash（用户拍板：不再弹窗）+ 乐观不等服务端 */
+const bv2 = read("src/components/BottleView.vue");
+eq(bv2.includes('t("bottle.sentFlash")') && bv2.includes('mailHint === "ok" ?'), true);
+eq(/mailHint\.value = "ok";\s*\n\s*mailDraft\.value = "";/.test(bv2), true);
+eq(/mailDraft\.value = body;/.test(bv2), true);
+eq(/失败：行内红字 \+ 弹窗/.test(bv2), true);
+const i18n2 = read("src/i18n.js");
+eq(/sentFlash: "信已投进海里/.test(i18n2) && /sentFlash: "Letter's in the sea/.test(i18n2), true);
 // 静态迁移检查：仅确认脚本包含关键步骤，不证明事务及幂等行为已在数据库通过。
 const sql = read("MIGRATION_bottle_chat.sql");
 for (const text of ["begin;", "commit;", "bottle_reply_notification", "bottle_chat_decide", "bottle_records", "letter.body, letter.created_at", "letter.reply, letter.reply_at"]) eq(sql.includes(text), true);

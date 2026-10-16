@@ -4443,3 +4443,72 @@ npm run release -- 1.2 --dry-run   # 只打印，不落盘
 **状态**：**待提交待部署（攒批）**；用户已明确「先别发，继续攒批」。
 
 
+
+### 轮 315 · 漂流瓶投信又慢又弹窗：成功改行内绿 flash + 乐观不等服务端（待提交待部署）
+
+**用户原话**：「漂流瓶写信投递海里，不要等那么慢啊，而且不要弹窗，成功了给个提示就行，提示不是弹窗啊」。
+
+**根因**（轮 303 的两个后遗症）：① 投信成功/失败都开**居中弹窗**——用户不要弹窗，要行内提示；② 点「投进海里」后要**等整条跨境串行链回来**（bottleSend → syncQuota → loadRecords → refreshBottle，1~2s×N）才有反应——感觉「慢」。
+
+**改法**（`src/components/BottleView.vue` doSend 重写 + 2 键）：
+1. **乐观先行**：点击瞬间 `mailHint="ok"` + 清草稿（**不 await**）——行内立刻绿闪「信已投进海里 🍶」（新键 `bottle.sentFlash` zh/en 成对），后台 in-flight 慢慢走，全链跑完绿字自动收起；
+2. **成功零弹窗**；失败恢复原状：行内红字（hall-warn）+ **保留弹窗**（限额/断网必须明示）+ **草稿恢复**（信不丢）；
+3. `sendGen` 代际守卫收窄到**只护失败弹窗**（人已切走不补弹——轮 254 口径；行内红字留作回来看到的残影）；
+4. 成功后 `loadRecords(true)` 自动添新瓶等轮 303 行为全部保留；`sentOk` 键删除（成功不再有弹窗文案，防死键）；
+5. 绿色用 `var(--good)`（.streak-note.mail-sent），与失败的 hall-warn 红区分。
+
+**验证**：`bottle-chat-test` **102/102**（轮 303 旧断言同步：sentOk 弹窗断言改掉、sendGen 断言加 alive 复活护栏；+5 条轮 315：sentFlash 分支/乐观先行/失败恢复草稿/失败仍弹窗/键成对）+ `bottle-test` 81/81 + i18n 19/19 + undef 0 + tdz 0 + build EXIT=0 + **page-smoke 13/13**。**i18n-usage 1 红归另一会话在飞**（死键 `dm.sending`，私信模块本轮没碰，不代改）。
+**改动文件**：`src/components/BottleView.vue`（doSend 重写+提示行）· `src/i18n.js`（+sentFlash / −sentOk，双语）· `src/style.css`（.mail-sent 绿）· `tools/bottle-chat-test.mjs`（断言同步+5）。
+**状态**：**待提交待部署（攒批）**；装机/部署等用户发话。
+
+
+### 发版记录 · 首次发版 1.0.1（versionCode 2）— 轮 303~314c 两会话合提（**已提交 · 已部署 · 已打 APK**）
+
+- **提交**：`457b955`「轮 303~314c 攒批（两会话合提）」= 41 files changed, 1521 insertions(+), 132 deletions(-)；新增 `MIGRATION_bottle_send_5.sql`、`MIGRATION_wall_add_views_fix.sql`、`src/components/TurnstileGate.vue`、`src/utils/storySeed.js`、`tools/feed-autoload-test.mjs`。显式列文件 `git add`（未用 `-A`、未 stash）；`_scratch/`、`apk/` 未跟踪。
+- **推送**：`git -c http.proxy= -c https.proxy= -c http.version=HTTP/1.1 push` → `22805c1..457b955 main -> main`（无 ahead/behind）。
+- **wrangler OAuth 续期**：`default.toml` 里的令牌当时已过期（非交互环境不自动刷新，`whoami` 直接失败）→ 用 `_scratch/wrangler-refresh.mjs`（client_id `54d11594-84e4-41aa-b438-e81b8fa78ee7` → `dash.cloudflare.com/oauth2/token`，grant_type=refresh_token）续到 `2026-10-16T08:22:26Z`，刷新令牌已轮换；原文件备份 `default.toml.bak-1792135346217`。**令牌 1 小时就过期，下次部署前面若失败先重跑这个脚本。**
+- **部署两次**（`npm run deploy` = `wrangler deploy`，Worker + `./dist` 静态资源一起发；自定义域 `warmpaws.de5.net`）：
+  1. `2918eba0-a8d8-4a20-b259-9bd3db1d07fd`（此时 `public/apk/` 还是旧包）；
+  2. 打完 APK 重建 dist 后再部署 → `86d4ede9-62bf-47d8-b95f-34fb2925fc9b`（含新 APK）。**改 `public/apk/` 后必须重新 `build` + `deploy`**，否则网页端下载/二维码还是旧包。
+- **APK**：`npm run cap:sync` EXIT=0（cap-strip-hero 剥 SEO 占位×12、剥内嵌 apk）→ `JAVA_HOME=D:\00ruanjiananzhuang\jdk-21\jdk-21`（注意双层 jdk-21）`.\gradlew.bat assembleDebug` BUILD SUCCESSFUL（40s）→ `app-debug.apk` **5,392,708 B**（旧包 5,106,261），包内 `assets/index-ByrxaPP2.js` = 本批前端 ✅；`npm run apk:web` → `public/apk/warm-paws.apk`。打包顺序：`build` → `cap:sync` → `assembleDebug` → `apk:web` → 再 `build` → `deploy`。
+- **本地归档**（`apk/` 未跟踪）：`warm-paws.apk`、`warm-paws-1.0.1.apk`、`warm-paws-1.0.1-round314c.apk` 均已换成 5,392,708 B 的新包。
+- **线上自检**：`tools/live-check.mjs` 一轮 **16/16 无 FAIL**（前两轮的 `fetch failed` 是跨境随机丢包，重试即过）；`tools/live-bundle-check.mjs`：线上 `index-ByrxaPP2.js` **718553 B / sha256 69fe9ebb03996a53 = 本地构建**（`hasSlug: true`）⇒ **线上产物 = 本地构建** ✅。
+- **仍需用户手动/未做**：管理中心 → App 版本 → 上传 APK（写 `version.json`；本地无 `public/version.json`、线上 404 = 设计好的静默降级）；待执行迁移：`MIGRATION_comment_delete.sql`、`MIGRATION_client_logs.sql`、`MIGRATION_wall_search.sql`、`MIGRATION_notifications_drop_dm.sql`、`MIGRATION_dm_realtime.sql`、`MIGRATION_dm_unread_convs.sql`、`MIGRATION_comment_counts_301.sql`、`MIGRATION_bottle_send_5.sql`、`MIGRATION_wall_add_views_fix.sql`（`MIGRATION_wall_add_views.sql`、`MIGRATION_status_counts.sql` 已线上生效）；UptimeRobot 盯 `/api/health`；Cloudflare Always Use HTTPS；47 条压测灌水帖清理。
+- **本轮已证伪、不要再试**：线上匿名调 `dm_list_convs` → 400 `auth-required`（「匿名 200 空集」假说错），`worker/api.js` 无需改。
+
+
+### 轮 316 · 会话聊天两个手感 bug：不再「发送中」挡人 · 发出去立刻上屏 · 失败在行内标红（待提交待部署）
+
+**用户原话**：「① 现在会话聊天那里，写完了点击发送，旁边发送中按钮在哪儿转半天，不要发送中的提示啊，想发送下一条都发送不了。微信又没有，你在搞什么，发送失败了在聊天的那一行文字旁边给个提示不就完了。② 点击发送之后，发送的内容却不在聊天框之中出现，这什么逼东西，本地储存了还能这么慢，等很久之后才出现。」
+
+**根因（三条，全部落到具体行，不是手感玄学）**
+1. **`send()` 的 catch 引用了 try 内的 `const onSameConv`**（轮 225 那次重构留下的作用域错误）→ **每次发送失败都抛 `ReferenceError: onSameConv is not defined`** → 复位发送态那句永远执行不到：**按钮永久转圈**、失败行**永远停在「发送中…」**、下一条被 `if (sending.value) return` **挡死**。用户说的「转半天 + 想发下一条都发不了」就是这条异常，与网速无关。
+2. **首屏整窗替换吞掉在飞的乐观行**：进会话那次网络窗口回来时走 `msgs.value = asc`（整窗替换），把还在飞的乐观行（id<0）一并抹掉；确认回来再 `map` 也找不到它 → 「发出去了却看不见，等很久才出现」。
+3. **揭示门控卡在网络**：消息区在 `entryReady` 前是 `visibility:hidden`，而「本地库为空」的会话要等那次跨境 RPC 落定才置位 → 这段时间里发出去的消息一个字都不显示（本地库有内容的会话不受影响，所以看起来「时好时坏」）。
+
+**改法**
+1. `send()`：删掉发送态门 + 按钮转圈/藏标签（按钮回到 `:disabled="!body.trim()"`），发出去就是发出去了；再加 `listRevealed = true` + `pinning = false` —— **用户一开口发消息就把消息区亮出来并钉底**（不再等 `entryReady`）；确认回写改「找不到乐观行就补回、已有同 id 只去重」；**catch 自带 `const onSameConv`**，不再依赖 try 作用域。
+2. 行内提示：pending 不再显示任何字（去掉「发送中…」）；失败改成那条消息时间戳位置的红字「发送失败」（复用 `.dm-err`，气泡同时有红边）—— 正是用户要的「在那一行文字旁边给个提示」。
+3. 乐观行临时 id 走生成器 `nextTempId()`（同一毫秒连发两条不再撞 id；撞了确认回写会把两条并成一条）。
+4. **会话段 + 漂流瓶聊天段一起改**（`MessagesView.vue` / `BottleChat.vue` 同款代码，同款毛病）。
+
+**验证**
+- 新锁 `tools/dm-send-ux-test.mjs` **15 条**（源码结构 + catch 作用域自证 + 生成器**真跑**：同毫秒连发 N 次互不相同）；**双向验证** `_scratch/verify-316-lock.mjs`：两文件回退到 HEAD → **15 条全红**，改回 → 15 条全绿（锁是真的）。
+- **真浏览器（生产构建 `dist` + CDP 手机形态；弱网 = `Fetch` 拦首屏列表请求「网络永不答」）**，`_scratch/dm-send-probe.mjs`：
+  - **旧版**：进会话消息区 `hidden`（截图 `_scratch/shots-316/old-A2-after-send.png`：整屏空白 + 发送键变成转圈）——消息其实已进 DOM 但**一个像素都不显示**；首屏窗口回来后**被整窗替换抹掉**；连发两条**只上屏 1 条**（第二条被门丢）；发送失败 → **1 条 `ReferenceError: onSameConv is not defined`** + 按钮一直转圈 + 再发**点了没反应**。
+  - **新版**（截图 `new-A2-after-send.png`）：进会话仍按原样隐藏，但**一发送立刻可见**（0.5s 内）、时间戳位置干净（无「发送中…」）、按钮恒为「发送」；首屏窗口回来**乐观行还在**（pend 守卫生效）；连发两条**两条都上屏、都落位**；发送失败 → **行内红字「发送失败」**、按钮不转、**失败后还能继续发**；**未捕获异常 0 条**。
+  - 服务端只读对账（`GET /api/dm/44/messages`，见 `_scratch/check-dm44.mjs`）：旧版那次探针只有 **2 条**落到库里（id 256/257，`2026-10-16T08:42Z`）——实证「第二条被门挡掉」。
+- `bottle-chat-test`（对方 315 的断言）**102/102** ✅、`dm-test` 333 ✅、`dm-race-test` 16/16（R12/R13 未破）✅、**全量 51/51 OK, 0 FAIL**、undef **0**、tdz **0**、build **EXIT=0**（入口 `index-CirCqoby.js`）。
+- i18n 死键：`dm.sending` 不再被引用 → 按 `i18n-usage-test` 的口径写进 **KEEP** 并注明理由（键保留、en/zh 仍成对；对方 315 条目里也提到过这条红）。
+
+**踩坑（重要，别再犯）**：这份构建的私信请求走的是**绝对地址的真后端**（本地静态服的 `/api/*` 只会回 index.html），所以 CDP 只拦 `*/api/dm/*` **拦不住** —— 第一版探针就这么把 **2 条测试消息**写进了真库。会话双方都是探针账号（「探针甲 ↔ 探针丙」），无真实用户受影响；探针已改成按真 URL（`/rpc/dm_*`）分类拦截，**凡写性质 RPC 一律本地伪造响应**。今后任何探针**默认不许写真库**。
+- 待清理（撤回窗口 15 分钟已过，需 SQL/管理端）：
+```sql
+select id, created_at, left(body, 20) from public.dm_messages where conv_id = 44 order by id desc limit 10;
+delete from public.dm_messages where id in (256, 257);
+```
+
+**改动文件**：`src/views/MessagesView.vue`（send 重写 + 一键揭示 + 整窗替换守卫 + 模板提示/按钮）、`src/components/BottleChat.vue`（同款）、`tools/dm-send-ux-test.mjs`（**新**，15 锁）、`tools/i18n-usage-test.mjs`（KEEP +1）；取证工装（`.gitignore` 内）：`_scratch/dm-send-probe.mjs`（真浏览器探针，拦截已修）、`_scratch/verify-316-lock.mjs`、`_scratch/check-dm44.mjs`、`_scratch/shots-316/`（旧/新版成对截图）。
+**状态**：**待提交待部署（攒批）**；不 commit / 不 deploy / 不打包，等用户发话。
+**⚠️ 与另一个会话的交叉**：他们同一时间在写**轮 315**（`BottleView.vue` / `i18n.js` / `style.css` / `tools/bottle-chat-test.mjs`，未提交）。本轮**没碰**那四个文件；但本轮 build 出来的 `dist` **包含**他们 315 的在途源码 —— 所以这一批要发就得**两会话一起发**（或等他们收尾后我再单独重打 dist）。
+

@@ -152,29 +152,28 @@ async function doSend() {
   const body = mailDraft.value.trim();
   /* sendLeft === null（次数还没同步回来）不拦：交给服务端裁定，限额由 RPC 兜底 */
   if (!body || sendLeft.value === 0) return;
-  /* 轮 303：投信代际守卫（与捞信同款）——落地时人已切走则不弹提示，防止切回来旧弹窗复活 */
+  /* 轮 315（用户拍板）：投信成功**不弹窗**，改行内提示；**不等**服务端回来——
+   * 草稿立即清空、行内先闪「已投进海里」（乐观），后台 in-flight 慢慢走：
+   * 跨境 1~2s 的串行链（bottleSend → quota → records → held）在后台完成，
+   * 成功只补刷新（记录区照常自动添新瓶），失败才弹窗 + 草稿恢复。
+   * 轮 315 沿用轮 303 的代际守卫（sendGen）——只护失败弹窗的补弹（切走不复活）。 */
   const gen = ++sendGen;
   const alive = () => gen === sendGen;
   mailBusy.value = true;
-  mailHint.value = "";
+  mailHint.value = "ok";
+  mailDraft.value = "";
   try {
     await bottleSend(body);
-    mailDraft.value = "";
-    /* 轮 303：投信成功必须给明确反馈（此前只清草稿，用户实测「啥都没有」）——
-     * 与捞信反馈口径一致走居中弹窗；同时「我发布的」记录区后台重拉，新瓶自动添上，
-     * 不再让用户自己点刷新（弹窗先行，刷新不 await，见轮 238 口径）。 */
-    if (alive()) fishPop.value = { show: true, mode: "msg", letter: null, msg: t("bottle.sentOk") };
     syncQuota();          /* 轮 37：次数只回读服务端值，本机不做 +1、不留账本 */
     loadRecords(true);    /* 轮 303：自动刷新记录（代数守卫在 loadRecords 内部，切页签不串页） */
     refreshBottle();
+    mailHint.value = "";  /* 后台链全跑完：提示任务已达成，自动收起 */
   } catch (e) {
     const k = bottleErrKey(e);
-    /* 轮 303：失败同样弹窗明示（此前只写行内 mailHint，位置不显眼 = 用户实测「啥都没有」）；
-     * 行内 mailHint 保留作弹窗关闭后的残影提示。 */
-    if (alive()) {
-      mailHint.value = t(k);
-      fishPop.value = { show: true, mode: "msg", letter: null, msg: t(k) };
-    }
+    mailHint.value = t(k);        /* 失败：行内红字 + 弹窗（限额/断网必须让用户知道） */
+    mailDraft.value = body;       /* 失败：草稿恢复，信没丢 */
+    /* 轮 254 口径：人已切走（sendGen 作废）→ 失败弹窗不补弹，行内红字留作回来看到的残影 */
+    if (alive()) fishPop.value = { show: true, mode: "msg", letter: null, msg: t(k) };
     /* 轮 20：限额报错 = 服务端账本与显示错位的信号 → 立刻拉服务端次数对齐显示 */
     if (k === "bottle.errSendLimit") syncQuota();
   } finally { mailBusy.value = false; }
@@ -430,7 +429,9 @@ async function decideRec(l, accept) {
         </n-button>
       </div>
       <p v-if="quotaErr" class="streak-note hall-warn">{{ t(quotaErr) }}</p>
-      <p v-if="mailHint" class="streak-note hall-warn">{{ mailHint }}</p>
+      <!-- 轮 315：投信成功行内绿 flash（非弹窗）+ 失败行内红；mailHint==="ok" = 乐观在飞 -->
+      <p v-if="mailHint" :class="mailHint === 'ok' ? 'streak-note mail-sent' : 'streak-note hall-warn'">{{
+        mailHint === "ok" ? t("bottle.sentFlash") : mailHint }}</p>
 
       <div class="bottle-sea">
         <span class="sec-label">{{ t("bottle.seaTitle") }}</span>

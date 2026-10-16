@@ -280,7 +280,8 @@ export const messages = {
       pending: "Drifting at sea",
       signInHint: "Sign in to send bottles, fish them out and receive replies.",
       errSendLimit: "That's today's 5 letters — come back tomorrow 🌊",
-      sentOk: "Your letter is in the sea 🍶 Wait for someone to pick it up — see it under \"My letters\" below.",
+      /* 轮 315: optimistic inline flash on send (no modal; failures still pop + restore draft) */
+      sentFlash: "Letter's in the sea 🍶",
       errFishLimit: "That's today's 7 bottles — come back tomorrow 🌊",
       errHoldLimit: "7 letters are already in your hands — reply to them or throw them back first.",
       errEmpty: "The sea is empty right now — drop a letter first.",
@@ -1194,7 +1195,8 @@ export const messages = {
       pending: "在海里漂着，等有人捞起……",
       signInHint: "登录后可以投信、捞信、收回信。",
       errSendLimit: "今天的信已经投完啦（每天 5 封）——明天再来 🌊",
-      sentOk: "信已投进海里 🍶 等有缘人捞起——下面「我发布的」已自动添上这封。",
+      /* 轮 315：投信成功行内绿 flash（乐观先闪，后台落库；失败才弹窗 + 草稿恢复） */
+      sentFlash: "信已投进海里 🍶",
       errFishLimit: "今天的 7 次用完啦（捞到并回信才消耗次数）——明天再来 🌊",
       errHoldLimit: "手里已经压着 7 封信啦——先回信或放回海里，再捞新的。",
       errEmpty: "海里暂时没有信——先投一封，让海不那么空。",

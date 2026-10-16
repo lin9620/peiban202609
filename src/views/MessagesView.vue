@@ -61,8 +61,15 @@ let msgsConv = "";           // msgs 现在装的是哪个会话（轮 157b：�
 let msgSeq = 0;
 const isStale = (mySeq, id) => mySeq !== msgSeq || String(activeId.value) !== String(id);
 const body = ref("");
-const sending = ref(false);
 const sendErr = ref("");
+/* 轮 316 · 乐观行临时 id 生成器：连发两条落在同一毫秒时 -Date.now() 会撞同一个 id，
+ * 确认回写就会把两条都改成同一条。同毫秒再减 1，永远严格递减（id<0 仍排尾）。 */
+let lastTempId = 0;
+function nextTempId() {
+  const t = -Date.now();
+  lastTempId = t < lastTempId ? t : lastTempId - 1;
+  return lastTempId;
+}
 const loadingMsgs = ref(false);
 const hasMore = ref(true);
 const oldestId = ref(null);
@@ -326,7 +333,10 @@ async function loadMessages(id, { before = null } = {}) {
     /* 服务端返回新→旧：反转为旧→新（渲染顺序） */
     const asc = rows.slice().reverse();
     if (before == null || msgsConv !== id) {
-      msgs.value = asc;
+      /* 轮 316：整窗替换不许吞掉在飞的乐观行 —— 旧版把用户刚发的消息抹掉，
+       * 确认回来也找不到它，于是「发出去却看不见，等很久才出现」。 */
+      const pend = msgs.value.filter((m) => m.id < 0);
+      msgs.value = pend.length ? asc.concat(pend) : asc;
     } else {
       /* 轮 157：向上翻历史的锚点保持——先量高、插行、下一帧把 scrollTop 补上差值。
        * 不补的话浏览器把视口钉在原 scrollTop 上，内容凭空「跳」一页；
@@ -621,23 +631,26 @@ function backToList() {
 /* ─────────── 发送 / 撤回 ─────────── */
 
 async function send() {
-  /* 轮 229：发送中不再把按钮置 disabled（点了发送瞬间 body 会被清空，:disabled 随即为真，
-     Naive 就把整颗按钮调淡 —— 转圈挂在淡色底上很别扭，用户反馈「不协调」）。
-     防重复发送改由这里挡：loading 态的 n-button 点击仍会派发 click。 */
-  if (sending.value) return;
+  /* 轮 316：删掉「发送中」阻塞 —— 用户原话「旁边发送中按钮转半天，想发送下一条都发送不了」。
+     微信式：点发送立刻上屏、立刻能写下一句；失败的那一条自己在行内带标记。
+     旧版那道「上一句没回来就不给发下一句」的发送中门，在弱网下等于把输入框锁死几十秒。 */
   const err = validateSend(body.value, null);
   if (err) { sendErr.value = t(err); return; }
   const text = body.value.trim();
   const convId = activeId.value;
   body.value = "";
   sendErr.value = "";
-  sending.value = true;
-  /* 乐观上屏：临时 id 为负，服务端确认后整段重载 */
+  /* 乐观上屏：临时 id 为负，服务端确认后就地落位 */
   const temp = {
-    id: -Date.now(), sender: meId.value, body: text, image_path: null,
+    id: nextTempId(), sender: meId.value, body: text, image_path: null,
     created_at: new Date().toISOString(), pending: true,
   };
   msgs.value = msgs.value.concat([temp]);
+  /* 轮 316：用户主动发消息 = 立刻亮出消息区并钉底。
+     旧版要等 entryReady（首进无本地库时 = 等那次跨境 RPC 落定）才揭示，
+     用户看到的就是「我发出去的消息不在聊天框里，等很久才出现」。 */
+  pinning.value = false;
+  listRevealed.value = true;
   scrollBottom(true);
   try {
     const r = await dmApi.send(convId, text, null);
@@ -649,15 +662,14 @@ async function send() {
     const onSameConv = String(activeId.value) === String(convId);
     if (mid != null) {
       if (onSameConv) {
-        const rowSrv = {
-          id: mid, sender: meId.value, body: text, image_path: null,
-          created_at: r.created_at || temp.created_at, deleted_at: null,
-        };
-        msgs.value = msgs.value.map((m) => (m.id === temp.id ? rowSrv : m));
-        oldestId.value = msgs.value.length ? msgs.value[0].id : null;
-        /* 轮 194：本地库同步补上这条（不补的话退出重进会先看到本地库少一条） */
+        const rowSrv = { id: mid, sender: meId.value, body: text, image_path: null,
+          created_at: r.created_at || temp.created_at, deleted_at: null };
+        /* 轮 316：找不到乐观行就补回（整窗替换会把在飞的乐观行抹掉），已有同 id 只去重 */
+        const rest = msgs.value.filter((m) => m.id !== temp.id);
+        msgs.value = rest.some((m) => m.id === mid) ? rest : rest.concat([rowSrv]);
         dmStoreSave(meId.value, convId, msgs.value, hasMore.value);
         idbMerge(convId, msgs.value);   /* 轮 204：发送镜像全量库 */
+        oldestId.value = msgs.value.length ? msgs.value[0].id : null;
       }
     } else if (onSameConv) {
       await loadMessages(convId);   /* 兜底：拿不到 msg_id（异常网关）才走整段重载 */
@@ -667,10 +679,19 @@ async function send() {
     if (row) { row.last_preview = text.slice(0, 80); row.last_message_at = new Date().toISOString(); }
     refreshBadge();
   } catch (e) {
-    if (onSameConv) msgs.value = msgs.value.map((m) => (m.id === temp.id ? { ...m, pending: false, failed: true } : m));
+    /* 轮 316：这里原来引用的是 try 内的 const onSameConv —— 每次发送失败都抛 ReferenceError，
+     * 失败行永远停在「发送中」，复位发送态的语句也就执行不到：按钮永久转圈 +
+     * 下一条也被那道发送中门挡在外面（用户原话「转半天，想发送下一条都发送不了」）。
+     * 现在本块自带判定，不再依赖 try 的作用域。 */
+    const onSameConv = String(activeId.value) === String(convId);
+    if (onSameConv) {
+      const failedRow = { ...temp, pending: false, failed: true };
+      msgs.value = msgs.value.some((m) => m.id === temp.id)
+        ? msgs.value.map((m) => (m.id === temp.id ? failedRow : m))
+        : msgs.value.concat([failedRow]);
+    }
     sendErr.value = t(sendErrKey(e));
   }
-  sending.value = false;
 }
 
 async function recall(m) {
@@ -1304,7 +1325,7 @@ function goSignIn() {
                     <p v-else class="dm-text">{{ it.msg.body }}</p>
                   </div>
                   <span class="dm-stamp">
-                    {{ it.msg.pending ? t("dm.sending") : it.msg.failed ? t("dm.sendFailed") : clock(it.msg.created_at) }}
+                    <span v-if="it.msg.failed" class="dm-err">{{ t("dm.sendFailed") }}</span><template v-else-if="!it.msg.pending">{{ clock(it.msg.created_at) }}</template>
                     <button
                       v-if="canRecall(it.msg, meId) && !it.msg.pending"
                       class="dm-recall" :title="t('dm.recall')"
@@ -1332,9 +1353,9 @@ function goSignIn() {
                   v-model="body" type="textarea" rows="1" autosize :maxlength="2000"
                   :placeholder="isMobileNav ? t('dm.placeholderMobile') : t('dm.placeholder')"
                   @keydown.enter.exact.prevent="send" />
-                <n-button type="primary" round size="small" class="dm-send-btn" :disabled="!sending && !body.trim()" @click="send">
-                  <span :style="{ visibility: sending ? 'hidden' : 'visible' }">{{ t("dm.send") }}</span>
-                  <span v-if="sending" class="dm-send-spin" aria-hidden="true"></span>
+                <n-button type="primary" round size="small" class="dm-send-btn" :disabled="!body.trim()" @click="send">
+                  {{ t("dm.send") }}
+                  <!-- 轮 316：不再有「发送中」转圈——微信式，发出去就完事；失败在那条消息行内标红 -->
                 </n-button>
               </div>
             </template>

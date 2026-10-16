@@ -184,6 +184,8 @@ a.dl-card:hover {
   animation: dl-spin .8s linear infinite;
 }
 @keyframes dl-spin { to { transform: rotate(360deg); } }
+/* 轮 315 · 投信成功行内绿 flash（与失败的 hall-warn 红区分，不再弹窗） */
+.streak-note.mail-sent { color: var(--good); font-weight: 600; }
 @media (max-width: 480px) { .dl-grid { grid-template-columns: 1fr; } }
 /* 轮 308 回炉 · 「我的」页头部下载 pill（紧贴设置；桌面横幅/App 内均不渲染，v-if 已挡）。
  * 与 .admin-entry 同族描边风格：button 元素补回 a 的默认外观。 */
