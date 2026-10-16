@@ -8,6 +8,7 @@ import { useRouter } from "vue-router";
 import { t } from "../../i18n.js";
 import { RANK_TABS, periodKey, storyErrKey } from "../../utils/storyRules.js";
 import { storyRank } from "../../utils/story.js";
+import { setStorySeed } from "../../utils/storySeed.js";
 
 const router = useRouter();
 const PAGE = 12;
@@ -69,8 +70,11 @@ async function pickTag(tag) {
     tagRows.value = Array.isArray(data) ? data : [];
   } catch (e) { err.value = t(storyErrKey(e)); }
 }
-function open(id) {
-  if (Number(id) > 0) router.push(`/story/${id}`);
+/* 轮 313：把榜单行当种子递给详情页（榜单行与发现联同字段）→ 点开先出标题/作者/标签，正文随后 */
+function open(r) {
+  if (!r || !(Number(r.id) > 0)) return;
+  setStorySeed(r);
+  router.push(`/story/${r.id}`);
 }
 load();
 </script>
@@ -98,7 +102,7 @@ load();
     </div>
 
     <ol v-if="mode !== 'tag'" class="st-rank-list">
-      <li v-for="(r, i) in rows" :key="r.id" class="st-rank-row" @click="open(r.id)">
+      <li v-for="(r, i) in rows" :key="r.id" class="st-rank-row" @click="open(r)">
         <span class="st-rank-no">{{ medal(i) }}</span>
         <span class="st-rank-body">
           <span class="st-rank-name">{{ r.title }}</span>
@@ -110,7 +114,7 @@ load();
     </ol>
 
     <ol v-else-if="activeTag" class="st-rank-list">
-      <li v-for="(r, i) in tagRows" :key="r.id" class="st-rank-row" @click="open(r.id)">
+      <li v-for="(r, i) in tagRows" :key="r.id" class="st-rank-row" @click="open(r)">
         <span class="st-rank-no">{{ medal(i) }}</span>
         <span class="st-rank-body">
           <span class="st-rank-name">{{ r.title }}</span>

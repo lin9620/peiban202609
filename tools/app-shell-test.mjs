@@ -125,7 +125,7 @@ ok("T26 系统返回键先退内部层级（拦截栈：通知段 → 私信段�
 ok("T27 我的 Tab 整合（手机形态补钱包金币 = 桌面顶栏口径；桌面零变化）",
   read("src/views/ProfileView.vue").includes('v-if="isMobileNav" round :bordered="false" class="soft-tag"')
   && read("src/views/ProfileView.vue").includes("{{ wallet.coins }}")
-  && read("src/views/ProfileView.vue").includes('import { isMobileNav } from "../stores/uiStore.js"'));
+  && /import \{[^}]*\bisMobileNav\b[^}]*\} from "\.\.\/stores\/uiStore\.js"/.test(read("src/views/ProfileView.vue")));
 const pet = read("src/views/PetView.vue");
 ok("T28 共有1 宠物睡着了送行给「弹窗」提示（以前角落一句小字没人看 → sleepWarn 弹窗 + 知道啦）",
   read("src/views/PetView.vue").includes('t("adventure.sleepingBlock"')

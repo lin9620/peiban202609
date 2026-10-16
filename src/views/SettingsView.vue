@@ -13,7 +13,7 @@ import { normPrefs } from "../utils/notifyRules.js";
 import { avatarUrlFor } from "../utils/avatar.js";   /* 轮 238:萌宠头像池 */
 import {
   themeKey, themeOptions, applyTheme,
-  langOptions, onLangPick, isMobileNav,
+  langOptions, onLangPick, isMobileNav, isApp,
 } from "../stores/uiStore.js";
 import { getItem } from "../utils/storage.js";
 /* 轮 297 · 版本与检查更新 */
@@ -39,9 +39,11 @@ function goBack() {
 }
 
 /* ═════════ 轮 297 · 版本行 + 手动检查更新 ═════════
- * 自动弹窗只在 App 壳里做（main.js 启动后静默检查）；设置页这一处是给两端
- * 都能主动看一眼用的 —— 拿不到登记（404 / 迁移没跑 / 断网）时统一显示
- * 「已经是最新版本了」，不把技术细节暴露给用户（appVersion.checkForUpdate 绝不抛错）。 */
+ * 自动弹窗只在 App 壳里做（main.js 启动后静默检查）；设置页这一处原本两端都显示，
+ * 轮 309 用户拍板「浏览器端不应该有更新按钮的内容，去掉」——更新是 App 的事，
+ * 浏览器刷新即最新，版本行/检查按钮/提示整块只在 App 壳渲染（v-if="isApp"）。
+ * 拿不到登记（404 / 迁移没跑 / 断网）时统一显示「已经是最新版本了」，
+ * 不把技术细节暴露给用户（appVersion.checkForUpdate 绝不抛错）。 */
 const curVer = currentVersion();
 const updOpen = ref(false);
 const updLatest = ref(null);
@@ -393,8 +395,9 @@ onMounted(() => { loadPrefs(); });
         <span class="set-val"></span>
         <span class="set-arrow on">&#8250;</span>
       </div>
-      <!-- 轮 297 · 版本行 + 手动检查更新（两端都能看一眼；自动弹窗只在 App 壳做） -->
-      <div class="set-row">
+      <!-- 轮 297 · 版本行 + 手动检查更新；轮 309（用户拍板）整块只给 App 壳 ——
+           浏览器（手机+桌面）刷新即最新，版本行/检查按钮/提示一概不显示 -->
+      <div v-if="isApp" class="set-row">
         <span class="set-ico" aria-hidden="true">&#128241;</span>
         <span class="set-label">{{ t("appUpdate.currentVer", { v: curVer ? curVer.name : "—" }) }}</span>
         <span class="set-val"></span>
@@ -402,10 +405,10 @@ onMounted(() => { loadPrefs(); });
           {{ t("appUpdate.checkBtn") }}
         </button>
       </div>
-      <p v-if="updMsg" class="streak-note">{{ updMsg }}</p>
+      <p v-if="isApp && updMsg" class="streak-note">{{ updMsg }}</p>
     </section>
 
-    <UpdateDialog v-model:show="updOpen" :current="curVer" :latest="updLatest" />
+    <UpdateDialog v-if="isApp" v-model:show="updOpen" :current="curVer" :latest="updLatest" />
   </div>
 </template>
 

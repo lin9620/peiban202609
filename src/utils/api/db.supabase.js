@@ -429,7 +429,7 @@ export const db = {
 
   /* ══════════ 温暖漂流瓶（#6：写/捞/回/放回/我的信/我捞到的） ══════════ */
 
-  /** 投一封信进海里（每日 3 封由 RPC 里数 created_day 把关） */
+  /** 投一封信进海里（每日 5 封由 RPC 里数 created_day 把关；轮 305：用户要求 3 → 5） */
   bottleSend(body) {
     return unwrap(sb().rpc("bottle_send", { p_body: body }));
   },
@@ -635,10 +635,17 @@ export const db = {
   /* ══════════ 举报 / 复核（轮 33；写路径全在 RPC，读靠 admin_report_page 聚合） ══════════ */
 
   /** 提交举报（target_type: post|comment；防刷/去重/评论阈值在 RPC 里） */
-  reportCreate(targetType, targetId, reason, detail) {
+  reportCreate(targetType, targetId, reason, detail, turnstileToken = "") {
+    /* 轮 311 · P2：直连模式无 Worker/secret，turnstileToken 忽略（人机验证是网关模式的能力） */
+    void turnstileToken;
     return unwrap(sb().rpc("report_create", {
       p_target_type: targetType, p_target_id: targetId, p_reason: reason, p_detail: detail,
     }));
+  },
+
+  /** 轮 311 · P2：直连（本地 dev）无服务端 secret —— 恒通过；网关模式才有真校验 */
+  async turnstileVerify() {
+    return { ok: true };
   },
 
   /** 举报/复核队列（status: pending|handled；items 带正文与聚合人数） */

@@ -61,8 +61,12 @@ const FISH_TIMEOUT = 6000;
  * 修法：离开漂流瓶（切页签 / 切页失活）即作废当前会话（fishGen++），
  * 在飞请求落地时会话已失效 → 一律不补弹窗：捞到的信走托盘找回，提示全部丢弃。 */
 let fishGen = 0;
+/* 轮 303：投信会话代际——与 fishGen 并列（捞信/投信各自作废互不影响）。
+ * 投信落地时若人已切走（tab/失活），提示弹窗一律不补弹（信已在库里，记录区照常刷新）。 */
+let sendGen = 0;
 function abandonFish() {
   fishGen++;
+  sendGen++;
   fishPop.value.show = false;
   fishing.value = false;   /* 会话作废即停转圈；旧会话 finally 见代际不符不再复位 */
 }
@@ -148,16 +152,29 @@ async function doSend() {
   const body = mailDraft.value.trim();
   /* sendLeft === null（次数还没同步回来）不拦：交给服务端裁定，限额由 RPC 兜底 */
   if (!body || sendLeft.value === 0) return;
+  /* 轮 303：投信代际守卫（与捞信同款）——落地时人已切走则不弹提示，防止切回来旧弹窗复活 */
+  const gen = ++sendGen;
+  const alive = () => gen === sendGen;
   mailBusy.value = true;
   mailHint.value = "";
   try {
     await bottleSend(body);
     mailDraft.value = "";
-    await syncQuota();          /* 轮 37：次数只回读服务端值，本机不做 +1、不留账本 */
-    await refreshBottle();
+    /* 轮 303：投信成功必须给明确反馈（此前只清草稿，用户实测「啥都没有」）——
+     * 与捞信反馈口径一致走居中弹窗；同时「我发布的」记录区后台重拉，新瓶自动添上，
+     * 不再让用户自己点刷新（弹窗先行，刷新不 await，见轮 238 口径）。 */
+    if (alive()) fishPop.value = { show: true, mode: "msg", letter: null, msg: t("bottle.sentOk") };
+    syncQuota();          /* 轮 37：次数只回读服务端值，本机不做 +1、不留账本 */
+    loadRecords(true);    /* 轮 303：自动刷新记录（代数守卫在 loadRecords 内部，切页签不串页） */
+    refreshBottle();
   } catch (e) {
     const k = bottleErrKey(e);
-    mailHint.value = t(k);
+    /* 轮 303：失败同样弹窗明示（此前只写行内 mailHint，位置不显眼 = 用户实测「啥都没有」）；
+     * 行内 mailHint 保留作弹窗关闭后的残影提示。 */
+    if (alive()) {
+      mailHint.value = t(k);
+      fishPop.value = { show: true, mode: "msg", letter: null, msg: t(k) };
+    }
     /* 轮 20：限额报错 = 服务端账本与显示错位的信号 → 立刻拉服务端次数对齐显示 */
     if (k === "bottle.errSendLimit") syncQuota();
   } finally { mailBusy.value = false; }

@@ -74,6 +74,13 @@ for (const key of [...component.matchAll(/["']bottle\.([A-Za-z]+)["']/g)].map((m
 }
 eq(read("src/views/MessagesView.vue").includes("<BottleRecords"), true);
 eq(read("src/views/NotificationsView.vue").includes('tg.type === "bottle"'), true);
+/* 轮 303 · 投信反馈与记录自动刷新（用户报「投了信啥都没有、记录也不自己加」） */
+const bv = read("src/components/BottleView.vue");
+eq(bv.includes('t("bottle.sentOk")'), true);                                   /* 成功弹窗文案 */
+eq(/fishPop\.value = \{ show: true, mode: "msg", letter: null, msg: t\(k\) \}/.test(bv), true); /* 失败也弹窗 */
+eq(bv.includes("loadRecords(true);    /* 轮 303"), true);                       /* 成功后台重拉记录 */
+eq(bv.includes("sendGen++"), true);                                             /* 投信代际守卫（切走不复活弹窗） */
+for (const lang of ["zh", "en"]) eq(typeof messages[lang].bottle.sentOk === "string" && messages[lang].bottle.sentOk.length > 0, true);
 // 静态迁移检查：仅确认脚本包含关键步骤，不证明事务及幂等行为已在数据库通过。
 const sql = read("MIGRATION_bottle_chat.sql");
 for (const text of ["begin;", "commit;", "bottle_reply_notification", "bottle_chat_decide", "bottle_records", "letter.body, letter.created_at", "letter.reply, letter.reply_at"]) eq(sql.includes(text), true);

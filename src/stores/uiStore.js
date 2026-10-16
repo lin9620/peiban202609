@@ -92,6 +92,11 @@ export function retapTab(path) {
   retapPath.value = String(path || "");
   retapSeq.value++;
 }
+/* 轮 308 回炉：下载弹窗跨组件开门信号（「我的」页 pill → App.vue 全局 dl-modal）。
+ * 复用 retapSeq 同款「自增序号信号」：ProfileView 只发信号，弹窗本体仍归 App.vue，
+ * dlUrl/dlQr 全套复用，不复制下载逻辑。App 内永远不发（pill 只在浏览器渲染）。 */
+export const dlOpenSeq = ref(0);
+export function openDownload() { dlOpenSeq.value++; }
 export const currentLang = computed(
   () => (languages.find((l) => l.code === i18n.locale) || languages[0]).label
 );

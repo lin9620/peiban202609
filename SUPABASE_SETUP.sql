@@ -425,6 +425,14 @@ declare
   v_dis     integer;
   v_rm      boolean;
 begin
+  -- 轮 306：先查存在再 insert —— 坏 id 直接 not-found，不再撞 wall_post_views 外键
+  -- （旧版先 insert 后查，帖不存在时外键把整个函数炸掉，not-found 走不到）。
+  select views, dislikes, removed into v_views, v_dis, v_rm
+    from public.wall_posts where id = p_post;
+  if v_views is null then
+    return jsonb_build_object('ok', false, 'reason', 'not-found');
+  end if;
+
   insert into public.wall_post_views (post_id, viewer_key)
   values (p_post, v_viewer)
   on conflict do nothing;
@@ -432,14 +440,7 @@ begin
 
   if v_counted then
     update public.wall_posts set views = views + 1 where id = p_post
-      returning views, dislikes, removed into v_views, v_dis, v_rm;
-  else
-    select views, dislikes, removed into v_views, v_dis, v_rm
-      from public.wall_posts where id = p_post;
-  end if;
-
-  if v_views is null then
-    return jsonb_build_object('ok', false, 'reason', 'not-found');
+      returning views into v_views;
   end if;
   return jsonb_build_object('ok', true, 'counted', v_counted,
                             'views', v_views, 'dislikes', v_dis, 'removed', v_rm);
@@ -463,6 +464,14 @@ begin
   for v_post in
     select distinct x from unnest(coalesce(p_posts, '{}'::bigint[])) as t(x)
   loop
+    -- 轮 306：先查存在再 insert —— 坏 id 该条 not-found，不炸 wall_post_views 外键、不拖垮整批
+    select views, dislikes, removed into v_views, v_dis, v_rm
+      from public.wall_posts where id = v_post;
+    if v_views is null then
+      v_out := v_out || jsonb_build_object('post', v_post, 'ok', false, 'reason', 'not-found');
+      continue;
+    end if;
+
     insert into public.wall_post_views (post_id, viewer_key)
     values (v_post, v_viewer)
     on conflict do nothing;
@@ -470,21 +479,14 @@ begin
 
     if v_counted then
       update public.wall_posts set views = views + 1 where id = v_post
-        returning views, dislikes, removed into v_views, v_dis, v_rm;
-    else
-      select views, dislikes, removed into v_views, v_dis, v_rm
-        from public.wall_posts where id = v_post;
+        returning views into v_views;
     end if;
 
-    if v_views is null then
-      v_out := v_out || jsonb_build_object('post', v_post, 'ok', false, 'reason', 'not-found');
-    else
-      v_out := v_out || jsonb_build_object('post', v_post, 'ok', true,
-                                           'counted', v_counted,
-                                           'views', v_views,
-                                           'dislikes', v_dis,
-                                           'removed', v_rm);
-    end if;
+    v_out := v_out || jsonb_build_object('post', v_post, 'ok', true,
+                                         'counted', v_counted,
+                                         'views', v_views,
+                                         'dislikes', v_dis,
+                                         'removed', v_rm);
   end loop;
 
   return jsonb_build_object('ok', true, 'results', v_out);
@@ -1733,7 +1735,7 @@ begin
   if p_body = '' or char_length(p_body) > 1000 then raise exception 'bottle-too-long'; end if;
   select count(*) into v_count from public.bottle_letters
     where user_id = auth.uid() and created_day = (now() at time zone 'utc')::date;
-  if v_count >= 3 then raise exception 'bottle-limit-send'; end if;
+  if v_count >= 5 then raise exception 'bottle-limit-send'; end if;   -- 轮 305：每日可写信 3 → 5（与 MIGRATION_bottle_send_5.sql 同源）
   insert into public.bottle_letters (user_id, nickname, body)
     values (auth.uid(),
             coalesce((select nickname from public.profiles where id = auth.uid()), ''),

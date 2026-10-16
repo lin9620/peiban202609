@@ -219,8 +219,10 @@ function clearSearch() {
 /* 回到列表顶部（手机端墙自滚 / 桌面整页滚，两条都判） */
 function focusFeedTop() {
   const el = wallScrollerEl && wallScrollerEl.value;
-  if (el && typeof el.scrollTo === "function") el.scrollTo({ top: 0, behavior: "smooth" });
-  else if (typeof window !== "undefined" && typeof window.scrollTo === "function") window.scrollTo({ top: 0, behavior: "smooth" });
+  /* 轮 304：回顶必须 instant —— smooth 滚几千 px 要好几秒（用户原话「长长的返回滚动，
+   * 知乎就不会」）。与下方 pinToTop 的 instant 口径一致。 */
+  if (el && typeof el.scrollTo === "function") el.scrollTo({ top: 0, behavior: "instant" });
+  else if (typeof window !== "undefined" && typeof window.scrollTo === "function") window.scrollTo({ top: 0, behavior: "instant" });
 }
 /* 轮 253：图片渐进渲染（知乎/Reddit 式淡入）—— 图载完/失败才去掉透明，
  * 失败也标记（避免图片挂了永远隐形）；Set 存帖 id，上限防野列表撑内存。 */
@@ -400,12 +402,54 @@ async function loadCloud({ fresh = false, quiet = false } = {}) {
        最多 3 跳全是串行），弱网单个挂死骨架就永远不消失。超时只放弃「等」，
        不放弃「数据」：底层请求继续走、游标不动，下次触底重试（去重自愈）。 */
 const PAGE_BUSY_MS = 8000;
+/* 轮 306（用户实测「一二十张就到底了」）——
+   超时只是「不再等」，**绝不是「这页不要了」**。旧代码把超时当丢弃用，而一页 =
+   listPosts + listReactionsByPosts 两次**串行**请求，弱网实测 7.7s + 2.2s ≈ 10s 必超 8s，
+   于是两个请求都 200 回来了，整页数据却被扔掉：游标不动、卡片不动，而用户此时
+   已经贴在列表底部，滚动再也产生不出新事件 → 永久停在首屏那一二十张。
+   PAGE_HARD_MS：连接真挂死（Promise 永不变更状态）时强制放行，否则 pageBusy 一锁死，
+   触底续载就彻底失联；PAGE_RETRY_MS：失败后自动重排一次触底（自愈，不再依赖用户「再滚一下」）。 */
+const PAGE_HARD_MS = 30000;
+const PAGE_RETRY_MS = 1500;
+/* 定时器统一登记 —— 离开页面时清干净，免得离场后还排一次触底 */
+let feedTimers = [];
+function laterFeedTick(ms, fn = null) {
+  const t = setTimeout(() => {
+    feedTimers = feedTimers.filter((x) => x !== t);
+    if (fn) fn();
+    else scheduleFeedTick();
+  }, ms);
+  feedTimers.push(t);
+  return t;
+}
 function withTimeout(p, ms) {
   let t = 0;
   return Promise.race([
     Promise.resolve(p).finally(() => { clearTimeout(t); }),
     new Promise((_, rej) => { t = setTimeout(() => rej(new Error("page-busy-timeout")), ms); }),
   ]);
+}
+/* 轮 306：「一页数据到手」的收尾收成一处 —— 正常路径与「迟到页」共用，
+   去重 / 上屏 / 推游标 / 判到底 / 评论数后台补，口径完全一致。真吃进新内容返回 true。 */
+function appendFeedRows(rows) {
+  if (!Array.isArray(rows) || !rows.length) return false;
+  const seen = new Set(cloudPosts.value.map((p) => p.dbId));
+  const add = filterBlocked(rows.filter((p) => !seen.has(p.dbId)));
+  if (!add.length) return false;
+  countViews(add);
+  cloudPosts.value = cloudPosts.value.concat(add);
+  feedCursor.value = rows[rows.length - 1].dbId;
+  cloudDone.value = rows.length < FEED_PAGE;
+  pageBusy.value = false;   /* 轮 267：行已上屏，骨架使命完成——评论数转后台补 */
+  cloudFetchCommentCounts(rows.map((r) => r.dbId)).then((counts) => {
+    if (!counts) return;
+    const next = { ...cloudCmtTotal.value };
+    for (const p of add) {
+      if (p.dbId != null) next[cmtKey(p)] = counts[p.dbId] || 0;
+    }
+    cloudCmtTotal.value = next;
+  }).catch(() => {});
+  return true;
 }
 async function loadMoreCloud() {
   /* 轮 252：搜索态下触底 = 搜索结果续页（before 游标同款口径） */
@@ -415,37 +459,47 @@ async function loadMoreCloud() {
   }
   if (cloudDone.value || pageBusy.value || loadingCloud.value) return;
   pageBusy.value = true;
+  /* 轮 306：超时时 pageBusy 交接给**在飞的请求**自己收尾（finally 不碰），
+     否则超时一放行，下一次触底会跟还在路上的那个请求重复发同一页（去重不会重复上屏，
+     但白发一次请求要花 Workers 额度）。 */
+  let handoff = false;
   try {
     let cursor = feedCursor.value;
     for (let hop = 0; hop < 3; hop++) {
-      const rows = await withTimeout(cloudFetchPosts(FEED_PAGE, cursor), PAGE_BUSY_MS);
-      if (!rows) return;                    /* 拉取失败：保留现场，下次触底再试 */
-      if (!rows.length) { cloudDone.value = true; return; }   /* 空页 = 真到底 */
-      const seen = new Set(cloudPosts.value.map((p) => p.dbId));
-      const add = filterBlocked(rows.filter((p) => !seen.has(p.dbId)));
-      if (add.length) {
-        countViews(add);
-        cloudPosts.value = cloudPosts.value.concat(add);
-        feedCursor.value = rows[rows.length - 1].dbId;
-        cloudDone.value = rows.length < FEED_PAGE;
-        pageBusy.value = false;   /* 轮 267：行已上屏，骨架使命完成——评论数转后台补 */
-        cloudFetchCommentCounts(rows.map((r) => r.dbId)).then((counts) => {
-          if (!counts) return;
-          const next = { ...cloudCmtTotal.value };
-          for (const p of add) {
-            if (p.dbId != null) next[cmtKey(p)] = counts[p.dbId] || 0;
-          }
-          cloudCmtTotal.value = next;
-        }).catch(() => {});
+      const req = cloudFetchPosts(FEED_PAGE, cursor);
+      let rows = null;
+      try {
+        rows = await withTimeout(req, PAGE_BUSY_MS);
+      } catch (e) {
+        /* 轮 306 · 超时 ≠ 丢弃：数据还在路上，落地就补上屏；落地/失败后自动再排一次触底 */
+        handoff = true;
+        let done = false;
+        const settle = () => {
+          if (done) return;
+          done = true;
+          pageBusy.value = false;
+          scheduleFeedTick();
+        };
+        req.then((late) => { appendFeedRows(late); settle(); }, settle);
+        laterFeedTick(PAGE_HARD_MS, () => {
+          if (done) return;
+          done = true;
+          pageBusy.value = false;
+          scheduleFeedTick();
+        });
         return;
       }
+      if (!rows) { laterFeedTick(PAGE_RETRY_MS); return; }   /* 拉取失败：保留现场，稍后自愈重试 */
+      if (!rows.length) { cloudDone.value = true; return; }   /* 空页 = 真到底 */
+      if (appendFeedRows(rows)) return;
       cursor = rows[rows.length - 1].dbId;  /* 整页都是已加载过的 → 前进游标跳过这页 */
     }
     cloudDone.value = true;                 /* 连跳 3 页全重复：数据库真没有没看过的了 */
   } catch (e) {
-    /* 轮 267：超时/异常——游标与现场都不动，下次触底重试；骨架由 finally 收起 */
+    /* 轮 267/305：异常——游标与现场都不动；自动重排一次触底，不再只等用户再滚一下 */
+    laterFeedTick(PAGE_RETRY_MS);
   } finally {
-    pageBusy.value = false;
+    if (!handoff) pageBusy.value = false;
   }
 }
 
@@ -804,8 +858,10 @@ function pinToTop() {
 watch([retapSeq, retapPath], ([, p]) => {
   if (p !== route.path) return;                 /* 点的是别的页签，不归我管 */
   const el = wallScrollerEl.value;
-  if (el) el.scrollTo({ top: 0, behavior: "smooth" });
-  else window.scrollTo({ top: 0, behavior: "smooth" });
+  /* 轮 304：与 goTop 同口径改 instant —— 再点页签时人可能在几千 px 深处，
+   * smooth 回滚要好几秒（用户原话「长长的返回滚动，知乎就不会」）。 */
+  if (el) el.scrollTo({ top: 0, behavior: "instant" });
+  else window.scrollTo({ top: 0, behavior: "instant" });
   wallScrollTop = 0;
   manualRefresh();
 });
@@ -1831,7 +1887,11 @@ onUnmounted(() => {
       if (blob.length < 1500000) setItem(FEED_ARCHIVE_KEY, blob);
     } catch (e) { /* 忽略 */ }
   }
-  if (feedRaf) cancelAnimationFrame(feedRaf);
+  /* 轮 306：取消后必须归零 —— 留着非零 id，scheduleFeedTick 的 `if (feedRaf) return`
+     会把之后所有触底触发都早退掉；定时器同样要清，免得离场后还排一次触底 */
+  if (feedRaf) { cancelAnimationFrame(feedRaf); feedRaf = 0; }
+  for (const t of feedTimers) clearTimeout(t);
+  feedTimers = [];
   if (cardRO) cardRO.disconnect();
   releaseAnchor();                   /* 中途离场（跳转动画还没跑完）也要把锚定还回去 */
   cardEls.clear();

@@ -133,6 +133,49 @@ ok("轮 74 启动页语言跟随（用户:英文语言还是中文启动页）�
     && html.includes("Care for a little pet")
     && html.includes("Meet gentle people on the Wall"));
 
+/* ─── 轮 312：个人域缓存不能在「认证还没就绪」的启动间隙被清 ───────────────────
+ * 原报障：「会话列表本来有记录，去今日/宠物页点了点返回会话，一片空白、记录都没了，等很久才恢复」。
+ * 根因：cacheDrop("dm:"/"notif:"/"bottle:") 挂在 watch(cloudSigned, …, {immediate:true}) 的 else 分支上，
+ * 而 setup 阶段 cloud.ready 还是 false（initCloud 在 onMounted 才跑）→ **每次页面加载**的 setup 都算一次
+ * 「登出」，把会话列表的 SWR 快照删掉；重载后消息页没有快照可秒开，只能干等一次完整 dm_list_convs
+ * （跨境弱网 0.6~2s 起、失败还带 3s×3 重试）= 空白 + 很久才恢复。
+ * 真浏览器逐帧实证（生产构建）：修复前重载 +42ms 快照还在 → +119ms 被删；修复后快照保留、+120ms 列表
+ * 就从缓存上屏（dm_list_convs 全程拦死也不影响）。这条钉死「清缓存的时机 = 认证有结论之后」。 */
+const watchBlock = (src, head) => {
+  const i = src.indexOf(head);
+  if (i < 0) return "";
+  const j = src.indexOf("}, { immediate: true });", i);
+  return j < 0 ? src.slice(i, i + 800) : src.slice(i, j);
+};
+ok("轮 312 ① 清个人域缓存的判据是「云端已就绪 且 确实没有登录用户」（ready && !user）",
+  has(appVue, "watch(() => cloud.ready && !cloud.user", "if (!out) return;")
+    && appVue.includes('cacheDrop("dm:")') && appVue.includes('cacheDrop("notif:")') && appVue.includes('cacheDrop("bottle:")'));
+ok("轮 312 ② 反向锁：cloudSigned 的 immediate watcher 里**不许**再出现 cacheDrop（那就是原 bug 的形态）",
+  watchBlock(appVue, "watch(cloudSigned,").length > 0
+    && !watchBlock(appVue, "watch(cloudSigned,").includes("cacheDrop("));
+ok("轮 312 ③ 三处 cacheDrop 必须都排在新 watcher 的守卫 `if (!out) return;` 之后（不能有一个漏在外面）",
+  (() => {
+    const i = appVue.indexOf("watch(() => cloud.ready && !cloud.user");
+    if (i < 0) return false;
+    const block = appVue.slice(i);
+    const g = block.indexOf("if (!out) return;");
+    return g >= 0
+      && block.indexOf('cacheDrop("dm:")') > g
+      && block.indexOf('cacheDrop("notif:")') > g
+      && block.indexOf('cacheDrop("bottle:")') > g;
+  })());
+/* 行为语义（把判据表达式从源码里抠出来真求值）——三种状态双向验证：
+ * 启动间隙（ready=false）不许清；就绪但无用户（真登出）必须清；已登录不许清。 */
+const m312 = appVue.match(/watch\(\(\) => (cloud\.ready && !cloud\.user)/);
+const pred312 = m312 ? new Function("cloud", `return (${m312[1]});`) : null;
+const v312 = (ready, user) => (pred312 ? !!pred312({ ready, user }) : null);
+ok("轮 312 ④ 语义：启动间隙 {ready:false,user:null} → 不清（原 bug 就在这一步清掉了会话快照）",
+  v312(false, null) === false);
+ok("轮 312 ⑤ 语义：认证就绪且无用户 {ready:true,user:null} → 清（真登出 / 刷新令牌失效）",
+  v312(true, null) === true);
+ok("轮 312 ⑥ 语义：已登录 {ready:true,user:{id}} → 不清",
+  v312(true, { id: "u1" }) === false);
+
 console.log(`splash-test: ${pass} pass, ${fails.length} fail`);
 for (const f of fails) console.log("FAIL  " + f);
 if (fails.length) process.exit(1);

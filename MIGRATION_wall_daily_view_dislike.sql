@@ -90,6 +90,8 @@ create policy "post views readable by all" on public.wall_post_views
 -- 不开放直接 insert/update：写入只能走下面的 wall_add_view()（防刷计数）
 
 -- ─ 5) RPC：记一次浏览（幂等：同人同帖同日只 +1）──────────────
+-- ⚠ 轮 306 更正：本函数有「坏 id 撞外键」缺陷（先 insert 后查存在 → 帖不存在时
+--   抛 wall_post_views 外键错，not-found 走不到）。修法见 MIGRATION_wall_add_views_fix.sql。
 create or replace function public.wall_add_view(p_post bigint, p_viewer text default '')
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare

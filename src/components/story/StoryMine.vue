@@ -7,6 +7,7 @@ import { useRouter } from "vue-router";
 import { t } from "../../i18n.js";
 import { storyErrKey } from "../../utils/storyRules.js";
 import { storyMine, storyBookmarkList, storyMyStats, canStory } from "../../utils/story.js";
+import { setStorySeed } from "../../utils/storySeed.js";
 
 const emit = defineEmits(["edit"]);
 const router = useRouter();
@@ -58,8 +59,10 @@ async function load() {
   }
 }
 function openRow(r) {
-  if (tab.value === "draft") emit("edit", r);
-  else router.push(`/story/${r.id}`);
+  if (tab.value === "draft") { emit("edit", r); return; }
+  if (!r || r.id == null) return;
+  setStorySeed(r);   /* 轮 313：已发布/书架行也带标题 → 详情页首帧就有内容 */
+  router.push(`/story/${r.id}`);
 }
 const day = (s) => String(s || "").slice(0, 10);
 const saved = (s) => day(s);

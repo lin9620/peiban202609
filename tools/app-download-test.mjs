@@ -28,6 +28,18 @@ if (existsSync(apkPath)) {
 const app = readFileSync(join(ROOT, "src", "App.vue"), "utf8");
 ok(app.includes('class="wb-dl"') && app.includes('dlOpen = true'), "欢迎条有下载入口按钮");
 ok(app.includes('v-if="!isApp"') && app.includes('wb-dl'), "App 内不显示下载入口");
+/* 轮 308 回炉（用户拍板：不每页挂条，只在「我的」页设置旁放一颗）——跨组件信号开全局弹窗 */
+ok(!app.includes('class="m-dl-strip"'), "顶部条已拆除（每页常驻太打扰）");
+ok(/watch\(dlOpenSeq, \(\) => \{ dlOpen\.value = true; \}\)/.test(app),
+  "App.vue 接 dlOpenSeq 信号开 dl-modal");
+const prof = readFileSync(join(ROOT, "src", "views", "ProfileView.vue"), "utf8");
+ok(prof.includes('class="admin-entry m-dl-pill"') && /@click="openDownload"/.test(prof),
+  "「我的」页设置旁有下载 pill（openDownload 发信号）");
+ok(/v-if="isMobileNav && !isApp"[\s\S]{0,220}?class="admin-entry m-dl-pill"/.test(prof),
+  "pill 条件正确：手机形态 + 非 App 壳（桌面走横幅、App 内不显示）");
+const store = readFileSync(join(ROOT, "src", "stores", "uiStore.js"), "utf8");
+ok(store.includes("export const dlOpenSeq = ref(0)") && store.includes("export function openDownload()"),
+  "uiStore 有 dlOpenSeq/openDownload（retapSeq 同款信号）");
 ok(app.includes("<n-modal") && app.includes('v-model:show="dlOpen"'), "弹窗用 NModal 挂 dlOpen");
 ok(app.includes(':href="dlUrl" download="warm-paws.apk"'), "下载链接用解析后的 dlUrl（上传包优先/内置包兜底）");
   ok(app.includes("APP_RELEASE_URL") && app.includes("HEAD"), "打开弹窗先探测 Storage 上传包（HEAD）");

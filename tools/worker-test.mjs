@@ -7,7 +7,7 @@
  * 与 tools/gateway-contract-test.mjs（前端侧）成对：两端形状都对上，端到端才通。
  * 运行：node tools/worker-test.mjs
  */
-import worker from "../worker/api.js";
+import worker, { __resetRateLimitsForTests } from "../worker/api.js";
 
 const ORIGIN = "https://sb.test";
 const ANON = "anon-test-key";
@@ -57,9 +57,11 @@ function ok(name, cond, extra = "") {
 const req = (path, init = {}) => new Request(`https://site.test${path}`, init);
 const hdr = (init) => new Headers(init && init.headers ? init.headers : {});
 const row = [{ id: "p1" }, { id: "p2" }];
-/** 跑一个请求：返回响应 + 出站记录（用完即恢复真 fetch） */
+/** 跑一个请求：返回响应 + 出站记录（用完即恢复真 fetch）。
+ * 轮 311：每次用例前清空限流桶 —— 几百个匿名用例累计会撞统一闸的 120/min 桶。 */
 async function hit(script, path, init) {
   const c = capture(script);
+  __resetRateLimitsForTests();
   try {
     return { res: await worker.fetch(req(path, init), makeEnv(), {}), c };
   } finally {
@@ -1622,6 +1624,117 @@ function seoEnv() {
     (await worker.fetch(req("/api/admin/client-logs", { method: "POST" }), env, {})).status === 405);
   ok("admin/client-logs：只读路由不产生出站", c3.outbound.length === 0);
   c3.restore();
+}
+
+/* ─────────── 轮 311 · P1 统一限流闸 + P2 Turnstile ─────────── */
+{
+  __resetRateLimitsForTests();
+  const c = capture([{ body: [] }]);
+  try {
+    /* 匿名读桶：120 次/分钟/IP —— 第 121 发起 429 + Retry-After */
+    let last = null, first429 = -1;
+    for (let i = 0; i < 122; i++) {
+      last = await worker.fetch(req("/api/comment-post-ids?ids=a"), makeEnv(), {});
+      if (last.status === 429 && first429 < 0) first429 = i + 1;
+    }
+    ok("轮311 匿名读桶：第 121 发起 429（阈值 120/分钟/IP）", first429 === 121, "first429=" + first429);
+    ok("轮311 429 带 Retry-After 与 rate-limited 错误体",
+      last.status === 429 && Number(last.headers.get("retry-after")) >= 1
+        && (await last.json()).error === "rate-limited");
+    /* 豁免端点不进桶 */
+    __resetRateLimitsForTests();
+    let okAll = true;
+    for (let i = 0; i < 130; i++) {
+      const r = await worker.fetch(req("/api/health"), makeEnv(), {});
+      if (r.status !== 200) okAll = false;
+    }
+    ok("轮311 /api/health 豁免（130 连发不 429）", okAll);
+    __resetRateLimitsForTests();
+    okAll = true;
+    for (let i = 0; i < 15; i++) {
+      const r = await worker.fetch(req("/api/client-log", { method: "POST", body: JSON.stringify({ kind: "err", msg: "x" }), headers: { "content-type": "application/json" } }), makeEnv(), {});
+      if (r.status === 429 && i < 5) okAll = false;   /* client-log 自有闸 20/60s：前 5 发必过全局闸 */
+    }
+    ok("轮311 /api/client-log 豁免全局闸（前 5 发不被 429）", okAll);
+    /* OPTIONS 预检不进桶 */
+    __resetRateLimitsForTests();
+    okAll = true;
+    for (let i = 0; i < 130; i++) {
+      const r = await worker.fetch(req("/api/posts", { method: "OPTIONS" }), makeEnv(), {});
+      if (r.status !== 204) okAll = false;
+    }
+    ok("轮311 CORS 预检豁免（130 连发全 204）", okAll);
+    /* 登录读桶比匿名宽：带 JWT 的 122 发不 429（240/分钟） */
+    __resetRateLimitsForTests();
+    const jwt = "eyJhbGciOiJIUzI1NiJ9." + btoa(JSON.stringify({ sub: "u-rl-test" })) + ".sig";
+    okAll = true;
+    for (let i = 0; i < 130; i++) {
+      const r = await worker.fetch(req("/api/comment-post-ids?ids=a", { headers: { authorization: "Bearer " + jwt } }), makeEnv(), {});
+      if (r.status === 429) okAll = false;
+    }
+    ok("轮311 登录读桶 240/分钟（130 发不 429）", okAll);
+    /* 匿名写桶：10 次/10分钟/IP —— 第 11 发起 429（用 turnstile/verify 之外的匿名写；reports 需要 body，
+       这里直接用未配置 secret 的 reports：第一发就走 RPC 出站，脚本给足响应） */
+    __resetRateLimitsForTests();
+    const cw = capture(Array.from({ length: 11 }, () => ({ body: { ok: true } })));
+    try {
+      let f429 = -1;
+      for (let i = 0; i < 11; i++) {
+        const r = await worker.fetch(req("/api/reports", { method: "POST", body: JSON.stringify({ target_type: "post", target_id: 1 }), headers: { "content-type": "application/json" } }), makeEnv(), {});
+        if (r.status === 429 && f429 < 0) f429 = i + 1;
+      }
+      ok("轮311 匿名写桶：第 11 发起 429（10 次/10分钟/IP）", f429 === 11, "f429=" + f429);
+    } finally { cw.restore(); }
+  } finally { c.restore(); }
+
+  /* —— P2 Turnstile —— */
+  /* 未配 secret：verify 直接 { ok:true }（fail-open 零打扰），不产生任何出站 */
+  {
+    __resetRateLimitsForTests();
+    const c2 = capture([]);
+    try {
+      const r = await worker.fetch(req("/api/turnstile/verify", { method: "POST", body: JSON.stringify({ token: "x" }), headers: { "content-type": "application/json" } }), makeEnv(), {});
+      ok("轮311 verify 未配 secret：{ ok:true } 且零出站",
+        r.status === 200 && (await r.json()).ok === true && c2.outbound.length === 0);
+    } finally { c2.restore(); }
+  }
+  /* 配了 secret：token 缺失 → { ok:false }；token 过 siteverify 成功 → { ok:true } */
+  {
+    __resetRateLimitsForTests();
+    const envS = { ...makeEnv(), TURNSTILE_SECRET: "test-secret" };
+    const c3 = capture([]);
+    try {
+      const r = await worker.fetch(req("/api/turnstile/verify", { method: "POST", body: JSON.stringify({ token: "" }), headers: { "content-type": "application/json" } }), envS, {});
+      ok("轮311 verify 配 secret：缺 token → { ok:false }", (await r.json()).ok === false);
+    } finally { c3.restore(); }
+    const c4 = capture([{ body: { success: true } }]);
+    try {
+      const r = await worker.fetch(req("/api/turnstile/verify", { method: "POST", body: JSON.stringify({ token: "tok-1" }), headers: { "content-type": "application/json" } }), envS, {});
+      ok("轮311 verify 配 secret：siteverify success → { ok:true }",
+        (await r.json()).ok === true
+          && c4.outbound[0].url === "https://challenges.cloudflare.com/turnstile/v0/siteverify");
+    } finally { c4.restore(); }
+    const c5 = capture([{ body: { success: false } }]);
+    try {
+      const r = await worker.fetch(req("/api/turnstile/verify", { method: "POST", body: JSON.stringify({ token: "tok-bad" }), headers: { "content-type": "application/json" } }), envS, {});
+      ok("轮311 verify 配 secret：siteverify 失败 → { ok:false }", (await r.json()).ok === false);
+    } finally { c5.restore(); }
+    /* reports 强制校验：配 secret 且无 token → 403 turnstile-failed（不出站到上游） */
+    __resetRateLimitsForTests();
+    const c6 = capture([]);
+    try {
+      const r = await worker.fetch(req("/api/reports", { method: "POST", body: JSON.stringify({ target_type: "post", target_id: 1 }), headers: { "content-type": "application/json" } }), envS, {});
+      ok("轮311 reports 配 secret：缺 token → 403 turnstile-failed 且不打上游",
+        r.status === 403 && (await r.json()).error === "turnstile-failed" && c6.outbound.length === 0);
+    } finally { c6.restore(); }
+    /* siteverify 网络挂 → fail-open 放行（补强不是唯一防线） */
+    __resetRateLimitsForTests();
+    const c7 = capture([{ throw: true }]);
+    try {
+      const r = await worker.fetch(req("/api/turnstile/verify", { method: "POST", body: JSON.stringify({ token: "tok-1" }), headers: { "content-type": "application/json" } }), envS, {});
+      ok("轮311 verify 网络挂 → fail-open { ok:true }", (await r.json()).ok === true);
+    } finally { c7.restore(); }
+  }
 }
 
 console.log(`worker-test: ${pass} pass, ${fails.length} fail`);

@@ -37,6 +37,9 @@ export const messages = {
       gotIt: "Got it",
       /* 轮 84：…菜单里的拷贝（delete 见上，与 send/save/cancel 同行，不重复声明） */
       copy: "Copy", copied: "Copied ✓", copyFail: "Couldn't copy — try again",
+      /* 轮 311：Turnstile 人机验证提示 */
+      turnstileFirst: "Please complete the human check first.",
+      turnstileFail: "Human check failed — please try again.",
     },
 
     home: {
@@ -276,7 +279,8 @@ export const messages = {
       replyMine: "My reply",
       pending: "Drifting at sea",
       signInHint: "Sign in to send bottles, fish them out and receive replies.",
-      errSendLimit: "That's today's 3 letters — come back tomorrow 🌊",
+      errSendLimit: "That's today's 5 letters — come back tomorrow 🌊",
+      sentOk: "Your letter is in the sea 🍶 Wait for someone to pick it up — see it under \"My letters\" below.",
       errFishLimit: "That's today's 7 bottles — come back tomorrow 🌊",
       errHoldLimit: "7 letters are already in your hands — reply to them or throw them back first.",
       errEmpty: "The sea is empty right now — drop a letter first.",
@@ -351,6 +355,7 @@ export const messages = {
       like: "Like", liked: "Liked",
       by: "by {name}", anonAuthor: "A gentle writer",
       emptyBody: "This story has no words yet.",
+      loadingBody: "Loading the words…",
       notFound: "This story isn't here — it may have been removed.",
       searchPh: "Search titles and tags…",
       loginNeeded: "Sign in to write and to like stories.",
@@ -946,6 +951,9 @@ export const messages = {
       gotIt: "知道啦",
       /* 轮 84：…菜单里的拷贝（delete 见上，与 send/save/cancel 同行，不重复声明） */
       copy: "拷贝", copied: "已拷贝 ✓", copyFail: "没拷上，再试一次",
+      /* 轮 311：Turnstile 人机验证提示 */
+      turnstileFirst: "请先完成人机验证。",
+      turnstileFail: "人机验证没通过——请再试一次。",
     },
 
     home: {
@@ -1185,7 +1193,8 @@ export const messages = {
       replyMine: "我的回信",
       pending: "在海里漂着，等有人捞起……",
       signInHint: "登录后可以投信、捞信、收回信。",
-      errSendLimit: "今天的信已经投完啦（每天 3 封）——明天再来 🌊",
+      errSendLimit: "今天的信已经投完啦（每天 5 封）——明天再来 🌊",
+      sentOk: "信已投进海里 🍶 等有缘人捞起——下面「我发布的」已自动添上这封。",
       errFishLimit: "今天的 7 次用完啦（捞到并回信才消耗次数）——明天再来 🌊",
       errHoldLimit: "手里已经压着 7 封信啦——先回信或放回海里，再捞新的。",
       errEmpty: "海里暂时没有信——先投一封，让海不那么空。",
@@ -1260,6 +1269,7 @@ export const messages = {
       like: "点赞", liked: "已赞",
       by: "作者 {name}", anonAuthor: "一位温柔的写作者",
       emptyBody: "这篇故事还没有正文。",
+      loadingBody: "正文载入中…",
       notFound: "这篇故事不在了，可能已被删除。",
       searchPh: "搜标题或标签…",
       loginNeeded: "登录后即可投稿与点赞。",

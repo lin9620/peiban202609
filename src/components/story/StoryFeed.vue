@@ -8,6 +8,7 @@ import { isMobileNav } from "../../stores/uiStore.js";
 import { storyErrKey } from "../../utils/storyRules.js";
 import { storyRank, storyFeatured } from "../../utils/story.js";
 import { swr, cacheKey } from "../../utils/cache.js";
+import { setStorySeed } from "../../utils/storySeed.js";
 
 const PAGE = 12;
 const router = useRouter();
@@ -59,6 +60,13 @@ function loadMore() {
   offset.value += PAGE;
   load();
 }
+/* 轮 313：点卡片顺手把这一行当种子递给详情页 —— 列表行本来就带标题/作者/标签/字数/赞看数，
+ * 详情页首帧就有内容，不再「点完先空半秒到几秒」。零额外请求。 */
+function openStory(r) {
+  if (!r || r.id == null) return;
+  setStorySeed(r);
+  router.push(`/story/${r.id}`);
+}
 const day = (s) => String(s || "").slice(0, 10);
 load();
 loadFeatured();
@@ -85,7 +93,7 @@ defineExpose({ load, loadFeatured });
     </header>
 
     <article
-      v-if="featured" class="st-card st-card--featured" @click="router.push(`/story/${featured.id}`)"
+      v-if="featured" class="st-card st-card--featured" @click="openStory(featured)"
     >
       <p class="st-card-flag">★ {{ t("story.featuredBadge") }}</p>
       <h3 class="st-card-title">{{ featured.title }}</h3>
@@ -99,7 +107,7 @@ defineExpose({ load, loadFeatured });
       <p class="st-card-stats">{{ t("story.stats", { likes: featured.like_count, views: featured.view_count }) }}</p>
     </article>
 
-    <article v-for="r in shown" :key="r.id" class="st-card" @click="router.push(`/story/${r.id}`)">
+    <article v-for="r in shown" :key="r.id" class="st-card" @click="openStory(r)">
       <h3 class="st-card-title">{{ r.title }}</h3>
       <p class="st-card-meta">
         {{ t("story.by", { name: r.nickname || t("story.anonAuthor") }) }} · {{ day(r.published_at) }}

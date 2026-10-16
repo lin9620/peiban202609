@@ -7,7 +7,7 @@ import { getItem, setItem, removeItem } from "../utils/storage.js";
 import { restoreScroll } from "../utils/scrollMem.js";
 import { cookbook, removeDish, moodLog, moodStreak, wallet } from "../stores/petStore.js";
 import MoodFace from "../components/MoodFace.vue";
-import { isMobileNav } from "../stores/uiStore.js";
+import { isMobileNav, isApp, openDownload } from "../stores/uiStore.js";
 import { todayKey } from "../utils/daily.js";
 import {
   cloud, cloudSignOut,
@@ -337,6 +337,12 @@ const brightRatio = computed(() => {
         <router-link to="/settings" class="admin-entry">
           ⚙️ {{ t("settings.entry") }}
         </router-link>
+        <!-- 轮 308 回炉（用户拍板）：下载 App 入口只放「我的」页、紧贴设置 ——
+             不再每页顶部挂条（打扰）。条件 = 手机浏览器（桌面走横幅、App 内不显示） -->
+        <button v-if="isMobileNav && !isApp" type="button" class="admin-entry m-dl-pill"
+          :title="t('appDownload.button')" @click="openDownload">
+          <span class="m-dl-ico" aria-hidden="true">⤓</span>{{ t("appDownload.button") }}
+        </button>
       </div>
     </section>
 

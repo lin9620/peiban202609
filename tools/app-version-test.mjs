@@ -199,9 +199,24 @@ ok(/--dry-run/.test(bumpSrc), "支持 --dry-run（只打印不落盘）");
 ok(/--file=/.test(bumpSrc), "支持 --file=（测试用临时副本跑，不碰真 gradle）");
 ok(/VERIFY_FAILED/.test(bumpSrc), "写盘后回读校验 —— writeFileSync 没抛异常不等于写对了");
 ok(/process\.exit\(1\)/.test(bumpSrc), "任何失败都非零退出（CI / 脚本链才拦得住）");
-/* 真文件此刻必须还是 1 / "1.0" —— 测试跑完不许把仓库改脏 */
-ok(/versionCode\s+1\b/.test(gradle) && /versionName\s+"1\.0"/.test(gradle),
-  "build.gradle 仍是 1 / \"1.0\"（本测试只用假文本与临时副本，不许动真文件）");
+/* 真文件此刻必须还是**跑之前那一份** —— 本条是「测试不许把仓库改脏」的守卫。
+   轮 305：原来写死 1 / "1.0"，但真发版（tools/bump-version.mjs）本来就会把真 gradle
+   bump 成 2 / "1.0.1"，写死等于「一按发版流程测试就红」——把意图改成直接比字节，
+   既不放松守卫，也不再和发版打架。 */
+ok(rd("android/app/build.gradle") === gradle,
+  "本测试没有改动真 build.gradle（跑完与跑前逐字节相同）");
+
+/* —— 轮 309（用户拍板）：更新内容只给 App 壳，浏览器（手机+桌面）一概不显示 —— */
+{
+  const sv = rd("src/views/SettingsView.vue");
+  ok(sv.includes('import { isApp }') || /import \{[^}]*\bisApp\b[^}]*\} from "\.\.\/stores\/uiStore\.js"/.test(sv),
+    "SettingsView 引入 isApp（App 壳判定）");
+  ok(/v-if="isApp" class="set-row"/.test(sv), "版本行+检查按钮只在 App 壳渲染（v-if=isApp）");
+  ok(/v-if="isApp && updMsg"/.test(sv), "检查提示也只在 App 壳显示");
+  ok(/<UpdateDialog v-if="isApp"/.test(sv), "设置页的 UpdateDialog 本体也挡在 App 壳内");
+  const mj = rd("src/main.js");
+  ok(/if \(!isApp\(\)\) return;/.test(mj), "启动自动弹窗原有 isApp() 隔离仍在（浏览器不自动弹）");
+}
 
 console.log(`app-version-test: ${pass} pass, ${fail} fail`);
 if (fail) process.exit(1);

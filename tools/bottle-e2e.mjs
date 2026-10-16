@@ -1,6 +1,6 @@
 /* 温暖漂流瓶（#6）线上全链路实测（双账号，走线上 Worker —— 与浏览器同链路）
  *   node tools/bottle-e2e.mjs
- * 流程：探测迁移 → A 注册投 3 封（第 4 封被限额挡下）→ B 注册捞信 → 回信 / 放回
+ * 流程：探测迁移 → A 注册投 5 封（第 6 封被限额挡下，轮 305：3 → 5）→ B 注册捞信 → 回信 / 放回
  *       → A 在「我的信」里看到回信 → A 捞不到自己的信 → 非持有者回/放被拒 → 超长被拒。
  * 前置：MIGRATION_bottle.sql 已在 Supabase 执行（未跑则输出 SKIP 并退出码 2）。
  * 副作用：会注册测试账号（wp-bottle-*）并给海里留下少量测试信（正文带「自动测试信」标记，
@@ -76,21 +76,21 @@ if (notMigrated) {
   process.exit(2);
 }
 
-/* A 注册：连投 3 封（每日限额），第 4 封被挡 */
+/* A 注册：连投 5 封（每日限额；轮 305：用户要求 3 → 5），第 6 封被挡 */
 const A = await signUp("wp-bottle-a-", "投瓶的小橘");
 ok("T2 A 注册成功", !!A.id && !!A.token, A.email);
 {
   let allOk = true, last = null;
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 5; i++) {
     const r = await api("/bottle/send", { method: "POST", token: A.token, body: { body: `第${i + 1}封：来自云端的测试问候（自动测试信，捞到请放回海里 🌊）` } });
     last = r;
     if (r.status !== 200 || !r.data || r.data.status !== "sea") allOk = false;
   }
-  ok("T3 连投 3 封成功（status=sea、落款昵称、UTC 日为今天）", allOk, "last=" + last.status);
-  const over = await api("/bottle/send", { method: "POST", token: A.token, body: { body: "第4封应该被挡" } });
-  ok("T4 第 4 封被每日限额挡下（bottle-limit-send）", over.status === 400 && over.text.includes("bottle-limit-send"), "http=" + over.status);
+  ok("T3 连投 5 封成功（status=sea、落款昵称、UTC 日为今天）", allOk, "last=" + last.status);
+  const over = await api("/bottle/send", { method: "POST", token: A.token, body: { body: "第6封应该被挡" } });
+  ok("T4 第 6 封被每日限额挡下（bottle-limit-send）", over.status === 400 && over.text.includes("bottle-limit-send"), "http=" + over.status);
   const mine = await api("/bottle/mine", { token: A.token });
-  ok("T5 A 的信箱列出 3 封（新→旧）", mine.status === 200 && Array.isArray(mine.data) && mine.data.length === 3, "rows=" + (mine.data || []).length);
+  ok("T5 A 的信箱列出 5 封（新→旧）", mine.status === 200 && Array.isArray(mine.data) && mine.data.length === 5, "rows=" + (mine.data || []).length);
 }
 
 /* B 注册：捞信 → 回信 / 放回 */

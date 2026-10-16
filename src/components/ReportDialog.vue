@@ -7,6 +7,14 @@ import { NButton, NInput, NModal, NRadio, NRadioGroup } from "naive-ui";
 import { t } from "../i18n.js";
 import { db } from "../utils/api/db.js";
 import { cloud } from "../utils/supabase.js";
+import TurnstileGate from "../components/TurnstileGate.vue";   /* 轮 311 · P2 */
+
+/* 轮 311 · P2：Turnstile 人机门槛（sitekey 未配置 = 不渲染、token 直通，零打扰）。
+ * token 随 body 透传，Worker 侧配了 TURNSTILE_SECRET 才强制 siteverify。 */
+const env = import.meta.env || {};
+const TS_SITEKEY = String(env.VITE_TURNSTILE_SITEKEY || "").trim();
+const tsToken = ref("");
+const tsGate = ref(null);
 
 const props = defineProps({
   show: Boolean,
@@ -30,7 +38,7 @@ const busy = ref(false);
 const msg = ref("");
 
 watch(() => props.show, (v) => {
-  if (v) { reason.value = "spam"; detail.value = ""; msg.value = ""; }
+  if (v) { reason.value = "spam"; detail.value = ""; msg.value = ""; tsToken.value = ""; }
 });
 
 function close() { emit("update:show", false); }
@@ -49,16 +57,22 @@ function errKey(e) {
 async function submit() {
   if (busy.value || !props.target) return;
   if (!(cloud.ready && cloud.user)) { msg.value = t("report.signIn"); return; }
+  /* 轮 311 · P2：配了 sitekey 而 token 还没拿到 → 拦一次（widget 多数人无感，秒过） */
+  if (TS_SITEKEY && !tsToken.value) { msg.value = t("common.turnstileFirst"); return; }
   busy.value = true;
   msg.value = "";
   try {
-    await db.reportCreate(props.target.type, props.target.id, reason.value, detail.value.trim());
+    await db.reportCreate(props.target.type, props.target.id, reason.value, detail.value.trim(), tsToken.value);
     emit("done");
     /* 先让用户看到「已收到」再收起弹窗（立刻关掉像没反应） */
     msg.value = t("report.done");
     setTimeout(close, 1400);
   } catch (e) {
     msg.value = t(errKey(e));
+    /* 人机验证失败/过期 → 重置 widget 让用户重新过（服务端 403 turnstile-failed） */
+    if (TS_SITEKEY && String((e && e.message) || "").includes("turnstile")) {
+      try { if (tsGate.value) tsGate.value.reset(); } catch (e2) { /* 已卸载 */ }
+    }
   }
   busy.value = false;
 }
@@ -77,6 +91,9 @@ async function submit() {
     <van-field
       v-model="detail" type="textarea" :rows="2" :maxlength="200"
       :placeholder="t('report.detailPh')" style="margin-top: 12px" />
+
+    <!-- 轮 311 · P2：人机验证（sitekey 未配置时不渲染） -->
+    <turnstile-gate ref="tsGate" v-model="tsToken" :sitekey="TS_SITEKEY" />
 
     <p v-if="msg" class="report-msg">{{ msg }}</p>
 

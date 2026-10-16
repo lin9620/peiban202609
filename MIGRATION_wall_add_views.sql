@@ -18,6 +18,9 @@
 -- 「逐帖 wall_add_view 循环」，行为与现在完全一致 —— 不跑也能用。
 --
 -- 跑完可 `node tools/wall-addviews-e2e.mjs` 实测（批量 ↔ 逐帖逐格对账）。
+-- ⚠ 轮 306 更正：本文件的批量版（以及 MIGRATION_wall_daily_view_dislike.sql 的单帖版）
+--   有「坏 id 撞外键」缺陷（先 insert 后查存在 → 帖不存在时整函数抛 FK 错，not-found 走不到，
+--   线上 e2e 实测抓到）。修法见 MIGRATION_wall_add_views_fix.sql（先查存在再 insert，语义逐格不变）。
 
 create or replace function public.wall_add_views(p_posts bigint[], p_viewer text default '')
 returns jsonb language plpgsql security definer set search_path = public as $$

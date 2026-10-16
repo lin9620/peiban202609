@@ -2,7 +2,7 @@
  * ------------------------------------------------------------
  * 玩法：写信投进「温暖的海」，其他用户随机捞起，可以回信，也可以放回海里。
  * 规则（明牌告知用户，服务端是权威）：
- *   - 每天最多写 BOTTLE_SEND_MAX（3）封（UTC 日，与暖心墙同口径）；
+ *   - 每天最多写 BOTTLE_SEND_MAX（5）封（UTC 日，与暖心墙同口径；轮 305：用户要求 3 → 5）；
  *   - 捞信本身**不扣次数**，**回信才计 1 次**，每天最多回 BOTTLE_FISH_MAX（7）封
  *     （轮 21 口径：用户反馈「没捞到也减次数」——捞起不计、放回不返还、回信才记账）；
  *   - 手里压着 7 封未回时先回信/放回，再捞新的（防无限囤信，服务端 bottle-limit-hold）；
@@ -15,7 +15,7 @@ import { cloud } from "./supabase.js";
 import { db } from "./api/db.js";
 import { keys, removeItem } from "./storage.js";
 
-export const BOTTLE_SEND_MAX = 3;                 /* 每天最多写几封 */
+export const BOTTLE_SEND_MAX = 5;                 /* 每天最多写几封（轮 305：用户要求 3 → 5） */
 export const BOTTLE_FISH_MAX = 7;                 /* 每天最多捞几封 */
 export const BOTTLE_BODY_MAX = 1000;              /* 字数放宽：信与回信同限 */
 export const BOTTLE_HOLD_TTL_MS = 48 * 3600 * 1000; /* 捞起后 48h 不处理自动回海 */

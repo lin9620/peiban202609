@@ -13,6 +13,8 @@ import {
   cloudResetPassword, cloudUpdatePassword, cloudSignInWithGoogle, cloudClearRecovery,
 } from "../utils/supabase.js";
 import { MIN_PASSWORD, emailProblem, passwordProblem } from "../utils/authRules.js";
+import { db } from "../utils/api/db.js";
+import TurnstileGate from "../components/TurnstileGate.vue";   /* 轮 311 · P2 人机门槛 */
 
 const route = useRoute();
 const router = useRouter();
@@ -51,6 +53,26 @@ watch(
 );
 
 /* —— 邮箱登录 / 注册 —— */
+/* 轮 311 · P2：Turnstile 人机门槛 —— sitekey 未配置（VITE_TURNSTILE_SITEKEY 空）时
+ * 整条链路零打扰（widget 不渲染、校验函数直通）。注册/登录/忘记密码共用一个 widget：
+ * token 先打 /api/turnstile/verify（Worker 用服务端 secret 校验），通过才调 Auth。
+ * 服务端兜底：Worker 侧举报强制校验 + 统一限流闸；这里是挡脚本化注册的第一道门。 */
+const env = import.meta.env || {};
+const TS_SITEKEY = String(env.VITE_TURNSTILE_SITEKEY || "").trim();
+const tsToken = ref("");
+const tsGate = ref(null);
+async function passTurnstile() {
+  if (!TS_SITEKEY) return true;                       /* 未启用：直通 */
+  if (!tsToken.value) { authOk.value = false; authMsg.value = t("common.turnstileFirst"); return false; }
+  try {
+    const r = await db.turnstileVerify(tsToken.value);
+    if (r && r.ok === true) return true;
+  } catch (e) { /* 落到下面统一失败提示 */ }
+  authOk.value = false;
+  authMsg.value = t("common.turnstileFail");
+  try { if (tsGate.value) tsGate.value.reset(); } catch (e) { /* 已卸载 */ }
+  return false;
+}
 const authMode = ref("signin");
 const authEmail = ref("");
 const authPass = ref("");
@@ -102,6 +124,7 @@ async function doAuth() {
   const email = authEmail.value.trim();
   const bad = emailHint(email) || passHint(authPass.value);
   if (bad) { authOk.value = false; authMsg.value = bad; return; }
+  if (!(await passTurnstile())) return;   /* 轮 311 · P2：人机门槛不过不调 Auth */
   authBusy.value = true;
   clearAuthMsg();
   const r = authMode.value === "signup"
@@ -141,6 +164,7 @@ async function doForgot() {
   if (forgotBusy.value) return;
   const bad = emailHint(authEmail.value);
   if (bad) { forgotOk.value = false; forgotMsg.value = bad; return; }
+  if (!(await passTurnstile())) return;   /* 轮 311 · P2：找回密码同样是匿名入口，同过门槛 */
   forgotBusy.value = true;
   forgotMsg.value = "";
   forgotOk.value = false;
@@ -217,6 +241,10 @@ function passHint(pass) {
   if (!p) return "";
   return p === "missing" ? t("profile.needPass") : t("profile.shortPass", { n: MIN_PASSWORD });
 }
+/* 轮 314（用户截图：规则提示别常驻，输入不达标时再提示）：
+ * 空着不提示（还没开始输入，那不是「不达标」）；一旦输入却不足 6 位就在框下出现。
+ * 判据直接复用 passwordProblem（纯函数），与提交校验、服务端口径同一套，不会长出第二个标准。 */
+const passShort = computed(() => passwordProblem(authPass.value) === "short");
 </script>
 
 <template>
@@ -282,19 +310,27 @@ function passHint(pass) {
       <n-input v-model:value="authEmail" type="email" round size="large"
         :placeholder="t('profile.authEmail')" @keyup.enter="forgot ? doForgot() : doAuth()" />
 
+      <!-- 轮 311 · P2：人机验证（sitekey 未配置时不渲染；登录/注册/找回密码共用） -->
+      <turnstile-gate ref="tsGate" v-model="tsToken" :sitekey="TS_SITEKEY" />
+
       <template v-if="!forgot">
         <n-input v-model:value="authPass" type="password" round size="large" show-password-on="click"
           :placeholder="t('profile.authPass')" @keyup.enter="doAuth" />
+        <!-- 轮 314b（用户截图：红框圈住「忘记密码?」+ 箭头指向密码框 → 「让他贴着密码框。右下」）：
+             原来它挂在登录按钮下面居中，离密码框隔着一个按钮；现在贴着密码框右下（右对齐）。
+             注意：这行插在「密码框」与「登录按钮」中间，会打断 .n-input + .n-button 的 10px 间距规则，
+             已在 scoped 样式里用 .forgot-row + .n-button 补回来（见下方注释）。 -->
+        <div v-if="authMode === 'signin'" class="forgot-row">
+          <button type="button" class="auth-link" @click="startForgot">{{ t("profile.forgot") }}</button>
+        </div>
         <n-input v-if="authMode === 'signup'" v-model:value="authNick" round size="large"
           :placeholder="t('common.nickname')" @keyup.enter="doAuth" />
         <n-button type="primary" class="auth-cta" round size="large" block :loading="authBusy" @click="doAuth">
           {{ authMode === "signin" ? t("common.signIn") : t("common.signUp") }}
         </n-button>
-        <div v-if="authMode === 'signin'" class="auth-links">
-          <button type="button" class="auth-link" @click="startForgot">{{ t("profile.forgot") }}</button>
-        </div>
         <p v-if="authMsg" class="notice" :class="{ bad: !authOk, good: authOk }">{{ authMsg }}</p>
-        <p class="hint-min">{{ t("profile.passRule", { n: MIN_PASSWORD }) }}</p>
+        <!-- 轮 314：规则提示改成「输入不达标才出现」（原来常驻一行，用户看着像已经在报错了） -->
+        <p v-if="passShort" class="hint-min hint-min--warn">{{ t("profile.passRule", { n: MIN_PASSWORD }) }}</p>
       </template>
 
       <template v-else>
@@ -390,6 +426,21 @@ html[data-theme="night"] .login-page .n-input { background: rgba(139, 156, 232, 
 }
 .auth-link:hover { color: var(--accent-deep); }
 .hint-min { margin: 2px 2px 0; font-size: 11.5px; color: var(--ink-faint); text-align: center; }
+/* 轮 314（用户截图定稿两处）：
+ * ① 密码规则提示只在「输入不达标」时出现 → 出现即用品牌色，明确是提醒而不是常驻说明；
+ * ② 「或使用邮箱」要加宽的是**中间那段**（实测整条分隔线与 Google 按钮/输入框同为 309px，
+ *    宽度本来就是齐的）：把两侧线与文字的间距放宽、字号抬一档，字不再贴着线。 */
+.hint-min--warn { color: var(--accent-deep); }
+/* 轮 314c（用户：或使用邮箱 跟下面邮箱框的距离要加大，「起码跟上面的距离一样」）：
+ * 实测改前 上=14px、**下=0px**（邮箱框直接顶在分隔线底边上）——全局 .or-line 只有 margin:14px 0 0。
+ * 这里补成上下对称的 14px（本规则特异性高于全局那条，生效的就是它）。 */
+.login-page .or-line { margin: 14px 0; gap: 20px; font-size: 12px; }
+/* 轮 314b（用户：忘记密码?「让他贴着密码框。右下」）：
+ * ① 贴着密码框右下：右对齐、只留 4px 呼吸（原来居中挂在登录按钮下面，隔着一个按钮那么远）；
+ * ② 这行夹在「密码框」与「登录按钮」中间 → .n-input + .n-button 那条 10px 间距规则失效，
+ *    这里补回来，否则按钮会直接贴上来；③ 链接自带 8px 内边距，往右拽回 6px 让文字与输入框右缘齐平。 */
+.forgot-row { display: flex; justify-content: flex-end; margin: 4px -6px 0 0; }
+.forgot-row + .n-button { margin-top: 10px; }
 .login-agree { margin: 22px 10px 0; text-align: center; font-size: 12px; color: var(--ink-faint); }
 .agree-link { color: var(--ink-soft); text-decoration: underline; text-underline-offset: 2px; }
 .agree-link:hover { color: var(--accent-deep); }

@@ -32,6 +32,13 @@ async function refreshTokenOnce() {
 
 const BASE = "/api";
 
+/* 轮 311 · P1 前端侧 429 退避：Worker 统一限流闸回 429 + Retry-After 时记住到期时间，
+ * 退避期内直接 fail fast（不发网络）—— 防前端重试风暴把限流窗口越滚越紧。
+ * 只影响调用方的下一次尝试；到期自动恢复，无需任何用户操作。 */
+let rateBackoffUntil = 0;
+/** 测试专用：清零退避（生产不调用） */
+export function __resetGatewayRateBackoff() { rateBackoffUntil = 0; }
+
 /** 轮 302：批量记浏览路由（POST /api/posts/views）是否可用（null = 还没试过）。
  *  老 Worker 没这条路由（404）→ 本会话此后都走逐帖 /view，不再每趟白试。 */
 let wallAddViewsRoute = null;
@@ -59,6 +66,12 @@ function authHeaders(extra = {}) {
  * 只重试一次（刷新失败 / 仍 401 都按原错误上抛），绝不循环。 */
 async function call(path, { method = "GET", body, headers } = {}) {
   if (!authReady()) throw new Error("cloud-not-ready");
+  /* 轮 311：429 退避期内不发网络（fail fast），防重试风暴 */
+  if (Date.now() < rateBackoffUntil) {
+    const e = new Error("rate-limited");
+    e.status = 429;
+    throw e;
+  }
   const hadAuth = !!getAuthToken();
   const attempt = async () => {
     let res;
@@ -84,6 +97,11 @@ async function call(path, { method = "GET", body, headers } = {}) {
       const msg = (data && (data.message || data.error)) || `HTTP ${res.status}`;
       const err = new Error(String(msg));
       err.status = res.status;
+      /* 轮 311：命中 Worker 统一限流闸 → 按 Retry-After 进入退避（退避期内 fail fast） */
+      if (res.status === 429) {
+        const ra = Number(res.headers.get("retry-after"));
+        rateBackoffUntil = Date.now() + (Number.isFinite(ra) && ra > 0 ? ra : 5) * 1000;
+      }
       throw err;
     }
     return data;
@@ -299,7 +317,7 @@ export const db = {
 
   /* ══════════ 温暖漂流瓶（#6：Worker 收口 /api/bottle/*，同名 RPC 在 DB 里） ══════════ */
 
-  /** 投一封信进海里（每日 3 封由服务端把关） */
+  /** 投一封信进海里（每日 5 封由服务端把关；轮 305：用户要求 3 → 5） */
   bottleSend(body) {
     return call("/bottle/send", { method: "POST", body: { body } });
   },
@@ -484,8 +502,14 @@ export const db = {
   /* ══════════ 举报 / 复核（轮 33；Worker 白名单 /api/reports、/api/admin/reports*） ══════════ */
 
   /** 提交举报（target_type: post|comment；防刷/去重/评论阈值在 RPC 里） */
-  reportCreate(targetType, targetId, reason, detail) {
-    return call("/reports", { method: "POST", body: { target_type: targetType, target_id: targetId, reason, detail } });
+  reportCreate(targetType, targetId, reason, detail, turnstileToken = "") {
+    /* 轮 311 · P2：turnstile 透传给 Worker（配了 secret 才强制校验；未配时 Worker 忽略） */
+    return call("/reports", { method: "POST", body: { target_type: targetType, target_id: targetId, reason, detail, turnstile: turnstileToken || "" } });
+  },
+
+  /** 轮 311 · P2：Turnstile token 校验（登录/注册门槛：前端调 Auth 前先过这里）→ { ok } */
+  async turnstileVerify(token) {
+    return call("/turnstile/verify", { method: "POST", body: { token: String(token || "") } });
   },
 
   /** 举报/复核队列（status: pending|handled；items 带正文与聚合人数） */

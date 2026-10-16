@@ -18,6 +18,7 @@ import {
   countChars, readMinutes, normalizeTags, validatePublish,
   periodKey, periodKeyWeek, renderLiteMd, storyErrKey,
 } from "../src/utils/storyRules.js";
+import { setStorySeed, takeStorySeed, peekStorySeed } from "../src/utils/storySeed.js";
 
 let pass = 0;
 const fails = [];
@@ -384,6 +385,57 @@ ok("i18n：needMore/errShort/minbar 中英成对",
   && (i18nSrc.match(/needMore:/g) || []).length === 2
   && (i18nSrc.match(/errShort:/g) || []).length === 2
   && (i18nSrc.match(/minbar:/g) || []).length === 2);
+
+/* ───────── 轮 313：故事详情秒开（点卡片带种子 + SWR 整篇缓存） ───────── */
+/* 痛点：点一篇故事 → 详情页要等 story_get 回来才有 DOM，跨境弱网里整页空白 0.5~3s（用户体感「打开很慢」）。
+ * 口径：列表行本来就带标题/作者/标签/字数/赞看数 → 点的一瞬间当种子递过去，首帧就画头部；
+ *       正文/操作条等权威整行（ready）——种子没有 body/liked/marked，绝不能拿默认值冒充。 */
+{
+  const seedSrc = read("src/utils/storySeed.js");
+  const appVue = read("src/App.vue");
+  /* 真跑三个函数（不是看字符串）：种得上、取回字段对、取走即清、不串篇、空标题不种 */
+  const seeded = setStorySeed({ id: 7, title: "夏夜", nickname: "猫", tags: ["日常"], read_minutes: 1, body: "正文正文", liked: true, status: "published" });
+  ok("轮313 种子：列表行有 id + 标题 → 种得上", seeded === true && !!peekStorySeed());
+  const got = takeStorySeed(7);
+  ok("轮313 种子：取回的头部字段与列表行一致",
+    !!got && got.title === "夏夜" && got.nickname === "猫" && got.tags[0] === "日常" && got.read_minutes === 1);
+  ok("轮313 种子：不带 body/status/liked（列表行没有这些，不许拿默认值冒充）",
+    !!got && !("body" in got) && !("status" in got) && !("liked" in got));
+  ok("轮313 种子：取走即清（回列表再进同一篇不会吃到旧种子）",
+    takeStorySeed(7) === null && peekStorySeed() === null);
+  setStorySeed({ id: 8, title: "第二篇" });
+  ok("轮313 种子：id 不匹配不串篇", takeStorySeed(9) === null && peekStorySeed() !== null);
+  takeStorySeed(8);
+  ok("轮313 种子：无标题（书架异常行）不种 —— 宁可走加载态也不显示空标题",
+    setStorySeed({ id: 9, title: "   " }) === false && peekStorySeed() === null);
+
+  /* 接线：详情页必须「setup 就吃种子」，否则第一帧仍是空的 = 没提速 */
+  ok("轮313 详情页 setup 便吃种子（不能等到 onMounted 的 load）",
+    has(detailVue, "takeStorySeed(route.params.id)", "const row = ref(seed0)", "const ready = ref(!seed0)"));
+  ok("轮313 详情页正文与操作条在整行到位前不冒充（ready 门控 + 正文占位文案）",
+    has(detailVue,
+      'v-if="ready" class="st-read-body"',
+      '<p v-else class="st-hint">{{ t("story.loadingBody") }}</p>',
+      '<footer v-if="ready" class="st-read-foot">'));
+  ok("轮313 详情页整篇进 SWR，缓存键带用户域（行里有 liked/marked，换账号不串）",
+    has(detailVue, 'cacheKey("story", id, myId.value)'));
+  ok("轮313 浏览计数只在权威整行到位后打（种子行/失败不虚增浏览数）",
+    /if \(ready\.value && row\.value\) \{[\s\S]{0,160}storyAddView\(id\)/.test(detailVue));
+  ok("轮313 四个入口都种种子：发现联 / 四榜 / 我的 / 相关推荐",
+    has(feedVue, "setStorySeed(r)") && has(rankVue, "setStorySeed(r)")
+    && has(mineVue, "setStorySeed(r)") && has(detailVue, "setStorySeed(r)"));
+  ok("轮313 i18n：loadingBody 中英成对（缺一条露裸 key）",
+    (i18nSrc.match(/loadingBody:/g) || []).length === 2);
+  ok("轮313 warmChunks 预热门故事详情 chunk（首次点开不等下载）",
+    /warmChunks[\s\S]{0,1200}StoryDetailView\.vue/.test(appVue));
+  /* 反向锁：老写法回来就红 —— ①「await storyGet 再赋值」= 整页空白等网络；②卡片直连 router.push 绕过种子 */
+  ok("轮313 反向锁：详情页不得再有「row.value = await storyGet」老写法",
+    !/row\.value\s*=\s*await\s+storyGet/.test(detailVue));
+  ok("轮313 反向锁：卡片点击不再直连 router.push（必须过 openStory/open 种种子）",
+    !/@click="router\.push\(`\/story\//.test(feedVue) && !/@click="open\(r\.id\)"/.test(rankVue));
+  ok("轮313 种子工具只挑详情页认识的字段（白名单，不整个对象照搬）",
+    /FIELDS\s*=\s*\[/.test(seedSrc) && seedSrc.includes('"view_count"') && !seedSrc.includes('"body"'));
+}
 
 /* ───────── 结果 ───────── */
 if (fails.length) {

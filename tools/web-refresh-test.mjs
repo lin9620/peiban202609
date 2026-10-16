@@ -73,6 +73,22 @@ t("T5 中英文都有 community.refreshBtn（i18n 词条对齐，缺一个就是
 
 /* ══════════ 自检（跟 feed-perf-test T16 同款：exit 之后不许再有用例） ══════════ */
 
+t("T7 轮 304：回顶三处全 instant + manualRefresh 真读 pin —— 深滚刷新秒回顶，不许 smooth 回潮", () => {
+  /* focusFeedTop：悬浮「回顶部」按钮一律 instant */
+  const go = view.slice(view.indexOf("function focusFeedTop()"), view.indexOf("function pinToTop()"));
+  assert.ok(/behavior:\s*"instant"/.test(go), "goTop 回顶不是 instant");
+  assert.ok(!/behavior:\s*"smooth"/.test(go), "goTop 里还有 smooth");
+  /* 再点页签：retap 回调内一律 instant（切片只取 retap 回调，避免圈进下面的帖子定位 smooth） */
+  const reStart = view.indexOf("watch([retapSeq, retapPath]");
+  const re = view.slice(reStart, view.indexOf("wallScrollTop = 0;", reStart) + 30);
+  assert.ok(/behavior:\s*"instant"/.test(re), "retap 回顶不是 instant");
+  assert.ok(!/behavior:\s*"smooth"/.test(re), "retap 分支里还有 smooth");
+  /* 网页刷新钮的 pin 必须真被读：先 instant 钉回顶部再刷新（T1 断言的按钮 pin 在此坐实；
+   * 轮 294 实现 if (opts.pin)，后续改写保留任一形态都算过） */
+  const mr = view.slice(view.indexOf("async function manualRefresh"), view.indexOf("function pinToTop()"));
+  assert.ok(/if\s*\(\s*opts(\s*&&\s*opts)?\.pin\s*\)\s*pinToTop\(\)/.test(mr), "manualRefresh 没读 opts.pin");
+});
+
 t("T6 自检：process.exit 之后不许再出现 t(...)", () => {
   const self = read("tools/web-refresh-test.mjs");
   const i = self.indexOf("process.exit");

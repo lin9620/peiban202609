@@ -1,7 +1,7 @@
 /* 温暖漂流瓶（#6）规则层单测（纯函数 + i18n 键 + 前后端契约 + 迁移覆盖）
  * ------------------------------------------------------------
  * 重点：
- *  1. 每日 3 封 / 7 瓶、48h 自动回海、1000 字上限 —— 这些数字在「前端常量 /
+ *  1. 每日 5 封 / 7 瓶（轮 305：用户要求写信 3 → 5）、48h 自动回海、1000 字上限 —— 这些数字在「前端常量 /
  *     SQL RPC / Worker 体检」三处出现，漂一处用户就会被挡或被放水；
  *  2. 错误码 → i18n 的映射必须与 MIGRATION 里 raise exception 的字符串一一对上
  *     （含 Worker 的 bottle-too-long），否则只会看到「海浪大了一点」；
@@ -30,6 +30,7 @@ const read = (p) => fs.readFileSync(p, "utf8");
 const has = (src, ...parts) => parts.every((p) => src.includes(p));
 
 const migration = read("MIGRATION_bottle.sql");
+const migrationSend5 = read("MIGRATION_bottle_send_5.sql");   /* 轮 305：写信 3 → 5（增量迁移，原文件不动） */
 const migrationFish = read("MIGRATION_bottle_quota_fishfix.sql");
 const migrationReply = read("MIGRATION_bottle_reply_quota.sql");   /* 轮 21：回信才计次 */
 const setupSql = read("SUPABASE_SETUP.sql");
@@ -43,7 +44,7 @@ const css = read("src/style.css");
 const petStore = read("src/stores/petStore.js");
 
 /* ───────── 常量 ───────── */
-ok("每日最多投 3 封", BOTTLE_SEND_MAX === 3);
+ok("每日最多投 5 封（轮 305：用户要求 3 → 5）", BOTTLE_SEND_MAX === 5);
 ok("每日最多捞 7 瓶", BOTTLE_FISH_MAX === 7);
 ok("字数放宽到 1000", BOTTLE_BODY_MAX === 1000);
 ok("捞起 48h 不处理自动回海", BOTTLE_HOLD_TTL_MS === 48 * 3600 * 1000);
@@ -86,9 +87,11 @@ ok("每日一问已摘除（en/zh 都没有 dailyQ，首页也不再引用）",
 /* ───────── 前端 ↔ Worker ↔ SQL 契约（限额数字 / 错误码 / 路由） ───────── */
 /* SQL 与 Worker 里的限额数字必须与前端常量一致 */
 {
-  const migNums = has(migration, "if v_count >= 3 then raise exception 'bottle-limit-send'")
+  const migNums = has(migrationSend5, "if v_count >= 5 then raise exception 'bottle-limit-send'")
     && has(migration, "if v_count >= 7 then raise exception 'bottle-limit-fish'");
-  ok("SQL：每日 3 封 / 7 瓶在 RPC 里把关", migNums);
+  ok("SQL：每日 5 封 / 7 瓶在 RPC 里把关（轮 305：写信 3 → 5，增量迁移与原文件一致性由同源断言锁）", migNums);
+  ok("SQL 同源：SUPABASE_SETUP 的 bottle_send 与增量迁移同为 >= 5（新装库不错位）",
+    setupSql.includes("if v_count >= 5 then raise exception 'bottle-limit-send'"));
   ok("SQL：字数 ≤1000（信与回信同限）", (migration.match(/char_length\(p_\w+\) > 1000/g) || []).length === 2);
   ok("SQL：捞起 48h 自动回海", migration.includes("interval '48 hours'"));
   ok("SQL：不能捞自己的信（user_id <> auth.uid()）", migration.includes("user_id <> auth.uid()"));
@@ -195,7 +198,7 @@ ok("BottleView：发信/回信成功后只回读服务端次数（不做本地 +
     const sendBody = bottleView.slice(bottleView.indexOf("async function doSend()"), bottleView.indexOf("async function doFish"));
     const replyBody = bottleView.slice(bottleView.indexOf("async function doReply"), bottleView.indexOf("async function doRelease"));
     return sendBody.indexOf("await bottleSend") >= 0
-      && sendBody.indexOf("await bottleSend") < sendBody.indexOf("await syncQuota()")
+      && sendBody.indexOf("await bottleSend") < sendBody.indexOf("syncQuota()")
       && replyBody.indexOf("await bottleReply") >= 0
       && replyBody.indexOf("await bottleReply") < replyBody.indexOf("syncQuota()");
   })());

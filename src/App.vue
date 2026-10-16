@@ -10,7 +10,7 @@ import { t } from "./i18n.js";
 import SideRails from "./components/SideRails.vue";
 import SideNav from "./components/SideNav.vue";
 import TabBar from "./components/TabBar.vue";
-import { isApp, isMobileNav, runBack, tabbarSuppressed, navOpen } from "./stores/uiStore.js";
+import { isApp, isMobileNav, runBack, tabbarSuppressed, navOpen, dlOpenSeq } from "./stores/uiStore.js";
 import {
   wallet, moodStreak, petNotices, dismissPetNotice,
 } from "./stores/petStore.js";
@@ -67,6 +67,8 @@ const cloudSigned = computed(() => !!(cloud.ready && cloud.user));
  * APK = npm run apk:web 复制进 public/apk/ 的构建产物；二维码在弹窗打开时
  * 才懒加载 qrcode 生成（SVG 直插 DOM，不占主包；CSP img-src 含 data: 也可用）。 */
 const dlOpen = ref(false);
+/* 轮 308 回炉：跨组件开门信号（ProfileView 的 pill → 这里开 dl-modal）。 */
+watch(dlOpenSeq, () => { dlOpen.value = true; });
 const dlQr = ref("");
 const dlQrErr = ref(false);
 /* 轮 238 · 下载地址解析：管理员上传过 → Storage 公开地址（即最新包）；
@@ -157,6 +159,7 @@ onMounted(async () => {
     import("./views/PostDetailView.vue");
     import("./views/PetView.vue");
     import("./components/story/StoryFeed.vue");
+    import("./views/StoryDetailView.vue");   /* 轮 313：点卡片进详情不再等这个 chunk（故事联里一点就走它） */
   };
   if (typeof requestIdleCallback === "function") requestIdleCallback(warmChunks, { timeout: 4000 });
   else setTimeout(warmChunks, 2500);
@@ -211,6 +214,21 @@ watch(cloudSigned, (v) => {
   }
   stopBadge();
   stopDmRealtime();   /* 轮 269：登出关通道（不留别人的订阅） */
+}, { immediate: true });
+
+/* 轮 312 · 个人域缓存的清理时机：必须等「认证有结论」之后，否则会在每次开机时误清。
+ * 旧代码把下面三行 cacheDrop 挂在上面那个 immediate watcher 的 else 分支里 ——
+ * 而 setup 阶段 cloud.ready 还是 false（initCloud 在 onMounted 才跑），于是**每次页面加载**
+ * 都会立刻执行一次 cacheDrop("dm:")/("notif:")/("bottle:")。
+ * 真浏览器逐帧实证：重载后 +42ms 会话列表快照还在 → +119ms 被删掉 → 消息页没有快照可
+ * 秒开，只能干等一次完整 dm_list_convs（跨境弱网 0.6~2s 起，带 3s×3 重试更久）= 用户报的
+ * 「会话列表一片空白、记录都没了、等很久才恢复」。任何一次静默重载都会踩到：
+ * 启动看门狗 vite:preloadError 自愈、WebView 被系统重建、用户下拉刷新、App 冷启动。
+ * 口径：只有云端已就绪（cloud.ready）却确实没有登录用户时才算「登出」才清——
+ * 真登出、刷新令牌失效（deadSessionSignOut → cloud.user 置空）都走这条；
+ * 启动间隙（ready=false）与云端未配置（ready 恒 false）一律不清（那不代表登出）。 */
+watch(() => cloud.ready && !cloud.user, (out) => {
+  if (!out) return;
   cacheDrop("dm:");
   cacheDrop("notif:");
   cacheDrop("bottle:");

@@ -185,6 +185,10 @@ a.dl-card:hover {
 }
 @keyframes dl-spin { to { transform: rotate(360deg); } }
 @media (max-width: 480px) { .dl-grid { grid-template-columns: 1fr; } }
+/* 轮 308 回炉 · 「我的」页头部下载 pill（紧贴设置；桌面横幅/App 内均不渲染，v-if 已挡）。
+ * 与 .admin-entry 同族描边风格：button 元素补回 a 的默认外观。 */
+button.m-dl-pill { border: none; font-family: inherit; font-size: 13px; cursor: pointer; }
+.m-dl-pill .m-dl-ico { margin-right: 2px; }
 .wb-avatar { background: var(--accent); color: #fff; font-weight: 500; font-size: 15px; }
 /* 轮 238:欢迎条头像 = 萌宠头像池（图盖满圆框；无 uid 落回首字母） */
 .wb-avatar-img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }

@@ -532,5 +532,60 @@ ok("A48b nickLong 的 {n} 真会被替换（昵称上限提示不留占位符）
 
 }
 
+/* ───────── 轮 314（用户截图定稿）：密码规则提示「输入不达标才出现」＋分隔线中段加宽 ─────────
+ * 用户原话：「密码至少6位等用户输入不达标的时候在提示」——原来这行常驻，密码合规时也挂着，
+ * 用户看着像已经在报错了。判据必须复用 passwordProblem（提交校验/服务端同一套），不能另写 length<6。 */
+{
+  /* ① 判据（纯函数）三态 + 边界：空=还没开始输入（不提示）· 1~5 位=不达标 · ≥6=达标 */
+  ok("A101 空密码 → missing（还没开始输入，不该弹规则提示）", passwordProblem("") === "missing");
+  ok("A102 5 位 → short（差一位也提示）", passwordProblem("abcde") === "short");
+  ok("A103 6 位 → 通过（提示消失）", passwordProblem("abcdef") === "");
+  ok("A104 7 位 → 通过（不因超长反过来报错）", passwordProblem("abcdefg") === "");
+  /* ② 接线：页面上的提示由 passShort 控制，且 passShort 直接问 passwordProblem */
+  ok("A105 登录页规则提示改成条件渲染（v-if=passShort，不再常驻）",
+    lv.includes('v-if="passShort"') && lv.includes("hint-min--warn"));
+  ok("A106 passShort 复用 passwordProblem（不许另写一套 length<6 的第二标准）",
+    /const passShort = computed\(\(\) => passwordProblem\(authPass\.value\) === "short"\)/.test(lv)
+    && !/authPass\.value\.length\s*<\s*MIN_PASSWORD/.test(lv));
+  /* 反向锁：常驻那行不许回来（去掉 v-if = 退回用户截图里的老样子） */
+  ok("A107 反向锁：不许再有无条件的 <p class=\"hint-min\">", !/<p class="hint-min">/.test(lv));
+  /* ③ 分隔线「加宽」：加宽的是中段留白（整条线与按钮/输入框本来就同宽 309px）——
+   *    登录页自己加宽，别依赖全局 .or-line 的 10px。 */
+  ok("A108 分隔线中段留白由登录页加宽（.login-page .or-line + gap）",
+    /\.login-page \.or-line\s*\{[^}]*gap:\s*\d+px/.test(lv));
+  /* ④ 分隔线上下留白必须对称（用户：跟下面邮箱框的距离「起码跟上面一样」）。
+   *    实测坑：全局 .or-line 是 margin:14px 0 0 → 下面 0px，邮箱框直接顶在分隔线底边上。
+   *    这里从登录页 scoped 规则里真解析 margin 简写（1/2/3/4 值都按 CSS 规则取上下），别写死字符串。 */
+  const orRule = (lv.match(/\.login-page \.or-line\s*\{([^}]*)\}/) || [])[1] || "";
+  const mVals = ((orRule.match(/margin:\s*([^;]+)/) || [])[1] || "").trim().split(/\s+/).filter(Boolean);
+  const vTop = parseFloat(mVals[0]);
+  const vBottom = parseFloat(mVals.length >= 3 ? mVals[2] : mVals[0]);
+  ok("A114 分隔线上下留白对称且都不为 0（下面至少跟上面一样 14px）",
+    Number.isFinite(vTop) && Number.isFinite(vBottom) && vTop > 0 && vBottom === vTop);
+  ok("A115 反向锁：登录页那条 .or-line 不许退回「只有上边距」（margin 第三值 0 = 用户说的贴着）",
+    !/\.login-page \.or-line\s*\{[^}]*margin:\s*[\d.]+px\s+[\d.]+px\s+0(?:px)?\b/.test(lv));
+}
+
+/* ───────── 轮 314b（用户截图：「忘记密码?」红框 + 箭头指向密码框 → 「让他贴着密码框。右下」） ─────────
+ * 原来这链接居中挂在登录按钮下面，离密码框隔着一个按钮；现在贴着密码框右下（右对齐）。
+ * 陷阱：它插在「密码框」与「登录按钮」之间，会打断 .n-input + .n-button 的 10px 间距规则 → 必须补回。 */
+{
+  const iPass = lv.indexOf('v-model:value="authPass"');
+  const seg = iPass >= 0 ? lv.slice(iPass) : "";
+  const iF = seg.indexOf('class="forgot-row"');
+  const iC = seg.indexOf('class="auth-cta"');
+  ok("A109 「忘记密码?」夹在密码框与登录按钮之间（先密码框 → 再忘记密码? → 再按钮）",
+    iPass >= 0 && iF > 0 && iC > 0 && iF < iC);
+  ok("A110 贴着密码框右下：右对齐（.forgot-row + justify-content: flex-end）",
+    /\.forgot-row\s*\{[^}]*justify-content:\s*flex-end/.test(lv));
+  ok("A111 补回被这行打断的按钮间距（.forgot-row + .n-button → margin-top 10px，否则按钮会贴上来）",
+    /\.forgot-row \+ \.n-button\s*\{[^}]*margin-top:\s*10px/.test(lv));
+  ok("A112 挪位置不改行为：这行里的按钮仍接 startForgot",
+    /class="forgot-row"[\s\S]{0,220}@click="startForgot"/.test(lv));
+  /* 反向锁：登录态下「忘记密码?」不许再回到按钮下面那行居中容器里 */
+  ok("A113 反向锁：登录态不再用按钮下的居中行装「忘记密码?」（.auth-links 只剩找回密码/重置密码用）",
+    !/<div v-if="authMode === 'signin'" class="auth-links">/.test(lv));
+}
+
 console.log(`\nTOTAL ${pass + fail}  PASS ${pass}  FAIL ${fail}`);
 if (fail > 0) process.exitCode = 1;

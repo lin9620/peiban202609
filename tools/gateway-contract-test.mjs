@@ -7,7 +7,7 @@
  * 与 tools/worker-test.mjs（Worker 侧）成对：两端形状都对上，端到端才通。
  * 运行：node tools/gateway-contract-test.mjs
  */
-import { db, setGatewayAuthProbe, setGatewayTokenRefresher } from "../src/utils/api/db.gateway.js";
+import { db, setGatewayAuthProbe, setGatewayTokenRefresher, __resetGatewayRateBackoff } from "../src/utils/api/db.gateway.js";
 import { setAuthTokenProvider } from "../src/utils/api/authToken.js";
 
 let pass = 0;
@@ -471,6 +471,61 @@ setGatewayAuthProbe(() => true); /* 单测注入：auth 就绪（与 db.supabase
   const pack = await db.wallRefresh(20);
   ok("wallRefresh：GET /wall/refresh?limit=20", cap.calls[0].url.includes("/wall/refresh?limit=20") && Array.isArray(pack));
   cap.restore();
+}
+
+/* ── 轮 311 · P1 429 退避 + P2 Turnstile 端点形状 ── */
+{
+  /* reportCreate 第五参 turnstile 透传（配了 secret 的 Worker 才强制校验） */
+  const c = capture();
+  try {
+    await db.reportCreate("post", 9, "spam", "txt", "tok-abc");
+    ok("轮311 reportCreate：body 带 turnstile token",
+      c.calls[0].url === "/api/reports"
+        && JSON.parse(c.calls[0].init.body).turnstile === "tok-abc",
+      c.calls[0].init.body);
+  } finally { c.restore(); }
+  /* turnstileVerify 端点形状（capture 默认回 []，这里定制 {ok:true} 响应） */
+  const c2real = globalThis.fetch;
+  const c2calls = [];
+  try {
+    globalThis.fetch = async (url, init = {}) => {
+      c2calls.push({ url: String(url), init });
+      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "content-type": "application/json" } });
+    };
+    const r = await db.turnstileVerify("tok-1");
+    ok("轮311 turnstileVerify：POST /turnstile/verify {token} → {ok:true}",
+      c2calls[0].url === "/api/turnstile/verify"
+        && JSON.parse(c2calls[0].init.body).token === "tok-1"
+        && r.ok === true,
+      c2calls[0].url);
+  } finally { globalThis.fetch = c2real; }
+  /* 429 → 按 Retry-After 退避：退避期内第二次调用 fail fast、不再发网络 */
+  __resetGatewayRateBackoff();
+  const real = globalThis.fetch;
+  let n = 0;
+  try {
+    globalThis.fetch = async () => {
+      n++;
+      return new Response(JSON.stringify({ error: "rate-limited" }), { status: 429, headers: { "content-type": "application/json", "retry-after": "30" } });
+    };
+    let err1 = null;
+    try { await db.listPosts(200); } catch (e) { err1 = e; }
+    ok("轮311 收到 429 → 抛错且 status=429", err1 && err1.status === 429);
+    let err2 = null;
+    try { await db.listPosts(200); } catch (e) { err2 = e; }
+    ok("轮311 退避期内第二次调用 fail fast（fetch 只被调 1 次）",
+      n === 1 && err2 && err2.status === 429 && err2.message === "rate-limited",
+      "fetch 调用数=" + n);
+  } finally {
+    globalThis.fetch = real;
+    __resetGatewayRateBackoff();
+  }
+  /* 退避清零后恢复发网（模拟 Retry-After 到期） */
+  const c3 = capture();
+  try {
+    const r = await db.listPosts(200);
+    ok("轮311 退避清零后恢复（第二次 fetch 正常发出）", c3.calls.length === 1 && Array.isArray(r));
+  } finally { c3.restore(); }
 }
 
 console.log(`gateway-contract: ${pass} pass, ${fails.length} fail`);

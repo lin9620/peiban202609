@@ -513,6 +513,83 @@ function jwtUid(request) {
   } catch (e) { return ""; }
 }
 
+/* ══════════ 轮 311 · P1 统一限流闸 + P2 Turnstile（防机器人 / 防烧配额攻击） ══════════
+ * 威胁模型（轮 310 测算的结论）：免费档唯一硬限是 Workers 10 万请求/天 —— 攻击者刷
+ * /api/* 就能让合法用户集体 429。对策 = 边缘(用户自开 Bot Fight Mode) → **本闸** → 业务配额(RPC)。
+ * 口径：按「读/写 × 匿名/登录」四类分桶（IP 或 uid），超限回 429 + Retry-After；
+ *   桶存本隔离实例内存（与 client-log 轮 256 同款）——跨实例不权威，但洪水打到哪个
+ *   实例哪个实例自己拦，对烧配额攻击足够；真人单会话 ≈26 请求（轮 310 实测），阈值留 4 倍余量。
+ * 豁免：OPTIONS（预检）/ /api/health（监控与 cron 自 ping）/ /api/client-log（自有三闸更细）。
+ * 阈值都做成常量，误伤了一行调。 */
+
+const RL_MAX_KEYS = 50000;                    /* 桶表上限：防内存被刷爆 */
+let rlMap = new Map();                        /* key → { s: 窗起点, n: 计数, w: 窗长 } */
+function rlSweep(now) {
+  if (rlMap.size < RL_MAX_KEYS) return;
+  for (const [k, b] of rlMap) { if (now - b.s >= b.w) rlMap.delete(k); }
+  /* 清完过期还满：整体重置（fail-open —— 宁可漏拦也不把内存耗尽拖垮全站） */
+  if (rlMap.size >= RL_MAX_KEYS) rlMap = new Map();
+}
+/** 滑动计数窗：n 超 limit → { ok:false, retryAfter 秒 } */
+function rateLimitCheck(key, limit, windowMs, now = Date.now()) {
+  rlSweep(now);
+  let b = rlMap.get(key);
+  if (!b || now - b.s >= windowMs) { b = { s: now, n: 0, w: windowMs }; rlMap.set(key, b); }
+  b.n++;
+  if (b.n > limit) return { ok: false, retryAfter: Math.max(1, Math.ceil((b.s + windowMs - now) / 1000)) };
+  return { ok: true };
+}
+function rl429(retryAfter) {
+  return json({ error: "rate-limited" }, 429, { "retry-after": String(retryAfter) });
+}
+/** 测试专用：清空全部内存限流状态（本轮统一闸 + client-log 自有闸轮 256；生产代码绝不调用） */
+export function __resetRateLimitsForTests() { rlMap = new Map(); clientLogRL = null; }
+
+const RL_EXEMPT = new Set(["/api/health", "/api/client-log"]);
+/** 统一闸：命中返回 429 Response，放行返回 null。插在 handleApi 一切分流之前。 */
+function rateLimitGate(request, path) {
+  if (!path.startsWith("/api/") && !path.startsWith("/sb")) return null;
+  if (RL_EXEMPT.has(path)) return null;
+  const ip = request.headers.get("cf-connecting-ip") || request.headers.get("x-real-ip") || "0.0.0.0";
+  const uid = jwtUid(request);
+  const write = request.method !== "GET" && request.method !== "HEAD";
+  let r;
+  if (path === "/api/turnstile/verify") {
+    r = rateLimitCheck("ts:" + ip, 20, 3600e3);            /* 验证接口：20 次/小时/IP */
+  } else if (path.startsWith("/sb")) {
+    r = rateLimitCheck("sb:" + ip, 120, 60e3);             /* auth 流量（登录/注册/token 刷新）：宽 */
+  } else if (write) {
+    r = uid ? rateLimitCheck("wu:" + uid, 20, 60e3)        /* 登录写：20 次/分钟/uid */
+            : rateLimitCheck("wi:" + ip, 10, 600e3);       /* 匿名写：10 次/10分钟/IP */
+  } else {
+    r = uid ? rateLimitCheck("ru:" + uid, 240, 60e3)       /* 登录读：240/分钟 */
+            : rateLimitCheck("ri:" + ip, 120, 60e3);       /* 匿名读（含图片）：120/分钟 */
+  }
+  return r.ok ? null : rl429(r.retryAfter);
+}
+
+/** P2 · Turnstile siteverify：env.TURNSTILE_SECRET 未配置 = 全放行（fail-open，
+ *  用户没建 widget 之前功能零打扰）；token 校验失败 = 拦；siteverify 网络挂 = 放行
+ *  （Turnstile 是补强不是唯一防线——本闸与业务配额仍在，验证码挂掉不应挡全站）。 */
+async function verifyTurnstile(env, token, ip) {
+  const secret = String((env && env.TURNSTILE_SECRET) || "").trim();
+  if (!secret) return { ok: true, skipped: true };
+  if (!token) return { ok: false, skipped: false };
+  const form = new FormData();
+  form.append("secret", secret);
+  form.append("response", String(token).slice(0, 2048));
+  if (ip) form.append("remoteip", String(ip));
+  try {
+    const res = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", { method: "POST", body: form });
+    const j = await res.json();
+    return { ok: !!(j && j.success), skipped: false };
+  } catch (e) {
+    console.warn("TURNSTILE_VERIFY_UNREACHABLE", String(e && e.message));
+    return { ok: true, skipped: false, degraded: true };
+  }
+}
+
+
 async function wallRefresh(env, request, limit) {
   /* 轮 170：首选 RPC（wall_feed_page——一条 SQL 出合并包）；迁移还没跑（函数 404）时
    * 自动退回旧四查询编排并打包成同形响应，保证迁移前后都能用。 */
@@ -957,6 +1034,11 @@ async function handleApi(request, env, ctx) {
     const path = url.pathname;
 
     if (request.method === "OPTIONS") return corsPreflight(request);
+
+    /* 轮 311 · P1 统一限流闸：插在一切分流（/sb、静态回退、API 路由）之前 —— 
+     * 攻击者的任何请求都先过桶；豁免项（health/client-log）在闸内部判断。 */
+    const rlRes = rateLimitGate(request, path);
+    if (rlRes) return rlRes;
 
     /* ══════════ 轮 23：/sb/* 透明代理到 Supabase ══════════
      * 为什么：国内网络直连 *.supabase.co 间歇被 TLS 重置（手机 App logcat 实锤
@@ -1564,12 +1646,27 @@ async function handleApi(request, env, ctx) {
         const b = await readJson(request);
         if (b.err) return b.err;
         const t = b.body || {};
+        /* 轮 311 · P2：配了 TURNSTILE_SECRET 才强制人机验证（未配 = 零打扰，行为不变） */
+        if (env.TURNSTILE_SECRET) {
+          const tv = await verifyTurnstile(env, t.turnstile, request.headers.get("cf-connecting-ip") || "");
+          if (!tv.ok) return fail(403, "turnstile-failed");
+        }
         return rpc(env, request, "report_create", {
           p_target_type: typeof t.target_type === "string" ? t.target_type : "",
           p_target_id: Number(t.target_id) || 0,
           p_reason: typeof t.reason === "string" ? t.reason : "other",
           p_detail: typeof t.detail === "string" ? t.detail : "",
         });
+      }
+
+      /* —— 轮 311 · P2：Turnstile token 校验通道 ——
+       * 注册/登录走 supabase Auth 直连不经这里，前端在调 Auth **之前**先拿 token 打本端点，
+       * Worker 用服务端 secret 校验后回 { ok }；前端 ok 才放行提交（挡脚本化注册的第一道人机门槛）。 */
+      if (seg[0] === "turnstile" && seg[1] === "verify" && seg.length === 2 && m === "POST") {
+        const b = await readJson(request);
+        if (b.err) return b.err;
+        const v = await verifyTurnstile(env, b.body && b.body.token, request.headers.get("cf-connecting-ip") || "");
+        return json({ ok: v.ok === true });
       }
 
       /* —— 管理员（RLS is_admin 兜底；Worker 只翻译） —— */

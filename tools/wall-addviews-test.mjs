@@ -333,6 +333,21 @@ try {
     T.ok(/insert into public\.wall_post_views \(post_id, viewer_key\)/.test(sql),
       "写的就是单帖版那张去重表");
     T.ok(/views = views \+ 1/.test(sql), "计到数才 +1");
+    /* 轮 306（线上 e2e 抓到）：存在性检查必须排在 insert 之前 —— 先 insert 会先撞外键，
+       not-found 降级永远走不到。断言读修复迁移（旧文件保留历史定义，只加了更正注释）；
+       单帖版在前、批量版在后，必须按函数切片分别比，跨函数 indexOf 会误判。 */
+    const fixSql = strip(readFileSync(new URL("../MIGRATION_wall_add_views_fix.sql", import.meta.url), "utf8"));
+    const fsi = fixSql.indexOf("create or replace function public.wall_add_view(");
+    const fbi = fixSql.indexOf("create or replace function public.wall_add_views(");
+    const fSingle = fsi >= 0 && fbi > fsi ? fixSql.slice(fsi, fbi) : "";
+    const fBatch = fbi > 0 ? fixSql.slice(fbi) : "";
+    T.ok(fSingle.indexOf("where id = p_post") > 0 && fSingle.indexOf("where id = p_post") < fSingle.indexOf("insert into public.wall_post_views"),
+      "单帖版：先查帖存在再 insert（坏 id 不撞外键；轮 306 顺序锁）");
+    T.ok(fBatch.indexOf("where id = v_post") > 0 && fBatch.indexOf("where id = v_post") < fBatch.indexOf("insert into public.wall_post_views"),
+      "批量版：先查帖存在再 insert（坏 id 不拖垮整批；轮 306 顺序锁）");
+    T.ok(/create or replace function public\.wall_add_view\(p_post bigint/.test(fixSql)
+      && /create or replace function public\.wall_add_views\(p_posts bigint\[\]/.test(fixSql),
+      "修复迁移里单帖版 + 批量版都在（两版同修）");
     T.ok(/'reason', 'not-found'/.test(sql) && /'ok', true, 'results'/.test(sql), "帖不存在单条降级、整体仍成功");
     T.ok(/returns jsonb/.test(sql), "返回 jsonb（results 数组）");
     T.ok(/security definer/i.test(sql), "wall_post_views 不开 insert 策略，必须 definer（与单帖版一致）");
