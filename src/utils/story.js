@@ -85,6 +85,13 @@ export function storyMine(status = null) {
   return db.storyMine(status);
 }
 
+/** 删除草稿：服务端只允许删自己的 status='draft'，已发布故事不会走到这里 */
+export function storyDeleteDraft(id) {
+  const n = Number(id);
+  if (!Number.isInteger(n) || n <= 0) throw new Error("story-not-found");
+  return db.storyDeleteDraft(n);
+}
+
 /* ══════════ 批 2：评论 / 书架 / 每日精选 / 数据面板（RPC 8-15） ══════════ */
 
 /** 评论上限（与 SQL 端 story_add_comment 的 char_length>1000 同口径，前端先挡） */
@@ -111,6 +118,62 @@ export function storyDeleteComment(id) {
 /** 收藏/取消：true=已收藏 false=已取消 */
 export function storyToggleBookmark(id) {
   return db.storyToggleBookmark(id);
+}
+
+/* ══════════ 批 3：幂等「设置」语义（轮 321：详情页乐观更新要它） ══════════ */
+
+/* 批 3 迁移（story_set_like / story_set_bookmark）没跑时的兜底：
+   老库只有「翻转」语义 —— 先翻一次看现状，与目标不一致就再翻一次校准回去。
+   结果与幂等设置一致（只是多一趟往返），前端那套「设成目标态」的逻辑照样成立。 */
+async function setLikeFallback(id, on) {
+  const now = await db.storyToggleLike(id);
+  if (!!now === !!on) return { ok: true, count: null };
+  const back = await db.storyToggleLike(id);
+  return { ok: true, count: null, flipped: !!back };
+}
+async function setBookmarkFallback(id, on) {
+  const now = await db.storyToggleBookmark(id);
+  if (!!now === !!on) return { ok: true, count: null };
+  const back = await db.storyToggleBookmark(id);
+  return { ok: true, count: null, flipped: !!back };
+}
+
+/**
+ * 赞：设成目标态（幂等）。
+ * 与 storyToggleLike 的区别：toggle 是「翻一下」，set 是「设成 on」——
+ * 前端做乐观更新时必须用 set，否则失败重试会把状态翻反（点一下赞 → 又变回没赞）。
+ * @param {number} id 故事 id
+ * @param {boolean} on 目标态
+ * @returns {Promise<{ok:boolean,count:number|null}>} count = 服务端权威赞数（拿不到 null）
+ */
+export async function storySetLike(id, on) {
+  try {
+    return await db.storySetLike(id, on);
+  } catch (e) {
+    if (/story-set-like-missing/.test(String(e?.message ?? e))) return setLikeFallback(id, on);
+    throw e;
+  }
+}
+
+/**
+ * 收藏：设成目标态（幂等）。
+ * @returns {Promise<{ok:boolean,count:number|null}>} count = 服务端权威收藏数
+ */
+export async function storySetBookmark(id, on) {
+  try {
+    return await db.storySetBookmark(id, on);
+  } catch (e) {
+    if (/story-set-bookmark-missing/.test(String(e?.message ?? e))) return setBookmarkFallback(id, on);
+    throw e;
+  }
+}
+
+/**
+ * 我赞了/收藏了哪些（批量一次往返）。
+ * @returns {Promise<Array|null>} [{ story_id, liked, marked }]；拿不到（老库）→ null
+ */
+export function storyMyFlags(ids) {
+  return db.storyMyFlags(ids);
 }
 
 /** 我的书架（收藏时间倒序） */

@@ -17,7 +17,7 @@ const tb = read("src/components/TabBar.vue");
 ok("T1 TabBar 存在且含 4 Tab 路由",
   ['path: "/"', '"/community"', '"/messages"', '"/profile"'].every((s) => tb.includes(s)));
 ok("T2 TabBar 含 ＋ 弹层与两瓣入口", tb.includes("tabbar-sheet") && tb.includes("composeBottle") && tb.includes("composePost"));
-ok("T3 消息红点接 badgeStore（dm+requests）", tb.includes("badge.dm + badge.requests"));
+ok("T3 消息红点接 badgeStore（dm+requests+bottle）", tb.includes("badge.dm + badge.requests + badge.bottle"));
 ok("T4 投瓶走 /?tab=bottle（T6 三联消费）", tb.includes('query: { tab: "bottle" }'));
 
 /* ─── ② App.vue 双形态接线（桌面零变化锚点） ─── */
@@ -25,6 +25,15 @@ const app = read("src/App.vue");
 ok("T5 TabBar 仅 isMobileNav 渲染（聊天页让位）", app.includes('<TabBar v-if="isMobileNav'));
 ok("T6 SideRails 桌面专属（isMobileNav 时隐藏）", app.includes('<SideRails v-if="!isMobileNav"'));
 ok("T7 桌面顶栏 NAV 数组原样保留（零变化锚点）", app.includes("const NAV = [") && app.includes('exact-active-class="active"'));
+ok("T7b 桌面顶栏消息角标含漂流瓶待决定（与底栏同口径）",
+  app.includes("badge.dm + badge.requests + badge.bottle"));
+const bs = read("src/stores/badgeStore.js");
+ok("T7c badgeStore 持久化/恢复/登出都带 bottle（冷启动红点不丢、换账号不串）",
+  bs.includes("bottle: 0") && bs.includes("bottle: badge.bottle")
+  && bs.includes("badge.bottle = Math.max(0, src.bottle || 0)")
+  && bs.includes("badge.dm = 0; badge.requests = 0; badge.bottle = 0")
+  && bs.includes("export async function refreshBottleBadge")
+  && bs.includes("bottlePendingCount"));
 ok("T8 shell 挂 mobile-nav 形态类", app.includes("shell--mobile-nav"));
 
 /* ─── ③ i18n：tab 组键成对 + 运行时渲染 ─── */
@@ -97,7 +106,7 @@ ok("T24 消息Tab三段（手机端：漂流瓶|会话|通知）+ 红点挂分�
   && mv.includes('v-if="badge.notif" class="notif-count"')
   && mv.includes("seg === 'bottle'")
   /* 轮 142：手机端漂流瓶段仍是原卡片式 BottleRecords（桌面才换成行式列表） */
-  && mv.includes('<BottleRecords v-else-if="seg === \'bottle\'" @open="openBottleChat" />')
+  && mv.includes('<BottleRecords v-else-if="seg === \'bottle\'" @open="openBottleChat" @pending="onBottlePending" />')
   && !mv.includes('<BottleRecords v-if="!isMobileNav"')   /* 轮 134：桌面列表已不嵌记录，反向断言钉住 */
   && messages.en.tab.segDm === "Chats" && messages.en.tab.segBottle === "Bottle" && messages.en.tab.segNotif === "Alerts"
   && messages.zh.tab.segDm === "会话中心" && messages.zh.tab.segBottle === "漂流瓶" && messages.zh.tab.segNotif === "通知"
@@ -329,6 +338,12 @@ ok("T57 轮142：两段各自单开聊天框（漂流瓶 = BottleChat 独立实�
   && bchat.includes('class="card dm-thread bchat"')
   && bchat.includes("bottleChatDecide") && bchat.includes("dmApi.send")
   && bcl.includes("bottleRecords(") && bcl.includes('class="bcl-row"'));
+ok("T57b bottle-chat accept enters the DM chat directly, without waiting for the list refresh", (() => {
+  const i = mv.indexOf("async function onBottleAccepted");
+  const b = mv.slice(i, i + 360);
+  const open = b.indexOf("openConv(String(convId))");
+  return open > 0 && open < b.indexOf("loadConvs()") && !/await\s+loadConvs\(\)/.test(b);
+})());
 ok("T58 轮142：列表底部「当前用户」条三清（模板 / 样式 / i18n + 死代码）",
   !mv.includes('class="dm-me"') && !mv.includes("myInitial") && !mv.includes("myName")
   && !mv.includes("getItem")

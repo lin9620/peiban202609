@@ -19,6 +19,21 @@ export const BOTTLE_SEND_MAX = 5;                 /* 每天最多写几封（轮
 export const BOTTLE_FISH_MAX = 7;                 /* 每天最多捞几封 */
 export const BOTTLE_BODY_MAX = 1000;              /* 字数放宽：信与回信同限 */
 export const BOTTLE_HOLD_TTL_MS = 48 * 3600 * 1000; /* 捞起后 48h 不处理自动回海 */
+export const BOTTLE_TITLE_MAX = 42;               /* 轮398：列表标题只留信文前缀，避免全文重复 */
+
+/**
+ * 轮398：把信文压成一行标题。
+ * - 换行/连续空白折成单空格，避免 summary 被撑成多行；
+ * - 按 Unicode 码点截断，emoji 不会被切成半个；
+ * - 超长才补「…」，短信用原文。
+ */
+export function bottleLetterExcerpt(body, max = BOTTLE_TITLE_MAX) {
+  const text = String(body || "").replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  const n = Math.max(1, Math.floor(Number(max) || BOTTLE_TITLE_MAX));
+  const chars = Array.from(text);
+  return chars.length > n ? chars.slice(0, n).join("").trimEnd() + "…" : text;
+}
 
 /* 老版本的本地次数账本键（轮 37 起已废弃，只用于清理） */
 const QUOTA_LEGACY_KEY = "warm-paws-bottle-quota-v1";
@@ -44,8 +59,27 @@ export function purgeLegacyBottleLocals() {
  * 使 bottle.js 既有调用方零改动。语义见 inflight.js 头注。
  * 注：必须「import 再 export」而非 re-export 语法——后者无本地绑定，
  * tools/undef-check.mjs 会把 bottle.js 内的使用判成未定义（实测误报）。 */
-import { singleFlight } from "./inflight.js";
+import { singleFlight, dropFlight } from "./inflight.js";
 export { singleFlight };
+
+/* 轮 338 · 只读接口超时：线上实测漂流瓶记录偶发 20~45s 不返回（Worker/上游链路卡住），
+ * 旧代码没有超时 → 「正在找回漂流瓶记录……」永远转，刷新键还被 disabled 卡死。
+ * 只包**只读**接口（记录 / 托盘 / 次数）；写操作绝不套超时（服务端可能已经落库）。
+ * 超时同时把这趟单飞扔掉 —— 用户点「刷新记录」才是真的重发，而不是拿回同一个卡住的 Promise。
+ * 网关侧 db.gateway 另有请求级超时（那条路走 Worker）；这里与后端实现无关，两边都管用。 */
+const READ_TIMEOUT = 15000;
+function withTimeout(p, ms, onTimeout = null) {
+  let timer = 0;
+  const timeout = new Promise((_, rej) => {
+    timer = setTimeout(() => {
+      try { if (onTimeout) onTimeout(); } catch (e) { /* 丢飞行失败也不影响报错 */ }
+      const err = new Error("timeout");
+      err.timeout = true;
+      rej(err);
+    }, ms);
+  });
+  return Promise.race([p, timeout]).finally(() => { if (timer) clearTimeout(timer); });
+}
 
 /** 漂流瓶要登录（信要能找到作者、回信要能送到人） */
 export function canBottle() {
@@ -55,6 +89,8 @@ export function canBottle() {
 /** RPC raise 的 message / Worker 的错误码 → i18n key（两边的字符串必须与 SQL/Worker 一致） */
 export function bottleErrKey(e) {
   const msg = String((e && e.message) || e || "");
+  /* 轮 338：15s 读超时（见 withTimeout）——单独一句，别混进泛泛的「海浪大」 */
+  if ((e && e.timeout) || msg === "timeout" || /timeout/i.test(msg)) return "bottle.errTimeout";
   if (msg.includes("bottle-limit-send")) return "bottle.errSendLimit";
   if (msg.includes("bottle-limit-hold")) return "bottle.errHoldLimit";
   /* 注意顺序：先比 limit-hold 再无歧义地比 limit-fish（两者前缀不同，无覆盖风险） */
@@ -100,24 +136,29 @@ export async function bottleRelease(id) {
 
 /** 我投的信（含收到的回信），新→旧 */
 export async function bottleMine() {
-  return db.bottleMine();
+  return withTimeout(db.bottleMine(), READ_TIMEOUT);
 }
 
 /** 我捞到、还没回的信（换页/刷新后找回来）；轮 41：与预热单飞合并 */
 export function bottleHeld() {
-  return singleFlight("held", () => db.bottleHeld());
+  return withTimeout(singleFlight("held", () => db.bottleHeld()), READ_TIMEOUT, () => dropFlight("held"));
 }
 
 /** 今日已用次数（服务端权威，UTC 日）：{ sent, fished }（轮 18：跨端不再打架；轮 41：与预热单飞合并） */
 export function bottleQuota() {
-  return singleFlight("quota", () => db.bottleQuota());
+  return withTimeout(singleFlight("quota", () => db.bottleQuota()), READ_TIMEOUT, () => dropFlight("quota"));
 }
 
 /** 漂流瓶记录：p_mine=true 我发布的 / false 我捞到的 / null 原行为；limit 每页条数（#17）
- *  轮 41：同参数在途请求单飞合并（分页参数不同 = 不同 key，互不影响） */
+ *  轮 41：同参数在途请求单飞合并（分页参数不同 = 不同 key，互不影响）
+ *  轮 338：15s 超时（超时丢单飞，见 withTimeout 头注） */
 export function bottleRecords(id = null, offset = 0, { mine = null, limit = 0 } = {}) {
-  return singleFlight(`rec:${id}|${offset}|${mine}|${limit}`,
-    () => db.bottleRecords(id, offset, { mine, limit }));
+  const key = `rec:${id}|${offset}|${mine}|${limit}`;
+  return withTimeout(
+    singleFlight(key, () => db.bottleRecords(id, offset, { mine, limit })),
+    READ_TIMEOUT,
+    () => dropFlight(key),
+  );
 }
 
 export function bottleChatDecide(id, accept) {
@@ -145,4 +186,31 @@ export function sortBottleMine(rows, userId) {
   const list = Array.isArray(rows) ? rows.slice() : [];
   const rank = (l) => (bottleChatState(l, userId) === "choose" ? 0 : 1);
   return list.sort((a, b) => rank(a) - rank(b));
+}
+
+/** 「我发布的」里有多少封在等我点「愿意，开始聊天」——红点/角标的唯一口径。 */
+export function bottlePendingCount(rows, userId) {
+  return (Array.isArray(rows) ? rows : [])
+    .filter((l) => bottleChatState(l, userId) === "choose").length;
+}
+
+/** 记录分页：总页数至少 1（空列表也显示第 1 / 1 页，不把 pager 画成 0 页）。 */
+export function bottlePageCount(total, pageSize) {
+  const n = Math.max(0, Math.floor(Number(total) || 0));
+  const size = Math.max(1, Math.floor(Number(pageSize) || 1));
+  return Math.max(1, Math.ceil(n / size));
+}
+
+/** 0 基页码钳位：首页/尾页/手输页码都先过这里，避免越界切片。 */
+export function clampBottlePage(page, total, pageSize) {
+  const pages = bottlePageCount(total, pageSize);
+  return Math.min(Math.max(0, Math.floor(Number(page) || 0)), pages - 1);
+}
+
+/** 取某一页（0 基）；切片规则只此一份，BottleView 和测试共用。 */
+export function bottlePageSlice(rows, page, pageSize) {
+  const list = Array.isArray(rows) ? rows : [];
+  const size = Math.max(1, Math.floor(Number(pageSize) || 1));
+  const p = clampBottlePage(page, list.length, size);
+  return list.slice(p * size, p * size + size);
 }

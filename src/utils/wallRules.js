@@ -633,3 +633,89 @@ export function normalizeWallAddViews(data) {
   return map;
 }
 
+/* ══════════ 轮 333 · 帖级回应的服务端原子写入 ══════════ */
+
+/** 帖级回应的三种 kind（与 wall_reactions.kind 约束一致）。
+ *  注意：**不含 dislike** —— 厌恶走 wall_toggle_dislike（带「达阈值自动下架」副作用，语义不同）。 */
+export const WALL_REACTION_KINDS = ["hug", "warm", "relate"];
+
+/** 这个 kind 是不是合法的帖级回应（只认三种；dislike 不算）。 */
+export function isWallReactionKind(kind) {
+  return WALL_REACTION_KINDS.includes(kind);
+}
+
+/**
+ * 轮 354：把一次回应写入的权威结果并回帖子 —— **只写本次动的 kind**。
+ *
+ * 为什么不能整包写回：wall_set_reaction 的返回是「写完后整帖三份计数 + 我的三份状态」，
+ * 但不同 kind 的请求走不同队列 key（`post:<id>:<kind>`）→ 并行。三个按钮连着点时，
+ * 先发的旧响应可能最后到，整包写回会把后点的另外两个 kind 按旧快照翻回去
+ * （实测：抱抱→暖暖→同感 80ms 连点，最终只剩抱抱亮，暖暖/同感被抱抱的旧响应熄灭）。
+ * 服务端其实三条都写成功了，只是 UI 被旧快照覆盖。
+ *
+ * 只写 [kind] 后，每个 kind 的状态由自己的最新响应负责，乱序也不会互相覆盖。
+ * 其它 kind 的计数若在别处变了，交给下一次信息流刷新校正（不影响本次意图）。
+ *
+ * @param {Object} post  视图帖子（读 reacts / mine）
+ * @param {string} kind  本次写入的 kind
+ * @param {Object} fresh 权威结果 {hug,warm,relate,mine:{hug,warm,relate}}
+ * @returns {{reacts:Object,mine:Object}} 可直接赋回 post 的两个字段
+ */
+export function applyReactionAuthoritative(post, kind, fresh) {
+  const reacts = { ...((post && post.reacts) || {}) };
+  const mine = { ...((post && post.mine) || {}) };
+  if (!isWallReactionKind(kind) || !fresh) return { reacts, mine };
+  reacts[kind] = Math.max(0, Number(fresh[kind]) || 0);
+  if (fresh.mine && fresh.mine[kind] !== undefined) mine[kind] = fresh.mine[kind] === true;
+  return { reacts, mine };
+}
+
+/**
+ * 把 RPC wall_set_reaction 的返回归一成前端要的扁平形状。
+ *
+ * 形状：{ on:boolean, counts:{hug,warm,relate}, mine:{hug,warm,relate} }
+ *   on     = 这次写入后的权威状态（true=已回应）
+ *   counts = 该帖三种回应的服务端权威计数
+ *   mine   = 我在这三种回应上的状态
+ *
+ * 为什么单独归一化（而不是直接透传 RPC 的 jsonb）：
+ *   ① RPC 的 jsonb 形状由 SQL 决定，前端调用方只认扁平形状 —— 归一化点收在一处，
+ *      以后 SQL 改字段名不用改三个视图文件；
+ *   ② **脏数据一律上抛**（invalid-set-reaction），绝不补 0 ——
+ *      宁可让这次写入判失败回滚，也不能把「没取到计数」说成「0 个人回应」。
+ *      计数补 0 会让界面显示「没人抱抱」，而库里其实有人 —— 那是骗人。
+ *
+ * @param {Object} data RPC 返回（{ok, on, counts, mine}）
+ * @returns {{on:boolean, counts:Object, mine:Object}}
+ */
+export function normalizeSetReaction(data) {
+  if (!data || typeof data !== "object") throw new Error("invalid-set-reaction");
+  if (data.ok !== true) throw new Error("invalid-set-reaction");
+  const counts = data.counts;
+  const mine = data.mine;
+  if (!counts || typeof counts !== "object") throw new Error("invalid-set-reaction");
+  if (!mine || typeof mine !== "object") throw new Error("invalid-set-reaction");
+  const out = { on: data.on === true, counts: {}, mine: {} };
+  for (const k of WALL_REACTION_KINDS) {
+    const c = safeCount(counts[k]);
+    if (Number.isNaN(c) || c < 0) throw new Error("invalid-set-reaction");
+    out.counts[k] = c;
+    out.mine[k] = mine[k] === true;
+  }
+  return out;
+}
+
+/**
+ * 轮 333：判定「本批返回的帖子里是否含当前列表未见过的新内容」。
+ * 只按 dbId 集合差异（不按 ts 水位，避免水位只增不减导致后续刷新永远「无新」）。
+ * @param {Array} fetchedRows 服务端本批返回的帖子行（可能含 null / 非对象 / 无 dbId）
+ * @param {Set<string|number>|Array<string|number>} existingDbIds 当前列表已有的 dbId 集合
+ * @returns {{hasNew: boolean, newRows: Array}} hasNew 是否有新内容；newRows 过滤后的新帖子行
+ */
+export function hasNewPosts(fetchedRows, existingDbIds) {
+  const rows = Array.isArray(fetchedRows) ? fetchedRows : [];
+  const known = existingDbIds instanceof Set ? existingDbIds : new Set(Array.isArray(existingDbIds) ? existingDbIds : []);
+  const newRows = rows.filter((p) => p && p.dbId != null && !known.has(p.dbId));
+  return { hasNew: newRows.length > 0, newRows };
+}
+

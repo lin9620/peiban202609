@@ -5,7 +5,7 @@
  */
 import assert from "node:assert/strict";
 import {
-  cacheKey, cacheGet, cachePeek, cacheSet, cacheDrop, swr, CACHE_MAX_ENTRIES,
+  cacheKey, cacheGet, cachePeek, cacheSet, cacheDrop, swr, cacheMerge, CACHE_MAX_ENTRIES,
 } from "../src/utils/cache.js";
 
 let pass = 0, fail = 0;
@@ -125,6 +125,33 @@ await t("T12 key 为空时 swr 只走网络（翻页等非缓存路径）", asyn
   assert.equal(cachedCalls, 0);
   assert.equal(freshCalls, 1);
   assert.deepEqual(cachePeek(""), null);
+});
+
+/* 轮 321：详情页点赞/收藏是「局部字段变更」——整篇重拉不划算，
+   只改内存又会在下次进页面时闪回旧样，所以需要「对象合并」写回快照。 */
+await t("T13 cacheMerge 合并对象快照（只改指定字段，其余保留）", async () => {
+  cacheSet("t13", { id: 7, title: "T", body: "正文", liked: false, like_count: 3 });
+  cacheMerge("t13", { liked: true, like_count: 4 });
+  assert.deepEqual(cachePeek("t13"), { id: 7, title: "T", body: "正文", liked: true, like_count: 4 });
+});
+
+await t("T14 cacheMerge 忽略 undefined（不把字段抹成 undefined）", async () => {
+  cacheSet("t14", { id: 8, liked: false });
+  cacheMerge("t14", { liked: true, marked: undefined });
+  /* marked 是 undefined → 直接忽略（不新增这个键，也不把已有键抹成 undefined） */
+  assert.deepEqual(cachePeek("t14"), { id: 8, liked: true });
+});
+
+await t("T15 cacheMerge 对不存在的键可凭空建一份（详情页首屏就能写）", async () => {
+  cacheMerge("t15", { liked: true });
+  assert.deepEqual(cachePeek("t15"), { liked: true });
+});
+
+await t("T16 cacheMerge 忽略数组/非对象补丁（不把快照写坏）", async () => {
+  cacheSet("t16", { id: 9 });
+  cacheMerge("t16", null);
+  cacheMerge("t16", [1, 2]);
+  assert.deepEqual(cachePeek("t16"), { id: 9 });
 });
 
 console.log("TOTAL " + (pass + fail) + "  PASS " + pass + "  FAIL " + fail);

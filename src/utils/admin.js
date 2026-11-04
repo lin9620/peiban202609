@@ -30,6 +30,14 @@ export function fmtBytes(n) {
   return `${i === 0 ? Math.round(x) : x.toFixed(1)} ${units[i]}`;
 }
 
+/** 占比（0~100 的整数）：分母 <=0 / 脏值 → 0；超过 100% 的脏数据也压回 100 */
+export function ratePct(part, total) {
+  const p = Number(part);
+  const t = Number(total);
+  if (!Number.isFinite(p) || !Number.isFinite(t) || p < 0 || t <= 0) return 0;
+  return Math.min(100, Math.round((p / t) * 100));
+}
+
 /** 长文本截断（治理列表摘要用）；非字符串 → 空串 */
 export function clip(s, n) {
   if (typeof s !== "string") return "";

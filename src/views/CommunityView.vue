@@ -21,6 +21,7 @@ import { restoreScroll } from "../utils/scrollMem.js";
 /* 轮 32：个人数据键按账号分域（游客账/各登录账号互不串），读写走 scopeGet/scopeSet */
 import { scopeGet, scopeSet, scopeGetRaw, scopeSetRaw } from "../utils/userScope.js";
 import { cacheKey, cacheSet, cacheGet, swr } from "../utils/cache.js";
+import { onPostReaction, applyPostReactionPatch } from "../utils/postReactionSync.js";
 /* 轮 84：墙内前 3 条 / 查看更多 / 评论回应 / 拷贝文本。
    注意：import 大括号内不要写注释 —— undef-check 的导入解析器会把注释与下一个名字粘连（踩过）。 */
 import {
@@ -28,7 +29,7 @@ import {
   canDelete, normalizeText, postKey, MAX_LEN,
   renderTops, renderReplies, liveComments, replyBlocked,
   wallTopComments, hasMoreComments, reactCount, toggleReact,
-  hasReacted as cmtHasReacted, postCopyText, commentCopyText,
+  hasReacted as cmtHasReacted, postCopyText, commentCopyText, applyCommentReactionResult,
 } from "../utils/comments.js";
 /* 动态流虚拟窗口（纯逻辑，Node 单测覆盖：tools/feed-window-test.mjs）—— 轮 82 · B1 档 */
 import {
@@ -38,6 +39,8 @@ import {
 import { cloud } from "../utils/supabase.js";
 /* 回应写入收敛器（纯逻辑，Node 单测覆盖）：连点串行落库 + 过期响应不回写 */
 import { createWriteQueue } from "../utils/reactQueue.js";
+/* 连点闸门（纯逻辑，Node 单测覆盖）：同一颗按钮 350ms 内的第二下直接丢弃 */
+import { createTapGuard } from "../utils/tapGuard.js";
 /* 轮 84：评论回应（mine 拉取 + 切换）—— 大括号内不写注释，同上 */
 import {
   cloudFetchPosts, cloudFetchPostsSample, cloudFetchWallRefresh, cloudInsertPost, cloudFetchComments, cloudInsertComment,
@@ -54,10 +57,12 @@ import {
   errorKind, VIEW_KEY, ANON_KEY, POST_DAY_KEY, POSTS_KEY, REACTS_KEY,
   RANGES, inRange, usesRange, rangeFor, fmtWhen, memoWhen,
   recommendPosts, RECOMMEND_DAYS, RECOMMEND_WIDE_DAYS,
+  hasNewPosts, applyReactionAuthoritative,
 } from "../utils/wallRules.js";
-import { isMobileNav, tabbarSuppressed, retapSeq, retapPath } from "../stores/uiStore.js";
+import { isApp, isMobileNav, tabbarSuppressed, retapSeq, retapPath } from "../stores/uiStore.js";
 /* 轮 33：举报弹窗 + 全站拉黑过滤（我拉黑的人，TA 的帖子/评论在我这里渲染前剔除） */
 import ReportDialog from "../components/ReportDialog.vue";
+import WpComposer from "../components/WpComposer.vue";
 import { filterBlocked, refreshBlocks } from "../utils/userBlocks.js";
 /* 轮 84：…菜单的「拷贝」（WebView 里 navigator.clipboard 缺失时 execCommand 兜底） */
 import { copyText } from "../utils/clipboard.js";
@@ -77,6 +82,11 @@ const REACTIONS = [
   { key: "relate", tk: "community.reactRelate" },
 ];
 
+/* 用户拍板 A：同一颗按钮 350ms 内的第二下无效。
+ * key 必须带「对象 + 回应种类」—— 抱抱/暖暖/同感、❤️/💔 各走各的，
+ * 不能退回整帖/整评论锁（那会让另一种回应也点不动）。 */
+const tapGuard = createTapGuard(350);
+
 const posts = ref([]);
 const myReacts = ref({});
 const draft = ref("");
@@ -87,6 +97,34 @@ const needText = ref(false);
 /* —— 云端模式状态 —— */
 const cloudPosts = ref([]);
 const loadingCloud = ref(false);
+
+/* 轮 370：详情页改回应 → 进程内通知仍被 KeepAlive 保活的墙。
+ * 墙不重新挂载，光写缓存不够；这里把同一篇帖的行内 reacts/mine 就地改掉。
+ * 只动 patch 里出现的 kind，避免覆盖并行的抱抱/暖暖/同感。 */
+function cachePostView(p) {
+  if (!p || p.dbId == null) return;
+  cacheSet(cacheKey("wall:post", p.dbId), p);
+}
+const stopPostReactionSync = onPostReaction((id, patch) => {
+  let hit = null;
+  const patchList = (list) => {
+    const i = list.findIndex((p) => p && p.dbId != null && String(p.dbId) === id);
+    if (i < 0) return list;
+    const next = applyPostReactionPatch(list[i], patch);
+    if (next === list[i]) return list;
+    hit = next;
+    const out = list.slice();
+    out[i] = next;
+    return out;
+  };
+  const nextCloud = patchList(cloudPosts.value);
+  if (nextCloud !== cloudPosts.value) cloudPosts.value = nextCloud;
+  /* 搜索结果也是同一批云端帖；详情返回后搜索结果里的同感也要立刻变。 */
+  const nextSearch = patchList(searchRows.value);
+  if (nextSearch !== searchRows.value) searchRows.value = nextSearch;
+  if (hit) cachePostView(hit);
+});
+onUnmounted(stopPostReactionSync);
 /* 云端帖评论数：进页面就一次性拉回来，不必等点赞开评论区（修复「有 2 条评论却显示 0」） */
 const cloudCmtTotal = ref({});
 
@@ -139,15 +177,23 @@ const pageBusy = ref(false);
 const refreshNote = ref("");   /* 轮 162：刷新提示状态机 ""|busy|ok|batch|fail */
 const refreshText = computed(() => ({
   busy: t("community.refreshing"), ok: t("community.refreshed"),
-  batch: t("community.refreshBatch"), fail: t("community.refreshFail"),
+  batch: t("community.refreshBatch"), none: t("community.noNew"), fail: t("community.refreshFail"),
 }[refreshNote.value] || ""));
 /* 轮 227：提示停留时长按状态区分——用户反馈「没刷出来，再试一次」这条停太久
    （原来是统一 2500ms）。失败提示只需告知「这次没成」，看一眼就够，不该杵在那儿；
    成功 / 换批稍长些无妨（要看清刷新出结果了）。
-   轮 284（用户：再减 1/3）：1200 → 800ms。 */
+   轮 284（用户：再减 1/3）：1200 → 800ms。
+   轮 323（用户）：「App 端暖心墙帖子，不管下拉刷新还是划到底点刷新，『已刷新』『换了一批
+   内容』的提示都减少 1/3 时间」→ App 壳里 2200 × 2/3 = 1467ms；网页端维持 2200（用户只点名
+   App 端，两边文案相同、时长差 0.7s 也看不出差别；要统一再说一句就改一个数）。
+   两个入口（下拉 te / 点刷新钮 manualRefresh）都走 noteMs，别在调用点写死毫秒。 */
 const NOTE_FAIL_MS = 800;
 const NOTE_OK_MS = 2200;
-const noteMs = (s) => (s === "fail" ? NOTE_FAIL_MS : NOTE_OK_MS);
+const NOTE_OK_MS_APP = Math.round((NOTE_OK_MS * 2) / 3);   /* 1467 ≈ 2200 - 1/3 */
+const noteMs = (s) => {
+  if (s === "fail") return NOTE_FAIL_MS;
+  return isApp ? NOTE_OK_MS_APP : NOTE_OK_MS;
+};
 const newestSeenTs = ref(0);   /* 轮 73：补上缺失声明（真新帖判定用） */
 const lastPulledRows = ref([]);   /* 轮 76：本次刷新拉到的批（评论数后台补齐用） */
 
@@ -347,14 +393,21 @@ async function loadCloud({ fresh = false, quiet = false } = {}) {
     /* 轮 79（关键取舍修复）：最新页里**有真新帖**（比见过的最新 ts 还新）→ 用最新页；
        **没有** → 用随机批（换一批）——此前随机批取了但永远不用，内容自然「不刷新」。
        两个分支都回写缓存；都失败/超时 → 如实提示并保留旧列表。 */
-    const hasNew = box && box.rows.some((p) => (p.ts || 0) > prevNewest);
+    /* 轮 333：用「本批 dbId 是否已在当前列表」判定有无新内容，而非只比 ts 水位——
+       水位只增不减，一旦见过很新的帖子，后续刷新就永远判定为「无新」。 */
+    const { hasNew, newRows } = hasNewPosts(box.rows, cloudPosts.value.map((p) => p.dbId));
     if (box && box.rows.length) {
       lastPulledRows.value = box.rows;
-      consume({ rows: box.rows, counts: box.counts || {}, fromFetch: true });
-      reveal.value = PAGE_SIZE;
-      recDays.value = REC_LEVELS[0];   /* 轮 294：刷新 = 从头看，推荐窗退回 7 天（否则刚清空的列表立刻又膨胀回几百条） */
-      cacheSet(key, { rows: box.rows, counts: box.counts || {}, fromFetch: true });
-      refreshNote.value = hasNew ? "ok" : "batch";
+      if (hasNew) {
+        consume({ rows: box.rows, counts: box.counts || {}, fromFetch: true });
+        reveal.value = PAGE_SIZE;
+        recDays.value = REC_LEVELS[0];   /* 轮 294：刷新 = 从头看，推荐窗退回 7 天（否则刚清空的列表立刻又膨胀回几百条） */
+        cacheSet(key, { rows: box.rows, counts: box.counts || {}, fromFetch: true });
+        refreshNote.value = "ok";
+      } else {
+        /* 无新内容：不整表替换列表，避免列表闪烁/重排给用户「已刷新」的错觉 */
+        refreshNote.value = "none";
+      }
     } else {
       refreshNote.value = "fail";
       freshOk = false;
@@ -649,6 +702,8 @@ function moreFav() {
   closeMore();
   if (!t0 || t0.dbId == null) return;
   if (!signedIn.value) return showWallMsg("fav.signIn");
+  /* 用户拍板 A：收藏也是开关型；同一帖 350ms 内第二下无效。 */
+  if (!tapGuard.accept(`fav:${t0.dbId}`)) return;
   const wasOn = favSet.value.has(t0.dbId);
   if (wasOn) {
     favSet.value = new Set([...favSet.value].filter((x) => x !== t0.dbId));
@@ -708,7 +763,7 @@ async function moreCopy() {
 /* ═════════ 轮 84 · 评论回应（❤️ / 💔） ═════════
  * 与帖子厌恶同思路：乐观翻转 → RPC 返回服务端权威计数 → 覆盖；失败回滚。
  * 「我点过哪些」不进列表（按用户变化），展开评论区后单独拉一次 mine。 */
-const cmtReactBusy = ref({});
+const cmtReactQ = createWriteQueue();
 function cmtReacted(cm, kind) { return cmtHasReacted(cm, kind); }
 /* 轮 123 · like-button 粒子迸发（transitions/like-button.md）：点亮成功后 700ms 窗口 */
 const reactBursts = ref(new Set());
@@ -723,29 +778,44 @@ function fireReactBurst(cm, kind) {
   }, 700);
 }
 async function cmtReact(p, cm, kind) {
-  if (!cm || cm.dbId == null || cmtReactBusy.value[cm.id]) return;
+  if (!cm || cm.dbId == null) return;
   if (!signedIn.value) return showWallMsg("community.reactSignIn");
-  cmtReactBusy.value = { ...cmtReactBusy.value, [cm.id]: true };
+  /* 用户拍板 A：同一格（评论 + 回应种类）350ms 内只认第一下。
+     不置灰、不进队列、不发请求；❤️ 与 💔 是不同 key，仍可各点各的。 */
+  if (!tapGuard.accept(`cmt:${cm.dbId}:${kind}`)) return;
+  /* 轮 322：去掉「按评论 id 的 busy 锁」—— 锁的是整条评论，于是同一条评论上
+     ❤️ 和 💔 互相锁死（先点一个，另一个就变灰点不动，体感「不跟手」）。
+     改成按「评论 id + 回应种类」分键串行落库：UI 永不置灰，乐观翻转当场生效，
+     失败只回滚这一格。同一格连点走 toggle 语义，最终态天然正确。 */
+  const qKey = `${cm.id}:${kind}`;
+  const seq = cmtReactQ.claim(qKey);
   const prevReacts = { ...(cm.reacts || {}) };
   const prevMine = [...(cm.myReacts || [])];
   const wasOn = prevMine.includes(kind);
   const opt = toggleReact(cm, kind, !wasOn);
   cm.reacts = opt.reacts;
   cm.myReacts = opt.myReacts;
-  const res = await cloudToggleCommentReaction(cm.dbId, kind);
-  if (res && res.ok) {
-    /* 服务端权威计数覆盖乐观值；on 只描述本次点击的 kind（两种可同时点亮，与帖子回应同口径） */
-    cm.reacts = { heart: res.hearts, broken: res.brokens };
-    cm.myReacts = res.on ? [...new Set([...prevMine, kind])] : prevMine.filter((x) => x !== kind);
-    if (res.on && kind === "heart") fireReactBurst(cm, kind);   /* 轮 125：粒子仅 ❤️；💔=抖动，无粒子 */
-  } else {
-    cm.reacts = prevReacts;
-    cm.myReacts = prevMine;
-    showWallMsg("community.reactFail");
-  }
-  const next = { ...cmtReactBusy.value };
-  delete next[cm.id];
-  cmtReactBusy.value = next;
+  if (!wasOn && kind === "heart") fireReactBurst(cm, kind);   /* 轮 125：粒子仅 ❤️ */
+  cmtReactQ.push(qKey, async () => {
+    const res = await cloudToggleCommentReaction(cm.dbId, kind);
+    if (!cmtReactQ.isLatest(qKey, seq)) return;   /* 过期响应不回写 */
+    if (res && res.ok) {
+      /* 轮 354：只写本次 kind 的权威计数 / 高亮。
+         ❤️ 与 💔 是不同队列 key，并行；旧回包不能把另一格按点击前的快照改掉。 */
+      const next = applyCommentReactionResult(cm, kind, res);
+      cm.reacts = next.reacts;
+      cm.myReacts = next.myReacts;
+    } else {
+      /* 失败也只回滚这一格，别把同期点亮的另一格一起抹掉 */
+      const rr = { ...(cm.reacts || {}) };
+      if (prevReacts[kind] != null) rr[kind] = prevReacts[kind];
+      cm.reacts = rr;
+      const mine = new Set(Array.isArray(cm.myReacts) ? cm.myReacts : []);
+      if (prevMine.includes(kind)) mine.add(kind); else mine.delete(kind);
+      cm.myReacts = [...mine];
+      showWallMsg("community.reactFail");
+    }
+  });
 }
 /* 展开评论区后补拉「我点过的」；失败静默（只是少了高亮，不影响计数展示）
  * 轮 275：cloudFetchComments 已内置后台补高亮（mineReady），这里保留给「发评论/
@@ -767,6 +837,8 @@ async function dislike(p) {
   /* #28 未登录：不静默，给一句温柔的登录提示 */
   if (p.cloud && !signedIn.value) return showWallMsg("community.dislikeSignIn");
   if (!(p.cloud && signedIn.value)) return;
+  /* 用户拍板 A：厌恶也是开关型，同一帖 350ms 内第二下直接丢弃。 */
+  if (!tapGuard.accept(`dislike:${p.dbId}`)) return;
   /* #29 乐观翻转：先改 UI（跟手），网络回来用权威计数校正；失败回滚 */
   const wasOn = !!(p.mine && p.mine.dislike);
   p.mine = { ...(p.mine || {}), dislike: !wasOn };
@@ -818,9 +890,8 @@ async function te() {
   pulling = false;
   if (pullDist.value >= 62) {
     /* 轮 56：下拉刷新 = 强制取新第 1 页（不再拿缓存装样子）；轮 162：成败如实提示 */
-    const okPull = await loadCloud({ fresh: true });
-    refreshNote.value = okPull ? "ok" : "fail";
-    setTimeout(() => { refreshNote.value = ""; }, noteMs(refreshNote.value));   /* 轮 227：fail 只停 1.2s */
+    await loadCloud({ fresh: true });   /* refreshNote 已由 loadCloud 内部按 hasNew 设置，此处不再覆盖 */
+    setTimeout(() => { refreshNote.value = ""; }, noteMs(refreshNote.value));   /* 轮 323：时长按状态 + App 壳取 2/3 */
   }
   pullDist.value = 0;
 }
@@ -976,31 +1047,66 @@ async function submit() {
      ① 同帖同回应串行落库（杜绝「查-插」并发撞唯一键）
      ② 每次点击领序号，过期响应不回写（慢响应不许覆盖后来的意图） */
 const reactQ = createWriteQueue();
-const reactSaved = new WeakMap();    /* post → 服务端已确认的 {reacts, mine}（失败回滚用） */
+/* post → { [kind]: { reacts, mine } } 只备份当前 kind 的状态，
+   避免 hug/warm/relate 并行时，一个 kind 失败回滚会把其他 kind 的乐观更新也撤销 */
+const reactSaved = new WeakMap();
 async function reactSync(post, kind, k, seq) {
-  const on = hasReacted(post, kind);            /* 执行时再取意图：连点时以最新一次为准 */
-  const fresh = await cloudSetReaction(post.dbId, kind, on);
+  const targetOn = hasReacted(post, kind);   /* 执行时再取意图：连点时以最新一次为准 */
+  const fresh = await cloudSetReaction(post.dbId, kind, targetOn, {
+    applyAuthoritative: ({ postId, kind, on, fresh: fr }) => {
+      /* 过期响应不许先写 UI：cloudSetReaction 会在 await 返回前调用这里，
+         旧代码等外层 await 后才判 isLatest，慢的第一次响应会把第二次点击的
+         本地态盖掉，等第二次请求回来才恢复 = 用户看到的「过几秒又有了」。 */
+      if (!reactQ.isLatest(k, seq)) return;
+      /* 轮 354：只把「这次动的 kind」写回服务端权威值。
+         RPC 返回的是整帖三份计数快照，但不同 kind 走不同队列 key（并行）；
+         旧快照可能最后到，整包写回会把后点的另一个 kind 翻回去
+         （实测：抱抱→暖暖→同感 80ms 连点，最终只剩抱抱亮）。
+         dislike 等其它 kind 的计数同样保留本地值，不被这份快照抹掉。 */
+      const next = applyReactionAuthoritative(post, kind, fr);
+      post.reacts = next.reacts;
+      post.mine = next.mine;
+      cachePostView(post);   /* 详情页进来先读这份缓存，弱网也不用等网络 */
+      /* 备份成功后的当前 kind 状态，供下次回滚用 */
+      const saved = reactSaved.get(post) || {};
+      saved[kind] = { reacts: post.reacts[kind] || 0, mine: !!post.mine[kind] };
+      reactSaved.set(post, saved);
+    },
+    applyRollback: ({ postId, kind, on }) => {
+      /* 过期失败也不许回滚新意图；交给后面的任务收尾。 */
+      if (!reactQ.isLatest(k, seq)) return;
+      /* 只回滚当前 kind，不碰其他 kind 的并行乐观更新（修复多 kind 互相覆盖） */
+      const saved = reactSaved.get(post);
+      if (saved && kind in saved) {
+        const b = saved[kind];
+        post.mine = { ...(post.mine || {}), [kind]: b.mine };
+        post.reacts = { ...(post.reacts || {}), [kind]: b.reacts };
+        cachePostView(post);
+      }
+    },
+  });
   /* 期间又点过（序号变了）：这次响应过期，什么都别改，后面的任务会把最终状态写对 */
   if (!reactQ.isLatest(k, seq)) return;
-  if (fresh) {
-    post.reacts = { hug: fresh.hug, warm: fresh.warm, relate: fresh.relate };
-    post.mine = fresh.mine;
-    reactSaved.set(post, { reacts: { ...post.reacts }, mine: { ...fresh.mine } });
-    return;
+  if (!fresh) {
+    showWallMsg(errorKind(cloud.error) === "not-migrated" ? "community.needSetup" : "community.reactFail");
   }
-  /* 失败：回滚到服务端最后确认的状态（不是「再翻一次」，避免连点后状态错乱） */
-  const back = reactSaved.get(post);
-  if (back) { post.reacts = { ...back.reacts }; post.mine = { ...back.mine }; }
-  showWallMsg(errorKind(cloud.error) === "not-migrated" ? "community.needSetup" : "community.reactFail");
 }
 function react(post, kind) {
+  /* 用户拍板 A：同一帖同一回应 350ms 内只认第一下（第二下不改 UI/不入队/不发请求）。
+     key 带 kind：抱抱/暖暖/同感是三个独立按钮，不能被整帖锁连坐。 */
+  const gateKey = `post:${post.dbId != null ? post.dbId : post.id}:${kind}`;
+  if (!tapGuard.accept(gateKey)) return;
   if (post.cloud && signedIn.value) {
-    if (!reactSaved.has(post)) {
-      reactSaved.set(post, { reacts: { ...post.reacts }, mine: { ...(post.mine || {}) } });
+    if (!reactSaved.has(post)) reactSaved.set(post, {});
+    const saved = reactSaved.get(post);
+    /* 只记录第一次点击前的当前 kind 状态，供失败回滚用；后续点击不再覆盖备份 */
+    if (!(kind in saved)) {
+      saved[kind] = { reacts: post.reacts[kind] || 0, mine: !!post.mine[kind] };
     }
     const wasOn = !!(post.mine && post.mine[kind]);
     post.mine = { ...(post.mine || {}), [kind]: !wasOn };
     post.reacts = { ...post.reacts, [kind]: Math.max(0, (post.reacts[kind] || 0) + (wasOn ? -1 : 1)) };
+    cachePostView(post);   /* 马上点进详情：先拿乐观态，别等云端的单帖请求 */
     const k = `${post.dbId}:${kind}`;
     const seq = reactQ.claim(k);
     reactQ.push(k, () => reactSync(post, kind, k, seq));
@@ -1908,12 +2014,18 @@ onUnmounted(() => {
 /* 头像/昵称 → TA 的墙上的主页（/u/:id）；示例帖与本地帖没有云身份，不响应点击 */
 const router = useRouter();
 function canOpen(p) { return !!(p && p.cloud && p.userId); }
+/* 轮 333：空状态点击“发布第一条暖心帖”，跳转发布页（发完后会自动回社区页，由合并逻辑处理） */
+function goCompose() {
+  router.push("/compose");
+}
+
 function goProfile(p) { if (canOpen(p)) router.push({ name: "waller", params: { id: p.userId } }); }
 
 /* 轮 84：点帖子正文/图 → 帖子详情页（/post/:id）。
  * 示例帖与未上云的本地帖没有 dbId，无处可去 → 不响应（光标也不会变成手型，CSS 同口径）。 */
 function goDetail(p) {
   if (!p || p.dbId == null) return;
+  cachePostView(p);   /* 详情页 SWR 先读这份：从墙点进去 0ms 有内容，弱网不空等 */
   setPostNav(shown.value);   /* 轮 279：把「当前这张列表」存下来,详情页据此算上一条/下一条 */
   router.push({ name: "postDetail", params: { id: p.dbId } });
 }
@@ -2032,7 +2144,10 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
          结果最底下那行提示（「就到这里啦…」）有 8px 被 TabBar 盖住（占它 19px 高度的四成），
          用户反馈「提示文字被底部折叠了一半」正是这个。70px = 59 + 缓冲，
          保证任何底部文字都完整露在 TabBar 之上。 */
-      paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'calc(70px + env(safe-area-inset-bottom))',
+      /* 轮 357：.wall-scroller 是 fixed，App 壳 main 的 padding-top 传不进来；
+         之前这里只认 env()，而 Capacitor WebView 的 env(safe-area-inset-top) 常为 0，
+         搜索栏就被顶到状态栏下面（用户截图红框）。与 main 同口径改用 --sat / --sab。 */
+      paddingTop: 'var(--sat, env(safe-area-inset-top, 0px))', paddingBottom: 'calc(70px + var(--sab, env(safe-area-inset-bottom, 0px)))',
           visibility: feedRestoring ? 'hidden' : 'visible' }
       : { visibility: feedRestoring ? 'hidden' : 'visible' }">
     <!-- 轮 286（用户：「转来转去的，那是个什么玩意」）——轮 284 做成了跟手连续旋转（拉多长转多少），
@@ -2117,6 +2232,7 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
             <path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z" />
           </svg>
         </span>
+        <span v-else-if="refreshNote === 'none'" class="rn-ic" aria-hidden="true">–</span>
         <span v-else-if="refreshNote === 'fail'" class="rn-ic rn-warnic" aria-hidden="true">!</span>
         <span v-else class="rn-ic" aria-hidden="true">
           <!-- 轮 284：刷新中药丸的图标从裸 border 圆环换成「轨道 + 圆头弧线」spinner，
@@ -2184,6 +2300,16 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
     </div>
 
     <!-- 轮 277（用户拍板）：手机端首屏骨架退役（与底部轮 272/276 同口径）——数据不变。 -->
+
+    <!-- 轮 333 · 空状态：暖心墙第一次打开或没有内容时，展示温和引导（非搜索态、非加载中、无云端帖） -->
+    <div v-if="!searchActive && !loadingCloud && cloudPosts.length === 0" class="wall-empty">
+      <div class="wall-empty-ic" aria-hidden="true">💛</div>
+      <h3 class="wall-empty-title">{{ t("community.emptyTitle") }}</h3>
+      <p class="wall-empty-desc">{{ t("community.emptyDesc") }}</p>
+      <n-button type="primary" size="medium" round class="wall-empty-btn" @click="goCompose">
+        {{ t("community.emptyBtn") }}
+      </n-button>
+    </div>
 
     <!-- 轮 82 · B1 档：虚拟窗口占位块（高度由脚本按实测高度表写行内 style，撑住滚动高度） -->
     <div ref="padTopEl" class="feed-pad" :style="{ height: padTop + 'px' }" aria-hidden="true"></div>
@@ -2265,15 +2391,11 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
       <div v-if="!isMobileNav && (!p.cloud || signedIn)" :id="'cmtmain-' + cmtKey(p)"
         class="cmt-input cmt-input-top">
         <div class="cmt-input-row">
-          <van-field
+          <WpComposer
             v-model="cmtDraft[cmtKey(p)]"
-            type="textarea"
-            rows="1" autosize
             :placeholder="t('comment.placeholder')"
-            :maxlength="MAX_LEN" />
-          <n-button type="primary" size="small" round class="cmt-send" @click="sendTopCmt(p)">
-            {{ t("common.send") }}
-          </n-button>
+            :maxlength="MAX_LEN"
+            @send="sendTopCmt(p)" />
         </div>
       </div>
 
@@ -2333,10 +2455,10 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
             <button class="cmt-act bar-reply-tap" @click="replyViaBar(p, cm)">{{ t("comment.reply") }}</button>
             <!-- 轮 87：回应图标改空心灰内联 SVG（emoji 太艳丽；点亮 = 深一档灰，不再用品牌色） -->
             <button v-if="cm.dbId != null" class="cmt-react t-like" data-kind="heart" :class="{ on: cmtReacted(cm, 'heart'), 'is-bursting': reactBurst(cm, 'heart') }" :data-liked="cmtReacted(cm, 'heart')"
-              :disabled="!!cmtReactBusy[cm.id]" :title="t('comment.likeT')" :aria-label="t('comment.likeT')"
+              :title="t('comment.likeT')" :aria-label="t('comment.likeT')"
               @click="cmtReact(p, cm, 'heart')"><span class="t-like-icon"><svg class="rc-ico t-like-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.59.94 4.5 2.35C12.91 3.94 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z"/></svg></span><span class="t-like-particles" aria-hidden="true"><i v-for="n in 8" :key="n"></i></span><i>{{ reactCount(cm, "heart") }}</i></button>
             <button v-if="cm.dbId != null" class="cmt-react t-like" data-kind="broken" :class="{ on: cmtReacted(cm, 'broken'), 'is-bursting': reactBurst(cm, 'broken') }" :data-liked="cmtReacted(cm, 'broken')"
-              :disabled="!!cmtReactBusy[cm.id]" :title="t('comment.brokenT')" :aria-label="t('comment.brokenT')"
+              :title="t('comment.brokenT')" :aria-label="t('comment.brokenT')"
               @click="cmtReact(p, cm, 'broken')"><span class="t-like-icon"><svg class="rc-ico t-like-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.59.94 4.5 2.35C12.91 3.94 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z"/><path d="M12 6.8 10.4 9.4l2.4 1.5-1.5 2.4 1.1 1.8"/></svg></span><span class="t-like-particles" aria-hidden="true"><i v-for="n in 8" :key="n"></i></span><i>{{ reactCount(cm, "broken") }}</i></button>
               <!-- 轮 88：「N 条回复」按钮移到回复列表底部（见下方 replies-toggle），操作行只留时间/回复/回应 -->
           </div>
@@ -2353,15 +2475,11 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
             v-if="!cm.deleted && isReplyOpen(p, cm) && !isMobileNav && !(p.cloud && !signedIn)" class="cmt-input cmt-input-rep">
             <!-- 轮 97：统一输入条样式 -->
             <div class="cmt-input-row">
-              <van-field
+              <WpComposer
                 v-model="repDraft[repKey(p, cm)]"
-                type="textarea"
-                rows="1" autosize
                 :placeholder="repPlaceholder(p, cm)"
-                :maxlength="MAX_LEN" />
-              <n-button type="primary" size="small" round @click="sendCmt(p, cm)">
-                {{ t("common.send") }}
-              </n-button>
+                :maxlength="MAX_LEN"
+                @send="sendCmt(p, cm)" />
             </div>
           </div>
 
@@ -2392,10 +2510,10 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
                     {{ t("comment.reply") }}
                   </button>
                   <button v-if="rp.dbId != null" class="cmt-react t-like" data-kind="heart" :class="{ on: cmtReacted(rp, 'heart'), 'is-bursting': reactBurst(rp, 'heart') }" :data-liked="cmtReacted(rp, 'heart')"
-                    :disabled="!!cmtReactBusy[rp.id]" :title="t('comment.likeT')" :aria-label="t('comment.likeT')"
+                    :title="t('comment.likeT')" :aria-label="t('comment.likeT')"
                     @click="cmtReact(p, rp, 'heart')"><span class="t-like-icon"><svg class="rc-ico t-like-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.59.94 4.5 2.35C12.91 3.94 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z"/></svg></span><span class="t-like-particles" aria-hidden="true"><i v-for="n in 8" :key="n"></i></span><i>{{ reactCount(rp, "heart") }}</i></button>
                   <button v-if="rp.dbId != null" class="cmt-react t-like" data-kind="broken" :class="{ on: cmtReacted(rp, 'broken'), 'is-bursting': reactBurst(rp, 'broken') }" :data-liked="cmtReacted(rp, 'broken')"
-                    :disabled="!!cmtReactBusy[rp.id]" :title="t('comment.brokenT')" :aria-label="t('comment.brokenT')"
+                    :title="t('comment.brokenT')" :aria-label="t('comment.brokenT')"
                     @click="cmtReact(p, rp, 'broken')"><span class="t-like-icon"><svg class="rc-ico t-like-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.27 2 8.5 2 5.41 4.42 3 7.5 3c1.74 0 3.59.94 4.5 2.35C12.91 3.94 14.76 3 16.5 3 19.58 3 22 5.41 22 8.5c0 3.77-3.4 6.86-8.55 11.53L12 21.35z"/><path d="M12 6.8 10.4 9.4l2.4 1.5-1.5 2.4 1.1 1.8"/></svg></span><span class="t-like-particles" aria-hidden="true"><i v-for="n in 8" :key="n"></i></span><i>{{ reactCount(rp, "broken") }}</i></button>
                 </div>
 
@@ -2406,15 +2524,11 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
                 class="cmt-input cmt-input-rep-in">
                 <!-- 轮 97：回复框同样统一（发送在右 + 自动扩行） -->
                 <div class="cmt-input-row">
-                  <van-field
+                  <WpComposer
                     v-model="repDraft[repKey(p, cm)]"
-                    type="textarea"
-                    rows="1" autosize
                     :placeholder="repPlaceholder(p, cm, rp)"
-                    :maxlength="MAX_LEN" />
-                  <n-button type="primary" size="small" round @click="sendCmt(p, cm, rp)">
-                    {{ t("common.send") }}
-                  </n-button>
+                    :maxlength="MAX_LEN"
+                    @send="sendCmt(p, cm, rp)" />
                 </div>
               </div>
             </div>
@@ -2456,10 +2570,9 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
 
     <!-- 轮 108：手机端主评论底部输入条（图2样式：发送在右；贴键盘；点空白收起；一次只服务一条帖） -->
     <div v-if="isMobileNav && mainBarPost" ref="mainBarEl" class="cmt-main-bar">
-      <van-field ref="mainBarInput" v-model="mainBarDraft" type="textarea"
-        rows="1" autosize
-        :placeholder="mainBarPh" :maxlength="MAX_LEN" />
-      <n-button type="primary" size="small" round @click="sendMainBar">{{ t("common.send") }}</n-button>
+      <WpComposer ref="mainBarInput" v-model="mainBarDraft"
+        :placeholder="mainBarPh" :maxlength="MAX_LEN"
+        @send="sendMainBar" />
     </div>
 
     <!-- 举报弹窗（帖子/评论共用一个实例） -->
@@ -2471,6 +2584,36 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
 /* 下拉刷新指示条（轮 18）：跟手拉伸，松手回弹。
    轮 286：Material 口径——箭头默认朝下，过 62px 阈值 .ready 180° 翻转朝上（缓动 0.25s，
    只在跨阈值那一下转）+ 变主题色；拉动过程不转（轮 284 的跟手连续旋转被用户吐槽「转来转去」）。 */
+/* 轮 333 · 空状态：温和、居中、低干扰，不抢内容的风头 */
+.wall-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 48px 16px;
+  color: var(--ink-soft);
+}
+.wall-empty-ic {
+  font-size: 64px;
+  margin-bottom: 16px;
+  opacity: 0.85;
+}
+.wall-empty-title {
+  margin: 0 0 10px;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.wall-empty-desc {
+  margin: 0 0 22px;
+  font-size: 14px;
+  line-height: 1.6;
+  max-width: 320px;
+}
+.wall-empty-btn {
+  font-size: 14px;
+}
 .wall-pull { display: flex; align-items: center; justify-content: center; overflow: hidden; color: var(--ink-soft); transition: height .15s ease; }
 .wp-ic { width: 22px; height: 22px; flex: none;
   fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round;

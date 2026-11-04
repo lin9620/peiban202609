@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=overlays-content">
+  <title>会话组件原型（vue-advanced-chat）</title>
+  <style>
+    :root { --kb-h: 0px; --sys-bottom: 0px; --page-bg: #faf9f5; }
+    html, body { margin: 0; height: 100%; background: var(--page-bg); }
+    body { font-family: "Inter", "LXGW WenKai", "PingFang SC", "Microsoft YaHei", sans-serif; }
+    #app { height: 100%; }
+    .proto-switch { position: fixed; top: 8px; right: 8px; z-index: 9999; display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+    .proto-switch button {
+      border: 1px solid #e6dfd8; background: rgba(255,255,255,.92); color: #141413;
+      border-radius: 999px; padding: 4px 10px; font-size: 11px; line-height: 1; opacity: .82;
+    }
+    .proto-switch button[data-on="1"] { background: #cc785c; border-color: #cc785c; color: #fff; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="/src/proto/chat-proto.js"></script>
+</body>
+</html>

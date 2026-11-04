@@ -13,7 +13,8 @@ import {
   RECALL_WINDOW_MS, BODY_MAX, IMAGE_PLACEHOLDER, RECALLED_PLACEHOLDER,
   previewText, canRecall, displayMsg, unreadOf, sortConvs, filterConvs,
   dayKey, withDayDividers, relativeTime, validateSend, sendErrKey, rowView,
-  mergeTail, dmWin, dmMsgsKey, dmCacheWindow, dmPeekWindow, DM_WINDOW_CAP,
+  mergeTail, findSentEcho, dropEchoedDrafts, claimPendingEcho, dropEchoedPending, maxPositiveId, dmWin, dmMsgsKey, dmCacheWindow, dmPeekWindow, DM_WINDOW_CAP,
+  firstLimitLocked, FIRST_CONTACT_LIMIT,
 } from "../src/utils/dmRules.js";
 import { messages } from "../src/i18n.js";
 
@@ -62,6 +63,16 @@ const msgs = [
 ok("未读=水位之后的对方活消息（撤回不算）", unreadOf(msgs, 1, "me") === 2);
 ok("水位到顶 → 0 未读", unreadOf(msgs, 4, "me") === 0);
 ok("非数组 → 0", unreadOf(null, 0, "me") === 0);
+/* 轮381：字符串 id 不能按字典序比（"9" > "100" 会是 true，未读数算反）。 */
+ok("未读：字符串 id/水位按数值比较",
+  unreadOf([
+    { id: "9", sender: "o", created_at: iso(NOW) },
+    { id: "100", sender: "o", created_at: iso(NOW) },
+  ], "100", "me") === 0
+  && unreadOf([
+    { id: "9", sender: "o", created_at: iso(NOW) },
+    { id: "100", sender: "o", created_at: iso(NOW) },
+  ], "9", "me") === 1);
 
 /* ───────── 排序与搜索 ───────── */
 const convs = [
@@ -89,6 +100,19 @@ ok("分隔在消息之前", flow[0].type === "day" && flow[1].type === "msg");
 ok("dayKey 本地日期格式", /^\d{4}-\d{2}-\d{2}$/.test(dayKey(dayMsgs[0].created_at)));
 ok("dayKey 非法时间 → 空串", dayKey("nope") === "");
 ok("空数组不炸", withDayDividers(null).length === 0);
+{
+  /* 轮 376：确认行晚回来 / 补拉历史会让 raw 数组暂时乱序；日期分隔必须按发送时间，
+   * 不能出现「今天 → 昨天 → 今天」。 */
+  const messy = [
+    { id: 3, created_at: "2026-09-16T09:00:00+08:00" },
+    { id: 1, created_at: "2026-09-15T10:00:00+08:00" },
+    { id: 2, created_at: "2026-09-15T23:00:00+08:00" },
+  ];
+  const f = withDayDividers(messy);
+  const days = f.filter((x) => x.type === "day").map((x) => x.key);
+  ok("日期分隔按时间排序，不乱序", days.length === 2 && days[0] === "2026-09-15" && days[1] === "2026-09-16");
+  ok("排序后消息正文顺序稳定", f.filter((x) => x.type === "msg").map((x) => x.msg.id).join(",") === "1,2,3");
+}
 
 /* ───────── 相对时间 ───────── */
 const T = (k, p = {}) => `${k}${p.n != null ? ":" + p.n : ""}`;
@@ -124,6 +148,45 @@ for (const [raw, key] of ERR) {
 ok("blocked-by-me 优先于 blocked（先判细）",
   sendErrKey(new Error("blocked-by-me")) === "dm.errBlockedByMe");
 
+/* ───────── 陌生人首聊 3 条：发送前本地拦截 ───────── */
+const ME = "me-uuid", PEER = "peer-uuid";
+const msgOf = (id, sender, extra = {}) => ({ id, sender, ...extra });
+const myMsgs = (n, extra = {}) => Array.from({ length: n }, (_, i) => msgOf(i + 1, ME, extra));
+ok("首聊上限常量 = 3", FIRST_CONTACT_LIMIT === 3);
+ok("首聊：3 条无回复 → 本地锁死",
+  firstLimitLocked(null, myMsgs(3), ME, PEER) === true);
+ok("首聊：2 条无回复 → 仍可发送",
+  firstLimitLocked(null, myMsgs(2), ME, PEER) === false);
+ok("首聊：对方回复过 → 解锁",
+  firstLimitLocked(null, myMsgs(3).concat([msgOf(4, PEER)]), ME, PEER) === false);
+ok("首聊：对方回复已撤回 → 仍按未回复锁死",
+  firstLimitLocked(null, myMsgs(3).concat([msgOf(4, PEER, { deleted_at: "2026-01-01" })]), ME, PEER) === true);
+ok("首聊：失败行不占服务端条数（3 条已发 + 失败第 4 条 → 仍锁）",
+  firstLimitLocked(null, myMsgs(3).concat([msgOf(-4, ME, { failed: true })]), ME, PEER) === true);
+ok("首聊：多次重试留下的一串失败行不会撑长窗口、漏掉本地拦截",
+  firstLimitLocked(null, myMsgs(3).concat(
+    Array.from({ length: 10 }, (_, i) => msgOf(-10 - i, ME, { failed: true }))
+  ), ME, PEER) === true);
+ok("首聊：在飞的第 3 条也算一条",
+  firstLimitLocked(null, myMsgs(2).concat([msgOf(-3, ME, { pending: true })]), ME, PEER) === true);
+ok("首聊：撤回的我方消息不计数",
+  firstLimitLocked(null, myMsgs(2).concat([msgOf(3, ME, { deleted_at: "2026-01-01" })]), ME, PEER) === false);
+ok("首聊：同一条 pending + 确认行不重复计数",
+  firstLimitLocked(null, [msgOf(1, ME), msgOf(-2, ME, { key: "k2" }),
+    msgOf(2, ME, { key: "k2" })], ME, PEER) === false);
+ok("首聊：新 RPC peer_replied=true → 不拦",
+  firstLimitLocked({ peer_replied: true, my_count: 30 }, myMsgs(30), ME, PEER) === false);
+ok("首聊：新 RPC peer_replied=false + my_count=3 → 不依赖窗口也拦",
+  firstLimitLocked({ peer_replied: false, my_count: 3 }, [], ME, PEER) === true);
+ok("首聊：新 RPC peer_replied=false + my_count=2 → 放行",
+  firstLimitLocked({ peer_replied: false, my_count: 2 }, [], ME, PEER) === false);
+ok("首聊：新 RPC 精确条数 + 本地在飞行取较大值",
+  firstLimitLocked({ peer_replied: false, my_count: 2 }, myMsgs(2).concat([msgOf(-3, ME, { pending: true })]), ME, PEER) === true);
+ok("首聊：老 RPC 长会话不凭一屏全是我方消息误锁",
+  firstLimitLocked(null, myMsgs(30), ME, PEER) === false);
+ok("首聊：缺 other_id → 不判，交给服务端",
+  firstLimitLocked(null, myMsgs(3), ME, "") === false);
+
 /* ───────── 列表行展示态 ───────── */
 ok("被拉黑 → 未读清零（硬墙语义）", rowView({ unread: 5, blocked: true }).unread === 0);
 ok("正常行保留未读", rowView({ unread: 3, blocked: false }).unread === 3);
@@ -151,6 +214,7 @@ const NEED_DM = [
   "dm.gateRequest", "dm.placeholder", "dm.hint", "dm.send", "dm.pickOne",
   "dm.emptyPreview", "dm.errEmpty", "dm.errTooLong", "dm.errBlocked", "dm.errBlockedByMe",
   "dm.errForbidden", "dm.errAuth", "dm.errNoUser", "dm.errNetwork", "dm.errTooLate", "dm.errFirstLimit",
+  "dm.sendTo", "dm.opening", "dm.openingSlow",
   "time.now", "time.minAgo", "time.hourAgo", "time.yesterday",
 ];
 for (const k of NEED_DM) {
@@ -253,6 +317,34 @@ ok("暖心墙支持 ?post= 深链", community.includes("route.query.post") && co
 const mv = fs.readFileSync("src/views/MessagesView.vue", "utf8");
 ok("会话页轮询只在可见时跑", mv.includes("document.hidden") && mv.includes("visibilitychange"));
 ok("会话页进页面即抬已读水位", mv.includes("markRead"));
+/* 轮 344：冷开 / F5 时 initCloud 还没落位，不能先画「登录后才能收发私信」再恢复 */
+ok("轮 344：私信页登录闸等 cloud.checking 落位（恢复中不画未登录）",
+  /v-if="!signedIn && cloud\.checking"/.test(mv) && /v-else-if="!signedIn"/.test(mv));
+{
+  const waitAt = mv.indexOf('dm-auth-wait');
+  const gateAt = mv.indexOf('v-else-if="!signedIn"');
+  const needAt = mv.indexOf('t("dm.needSignIn")');
+  ok("轮 344：等待期是中性 spinner，needSignIn 只在检查结束后的分支",
+    waitAt > 0 && gateAt > waitAt && needAt > gateAt && mv.slice(waitAt, gateAt).includes("rn-busy"));
+}
+
+/* ───────── 轮 397：别人主页「发私信」点了像没反应 ─────────
+ * 线上 /sb 代理实测 5~20s；旧按钮只 disabled 不改文案，首屏没有任何反馈。
+ * 这里钉住：按钮立刻显示「正在打开…」、2.5s 后补慢网提示、25s 超时后恢复可点。 */
+{
+  const wv = fs.readFileSync("src/views/WallerView.vue", "utf8");
+  const fn = wv.slice(wv.indexOf("async function startDm"), wv.indexOf("/* —— 拉黑"));
+  ok("轮397：发私信按钮忙时显示 opening，而不是只置灰",
+    wv.includes('dmBusy ? t("dm.opening")') && wv.includes(': "✉️ " + t("dm.sendTo")'));
+  ok("轮397：openConv 有 25s 超时，且 finally 一定清定时器/恢复按钮",
+    fn.includes("withTimeout(openConv(uid))") && fn.includes("finally")
+    && fn.includes("clearTimeout(dmSlowTimer)") && fn.includes("dmBusy.value = false"));
+  ok("轮397：2.5s 后显示慢网提示",
+    fn.includes("dmSlowTimer = setTimeout") && fn.includes("dmSlow.value = true") && wv.includes('t("dm.openingSlow")'));
+  ok("轮397：opening / openingSlow 中英成对",
+    EN["dm.opening"] === "Opening…" && ZH["dm.opening"] === "正在打开…"
+    && typeof EN["dm.openingSlow"] === "string" && typeof ZH["dm.openingSlow"] === "string");
+}
 
 /* ───────── 轮 296：冷开 / 刷新落在消息页，会话列表白等 5 秒 ─────────
  * 病根不是查询慢，是根本没发查询：signedIn = cloud.ready && cloud.user，
@@ -271,12 +363,16 @@ ok("会话页进页面即抬已读水位", mv.includes("markRead"));
   ok("轮296：boot 幂等（booted 闸门 —— onMounted 与 watch 两条路径撞车只跑一次）",
     /let booted = false/.test(mv) && /if\s*\(\s*booted \|\| !signedIn\.value\s*\)\s*return/.test(mv));
   ok("轮296：保活期不把轮询拉回来（boot 读 wasDeactivated）",
-    /if\s*\(\s*!timer && !wasDeactivated\s*\)\s*timer = setInterval/.test(mv));
-  /* ② 兜底那条路也要回写缓存 —— 不然下次冷启动照样没有可秒开的快照 */
+    /if\s*\(\s*!timer && !wasDeactivated\.value\s*\)\s*timer = setInterval/.test(mv));
+  /* ② 兜底那条路也要回写缓存 —— 不然下次冷启动照样没有可秒开的快照
+   * 轮 320 修正：回写的是**合并后**的列表（merged，含本地刚发的预览），
+   *   不是服务端原值 rows —— 写 rows 会把「我刚发的消息」从缓存里抹掉。 */
   const lci = mv.slice(mv.indexOf("async function loadConvsImplicit"),
-    mv.indexOf("async function loadConvsImplicit") + 800);
+    mv.indexOf("async function loadConvsImplicit") + 1600);
   ok("轮296：轮询兜底 loadConvsImplicit 回写 SWR 缓存（此前绕过缓存又不回写，冷启动永远没快照）",
-    /cacheSet\(\s*cacheKey\("dm:convs",\s*meId\.value\)\s*,\s*rows\s*\)/.test(lci));
+    /cacheSet\(\s*cacheKey\("dm:convs",\s*meId\.value\)\s*,\s*(rows|merged)\s*\)/.test(lci));
+  ok("轮320：回写的是合并后的列表（merged），不是服务端原值（否则抹掉刚发的预览）",
+    /cacheSet\(\s*cacheKey\("dm:convs",\s*meId\.value\)\s*,\s*merged\s*\)/.test(lci));
 }
 const nv = fs.readFileSync("src/views/NotificationsView.vue", "utf8");
 /* #14 偏好开关移到设置页；通知页负责分栏 + 每页 20 条手动翻页 */
@@ -306,22 +402,138 @@ ok("/settings 路由已注册", mvRouter.includes('"/settings"'));
     app.added === true && app.rows.length === 4 && app.rows[2].id === 3 && app.rows[3] === tmp);
   const plain = mergeTail([a], [b]);
   ok("合并：无临时消息直接尾部追加", plain.added === true && plain.rows.length === 2 && plain.rows[1] === b);
+  const dupTail = mergeTail([a, b], [c, c]);
+  ok("合并：同一页重复 id 只追加一条（网关重复页不产生双气泡）",
+    dupTail.added === true && dupTail.rows.length === 3 && dupTail.rows.filter((x) => x.id === c.id).length === 1);
   ok("合并：非数组入参不炸", mergeTail(null, null).added === false);
 }
 
-/* ───────── 轮 157：聊天性能四件套接线（会话段 + 漂流瓶段） ───────── */
+/* 轮 378：超时后进程被杀，重进时服务端回显要认领旧失败草稿，不能画成两条 */
+{
+  const failed = { id: -77, sender: "me", body: "same", image_path: null,
+    created_at: iso(NOW - 60 * 1000), pending: false, failed: true };
+  const echo = { id: 77, sender: "me", body: "same", image_path: null, created_at: iso(NOW - 50 * 1000) };
+  const merged = mergeTail([failed], [echo]);
+  ok("重启认领：失败草稿遇到服务端回显只留正式行",
+    merged.rows.length === 1 && String(merged.rows[0].id) === "77");
+  const older = { ...echo, created_at: iso(NOW - 20 * 60 * 1000) };
+  ok("重启认领：更早的同文消息不误删失败草稿",
+    mergeTail([failed], [older]).rows.length === 2);
+  const other = { ...echo, sender: "other" };
+  ok("重启认领：别人的同文消息不误删失败草稿",
+    mergeTail([failed], [other]).rows.length === 2);
+  ok("重启认领：纯函数只认 failed 负数行，不碰 pending",
+    dropEchoedDrafts([{ ...failed, failed: false, pending: true }], [echo]).length === 1);
+  const kd = { ...failed, key: 2 };
+  ok("重启认领：同文但 key 不同的前一条成功消息，不能误删后一条失败草稿",
+    dropEchoedDrafts([kd], [{ ...echo, key: 1 }]).length === 1);
+  ok("重启认领：key 相同直接认领（不受同文时间窗干扰）",
+    dropEchoedDrafts([kd], [{ ...echo, key: 2 }]).length === 0);
+  ok("重启认领：有 key 的草稿遇到 20s 前的无 key 同文行，不误删",
+    dropEchoedDrafts([kd], [{ ...echo, created_at: iso(NOW - 80 * 1000), key: null }]).length === 1);
+  ok("会话段整窗替换也调用 dropEchoedDrafts（先清同快照的 pending/confirmed 重复）",
+    mv.includes("const snap = dropEchoedPending(asc)")
+    && mv.includes("dropEchoedDrafts(keep.length ? snap.concat(keep) : snap, snap)"));
+}
+
+/* 轮 377：发送超时/没回 msg_id 时，用服务端新回显认领乐观行，别标成失败两条 */
+{
+  const t0 = iso(NOW);
+  const temp = { id: -9, sender: "o", body: "echo", image_path: null, created_at: t0, pending: true };
+  const before = new Set(["1"]);
+  const echo = findSentEcho([
+    { id: 1, sender: "o", body: "echo", image_path: null, created_at: iso(NOW - 60000) },
+    { id: 2, sender: "o", body: "echo", image_path: null, created_at: t0 },
+  ], temp, before);
+  ok("回显：发送前不存在的新正式行能认领", echo && echo.id === 2);
+  ok("回显：发送前已有的同文消息不认领",
+    findSentEcho([{ id: 1, sender: "o", body: "echo", created_at: t0 }], temp, before) === null);
+  ok("回显：撤回/失败行不认领",
+    findSentEcho([{ id: 2, sender: "o", body: "echo", created_at: t0, deleted_at: t0 }], temp, before) === null
+    && findSentEcho([{ id: 3, sender: "o", body: "echo", created_at: t0, failed: true }], temp, before) === null);
+  ok("回显：更早的同文待发行还在时，不认领新一条",
+    findSentEcho([
+      { id: -8, sender: "o", body: "echo", created_at: iso(NOW - 1000), pending: true },
+      { id: 2, sender: "o", body: "echo", created_at: t0 },
+    ], temp, before) === null);
+  /* 轮381：连发两条同文，a 超时、b 成功。b 的确认行带 b 的 key，
+   * a 的认领不能把 b 吃掉。 */
+  const ktemp = { ...temp, key: 2 };
+  ok("回显：候选行 key 明确属于另一条同文发送时不认领",
+    findSentEcho([
+      { id: 2, sender: "o", body: "echo", image_path: null, created_at: t0, key: 1 },
+    ], ktemp, before) === null);
+  ok("回显：候选行 key 与自己一致时正常认领",
+    findSentEcho([
+      { id: 2, sender: "o", body: "echo", image_path: null, created_at: t0, key: 2 },
+    ], ktemp, before)?.id === 2);
+}
+
+/* 轮382：实时 INSERT 比发送回包先到 —— 正式行要认领屏上的 pending，不能两条 */
+{
+  const t0 = iso(NOW);
+  const temp = { id: -9, sender: "me", body: "hello", image_path: null,
+    created_at: t0, pending: true, key: 2 };
+  const echo = { id: 9, sender: "me", body: "hello", image_path: null, created_at: t0 };
+  const one = claimPendingEcho([temp], [echo]);
+  ok("实时认领：同人同文同时间 → 只留正式行且沿用稳定 key",
+    one.claimed === true && one.rows.length === 1
+    && String(one.rows[0].id) === "9" && one.rows[0].key === 2);
+  ok("实时认领：不同正文不认领",
+    claimPendingEcho([temp], [{ ...echo, body: "other" }]).claimed === false);
+  ok("实时认领：别人的同文不认领",
+    claimPendingEcho([temp], [{ ...echo, sender: "other" }]).claimed === false);
+  ok("实时认领：明确属于另一条同文发送的 key 不认领",
+    claimPendingEcho([temp], [{ ...echo, key: 3 }]).claimed === false);
+  ok("实时认领：时间差超过 10 分钟不认领",
+    claimPendingEcho([temp], [{ ...echo, created_at: iso(NOW + 11 * 60 * 1000) }]).claimed === false);
+  ok("实时认领：20s 前的同文旧消息（无 key）不能当成这次回显",
+    claimPendingEcho([temp], [{ ...echo, created_at: iso(NOW - 20 * 1000), key: null }]).claimed === false);
+  const near = { ...temp, id: -8, created_at: iso(NOW + 1000), key: 3 };
+  ok("实时认领：同文连发时按时间最近配对，而不是乱吃",
+    claimPendingEcho([temp, near], [echo, { ...echo, id: 10, created_at: iso(NOW + 1000) }]).rows
+      .map((m) => String(m.id)).join(",") === "9,10");
+  const merged = mergeTail([temp], [echo]);
+  ok("mergeTail：实时正式行直接顶掉待发行（不再追加成两条）",
+    merged.rows.length === 1 && merged.added === true
+    && String(merged.rows[0].id) === "9" && merged.rows[0].key === 2);
+  const localBoth = dropEchoedPending([temp, echo]);
+  ok("同快照去重：pending + 无 key 的实时确认行只留确认行",
+    localBoth.length === 1 && String(localBoth[0].id) === "9");
+  ok("同快照去重：不同正文的 pending 不动",
+    dropEchoedPending([temp, { ...echo, body: "other" }]).length === 2);
+  ok("同快照去重：失败草稿交给 dropEchoedDrafts，不被 pending 逻辑吃掉",
+    dropEchoedPending([{ ...temp, pending: false, failed: true }, echo]).length === 2);
+  /* 轮382b：发送前最大 id 下限。重开 App 后本地快照可能同时留下 pending + 确认行，
+   * 靠 id 判断「这条正式行是不是这次发送之后插入的」，不再赌设备时钟只差 5s。 */
+  const guarded = { ...temp, before_max: 100 };
+  ok("maxPositiveId：只数正数正式行",
+    maxPositiveId([{ id: -3 }, { id: "7" }, { id: 12 }, null]) === 12);
+  ok("实时认领：发送前最大 id 之后的正式行才认",
+    claimPendingEcho([guarded], [{ ...echo, id: 101 }]).claimed === true);
+  ok("实时认领：id 不大于发送前最大 id 的同文旧消息不认",
+    claimPendingEcho([guarded], [{ ...echo, id: 90, key: null }]).claimed === false);
+  ok("实时认领：同一稳定 key 时不受 id 下限/时钟差影响",
+    claimPendingEcho([guarded], [{ ...echo, id: 90, key: 2, created_at: iso(NOW - 2 * 60 * 1000) }]).claimed === true);
+  const snapWithOld = dropEchoedPending([
+    { ...echo, id: 90 }, guarded, { ...echo, id: 101 },
+  ]);
+  ok("同快照去重：只认 id 下限之后的新回显，旧同文行保留",
+    snapWithOld.length === 2 && snapWithOld.map((m) => String(m.id)).join(",") === "90,101");
+  ok("同快照去重：只有发送前旧同文行时，不误删 pending",
+    dropEchoedPending([{ ...echo, id: 90 }, guarded]).length === 2);
+}
+
+/* ───────── 轮 157：聊天性能四件套接线（会话段旧版仍在；漂流瓶段轮 339 起交给组件） ───────── */
 {
   const bc = fs.readFileSync("src/components/BottleChat.vue", "utf8");
   ok("聊天落地追钉底部：rAF 连帧追 + 用户上滑停手（字体晚到不再停在半截）",
     mv.includes("requestAnimationFrame(chase)") && mv.includes("userScrolling.value = true")
-    && bc.includes("requestAnimationFrame(chase)")
-    && mv.includes('@touchstart.passive="onListTouch"') && bc.includes('@touchstart.passive="onListTouch"'));
+    && mv.includes('@touchstart.passive="onListTouch"'));
   ok("进会话钉底：开钉到首屏落定（旧缓存落底→新消息落下不再两段式停顿）",
     mv.includes("pinning.value = true;") && mv.includes("if (before == null) pinning.value = false;")
-    && bc.includes("pinning.value = true;") && bc.includes("pinning.value = false;")
-    && mv.includes("if (userScrolling.value) return;") && bc.includes("if (userScrolling.value) return;")
-    && mv.includes("settled = fontQuiet() && fontsOk() && entryReady.value && el.scrollHeight === lastH")
-    && bc.includes("settled = fontQuiet() && fontsOk() && entryReady.value && el.scrollHeight === lastH"));
+    && mv.includes("if (userScrolling.value) return;")
+    && mv.includes("settled = fontQuiet() && fontsOk() && entryReady.value && el.scrollHeight === lastH"));
   ok("私信页：触顶自动翻历史（passive 滚动监听 + rAF 节流）",
     mv.includes('@scroll.passive="onScrollTop"') && mv.includes("requestAnimationFrame"));
   ok("私信页：翻历史锚点保持（scrollHeight 差值补偿）", mv.includes("el.scrollTop += el.scrollHeight - oldH"));
@@ -335,13 +547,14 @@ ok("/settings 路由已注册", mvRouter.includes('"/settings"'));
   ok("私信页：进会话本地库秒开（无网络先渲染）",
     mv.includes("dmStoreLoad(meId.value, cid)") && mv.includes("applyRows(local.msgs.slice().reverse(), local.more)"));
   ok("私信页：网络回来全量落盘本地库", mv.includes("dmStoreSave(meId.value, cid, msgs.value, hasMore.value)"));
-  ok("私信页：删会话/拒请求清本地库", mv.includes("dmStoreDrop(meId.value, c.conv_id)"));
+  ok("私信页：删会话/拒请求清本地库", mv.includes("dmStoreDrop(owner, c.conv_id)"));
   ok("私信页：轮询防重叠（busy 门）", mv.includes("tickBusy"));
-  ok("漂流瓶聊天框：同款四件套",
-    bc.includes('@scroll.passive="onScrollTop"') &&
-    bc.includes("el.scrollTop += el.scrollHeight - oldH") &&
+  ok("漂流瓶聊天框：消息流 + 输入区交给同一个组件（轮 339）",
+    bc.includes('import DmVacChat from "./DmVacChat.vue"') &&
+    bc.includes("hide-header") &&
     bc.includes("mergeTail(msgs.value, asc)") &&
-    bc.includes("r.msg_id"));
+    bc.includes("r.msg_id") &&
+    !bc.includes("van-field"));
 }
 
 /* ───────── 轮 157b：消息窗口缓存（形状兼容 + 读写闭环） ───────── */
@@ -392,7 +605,7 @@ ok("/settings 路由已注册", mvRouter.includes('"/settings"'));
 
 /* ───────── 轮 204：全量库（IndexedDB）合并逻辑（纯函数部分） ───────── */
 {
-  const { mergeRows } = await import("../src/utils/dmIdb.js");
+  const { mergeRows, olderRows, olderWatermark } = await import("../src/utils/dmIdb.js");
   ok("全量库合并：去重保序升序", (() => {
     const m = mergeRows([{ id: 3, b: "x" }, { id: 1 }], [{ id: 2 }, { id: 3, b: "y" }]);
     return JSON.stringify(m.map((x) => x.id)) === "[1,2,3]" && m[2].b === "y";
@@ -402,6 +615,29 @@ ok("/settings 路由已注册", mvRouter.includes('"/settings"'));
     return m.length === 50 && m[0].id === 10;
   })());
   ok("全量库合并：空行不炸", mergeRows(null, null).length === 0);
+  ok("全量库合并：字符串 id 按数值排序", (() => {
+    const m = mergeRows([{ id: "10" }, { id: "2" }], [{ id: "9" }]);
+    return JSON.stringify(m.map((x) => x.id)) === '["2","9","10"]';
+  })());
+  ok("全量合并：裁上限时不能先裁掉负数失败草稿", (() => {
+    const many = Array.from({ length: 60 }, (_, i) => ({ id: i + 1 }));
+    many.push({ id: -5, body: "draft", failed: true });
+    const m = mergeRows(many, [], 50);
+    return m.length === 50 && m.some((x) => Number(x.id) === -5)
+      && m.filter((x) => Number(x.id) > 0).length === 49;
+  })());
+  ok("全量库翻页：字符串 id 按数值比较（9 要算早于 100）", (() => {
+    const m = olderRows([{ id: "9" }, { id: "10" }, { id: "100" }], "100", 30);
+    return JSON.stringify(m.map((x) => x.id)) === '["9","10"]';
+  })());
+  ok("全量库翻页：字符串 beforeId 也能翻", (() => {
+    const m = olderRows([{ id: "9" }, { id: "10" }, { id: "100" }], "10", 30);
+    return JSON.stringify(m.map((x) => x.id)) === '["9"]';
+  })());
+  ok("全量库回填游标：字符串 id 取数值最小（999 要压过 1000）", (() => {
+    return olderWatermark([{ id: "1000" }, { id: "999" }], null) === 999
+      && olderWatermark([{ id: "999" }], "1000") === 999;
+  })());
 }
 
 /* ───────── 轮 165：刷新炸页/僵尸会话/表情贴底回归 ───────── */

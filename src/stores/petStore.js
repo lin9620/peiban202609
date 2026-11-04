@@ -1,6 +1,7 @@
 import { reactive, computed, watch } from "vue";
 import { i18n, t } from "../i18n.js";
 import { todayKey, dateKey } from "../utils/daily.js";
+import { mergeMoodLogs, normMoodLog, sameMoodLog } from "../utils/moodRules.js";
 import { LINES } from "../data/pets.js";
 import { DESTS, SOUVENIRS, VISITORS, destByKey } from "../data/adventure.js";
 import { ACCESSORIES } from "../data/extras.js";
@@ -48,6 +49,10 @@ onScopeSwitch({
     saveWardrobe();
   },
   reload() {
+    /* 换号先撤掉旧账号排队的云推送/主页镜像，免得 1.5s 后拿新域状态去写旧账号，
+       或反过来在云端拉取前先用本地旧档覆盖新账号。 */
+    cancelCloudPush();
+    cancelPetHomeSync();
     wallet.load();
     petStore.load();
     /* 就地替换（splice/delete+assign），保持响应式引用不变——组件手里还是同一个对象 */
@@ -57,6 +62,8 @@ onScopeSwitch({
     replaceObj(dailyTasks, loadTasks());
     Object.assign(adventure, buildAdventure(loadAdventure()), { welcome: null });
     wardrobe.owned = loadWardrobe();
+    /* 新域已就位后再拉云档；首次登录/换设备靠这一步把云端心情日历带回来。 */
+    pullCloudPet();
   },
 });
 
@@ -451,59 +458,92 @@ export function toggleSleep() {
   petStore.save();
 }
 
-/* ═══════════ 轮 208 · 宠物数据上云（pets 表：宠物栏/当前宠物/金币） ═══════════
+/* ═══════════ 轮 208 · 宠物数据上云（pets 表：宠物栏/当前宠物/金币/心情日历） ═══════════
  * 微信式：本机即主用副本，云端做跨设备同步。规则：
  *   - 本地每次存档 → 1.5s 防抖 upsert 云端（带 updatedAt 时间戳）；
- *   - 启动/页面回前台 → 拉云端比对 updatedAt，**新者胜**（云端快照可能落后现实时长，
+ *   - 启动/页面回前台/换号后 → 拉云端比对 updatedAt，**新者胜**（云端快照可能落后现实时长，
  *     采纳后补离线结算再存回）；表未建（迁移没跑）或未登录 → 静默跳过，行为退回纯本地。
- * 范围：宠物栏 pets + activeId + 金币。手绘食谱不上云（48h 保质期、图片体积大，本地即合理）。 */
+ * 范围：宠物栏 pets + activeId + 金币 + 心情日历 moods（moods 是私有数据，只进这张本人可读的表）。
+ * 手绘食谱不上云（48h 保质期、图片体积大，本地即合理）。 */
 let cloudPetWarned = false;
 let cloudPushTimer = 0;
 
 function petStateBlob() {
-  return { pets: petStore.pets, activeId: petStore.activeId, coins: wallet.coins, updatedAt: Date.now() };
+  return {
+    pets: petStore.pets,
+    activeId: petStore.activeId,
+    coins: wallet.coins,
+    moods: normMoodLog(moodLog),   /* 轮387：跨设备保留心情日历 */
+    updatedAt: Date.now(),
+  };
+}
+
+function cancelCloudPush() {
+  if (cloudPushTimer) clearTimeout(cloudPushTimer);
+  cloudPushTimer = 0;
 }
 
 async function pushCloudPet() {
+  const uid = cloud.user && cloud.user.id;
+  if (!uid || petScopeId() !== String(uid) || !getClient()) return;
   try {
-    if (!cloud.user || !getClient()) return;
+    const state = petStateBlob();
     await getClient().from("pets").upsert({
-      user_id: cloud.user.id,
-      state: petStateBlob(),
+      user_id: uid,
+      state,
       updated_at: new Date().toISOString(),
     });
   } catch (e) { /* 静默：迁移未跑/网络抖动，下次存档再推 */ }
 }
 
 function scheduleCloudPush() {
-  if (!cloud.user) return;
+  const uid = cloud.user && cloud.user.id;
+  if (!uid || petScopeId() !== String(uid)) return;
   clearTimeout(cloudPushTimer);
   cloudPushTimer = setTimeout(pushCloudPet, 1500);
 }
 
 async function pullCloudPet() {
+  const uid = cloud.user && cloud.user.id;
+  /* 换号顺序：flush 旧域 → scope 切到新域 → reload（这里）才拉云。
+     守卫防止旧账号请求晚到，把 A 的宠物/心情写进 B 的本地域，再被 B 推回云端。 */
+  if (!uid || petScopeId() !== String(uid) || !getClient()) return;
   try {
-    if (!cloud.user || !getClient()) return;
     const { data, error } = await getClient()
-      .from("pets").select("state, updated_at").eq("user_id", cloud.user.id).maybeSingle();
+      .from("pets").select("state, updated_at").eq("user_id", uid).maybeSingle();
     if (error) {
       if (!cloudPetWarned) { console.warn("[pet] 云同步不可用——请先在 Supabase 执行 MIGRATION_pet_cloud.sql"); cloudPetWarned = true; }
       return;
     }
+    if (!cloud.user || cloud.user.id !== uid || petScopeId() !== String(uid)) return;
     cloudPetWarned = false;
+    const cloudState = data && data.state && typeof data.state === "object" ? data.state : null;
     const cloudAt = data && data.updated_at ? Date.parse(data.updated_at) : 0;
     const localAt = readSave().updatedAt || 0;
-    if (data && data.state && cloudAt > localAt) {
-      /* 云端较新：整体采纳 + 补离线结算（云端快照可能落后现实时长） */
-      petStore.pets = data.state.pets || [];
-      petStore.activeId = data.state.activeId || (petStore.pets[0] && petStore.pets[0].id) || null;
-      wallet.coins = data.state.coins ?? wallet.coins;
+
+    /* 心情日历是追加型数据：两台设备各打过不同日期时取并集，不能整包覆盖。
+       同一天冲突时，云档更新时间更晚才让云端胜。 */
+    const localMoods = normMoodLog(moodLog);
+    const mergedMoods = mergeMoodLogs(localMoods, cloudState && cloudState.moods, cloudState && cloudAt > localAt);
+    const moodsChanged = !sameMoodLog(localMoods, mergedMoods);
+    if (moodsChanged) {
+      replaceObj(moodLog, mergedMoods);
+      saveMoodLog();
+    }
+
+    if (cloudState && cloudAt > localAt) {
+      /* 云端较新：整体采纳宠物档 + 补离线结算（云端快照可能落后现实时长）。
+         心情已在上面合并，petStore.save() 会把并集一起写回。 */
+      petStore.pets = Array.isArray(cloudState.pets) ? cloudState.pets : [];
+      petStore.activeId = cloudState.activeId || (petStore.pets[0] && petStore.pets[0].id) || null;
+      wallet.coins = cloudState.coins ?? wallet.coins;
       petStore.pets.forEach(applyOffline);
       petStore.pets.forEach(settleNeglect);
       petStore.save();   /* 落回本地（并触发一次幂等推云） */
       syncPetHome();
-    } else if (localAt > 0) {
-      pushCloudPet();   /* 本地较新/云端还没有：推上去 */
+    } else if (localAt > 0 || moodsChanged || Object.keys(localMoods).length) {
+      cancelCloudPush();   /* 立即推一次，撤掉 saveMoodLog 排的防抖任务，避免重复写 */
+      pushCloudPet();      /* 本地较新/云端还没有/只有本机有心情记录：推上去 */
     }
   } catch (e) { /* 静默 */ }
 }
@@ -633,6 +673,8 @@ export const moodLog = reactive(loadMood());
 
 export function saveMoodLog() {
   try { setItem(k(MOOD_BASE), JSON.stringify(moodLog)); } catch (e) { console.warn(e); }
+  /* 心情是 pets.state 的一部分；单独改 moodLog 时也要排队推云（scope 不符会自动跳过）。 */
+  scheduleCloudPush();
 }
 
 export function checkInMood(index) {

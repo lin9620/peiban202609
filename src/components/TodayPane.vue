@@ -1,19 +1,21 @@
 <!-- 首页「今日」联（T6 抽件）：主视觉 + 陪你大厅 + 心情打卡 + 语录/故事 + 分享卡。
      桌面首页与手机三联共用；「去宠物」只发事件，落点（/pet 路由 or 宠物联）由父层定。 -->
 <script setup>
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted, onActivated } from "vue";
 import { NButton, NTag } from "naive-ui";
 import MoodFace from "./MoodFace.vue";
 import { t, i18n } from "../i18n.js";
 import { stories } from "../data/stories.js";
 import { dayIndex, todayKey } from "../utils/daily.js";
 import { getItem, setItem, removeItem } from "../utils/storage.js";
-import { checkInMood, moodStreak, activePet, activePetAway } from "../stores/petStore.js";
+import { checkInMood, moodLog, moodStreak, activePet, activePetAway } from "../stores/petStore.js";
 import { seasonNow } from "../data/extras.js";
 import { cloud } from "../utils/supabase.js";
 import { cloudSetStatus, cloudFetchStatusCounts, cloudFetchProfile } from "../utils/wall.js";
 import { errorKind } from "../utils/wallRules.js";
-import { STATUS_KEYS, statusFresh } from "../utils/statuses.js";
+import {
+  STATUS_KEYS, statusFresh, statusCountsCanApply, statusCountsDue,
+} from "../utils/statuses.js";
 import { isMobileNav } from "../stores/uiStore.js";
 import SeasonFx from "./SeasonFx.vue";
 import PetMotion from "./PetMotion.vue";
@@ -47,8 +49,18 @@ const statusCounts = ref(null);  // 只有 { status, count }，不含昵称或�
  * 之前每次进入都从 0 等网络（用户实测「慢一拍，影响使用」）。 */
 try { statusCounts.value = JSON.parse(getItem("wp-status-counts") || "null"); } catch (e) { /* 忽略 */ }
 let statusCountsBusy = false;   /* 轮 238：计数刷新在途标记（并发触发不叠请求） */
-let statusCountsPending = false;   /* 轮 291：在途时又被请求 → 记账，当前这趟跑完立刻补跑 */
 let statusRevision = 0;
+/* 轮 366：连点时「先落库、再刷新」会按每次点击各刷一趟 —— 第一笔 PATCH 回来时，
+ * 服务端还停在第一笔，刷新会把后面几笔的本地预扣打回去（用户实测：选中「随便待着」，
+ * 下面却还是上一格的数字，要等最后一笔 PATCH 回来才自己对齐）。
+ * 用两个序号把「最后一次点击」和「已落库的最后一次」分开：
+ *  - 快照回来若期间又点了，或最后一笔还没落库，直接丢弃；
+ *  - 绝不让旧服务端快照覆盖新预扣。
+ * 轮 367：用户选「稳定快照」——点状态只本地 ±1，**不在这里拉服务端**；
+ * 计数只在进入/回到页面时拉，同一页面 30s 内最多一次（见 statusCountsDue）。 */
+let statusWriteSeq = 0;
+let statusAppliedSeq = 0;
+let statusCountsLastFetchAt = 0;
 const isMember = computed(() => !!(cloud.user && cloud.user.id));
 
 /* 状态 key → 当前语言文案（云端只存 key；非常规 key 原样显示） */
@@ -57,31 +69,39 @@ function statusLabel(k) {
 }
 
 async function refreshStatusCounts() {
-  /* 轮 238：在途不叠请求。轮 291 补：旧版在途时**直接丢弃**这次刷新 ——
-   * 若在途的恰是点击前那趟，落库后就再也没人来对账，数字会一直停在本地预估值。
-   * 改为记账待补跑，最多多发一趟，但保证最后一定是服务端真相。 */
-  if (statusCountsBusy) { statusCountsPending = true; return; }
+  /* 轮 238：在途不叠请求。
+   * 轮 366：还有本地点击没落库时先不拉 —— 拉回来的是旧快照，会盖掉新预扣。
+   * 轮 367：稳定快照。点状态不走这里；只有进入/回到页面（onActivated /
+   * visibilitychange / focus）才拉，且同一页面 30s 内最多一次。
+   * 并发触发直接忽略（不排队）：既然只认「稳定快照」，同一时刻只需要一趟。 */
+  if (!cloud.ready) return;
+  if (statusCountsBusy) return;
+  if (statusAppliedSeq !== statusWriteSeq) return;
+  if (!statusCountsDue(statusCountsLastFetchAt)) return;
+  statusCountsLastFetchAt = Date.now();
   statusCountsBusy = true;
   try {
-    do {
-      statusCountsPending = false;
-      const got = await cloudFetchStatusCounts();
-      if (got) {
-        statusCounts.value = got;
-        try { setItem("wp-status-counts", JSON.stringify(got)); } catch (e) { /* 忽略 */ }
-      }
-    } while (statusCountsPending);
+    const seq = statusWriteSeq;
+    const got = await cloudFetchStatusCounts();
+    if (got && statusCountsCanApply(seq, statusWriteSeq, statusAppliedSeq)) {
+      statusCounts.value = got;
+      statusCountsLastFetchAt = Date.now();
+      try { setItem("wp-status-counts", JSON.stringify(got)); } catch (e) { /* 忽略 */ }
+    } else if (got && seq !== statusWriteSeq) {
+      /* 快照发出后又点了：这份是旧快照，丢掉；下次进入/回到页面再对账。 */
+      statusCountsLastFetchAt = 0;
+    }
   } finally { statusCountsBusy = false; }
 }
 
 /* 选状态：再点一次清除；登录用户同步上云（RLS self update），游客只留本机。
- * 轮 238：本地状态**先翻转、界面先动**，云端 PATCH 与计数刷新转后台**串行队列**——
- * 旧版 statusBusy 锁要等两个串行网络请求才放（生产代理下一次 7s+），
+ * 轮 238：本地状态**先翻转、界面先动**，云端 PATCH 转后台**串行队列**——
+ * 旧版 statusBusy 锁要等串行网络请求才放（生产代理下一次 7s+），
  * 四个按钮点一次就暗住十几秒（用户实测）。PATCH 按点击顺序入队，不会乱序。
- * 轮 291（用户：「这个点击切换，速度非常慢，你测一下」）：轮 238 只让**卡片**27ms 先亮，
- * 右边「大厅此刻」的**数字**仍要等「PATCH 落库 864ms → 4 条 head-count ~1.25s」两段串行网络，
- * 真浏览器实测 **2118ms** 才变。数字其实也是纯本地的事：我必然站在自己那一格的计数里，
- * 离开 -1、进来 +1（下限 0），服务端回来对账，对上就不动、看不见 → 数字与卡片同帧到手。 */
+ * 轮 291（用户：「这个点击切换，速度非常慢，你测一下」）：数字也不等网络——
+ * 我必然站在自己那一格的计数里，离开 -1、进来 +1（下限 0）。
+ * 轮 367：用户选「稳定快照」，所以点完**不拉服务端**；本地预扣一直保持到
+ * 下次进入/回到页面，再用服务端快照对账。 */
 function bumpCounts(prev, next) {
   if (!isMember.value) return;   /* 游客没有 profiles 行，本就不计入大厅统计 */
   const arr = statusCounts.value;
@@ -99,6 +119,7 @@ let statusSyncChain = Promise.resolve();
 function setStatus(k) {
   const prev = myStatus.value;   /* 轮 291：切换前的旧值，给 bumpCounts 记账（离开的那格要 -1） */
   const next = myStatus.value === k ? "" : k;
+  const seq = isMember.value ? ++statusWriteSeq : 0;   /* 轮 366：快照对账只认最后一次点击 */
   myStatus.value = next;
   myStatusHint.value = "";
   bumpCounts(prev, next);
@@ -108,8 +129,10 @@ function setStatus(k) {
   statusSyncChain = statusSyncChain
     .then(() => cloudSetStatus(next || null))
     .then((ok) => {
+      statusAppliedSeq = seq;
       if (!ok) myStatusHint.value = errorKind(cloud.error) === "not-migrated" ? "setup" : "sync";
-      return refreshStatusCounts();   /* 计数在状态落库后刷新，反映新人数 */
+      /* 轮 367：稳定快照——点状态只本地 ±1，不在这里拉服务端；
+       * 下次进入/回到页面时再对账，避免人数多时一点就跳。 */
     })
     .catch(() => { myStatusHint.value = "sync"; });
 }
@@ -117,10 +140,12 @@ function setStatus(k) {
 /* 只查询自己的档案恢复选中态；大厅不再下载个人列表。 */
 async function refreshMyStatus() {
   const revision = ++statusRevision;
+  const writeSeq = statusWriteSeq;   /* 轮 366：档案回来时若已经点过状态，别把新选择盖回旧值 */
   const uid = cloud.user && cloud.user.id;
   if (!uid || !cloud.ready) return;
   const profile = await cloudFetchProfile(uid);
-  if (!profile || revision !== statusRevision || uid !== (cloud.user && cloud.user.id)) return;
+  if (!profile || revision !== statusRevision || writeSeq !== statusWriteSeq
+    || uid !== (cloud.user && cloud.user.id)) return;
   const fresh = statusFresh(profile.status_at) && STATUS_KEYS.includes(profile.status) ? profile.status : "";
   myStatus.value = fresh;
   if (fresh) setItem("wp-status", fresh);
@@ -131,23 +156,37 @@ watch(() => [cloud.ready, cloud.user && cloud.user.id], () => {
   refreshStatusCounts();
 }, { immediate: true });
 
+/* 轮 367：稳定快照的入口。HomeView 在 KeepAlive 里，切回「今天」走 onActivated；
+ * 切回浏览器标签/App 走 visibilitychange；桌面切回窗口走 focus。
+ * 三处都过 30s 冷却，所以数字不会因为来回切页一直跳。 */
+function onPageVisible() {
+  if (typeof document !== "undefined" && document.visibilityState === "visible") refreshStatusCounts();
+}
+onMounted(() => {
+  document.addEventListener("visibilitychange", onPageVisible);
+  window.addEventListener("focus", onPageVisible);
+});
+onUnmounted(() => {
+  document.removeEventListener("visibilitychange", onPageVisible);
+  window.removeEventListener("focus", onPageVisible);
+});
+onActivated(() => { refreshStatusCounts(); });
+
 /* —— 心情打卡 —— */
 const justDone = ref(false);
 const streak = computed(() => moodStreak());
 /* —— 心情打卡 —— */
 /* 轮 150：按钮从 emoji 胶囊换成 MoodFace 手绘线性脸。显示顺序 = i18n home.mood.faceOrder，
  * 每项带 legacyIndex —— 打卡写入的仍是**旧序号**（0~4），历史记录不会因为调顺序而错位。
- * moodPicked 存的是字符串（localStorage 里就是字符串），比较时统一按字符串比。 */
+ * 轮387：今日是否已打卡改看 moodLog（按账号分域、可跨设备拉回），
+ * 不再依赖设备级 wp-mood-日期 键——换账号/换设备后那个键会误判「今天已打卡」。 */
 const moodFaces = computed(() => t("home.mood.faceOrder"));
-const moodPicked = ref(getItem("wp-mood-" + todayKey()));
-const checkedToday = ref(moodPicked.value !== null);
+const moodPicked = computed(() => moodLog[todayKey()]);
+const checkedToday = computed(() => moodPicked.value !== undefined);
 
 function moodPick(i) {
   if (checkedToday.value) return;
   if (checkInMood(i)) {
-    setItem("wp-mood-" + todayKey(), String(i));
-    moodPicked.value = String(i);   // 轮 150：立刻点亮选中的那张脸
-    checkedToday.value = true;
     justDone.value = true;
     /* 轮 51 的「打卡完跳去宠物」已被轮 53 撤销——用户真正要的跳转方向相反：
      * 是从宠物页的任务行跳来这里打卡（见 PetView 任务块轮 53 注释），不是打完卡跳走。 */

@@ -184,13 +184,34 @@ a.dl-card:hover {
   animation: dl-spin .8s linear infinite;
 }
 @keyframes dl-spin { to { transform: rotate(360deg); } }
-/* 轮 315 · 投信成功行内绿 flash（与失败的 hall-warn 红区分，不再弹窗） */
+/* 轮 315/317 · 投信行内状态机：投递中(转圈) → 投递成功(绿)；失败仍是 hall-warn 红 */
 .streak-note.mail-sent { color: var(--good); font-weight: 600; }
+.streak-note.mail-sending { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-soft); font-weight: 600; }
+.mail-spin {
+  width: 12px; height: 12px; border-radius: 50%; flex: none;
+  border: 2px solid var(--hairline); border-top-color: var(--accent);
+  animation: dl-spin .8s linear infinite;
+}
+/* 轮 319 · 记录卡长文本折叠（BottleView / BottleRecords 共用）——
+ * 默认钳 4 行 + 有按钮时底缘渐隐；短内容（≤40 字）连 fold-clamp 都不挂，零变化。 */
+.fold-clamp {
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.fold-fade { -webkit-mask-image: linear-gradient(#000 62%, transparent 100%); mask-image: linear-gradient(#000 62%, transparent 100%); }
+.fold-more {
+  display: inline-block; margin-top: 2px; padding: 0;
+  background: none; border: none; cursor: pointer;
+  color: var(--accent-deep); font-size: 12.5px; font-weight: 600; font-family: inherit;
+}
 @media (max-width: 480px) { .dl-grid { grid-template-columns: 1fr; } }
 /* 轮 308 回炉 · 「我的」页头部下载 pill（紧贴设置；桌面横幅/App 内均不渲染，v-if 已挡）。
  * 与 .admin-entry 同族描边风格：button 元素补回 a 的默认外观。 */
 button.m-dl-pill { border: none; font-family: inherit; font-size: 13px; cursor: pointer; }
 .m-dl-pill .m-dl-ico { margin-right: 2px; }
+/* 轮 333：分享页面 pill（紧贴「下载 App」按钮；同 .admin-entry 描边风格） */
+button.m-share-pill { border: none; font-family: inherit; font-size: 13px; cursor: pointer; }
+.m-share-pill .m-share-ico { margin-right: 2px; }
 .wb-avatar { background: var(--accent); color: #fff; font-weight: 500; font-size: 15px; }
 /* 轮 238:欢迎条头像 = 萌宠头像池（图盖满圆框；无 uid 落回首字母） */
 .wb-avatar-img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
@@ -803,6 +824,12 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
  * 卡在屏幕上本就没被 skip，关掉 cv 不改高度不跳版；其余卡的性能优化原样保留。
  * z-index 只提到 2：仍低于排序条(60)/底部输入条(140)/TabBar(130+)，不会盖住它们。 */
 .post-card:has(.more-pop) { content-visibility: visible; z-index: 2; }
+/* 轮 349：内联评论框的表情面板也挂在帖子卡里 —— 跟上面 ⋯ 菜单同一个坑。
+ * .post-card 的 content-visibility: auto 隐含 paint containment，会把面板伸到卡顶以上的
+ * 那一截（分类导航行 + 第一排表情）整块裁掉：用户看到的就是「面板从卡顶开始、上面缺一块」，
+ * 同时面板也被上一张卡 / 搜索栏盖住。面板是 v-if 渲染的，收起即移出 DOM，命中范围很准。
+ * z-index 只提到 2：仍低于底部输入条(140)/TabBar(130+)，不会盖住它们。 */
+.post-card:has(.wp-composer-picker) { content-visibility: visible; z-index: 2; }
 .post-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .post-avatar { background: linear-gradient(135deg, #ffd9b8, #ffc7de) !important; font-size: 18px; }
 .post-meta { flex: 1; min-width: 0; }
@@ -1062,7 +1089,7 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 .bt-title { font-family: var(--font-display); font-size: 24px; font-weight: 600; margin: 0; }
 .mail-card { border: 1px solid var(--hairline); background: var(--wash); }
 .mail-send { display: flex; justify-content: flex-end; margin-top: 10px; }
-.mail-list { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--hairline); }
+.mail-list { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--hairline); }
 .mail-item { border-radius: 14px; padding: 12px 14px; background: var(--wash); border: 1px solid var(--hairline); transition: border-color .18s ease; }
 .m-q { font-size: 13px; color: var(--ink-soft); font-weight: 500; line-height: 1.6; }
 .m-a {
@@ -1091,6 +1118,7 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 .bottle-tabs { display: flex; gap: 8px; margin: 4px 0 10px; }
 /* 轮 150：胶囊与全站 .st-tab 同口径（1px 描边 + .5 玻璃底），原为 1.5px 蓝紫描边 */
 .bottle-tab {
+  display: inline-flex; align-items: center; gap: 6px;
   border: 1px solid var(--hairline); background: var(--wash);
   border-radius: 999px; padding: 5px 14px; font-size: 12.5px; font-weight: 500;
   color: var(--ink-soft); cursor: pointer; transition: background-color .12s ease, color .12s ease, border-color .12s ease;
@@ -1102,7 +1130,21 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 .m-when { font-size: 11px; color: var(--ink-faint); font-weight: 500; }
 .m-state { font-size: 11px; font-weight: 500; color: var(--accent-deep); }
 .bottle-chat { display: inline-block; margin-top: 8px; font-size: 12.5px; font-weight: 500; color: var(--accent-deep); }
-.bottle-pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 10px; }
+.bottle-pager { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 10px; margin-top: 10px; }
+.bottle-page-now { white-space: nowrap; }
+.bottle-page-jump { display: inline-flex; align-items: center; gap: 6px; }
+.bottle-page-input {
+  width: 54px; height: 26px; padding: 0 6px; border: 1px solid var(--hairline);
+  border-radius: 8px; background: var(--wash); color: var(--ink); font: inherit; font-size: 12px;
+  text-align: center;
+}
+.bottle-page-input:focus { outline: 2px solid var(--accent-soft); outline-offset: 1px; }
+/* 待我点「愿意，开始聊天」的信：列表行 / 页签共用的红点 */
+.bottle-need-dot {
+  display: inline-block; width: 8px; height: 8px; margin-right: 6px;
+  border-radius: 999px; background: #f2603f; vertical-align: middle;
+  box-shadow: 0 0 0 3px rgba(242, 96, 63, .14);
+}
 
 /* —— 设置页（#13）——
  * 轮 139 清理：.settings-page / .settings-title / .set-block（含 .dimmed）四条规则全仓无任何模板引用
@@ -1124,12 +1166,6 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 /* 输入框吃掉剩余宽度（naive-ui 的根元素是 .n-input，全局选择器才管得到） */
 .nick-row .n-input { flex: 1 1 200px; min-width: 0; }
 .nick-box .sub { margin-top: 6px; }
-
-/* —— 已拉黑面板（#19）—— */
-.dm-blocked-bar { margin-top: 8px; }
-.dm-blocked { margin-top: 8px; padding: 10px 12px; border-radius: 14px; border: 1px dashed var(--line); }
-.dm-blocked-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
-.dm-blocked-row .dm-name { flex: 1; min-width: 0; }
 
 /* ═══════════ 暖心墙 · 评论 ═══════════ */
 .cmt-toggle {
@@ -1313,9 +1349,9 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 
 /* 轮 87/91：手机端统一回复输入条（详情页）—— 固定在底栏之上，3 行文本域，发送在右下角 */
 .reply-bar {
-  position: fixed; left: 0; right: 0; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); z-index: 140;
+  position: fixed; left: 0; right: 0; bottom: calc(64px + var(--sab, env(safe-area-inset-bottom, 0px))); z-index: 140;
   display: flex; flex-direction: column; gap: 8px;
-  padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+  padding: 12px 14px calc(12px + var(--sab, env(safe-area-inset-bottom, 0px)));
   background: var(--paper, #fff7ee);
   border-top: 1px solid rgba(140, 128, 112, .14);
   box-shadow: 0 -8px 22px rgba(90, 60, 30, .10);
@@ -1325,14 +1361,19 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 .reply-bar-foot .cmt-left { margin-right: auto; font-size: 11px; font-weight: 500; color: var(--ink-faint); }
 
 /* 轮 102：四处评论输入框完全统一（复用详情页底栏同款胶囊）：
-   白底胶囊容器 + 无边框输入 + 发送/发布键在右下（textarea 扩行时按钮贴底随动） */
+   白底胶囊容器 + 无边框输入 + 发送/发布键在右下（textarea 扩行时按钮贴底随动）
+   轮 319（用户点单：「把暖心墙下面评论输入框的样式换成消息-会话里面输入框的样式」）：
+   **胶囊壳退役** —— 评论输入框改成与会话输入框同款：裸 flex 行，输入框自己是
+   「白底 + 暖色发丝描边 + 轻阴影」的圆角框（见文件下方 .dm-input-row 那组规则，两者共用），
+   发送键在框右侧、与末行对齐（同 .dm-send-btn 的 8px 抬高）。 */
 .cmt-input-row {
   display: flex; align-items: flex-end; gap: 8px; width: 100%; box-sizing: border-box;
-  background: var(--wash-strong); border: 1px solid rgba(140, 128, 112, .14);
-  border-radius: 999px; padding: 5px 6px 5px 14px;
 }
 .cmt-input-row .n-input { flex: 1; font-size: 13.5px; }
 .cmt-input .n-input { font-size: 13.5px; }
+/* 轮 319：发送键与输入框末行对齐（会话那边是 .dm-input-row .dm-send-btn，同一口径：
+   输入框底部 10px padding、行高 24px、钮 28px → 抬高 8px）。 */
+.cmt-input-row .cmt-send, .cmt-main-bar .n-button { position: relative; margin-bottom: 8px; }
 
 /* 轮 111：详情页评论输入固定底栏（cmt-bar-fixed，轮 93 引入）**已退役**——主评论框搬进卡内
  * 「浏览次数 ↔ N 条评论」之间（用户要求与暖心墙轮 109 同款位置），桌面不再有悬浮输入条，
@@ -1357,8 +1398,8 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 .cmt-main-bar {
   position: fixed; left: 0; right: 0;
   bottom: 0; z-index: 150;
-  display: flex; align-items: flex-end; gap: 10px;
-  padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  display: flex; align-items: flex-end; gap: 8px;
+  padding: 10px 12px calc(10px + var(--sab, env(safe-area-inset-bottom, 0px)));
   background: #fff7ee;
   border-top: 1px solid rgba(140, 128, 112, .14);
   box-shadow: 0 -8px 22px rgba(90, 60, 30, .10);
@@ -1724,8 +1765,11 @@ html[data-theme="night"] .admin-bar-track { background: rgba(139, 156, 232, .16)
 .admin-page-info { font-size: 12px; font-weight: 500; color: var(--ink-soft); }
 html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232, .18); }
 @media (max-width: 640px) {
-  .admin-u-mail { width: 128px; }
-  .admin-u-id { width: 96px; }
+  /* 轮 365：手机宽度放不下 4 列；UID 让位，邮箱和昵称平分剩余宽度。
+     否则新增的「最近登录」会把昵称列挤成 0，出现竖排单字。 */
+  .admin-u-mail { width: auto; flex: 1; min-width: 0; }
+  .admin-u-id { display: none; }
+  .admin-u-at { width: 92px; font-size: 10.5px; }
 }
 
 @media (max-width: 760px) {
@@ -1894,20 +1938,22 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 /* 左列：行式漂流瓶列表（与 /bottle 页、手机端的卡片式 BottleRecords 并存） */
 .bcl { display: flex; flex-direction: column; gap: 6px; }
 .bcl-tabs { display: flex; gap: 8px; padding: 2px 0 8px; }
-.bcl-tab { min-height: 34px; font-size: 13px; }
+.bcl-tab { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; font-size: 13px; }
 .bcl-row {
   display: flex; align-items: center; gap: 10px;
   padding: 9px 10px; border-radius: 16px; cursor: pointer;
   transition: background .16s ease, box-shadow .16s ease;
 }
 .bcl-row:hover { background: var(--wash-mid); }
+.bcl-row.needs { background: rgba(242, 96, 63, .06); }
 .bcl-row.on { background: var(--accent-soft); box-shadow: 0 2px 10px rgba(169, 88, 62, .22); }
 .bcl-body { flex: 1; min-width: 0; }
 .bcl-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+/* 轮399：信文摘要独占一行，状态胶囊挪到下面——否则 15 字状态会把摘要挤成「第…」。 */
 .bcl-preview {
-  display: flex; align-items: center; gap: 6px;
-  margin: 2px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin: 3px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.bcl-state { display: flex; align-items: center; gap: 6px; margin-top: 5px; }
 .bcl-chip {
   display: inline-block; max-width: 100%; vertical-align: bottom;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -1961,6 +2007,11 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   overflow-wrap: anywhere;
 }
+/* 轮 337：搜索命中本地聊天记录时的补充行（比预览更淡、更小，一行截断） */
+.dm-hit {
+  margin: 2px 0 0; font-size: 11px; color: var(--ink-faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 /* 轮 238 · 免打扰标 = 微信式小灰标：列表行嵌在时间左侧、聊天头挂在名字旁，一律无文字。
  * 旧写法 🔇 emoji + 「免打扰」文案又大又抢眼（用户拍板改微信式）。
  * 图标绝对定位在时间盒左外侧、垂直居中 —— 不进 flex 行、不参与 baseline 对齐
@@ -2007,7 +2058,8 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 .dm-thread { display: flex; flex-direction: column; min-height: 60vh; padding: 14px; }
 .dm-thread-head {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  padding-bottom: 10px; border-bottom: 1px dashed rgba(204, 120, 92, .28);
+  padding-bottom: 10px;
+  /* 轮 349：用户「不要虚线」——旧头/漂流瓶头下面那条虚线一起去掉，跟组件版头部同口径 */
 }
 .dm-spacer { flex: 1; }
 /* 轮 143 · 中列聊天头右上角「…」菜单：原右列资料卡内容（看主页 / 静音 / 拉黑 / 无会话说明）迁入此处。
@@ -2132,6 +2184,12 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
   --van-tabbar-item-text-color: var(--ink-soft);
   --van-tabbar-item-active-color: var(--accent-deep);
   --van-tabbar-item-active-background: transparent;
+  /* Vant 默认 content-box + width:100%，再叠我们的左右 6px padding 会横向溢出 12px
+     （真机 390 宽实测 tabbar=402）。改成 border-box、高度交给内容，底部 safe-area
+     的 padding 才真正落在 390 以内。 */
+  box-sizing: border-box;
+  width: 100%;
+  height: auto;
   max-width: 640px; margin: 0 auto;
 }
 .tabbar .van-tabbar-item { background: transparent; position: relative; }
@@ -2157,7 +2215,7 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
   display: flex; justify-content: space-around; align-items: stretch;
   background: var(--glass-strong, rgba(255, 255, 255, .92));
   border-top: 1px solid rgba(140, 128, 112, .14);
-  padding: 4px 6px calc(4px + env(safe-area-inset-bottom, 0px));
+  padding: 4px 6px calc(4px + var(--sab, env(safe-area-inset-bottom, 0px)));
   max-width: 640px; margin: 0 auto;
 }
 .tab-item {
@@ -2213,7 +2271,7 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
    用户不买账（「谁让你改投漂流瓶跟发帖的宽度了，改回原来的宽度」）；
    当初真正要修的是 ＋ 钮本身的位置，见下面 .tab-compose-x 的轮 48 注释。 */
 .tabbar-sheet {
-  position: fixed; left: 0; right: 0; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); z-index: 135;
+  position: fixed; left: 0; right: 0; bottom: calc(64px + var(--sab, env(safe-area-inset-bottom, 0px))); z-index: 135;
   display: flex; flex-direction: column; gap: 10px; padding: 0 18px;
   animation: tabbar-up .22s cubic-bezier(.34, 1.4, .64, 1);
 }
@@ -2237,7 +2295,12 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
    原「只藏 .nav/.icon-link」的写法保留在下方注释里，便于回溯：
    .shell--mobile-nav .nav / .shell--mobile-nav .topbar-right .icon-link */
 .shell--mobile-nav .topbar { display: none; }
-.shell--mobile-nav main { padding-bottom: calc(78px + env(safe-area-inset-bottom, 0px)); }
+.shell--mobile-nav main {
+  /* 轮 347：App 壳改真·全屏后，状态栏高度由网页自己让（--sat 由 MainActivity 推，
+     网页端退回 env(safe-area-inset-top)）。聊天页不加，交给 .dm-thread 那条。 */
+  padding-top: var(--sat, env(safe-area-inset-top, 0px));
+  padding-bottom: calc(78px + var(--sab, env(safe-area-inset-bottom, 0px)));
+}
 
 /* 消息页 = 微信式：列表页 ↔ 聊天页 二选一（v-show 由 isMobileNav/activeId 驱动） */
 .shell--mobile-nav .dm-head { display: none; }
@@ -2245,13 +2308,13 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
   max-height: none; overflow: visible;
   /* 轮 163：列表卡拉满一屏——内容短时（如刚清空的会话列表）下方空白也在手势面里，
      三段（漂流瓶/会话/通知）横滑不再有死区；78px=底部导航+safe-area 预留，28px=页内间隙 */
-  min-height: calc(100dvh - 106px - env(safe-area-inset-bottom, 0px));
+  min-height: calc(100dvh - 106px - var(--sat, env(safe-area-inset-top, 0px)) - var(--sab, env(safe-area-inset-bottom, 0px)));
 }
 .shell--mobile-nav .dm-row { padding: 10px 8px; }
 
 /* 聊天页整屏（微信同款）：TabBar 与页脚让位，消息区内部滚动、输入区自然吸底 */
 .shell--mobile-nav.shell--chat { padding-bottom: 0; }
-.shell--mobile-nav.shell--chat main { padding-bottom: 0; }
+.shell--mobile-nav.shell--chat main { padding-top: 0; padding-bottom: 0; }
 /* 整屏页（聊天 / 发帖）：页面自身的 min-height:100dvh 与「宠物通知浮层」那 14px 外边距叠加
    会多出一条 14px 的滚动 —— 整屏形态下把浮层外边距归零，页面才真的刚好一屏。 */
 .shell--mobile-nav.shell--chat .pet-notice-stack { margin-bottom: 0; }
@@ -2260,6 +2323,40 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
    .dm-page 高度塌缩 → 下面两级 flex:1 无处分配 → 聊天不撑满、输入框悬在中间；
    桌面新 Chrome 测不出来，只有旧内核手机复现。新内核 dvh 覆盖 vh（随地址栏伸缩）。 */
 .shell--mobile-nav.shell--chat .dm-page { height: 100vh; height: 100dvh; gap: 0; }
+/* ═══ 轮 322 · 键盘让位（App 壳专用；网页端零改动）═══
+ * 用户实报：「点消息-会话的输入框，先有一层空白，然后手机输入法才上来」。
+ * 真机实测病因链（详见 jiaojie 轮 322）：manifest 曾按 adjustResize 缩窗口 → 改
+ *   adjustNothing；真正把布局视口从 843 压到 539 的是 SystemBars 插件给 decorView 加的
+ *   「输入法高度」padding-bottom（config 已改 insetsHandling=disable，改由 MainActivity
+ *   只给系统栏让位、不计输入法）；布局视口外的元素不参与绘制，所以那条空区必须在
+ *   视口内用过渡补 —— 这就是下面这组规则的作用。
+ * --kb-h 由 src/utils/keyboardInset.js 从 Keyboard 插件的 keyboardWillShow 写入
+ *   （该事件在输入法动画**开始**时触发且带最终高度，与这里的过渡同起点同终点）。
+ * 过渡时长/曲线务必与系统输入法动画同量级：差半步就重新露缝。 */
+html.cap-app {
+  --kb-h: 0px;
+  --sys-bottom: 0px;
+  /* 轮 347：真·全屏后的安全区。MainActivity 会用真实像素覆盖这两个值；
+     网页端 / 覆盖失败时退回 env()（index.html 已加 viewport-fit=cover）。 */
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+}
+html.cap-app body { padding-bottom: var(--kb-h); }
+html.cap-app .shell--mobile-nav.shell--chat .dm-page {
+  height: calc(100vh - var(--kb-h));
+  height: calc(100dvh - var(--kb-h));
+  transition: height .22s cubic-bezier(.2, .8, .2, 1);
+}
+html.cap-app .cmt-main-bar {
+  bottom: var(--kb-h);
+  /* 轮 347：真·全屏后键盘弹起时 --sab 会 24→0（导航栏被输入法顶掉），
+     padding-bottom 同步过渡，输入条才不会先向下跳 24px 再随键盘上移。 */
+  transition: bottom .22s cubic-bezier(.2, .8, .2, 1), padding-bottom .22s cubic-bezier(.2, .8, .2, 1);
+}
+html.cap-app .reply-bar {
+  bottom: calc(var(--kb-h) + 64px + var(--sab, env(safe-area-inset-bottom, 0px)));
+  transition: bottom .22s cubic-bezier(.2, .8, .2, 1), padding-bottom .22s cubic-bezier(.2, .8, .2, 1);
+}
 
 /* ═══ T6 · 首页三联容器（仅手机形态渲染；桌面零规则零变化）═══
  * .home3 用 overflow: clip（不创建滚动容器）→ 频道条 sticky 仍相对视口生效；
@@ -2268,7 +2365,7 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
   overflow: hidden; overflow: clip;
   /* 轮 166b：home3 拉满一屏（减页顶 14 + 底部导航 78 + safe-area）——它背景透明，
      视觉与原来完全一致，但内容以下的空白都在 home3 手势面里，横滑不再有死区 */
-  min-height: calc(100dvh - 96px - env(safe-area-inset-bottom, 0px));
+  min-height: calc(100dvh - 96px - var(--sat, env(safe-area-inset-top, 0px)) - var(--sab, env(safe-area-inset-bottom, 0px)));
 }
 .home-chips {
   position: sticky; top: 0; z-index: 6;
@@ -2333,8 +2430,19 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 .shell--mobile-nav.shell--chat .dm-thread {
   flex: 1; min-height: 0; width: 100%; margin-bottom: 0;
   border: none; border-radius: 0; box-shadow: none; background: var(--page-bg);
-  padding: calc(14px + env(safe-area-inset-top, 0px)) 0 calc(10px + env(safe-area-inset-bottom, 0px));
+  /* 轮 358：状态栏下面不再多垫 14px —— 聊天头自己有 60px 高、文字垂直居中，
+     足够留白；那 14px 在 3x 屏上就是用户截图里「上面一大段空白」。 */
+  padding: var(--sat, env(safe-area-inset-top, 0px)) 0 var(--sab, env(safe-area-inset-bottom, 0px));
+  /* 轮 349：用户「输入部分上下距离不一样」——原来这里再垫 10px，加上底栏自己的 10px，
+     输入条下方比上方多 10px（看着往下坠）。底部只留安全区，上下各 10px 对齐。 */
+  /* 轮 347：键盘弹起时 --sab 24→0、表情面板打开时整条 padding 归零；
+     与 .dm-page 的高度过渡同曲线，输入条才不会先跳一下。 */
+  transition: padding-bottom .22s cubic-bezier(.2, .8, .2, 1);
 }
+/* 轮 347：手机表情面板贴底（微信式）时，底部安全区交给面板自己让（面板内有同高的
+   padding-bottom）。这里归零后输入条正好压在面板上沿，中间不再多一条 10px + safe-area。 */
+.shell--mobile-nav.shell--chat .dm-thread.wp-emoji-open,
+.shell--mobile-nav.shell--chat .dm-thread.wp-kb-swap { padding-bottom: 0; }
 .shell--mobile-nav.shell--chat .dm-scroll {
   flex: 1; min-height: 0; width: 100%; max-height: none; overscroll-behavior: contain;
 }
@@ -2678,10 +2786,16 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
   color: var(--ink); font-size: 14.5px;
 }
 .van-field__control::placeholder { color: var(--ink-faint); }
-.dm-input-row .van-field__control {
+/* 轮 210：输入框本体必须清晰可见（白底 + 暖色描边 + 轻阴影）——表情键删除后
+   洗底色贴在白 footer 上几乎不可见（用户截图实测），发送键也显得没对齐。
+   轮 319：这一套现在**也是评论输入框的样子**——用户在暖心墙点单
+   「把暖心墙下面评论输入框的样式换成消息-会话里面输入框的样式」。
+   评论侧两处（.cmt-input-row 卡内输入框 / .cmt-main-bar 手机底条）此前只吃到上面
+   那条 wash 圆角规则，现在与 .dm-input-row 共用同一条「会话输入框本体」规则。 */
+.dm-input-row .van-field__control,
+.cmt-input-row .van-field__control,
+.cmt-main-bar .van-field__control {
   border-radius: 14px;
-  /* 轮 210：输入框本体必须清晰可见（白底 + 暖色描边 + 轻阴影）——表情键删除后
-     洗底色贴在白 footer 上几乎不可见（用户截图实测），发送键也显得没对齐。 */
   background: #fff;
   border: 1px solid #e3cfc0;
   box-shadow: 0 1px 2px rgba(90, 60, 40, 0.05);
@@ -2883,6 +2997,7 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 .st-mine-body { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .st-mine-name { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .st-mine-go { font-size: 12px; color: var(--accent-deep); }
+.st-mine-del { color: var(--low); }
 
 /* ── 右栏榜单 ── */
 .st-rank-title { font-family: var(--font-display); font-size: 18px; font-weight: 600; margin-bottom: 8px; }
@@ -2911,6 +3026,8 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 .st-read-title { font-family: var(--font-display); font-size: 28px; font-weight: 600; line-height: 1.3; }
 .st-read-meta { font-size: 12px; color: var(--ink-faint); margin: 6px 0; }
 .st-read-body { margin-top: 14px; font-size: 16px; line-height: 1.9; }
+.st-read-body > p { text-align: justify; }
+.st-read-body > p[data-indent="1"] { text-indent: 2em; }
 .st-read-body h2 { font-family: var(--font-display); font-size: 21px; margin: 18px 0 6px; }
 .st-read-body blockquote { border-left: 3px solid var(--accent-soft); padding-left: 12px; color: var(--ink-soft); margin: 10px 0; }
 .st-read-body hr { border: 0; border-top: 1px solid var(--hairline); margin: 18px 0; }
@@ -2944,6 +3061,10 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 }
 .st-cmt-del:hover { color: #c0392b; background: rgba(192, 57, 43, .08); }
 .st-btn--mark { white-space: nowrap; }
+/* 轮 321：刚发出去、还在等服务端确认的评论 —— 淡化显示（一眼能看出「这条刚发的」）。 */
+.st-cmt-row--pending { opacity: .55; }
+/* 轮 321：点赞/收藏失败提示就近显示（跟在操作条下面，不丢到页面底部）。 */
+.st-err--near { margin-top: 6px; }
 
 /* 每日精选：同一张卡，用左侧金边 + 顶部一行小标区分 */
 .st-card--featured { border-left: 3px solid #d9a441; background: linear-gradient(180deg, rgba(217, 164, 65, .10), rgba(217, 164, 65, 0) 55%); }
@@ -2956,4 +3077,55 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 
 
 
+
+
+/* ── 轮 333：会话段换组件，但只换「消息流」那一格 ──
+   页面结构仍是旧版两栏（左列会话列表 / 右列聊天），聊天头、输入区、段栏、已拉黑
+   都还是旧 DOM（位置与功能一行没动），组件只占中间的消息区（见 DmVacChat.vue）。
+   所以这里不需要再给组件框算视口高度 —— 父级 .dm-thread 是旧版 flex 列
+   （头 + 消息 + 输入区），算 100dvh 会把输入区顶出可视区。
+   （轮 332 那套「组件占整页 + 自补段栏」的布局已随这次改动一起撤掉。） */
+
+
+
+/* ══ 轮 345 · 评论底栏与会话底栏同尺（用户：高度/颜色/位置一模一样）══
+ * 会话底栏是 vue-advanced-chat 的 .vac-box-footer（390 宽实测）：
+ *   padding 7px 2px 7px 7px、背景 --page-bg、上边 1px --hairline、无阴影；
+ * 这里只覆盖评论底栏外壳，输入框本体由 WpComposer 对齐 .vac-textarea。 */
+.cmt-main-bar {
+  align-items: stretch;
+  gap: 0;
+  padding: 10px 8px;
+  background: var(--page-bg, #faf9f5);
+  border-top: 1px solid var(--hairline, #e6dfd8);
+  box-shadow: none;
+}
+@media (max-width: 768px) {
+  .cmt-main-bar {
+    padding: 7px 2px calc(7px + var(--sab, env(safe-area-inset-bottom, 0px))) 7px;
+  }
+}
+/* 轮 348 · 暖心墙手机表情面板贴底（与会话同款）：面板占屏底 320 时，
+   底条整体抬到面板上沿（面板高度见 WpComposer 的 @media ≤899px）。 */
+html.cap-app .cmt-main-bar.wp-emoji-open,
+.cmt-main-bar.wp-emoji-open,
+html.cap-app .cmt-main-bar.wp-kb-swap,
+.cmt-main-bar.wp-kb-swap {
+  bottom: min(46vh, 320px);
+}
+
+/* 手机卡内「说点温柔的话…」占位条：不再用浅蓝 12px 圆角；
+   高度/底色/描边/圆角/字号跟会话输入框一致（点击仍开底部条）。 */
+.cmt-entry {
+  height: 36px;
+  min-height: 36px;
+  padding: 7px 7px 7px 12px;
+  border-radius: 20px;
+  background: #fffdf9;
+  border: 1px solid var(--hairline, #e6dfd8);
+  color: var(--ink-faint, #8e8b82);
+  font-size: 16px;
+  line-height: 18px;
+}
+.cmt-entry:active { background: var(--wash-mid, #f1ece2); }
 

@@ -10,7 +10,7 @@
  */
 import { readFileSync } from "node:fs";
 import {
-  KINDS, kindsFor, isKind, normUnread, aggKey, aggregate, itemView, targetOf, normPrefs,
+  KINDS, kindsFor, isKind, normUnread, aggKey, aggregate, itemView, targetOf, normPrefs, prefsPayload,
 } from "../src/utils/notifyRules.js";
 import { messages } from "../src/i18n.js";
 
@@ -129,6 +129,21 @@ ok("偏好：显式 false 才关", eq(normPrefs({ comments: false, reactions: tr
 ok("偏好：非布尔假值仍视为开", eq(normPrefs({ comments: 0, reactions: "false", pets: null, dms: undefined }),
   { comments: true, reactions: true, pets: true, dms: true }));
 ok("偏好：非对象不炸", eq(normPrefs("x"), { comments: true, reactions: true, pets: true, dms: true }));
+/* 轮385 回归：db.notifPrefsSet 只收对象。旧版 notify.js 拆成四个布尔实参传下去，
+ * 适配层读 prefs.comments 永远是 undefined → 每次保存都写 true（设置开关焊死在全开）。 */
+ok("偏好写库载荷：关掉的项必须原样是 false",
+  eq(prefsPayload({ comments: false, reactions: true, pets: false, dms: true }),
+    { comments: false, reactions: true, pets: false, dms: true }));
+ok("偏好写库载荷：缺项/非对象按全开",
+  eq(prefsPayload(null), { comments: true, reactions: true, pets: true, dms: true })
+  && eq(prefsPayload("x"), { comments: true, reactions: true, pets: true, dms: true }));
+const notifySrc = readFileSync("src/utils/notify.js", "utf8");
+ok("偏好写库把对象交给 db 适配层（不能再拆四个布尔）",
+  /db\.notifPrefsSet\(prefsPayload\(p\)\)/.test(notifySrc), notifySrc.slice(0, 0));
+const settingsSrc = readFileSync("src/views/SettingsView.vue", "utf8");
+ok("设置页首屏拉取不覆盖用户刚点的开关（防旧回包把开关弹回去）",
+  /const seq = prefsSeq;[\s\S]{0,260}if \(seq === prefsSeq\) prefs\.value = normPrefs\(loaded\)/.test(settingsSrc),
+  settingsSrc.slice(0, 0));
 
 /* ──────── i18n：通知文案键 en/zh 对称 + 插值占位符在位 ───────── */
 function flat(obj, prefix = "") {

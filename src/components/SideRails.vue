@@ -6,7 +6,7 @@ import { todayKey } from "../utils/daily.js";
 import { getItem, setItem } from "../utils/storage.js";
 import {
   activePet, petUi, say, doPetting, feedDish, cookbook,
-  adventure, harvestClover, feedVisitor, checkInMood,
+  adventure, harvestClover, feedVisitor, checkInMood, moodLog,
   dailyTasks, claimTasks, claimableCoins, TASK_LIST,
 } from "../stores/petStore.js";
 import { visitorByKey } from "../data/adventure.js";
@@ -84,13 +84,12 @@ const phaseLabel = computed(() => (breathing.value ? PH[phaseIdx.value].label() 
 
 /* —— 心情速记 —— */
 const MOODS = ["\u{1F929}", "\u{1F642}", "\u{1F60C}", "\u{1F327}\uFE0F", "\u{1F614}"];
-const checkedToday = ref(getItem("wp-mood-" + todayKey()) !== null);
+/* 轮387：已打卡状态以账号域的 moodLog 为准（云端会合并回来），
+   旧设备级 wp-mood-* 键只做历史遗留保留，不再参与判断。 */
+const checkedToday = computed(() => moodLog[todayKey()] !== undefined);
 function moodPick(i) {
   if (checkedToday.value) return;
-  if (checkInMood(i)) {
-    setItem("wp-mood-" + todayKey(), String(i));
-    checkedToday.value = true;
-  }
+  checkInMood(i);
 }
 
 /* ═══ 轮 117 · 侧栏新卡片（与主页面共用同一套 store/规则，不造第二本账） ═══ */

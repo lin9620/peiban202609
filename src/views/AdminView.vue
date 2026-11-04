@@ -10,7 +10,11 @@ import { t } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
 import { db } from "../utils/api/db.js";
 import { fetchLatestRelease, currentVersion } from "../utils/appVersion.js";   /* 轮 297：读已登记的版本 + 当前构建的 versionCode */
-import { fmtNum, fmtBytes, clip, dailySeries, barHeights, sumReactions, dayOf, dayTimeOf } from "../utils/admin.js";
+import { fmtNum, fmtBytes, clip, dailySeries, barHeights, sumReactions, dayOf, dayTimeOf, ratePct } from "../utils/admin.js";
+import {
+  reportKindOf, reportBatchAction, reportKindCount, reportSelectableIds,
+  reportToggleSelection, reportActionKey,
+} from "../utils/adminReports.js";
 
 const state = ref("loading"); /* loading | denied | ready | error */
 const err = ref("");
@@ -36,12 +40,23 @@ const router = useRouter(); /* #20 帖子行点入：跳到暖心墙原帖 */
  * 曾因声明在 switchTab 之后踩过 TDZ（Cannot access before initialization），管理中心白屏。 */
 const REP_PAGE = 20;
 const repTab = ref("pending");     /* pending | handled */
+const repKind = ref("post");       /* post | comment —— 轮 368：帖子/评论分开，不再混在一页 */
 const reports = ref([]);
 const repLoaded = ref(false);
-const repLoadedFor = ref("");      /* 当前列表对应哪一档（切档重拉，防止两档串页） */
+const repLoadedFor = ref("");      /* 当前列表对应哪一档（status:kind，切档重拉，防止串页） */
 const repOffset = ref(0);
 const repTotal = ref(0);
+const repCounts = ref(null);       /* 服务端分类计数；老库/老 Worker 没有 → null */
+const repSelected = ref([]);       /* 当前页选中的 pending 举报 id */
+const repFilterFallback = ref(false); /* 分类筛选未落库时只筛本页，界面明确提示 */
 const pendingReports = computed(() => (ov.value && ov.value.reports_pending) || 0);
+const repPendingItems = computed(() => reports.value.filter((r) => r.status === "pending"));
+const repAllSelected = computed(() => repPendingItems.value.length > 0
+  && repPendingItems.value.every((r) => repSelected.value.includes(r.id)));
+const repSomeSelected = computed(() => repSelected.value.length > 0 && !repAllSelected.value);
+const repCanBatch = computed(() => repTab.value === "pending" && repSelected.value.length > 0);
+const repBatchTakeDownLabel = computed(() => t(repKind.value === "comment"
+  ? "admin.reports.batchDeleteComment" : "admin.reports.batchTakeDown"));
 
 /* ═══ 客户端错误日志页签（轮 270）：前端无声信标 utils/beacon.js 落库后的查看面板。
  * 只读、懒加载（首次切页签才拉）；不记录 user_id，所以只能按「页面 + 消息 + 调用栈」定位。
@@ -54,23 +69,79 @@ const clogsItems = ref([]);  /* 最新原始记录（含 stack） */
 const clogsErr = ref("");
 const clogShowStack = ref({}); /* id → 是否展开调用栈（不然一屏全是堆栈） */
 
-async function loadReports(offset = 0) {
+function repLoadedKey(status = repTab.value, kind = repKind.value) {
+  return `${status}:${kind}`;
+}
+function isMissingReportFilter(e) {
+  const s = String((e && (e.message || e.reason || e.code)) || e || "");
+  return /p_target_type|admin_report_page|PGRST202|does not exist|could not find the function/i.test(s);
+}
+async function fetchReportPage(offset) {
   try {
+    const r = await db.adminReportPage(repTab.value, offset, REP_PAGE, repKind.value);
+    /* 新 RPC 会带 counts；老 Worker/老库忽略 target_type 或没有 counts，
+     * 这时只筛当前页并提示「分类筛选需执行迁移」，绝不把混排列表冒充分类结果。
+     * 还要看 items 是否真的只剩当前类型：老 Worker + 新库会返回全量 counts。 */
+    const mixed = ((r && r.items) || []).some((x) => reportKindOf(x) !== repKind.value);
+    const expected = reportKindCount(r && r.counts, repKind.value, repTab.value);
+    const totalMatches = expected === null || Number(r && r.total) === expected;
+    if (r && r.admin !== false && r.counts && typeof r.counts === "object" && !mixed && totalMatches) return r;
+    const items = ((r && r.items) || []).filter((x) => reportKindOf(x) === repKind.value);
+    return { ...(r || {}), items, total: items.length, counts: null, __clientFiltered: true };
+  } catch (e) {
+    if (!isMissingReportFilter(e)) throw e;
     const r = await db.adminReportPage(repTab.value, offset, REP_PAGE);
+    const items = ((r && r.items) || []).filter((x) => reportKindOf(x) === repKind.value);
+    return { ...(r || {}), items, total: items.length, counts: null, __clientFiltered: true };
+  }
+}
+async function loadReports(offset = 0) {
+  const statusAt = repTab.value;
+  const kindAt = repKind.value;
+  try {
+    const r = await fetchReportPage(offset);
+    /* 切档/切分类期间旧请求晚到：直接丢弃，别把上一页写进新页。 */
+    if (repTab.value !== statusAt || repKind.value !== kindAt) return;
     if (!r || r.admin === false) { fail(new Error("admin=false")); return; }
     reports.value = (r.items || []).map((x) => ({ ...x, _note: "" }));
     repTotal.value = r.total || 0;
+    repCounts.value = r.counts || null;
+    repFilterFallback.value = !!r.__clientFiltered;
     repOffset.value = offset;
+    repSelected.value = [];
     repLoaded.value = true;
-    repLoadedFor.value = repTab.value;
+    repLoadedFor.value = repLoadedKey(statusAt, kindAt);
   } catch (e) {
     fail(e);
   }
 }
 function switchRepTab(name) {
-  if (repTab.value === name && repLoadedFor.value === name) return;
+  if (busy.value !== "") return;
+  if (repTab.value === name && repLoadedFor.value === repLoadedKey(name, repKind.value)) return;
   repTab.value = name;
+  repSelected.value = [];
   loadReports(0);
+}
+function switchRepKind(name) {
+  if (busy.value !== "") return;
+  if (repKind.value === name && repLoadedFor.value === repLoadedKey(repTab.value, name)) return;
+  repKind.value = name;
+  repSelected.value = [];
+  loadReports(0);
+}
+function repKindCount(kind, status = repTab.value) {
+  return reportKindCount(repCounts.value, kind, status);
+}
+function reportActionLabel(action) {
+  return t("admin.reports.act." + reportActionKey(action));
+}
+function toggleRep(id) {
+  if (busy.value !== "") return;
+  repSelected.value = reportToggleSelection(repSelected.value, id);
+}
+function toggleRepAll(e) {
+  if (busy.value !== "") return;
+  repSelected.value = e.target.checked ? reportSelectableIds(repPendingItems.value) : [];
 }
 async function loadClientLogs() {
   try {
@@ -98,11 +169,16 @@ async function handleReport(item, action) {
     } else {
       actionMsg.value = t("admin.reports.done");
       if (repTab.value === "pending") {
-        /* 本地移除 + 红点计数同步扣减，不再整页重拉 */
+        /* 本地移除 + 红点/分类计数同步扣减，不再整页重拉 */
         reports.value = reports.value.filter((x) => x.id !== item.id);
         repTotal.value = Math.max(0, repTotal.value - 1);
+        repSelected.value = repSelected.value.filter((id) => id !== item.id);
         if (ov.value && typeof ov.value.reports_pending === "number") {
           ov.value = { ...ov.value, reports_pending: Math.max(0, ov.value.reports_pending - 1) };
+        }
+        const key = `${repKind.value}_pending`;
+        if (repCounts.value && typeof repCounts.value[key] === "number") {
+          repCounts.value = { ...repCounts.value, [key]: Math.max(0, repCounts.value[key] - 1) };
         }
       } else {
         loadReports(repOffset.value);   /* 已处理档：重拉拿最新处理记录 */
@@ -112,6 +188,52 @@ async function handleReport(item, action) {
     fail(e);
   }
   busy.value = "";
+}
+
+/* 轮 368：批量处理当前页选中的 pending 举报。
+ * 逐条调用既有 admin_report_handle，单条失败不拖垮整批；
+ * 下架动作按目标类型分流：帖子 remove_post / 评论 delete_comment。 */
+async function batchReports(mode) {
+  if (busy.value !== "" || repTab.value !== "pending") return;
+  const picked = new Set(repSelected.value);
+  const items = reports.value.filter((r) => r.status === "pending" && picked.has(r.id));
+  if (!items.length) return;
+  const total = items.length;
+  const handled = [];
+  busy.value = "batch";
+  actionMsg.value = t("admin.reports.batchWorking", { a: 0, b: total });
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const action = reportBatchAction(item.target_type, mode);
+    if (action) {
+      try {
+        const r = await db.adminReportHandle(item.id, action, "");
+        if (r && r.admin !== false && r.ok !== false) handled.push(item.id);
+      } catch (e) { /* 单条失败：继续处理后面的，最后报部分成功 */ }
+    }
+    actionMsg.value = t("admin.reports.batchWorking", { a: i + 1, b: total });
+  }
+  const ok = handled.length;
+  if (ok) {
+    const done = new Set(handled);
+    reports.value = reports.value.filter((r) => !done.has(r.id));
+    repTotal.value = Math.max(0, repTotal.value - ok);
+    repSelected.value = repSelected.value.filter((id) => !done.has(id));
+    if (ov.value && typeof ov.value.reports_pending === "number") {
+      ov.value = { ...ov.value, reports_pending: Math.max(0, ov.value.reports_pending - ok) };
+    }
+    const key = `${repKind.value}_pending`;
+    if (repCounts.value && typeof repCounts.value[key] === "number") {
+      repCounts.value = { ...repCounts.value, [key]: Math.max(0, repCounts.value[key] - ok) };
+    }
+  }
+  actionMsg.value = ok === total
+    ? t("admin.reports.batchDone", { n: ok })
+    : t("admin.reports.batchPartial", { a: ok, b: total });
+  busy.value = "";
+  if (ok && repOffset.value > 0 && !reports.value.length) {
+    loadReports(Math.max(0, repOffset.value - REP_PAGE));
+  }
 }
 
 const signedIn = computed(() => !!(cloud.ready && cloud.user));
@@ -134,6 +256,10 @@ async function load() {
   repOffset.value = 0;
   repTotal.value = 0;
   repTab.value = "pending";
+  repKind.value = "post";
+  repCounts.value = null;
+  repSelected.value = [];
+  repFilterFallback.value = false;
   clogsLoaded.value = false;
   clogsTotal.value = 0;
   clogsTop.value = [];
@@ -422,10 +548,13 @@ const usersRange = computed(() => ({
 }));
 
 /* ── 派生（脏数据兜底在 admin.js） ── */
+const dauReady = computed(() => !!(ov.value && Object.prototype.hasOwnProperty.call(ov.value, "dau_24h")));
+const dauRate = computed(() => ratePct(ov.value && ov.value.dau_24h, ov.value && ov.value.users_total));
 const cards = computed(() => {
   const o = ov.value || {};
   return [
     { label: t("admin.cards.users"), value: fmtNum(o.users_total), sub: `${t("admin.cards.usersToday")} ${fmtNum(o.users_today)}`, clickable: true },
+    { label: t("admin.cards.dau"), value: dauReady.value ? fmtNum(o.dau_24h) : "—", sub: dauReady.value ? t("admin.cards.dauSub", { p: dauRate.value }) : t("admin.cards.dauPending") },
     { label: t("admin.cards.posts"), value: fmtNum(o.posts_total), sub: `${t("admin.cards.postsToday")} ${fmtNum(o.posts_today)} · ${t("admin.cards.removed")} ${fmtNum(o.posts_removed)}` },
     { label: t("admin.cards.comments"), value: fmtNum(o.comments_total), sub: `${t("admin.cards.commentsToday")} ${fmtNum(o.comments_today)}` },
     { label: t("admin.cards.views"), value: fmtNum(o.views_total), sub: "" },
@@ -442,6 +571,7 @@ const trends = computed(() => [
 ]);
 const topPosts = computed(() => (Array.isArray(ov.value && ov.value.top_posts) ? ov.value.top_posts : []));
 const recentUsers = computed(() => (Array.isArray(ov.value && ov.value.recent_users) ? ov.value.recent_users : []));
+const recentLogins = computed(() => (Array.isArray(ov.value && ov.value.recent_logins) ? ov.value.recent_logins : []));
 </script>
 
 <template>
@@ -649,6 +779,22 @@ const recentUsers = computed(() => (Array.isArray(ov.value && ov.value.recent_us
               </div>
             </div>
           </section>
+
+          <!-- 最近 24 小时登录（滚动窗口，不是自然日）：DAU 卡片的明细 -->
+          <section class="card" style="margin-bottom: 0">
+            <h2>{{ t("admin.recentLogins.title") }}</h2>
+            <p class="sub">{{ t("admin.recentLogins.hint") }}</p>
+            <p v-if="!dauReady" class="sub">{{ t("admin.cards.dauPending") }}</p>
+            <p v-else-if="!recentLogins.length" class="sub">{{ t("admin.recentLogins.empty") }}</p>
+            <div v-for="u in recentLogins" :key="u.id" class="admin-row">
+              <div class="admin-grow">
+                <div class="admin-clip">{{ u.nickname || u.email || "?" }}</div>
+                <span class="admin-meta">
+                  {{ u.email || "?" }}<template v-if="dayTimeOf(u.last_sign_in_at)"> · {{ dayTimeOf(u.last_sign_in_at) }}</template>
+                </span>
+              </div>
+            </div>
+          </section>
         </div>
       </template>
       <!-- ── 页签：帖子治理（下架 / 恢复 / 删除） ── -->
@@ -733,10 +879,48 @@ const recentUsers = computed(() => (Array.isArray(ov.value && ov.value.recent_us
             {{ t("admin.refresh") }}
           </n-button>
         </div>
+
+        <!-- 轮 368：帖子和评论分开，各自一页；红点/总数仍看 ov.reports_pending。 -->
+        <div class="admin-tabs rep-kind-tabs">
+          <button class="admin-tab" :class="{ on: repKind === 'post' }" @click="switchRepKind('post')">
+            {{ t("admin.reports.posts") }}<template v-if="repKindCount('post') !== null"> · {{ repKindCount('post') }}</template>
+          </button>
+          <button class="admin-tab" :class="{ on: repKind === 'comment' }" @click="switchRepKind('comment')">
+            {{ t("admin.reports.comments") }}<template v-if="repKindCount('comment') !== null"> · {{ repKindCount('comment') }}</template>
+          </button>
+        </div>
+        <p v-if="repFilterFallback" class="notice rep-fallback">
+          {{ t("admin.reports.filterFallback") }}
+        </p>
+
+        <!-- 轮 368：批量处理。全选只作用于当前页 pending，已处理历史不参与。 -->
+        <div v-if="repTab === 'pending'" class="rep-toolbar">
+          <label class="rep-select-all">
+            <input type="checkbox" class="rep-check"
+              :checked="repAllSelected" :indeterminate.prop="repSomeSelected"
+              :disabled="!repPendingItems.length || busy !== ''" @change="toggleRepAll($event)" />
+            <span>{{ t("admin.reports.selectAll") }}</span>
+          </label>
+          <span class="rep-selected">{{ t("admin.reports.selected", { n: repSelected.length }) }}</span>
+          <div class="rep-batch">
+            <n-button size="tiny" quaternary :disabled="!repCanBatch || busy !== ''"
+              @click="batchReports('dismiss')">
+              {{ t("admin.reports.batchDismiss") }}
+            </n-button>
+            <n-button size="tiny" quaternary type="error" :disabled="!repCanBatch || busy !== ''"
+              @click="batchReports('takeDown')">
+              {{ repBatchTakeDownLabel }}
+            </n-button>
+          </div>
+        </div>
+
         <p v-if="!reports.length" class="sub" style="margin-top: 12px">
           {{ repLoaded ? t("admin.reports.empty") : t("admin.loading") }}
         </p>
-        <div v-for="r in reports" :key="r.id" class="admin-row">
+        <div v-for="r in reports" :key="r.id" class="admin-row rep-row">
+          <input v-if="r.status === 'pending'" type="checkbox" class="rep-check"
+            :checked="repSelected.includes(r.id)" :disabled="busy !== ''"
+            :aria-label="t('admin.reports.selectOne')" @change="toggleRep(r.id)" />
           <div class="admin-grow">
             <div class="admin-clip">
               <template v-if="r.content_gone">🫥 {{ t("admin.reports.contentGone") }}</template>
@@ -754,11 +938,11 @@ const recentUsers = computed(() => (Array.isArray(ov.value && ov.value.recent_us
               · <a class="admin-open" @click="router.push('/post/' + r.post_id)">{{ t("admin.reports.viewPost") }}</a></template>
             </span>
             <span v-if="r.status === 'handled'" class="admin-meta">
-              {{ dayTimeOf(r.handled_at) }} · {{ t("admin.reports.act." + (r.action || "dismiss")) }}<template v-if="r.note"> · {{ r.note }}</template>
+              {{ dayTimeOf(r.handled_at) }} · {{ reportActionLabel(r.action) }}<template v-if="r.note"> · {{ r.note }}</template>
             </span>
           </div>
           <template v-if="r.status === 'pending'">
-            <van-field v-model="r._note" style="max-width: 150px"
+            <van-field v-model="r._note" class="rep-note"
               :placeholder="t('admin.reports.notePh')" />
             <div class="admin-actions">
               <n-button v-if="r.target_type === 'post' && !r.removed" size="tiny" quaternary type="error"
@@ -869,7 +1053,12 @@ const recentUsers = computed(() => (Array.isArray(ov.value && ov.value.recent_us
           <span class="admin-u-at">{{ t("admin.usersCol.at") }}</span>
         </div>
         <div v-for="u in users" :key="u.id" class="admin-row">
-          <span class="admin-grow admin-clip">{{ u.nickname || "?" }}</span>
+          <div class="admin-grow">
+            <div class="admin-clip">{{ u.nickname || "?" }}</div>
+            <span class="admin-meta">
+              {{ t("admin.usersCol.lastLogin") }} {{ u.last_sign_in_at === undefined ? "—" : (dayTimeOf(u.last_sign_in_at) || t("admin.usersCol.never")) }}
+            </span>
+          </div>
           <span class="admin-u-mail admin-clip" :title="u.email || ''">{{ u.email || "—" }}</span>
           <span class="admin-u-id admin-clip" :title="u.id">{{ u.id }}</span>
           <span class="admin-u-at">{{ dayTimeOf(u.created_at) }}</span>
@@ -910,4 +1099,30 @@ const recentUsers = computed(() => (Array.isArray(ov.value && ov.value.recent_us
 .rel-opt:focus-within { outline: 2px solid var(--accent, #e58a3a); outline-offset: 2px; }
 .rel-opt-t { font-weight: 600; font-size: 13px; }
 .rel-opt-h { font-size: 12px; color: var(--low, #8a7a6a); }
+
+/* 轮 368：举报分类 + 批量处理 */
+.rep-kind-tabs { margin-top: 10px; }
+.rep-fallback { margin: 10px 0 0; font-size: 12px; }
+.rep-toolbar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 12px; padding: 9px 12px; border-radius: 12px;
+  background: var(--wash-mid);
+}
+.rep-select-all { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 500; color: var(--ink-soft); cursor: pointer; }
+.rep-check { width: 16px; height: 16px; flex: none; accent-color: var(--accent); cursor: pointer; }
+.rep-selected { font-size: 12px; font-weight: 500; color: var(--ink-faint); }
+.rep-batch { display: flex; gap: 4px; flex-wrap: wrap; margin-left: auto; }
+.rep-row { align-items: flex-start; }
+.rep-note { max-width: 150px; flex: none; }
+.rep-row .admin-actions { flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 640px) {
+  .rep-toolbar { align-items: flex-start; }
+  .rep-batch { width: 100%; margin-left: 0; }
+  .rep-batch :deep(.n-button) { flex: 1; }
+  /* 手机上备注框/操作按钮换到正文下方，别把正文挤成一条竖线。 */
+  .rep-row { flex-wrap: wrap; }
+  .rep-row .admin-grow { flex: 1 1 calc(100% - 26px); min-width: 0; }
+  .rep-note { flex: 0 0 100%; width: 100%; max-width: 100%; order: 3; }
+  .rep-row .admin-actions { width: 100%; justify-content: flex-start; order: 4; }
+}
 </style>

@@ -12,7 +12,15 @@ const root = process.argv[2] || "android/app/src/main/assets/public";
 const HERO_RE = /<section class="card seo-hero">[\s\S]*?<\/section>\s*/g;
 const WATCH_OLD = 'if (!app || !app.querySelector(".seo-hero")) return;';
 const WATCH_NEW = "if (!app) return;";
-let files = 0, hero = 0, watch = 0;
+let files = 0, hero = 0, watch = 0, vp = 0;
+
+/* 轮 322 · 键盘让位：App 里的视口策略必须从 resizes-visual 换成 overlays-content。
+ * 原因（真机实测）：Chromium 只在文档加载时读 interactive-widget，运行时改 meta 无效；
+ * 而 App 侧由 CSS 变量 --kb-h + 过渡自己让位，视口必须一动不动 —— 否则「视口缩 304」
+ * 和「我们扣 320」会叠加，输入栏直接被顶穿。
+ * 网页那份 dist/index.html 保持 resizes-visual（浏览器自己把可视视口平移到光标处）。 */
+const VP_OLD = "interactive-widget=resizes-visual";
+const VP_NEW = "interactive-widget=overlays-content";
 
 function walk(dir) {
   for (const name of readdirSync(dir, { withFileTypes: true })) {
@@ -24,6 +32,7 @@ function walk(dir) {
       let next = html.replace(HERO_RE, "");
       if (next !== html) hero++;
       if (next.includes(WATCH_OLD)) { next = next.split(WATCH_OLD).join(WATCH_NEW); watch++; }
+      if (next.includes(VP_OLD)) { next = next.split(VP_OLD).join(VP_NEW); vp++; }
       if (next !== html) writeFileSync(p, next);
     }
   }
@@ -34,4 +43,4 @@ walk(root);
 try {
   rmSync(join(root, "apk"), { recursive: true, force: true });
 } catch (e) { /* 没有 apk/ 目录就 nothing to do */ }
-console.log(`[cap-strip-hero] ${root} · index.html × ${files} · 剥 SEO 占位 × ${hero} · 放宽看门狗 × ${watch} · 剥内嵌 apk ✓`);
+console.log(`[cap-strip-hero] ${root} · index.html × ${files} · 剥 SEO 占位 × ${hero} · 放宽看门狗 × ${watch} · 视口 overlays-content × ${vp} · 剥内嵌 apk ✓`);

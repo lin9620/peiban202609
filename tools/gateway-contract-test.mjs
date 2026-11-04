@@ -7,7 +7,7 @@
  * 与 tools/worker-test.mjs（Worker 侧）成对：两端形状都对上，端到端才通。
  * 运行：node tools/gateway-contract-test.mjs
  */
-import { db, setGatewayAuthProbe, setGatewayTokenRefresher, __resetGatewayRateBackoff } from "../src/utils/api/db.gateway.js";
+import { db, setGatewayAuthProbe, setGatewayTokenRefresher, __resetGatewayRateBackoff, __resetGatewayRouteProbes } from "../src/utils/api/db.gateway.js";
 import { setAuthTokenProvider } from "../src/utils/api/authToken.js";
 
 let pass = 0;
@@ -84,6 +84,77 @@ setGatewayAuthProbe(() => true); /* 单测注入：auth 就绪（与 db.supabase
     ok("addViews 返回 Map", map instanceof Map && map.get(7).views === 3);
   } finally {
     globalThis.fetch = real;
+  }
+}
+
+/* ── 轮 333：帖级回应的原子写入（POST /api/reactions/set） ── */
+{
+  const calls = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push({ url: String(url), init });
+    return new Response(JSON.stringify({
+      ok: true, on: true,
+      counts: { hug: 4, warm: 1, relate: 0 },
+      mine: { hug: true, warm: false, relate: false },
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  try {
+    __resetGatewayRouteProbes();
+    const out = await db.setReaction(9, "hug", true);
+    ok("setReaction 端点+body（轮 333 原子写入）",
+      calls[0].url === "/api/reactions/set" && (calls[0].init.method || "GET") === "POST"
+      && calls[0].init.body === JSON.stringify({ post_id: 9, kind: "hug", on: true }),
+      calls[0].url + " " + calls[0].init.body);
+    ok("setReaction 只发 1 次请求（无前置 findReaction）", calls.length === 1, String(calls.length));
+    ok("setReaction 返回归一化的权威状态",
+      out && out.on === true && out.counts.hug === 4 && out.mine.hug === true, JSON.stringify(out));
+  } finally {
+    globalThis.fetch = real;
+  }
+}
+{
+  /* 老 Worker 没这条路由（404）→ 返回 null（调用方走回退），且只试一次 */
+  const calls = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push({ url: String(url), init });
+    return new Response(JSON.stringify({ error: "not-found" }), { status: 404, headers: { "content-type": "application/json" } });
+  };
+  try {
+    __resetGatewayRouteProbes();
+    const a = await db.setReaction(9, "hug", true);
+    ok("setReaction：老 Worker（404）返回 null 而不是抛错", a === null, JSON.stringify(a));
+    const b = await db.setReaction(9, "hug", true);
+    ok("setReaction：确认不可用后不再白试（0 次请求）", calls.length === 1, String(calls.length));
+  } finally {
+    globalThis.fetch = real;
+  }
+}
+{
+  /* 真错误（500）→ 上抛，不能静默成「没写成」 */
+  const real = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ error: "boom" }), { status: 500 });
+  try {
+    __resetGatewayRouteProbes();
+    let failed = false;
+    try { await db.setReaction(9, "hug", true); } catch (e) { failed = !!(e && e.status === 500); }
+    ok("setReaction：真错误原样上抛（不降级）", failed === true);
+  } finally {
+    globalThis.fetch = real;
+  }
+}
+{
+  /* upsertReaction：幂等插入（on_conflict 写在 body 里，Worker 据此改走 ignore-duplicates） */
+  const c = capture();
+  try {
+    await db.upsertReaction({ post_id: 9, user_id: "u1", kind: "hug" });
+    ok("upsertReaction 端点+body（on_conflict 幂等插入）",
+      c.calls[0].url === "/api/reactions" && (c.calls[0].init.method || "GET") === "POST"
+      && c.calls[0].init.body === JSON.stringify({ post_id: 9, user_id: "u1", kind: "hug", on_conflict: "post_id,user_id,kind" }),
+      c.calls[0].url + " " + c.calls[0].init.body);
+  } finally {
+    c.restore();
   }
 }
 
@@ -396,6 +467,7 @@ setGatewayAuthProbe(() => true); /* 单测注入：auth 就绪（与 db.supabase
     await db.storyGet(42);
     await db.storyMine("published", 30, 0);
     await db.storyMine();
+    await db.storyDeleteDraft(9);
     const u = (i) => c.calls[i].url;
     const m = (i) => c.calls[i].init.method || "GET";
     const b = (i) => c.calls[i].init.body;
@@ -418,6 +490,9 @@ setGatewayAuthProbe(() => true); /* 单测注入：auth 就绪（与 db.supabase
       u(7) === "/api/story/mine?limit=30&offset=0&status=published", u(7));
     ok("storyMine 端点（省略 status = 草稿+已发布）",
       u(8) === "/api/story/mine?limit=30&offset=0", u(8));
+    ok("轮391 storyDeleteDraft 端点+body",
+      u(9) === "/api/story/draft-delete" && m(9) === "POST"
+      && b(9) === JSON.stringify({ id: 9 }), u(9));
   } finally {
     c.restore();
   }

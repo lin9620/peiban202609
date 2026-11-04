@@ -18,7 +18,9 @@ const PAGES = ["/", "/admin", "/community", "/login", "/profile", "/messages", "
   /* 轮 145 · 故事栏三页（含动态详情：web-probe 本地服务器有 SPA 回退） */
   "/story", "/story/write", "/story/1",
   /* 轮 261 · 收藏独立页（FavoritesView 结构挪正后纳入冒烟，防回归白屏） */
-  "/favorites"];
+  "/favorites",
+  /* 轮385 · 设置页（通知开关写库载荷修复后纳入冒烟，防设置页白屏/运行时崩溃） */
+  "/settings"];
 
 const expr = path.join(root, "tools", "_page-smoke-expr.js");
 writeFileSync(expr, `(async () => {

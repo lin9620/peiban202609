@@ -3,7 +3,7 @@
      SWR 快照顶显示），页面里没有一份「本地缓存」决定行为。
      桌面首页收尾与手机「漂流瓶」联（默认联）共用同一组件。 -->
 <script setup>
-import { ref, computed, watch, onMounted, onDeactivated } from "vue";
+import { ref, computed, watch, onMounted, onDeactivated, nextTick } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { NButton, NInput, NModal } from "naive-ui";
 import { isMobileNav } from "../stores/uiStore.js";
@@ -13,9 +13,11 @@ import {
   bottleErrKey,
   bottleSend, bottleFish, bottleReply, bottleRelease, bottleHeld, bottleQuota,
   bottleRecords, bottleChatState, bottleChatDecide, purgeLegacyBottleLocals,
-  sortBottleMine,
+  sortBottleMine, bottlePendingCount, bottlePageCount, bottlePageSlice,
 } from "../utils/bottle.js";
 import { relativeTime } from "../utils/dmRules.js";
+/* 轮 319：记录卡长文本折叠（信文/回信各钳 4 行，真溢出才给「展开全文」） */
+import { needsFold, foldKey, isOverflowing } from "../utils/foldText.js";
 import { cloud } from "../utils/supabase.js";
 
 const router = useRouter();   /* #17 记录里「去聊天」直接进会话页 */
@@ -23,6 +25,11 @@ const route = useRoute();       /* 轮 238:离开漂流瓶联自动关弹窗 */
 /* 托盘只在漂流瓶联显示(桌面内联不受影响) */
 const trayOn = computed(() => !isMobileNav.value || route.query.tab === "bottle");
 const cloudSigned = computed(() => !!(cloud.ready && cloud.user));
+/* 轮 356：Vant autosize 不传 maxHeight 时会按 scrollHeight 一路长高——手机上一封
+ * 长信能写到 1000 字，输入框实测长到 1200px，整屏都被它铺满（用户实报）。
+ * 主写信框封 160px（约 6 行），回信框封 120px；超出部分在框内滚动，不再撑高页面。 */
+const MAIL_AUTOSIZE = { maxHeight: 160 };
+const REPLY_AUTOSIZE = { maxHeight: 120 };
 const mailDraft = ref("");
 const replyDraft = ref("");
 const mailBusy = ref(false);
@@ -122,6 +129,7 @@ function onSessionChanged() {
   quotaErr.value = "";
   fished.value = null;
   recPage.value = 0;
+  recMineAll.value = [];
   if (cloudSigned.value) {
     refreshBottle();
     loadRecords(true);
@@ -156,14 +164,17 @@ async function doSend() {
    * 草稿立即清空、行内先闪「已投进海里」（乐观），后台 in-flight 慢慢走：
    * 跨境 1~2s 的串行链（bottleSend → quota → records → held）在后台完成，
    * 成功只补刷新（记录区照常自动添新瓶），失败才弹窗 + 草稿恢复。
-   * 轮 315 沿用轮 303 的代际守卫（sendGen）——只护失败弹窗的补弹（切走不复活）。 */
+   * 轮 315 沿用轮 303 的代际守卫（sendGen）——只护失败弹窗的补弹（切走不复活）。
+   * 轮 317（用户拍板）：不许上来就报成功 —— 点击先「投递中」+转圈（立即有反馈但不撒谎），
+   * 服务端真确认才翻「投递成功」；失败走红字+弹窗+草稿恢复。 */
   const gen = ++sendGen;
   const alive = () => gen === sendGen;
   mailBusy.value = true;
-  mailHint.value = "ok";
+  mailHint.value = "sending";
   mailDraft.value = "";
   try {
     await bottleSend(body);
+    mailHint.value = "sent";      /* 轮 317：服务端确认 → 才报成功 */
     syncQuota();          /* 轮 37：次数只回读服务端值，本机不做 +1、不留账本 */
     loadRecords(true);    /* 轮 303：自动刷新记录（代数守卫在 loadRecords 内部，切页签不串页） */
     refreshBottle();
@@ -225,20 +236,49 @@ async function doFish() {
 /* 回信/放回按信独立操作：待处理信箱可同时有多封，互不阻塞 */
 const replyDrafts = ref({});
 const busyId = ref("");
+/* 轮 361：回信错误按信 id 贴在输入框旁。旧版只写页面顶部 mailHint，
+ * 用户滚在记录卡/托盘里点「回信」时看不到任何反应，误以为按钮坏了。 */
+const replyErr = ref({});
+const replyText = (id) => String(replyDrafts.value[id] || "").trim();
+const replyLen = (id) => replyText(id).length;
+const replyOver = (id) => replyLen(id) > BOTTLE_BODY_MAX;
+function setReplyErr(id, msg) {
+  const next = { ...replyErr.value };
+  if (msg) next[id] = msg; else delete next[id];
+  replyErr.value = next;
+}
+function replyTooLongText(n) {
+  return n > BOTTLE_BODY_MAX
+    ? t("bottle.replyTooLong", { n })
+    : t("bottle.errTooLong");
+}
+function onReplyInput(id, value) {
+  setReplyErr(id, "");
+  const n = String(value ?? replyDrafts.value[id] ?? "").trim().length;
+  if (n > BOTTLE_BODY_MAX) setReplyErr(id, replyTooLongText(n));
+}
 /* 轮 24c：记录卡上「回信」→ 卡内展开输入框（replyOpen = 该信 id） */
 const replyOpen = ref("");
 function openReply(l) {
   if (!l) return;
   fishPop.value.show = false;
   replyOpen.value = replyOpen.value === l.id ? "" : l.id;
+  setReplyErr(l.id, "");
 }
 async function doReply(l) {
   const body = String(replyDrafts.value[l.id] || "").trim();
   if (!l || !body || busyId.value) return;
+  /* 轮 361：超限先在本地拦住，错误贴在当前输入框旁，不发请求。 */
+  if (body.length > BOTTLE_BODY_MAX) {
+    setReplyErr(l.id, replyTooLongText(body.length));
+    return;
+  }
+  setReplyErr(l.id, "");
   busyId.value = l.id;
   mailHint.value = "";
   try {
     await bottleReply(l.id, body);
+    setReplyErr(l.id, "");
     replyDrafts.value = { ...replyDrafts.value, [l.id]: "" };
     fished.value = null;
     replyOpen.value = "";
@@ -249,7 +289,8 @@ async function doReply(l) {
     fishPop.value.show = false;   /* 轮 22：在弹窗里回的信 → 弹窗关闭 */
     refreshBottle();   /* 轮 238：记录/托盘后台刷新，不 await（回信成功已就地更新） */
   } catch (e) {
-    mailHint.value = t(bottleErrKey(e));
+    const k = bottleErrKey(e);
+    setReplyErr(l.id, k === "bottle.errTooLong" ? replyTooLongText(body.length) : t(k));
   } finally { busyId.value = ""; }
 }
 
@@ -291,52 +332,55 @@ watch(() => route.query.tab, (v) => {
  * 「离开首页整页」这条路）：组件失活即作废会话——切走再回来绝不弹旧弹窗。 */
 onDeactivated(abandonFish);
 
-/* —— 漂流瓶记录（#17）：我发布的 / 我捞到的 两类，按发布时间新→旧，10 条一页 —— */
+/* —— 漂流瓶记录（#17）：我发布的 / 我捞到的 两类，按时间新→旧，10 条一页 ——
+ * 轮 368：两类都先取最多 200 条到本地（沿用「我发布的」旧口径），再本地分页；
+ * 这样首页/尾页/手输页码都能立即算出来，也保证待决定的信稳定置顶。 */
 const REC_PAGE = 10;
+const REC_ALL_LIMIT = 200;
 const recTab = ref("mine");      /* mine = 我发布的；held = 我捞到的 */
 const recRows = ref([]);
 const recPage = ref(0);
-const recDone = ref(false);
 const recLoading = ref(false);
-const recAll = ref([]);         /* 轮144：「我发布的」全量（待处理置顶排序后）——本地分页数据源（≤200 条） */
+const recAll = ref([]);          /* 当前页签的全量数据（≤200 条）——本地分页数据源 */
+const recMineAll = ref([]);      /* 「我发布的」独立留一份：切到「我捞到的」时红点不消失 */
+const recPageCount = computed(() => bottlePageCount(recAll.value.length, REC_PAGE));
+const recPending = computed(() => bottlePendingCount(recMineAll.value, myId.value));
+const recJump = ref(1);
+watch(recPage, (p) => { recJump.value = p + 1; });
 
 /* 轮 238 · 代数守卫：切换页签必须作废在途响应——
  * 旧版 recLoading 守卫会**吞掉点击**（挂载加载在飞时点另一页签 = 静默 return），
  * 且旧数据回来渲染在新页签下 = 内容与页签错位（用户实测「切换不跟手」）。 */
 let recGen = 0;
 
-async function loadRecords(reset = false) {
+function setRecPage(p) {
+  const next = Math.min(Math.max(0, Math.floor(Number(p) || 0)), recPageCount.value - 1);
+  recPage.value = next;
+  recRows.value = bottlePageSlice(recAll.value, next, REC_PAGE);
+}
+
+async function loadRecords() {
   if (!cloudSigned.value) return;
   const gen = ++recGen;
   recLoading.value = true;
   recErr.value = "";
-  const target = reset ? 0 : recPage.value;
   /* 轮 37：记录列表也不再走本机快照（原来每栏第 0 页存一份 SWR 缓存，换号/换端会先闪
    * 别人的或过期的记录）——拉到的就是服务器此刻的记录，失败如实报错，不用旧快照假装成功。 */
   try {
-    if (recTab.value === "mine") {
-      /* 轮144（用户口径）：「我发布的」整批拉回（≤200）——待我处理（收到回信·同意或拒绝）
-       * 客户端置顶、其余保持服务端时间新→旧，再本地分页切片；待处理的不再被时间序埋掉。 */
-      const got = await bottleRecords(null, 0, { mine: true, limit: 200 });
-      const rows = sortBottleMine(Array.isArray(got) ? got : [], myId.value);
-      if (gen !== recGen) return;   /* 已被更新的切换作废：整批丢弃，不落任何数据 */
-      recAll.value = rows;
-      recPage.value = 0;
-      recRows.value = rows.slice(0, REC_PAGE);
-      recDone.value = rows.length <= REC_PAGE;
-    } else {
-      const got = await bottleRecords(null, target * REC_PAGE, { mine: false, limit: REC_PAGE });
-      const rows = Array.isArray(got) ? got : [];
-      if (gen !== recGen) return;   /* 同上 */
-      recRows.value = rows;
-      recPage.value = target;
-      recDone.value = rows.length < REC_PAGE;
-    }
+    const got = await bottleRecords(null, 0, { mine: recTab.value === "mine", limit: REC_ALL_LIMIT });
+    if (gen !== recGen) return;   /* 已被更新的切换作废：整批丢弃，不落任何数据 */
+    const rows = recTab.value === "mine"
+      ? sortBottleMine(Array.isArray(got) ? got : [], myId.value)
+      : (Array.isArray(got) ? got : []);
+    recAll.value = rows;
+    if (recTab.value === "mine") recMineAll.value = rows;
+    recPage.value = 0;
+    recRows.value = bottlePageSlice(rows, 0, REC_PAGE);
   } catch (e) {
     if (gen !== recGen) return;
     recRows.value = [];
     recAll.value = [];
-    recDone.value = true;
+    if (recTab.value === "mine") recMineAll.value = [];
     recErr.value = bottleErrKey(e);
   } finally {
     if (gen === recGen) recLoading.value = false;
@@ -346,21 +390,14 @@ function switchRecTab(x) {
   if (recTab.value === x) return;
   recTab.value = x;
   recRows.value = [];        /* 旧页签内容立即让位：加载态立现，不再挂着旧数据装作已切换 */
-  loadRecords(true);
+  loadRecords();
 }
 function recPageGo(d) {
-  const next = recPage.value + d;
-  if (recTab.value === "mine") {
-    /* 轮144：「我发布的」本地分页——数据已在 recAll，翻页不回源 */
-    if (next < 0 || (d > 0 && next * REC_PAGE >= recAll.value.length)) return;
-    recPage.value = next;
-    recRows.value = recAll.value.slice(next * REC_PAGE, next * REC_PAGE + REC_PAGE);
-    recDone.value = recAll.value.length <= (next + 1) * REC_PAGE;
-    return;
-  }
-  if (next < 0 || (d > 0 && recDone.value)) return;
-  recPage.value = next;
-  loadRecords(false);
+  setRecPage(recPage.value + d);
+}
+function recJumpTo(value) {
+  const n = Math.floor(Number(value) || 0);
+  setRecPage(n > 0 ? n - 1 : 0);
 }
 const whenRec = (ts) => relativeTime(ts, Date.now(), t);
 
@@ -382,7 +419,32 @@ function recState(l) {
   if (l.status === "held") return "bottle.stInHand";
   return "bottle.stReleased";
 }
-/* 点击记录进聊天：仅双方确认建立会话后（数据库裁定，按钮只对 accepted 出现） */
+
+/* ═══ 轮 319 · 记录卡长文本折叠（信文/回信各自独立） ═══
+ * 默认钳 4 行（fade 渐隐）；按钮只在**渲染后实测溢出**时出现（不猜字数）。
+ * 收起态 clamp 生效 → clientHeight 被钳、scrollHeight 是内容全高，直接可比。
+ * 状态键 `${id}|body` / `${id}|reply`——一长一短互不拖累；展开态只增不清（按钮不闪没）。 */
+const foldOpen = ref({});     /* key → true = 已展开 */
+const foldOver = ref({});     /* key → true = 收起态实测真溢出（按钮显隐的唯一依据） */
+const foldEls = new Map();    /* key → 被钳元素（ref 工厂收集） */
+const foldRef = (key) => (el) => { if (el) foldEls.set(key, el); else foldEls.delete(key); };
+const foldIsOpen = (id, f) => !!foldOpen.value[foldKey(id, f)];
+const foldBtn = (id, f) => !!foldOver.value[foldKey(id, f)];   /* 溢出过才显示按钮 */
+function toggleFold(id, f) {
+  const k = foldKey(id, f);
+  foldOpen.value = { ...foldOpen.value, [k]: !foldOpen.value[k] };
+}
+function measureFolds() {
+  const next = { ...foldOver.value };
+  let chg = false;
+  for (const [k, el] of foldEls) {
+    /* 已展开的保持 true（收起再展开按钮不消失）；收起的现测 */
+    const over = foldOpen.value[k] ? true : isOverflowing(el);
+    if (!!next[k] !== over) { next[k] = over; chg = true; }
+  }
+  if (chg) foldOver.value = next;
+}
+watch(recRows, () => { nextTick(measureFolds); });   /* 换页/切签/刷新后补测 */
 function canChat(l) {
   return bottleChatState(l, myId.value) === "accepted" && !!l.conv_id;
 }
@@ -420,7 +482,7 @@ async function decideRec(l, accept) {
     <template v-if="cloudSigned">
       <van-field
         v-model="mailDraft"
-        type="textarea" rows="3" autosize :maxlength="BOTTLE_BODY_MAX"
+        type="textarea" rows="3" :autosize="MAIL_AUTOSIZE" :maxlength="BOTTLE_BODY_MAX"
         :placeholder="t('bottle.placeholder')" />
       <div class="mail-send">
         <span class="m-count">{{ mailDraft.length }}/{{ BOTTLE_BODY_MAX }} · {{ sendText(sendLeft) }}</span>
@@ -429,9 +491,10 @@ async function decideRec(l, accept) {
         </n-button>
       </div>
       <p v-if="quotaErr" class="streak-note hall-warn">{{ t(quotaErr) }}</p>
-      <!-- 轮 315：投信成功行内绿 flash（非弹窗）+ 失败行内红；mailHint==="ok" = 乐观在飞 -->
-      <p v-if="mailHint" :class="mailHint === 'ok' ? 'streak-note mail-sent' : 'streak-note hall-warn'">{{
-        mailHint === "ok" ? t("bottle.sentFlash") : mailHint }}</p>
+      <!-- 轮 317：状态机 投递中(转圈) → 投递成功(绿) ；失败 = 行内红（弹窗见 doSend） -->
+      <p v-if="mailHint" :class="'streak-note ' + (mailHint === 'sending' ? 'mail-sending' : mailHint === 'sent' ? 'mail-sent' : 'hall-warn')">
+        <span v-if="mailHint === 'sending'" class="mail-spin" aria-hidden="true"></span>{{
+          mailHint === "sending" ? t("bottle.sending") : mailHint === "sent" ? t("bottle.sentFlash") : mailHint }}</p>
 
       <div class="bottle-sea">
         <span class="sec-label">{{ t("bottle.seaTitle") }}</span>
@@ -459,8 +522,13 @@ async function decideRec(l, accept) {
             <span class="m-who">{{ t("bottle.fromSea") }}</span>
             <van-field
               v-model="replyDrafts[l.id]"
-              type="textarea" rows="2" autosize :maxlength="BOTTLE_BODY_MAX"
-              :placeholder="t('bottle.replyPlaceholder')" />
+              type="textarea" rows="2" :autosize="REPLY_AUTOSIZE" :maxlength="BOTTLE_BODY_MAX"
+              :placeholder="t('bottle.replyPlaceholder')"
+              @update:model-value="onReplyInput(l.id, $event)" />
+            <div class="reply-meta">
+              <span class="reply-count" :class="{ over: replyOver(l.id) }">{{ replyLen(l.id) }}/{{ BOTTLE_BODY_MAX }}</span>
+            </div>
+            <p v-if="replyErr[l.id]" class="reply-err">{{ replyErr[l.id] }}</p>
             <div class="mail-send">
               <n-button type="primary" size="small" round
                 :disabled="busyId === l.id || !String(replyDrafts[l.id] || '').trim()"
@@ -480,6 +548,7 @@ async function decideRec(l, accept) {
         <div class="bottle-tabs">
           <button class="bottle-tab" :class="{ on: recTab === 'mine' }" @click="switchRecTab('mine')">
             {{ t("bottle.mineTab") }}
+            <span v-if="recPending" class="notif-count">{{ recPending > 99 ? "99+" : recPending }}</span>
           </button>
           <button class="bottle-tab" :class="{ on: recTab === 'held' }" @click="switchRecTab('held')">
             {{ t("bottle.heldTab") }}
@@ -491,10 +560,19 @@ async function decideRec(l, accept) {
           v-for="l in recRows" :key="l.id"
           class="mail-item" :class="{ clickable: canChat(l) }"
           @click="openRec(l)">
-          <div class="m-q">{{ l.body }}</div>
+          <!-- 轮 319：信文钳 4 行（真溢出才出按钮；点按钮只切文本，不触发卡片跳转） -->
+          <div
+            class="m-q" :ref="foldRef(foldKey(l.id, 'body'))"
+            :class="{ 'fold-clamp': needsFold(l.body) && !foldIsOpen(l.id, 'body'), 'fold-fade': foldBtn(l.id, 'body') && !foldIsOpen(l.id, 'body') }">{{ l.body }}</div>
+          <button v-if="foldBtn(l.id, 'body')" type="button" class="fold-more" @click.stop="toggleFold(l.id, 'body')">
+            {{ foldIsOpen(l.id, "body") ? t("bottle.foldLess") : t("bottle.foldMore", { n: l.body.length }) }}
+          </button>
           <div class="m-meta">
             <span class="m-when">{{ whenRec(recTab === "mine" ? l.created_at : (l.held_at || l.created_at)) }}</span>
-            <span class="m-state">{{ t(recState(l)) }}</span>
+            <span class="m-state">
+              <span v-if="bottleChatState(l, myId) === 'choose'" class="bottle-need-dot" :title="t('bottle.stDecide')" aria-hidden="true"></span>
+              {{ t(recState(l)) }}
+            </span>
           </div>
           <!-- 轮 24c：押在手里的信，操作按钮直接放在记录卡上（此前只在顶部托盘/弹窗里，用户找不到） -->
           <div v-if="recTab === 'held' && l.status === 'held'" class="mail-send" @click.stop>
@@ -514,8 +592,13 @@ async function decideRec(l, accept) {
           <div v-if="replyOpen === l.id && recTab === 'held' && l.status === 'held'" class="mail-send" style="flex-direction: column; align-items: stretch; gap: 6px" @click.stop>
             <van-field
               v-model="replyDrafts[l.id]"
-              type="textarea" rows="3" autosize :maxlength="BOTTLE_BODY_MAX"
-              :placeholder="t('bottle.replyPlaceholder')" />
+              type="textarea" rows="3" :autosize="REPLY_AUTOSIZE" :maxlength="BOTTLE_BODY_MAX"
+              :placeholder="t('bottle.replyPlaceholder')"
+              @update:model-value="onReplyInput(l.id, $event)" />
+            <div class="reply-meta">
+              <span class="reply-count" :class="{ over: replyOver(l.id) }">{{ replyLen(l.id) }}/{{ BOTTLE_BODY_MAX }}</span>
+            </div>
+            <p v-if="replyErr[l.id]" class="reply-err">{{ replyErr[l.id] }}</p>
             <n-button type="primary" size="small" round
               :disabled="busyId === l.id || !String(replyDrafts[l.id] || '').trim()"
               @click="doReply(l)">
@@ -525,7 +608,13 @@ async function decideRec(l, accept) {
           <div v-if="l.reply" class="m-a">
             <!-- 轮 66：「我捞到的」里 l.reply 是我写出去的回信 → 标「我的回信」（原来误标「收到的回信」） -->
             <span class="m-who">{{ t(recTab === "held" ? "bottle.replyMine" : "bottle.replyFrom") }}</span>
-            <span class="m-body">{{ l.reply }}</span>
+            <!-- 轮 319：回信独立折叠（与信文互不拖累） -->
+            <span
+              class="m-body" :ref="foldRef(foldKey(l.id, 'reply'))"
+              :class="{ 'fold-clamp': needsFold(l.reply) && !foldIsOpen(l.id, 'reply'), 'fold-fade': foldBtn(l.id, 'reply') && !foldIsOpen(l.id, 'reply') }">{{ l.reply }}</span>
+            <button v-if="foldBtn(l.id, 'reply')" type="button" class="fold-more" @click.stop="toggleFold(l.id, 'reply')">
+              {{ foldIsOpen(l.id, "reply") ? t("bottle.foldLess") : t("bottle.foldMore", { n: l.reply.length }) }}
+            </button>
           </div>
           <!-- 收到回信还没决定：就在这条记录上直接同意 / 拒绝（同意后进聊天） -->
           <div v-if="bottleChatState(l, myId) === 'choose'" class="mail-send" @click.stop>
@@ -540,13 +629,30 @@ async function decideRec(l, accept) {
         </div>
         <p v-if="recErr" class="notice">{{ t(recErr) }}</p>
         <div class="bottle-pager">
+          <n-button size="tiny" round :disabled="recPage <= 0 || recLoading" @click="setRecPage(0)">
+            « {{ t("bottle.pageFirst") }}
+          </n-button>
           <n-button size="tiny" round :disabled="recPage <= 0 || recLoading" @click="recPageGo(-1)">
             ← {{ t("notif.prev") }}
           </n-button>
-          <span class="sub">{{ t("bottle.pageInfo", { p: recPage + 1 }) }}</span>
-          <n-button size="tiny" round :disabled="recDone || recLoading" @click="recPageGo(1)">
+          <span class="sub bottle-page-now">
+            {{ t("bottle.pageInfo", { p: recPage + 1 }) }} / {{ recPageCount }}
+          </span>
+          <n-button size="tiny" round :disabled="recPage >= recPageCount - 1 || recLoading" @click="recPageGo(1)">
             {{ t("notif.next") }} →
           </n-button>
+          <n-button size="tiny" round :disabled="recPage >= recPageCount - 1 || recLoading" @click="setRecPage(recPageCount - 1)">
+            {{ t("bottle.pageLast") }} »
+          </n-button>
+          <span class="bottle-page-jump">
+            <input
+              v-model.number="recJump" type="number" min="1" :max="recPageCount"
+              class="bottle-page-input" :aria-label="t('bottle.pageJump')"
+              @keyup.enter="recJumpTo(recJump)" />
+            <n-button size="tiny" round :disabled="recLoading" @click="recJumpTo(recJump)">
+              {{ t("bottle.pageGo") }}
+            </n-button>
+          </span>
         </div>
       </div>
     </template>
@@ -578,8 +684,13 @@ async function decideRec(l, accept) {
         <span class="m-who">{{ t("bottle.fromSea") }}</span>
         <van-field
           v-model="replyDrafts[fishPop.letter.id]"
-          type="textarea" rows="3" autosize :maxlength="BOTTLE_BODY_MAX"
-          :placeholder="t('bottle.replyPlaceholder')" style="margin-top: 10px" />
+          type="textarea" rows="3" :autosize="REPLY_AUTOSIZE" :maxlength="BOTTLE_BODY_MAX"
+          :placeholder="t('bottle.replyPlaceholder')" style="margin-top: 10px"
+          @update:model-value="onReplyInput(fishPop.letter.id, $event)" />
+        <div class="reply-meta">
+          <span class="reply-count" :class="{ over: replyOver(fishPop.letter.id) }">{{ replyLen(fishPop.letter.id) }}/{{ BOTTLE_BODY_MAX }}</span>
+        </div>
+        <p v-if="replyErr[fishPop.letter.id]" class="reply-err">{{ replyErr[fishPop.letter.id] }}</p>
         <div class="mail-send" style="margin-top: 8px">
           <n-button type="primary" round
             :disabled="busyId === fishPop.letter.id || !String(replyDrafts[fishPop.letter.id] || '').trim()"
@@ -598,3 +709,25 @@ async function decideRec(l, accept) {
     </n-modal>
   </section>
 </template>
+
+<style scoped>
+/* 轮 361：回信错误/字数贴在当前输入框旁（托盘、记录卡、捞信弹窗共用） */
+.reply-meta {
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--ink-faint);
+  font-weight: 500;
+}
+.reply-count.over { color: var(--warn); font-weight: 700; }
+.reply-err {
+  margin: 4px 0 0;
+  color: var(--warn);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+</style>

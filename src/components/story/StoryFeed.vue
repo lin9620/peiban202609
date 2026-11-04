@@ -14,6 +14,7 @@ const PAGE = 12;
 const router = useRouter();
 const rows = ref([]);
 const offset = ref(0);
+const hasMore = ref(true);
 const loading = ref(false);
 const err = ref("");
 const kw = ref("");
@@ -26,22 +27,58 @@ const shown = computed(() => {
     String(r.title || "").toLowerCase().includes(q)
     || (Array.isArray(r.tags) ? r.tags : []).some((x) => String(x).toLowerCase().includes(q)));
 });
-const more = computed(() => rows.value.length >= offset.value + PAGE);
+/* 轮396：按钮是否还能翻页由「上一页是否满 12 条」决定，不再拿 rows 和 offset 硬算。
+ * 旧算法在点击瞬间 offset 先 +12，rows 还没回来 → 按钮当场消失；若请求挂住/失败，
+ * offset 已经前进、按钮也回不来，看起来就是「点了没反应」。 */
+const more = computed(() => rows.value.length > 0 && hasMore.value);
 
-async function load() {
+/* 翻页请求兜底超时：断网/代理慢时 fetch 可能长时间不 reject，按钮会一直「加载中」。
+ * 线上 /sb 代理实测冷启动可到 20s，取 20s，避免把本来会成功的最后 2 篇也掐掉。 */
+function withTimeout(p, ms = 20000) {
+  let timer = 0;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const e = new Error("timeout");
+      e.timeout = true;
+      reject(e);
+    }, ms);
+  });
+  return Promise.race([p, timeout]).finally(() => clearTimeout(timer));
+}
+
+async function load({ append = false } = {}) {
+  if (loading.value) return;
   loading.value = true;
   err.value = "";
-  const first = offset.value === 0;
+  const first = !append;
+  const pageOffset = first ? 0 : offset.value;
   /* 轮 158：首屏 SWR 本地直出——进故事联不再干等网络（故事流是公共内容，键不带用户域）；
    * 翻页照旧不缓存、拼尾。发布后父级调 load() 刷新：缓存先出、新内容由 fresh 纠正。 */
   await swr(
     first ? cacheKey("story:feed:latest") : null,
     {
-      cached: (data) => { rows.value = data || []; err.value = ""; loading.value = false; },
-      fresh: (data) => { rows.value = first ? (data || []) : rows.value.concat(data || []); err.value = ""; },
+      cached: (data) => {
+        const list = data || [];
+        rows.value = list;
+        offset.value = list.length;
+        hasMore.value = list.length >= PAGE;
+        err.value = "";
+      },
+      fresh: (data) => {
+        const list = data || [];
+        if (first) {
+          rows.value = list;
+          offset.value = list.length;
+        } else {
+          rows.value = rows.value.concat(list);
+          offset.value += list.length;
+        }
+        hasMore.value = list.length >= PAGE;
+        err.value = "";
+      },
       onError: (e) => { err.value = t(storyErrKey(e || new Error("network"))); },
     },
-    () => storyRank({ mode: "latest", limit: PAGE, offset: offset.value }),
+    () => withTimeout(storyRank({ mode: "latest", limit: PAGE, offset: pageOffset })),
   );
   loading.value = false;
 }
@@ -57,8 +94,8 @@ async function loadFeatured() {
   );
 }
 function loadMore() {
-  offset.value += PAGE;
-  load();
+  if (loading.value || !hasMore.value) return;
+  load({ append: true });
 }
 /* 轮 313：点卡片顺手把这一行当种子递给详情页 —— 列表行本来就带标题/作者/标签/字数/赞看数，
  * 详情页首帧就有内容，不再「点完先空半秒到几秒」。零额外请求。 */
@@ -123,8 +160,9 @@ defineExpose({ load, loadFeatured });
          数据不变（缓存秒出、无缓存等网络回来直接出）。 -->
     <p v-if="!shown.length && !loading" class="st-hint">{{ t("story.rankEmpty") }}</p>
     <button v-if="more" class="st-btn st-btn--ghost" type="button" :disabled="loading" @click="loadMore">
-      {{ loading ? t("story.saving") : t("story.openStory") }}
+      {{ loading ? t("story.loadingMore") : t("story.loadMore") }}
     </button>
+    <p v-else-if="rows.length && !hasMore" class="st-hint">{{ t("story.noMore") }}</p>
     <p v-if="err" class="st-err">{{ err }}</p>
   </section>
 </template>

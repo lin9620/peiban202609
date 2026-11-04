@@ -52,7 +52,7 @@ const BC = "src/components/BottleChat.vue";  /* 漂流瓶聊天（同款代码�
 const mvRaw = read(MV), bcRaw = read(BC);
 const mv = code(mvRaw), bc = code(bcRaw);
 const mvSend = fnBody(mv, "async function send()");
-const bcSend = fnBody(bc, "async function send()");
+const bcSend = fnBody(bc, "async function sendText(");
 const mvLoad = fnBody(mv, "async function loadMessages(");
 const bcLoad = fnBody(bc, "async function loadMessages(");
 const catchOf = (fnSrc) => { const i = fnSrc.indexOf("} catch (e) {"); return i < 0 ? "" : fnSrc.slice(i); };
@@ -60,40 +60,46 @@ const catchOf = (fnSrc) => { const i = fnSrc.indexOf("} catch (e) {"); return i 
 /* ══════════ ① 发送不再被「发送中」阻塞，也不再有那个转圈 ══════════ */
 ok("会话段 · send 里没有发送态门的早退（连发送态变量本身都不该再存在）",
   !/\bsending\b/.test(mv) && !/\bsending\b/.test(bc));
-ok("两端 · 发送键只按「有没有内容」禁用，不再挂发送中态",
-  /class="dm-send-btn" :disabled="!body\.trim\(\)"/.test(mv)
-  && /class="dm-send-btn" :disabled="!body\.trim\(\)"/.test(bc));
-ok("两端 · 发送键不再有转圈元素", !/dm-send-spin/.test(mv) && !/dm-send-spin/.test(bc));
-ok("两端 · 发送键文案恒亮（不再按发送态藏标签）",
-  !/visibility: sending/.test(mv) && !/visibility: sending/.test(bc));
+ok("会话段（旧版输入区）· 发送键只按「有没有内容」禁用，不再挂发送中态",
+  /class="dm-send-btn" :disabled="!body\.trim\(\)"/.test(mv));
+ok("会话段 · 发送键不再有转圈元素", !/dm-send-spin/.test(mv));
+ok("会话段 · 发送键文案恒亮（不再按发送态藏标签）", !/visibility: sending/.test(mv));
 
 /* ══════════ ② 发送失败：行内标红，不能只剩个「发送中」 ══════════ */
 ok("两端 · 行内不再出现「发送中…」提示", !/t\("dm\.sending"\)/.test(mv) && !/t\("dm\.sending"\)/.test(bc));
-ok("两端 · 失败就在那条消息文字旁标红（dm.sendFailed + dm-err）",
-  /v-if="it\.msg\.failed" class="dm-err">\{\{ t\("dm\.sendFailed"\) \}\}/.test(mvRaw)
-  && /v-if="it\.msg\.failed" class="dm-err">\{\{ t\("dm\.sendFailed"\) \}\}/.test(bcRaw));
+ok("会话段 · 失败就在那条消息文字旁标红（dm.sendFailed + dm-err）",
+  /v-if="it\.msg\.failed" class="dm-err">\{\{ t\("dm\.sendFailed"\) \}\}/.test(mvRaw));
+ok("漂流瓶段 · 失败交给组件的红色「!」+ 重发通道（不再自己画失败字）",
+  /failure: !!m\.failed/.test(fs.readFileSync("src/utils/dmMap.js", "utf8"))
+  && /open-failed-message/.test(fs.readFileSync("src/components/DmVacChat.vue", "utf8"))
+  && /@resend="resend"/.test(bcRaw));
 
 const mvCatch = catchOf(mvSend), bcCatch = catchOf(bcSend);
 ok("会话段 · catch 自带会话判定，不引用 try 作用域的 onSameConv（旧版就死在这：每失败必 ReferenceError）",
   !/\bonSameConv\b/.test(mvCatch) || /const onSameConv = String\(activeId\.value\) === String\(convId\);/.test(mvCatch));
 ok("两端 · 失败行找不到乐观行就补回列表（否则用户看不到任何失败标记）",
   /failed: true/.test(mvCatch)
-  && /msgs\.value\.some\(\(m\) => m\.id === temp\.id\)[\s\S]{0,140}?msgs\.value\.concat\(\[failedRow\]\)/.test(mvCatch)
+  && /msgs\.value\.some\(\(m\) => String\(m\.id\) === String\(temp\.id\)\)[\s\S]{0,140}?msgs\.value\.concat\(\[failedRow\]\)/.test(mvCatch)
   && /failed: true/.test(bcCatch)
-  && /msgs\.value\.some\(\(m\) => m\.id === temp\.id\)[\s\S]{0,140}?msgs\.value\.concat\(\[failedRow\]\)/.test(bcCatch));
+  && /msgs\.value\.some\(\(m\) => String\(m\.id\) === String\(temp\.id\)\)[\s\S]{0,140}?msgs\.value\.concat\(\[failedRow\]\)/.test(bcCatch));
 
 /* ══════════ ③ 发出去立刻上屏：不被整窗替换吞掉，也不被揭示门控藏住 ══════════ */
-ok("两端 · 首屏整窗替换不吞在飞的乐观行（pend 守卫）",
-  /const pend = msgs\.value\.filter\(\(m\) => m\.id < 0\);[\s\S]{0,180}?msgs\.value = pend\.length \? asc\.concat\(pend\) : asc;/.test(mvLoad)
-  && /const pend = msgs\.value\.filter\(\(m\) => m\.id < 0\);[\s\S]{0,180}?msgs\.value = pend\.length \? asc\.concat\(pend\) : asc;/.test(bcLoad));
-ok("两端 · 发消息即揭示消息区并钉底（不再等 entryReady / 跨境 RPC）",
-  /pinning\.value = false;[\s\S]{0,90}?listRevealed\.value = true;[\s\S]{0,40}?scrollBottom\(true\);/.test(mvSend)
-  && /pinning\.value = false;[\s\S]{0,90}?listRevealed\.value = true;[\s\S]{0,40}?scrollBottom\(true\);/.test(bcSend));
-ok("两端 · 确认回写：找不到乐观行就补回，已有同 id 只去重（防两条同 id）",
-  /const rest = msgs\.value\.filter\(\(m\) => m\.id !== temp\.id\)/.test(mvSend)
-  && /rest\.some\(\(m\) => m\.id === mid\) \? rest : rest\.concat\(\[rowSrv\]\)/.test(mvSend)
-  && /const rest = msgs\.value\.filter\(\(m\) => m\.id !== temp\.id\)/.test(bcSend)
-  && /rest\.some\(\(m\) => m\.id === mid\) \? rest : rest\.concat\(\[rowSrv\]\)/.test(bcSend));
+ok("两端 · 首屏整窗替换不吞在飞乐观行，也不吞已确认正数行（先认领实时回显）",
+  /const snap = dropEchoedPending\(asc\);/.test(mvLoad)
+  && /const claimed = claimPendingEcho\(msgs\.value, snap\)/.test(mvLoad)
+  && /const keep = claimed\.rows\.filter\(\(m\) => !incoming\.has\(String\(m\.id\)\)\)/.test(mvLoad)
+  && /const snap = dropEchoedPending\(asc\);/.test(bcLoad)
+  && /const claimed = claimPendingEcho\(msgs\.value, snap\)/.test(bcLoad)
+  && /const keep = claimed\.rows\.filter\(\(m\) => !incoming\.has\(String\(m\.id\)\)\)/.test(bcLoad));
+ok("会话段 · 发消息即揭示消息区并钉底（不再等 entryReady / 跨境 RPC）",
+  /pinning\.value = false;[\s\S]{0,90}?listRevealed\.value = true;[\s\S]{0,40}?scrollBottom\(true\);/.test(mvSend));
+ok("两端 · 确认回写：找不到乐观行就补回，已有同 id 只去重并补稳定 key",
+  /const rest = msgs\.value\.filter\(\(m\) => String\(m\.id\) !== String\(temp\.id\)\)/.test(mvSend)
+  && /const at = rest\.findIndex\(\(m\) => String\(m\.id\) === String\(mid\)\)[\s\S]{0,380}?rest\.concat\(\[rowSrv\]\)/.test(mvSend)
+  && /const at = rest\.findIndex\(\(m\) => String\(m\.id\) === String\(mid\)\)[\s\S]{0,380}?key: temp\.key/.test(mvSend)
+  && /const rest = msgs\.value\.filter\(\(m\) => String\(m\.id\) !== String\(temp\.id\)\)/.test(bcSend)
+  && /const at = rest\.findIndex\(\(m\) => String\(m\.id\) === String\(mid\)\)[\s\S]{0,380}?rest\.concat\(\[rowSrv\]\)/.test(bcSend)
+  && /const at = rest\.findIndex\(\(m\) => String\(m\.id\) === String\(mid\)\)[\s\S]{0,380}?key: temp\.key/.test(bcSend));
 
 /* ══════════ ④ 乐观行临时 id：同毫秒连发不能撞（撞了就两条合成一条） ══════════ */
 ok("两端 · 乐观行 id 走生成器（不再裸用 -Date.now()）",
@@ -117,6 +123,34 @@ ok("两端 · 乐观行 id 走生成器（不再裸用 -Date.now()）",
   const three = g3 ? [g3(), g3(), g3()] : [];
   ok("生成器：同毫秒连发 N 次全部互不相同", three.length === 3 && new Set(three).size === 3);
 }
+
+ok("两端 · 超时/没回 msg_id 时先认领服务端回显，不把已成功的消息再标失败",
+  /const beforeIds = new Set\(msgs\.value\.map\(\(m\) => String\(m\.id\)\)\)/.test(mvSend)
+  && /const beforeIds = new Set\(msgs\.value\.map\(\(m\) => String\(m\.id\)\)\)/.test(bcSend)
+  && /findSentEcho\(msgs\.value, temp, beforeIds\)/.test(mvSend)
+  && /findSentEcho\(msgs\.value, temp, beforeIds\)/.test(bcSend));
+
+ok("会话段 · 无 msg_id 重载期间切走，不能拿新会话 msgs 认领/落库",
+  /await loadMessages\(convId\);\s*const stillSame = signedIn\.value && meId\.value === owner\s*&& String\(activeId\.value\) === String\(convId\) && msgsConv === convId;/.test(mvSend)
+  && /if \(!stillSame\) \{\s*const failedRow = \{ \.\.\.temp, pending: false, failed: true \};/.test(mvSend));
+
+ok("会话段 · 发送确认等 IDB 期间换号，不能更新新账号预览/滚动",
+  /if \(!signedIn\.value \|\| meId\.value !== owner\) return;\s*const stillSameConv = String\(activeId\.value\) === String\(convId\) && msgsConv === convId;/.test(mvSend)
+  && /if \(stillSameConv && !userScrolling\.value\) scrollBottom\(true\);/.test(mvSend));
+
+ok("会话段 · 发完立刻更新列表预览，不等 dm_send 回包/IDB 写完",
+  /dmStoreUpsert\(owner, convId, temp\);[\s\S]{0,260}?bumpConvPreview\(convId, text, temp\.created_at, owner\)/.test(mvSend));
+
+ok("会话段 · 快速 A→B→A 时确认/失败行只能回 A，不能 concat 进 B 的列表",
+  /const sameWindow = onSameConv && String\(msgsConv\) === String\(convId\);/.test(mvSend)
+  && /else if \(sameWindow\)/.test(mvSend)
+  && /sameAccount && sameWindow \? findSentEcho/.test(mvSend));
+ok("会话段 · 清屏时同步清窗口归属，temp 还挂在列表里也不算 A 的完整窗口",
+  /if \(msgsConv !== cid\) \{[\s\S]{0,300}?msgsConv = "";/.test(mvLoad)
+  && /if \(onSameConv\) \{\s*msgs\.value = msgs\.value\.filter\(\(m\) => String\(m\.id\) !== String\(temp\.id\)\);/.test(mvSend));
+
+ok("会话段 · 同会话判断用归一后的 cid，不拿原始 id（字符串/数字混用会整窗替换）",
+  /if \(before == null \|\| msgsConv !== cid\)/.test(mvLoad));
 
 console.log(`dm-send-ux-test: ${pass} pass, ${fails.length} fail`);
 if (fails.length) { for (const f of fails) console.log("  FAIL " + f); process.exit(1); }

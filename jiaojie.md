@@ -281,6 +281,19 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 ## 二、现在在做什么
 
 - **当前批次（改动完成、测试过了、待提交待部署——攒批）**：**轮 263（帖子/评论「⋯」菜单被卡片底边硬切：`.post-card` 的 `content-visibility:auto` 隐含 paint containment 裁掉菜单溢出部分 + `.card{z-index:1}` 各开堆叠上下文致下一张卡盖住菜单；一行 `.post-card:has(.more-pop){content-visibility:visible;z-index:2}` 两层同修，模板零改动）+ 轮 264（搜索栏两个 × 撞车只留一个：`.wall-search-input::-webkit-search-cancel-button` 关掉原生清除按钮，**保留 `type=search`** 以不丢手机键盘「搜索」键位，留下的 ✕ 走 clearSearch() 关键词+标签一起清）+ **轮 265（TabBar 红点角标压住「消息」二字：tab 项纯文字无图标 → vant 角标锚在空的 .van-badge__wrapper（宽0高0）上被钉进文字行；拨掉空壳的 position:relative 改锚 tab 项，位置沿用手写时代 .tab-badge 的口径）** —— 三轮均只改 `src/style.css`，模板零改动；全量 45 套离线 ALL OK + tdz 0 + build EXIT=0（入口 `index-CsTdwCxQ.js`）+ page-smoke 13/13 + 无头几何复验/目检（轮 263：elementFromPoint 四点全 MENU 无硬切；轮 264：undo 反证两个 × 回来=无假通过；轮 265：角标与文字重叠 y=0、`badgeVisibleAboveText:true`）。详见文末 F 区轮 263/264/265、踩坑 #43/#44/#45。**+ 轮 266（首装首次进消息页「会话列表出来太慢 + 假空」四修：listConvs 单飞合并（singleFlight 挪 utils/inflight.js）+ 登录后补预热 + 会话列表骨架屏/「还没有会话」只认服务端应答/失败 3s 快速重试×3 + RPC 实测 ≈400ms 定位瓶颈为跨境 RTT 非 SQL）** —— 全量离线 BAD_TOTAL=0 + undef 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 266。**+ 轮 267（暖心墙触底骨架「十几秒不消失」两修：行上屏即收骨架（评论数转后台补，不再拴在 pageBusy 里）+ withTimeout 8s 超时兜底（超时只放弃等不放弃数据：游标不动、下次触底重试自愈））** —— 全量离线 BAD_TOTAL=0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 267。**+ 轮 268（会话行红点与顶/底角标不同步：dm_unread_total 捎带行级未读明细 convs → badgeStore 存映射+进角标缓存秒恢复，行未读 = max(行权威值, 映射)，openConv 清行同步清映射防复活；MIGRATION_dm_unread_convs.sql 幂等待用户 SQL Editor 执行，不跑降级为旧行为）** —— 全量离线 BAD_TOTAL=0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 268。**+ 轮 269（私信实时通道：dmRealtime.js 订阅 dm_messages INSERT（RLS 天然隔离+自发回显丢弃+失败静默轮询兜底），tick 尾部刷新抽 pullTail 供实时复用（轮 225 只读不发号语义保留），MessagesView 当前会话 pullTail 秒上屏/别会话节流 3s 刷列表，App 登录态起停通道；MIGRATION_dm_realtime.sql 真幂等待用户 SQL Editor 执行，不跑降级轮询；R11 断言随重构更新）** —— 45 套 BAD_TOTAL=0（含 dm-race 16/16）+ undef 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 269。**+ 轮 270（错误信标「采了看不见」：/api/client-log 从只 console.log 改为落库 `client_logs`（Worker 无 service role → 写入走授给 anon 的 security definer RPC；表 RLS 零策略，读写只走 RPC）+ AdminView 新增「客户端错误」页签（聚合优先：哪个错炸了 N 次 + 最新 50 条含可展开调用栈）；不记录 user_id 保持信标匿名；防灌三闸 Worker 60s/IP + SQL 200/日/IP + 全局 5000/日；**迁移没跑也降级可用**（信标仍回 200，只是不落库）；MIGRATION_client_logs.sql 幂等待用户 SQL Editor 执行）** —— worker-test 302/0 + gateway-contract 92/0 + i18n 漏键 0/死键 0 + undef 0 + tdz 0 + build BUILD_GOOD（入口 `index-C3qtiKw2.js`）+ page-smoke 13/13 + 真实探针确认两 RPC 现为 PGRST202（未执行，符合预期）+ 两文件 token 级同源。**注意编号：本轮是 270 不是 266**——另一 AI 已占 266/267/268/269。详见文末 F 区轮 270。**【本轮交付】整批轮 263~270 已提交 `3e6dd19` / 已推送 / 已部署 Version `0125959d`（入口 `index-C3qtiKw2.js`，706854 字节，SHA16 `d826f16641633ac1` 本地=线上，live-check 15/15）/ APK 已重打并装机（state:5 前台化 + 2679 色真实渲染）。SQL 迁移（wall_search/dm_unread_convs/dm_realtime/client_logs）用户已全部执行。****+ 轮 271（他人主页点帖子无反应：WallerView 加 goDetail，正文/图进 /post/:id，暖心墙轮 84 同款口径）** —— undef 0 + wall-test 34/34 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 271。**+ 轮 272（暖心墙触底续载底部骨架退役：删 pageBusy 文字 + .sk-more 骨架块（轮 253 产物），续载机制原样保留后台静默拉，底部只剩到底 noMore；首屏/评论区/搜索态不动）** —— i18n 漏键 0/死键 0 + uifix 24/24 + undef 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 272。**+ 轮 273（详情页点收藏「菜单文案不动」= 不跟手：点了立刻 closeMore()（菜单文案是打开瞬间快照，点完不变=以为没点上）+ hint 反馈先行不等网络，失败照常回滚）** —— undef 0 + wall-test 34/34 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 273。**+ 轮 274（详情页点作者进不了主页：PostDetailView 加 goUser，头像/名字进 /u/:id，暖心墙#15同款，全局 clickable 样式已有）** —— undef 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 274。**+ 轮 275（评论区「第二个请求堵住第一个」：cloudFetchComments 列表先行返回、我的回应高亮包进 rows.mineReady 后台补；详情页/墙内评论列表到手先上屏再挂 mineReady 响应式合并；操作后刷新仍走原 loadCmtMine）** —— undef 0 + wall-test 34/34 + i18n 漏键 0/死键 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 275。**+ 轮 276（消息会话列表底部骨架退役：删 dm-sk-rows 3 条骨架行 + 样式规则（轮 266 产物），与暖心墙轮 272 同口径；缓存秒出/单飞/预热/快速重试/空态门控全部保留）** —— undef 0 + uifix 24/24 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 276。**+ 轮 277（其余骨架屏一并退役：暖心墙桌面/手机首屏 2 处 + StoryFeed 首访 1 处，模板摘块 + 删 .sk-block/.st-skel 系样式；数据链路零改动）** —— undef 0 + uifix 24/24 + i18n 漏键 0/死键 0 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 277。**+ 轮 280（App 图标重设计为 C 暖窝：珊瑚环抱爪 + 米底，全密度 mipmap 重出 + ic_launcher_background #2C3550→#F5F0E8；首版图案过大裁切已修正）+ 轮 279（「我的」页返回自动下拉：全局 html{scroll-behavior:smooth} 污染程序化回位 → scrollMem/scrollBehavior 显式 behavior:"instant"，返回即在原位零可见滚动，与暖心墙同观感）** —— undef 0 + app-shell 66/66 + uifix 24/24 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 280/279。**+ 轮 281（「我的」页三条帖子经常很久才出现：登录后补 prefetchProfilePosts（首装预热漏跑）+ 挂载同步读 uid 兜底（wp-uid 未落位退 cloud.user.id）+ 加载抽 loadMyPosts 供 onActivated 切回页签静默 SWR 新鲜化；大厂调研：微信本地库/小红书磁盘缓存首帧出，本项目已有同款链路，慢在命中率三断点）** —— undef 0 + app-shell 66/66 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 281。**+ 轮 278（信标首条真错误定案：`/admin` 一打开就报 `Cannot access 'Se' before initialization` —— AdminView 的 `immediate` watch 在 setup 中途就同步调 `loadRelMeta`/`loadBroadcasts`，而这 11 个 ref 却声明在 watch **之后**；空 `catch` 吞掉第一个 TDZ、第二个抛在 try 外，async 让它变成「未处理的 Promise 拒绝」；11 个 ref 连注释整体上移到 watch 之前）** —— 自检过的 AST 检测器全量 RISKS=0 + tdz 0 + undef 0 + build 成功 + 全量离线 45/45 + page-smoke 13/13。详见文末 F 区轮 278。**+ 轮 283（帖子详情页左右滑看上一条/下一条：新 `utils/postNav.js` 存「这次点开的是哪张列表」的 id 快照（内存+sessionStorage，刷新/同设备分享链接打开仍可滑），入口侧一行 `setPostNav`（暖心墙 shown / 我的 rows·myPosts / 他人 posts），详情页 `transform` 跟手 + 过半(50%)才切 + 边界 32% 阻尼回弹；两端差异只落手势来源——App 端只挂 touch、网页端额外挂鼠标拖拽与 ←/→；切换用 `router.replace` 且**先 await 路由换完再归零位移**，防旧内容闪回中央；位移层只包内容区，`.cmt-main-bar` 与 ReportDialog 留在外面避开 fixed 被 transform 劫持；相邻两条预取进 SWR 缓存）** —— 新工具 `post-nav-test.mjs` 35/35（含 fixed 陷阱结构断言）+ 全量离线 **46/46** + tdz 0 + undef 0 + i18n 19/19 死键 0 + build EXIT=0（入口 `index-CN9MgczV.js`，新 chunk `postNav-yGwlF_XV.js`）+ page-smoke 13/13 + **真浏览器实测**（SPA 点进 695→拖→694、整页刷新 694→拖→686、键盘 686→690→689、`history.back()` 一步回 `/community`、第一条右滑位移 +96px=600×32% 且提示「已经是第一条了」）。详见文末 F 区轮 283、踩坑 #49。**+ 轮 282（评论区出来特别慢：实测定位（裸 RTT 800~2552ms、评论查询只比空请求多 ~100ms → 慢在网络不在 SQL）+ 结构放大（详情页帖子/评论两个 RTT 串行 + 评论零本地缓存）；修法 = 帖子与评论并行首发（load() 开头 loadComments(uid)）+ 数据层 cmtCacheKey/cmtCacheSet 评论磁盘缓存落盘 + 详情页 SWR 缓存先屏/墙内 loadThread 展开即 cacheGet 渲染 + 发删评论回写；自产 TDZ 一处（immediate watch 同步栈撞 comments/cmtLoading 声明在后 → await Promise.resolve 让出）+ swr 对 null 不回调致 cmtLoading 卡死（复位塞 fetcher 包装）** —— undef 0 + wall 34/34 + comment 35/35 + post-detail 17/17 + cache 12/12 + app-shell 66/66 + i18n-usage 2/2 + build EXIT=0 + page-smoke 13/13（首轮 12/13 即 TDZ，修复复验）。详见文末 F 区轮 282。**+ 轮 284（刷新失败提示减时 1/3：NOTE_FAIL_MS 1200→800ms；刷新图标动画三处：下拉指示条 ↓→循环箭头 SVG 跟手旋转（拉满 90px 转一圈、过 62px 阈值变主题色）、网页刷新按钮 ↻→SVG 且 spin 只转图标不晃按钮、刷新中药丸 border 圆环→轨道+圆头弧线 spinner 并补 reduced-motion 降级）** —— undef 0 + build EXIT=0 + page-smoke 13/13 + web-refresh 6/6 + uifix 24/24 + wall 34/34 + i18n-usage 2/2。详见文末 F 区轮 284。**【本轮交付】整批轮 271~285 已提交 `fbd519c` / 已推送（e06e4da..fbd519c）/ 已部署 Version `c1a3bd06`（入口 `index-ByNj7T6r.js`，708136 字节，SHA16 `0da3a45789b7fee8` 本地=线上，live-check 15/15）/ APK 已装机（app-debug.apk 5.26MB，lastUpdateTime 2026-10-14 23:13，topResumedActivity 前台化）——含另一会话的轮 278/283/285。全量 46/46 + undef 0 + tdz 0（提交前顺手修 arity：`loadComments(idOverride = null)` 补默认值，正是轮 283 遗留提醒）。**注意：轮 285 的 `MIGRATION_comment_delete.sql`（评论软删 RPC）待用户 SQL Editor 执行，不跑则删评论回退旧行为。****【追加交付】轮 286（下拉箭头改 Material 翻转，轮 284 跟手旋转被吐槽）已提交 `bcac3a7` / 已部署 Version `385b3823` / live-check 15/15（SHA16 `3dac08f7c6ee6311`），**装机未完成（adb 掉线待重插）**。**+ 轮 287（「我的」页返回帖子被 busy 占位盖几秒：ProfileView L489 `v-if="myPostsBusy"` 无条件遮屏 → 改 `myPostsBusy && !myPosts.length`，有内容在屏永不遮、网络静默回填，暖心墙口径）** —— undef 0 + build 0 + page-smoke 13/13 + uifix 24/24 + app-shell 66/66。详见文末 F 区轮 286/287。**+ 轮 298（b 删一级评论后点 cde「回复」没反应：轮 285 的 5 处守卫连坐 `if (cm && cm.deleted) return` 不看 rp，把墓碑线程内活回复的入口全拦死；判据改「回复目标被删没」——`cm.deleted && !rp` 才拦（直接回墓碑仍禁），sendCmt 加 rp 第三参从手机底部条/桌面就地框透传）** —— 全量 46/46 + tdz 0 + undef 0 + arity 8/8 + build EXIT=0 + page-smoke 13/13。详见文末 F 区轮 298。**【本轮交付】轮 298 已提交 `903b06c`（攒批含同仓轮 291~297 另一会话在途）/ 已推送 / 已部署 Version `8318756f`（live-check 15/15；抓线上编译产物核对 SDK 修复在：`t&&t.deleted&&!a`）/ **APK 未装机（usb 仍未连接，等用户插线）**。**+ 轮 300（首页「大厅此刻」四类人数 4 次并行查询合 1 条 RPC `status_counts(p_since)`：`VALUES` 骨架 `LEFT JOIN profiles` 一次出全四类、0 人也出一行；**刻意不写 security definer** 保 RLS 口径与旧 4 次 HEAD 一致；双链路（`db.supabase.js` 直连 + `worker/api.js` 网关）都先试 RPC、能力标记**只试一次**、判定复用 `isMissingFnError` 只认「函数没建」，缺行/脏值**一律报错绝不补 0**；`MIGRATION_status_counts.sql` **已由用户执行、线上已生效**（RPC↔旧 4 次 HEAD 逐格对账 + 生产 Worker 6/6 全 200 + 首页 DOM 真渲染 1/1/0/0）；网络层旧路径 8 次 → 0 次、新路径 2 次（「2 轮」是轮 291 记账待补跑的既定设计）；打的是轮 291 实测的「4 条 head-count ~1.25s → 叠 PATCH 共 2118ms」）** —— `status-counts-test` **92/92** + undef 0 + tdz 0 + build EXIT=0。**撞号已退让：299 被对方占（它有 `MIGRATION_comment_counts_299.sql`），本方 8 处全改 300；全量 **48/48 OK · 0 FAIL**（中途 3 处红灯全归对方在飞，收尾已由对方补齐转绿）；覆盖本轮两条链路的 `gateway-contract` 93/93 与 `status-test` 56/56 均绿。**详见文末 F 区轮 300。 **+ 轮 302（浏览计数批量化：20 次 `wall_add_view` 合成 1 次 `wall_add_views`** —— 免费额度实测确认卡点是 **Cloudflare Workers 免费档 10 万请求/天**，而暖心墙首屏恰是 1× `wall_feed_page` + **20× `wall_add_view`**（逐条且串行）；新 RPC `wall_add_views(bigint[],text)` 把循环搬进函数（`distinct` 去重 / `on conflict do nothing` 记 `found` / 帖不存在该条 `not-found` 整体仍 `ok:true` / **security definer**），语义与单帖版**逐格等价**；纯层 `wallRules.wallViewIds` + `normalizeWallAddViews`（严格非负整数，脏值一律报错**绝不补 0**）；直连与网关双链路各加 `addViews`（**返回 Map**，RPC 不承诺行序）、能力标记**只试一次**、迁移没跑自动**退回逐帖循环**（只认「函数没建」，别的错误照抛）；Worker 新增 `POST /api/posts/views`（抢在「单帖 id」分支前拦下，且必须 `return await` —— 否则异步拒绝漏成未捕获）；`CommunityView.countViews` 从 `for…await` 逐条改成**一批一次**。标准访问 28 → **9 请求**，免费容量 ~3,520 → **~10,900 日活**，此后 egress 才成新瓶颈）** —— 新 `wall-addviews-test` **100/100** + `api-contract` 99→**102** + `gateway-contract` 93→**95** + `worker-test` 306→**309**；全量 **49/49 OK · 0 FAIL** + undef 0 + tdz 0 + build EXIT=0（入口 `index-BR8vcHYa.js`）+ page-smoke 13/13。`MIGRATION_wall_add_views.sql` **待用户 SQL Editor 执行**（不跑=自动逐帖回退，行为零变）。详见文末 F 区轮 302。 **+ 轮 306（暖心墙触底续载**弱网死锁**——用户说「一二十张就到底了」且装的是新包：真因是一页 = `listPosts` + `listReactionsByPosts` **两次串行**，弱网实测 7.7s + 2.2s ≈ 10s 必超 `PAGE_BUSY_MS(8000)`，旧代码把 `withTimeout` 的拒绝当「这页不要了」→ **两个请求都 200 回来、整页 50 条却被丢**，游标不动卡片不动，而用户已贴底、滚动事件再不产生 → 永久停一二十张且不给「到底」提示。修为「超时只放弃等、不放弃数据」（迟到页落地补上屏，收尾口径收成 `appendFeedRows`）+ `pageBusy` 交接在飞请求（防重发白花额度）+ `PAGE_HARD_MS` 硬上限 + 失败自愈重排触底 + `onUnmounted` 里 rAF 归零/定时器清空）** —— 全量 **50/50 OK · 0 FAIL**（新增 `feed-autoload-test` 9/9）+ undef 0 + tdz 0 + build EXIT=0 + **真链路端到端：滚到底 10→538 条 + 正确亮「就到这里啦」**。详见文末 F 区轮 306。
+- **本轮新增（改动完成、测试过了、待提交待部署——攒批）**：轮 370（**帖子详情 ↔ 暖心墙「同感」双向同步**：新增 `postReactionSync.js` 事件补丁；墙进详情前写 `wall:post` 缓存、详情乐观/权威/回滚三处广播并写缓存、墙 KeepAlive 订阅后立即更新列表；详情点同感返回墙立刻亮，墙点同感进详情 39ms 先渲染。`post-detail-test` 29/29 + 全量 77/81（4 条已知并行红）+ tdz/undef 0 + build 0；无头 fake RPC 证据见 `_scratch/shots-369/post-reaction-sync/proof.json`）；轮 371（**漂流瓶待决定红点同步到底部「消息」Tab / 桌面顶栏**：`badgeStore` 新增 `bottle`，登录/回前台用 `bottlePendingCount` 刷新，三处角标同口径；`app-shell-test` 69/69 + `bottle-test` 87/87；无头手机底栏红点 2，见 `_scratch/shots-369/04-messages-mobile-bottle.png`）。详见文末 F 区轮 370/371；轮 372（**我的页 / 我的帖子 ↔ 详情回应数同步**：ProfileView 不再先写 0，改用 `cloudFetchUserPosts` 同批取回应；两个列表订阅 `postReactionSync` 并回写缓存；详情补 `myposts` / `profile-myposts` 缓存；我的页 2/2/2，详情 26ms 先渲染，取消后返回 2/2/1。`post-detail-test` 35/35；证据 `_scratch/shots-372/profile-reaction-sync/proof.json`）。详见文末 F 区轮 370/371/372。
+- **轮388（改动完成、测试过了、待提交待部署——攒批）**：陌生人首聊第 4 条改成本地拦截——`dmRules.firstLimitLocked` 与服务端同口径，`send()` 在清空输入框/写乐观行/调 `dm_send` 之前拦下，重发也先判再摘失败行；VAC 拦截后把正文恢复到输入框。`dm-test` 392/0、`dm-vac-test` 37/0、build 成功、page-smoke 14/14；APK `warm-paws-1.0.2-round388.apk` 已打包未安装。详见文末轮388。
+- **轮389（改动完成、测试过了、待提交待部署——攒批）**：漂流瓶「我投的信」在点「同意聊天」后直接进入会话聊天框——桌面 `onBottleAccepted` 先 `openConv` 再后台刷新会话列表/红点，不再停在漂流瓶中列；手机记录列表与 `/bottle` 独立页原有跳转已用测试钉住。`app-shell-test` 70/0、`bottle-test` 90/0、`bottle-vac-test` 28/0、`bottle-records-speed-test` 9/0、`i18n-test` 19/0、undef/tdz 0、build 成功、page-smoke 14/14；APK `warm-paws-1.0.2-round389.apk` 已打包未安装。详见文末轮389。
+- **轮390（改动完成、测试过了、待提交待部署——攒批）**：消息-漂流瓶记录列表的折叠标题不再重复信件正文——`BottleRecords` 的 `<summary>` 只保留「我投的信 / 来自海里的信」，正文只在展开后显示一次。`bottle-test` 91/0、`bottle-gap-test` 3/0、`messages-gap-test` 6/0、`bottle-records-speed-test` 9/0、`app-shell-test` 70/0、undef/tdz 0、build 成功、page-smoke 14/14；APK `warm-paws-1.0.2-round390.apk` 已打包未安装。详见文末轮390。
+- **轮391（改动完成、测试过了、待提交待部署——攒批）**：故事-我的-草稿箱每行补「删除」按钮——只对草稿行显示，点按钮 `@click.stop` 不冒泡进编辑器；先确认，再乐观移除，失败回滚并提示；删除成功后同步减草稿数、清掉指向该草稿的本地兜底草稿。服务端新增 owner-only `story_delete_draft(p_id)`，只允许删自己的 `status='draft'`，已发布故事不可删。`story-test` 228/0、`gateway-contract` 108/0、`worker-test` 338/0、`app-shell-test` 70/0、`i18n-test` 19/0、undef/tdz 0、build 成功、page-smoke 14/14；393×852 真实 DOM 探针确认 2 个草稿行各有「删除」、确认文案正确、点删除后路径仍为 `/story/mine`。**`MIGRATION_story_draft_delete.sql` 尚未在 Supabase 执行、Worker 未部署，线上删除接口尚不可用**；APK `warm-paws-1.0.2-round391.apk` 已打包未安装。详见文末轮391。
+- **轮392（已部署，未提交）**：网页端故事页顶栏恢复「写故事」主按钮——桌面 `/story` 的「排行榜 / 我的」左侧新增实心按钮，直达 `/story/write`；同时列表底部分页按钮从误用的「阅读」改回「加载更多」。手机端仍走底部 ＋ 第三瓣，不重复塞入口。`story.writeStory` 中英成对；`story-test` 230/0、`app-shell-test` 70/0、`i18n-test` 19/0、undef/tdz 0、build 成功、page-smoke 14/14；1440×900 真实 DOM 截图确认按钮位置，点击后路径 `/story/write` 且编辑器渲染。已部署 Worker Version `8e4d45b5-8cb8-4cb2-abc5-d600712e9e39`，线上入口 `main-Djrw3B96.js` 本地/线上 SHA-256 均 `AA182B449BF02B98DA1AECC908C37577E1AA5849210F35254C6834B1B4F62C70`，线上 `StoryFeed-y8dXKWXh.js` 含 `loadMore` 且不含 `openStory`。APK `warm-paws-1.0.2-round393.apk` 已打包未安装。详见文末轮392。
+- **轮394（已部署，未提交）**：删除草稿确认从浏览器原生 `window.confirm` 改成 Naive UI 主题弹窗——`StoryMine.vue` 用 `useDialog().warning`，标题「删除」、正文「删除这篇草稿？删掉后就找不回来了。」、按钮「取消 / 删除」，删除键走 `type: "error"`；乐观删除/失败回滚/清本地草稿逻辑不变。`story-test` 231/0、`app-shell-test` 70/0、`i18n-test` 19/0、undef/tdz 0、build 成功、page-smoke 14/14；1440×900 真实 DOM 探针确认无原生 confirm、主题弹窗标题/正文/按钮正确。已部署 Worker Version `d135936d-fb0e-4707-921c-a90cd89f0c8d`，入口 `main-D7O8Y4Wc.js`；APK `warm-paws-1.0.2-round394.apk` 已打包未安装。详见文末轮394。
+- **轮395（已打包，未提交）**：用户确认 `MIGRATION_story_draft_delete.sql` 已在 Supabase 执行；匿名 RPC 探针返回 `401 / 42501 permission denied for function story_delete_draft`，证明函数存在且未向 anon 开放（符合只授 authenticated 的设计），未删除任何真实草稿。代码无改动，重新 `build + cap:sync + assembleDebug` 后打 `apk/warm-paws-1.0.2-round395.apk`，与 round394 字节/SHA-256 相同（`A83A01B2CDD47201466FA44069952199D1B5C692590D6EA45EE86BA06D15A395`）；**未安装**。
+- **轮396（已部署，未提交）**：修「故事页加载更多点了没反应」——旧逻辑 `more = rows.length >= offset + PAGE` 且点击时先把 `offset += PAGE`，按钮在请求回来前当场消失；请求慢/失败/挂住时既没有新内容，也没有按钮可重试。现在改成 `hasMore` 状态机：只有成功拿到一页才推进 `offset`，请求中按钮保留并显示「加载中…」，失败保留「加载更多」并提示可重试，最后一页显示「没有更多了」。翻页请求加 20s 兜底超时（线上 `/sb` 代理实测第二页 9.4s，避免误杀）。`story-test` 232/0、`app-shell-test` 70/0、`i18n-test` 19/0、undef/tdz 0、build 成功、page-smoke 14/14；真实 DOM 探针：mock 12→14（加载中→没有更多了）、500 失败保留 12 篇+按钮+错误、真实 Supabase 只读数据 12→14。已部署 Worker Version `aeaf0e60-d065-4086-93e5-0be543988934`，入口 `main-C3Hi3Z0k.js`，故事分包 `StoryFeed-DleUGvMA.js`；本次未重打 APK，round395 不含此修复。
+- **轮400（已部署，未提交）**：App 聊天输入区改成微信式「表情 ↔ 键盘」——键盘展开时点表情，面板贴底出现、输入条原地不动；此时表情键变成键盘键，再点会把面板收起、焦点还给输入框，系统键盘从原高度接上，不再「再点一下直接折叠」。`DmVacChat.vue` 注入双图标 + 宿主类切换，panel-open 时拦截表情键 click：先 `holdForKeyboard()` 钉住 footer 让位，组件收完面板后 `textarea.focus()`；`tools/emoji-panel-test.mjs` 新增 E10 锁。`emoji-panel-test` 10/0、`chat-look-test` 8/0、`dm-vac-test` 37/0、`bottle-vac-test` 28/0、`dm-test` 402/0、`app-shell-test` 70/0、`i18n-test` 19/0、`bottle-test` 98/0、undef/tdz 0、build 成功、page-smoke 14/14；393×852 真实 DOM 探针（mock `--kb-h=320`）输入条底边 532→532→532，收面板后焦点回到 textarea。已部署 Worker Version `de461eb4-c77e-4d32-9bdc-8b064fafae96`，线上 `MessagesView-GTObf30E.js` / `main-C7bcPXlx.js` / `main-CU2xrXeF.css` 均与本地逐字节一致。**已重打并安装** `apk/warm-paws-1.0.2-round400.apk`（5,887,423 bytes，SHA-256 `421FB5E9BDE58501048D4DC7257CD5DB35A9BAC890FF23DFA59B3077BC5A8FF9`，versionCode 3 / versionName 1.0.2），真机 `23054RA19C` 安装 `Success`，冷启动已进入消息页。
+- **轮401（已部署、已安装，未提交）**：暖心墙评论输入（`WpComposer.vue`，`CommunityView` / `PostDetailView` 共 8 处：一级评论、一级回复、二级回复、手机底部条）也改成微信式「表情 ↔ 键盘」——面板打开时表情键变键盘键；再点先 `holdForKeyboard()` 钉住 `.cmt-main-bar` 的让位，收面板后焦点回 textarea，系统键盘从原高度接上，不再整条掉回屏底。新增 `comment.keyboard` 中英文案；`wall-composer-test` 新增 P7。`wall-composer 24/0`、`emoji-panel 10/0`、`chat-look 8/0`、`dm-vac 37/0`、`dm-test 402/0`、`app-shell 70/0`、`i18n 19/0`、`bottle 98/0`、`bottle-vac 28/0`、undef/tdz 0、build 成功、page-smoke 14/14。393×852 真实 DOM 探针（mock `--kb-h=320`）底条底边 532→532→532，图标/标题 `表情→键盘→表情`，收面板后焦点回 textarea；截图 `C:\Users\lin\AppData\Local\Temp\opencode\wall-emoji-keyboard-401-open.png`。已部署 Worker Version `12a574a5-ab5e-412a-8ce3-b6485e827f69`；已重打并安装 `apk/warm-paws-1.0.2-round401.apk`（5,887,423 bytes，SHA-256 `CE4B01AED0EAA2AB82C491555081F59139BBE3E057479661FF162E62D4C9BD0F`），真机 `Success`，versionCode 3 / versionName 1.0.2 不变。
+- **轮402（工具链地基，未提交；零业务改动）**：`npm test` 统一入口（`tools/all.mjs`，82 个 fast 脚本 34s 跑完，分层 fast/mount/live/prod/net，新测试没登记会告警）+ `tools/backup.mjs` 数据库备份（pg_dump → pg_restore 校验 → SHA 台账 → 轮转；self-test 12/12，真 pg_dump 失败路径已实测）。**首跑暴露 4 条既存失败测试**（uifix T3 / keyboard-policy ×3 / app-download pill / responsiveness B4 —— 前三条疑似测试过期，B4 疑似真回归，尚未修）。**真实 dump 与恢复演练未做：本机无 pg_dump、无数据库密码**。详见文末轮402。
+- **轮405（已部署，未提交；App 包未重打）**：消息列表的「已拉黑」入口与名单移到设置「账号」卡片、修改密码下方；列表可展开/收起，展开时才请求 `dm_blocks`，解除拉黑仍走 `unblockUser()`（同步全站拉黑缓存与暖心墙过滤）。消息页旧状态/函数/模板/样式全删。`dm-vac 37/0`、`dm-test 402/0`、`app-shell 70/0`、`i18n 19/0`、undef/tdz 0、build 成功、page-smoke 14/14；1440×900 与 393×852 真实 DOM（glass 主题）确认入口在账号组内、展开显示 2 人、点解除变 1 人；截图 `settings-blocked-405-desktop.png` / `settings-blocked-405-mobile.png`。已部署 Worker Version `a03c84ba-e22a-45cb-885a-c18e707a77c3`，线上 `SettingsView-BMXTdy9x.js` / `MessagesView-Zq2y38kQ.js` 本地=线上。详见文末轮405。
 - **上一批（已提交已部署）**：轮 253~262 攒批：已提交 `663fe61` / 已部署 Version `0b375659`（入口 `index-Cp2C6aCf.js`，SHA16 `0d129290f4ee4701` 本地=线上，live-check 15/15）。明细：轮 253（知乎/Reddit 式渐进渲染补齐：图片淡入 + 触底续载迷你骨架）+ 轮 254（捞漂流瓶 6s 超时提示「没捞到」 + 修「切走再回来旧弹窗复活」：捞网会话代际 fishGen）+ 轮 255（英文文案全面精简：药丸溢出 ×7 + 占位去重 + 任务名 ×2 + 长描述 ×13 + .bcl-chip 防御 CSS）+ 轮 256（无声错误上报信标：beacon.js + Worker /api/client-log）+ 轮 257（4 条已知失败测试清零：seo T38/39/42 无尾斜杠口径 + uifix T23 现口径）+ 轮 258（新工具 i18n-usage-test 死键/漏键检查 + 清掉 79 个死键）+ 轮 259（根目录临时文件大扫除 + .gitignore 补 _scratch/_*.png）+ 轮 260（可用性监控就绪：/api/health 进 live-check + README 配置说明）+ 轮 261（装扮穿戴按身体部位锚定 pos/posBy：废弃舞台顶 dy、锚进 PetMotion 随宠跳动、兔/恐龙/水獭 posBy 覆盖；另修失败构建 closeBundle 踩坏全部预渲染的守卫 + zh 首页正文语言 + home.companions.hall 缺键恢复 + 挪正 FavoritesView 交叉嵌套结构）+ 轮 262（「不跟手」全局治理：红点即时递减 badgeLocal + refreshBadge({after}) 串行修竞态；收藏独立页 /favorites + 写穿缓存 favCacheInsert；评论发送/删除乐观化 pending 临时行）。App 端要重打包装机（随轮 250/251 待办）。
 - **上一批（已提交已部署）**：轮 239~252 攒批：已提交 `0113d6e`（+文档 `3899f5b`）/ 已部署 Version `51feda2f`（入口 `index-DzmDi8IU.js`，live-check 14/14，本地=线上）；`MIGRATION_wall_search.sql` 待用户 SQL Editor 整份执行（不跑也降级可用）。
 - **当前任务**：**轮 146（暖心墙示例帖全清 + 推荐档分级放宽 + 月档改滚动 30 天）待部署** —— 验收点：`/community` 停在「推荐」档应看到大量真实老帖（不再是示例帖），跨天均匀不霸屏；「本月」档 = 前 30 天。遗留待用户拍板：库里 9/24 有 47 条 `〔压测 #xxx〕` 灌水帖，是否清理（删数据需用户明确指示）。
@@ -4079,6 +4092,29 @@ npm run release -- 1.2 --dry-run   # 只打印，不落盘
 
 **为什么不是放开墓碑**：直接在「该评论已删除」下面新开回复没有意义（@ 不到人、语境已失效）；主流社区（微博/知乎/Reddit）同样是墓碑不可回、线程内活评论可回。
 
+
+### 轮 333 · 暖心墙 P0：空状态与新手引导（已完成，代码侧全绿）
+
+用户反馈：新用户首次进入暖心墙，如果暂时没有内容（或筛选后为空），看到空白列表会误以为「坏了」或「没人用」，流失率高。补一个温和的空状态 + 发布引导。
+
+改动：
+1. `src/i18n.js`（英文）：新增 `community.emptyTitle` / `community.emptyDesc` / `community.emptyBtn`。
+2. `src/i18n.js`（中文）：新增对应中文文案。
+3. `src/views/CommunityView.vue` 模板：在动态流列表之前插入 `.wall-empty` 区块，条件为 `!searchActive && !loadingCloud && cloudPosts.length === 0`；包含 💛 图标、标题、描述、主按钮「发布第一条暖心帖」。
+4. `src/views/CommunityView.vue` 脚本：新增 `goCompose()` → `router.push("/compose")`（`useRouter` 已导入）。
+5. `src/views/CommunityView.vue` scoped CSS：新增 `.wall-empty` / `.wall-empty-ic` / `.wall-empty-title` / `.wall-empty-desc` / `.wall-empty-btn` 样式，居中、低饱和度、不抢内容风头。
+
+验证：
+- `npx vite build` EXITCODE=0
+- `i18n-test` 19/19、`wall-reaction-test` 19/19、`wall-test` 37/37、`wall-rules-test` 54/54 均绿。
+
+交互链路：暖心墙空状态 → 点「发布第一条暖心帖」 → 跳转 `/compose` 发布页 → 发布成功后自动回暖心墙（由 ComposeView 现有合并逻辑处理）。
+
+**单元测试（本轮新增 + 回归）**：
+- `tools/wall-refresh-test.mjs`（新建）：`hasNewPosts` 纯函数 9 条用例全绿（基本判定 3 条、输入安全 4 条、不修改入参 1 条、空结果 1 条）。
+- 回归全量：`wall-reaction-test` 19/19、`wall-test` 37/37、`wall-rules-test` 54/54、`i18n-test` 19/19、`feed-window-test` 19/19、`comment-test` 43/43、`react-queue-test` 12/12、`userScope-test` 8/8、`cache-test` 16/16。
+- `npx vite build` EXITCODE=0。
+
 **编号**：注释先写成 290、再 297（均撞车——另一会话已在 main.js 用掉 297 做 App 更新检查），最终 **298**——动手时 286~296 已全被另一会话占用。
 
 **验证**：全量 46/46 + tdz 0 + undef 0 + arity 8/8 + comment 40/40 + post-detail 17/17 + app-shell 66/66 + wall 37/37 + build EXIT=0 + page-smoke 13/13。
@@ -4527,3 +4563,3281 @@ delete from public.dm_messages where id in (256, 257);
 - **仍需用户手动**：管理中心 → App 版本 → 上传 APK（**versionCode 会预填 3，别改**）+ 写 `version.json`。在此之前客户端读 `app-releases/version.json` 仍是「不存在」（现测 400）= **静默不提示更新**，不影响网页下载与安装。
 - 老待办继续挂着：UptimeRobot 盯 `/api/health`、Cloudflare Always Use HTTPS、47 条压测灌水帖清理、以及那 9 个待执行迁移（清单见上一节发版记录）。
 
+
+### 轮 317 · 漂流瓶投信状态机：先「投递中」转圈、服务端确认才「投递成功」（待提交待部署）
+
+**用户原话**（轮 315 上线后追击）：「漂流瓶写进海里，左边是立马显示了投递成功，不要这样，应该是投递中，一边有转圈的动画，成功就改成投递成功。」
+
+**基线说明**：轮 315（不弹窗 + 行内提示）已随 **1.0.2 发版上线**（见发版记录）；本条是用户实测后的增量——**乐观直接报成功是撒谎**：点下就写"成功"，实际服务端还没确认。轮 316 又被并行会话占（同款"发送中挡人"在修会话聊天），本条源码标记顺延 **317**。
+
+**改法**（`BottleView.vue` + i18n + style，行内状态机三态）：
+1. `sending`：点击瞬间行内出 **「投递中」+ 12px 转圈动画**（`.mail-spin`，复用 dl-spin 关键帧；灰字 ink-soft）——立即有反馈但不撒谎；
+2. `sent`：`await bottleSend` **服务端确认后**才翻 **「投递成功」**（绿字 var(--good)），后台链（quota/records/held）跑完自动收起；
+3. 失败态不变：行内红 + 弹窗 + 草稿恢复（轮 315 口径保留）；
+4. i18n：新键 `bottle.sending`（投递中/Sending…）双语成对；`sentFlash` 文案改 **「投递成功」/「Sent」**（用户点名措辞）。
+
+**验证**：`bottle-chat-test` **104/104**（断言同步到状态机口径：sending 先行 / sent 带注释锚 / spin 元素 / 四键双语）+ `bottle-test` 81/81 + i18n 19/19 + undef 0 + tdz 0 + build EXIT=0 + **page-smoke 13/13**。
+**改动文件**：`src/components/BottleView.vue` · `src/i18n.js`（sending 新增 + sentFlash 改文案，zh/en）· `src/style.css`（.mail-sending/.mail-spin）· `tools/bottle-chat-test.mjs`（断言同步）。
+**状态**：**待提交待部署（攒批）**——基于已上线的 1.0.2 增量；装机/部署等用户发话。
+
+
+### 轮 318 · 会话输入框「发送后自动折叠」：不折叠 + 焦点不丢（待用户发话）
+
+**用户原话**：「会话框，打字，发送-之后，输入框自动折叠了，不要折叠啊。」
+
+**真因**（真机 CDP 实测，`_scratch/dm-compose-probe.mjs` 的 `before-report.txt`）：
+1. 输入框是 Vant `<van-field type="textarea" rows="1" autosize>` —— autosize 是「按内容算高度」，`send()` 里一清空 `body`，textarea 立刻被按回一行：**92px → 44px**；下方消息区被让出空间，**686 → 734（整块下跳 48px）**。
+2. 点「发送」按钮会把焦点抢到按钮上：`activeElement` 从 **TEXTAREA 变 BODY**（手机上就是键盘收起，想接着打下一条还得再点一次输入框）。
+
+**改法**（只动 `MessagesView.vue` + `BottleChat.vue` 两处同款代码；不碰 `style.css` / `i18n.js`，不新增文案）：
+1. `send()` 在清空 `body` **之前**：量下输入框当前高度 → `holdCompose()` 写成那个 textarea 的 `min-height`（Vant 再算也压不下去）；同一刻 `ta.focus()` 把焦点拉回（在点击的用户手势栈里，手机键盘不会收）。
+2. 放开钉子只有两个时机：**用户自己把字删空**（`watch(body)` + `sentClear` 标记区分「发送清空」还是「用户删空」）、**换会话**。
+3. 放开必须走 `releaseCompose()`：连 Vant 写死的 `height` 一起松开，再按 `scrollHeight` 重量一遍 —— 否则 Vant 那次 resize 量到的是「被钉子撑住的高度」，松手后空输入框仍会停在两行上（踩过）。
+
+**验证**：
+- 新锁 `tools/dm-compose-test.mjs` **17/17**；双向验证 `_scratch/verify-318-lock.mjs`：回退到 HEAD 源码 → **0 绿 / 17 红**。
+- 真浏览器（394×852、真鼠标点发送）：发送后 **92px 保持**（旧版 44px）、焦点 **TEXTAREA**（旧版 BODY）、消息区 **686 → 686 不跳**（旧版 734）、钉住期间再打字仍 92px、**手动删空 → 44px**；未捕获异常 **0**。
+- 对比图 `_scratch/shots-318/compare.html`（旧/新成对截图 + 每个数字）；原始报告 `before-report.txt` / `after-report.txt`。
+- 全量 **52/52 OK, 0 FAIL**（多出来的一条就是本轮新锁）、undef **0**、tdz **0**、build **EXIT=0**。
+
+**状态**：**待用户发话（攒批）**。⚠️ 当前工作区还有并行会话轮 317（漂流瓶投递状态机）的**未提交**改动（`BottleView.vue` / `i18n.js` / `style.css` / `tools/bottle-chat-test.mjs`）—— 提交/打包前必须先把那批落地或明确排除，别把在途改动带进发布。
+
+
+### 轮 319 · 漂流瓶记录长信裸灌 → 两级折叠（钳 4 行 + 真溢出才「展开全文」）（待提交待部署）
+
+**用户原话**：「漂流瓶下面记录那里，是把整封信跟回复都显示了，如果信的内容太长了也显示不对吧。你设计一下最优方案，太长的内容可以折叠起来之类的」→ 方案已当面给（两级折叠 + 溢出实测），用户拍板「开工」。
+
+**现状（两处同病）**：漂流瓶页记录区 `{{ l.body }}`/`l.reply` **1000 字全量裸灌**（一张卡最坏 2000 字刷屏）；消息/通知深链卡（BottleRecords）外层有 details 行级折叠，**展开后同样全文裸灌**。
+
+**方案（微信朋友圈式，已实施）**：
+1. **两级分工**：外层 details（看不看这封信，保留）+ 内层文本折叠（读不读完全文，新增）——信文与回信**各自独立**（一长一短互不拖累）；
+2. **默认钳 4 行**（`-webkit-line-clamp` + 有按钮时底缘渐隐 mask）；
+3. **按钮只在渲染后实测溢出时出现**（`scrollHeight > clientHeight+2`，收起态 clamp 生效时两值天然可比）——不猜字数：窄屏 70 字就溢出、宽屏 120 字还没溢出，一个阈值两头不讨好；4 行内短信零变化（`needsFold` ≤40 字连测量都跳过）；
+4. 状态键 `${id}|body`/`${id}|reply`，展开态只增不清（按钮不闪没）；BottleRecords 的 details **收起态 display:none 测不了** → `@toggle` 展开后补测 + `!el.clientHeight` 跳过；
+5. 按钮文案带字数 `bottle.foldMore`「展开全文（N 字）」/ `foldLess`「收起」zh/en 成对；点按钮 `.stop` 不触发卡片跳转。
+
+**改动文件**：`src/utils/foldText.js`（新：FOLD_MIN_CHARS/needsFold/foldKey/isOverflowing 纯层）· `src/components/BottleView.vue`（状态层+watch 补测+模板两块）· `src/components/BottleRecords.vue`（同款+details toggle 补测）· `src/i18n.js`（foldMore/foldLess 双语）· `src/style.css`（.fold-clamp/.fold-fade/.fold-more 全局共用）· `tools/fold-text-test.mjs`（新，7 断言：纯逻辑边界+两组件接线+i18n+样式）。
+**验证**：`fold-text-test` **7/7** + `bottle-chat-test` 112/112 + `bottle-test` 81/81 + i18n 19/19 + undef 0 + tdz 0 + build EXIT=0 + **page-smoke 13/13**。
+**注**：轮号 318 被并行会话占用（会话输入框折叠），本条用 319；桌面对话托盘弹窗（单封阅读场景）不动，全文合理。
+**状态**：**待提交待部署（攒批）**；装机/部署等用户发话。
+
+
+### 轮 320 · 故事正文首行缩进：CJK 段落自动 2em + 两端对齐（待提交待部署）
+
+### 轮 321 · 故事页底部按钮顶着「阅读」的名字干「加载更多」的活（文案键借位真 bug）（待提交待部署）
+**起因**：用户在**手机 App** 上截图问「这个是继续阅读还是什么鬼啊，功能是什么，写清楚啊」。**上一轮我判成"手机浏览器划词浮层"——判错了，这是我们 App 里的真 bug**（教训记牢：用户说是 App 上看到的，就先信用户，别急着往浏览器头上推）。
+**根因（文案键借位）**：故事页「发现」页签底部的分页按钮写的是 `{{ loading ? t("story.saving") : t("story.openStory") }}`——`story.openStory` 这个键的中文值就是 **「阅读」**，于是按钮明明干的是"加载更多"的活，屏幕上写着「阅读」。这是历史遗留的借位写法（`openStory` 键本是给"点已发布故事进详情"用的）。
+**改法**：新增专用键 `story.loadMore`「加载更多故事」/ `story.loadingMore`「加载中…」（中英成对），按钮改用它两个。`story.saving`（「存着…」）也不再被借用到分页按钮上。
+**顺手核实**：`story.openStory` 在「我的故事」页（`StoryMine.vue`）行尾那处**语义正确**（点已发布故事→进详情），保留不动。
+**回归锁（本轮重点，防止再翻车）**：
+- 旧断言 `/loadMore[\s\S]{0,200}openStory/` **太宽**，会扫到脚本里合法的 `openStory()` 函数定义 → 误报红。改成只看模板段：`!/t\(["']story\.openStory["']\)/`（+ 同理禁 `story.saving`）。
+- 新增**全局反向锁**：遍历 10 个故事系组件/视图，`story.openStory`（值=「阅读」）**只许出现在「我的故事」页**，别处出现即红 —— 明确立规则：值带「阅读」的键不得借位给别的按钮。
+**改动文件**：`src/components/story/StoryFeed.vue`（按钮文案）· `src/i18n.js`（loadMore/loadingMore 双语）· `tools/story-test.mjs`（修断言口径 + 2 条新锁）。
+**验证**：`story-test` **184/184** + undef 0 + tdz 0 + build ✓ + **page-smoke 13/13** + i18n-test 19/19 + i18n-usage（漏键 0/死键 0）。
+**状态**：**待提交待部署（攒批）**；要发版手机/网页才看得到新文案。
+
+**起因**：故事页 12 篇试读长文上线后，用户截图问"首行缩进是你没写，还是我们没有这个功能"（灯塔守夜人首段顶格）。
+**根因两边都有**：① 播种数据本来就没带缩进空格；② 即使带了，`renderLiteMd` 按行 `trim()` 再包 `<p>`，行首空格被吃掉——渲染层从无缩进能力。
+**方案（按各自排版惯例）**：`src/utils/storyRules.js` 新增 `paraIndent(line)` 纯函数——CJK（中日韩+全角）开头段落自动 `data-indent="1"`，英文段落不缩进（西文惯例首行不缩进、靠段间距分段）。`src/style.css`：`.st-read-body > p` 加 `text-align: justify`（长文两端对齐不留右缘锯齿）+ `[data-indent="1"]` 加 `text-indent: 2em`。blockquote/h2 不受影响。以后任何人写故事都不用手动敲空格。
+**改动文件**：`src/utils/storyRules.js`（paraIndent+renderLiteMd 挂标记）· `src/style.css`（2 条规则）· `tools/story-test.mjs`（+4 断言：中文挂标记/英文不挂/分流函数/样式接线；旧"普通段落包 p"断言放宽 `<p>`→`<p`）。
+**验证**：`story-test` **180/180** + undef 0 + tdz 0 + build（env-guard ✓）。
+**状态**：**待提交待部署（攒批；需发版手机/网页才看得到缩进）**。
+
+
+### 轮 322 · 暖心墙评论输入框换成「消息-会话」样式（胶囊壳退役）+ 键盘「先露一层空白」真机定性（待提交待部署）
+
+**用户原话（两条）**：①「把暖心墙下面评论输入框的样式换成消息-会话里面输入框的样式」；②「在点击消息-会话里面输入框的时候，会有一层空白出现，在出现手机输入法，优化一下」。
+
+**轮号**：318~321 已被并行会话占用（318 会话输入框折叠 / 319 漂流瓶长信折叠 / 320 故事缩进 / 321 故事页文案借位），本条用 **322**。
+
+**任务① 改法（纯样式，两处选择器合流）**
+- **胶囊壳退役**：`.cmt-input-row` 原先是「白洗底胶囊」（`background: var(--wash-strong)` + `1px` 描边 + `border-radius: 999px` + `padding: 5px 6px 5px 14px`），现在只剩裸 flex 行（`display:flex; align-items:flex-end; gap:8px`），与会话 `.dm-input-row` 逐字同款。
+- **输入框本体合流**：「白底 `#fff` + 暖色发丝描边 `1px solid #e3cfc0` + 轻阴影 `0 1px 2px rgba(90,60,40,.05)` + 圆角 `14px`」这条原本只给 `.dm-input-row .van-field__control` 的规则，选择器扩成三处共用（+.cmt-input-row / +.cmt-main-bar），且排在旧 wash 圆角规则**之后**（顺序反了会被盖掉，已加锁）。
+- **发送键**：`.cmt-input-row .cmt-send, .cmt-main-bar .n-button` 加 `position: relative; margin-bottom: 8px`（同 `.dm-send-btn` 口径，与输入框末行对齐）；底条 `gap` 10px→8px。
+- **不动**：卡内手机占位条 `.cmt-entry`（它是入口不是输入框）、桌面结构、会话输入框本体。
+
+**改动文件**：`src/style.css`（`.cmt-input-row` 去壳 / 发送键 8px 抬高 / `.cmt-main-bar` gap 8px / 三选择器共用的输入框本体规则 / 任务② 的 `--kb-h` 三条规则 + 结论注释）· `src/utils/keyboardInset.js`（**新增**，键盘高度 → `--kb-h`）· `src/main.js`（init）· `tools/cmt-style-test.mjs`（**新增 7 条锁**）· `tools/keyboard-policy-test.mjs`（**新增 16 条锁**）· `tools/splash-test.mjs`（3 条断言随底色改值）· 任务② 原生侧：`android/app/src/main/AndroidManifest.xml`（`adjustNothing`）· `android/app/src/main/java/net/de5/dale/MainActivity.java`（接管 insets）· `capacitor.config.json`（`SystemBars.insetsHandling="disable"` + `backgroundColor:"#faf9f5"`）· `android/app/src/main/res/values/styles.xml`、`values-v31/styles.xml`、`drawable/launch_bg.xml`（底色统一 `#FAF9F5`）· `index.html`（`interactive-widget=resizes-visual`，**不写** `viewport-fit=cover`：App 里 `env()` 恒 0 无收益、iOS Safari 有副作用）· `tools/cap-strip-hero.mjs`（App 那份 index.html 换 `overlays-content`）。
+
+**验证（真浏览器 A/B，非推测）**
+- 对照口径：**线上 1.0.2（= 改动前）** vs **本地 dist 新构建（= 改动后）** 同一台机器、同一脚本 `_scratch/cmt-style-shots.mjs`。
+- 计算样式：手机底条输入框 旧 `rgba(255,255,255,.5)`/`0px none`/`none` → 新 `rgb(255,255,255)`/`1px solid rgb(227,207,192)`/`0 1px 2px rgba(90,60,40,.05)`，与会话输入框**逐字相同**；判定 **mobile: SAME（零例外）**、desktop: SAME（只差宽度 558 vs 305，容器本来就不同）。
+- 截图：`_scratch/shots-319/before-*` ↔ `after-*`（A1 手机首屏 / A2 手机底条 / B1 会话说参照 / C1 桌面卡内 / D1 桌面会话），对照页 `_scratch/shots-319/compare-319.html`。
+- 新锁 `cmt-style-test` **7/7**；双向验证（`cmd /c "git show HEAD:src/style.css > _scratch\head-style.css"` 后跑同一条命令）→ **6 条新锁全红**，第 7 条「回归护栏」仍绿属预期（它保的是本轮不动的 `.dm-input-row` 与 `.cmt-entry`）。
+- 全量 **54/54 OK, 0 FAIL**、undef **0**、tdz **0**、build **EXIT=0**。
+
+**任务② 结论：不是样式问题，是三层原生机制叠在一起（全部真机实测）**
+- 表现：点输入框那一瞬，`innerHeight` / `documentElement.clientHeight` / `visualViewport.height` / `100dvh` / `100svh` / `100lvh` / `100vh` **全部同步 843 → 539**，而输入法还要 ~200ms 才从屏底滑上来 —— 中间那 304px 就是用户看到的「一层空白」。
+- ① **窗口层**：manifest 原本没有 `windowSoftInputMode` → 系统按 adjustResize 缩窗口。已改 **`adjustNothing`**（`dumpsys window` 实测 `sim={adjust=nothing}`、`frame=[0,0][1080,2460]` 满屏 ✓）。
+- ② **视口层**：真正把布局视口压到 539 的是 **Capacitor 8 内置 SystemBars 插件**默认 `insetsHandling="css"` —— 键盘可见时给 decorView 加 `padding-bottom = 输入法高度`（`SystemBars.java` L193-210）。这也是 Keyboard 插件里「SystemBars handles the inset sizing for visible keyboards」那句的来源。
+- ③ **绘制层**：布局视口外的元素**不参与绘制** —— 在 ICB 下方插一条 300px 红块，截图 `_scratch/shots-319/band-test.png` 上完全看不见 ⇒ 那条空区**网页层补不上**，只能在视口内自己做过过渡。
+
+**任务② 修法（已落地、真机复验）**
+- **把「让位」搬进视口**：`capacitor.config.json` 加 `plugins.SystemBars.insetsHandling="disable"` —— 插件不再往 decorView 塞输入法高度，键盘弹起时布局视口**保持不变**（实测 `ih=cH=vvH=790` 在键盘开/关两种状态下完全一样 ✓）。
+- **系统栏仍由原生让位**：`MainActivity.onCreate` 里接管 `setOnApplyWindowInsetsListener`，只按 `systemBars() | displayCutout()` 设 padding，**唯独不把输入法高度算进去**；键盘可见时 `systemBars().bottom` 会变 0（导航栏被输入法顶掉），所以缓存了隐藏时的 navBar 高度，避免页面抖那十几 px。
+  - 为什么不用纯 CSS 安全区（`viewport-fit=cover` + `env(safe-area-inset-*)`）：这台 WebView 里 `env(safe-area-inset-top/bottom)` 实测**都是 0**（`_scratch/kb-sa.mjs`），光靠 CSS 补不回状态栏。
+- **键盘高度 → CSS 变量**：`src/utils/keyboardInset.js` 接 `keyboardWillShow/DidShow/WillHide/DidHide` 写 `--kb-h`（插件在输入法动画**开始**时就带最终高度 320，与 CSS 过渡同起点同终点）；只在 `Capacitor.isNativePlatform()` 下生效，任何异常一律归零 + 切后台归零（宁贴底也绝不留永久空白）。
+- **三处可见控件跟着抬**（`src/style.css`，都带 `.22s cubic-bezier(.2,.8,.2,1)` 过渡）：聊天整屏页 `height: calc(100dvh - var(--kb-h))`、暖心墙吸底评论条 `.cmt-main-bar { bottom: var(--kb-h) }`、详情页固定回复条 `.reply-bar { bottom: calc(var(--kb-h) + 64px + env(safe-area-inset-bottom,0px)) }`；正文 `body { padding-bottom: var(--kb-h) }` 保证长页面能滚到输入框。
+- **窗口底色与页面底色统一 `#FAF9F5`**（`capacitor.config.json` 的 `backgroundColor`、`styles.xml` 两处 `windowBackground`、`values-v31` 的 `windowSplashScreenBackground`、`launch_bg.xml`，原来都是 `#FFF7EE`）：动画那 200ms 里「页面当前底边 → 输入法上沿」露的是**原生窗口底**，差一档就会闪出一条奶白缝。
+
+**任务② 真机取证（设备 PBIJR8BM6D6HS8LV，1080×2460 / dpr 2.75）**
+- 稳定态：无键盘 `ih=cH=vvH=790`、`--kb-h=0`；键盘弹起 `ih=790`（**不再被压**）、`--kb-h=320px`、`pageH 790 → 470`、`barBottom=460` —— 输入栏紧贴输入法上沿（输入法顶 = 470），无缝隙无重叠。截图 `sa-3-open.png`、`sa-5-final.png`。
+- 过渡态（录屏逐帧，`_scratch/shots-319/kb5.mp4` → `frame-1.65/1.72/1.80/1.90/2.00.png`，用 `_scratch/band-after.mjs` 按像素列扫色带）：
+  - 改动前同机位：`#fff7ee`（窗口底）那条缝 **107 → 63 → 25 → 12 → 0 CSS px**（`kb5-before.mp4`）；
+  - 改动后：所有帧里**再无 `#fff7ee`**，缝里就是页面底色 `#fbf9f5` ⇒ 视觉上不可见 ✓；输入栏自身随页面高度平滑上移（573 → 491 → 470）。
+- 中途用**品红染色 + `transition:none` + 手写 `--kb-h=320`** 做过归因（`band-geom.png`）：那条缝是 320px 高的品红（= 页面画布在画）✗ 说明它是动画期间的 WebView 底噪，不是任何页面元素的背景（`kb-cream.mjs` 扫全 DOM，聊天页**没有任何** `#fff7ee` 背景元素）。
+- 触摸坐标口径（真机踩坑）：`deviceY = cssY × 2.75 + 200`；CDP 的 `Input.dispatchTouchEvent` 在这台机上坐标会被丢弃/错位（实测恒定落到 (36,715)），**真机取证一律用 `adb shell input tap`**。
+- 锁：`tools/keyboard-policy-test.mjs` **16 条**（manifest / SystemBars=disable / 窗口底=页面底 / MainActivity 不计输入法 / 四事件 + isNative 守卫 + 归零兜底 / main.js / 三处 CSS / viewport / cap-strip-hero / 禁 100svh / 100vh→100dvh 基线），正向 **16/16**；反向用 HEAD 副本 `_scratch/kb-head2`（故意不带 `keyboardInset.js`）→ **14 条全红 + 2 条护栏绿**（护栏 = 禁 100svh、100vh→100dvh 基线，HEAD 本来就满足）。
+- `tools/splash-test.mjs` 的 3 条底色断言同步改成 `#FAF9F5`（HEAD 里仍是 `#FFF7EE`，新断言对 HEAD 会红 —— 已用 `git show` 复核）。
+
+**任务② 还没做完的部分（手机中途掉线，下一轮补）**
+- 暖心墙 `.cmt-main-bar` 与详情页 `.reply-bar` 的**真机**开键盘复核（规则已写、锁已加，但这次只在会话页拿到了真机像素证据；手机在页面巡检中途从 `adb devices` 掉线）。
+- 首页截图 `sa-tour-home.png` 已取：状态栏 / tabbar / 导航栏让位正常 ✓（页面上那个「复制/分享/全选」菜单是取证时误触长按弹出的系统菜单，不是 App 的）。
+
+**闸门**：全量 **54/55 OK**。唯一红的是 `tools/dm-test.mjs`（333 条里的 1 条，「轮 96 轮询兜底 loadConvsImplicit 回写 SWR 缓存」）—— 它读的是**并行会话在途未提交的 `src/views/MessagesView.vue`**：把该文件临时换回 HEAD 版跑同一测试是 **333 pass / 0 fail**，换回后文件哈希与原始一致（`SHA256` 相同，已核对）⇒ 与本轮改动无关，属并行会话在途状态。undef **0**、tdz **0**、build **EXIT=0**、gradle assembleDebug **SUCCESSFUL**、`adb install -r` **Success**。
+
+**状态**：**待提交待部署（攒批）**。⚠️ 工作区仍有并行会话在途未提交改动（`BottleChat.vue`/`BottleRecords.vue`/`BottleView.vue`/`StoryFeed.vue`/`i18n.js`/`storyRules.js`/`MirrorView` 相关 + `style.css` 里的 fold-clamp 等），提交前必须先落地或明确排除，别把在途改动带进发布；`src/style.css` 尤其**不许整文件回滚**。
+
+---
+
+### 轮 323 · App 端暖心墙刷新提示时长减 1/3（2026-10-22）
+
+**用户原话**：「app端暖心墙帖子不管是下拉刷新，还是已经滑到下面点击暖心墙刷新，那个已刷新或者换了一批内容的提示都减少1/3的时间」。
+
+**改法**（`src/views/CommunityView.vue`）
+- 基准不动：`NOTE_OK_MS = 2200`（网页端维持）；新增 `NOTE_OK_MS_APP = Math.round(NOTE_OK_MS * 2 / 3)` = **1467ms**（= 减 1/3）。
+- `noteMs(s)` 分叉：`fail` 仍走 `NOTE_FAIL_MS = 800`（轮 284 定的），`ok` / `batch`（= 「已刷新」/「换了一批内容」）在 App 壳里取 1467、网页端 2200。判定用 `isApp`（`src/stores/uiStore.js` 的 `Capacitor.isNativePlatform()`，与全站同一个口径），已加进该文件的 import。
+- 两个入口本来就共用 `noteMs`：下拉手势 `te()` 与划到底点刷新钮 `manualRefresh` 都只调 `noteMs(refreshNote.value)`，**调用点没有写死毫秒**，所以改一处两处同时生效。
+- 为什么只改 App 端：用户点名「app端」，网页端保持原时长（两边文案相同、差 0.7s 看不出差别）；要统一只需把 `noteMs` 里那句三元返成 `NOTE_OK_MS_APP`。
+
+**锁**：`tools/web-refresh-test.mjs` 新增 **T8**（5 条）：基准仍是 2200 / App 侧必须是 `NOTE_OK_MS × 2/3` / `noteMs` 仍单独处理 `fail` 且按 `isApp` 分叉 / 必须从 `uiStore` 引入 `isApp` / 两处 `noteMs` 调用点不许写死毫秒。正向 **8/8**；反向把 `CommunityView.vue` 临时换回 HEAD 版跑同一测试 → **T8 唯一红（7/8）**，换回后 SHA256 与改前一致（已核对）。
+
+**真浏览器取证**（`_scratch/note-ms-probe.mjs`，Edge headless 393×852，量「提示在屏上的毫秒数」= 轮询 `.refresh-note` 的 class 相变）
+- 网页端点刷新钮：**2170 / 2237ms**（≈2200 ✓ 没被改到）。
+- App 壳点刷新钮：**1446 / 1470ms**（≈1467 ✓）。
+- App 壳下拉手势（合成 touchstart 150 → touchmove 300 → touchend）：**1477ms**，提示是 `rnote-ok`（「已刷新」）✓ —— 两条入口都进同一分支。
+- 比值 **0.666** = 精确 ×2/3。App 壳是**真的 isApp=true**，不是只摘 CSS 类：探针注入后 `prep` 返回 `{native:true, hadCapApp:true}`（`cap-app` 是 `main.js` 在 `isNativePlatform()` 为真时才加的），然后只为让刷新钮可见才摘掉该类。
+- 踩坑：`@capacitor/core` 判平台看的是 `window.androidBridge`，第一次只塞了 `getPlatform()/isNativePlatform()` → 量到 2206ms（= 根本没进 App 分支）；补上 `window.androidBridge` 后才是 1446ms。
+
+**闸门**：全量 **54/55 OK**、undef **0**、tdz **0**、build **EXIT=0**（dist 里能看到 `Cn=2200,Na=Math.round(Cn*2/3),In=e=>e==="fail"?$a:lo?Na:Cn`）。唯一红的仍是 `tools/dm-test.mjs` 的「轮 96」那条 —— 并行会话在途未提交的 `src/views/MessagesView.vue`，与本轮无关（换 HEAD 版跑 333/0）。
+
+**待真机复核**（设备 PBIJR8BM6D6HS8LV 仍离线）：App 里下拉 / 点刷新各触发一次，肉眼看提示比之前短一截即可；时长本身已在真浏览器 + 真 isApp 分支上量过，这条只是走个过场。
+
+**状态**：**待提交待部署（攒批）**，与轮 322 同一批。
+
+---
+
+### 轮 324 · 会话输入栏与键盘之间那条「太宽」的空白（2026-10-22）
+
+**用户**：截了我们的真机取证图（`_scratch/shots-319/sa-5-final.png`），在输入栏和键盘工具条之间画了个红框，一句「太宽了」。
+
+**先量清楚（逐像素扫真机 PNG，不是估）**：输入框底边 y=1465、键盘工具条上沿 y=1581（1080×2460 / dpr 2.75）→ **115 设备像素 = 41.8 CSS px**，整条都是页面底色 `#faf9f5`。
+
+**根因**：`Keyboard` 插件的 `keyboardHeight` 是**从窗口（屏幕）底**量的（`Keyboard.java`：`int imeHeight = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom;` → `/ density` → 320），而 `MainActivity` 给 decorView 加的 `padding-bottom = 导航栏`，WebView 的底早就比窗口底高出一条导航栏。所以网页把「键盘高」当 320，输入法在页面里实际只压住 **288** —— 多让的 ~32px 再加输入条自身 10px 底部留白，就是红框那条 42px。
+
+⚠️ 轮 322 那句「barBottom 460 = 输入栏紧贴输入法上沿，无缝隙」是**错的**：当时把 460（页面底 − 10）当成了键盘上沿，真实键盘上沿在 CSS 502 / 设备 1581。这条更正记在这里，不回改轮 322 的原文。
+
+**修法（三处）**
+- `android/app/.../MainActivity.java`：insets 回调里把「页面让掉的系统栏高度」`navForPage` 按 density 换成 CSS px，值变了才 `evaluateJavascript` 推一次：`--sys-bottom: <n>px`。
+- `src/utils/keyboardInset.js`：`--kb-h = max(0, keyboardHeight − --sys-bottom)`（读不到就按 0 → 退回轮 322 行为，不会更糟）。
+- `src/style.css`：`html.cap-app { --kb-h: 0px; --sys-bottom: 0px; }` 加默认值（防 NaN）。
+- 三处让位（聊天整屏高度 / 暖心墙 `.cmt-main-bar` / 详情页 `.reply-bar`）都吃 `--kb-h`，一起修正，不用各改一遍。
+
+**真浏览器复现 + 修复后**（`_scratch/kb-gap-probe.mjs`，Edge 393×790 = 真机 `100dvh`，真页面 + 真登录态；底部斜纹块是**标注清楚的假输入法**，高度钉死在真机实测的 288，只改 `--kb-h` 取法）
+| 口径 | --kb-h | 页面高 | 输入栏底 | 键盘上沿 | 留白 |
+|---|---|---|---|---|---|
+| 无键盘 | 0 | 790 | 780 | — | 10px（设计留白） |
+| 旧（轮 322） | 320 | 470 | 460 | 502 | **42px** |
+| 新（轮 324） | 288 | 502 | 492 | 502 | **10px** |
+| 真机实测（旧） | 320 | — | 1465 设备px | 1581 设备px | 41.8 CSS |
+浏览器复现的 42px 与真机量到的 41.8px 对上 ⇒ 口径没跑偏；修复后只剩输入条自身的 10px，与「没键盘时」完全一致。截图 `_scratch/shots-324/kb-0.png` / `kb-320.png` / `kb-288.png`，对照页 `_scratch/shots-324/compare-324.html`。
+
+**锁**：`tools/keyboard-policy-test.mjs` 新增 1 条（--sys-bottom 变量名 / 从 html 读 / 减法表达式 / MainActivity 推值 + evaluateJavascript + density / CSS 默认值）→ 全绿（退出码 0）。反向：把 `keyboardInset.js` 临时退回「不扣 sysBottom」版 → **该条唯一红**，换回后 SHA256 一致。
+
+**闸门**：全量 **54/55 OK**（唯一红仍是并行会话的 `dm-test.mjs`「轮 96」）、build **EXIT=0**、`cap:sync` **0**（index.html 视口 overlays-content ×26 已刷）、`gradle assembleDebug` **SUCCESSFUL**。
+
+**还没做完**：装机复验 —— 设备 `PBIJR8BM6D6HS8LV` 仍不在线（`adb devices` 空、`adb mdns services` 空），APK 已构建未安装。设备回来：`adb install -r android\app\build\outputs\apk\debug\app-debug.apk` → 会话页点输入框，量「输入框底边 → 键盘上沿」应 ≈ 27 设备像素（10 CSS px），并顺带看一眼暖心墙 `.cmt-main-bar`（本轮上线后它也跟着往下挪了 32px，之前悬空的问题一并解决）。
+
+---
+
+### 轮 325 · 「别的机型呢」——把键盘让位算式做成不认机型的（2026-10-22）
+
+**用户追问**：「你不要只看我这一个机子，别的型号的机子呢？？」
+
+**先回答原理**：这条算式里两个数参照系相同，机型差异自动抵消 ——
+`pageInset = imeInset（从窗口底量的输入法高度） − sysBottom（MainActivity 实际加在 decorView 上的 padding-bottom）`。
+导航栏多高、手势还是三键、输入法什么品牌，都同时改变这两个数（三键时键盘坐导航栏上面 ⇒ 两个数都含导航栏；手势时键盘盖住导航栏 ⇒ 也都是含），
+相减后只剩「键盘自身在页面里压住多高」。**所以旧口径的缺口高度 = 该机型导航栏高度**：你这台 32dp 漏 42px（含输入条自身 10），
+三键 48dp 的机子会漏 58px，Pixel 常见的 24dp 漏 34px，没有底部系统栏的机子（横屏/平板/部分 ROM）根本不出现。
+
+**实证（4 形态矩阵，真浏览器 + 真页面 + 真登录态）** `_scratch/kb-matrix-shots.mjs`
+| 机型形态 | imeInset | 旧 --kb-h | 旧留白 | 新 --kb-h | 新留白 |
+|---|---|---|---|---|---|
+| 手势 32dp · 393×790（用户这台） | 320 | 320 | **42px** | 288 | **10px** |
+| 三键 48dp · 360×800 | 336 | 336 | **58px** | 288 | **10px** |
+| 手势 24dp · 412×915（Pixel 常见） | 312 | 312 | **34px** | 288 | **10px** |
+| 无底栏 · 800×600（横屏/平板） | 280 | 280 | 10px | 280 | **10px** |
+新口径四种形态的留白集合 = **[10]** 全部一致（10px = 输入条自身底部留白，与没键盘时完全一样）。截图 `_scratch/shots-325/*-old.png` / `*-new.png`，对照页 `_scratch/shots-324/compare-324.html` 第 5~7 节。
+
+**代码升级（为「不认识的机型」）**
+- 算式抽成纯函数 **`src/utils/keyboardMath.js`**（无 DOM、无 Capacitor、无机型常量），`keyboardInset.js` 只负责取事件 + 写变量 + 诊断。
+- `MainActivity`：键盘可见时 `navForPage = max(缓存 navBar, 当前 systemBars.bottom)`（某些 ROM 第一次派发就带输入法、缓存还是 0，避免少扣），并在推送时打一行 `WpInsets` logcat。
+- `keyboardInset.js` 写 `window.__kbInfo = {raw, sysBottom, kbH, innerHeight}` —— 另一台机子若报「还有缝 / 被压住」，一句 JSON 就能定位是哪个数不对，不用连 logcat。
+- 兜底一律朝「少扣」方向：非法值/负数 → 0（退回轮 322 行为）；离谱值 → 夹到「视口 − 120」，绝不把输入框压到键盘底下。
+
+**锁**：新增 `tools/kb-math-test.mjs` **10 条**——5 种导航栏 × 7 种键盘高度算出来必须等于键盘真实高度、换导航栏结果不变、
+旧口径缺口 = 导航栏、真机那组 320/32→288、脏输入全 0、离谱值夹取、整数/非负/不超 ime、视口无关、keyboardInset 必须调纯函数、纯函数不许有环境依赖。
+反向：把纯函数里 `ime − sys` 改回 `ime` → **T1/T2/T4/T5 四条红**（T3 是描述旧口径的护栏，仍绿属预期），还原后 SHA256 一致。`keyboard-policy-test` 也补了 `max(缓存, 当前)` 与纯函数断言。
+
+**闸门**：全量 **55/56 OK**（新测试已入列；唯一红仍是并行会话的 `dm-test.mjs`「轮 96」）、build **0**、`cap:sync` **0**、`gradle assembleDebug` **SUCCESSFUL**。
+
+**还差什么（如实说）**：这台机器**只有一台真机**且仍离线，也没有可用模拟器（`emulator -accel-check` = 「hypervisor driver 未安装」，Hyper-V 未启用，装驱动要重启）。所以跨机型证据目前是
+**1 台真机像素 + 4 形态浏览器矩阵 + 纯函数矩阵**，不是 4 台真机。设备回来后补：① 装机复验手势导航；② `settings put secure navigation_mode 0` 切成三键导航再验一次（唯一还没被真机覆盖的轴）；
+③ 输入法品牌差异、Android 10 及更早的 insets 近似值，只能靠「兜底朝少扣」保证不更糟。
+
+---
+
+### 轮 326 · 会话页「整窗替换」第一版原型（vue-advanced-chat，方案 B 起步）
+
+**用户决策**：会话页 bug 太多，问「有没有现成的组件，大厂小厂开源的」，看完成本对比后选了 **B：整体换 vue-advanced-chat**。
+
+**先说调研结论（有据可查）**
+- `vue-advanced-chat` 2.1.2，MIT，2k★，2026-03 还有提交；V3（`@advanced-chat/components` 3.0.0-rc.3）仍是 RC。后端无关、Vue3 可用、web component。
+- 腾讯云 TUIKit Vue3（`@tencentcloud/chat-uikit-vue3` 6.x）组件最成品，但**绑腾讯云 IM 后端**（SDKAppID/secretKey），要换消息后端 —— 否决。
+- 阿里 ChatUI（4.4k★，MIT）只有 React（官方 issue 里有人要 Vue 版，没做），且它自己的 issue 里就有人报「h5 点输入框内容下移、出现大片空白」—— 证明这类键盘 bug 不是我们独有的写法问题。
+- Element Web / Rocket.Chat / Mattermost（Apache/MIT，React）只能当参考实现，搬不动。
+- **关键事实**：把 `ChatWindow.vue` 源码拉下来看，它只有 `window.addEventListener('resize')`，高度靠 `height` prop，**没有任何 visualViewport / dvh / insets 处理** —— 键盘那一层它不管，必须继续用我们的 `--kb-h`。
+
+**这一轮做了什么（全部隔离，不动现网）**
+- `package.json` 加 `vue-advanced-chat@^2.1.2`（npm 默认 cache 路径 EPERM，用 `--cache $env:TEMP\npm-cache-wp` 装成功）。
+- 新增独立入口 **`proto-chat.html`** + **`src/proto/chat-proto.js`**（硬编码样例，不读后端、不碰 router、不改 `MessagesView.vue`）。
+- `vite.config.js`：`isCustomElement` 放行 `vue-advanced-chat`；`rollupOptions.input` 加 `proto` 页（App 不会加载它，单独 chunk）。
+- 取证脚本 `_scratch/proto-chat-probe.mjs`（真浏览器 393×790、截图 + 量高度 + 收控制台错误）；对照页 `_scratch/shots-326/compare-326.html`（已给用户看）。
+
+**实测结果**
+- 渲染：shadow DOM 里 3 会话 / 9 消息全部出来，控制台无错误。
+- 皮肤：`styles` 传我们 `--ink/#141413`、`--accent/#cc785c`、`--card/#efe9de`、`--hairline/#e6dfd8`、`--glass/#faf9f5`，标题栏/列表/气泡/日期/表情回应全跟着变（截图即米色）。主题键是 general/container/header/footer/content/sidemenu/dropdown/**message**/markdown/room/emoji/icons。
+- **键盘**：宿主 `height: calc(100dvh - var(--kb-h))` + 组件 `height="100%"`，假输入法 288px 时输入框底 495 / 键盘上沿 501 → **只剩 6px**（组件自带内边距），与无键盘时一致。证明我们的 `--kb-h` 能一行接上。
+- 体积：proto 入口单独 chunk **509KB**（不进首屏 main 733KB）。
+
+**踩到的坑（已修，并写进原型注释）**
+1. 宿主必须自己跟 `--kb-h` 走；组件的 `height` prop 只作用于它内部容器 —— 只改 prop 的话键盘会盖住输入栏（第一次实测 gap = −282）。
+2. `messages-loaded` 一开始就给 `true` → 组件内部 `loadingMessages` 永远不关（源码是 `messagesLoaded(val){ if(val) updateLoadingMessages(false) }`，只认变化），消息区一直转圈。改成 false→true 的翻转。
+3. 主题里只有 `message.color` 一个正文色，没有「我方气泡文字色」→ 浅珊瑚底可做，`--accent` 底 + 白字需要往 shadowRoot 注入一条 CSS（可行，未做）。
+4. 首屏没滚到最新一条（最新消息被输入栏压住）—— 需要接 `messagesLoaded` 后显式滚到底；这正是轮 318 那类 bug，并线时要重新锁。
+
+**闸门**：全量 **55/56 OK**（唯一红仍是并行会话的 `dm-test.mjs`）、build **0**（proto 页也构建通过）、依赖安装成功。
+
+**还没做（下一轮起）**
+① 数据适配器：`convs/msgs` → `rooms/messages`（other_id/nickname/avatar/recalled→deleted/failed→failure/未读/index/时间格式），先只读接列表，留开关可切回旧布局；
+② 会话详情：发送（离线队列）/撤回/回忆/举报/分享/未读清零/键盘接线，逐项截图 + 补锁；
+③ 皮肤 1:1（shadow 注入我方气泡白字、圆角 16/4、头像走 avatarUrlFor）+ emoji 数据源换本地；
+④ 定案后再删 `proto-chat.html` + `src/proto/`，并决定是否保留依赖。
+
+**在途改动（未提交）**：`package.json`、`package-lock.json`、`vite.config.js`、`proto-chat.html`（新）、`src/proto/chat-proto.js`（新）、`_scratch/proto-chat-probe.mjs`、`_scratch/proto-dbg.mjs`、`_scratch/shots-326/`。
+
+---
+
+### 轮 327 · 换组件第一步：数据适配层 + 「微信式本地缓存」原样保留（2026-10-22）
+
+**用户交代**：「继续，本地记录像微信那样缓存记得保留」——换 UI 不许把本地缓存换掉。
+
+**现网本来就有三层缓存（这次一行都没动）**
+1. `dmStore`（localStorage 最近窗口）：进会话第一帧同步渲染；
+2. `swr(cacheKey("dm:convs", meId))`：会话列表首屏先画缓存、后台刷新；
+3. `wp-dm-full`（IndexedDB 全量库，SOFT_CAP 20000）：本机存全量历史、离线可翻、上滑翻页优先供给（`idbOlderThan`）、后台回填（`idbServerDone`）。
+
+**这一轮新增（只读，不动上面三层）**
+- `src/proto/dm-map.js`：纯映射（零 import、Node 可测）——`convToRoom / convsToRooms / rowToMessage / rowsToMessages / dayLabel / timeLabel`
+  - 撤回 → `deleted: true` + 正文清空（组件显示灰色占位，文案走 `text-messages.MESSAGE_DELETED`）；
+  - 失败 → `failure` 且去掉双勾；待发 → 单灰勾（`saved: false`）；
+  - 图片无正文 → `[图片]` 占位；消息按 id 去重升序、只留最近 300 条（裁最旧）；
+  - 会话：`conv_id→roomId`、`other_id→users`、`unread→unreadCount`、`last_message_at→index`（组件倒序）、`last_preview→lastMessage`。
+- `src/proto/dm-cache.js`：只读口——会话读 `cachePeek(cacheKey("dm:convs", meId))`，历史读 `idbLoad(convId)`；**不出现 cacheSet/cachePatch/idbMerge/idbDrop**。
+- 原型页加「我的缓存」模式：真登录态下直接吃现网缓存（不请求后端），断网也能翻本地历史。
+
+**真浏览器实测**（`_scratch/proto-cache-probe.mjs`，真登录态）
+- 先开现网 /messages（写起 SWR + IndexedDB）→ 打开一个会话 → 切到 /proto-chat.html → 点「我的缓存」：
+  - 会话列表：2 个真实会话（id 44/43）从 SWR 缓存画出；
+  - 会话详情：真实昵称「探针…」+ 萌宠头像（`avatarUrlFor`）+ 缓存里的历史消息「探针消息 A→C #1 02:49」、日期分隔、「新消息」分割线；
+  - **模拟断网**（CDP `offline: true`）后点第二个会话仍能渲染 —— 全程零请求；
+  - 页面无异常。
+- 截图：`_scratch/shots-327/01-cache-list.png`、`02-cache-room.png`、`03-offline-2nd-room.png`、`probe.json`。
+
+**新锁** `tools/dm-map-test.mjs`（13 条，已进全量闸门）
+- T1~T10 映射语义（日期标签、时刻、会话字段、未读→已读、排序与过滤、撤回/失败/待发/图片、去重升序与 limit 裁最旧）；
+- T11 适配层只读（读 `dm:convs` + `cachePeek` + `idbLoad`，禁 `cacheSet/cachePatch/idbMerge/idbDrop`）；
+- T12 **缓存三层仍在**（MessagesView 仍有 `dmStoreLoad` / `swr(cacheKey("dm:convs"` / `cachePatch` / `idbMerge`+`idbOlderThan`+`idbServerDone`，`dmIdb` 库名仍 `wp-dm-full`、软上限仍 20000）；
+- T13 纯映射层零 import、无环境依赖。
+- 反向验证：把 `deleted: recalled` 改成 `deleted: false` → **T7/T9 两条红**；还原后哈希一致。
+
+**闸门**：全量 **56/57 OK**（新测试已入列；唯一红仍是并行会话的 `dm-test.mjs`「轮 96」）、`npm run build` **0**（proto 页一并构建）。
+
+**下一步（按三步并线）**
+① 已完成「只读接入 + 缓存保留」这一半：适配层 + 缓存读取 + 映射锁；
+② 接着把 `MessagesView.vue` 的会话列表/详情换成组件（需与并行会话的 `loadConvsImplicit` 改动合并，不能整文件覆盖），发送/撤回/回忆/未读清零逐项接线；
+③ 皮肤收尾：我方气泡白字（shadow 注入）、16/4 圆角、emoji 数据源换本地，最后删 `proto-chat.html` + `src/proto/` 或转正。
+
+---
+
+### 轮 328 · 修「点会话一直转圈」（用户截图报障）
+
+**现象**：宽屏两栏布局下点「夜间巡逻小队」，右侧消息区永远转圈。
+
+**根因**：组件每打开/切换会话都会把内部 `loadingMessages` 置 true，只认 `messagesLoaded` 由 false→true 的**变化**来关闭（源码 `messagesLoaded(val){ if(val) this.updateLoadingMessages(false) }`）。
+上一轮我只在「我的缓存」模式回这条事件，**「样例」模式直接 return** → 永远关不掉。另外 2.1.2 的 `fetch-messages` 在「上滑加载更多」时**不带 payload**（`this.$emit("fetch-messages")`），点会话发的是 `fetch-room`（组件自己**不换**房间）。
+
+**修法**
+- `onFetch`：不分模式一律 `loaded=false → 20ms → true`，保证任何一次 fetch 都能收尾；
+- 点会话自己接管：监听 `fetch-room`（正规口子）+ shadowRoot 点击兜底 → `openRoom(cid)` → 换 `room-id`、按模式（缓存/样例）装消息；
+- 给另外两个样例会话补了历史（原来只有 r_qiu 有），免得点过去是空的。
+
+**实测**（`_scratch/proto-rooms-probe.mjs`，1000×800 宽屏，复现用户布局）
+- 首屏 / 点 r_qiu / 点 r_budin / 点 r_patrol：`loadingCss=false`、`loaderVisible=false` 四次全过，消息数 9 / 9 / 3 / 4 → **不再转圈**；
+- 截图 `_scratch/shots-328/room-*.png`。
+
+**当时的误判（同日已纠正）**：说「右侧标题栏不跟着换」是**探针选错元素**——`.vac-room-name` 在会话列表项里也有，`querySelector` 抓到的是列表第一项。改读 `.vac-room-header` 后标题一直是对的，组件没有这个问题。
+
+---
+
+### 轮 329 · 闪跳根治 + 构建解封 + 闸门
+
+**① 构建被并行会话的文件卡住（不是会话页）**
+`src/views/PostDetailView.vue` 里 `const cmtReactQ = createWriteQueue();` **连续写了两遍**（同一作用域重复声明），`vite build` 报 `Identifier 'cmtReactQ' has already been declared`。删掉重复那一行后 `build 0`。`CommunityView.vue` 只有一份，没动。
+
+**② 闪跳根因与修法**
+旧写法：`loaded=false`（组件 `showMessagesStarted = messages.length && messagesLoaded` → 整个消息区隐藏）→ 等 20~40ms → 塞消息 → `loaded=true`。切换时必然出现「空列表帧 → 消息弹出 + 滚到底」= 闪跳。
+新写法（`openRoom`）：**先 await 取数**（样例同步、缓存读 IDB）→ **同一个 tick 里一起提交 `roomId` + `messages`** → 组件 `onRoomChanged()` 虽会开 loader，但它紧接着立即 watch `messages`（此时已有内容）→ 下一帧滚到底并关掉 loader。**有历史时完全不动 `loaded`**；只有空会话才手动翻一次兜底。
+`onFetch` 加守卫 `if (!loaded.value) return;`（首帧那 120ms 内被二次翻转就是空白帧来源），收尾从 `setTimeout` 改为 `nextTick`；首帧也从 120ms 定时器改成 `nextTick`。
+
+**③ 实测（逐帧采样，25ms/帧）**
+| 场景 | 空帧数 | 转圈帧数 | 标题 | 消息数 |
+|---|---|---|---|---|
+| 样例 · 启动 | 0 | 0 | 球球的主人在线 | 9 |
+| 样例 · 点 r_qiu / r_budin / r_patrol | 0 / 0 / 0 | 0 / 0 / 0 | 三次都跟着换 | 9 / 3 / 4 |
+| 缓存 · 首屏（真登录态） | — | 0 | 探针丙在线 | 1 |
+| 缓存 · 切 43 / 44 / 43 | 0 / 0 / 0 | 0 / 0 / 0 | 跟着换 | 3 / 1 / 3（与 IndexedDB 条数一致） |
+| 缓存 · **断网**切 43 | 0 | 0 | 跟着换 | 3 |
+
+脚本：`_scratch/proto-rooms-probe.mjs`（样例，宽屏两栏）、`_scratch/proto-cache-switch-probe.mjs`（真登录态 + 真 IndexedDB，先按手机尺寸播种两个会话，再拉宽复现两栏；断网用 CDP `Network.emulateNetworkConditions`）。截图 `_scratch/shots-328/*.png`。
+
+**④ 新增校验 `tools/proto-chat-test.mjs`（9 条）**
+T1 `onFetch` 有 loaded 守卫 / T2 用 nextTick 收尾 / T3 `openRoom` 先取数后提交 / T4 有历史时不动 `loaded`（只允许空会话分支翻转）/ T5 两种数据源都在 / T6 `fetch-room` 绑定+解绑成对 / T7 首帧 nextTick 不用定时器 / T8 原型页对缓存只读（不 `cacheSet`/`idbMerge`）/ T9 标题唯一真源是 `room-id`。
+**双向验证**：把 `loaded.value = false` 挪到 `roomId` 之后、删掉 `onFetch` 守卫 → T1/T4 两条红；还原后 9/9、文件哈希与备份一致。
+
+**⑤ 环境事故：本地静态服务 4599 挂了**
+排查时 `Invoke-WebRequest` 连不上，导致「页面白屏/取不到元素」的一切结论都不可信（这也是上一轮误判的来源）。已在后台重启 `_scratch/dist-static-server.mjs`。以后探针跑之前先探一次 4599。
+
+**闸门**：**58/59 OK**、`npm run build` 0。唯一红 `responsiveness-test.mjs` A9（详情页失败回滚仍要求 `catch (e)` + `delete next[k]` + `mergeReactPending(` 顺序，而并行会话已把 `cmtReact` 改成 `res.ok` 分支、没有 try/catch）——并行会话的评论回应重构在途，与会话页无关。上一轮红过的 `dm-test.mjs` 这轮已转绿。
+
+**下一步**：① 把 `MessagesView.vue` 列表/详情切到组件（与并行会话 `loadConvsImplicit` 合并）；② 发送/撤回/回忆/举报/分享/未读清零逐项接线；③ 皮肤收尾（我方气泡白字走 shadow 注入、16/4 圆角、emoji 本地数据源）；④ 定案后删或转正 `proto-chat.html` + `src/proto/`。
+
+---
+
+### 轮 330 · 现网会话页真正换成组件（`/messages?ui=vac`）
+
+**做法**：旧布局一行没删，加一个可切回的开关。
+- `src/utils/dmUiFlag.js`：`/messages?ui=vac` / `?ui=legacy` 决定用哪套并记住（单独成文件，是因为 `MessagesView.vue` 里有一条历史锁 T58 会查该文件不得出现 localStorage 读写）。
+- `MessagesView.vue`：`<div v-else-if="vacUi">` 挂新组件，`<div v-else class="dm-wrap">` 原样保留旧布局。
+- `src/components/DmVacChat.vue`：只画不取数。`convs → rooms`、`msgs → messages` 走 `convsToRooms/rowsToMessages`；用户动作（点会话/发送/撤回/上滑/返回）全部 `emit` 回页面，复用现网的 `openConv / send / recall / backfillOlder`。
+- `src/proto/dm-map.js` → `src/utils/dmMap.js`（映射层转正，原型页与现网共用一份）。
+
+**踩到并修掉的三个坑**
+1. **自定义元素只认 attribute**：`vue-advanced-chat` 的 `castObject` 会对字符串 `JSON.parse`，直接传对象变成 `"[object Object]" → SyntaxError`，整个组件不渲染。数组/对象一律 `JSON.stringify`，布尔传 `'true'/'false'`。
+2. **`fetch-room` 到不了宿主**：2.1.2 点会话只在内部 `$emit("fetch-room")`，经 web-component 包装后宿主收不到（探针实测 `path` 不变、消息不换）。补一层 shadow 里 `.vac-room-item` 的点击监听兜底（同一会话 60ms 去重）。
+3. **首帧还在等网络**：`dmStore`（localStorage）只存最后一屏，换设备/清过 localStorage 就没有 → 旧路径要等 `listMessages` 回来（实测 0.6~1s 空白）。在 `loadMessages` 首开分支后补一段 **IndexedDB 补首帧**（`idbLoad` → `applyRows` → `scrollBottom(reveal)`，`serverDone` 决定 hasMore），本地历史立刻落屏。这条对旧布局同样生效，是纯增益。
+
+**宿主高度**：组件只填满宿主，宿主自己得定高。`.dm-vac-box` 在聊天态吃 `.dm-page` 的 flex（`.dm-page` 已按 `--kb-h` 算高）；列表页/桌面则兜 `calc(100dvh - 210px)`（与旧 `.dm-thread` 同口径）。
+
+**实测**（`_scratch/dm-vac-probe.mjs`，真登录态 + 真 IndexedDB，先按手机尺寸用旧布局深链播种两个会话）
+| 场景 | 会话数 | 消息数 | 空帧 | 转圈帧 | 标题 |
+|---|---|---|---|---|---|
+| 手机列表（393×790） | 2 | —（未选会话） | — | 0 | — |
+| 手机进 44 | 2 | 1（= IDB） | 0 | 0 | 探针丙在线 |
+| 桌面两栏 44 / 43 | 2 | 1 / 3（= IDB） | 0 / 0 | 0 / 0 | 各自对应 |
+| 键盘 `--kb-h=288`（加 `html.cap-app` 复现 App 壳） | — | — | — | — | 页高 502、宿主 502、输入框底 495 → **留 7px** |
+
+截图：`_scratch/shots-330/01-mobile-list.png`、`02-mobile-chat.png`、`03-mobile-kb.png`、`04-desk-44.png`、`04-desk-43.png`。
+
+**新增校验 `tools/dm-vac-test.mjs`（12 条）**：开关可切回、旧布局保留、对象 prop 必须序列化、布尔传字符串、`current-user-id`/`room-id` 接线、点会话双通道、发送/撤回/上滑/返回四动作、roomId+messages 同 tick、首帧 nextTick、**首帧必须读 IndexedDB**、组件层零写入零请求、映射层纯函数。
+**双向验证**：把 `:messages` 改回直接传数组 + 抹掉「IndexedDB 补首帧」标记 → V3/V10 两条红；还原后 12/12，文件哈希与备份一致。
+
+**闸门**：**59/60 OK**、`npm run build` 0。唯一红仍是 `responsiveness-test.mjs` A9（并行会话的评论回应重构在途，与会话页无关）。
+
+**还没验的**：发送（会真的往库里写一条，按规矩留给你点头）、撤回菜单（组件 `message-action-handler` 已接但没点过）、未读清零（沿用 `openConv` 既有逻辑，未单独断言）。下一步补这三项 + 皮肤（我方气泡白字/圆角/emoji 本地源），然后决定是否把 `vacUi` 默认打开。
+
+---
+
+### 轮 331 · 会话页组件版：发送 / 撤回 / 皮肤 / 冷启动闪跳
+
+**这轮把「只是画出来」补成「真的能用」，并且一件都没往真库写。**
+
+#### 1) 点发送毫无反应 → 根因是 `detail` 是数组
+这个库用 Vue 的 `defineCustomElement` 包装，`$emit(x, payload)` 在宿主上派发的是
+`new CustomEvent(x, { detail: [payload] })` —— **detail 是数组**。轮 330 的 `onSend` 里读
+`e.detail.content` 永远是 undefined，所以「点了发送、输入框清空、什么也没发生」。
+现在统一走 `payload(e)` 归一（`Array.isArray(d) ? d[0] : d`），三个事件
+（`fetch-room` / `send-message` / `message-action-handler`）都过这一层；
+`tools/dm-vac-test.mjs` 加了 **V6b** 锁死这条，谁再直接读 `e.detail.xxx` 就报红。
+
+#### 2) 跨域预检把 mock 弄坏了
+取证用的 CDP `Fetch` 拦截最初只拦 POST，结果 `dm_send` 只抓到一条空 body ——
+预检 OPTIONS 也被拦下来并被回了 200，CORS 直接死掉。现在 OPTIONS 一律放行真服务
+（它不写库），真正带正文的 POST 才用假响应，并且补上 `Access-Control-Allow-*`。
+
+#### 3) 我方气泡跑到聊天顶部（真 bug，已修）
+`rowsToMessages` 按 `indexId` 排序，而乐观上屏的临时 id 是**负数**（`nextTempId()`），
+于是「刚发的那句」排到了最前面。现在正式行仍用服务端 id，待发行接着前一条往后排
+（`lastIndex + 0.001 * n`），多条待发按顺序叠加。`tools/dm-map-test.mjs` 加 **T14** 锁。
+
+#### 4) 冷启动首开有 ~0.5s 空聊天帧
+第一次进会话要建 IndexedDB 连接（实测 ~525ms），这段时间组件已经换成「新标题 + 空聊天」，
+数据回来才填上 —— 正是用户说的闪跳。现在 `DmVacChat` **等 messages 到位再换房**：
+父级还在加载（`loadingMessages`）且新会话没消息时先按住旧画面，消息到了再一次性提交；
+真空会话 / 超过 600ms 兜底换房。实测手机首开空帧 **21 → 0**。
+
+#### 5) 皮肤：珊瑚底白字 + 微信圆角
+组件的 `message.color` 只有一个正文色，两边气泡同色，只能往 shadowRoot 注入一条样式；
+而且组件给 `.vac-message-current` 的底色带 `!important`，注入的规则也必须 `!important`
+同权重压过去（第一版没写 `!important`，实测底色仍是浅米色）。
+现在是：我方气泡 `--accent` 珊瑚底 + 白字 + `16/16/4/16` 圆角，对方浅底深字 + `16/16/16/4`。
+表情入口按旧版一致先关掉（`emoji-picker-element` 默认数据源在第三方 CDN，国内/离线会空转）。
+
+#### 实测（`_scratch/dm-vac-send-probe.mjs`，mock 拦截 dm_send / dm_recall，真库零写入）
+| 项 | 结果 |
+|---|---|
+| 输入框输入 → 点发送 | `dm_send` 请求体 = `{"p_conv":"44","p_body":"轮331发送探针 …","p_image":null}` ✓ |
+| 乐观上屏 | 0ms（第 0 帧就在最后一行）✓ |
+| 回包确认 | 行 id 251 → 999001，`saved/distributed=true`、`failure=false` ✓ |
+| 撤回菜单 | hover 气泡 → 「…」→ 菜单只有「撤回」→ 点下去 ✓ |
+| 撤回请求 | `dm_recall` 请求体 = `{"p_msg":999001}` ✓ |
+| 撤回后 | 气泡变「消息已撤回」，`deleted=true` ✓ |
+| 气泡皮肤 | 我方 `rgb(204,120,92)` 底 + `rgb(255,255,255)` 字 + 16px 圆角 ✓ |
+
+`_scratch/dm-vac-probe.mjs` 复跑：手机首开空帧 **0**、转圈帧 0；桌面切 44/43 空帧 0/0；
+`--kb-h=288` 时页高 502、宿主 502、输入框底 495（留 7px）。截图见
+`_scratch/shots-330/`（列表 / 聊天 / 键盘 / 桌面）与 `_scratch/shots-331/`（发出 / 撤回后）。
+
+**闸门**：**59/60 OK**、`npm run build` 0；唯一红仍是 `responsiveness-test.mjs` A9（并行会话在途）。
+**新增锁**：`dm-vac-test` 13 → 14 条（+V6b detail 数组、V8b 冷启动不换房）、`dm-map-test` 13 → 14 条（+T14 待发排序）。
+另修一条跨零点就会红的测试：`dm-map-test` T6 原来写死 10-22，凌晨跑闸门会翻成「昨天」，现在是「今天的 10:00」。
+
+**还没验的**：真机（设备仍离线）、真实发送（要你点头才写库）、未读红点（沿用 openConv，未单独断言）。
+
+
+---
+
+## 轮 332 · 排掉最后两个红灯：V8b 窄窗口断言 + undef 的两条 `messages` 误报
+
+上一轮闸门只剩一个红（`dm-vac-test` V8b）+ `undef-check` 两条 `messages` 报告，本轮查清并修掉。
+
+### 1) V8b：测试自己脆了，不是实现错
+
+`DmVacChat.vue` 的冷启动兜底**确实有** `setTimeout(..., 600)`，实现没问题。错的是断言：
+从锚点往后只取 **900 字符**窗口去找 `setTimeout`，而组件重构后 `setTimeout` 相对锚点的
+偏移已经涨到 **1048** → 永远看不见 → 报红。**测试锚在距离上，实现在锚上，两者脱钩。**
+
+修法（`tools/dm-vac-test.mjs` V8b）：不再依赖「相对锚点的距离」，改为**从 `setTimeout` 本身起算**窗口 ——
+先 `indexOf("holdTimer = setTimeout")` 定位，再从那往后取 400 字符断言 `600`。
+组件以后再重构、再挪位置，断言也不会再假红。
+
+### 2) undef 的两条 `messages`：**确认是误报**，但改的是检查器不是压制报告
+
+- `src/components/DmVacChat.vue`：`messages` 是 `props` 里声明的 **prop 名**（`messages: { type: Array, ... }`）；
+- `src/views/MessagesView.vue`：`:messages="msgs"` 是**模板属性名**，值是本地 `const msgs = ref([])`（第 56 行）。
+
+两处都不是变量引用，却都撞上了 `src/i18n.js` 的导出 `messages`，于是 2a 检查把它们当成
+「用了没导入的导出名」。根因是 2a 的正则**分不清「变量名」和「属性名」**。
+
+修法（`tools/undef-check.mjs`）：把 2a 的判定抽成 `findUnimported()` 独立函数，
+正则的前置否定类加上 `:` —— `(?<![\w$.:-])`，即**前置冒号（Vue 模板属性名）不再算使用**；
+`messages(...)` 这种真调用仍照报。注释里写清了这条误报史，免得后人又把 `:` 加回去。
+
+### 3) 顺手把 2a 也纳入自检（原来只自测 2b）
+
+`--selftest` 原来只覆盖 2b「未声明就赋值」，**2a（导出名未导入）完全没自检** ——
+我这次改的正是 2a，不补自检等于改完没人验。补 4 条：
+
+| 用例 | 期望 |
+|---|---|
+| Vue 模板属性名 `:messages` 不误报 | 0 条 |
+| 真用了没导入的导出名 → 要报 | 1 条 |
+| 本地 `import` 过 → 不报 | 0 条 |
+| 本地定义过 → 不报 | 0 条 |
+
+自检从 10 条 → **14 条**（`TOTAL` 计数也一起改成 `cases.length + aCases.length`，
+否则会出现 `TOTAL 10 PASS 14 FAIL -4` 这种负数）。
+
+### 4) 验证：光看「0 问题」不算数，做了 mutation test
+
+改完检查器后 `undef-check` 报 0 —— 但**这恰恰是它最该被怀疑的时候**（改了检测逻辑，
+可能顺手把真 bug 也一起放过去了）。所以注入了一个真缺陷：往 `MessagesView.vue` 里塞
+`const leaked = rowsToPosts;`（`rowsToPosts` 是 `wall.js` 的真实导出，本文件没用没导入）
+→ 检查器**如实报出 1 条** ✓。说明新规则没把真问题压掉，只是修掉了属性名误报。
+
+（顺带记一笔：第一次注入用了 `cloudSetReaction`，`problems=0` —— 不是检查器坏了，
+是那个名字**根本不在 `wall.js` 的导出表里**，用例本身选错了。换成 `rowsToPosts` 才复现。）
+
+### 5) 本轮闸门
+
+| 项 | 结果 |
+|---|---|
+| `tools/dm-vac-test.mjs` | **14 通过 / 0 失败**（V8b 绿） |
+| `tools/undef-check.mjs` | `problems=0`（`SCANNED=116 EXPORTS=500`） |
+| `tools/undef-check.mjs --selftest` | **14/14 PASS** |
+| `npx vite build` | **EXITCODE=0** ✓ |
+| 全量 `tools/*-test.mjs`（68 个） | **全绿**，0 失败 |
+| `tdz-check` / `uifix-test` / `i18n-test` / `arity-test` | 0 / 24 ✓ / 19 ✓ / 8 ✓ |
+
+全量里 `cmt-style-test` / `food-painter-test` / `keyboard-policy-test` 三个的输出格式
+与别的不同（不是 `TOTAL n PASS n FAIL 0`），单独复跑确认全是 ok/PASS，**无失败**。
+
+**本轮改动文件**：`tools/dm-vac-test.mjs`、`tools/undef-check.mjs`（只动测试与检查器，
+**没动任何业务代码**）。`src/` 下所有组件本轮未改。
+
+**结论**：community 的 reaction/dislike 并发状态修复（上一轮已验：`react-queue-test` 12 ✓、
+`post-detail-test` 18 ✓、`responsiveness-test` 57 ✓）本轮未再动，实现侧保持原样。
+仓库当前**静态检查与测试无红**；剩余未验证项仍是真机与真实写库（需点头）。
+
+#### 轮 331 补（当天凌晨继续）
+
+**① 皮肤第一版没生效**：组件给 `.vac-message-current` 的底色带 `!important`，
+注入的规则不写 `!important` 就被压住（实测仍是浅米色 `rgb(245,240,232)`）。
+补上后真浏览器里量到：我方气泡 `rgb(204,120,92)` 底 + `rgb(255,255,255)` 字 + 16px 圆角。
+
+**② 列表里没有这一行时会出「空壳」**：`rooms` 为空而 `roomId` 有值时（例如会话列表请求还没回来、
+或失败），组件渲染出**没有标题栏、没有输入框**的半截页面。现在 `DmVacChat` 用
+`peer`（`activeConv || meta`）合成一个 room 兜底；`dm-vac-test` 加 **V15** 锁。
+
+**③ 探针环境两处坑（重要，不然以后会误判）**
+- `_scratch/acct.json` 里的 sessionA 过期 5 天了，靠 refresh_token 续，但 supabase 会**轮换**
+  refresh_token：一直拿旧的重放会被判成重放攻击、整家作废。现在探针每次跑先调
+  `_scratch/fresh-session.mjs` 用密码换一份新会话（只调 auth 接口，不碰业务表）。
+- 站点已开 Cloudflare 人机校验：**headless Edge 现在拿到的是 `403 Just a moment...`**，
+  于是 `dm_list_convs` 全 403、`rooms` 为空、截图只剩背景色 —— 一开始还以为是页面 bug
+  （见 ②）。改用 opencode 自带的真实浏览器取证（同一份 dist、同一个 4599），
+  列表/历史/输入框全部正常，说明是 headless 被挡，不是代码坏了。
+  截图：`_scratch/shots-331/harness-desk-44.png`（真浏览器、真登录、deep link `/messages/44?ui=vac`）。
+
+**④ 闸门**：`node _scratch/run-all-tests.mjs` → **60/60 OK**（`responsiveness-test` A9 也已由并行会话修好）。
+`npm run build` 0。`dm-vac-test` 15 条、`dm-map-test` 14 条全绿。
+
+**仍然没做的**：真机（设备离线）、真实发送（要用户点头才写库）、未读红点单独断言。
+
+## 轮 333 · 暖心墙帖级回应 RPC 迁移（客户端“先查后写”→ 服务端幂等原子写入，已完成代码侧，待 SQL 执行与 Worker 部署）
+
+### 背景 / 问题
+`cloudSetReaction` 旧实现先 `findReaction` 查当前是否已回应，再决定 upsert 还是 delete，存在两层病根：
+1. **竞态窗口**：查→写之间两个设备并发时，一方可能误判“未点”而重复插入，或“已点”而漏删。
+2. **查询失败被当成“未回应”**：`findReaction` 报错（网络/RLS）时被吞掉并视为未点过，导致取消回应时 **DELETE 不执行**，回应残留。
+
+新 RPC `wall_set_reaction` 尚未在 Supabase 创建，线上 Worker 亦无 `/api/reactions/set` 路由，旧库/旧 Worker 需保留安全降级路径。
+
+### 修法（代码侧全部完成，测试全绿）
+
+**① SQL 迁移（待用户在 Supabase SQL Editor 手动执行）**
+- `MIGRATION_wall_set_reaction.sql`：创建 `public.wall_set_reaction(p_post bigint, p_kind text, p_on boolean)`。
+  - 仅允许 `hug/warm/relate`（`dislike` 继续走专用带自动下架副作用的链路，不纳入新 RPC）。
+  - 使用 `auth.uid()`，**禁止匿名调用**。
+  - `p_on=true` 用 `ON CONFLICT DO NOTHING`（“确保存在”天然幂等）；`p_on=false` 直接 `DELETE`（“确保不存在”天然幂等，删不存在的行不报错）。
+  - 返回权威 `{ok, on, counts, mine}`。
+
+**② `src/utils/wall.js`（网页端业务）**
+- `cloudSetReaction` 改为**优先调用 `db.setReaction`**（一条 RPC，服务端原子完成）。
+- RPC 不可用（`null` / 迁移未跑）时回退到**无前置查询**的幂等写入：
+  - `on=true`：`upsert(ignoreDuplicates)`；
+  - `on=false`：直接 `delete`。
+- **消除了查询失败被当成“未回应”而跳过删除的问题**——回退路径也不再调用 `findReaction`。
+- `cloudToggleReaction` **保留 `findReaction`**（toggle 是“查当前状态再反转”的业务必需，查-写是业务语义而非竞态病根；最终写入仍走幂等“设置”，写路径本身无竞态窗口）。
+
+**③ `src/utils/api/db.supabase.js`（直连模式，两端共通数据层）**
+- 新增 `setReaction(postId, kind, on)`：调用 `wall_set_reaction` RPC，返回 `normalizeSetReaction` 结果；RPC 缺失（`PGRST202` 等）返回 `null`，**真实错误继续上抛**（不静默降级）。
+- 新增 `upsertReaction`（带 `on_conflict` + `Prefer: resolution=ignore-duplicates`）。
+- RPC 缺失探测为 **sticky**：本会话确认不可用后不再重复探测。
+- 新增测试重置钩子 `__resetRpcProbes()` 供单测使用。
+
+**④ `src/utils/api/db.gateway.js`（网关模式，线上走 /api/* → Worker）**
+- 新增 `/api/reactions/set` 调用、`upsertReaction`。
+- 新增旧 Worker 404 降级探测（404 说明 Worker 版本旧，走旧库回退）。
+
+**⑤ `worker/api.js`（Cloudflare Worker，线上网关）**
+- 新增 `/api/reactions/set` RPC 路由及参数校验（postId/kind/on，kind 仅 hug/warm/relate）。
+- 新增带 `Prefer: resolution=ignore-duplicates` 和 `on_conflict` 的幂等插入支持。
+
+**⑥ `src/utils/wallRules.js`（两端共通规则）**
+- 新增 `WALL_REACTION_KINDS`、`isWallReactionKind`、`normalizeSetReaction`。
+- `normalizeSetReaction` 对**脏计数直接报错（`invalid-set-reaction`），绝不静默补零**：缺字段 / null / 非数字 / 负数 / 小数 / `ok!==true` 全上抛；`mine` 只认 `=== true`，脏值不当已回应；PostgREST 返回的字符串数字可归一。
+
+### 新增测试
+- `tools/wall-reaction-test.mjs`（**新建**，16/16）：快路径仅 1 条 RPC 且无 `findReaction`；返回服务端权威计数与 mine；`on=false` 取消幂等；重复 on/off 两次状态一致；不同 kind 独立；并发同一用户两设备同时点 → 两次都成功、各发 1 条 RPC；并发 on/off → 各自返回服务端权威态（不做本地翻转）；RPC 缺失回退走 `upsert(ignoreDuplicates)` 且无 `findReaction`；回退取消走直接 `DELETE`；真错误返回 `null`；未登录返回 `null` 且不发请求。
+- `tools/wall-rules-test.mjs` 追加 `#333` 轮（54/54）：`isWallReactionKind` 只认 hug/warm/relate；`normalizeSetReaction` 正常归一、字符串数字归一、脏计数上抛（不补 0）、mine 只认 true。
+
+### 变异（mutation）测试——验证新测试能抓到回归
+- 变异1：把回退路径改回“先查再写”（还原老 bug）→ `#333 回退路径也没有 findReaction` **失败**，正确抓到。
+- 变异2：把 `setReaction` 真实错误也当成 RPC 缺失吞掉（写失败被静默降级）→ `#333 真错误：返回 null` **失败**，正确抓到。
+- 已恢复原代码并清理备份。
+
+### 验证闸门（全部绿）
+
+| 项 | 结果 |
+|---|---|
+| `tools/wall-reaction-test.mjs` | **16 / 16 PASS** |
+| `tools/wall-rules-test.mjs` | **54 / 54 PASS** |
+| `tools/wall-test.mjs` | **37 / 37 PASS** |
+| `tools/wall-addviews-test.mjs` | **103 checks, 0 fail** |
+| `tools/wall-keep-test.mjs` | **25 / 25 PASS** |
+| `tools/api-contract-test.mjs` | **112 / 112 PASS** |
+| `tools/gateway-contract-test.mjs` | **107 / 107 PASS** |
+| `tools/worker-test.mjs` | **336 / 336 PASS** |
+| `tools/i18n-test.mjs` | **19 / 19 PASS** |
+| `tools/uifix-test.mjs` | **24 / 24 PASS** |
+| `tools/arity-test.mjs` | **8 / 8 PASS** |
+| `npx vite build` | **EXITCODE=0** ✓（8.14s） |
+
+### 本轮改动文件
+- **网页端**：`src/utils/wall.js`、`src/utils/wallRules.js`
+- **两端共通（数据层双模式，成对改）**：`src/utils/api/db.supabase.js`、`src/utils/api/db.gateway.js`
+- **线上 Worker（网页端线上入口）**：`worker/api.js`
+- **Supabase 迁移（待用户执行）**：`MIGRATION_wall_set_reaction.sql`
+- **测试工具链（两端共通）**：`tools/wall-reaction-test.mjs`（新建）、`tools/wall-rules-test.mjs`
+
+### 本轮交付
+代码侧全部完成，全量离线测试 + 构建均绿。**待用户操作**：
+1. 在 Supabase SQL Editor 执行 `MIGRATION_wall_set_reaction.sql`（创建 `wall_set_reaction` RPC + RLS；幂等，可重跑）。
+2. 部署包含 `/api/reactions/set` 的新 Worker 版本（`npx wrangler deploy`）。
+3. 真实 Supabase 环境探针验证：RPC 权限、匿名用户拒绝、帖子不存在、真实并发行为。
+
+### 现存问题（本轮未动，跟随上一轮）
+- 真机验证（设备当前离线，需用户点头后在真机上写库验证）。
+- 未在真实 Supabase 环境验证 RPC、RLS、匿名用户、帖子不存在及真实并发。
+- 尚未确认生产 Worker 已部署包含 `/api/reactions/set` 的新版本。
+
+### 下一步
+1. 用户执行 SQL 迁移 + 部署新 Worker 后，用真实 Supabase 探针验证 RPC、权限与并发行为。
+2. 将本轮实现及验证结果追加到本文件（本条即为该记录）。
+3. 生产上线后，可考虑废弃旧 `findReaction`-based 回退路径（待旧客户端版本全覆盖新 Worker 后）。
+
+
+### 本轮补遗：帖级回应乐观更新 + 回滚（已完成，代码侧全绿）
+
+SQL 迁移已由用户执行后，前端可立即体验「点一下即变」的低延迟感。改动如下：
+
+**① `src/utils/wall.js` · `cloudSetReaction(dbPostId, kind, on, opts = {})`**
+- 新增可选第四参数 `opts`，三个回调均由调用方提供，`wall.js` 本身不直接碰 UI：
+  - `opts.applyOptimistic({postId, kind, on})`：写入**前**调用，把本地 UI 先改成目标状态（只动当前 kind，不碰其他 kind）。
+  - `opts.applyAuthoritative({postId, kind, on, fresh})`：写入**成功后**调用，用服务端权威 `{hug, warm, relate, mine}` 校正本地 UI。
+  - `opts.applyRollback({postId, kind, on})`：写入**失败**（返回 null 或抛出）时调用，回滚本地 UI。
+- 真错误（权限/网络/脏数据）继续上抛进入 `catch`，触发 `applyRollback` 并返回 `null`，不静默成「写成功」。
+
+**② `src/views/CommunityView.vue` · `react` / `reactSync`**
+- `reactSaved` 从「整个 post 快照」改为「按 kind 分备份」`{ [kind]: { reacts, mine } }`，修复 `hug/warm/relate` 并行时，一个 kind 失败回滚会把其他 kind 的乐观更新也撤销的问题。
+- `reactSync` 精简为只保留 `applyAuthoritative` / `applyRollback` 两个回调：
+  - 删除了外层 `try/catch`：`cloudSetReaction` 内部已 `catch` 所有异常并返回 `null`，永不向上抛出，外层 `catch` 是死代码。
+  - 移除了 `applyOptimistic`：`react()` 已经同步做了本地翻转（`mine[kind]` + 计数 ±1），`cloudSetReaction` 里的 `applyOptimistic` 幂等对齐（`prevOn !== on`）因 `react()` 先翻转而永远不触发，属于重复翻转，移除后责任更单一——`react()` 负责「点一下即变」，`applyAuthoritative` 负责「成功后校正」，`applyRollback` 负责「失败后还原」。
+  - `applyAuthoritative`：**只写当前 kind** 的权威计数，保护 `dislike` 等其他 kind 的计数不被整包覆盖抹掉（模板 `disPct` / 💔 角标不会突然归零）。
+  - `applyRollback`：**只回滚当前 kind**，不碰其他 kind 的并行乐观更新。
+- `isLatest` 序号机制保留：慢响应不许覆盖后来的意图；过期响应不做任何 UI 变更。
+
+**验证**
+- `tools/wall-reaction-test.mjs` 新增 3 条：`applyOptimistic` 在 RPC 前被调用并传正确参数；`applyAuthoritative` 成功后触发、`applyRollback` 不触发；真错误时 `applyRollback` 触发、`applyAuthoritative` 不触发；回退路径成功后 `applyAuthoritative` 也触发。19/19 全绿。
+- `npx vite build` EXITCODE=0；`wall-test` 37/37、`wall-rules-test` 54/54、`i18n-test` 19/19 均绿。
+
+**待用户操作（同上一条）**
+1. Supabase SQL Editor 已执行 `MIGRATION_wall_set_reaction.sql`（用户反馈已跑）。
+2. 部署包含 `/api/reactions/set` 的新 Worker 版本（`npx wrangler deploy`）。
+3. 真实 Supabase 环境探针验证：RPC 权限、匿名用户拒绝、帖子不存在、真实并发行为；并确认乐观更新在弱网下「点一下即变，失败回滚 + 提示」的表现。
+
+### 本轮补遗：暖心墙刷新「无新内容却显示已更新」修复（已完成，代码侧全绿）
+
+根因：下拉刷新松手时 `te()` 用 `okPull ? "ok" : "fail"` 强制覆盖 `loadCloud` 内部按 `hasNew` 设置的 `refreshNote`，导致请求成功但无新内容时仍显示「已刷新」。另 `hasNew` 只用 `ts > prevNewest`（历史最高水位，只增不减），一旦见过很新帖子后续刷新永远判定为「无新」。
+
+改动：
+1. `src/views/CommunityView.vue` · `te()`：删除对 `refreshNote` 的二次覆盖，完全交给 `loadCloud` 内部根据 `hasNew` 设置 `"ok"` / `"none"` / `"fail"`。
+2. `src/views/CommunityView.vue` · `loadCloud({ fresh: true })`：改用「本批 dbId 是否已在当前列表」判定 `hasNew`；无新内容时不整表替换列表，避免闪烁/重排；新增 `none` 状态。
+3. `src/views/CommunityView.vue` · `refreshText` computed：新增 `none` 状态文案。
+4. `src/views/CommunityView.vue` 模板：新增 `refreshNote === 'none'` 的图标展示（–）。
+5. `src/i18n.js`：新增 `community.noNew`（en: "No new content"，zh: "暂无新内容"）。
+
+验证：
+- `npx vite build` EXITCODE=0
+- `wall-reaction-test` 19/19、`wall-test` 37/37、`wall-rules-test` 54/54、`i18n-test` 19/19 均绿。
+
+待用户操作：
+1. 部署包含 `/api/reactions/set` 的新 Worker 版本（`npx wrangler deploy`）。
+2. 真实 Supabase 环境探针验证：无新内容刷新应显示「暂无新内容」且列表不闪烁；有新内容应显示「已刷新」并置顶新帖。
+
+
+
+---
+
+## 轮 332 · 新 UI 转正（默认就是 vue-advanced-chat），并补回转正时暴露的 4 个洞
+
+用户拍板：「现在改，又没有真实用户，直接改」→ 把 `?ui=vac` 从「参数打开」改成**默认**。
+转正不是改一行开关就完事：一转正，旧布局里藏在左列的几个入口就没人接了。本轮全部补回并双向验证。
+
+### 1. 默认值翻转（`src/utils/dmUiFlag.js`）
+
+```js
+/* 旧：没记过 = 旧布局 */  return localStorage.getItem(KEY) === "vac";
+/* 新：没记过 = 新组件 */  return localStorage.getItem(KEY) !== "legacy";
+```
+
+- `?ui=legacy` 仍然随时能退回去（浏览器里最方便；App 没有地址栏，要靠这条记忆或发版）。
+- 单独放这个文件的原因不变：`MessagesView.vue` 里有轮 142 T58「当前用户条三清」的锁，禁止该文件出现 localStorage。
+- ⚠️ 教训：改这个文件**别用 PowerShell 的 `-replace`**。`Set-Content -Encoding utf8` 会写 BOM + 把中文注释写成乱码，
+  而且 `=== "vac"` 这个串在文件里出现两次（`q === "vac"` 和被改后的目标串），恢复时又会被全局替换吃掉。
+  已改回用 `write` 工具整文件写（该文件很短）。后续任何中文文件的批量替换都走 write / edit 工具，不走 PowerShell 管道。
+
+### 2. 转正才暴露的 4 个洞（旧布局里有、组件版没有，不补就是功能消失）
+
+**洞 A：漂流瓶 / 通知没入口了**（`MessagesView.vue`）
+旧布局的段栏 `.dm-seg` 长在左列列表里，组件版的列表是它自己的 → 切过来后这两个**整页功能**直接没入口。
+- 分支改成 `v-else-if="vacUi && seg === 'dm'`：组件版只接会话段，其余段回旧布局。
+- 在组件版容器里补一条同一套 `.dm-seg`（漂流瓶 / 会话中心 / 通知，带 `dmBadge` / `badge.notif` 角标）。
+- `v-if="!isMobileNav || !activeId"`：手机上进聊天后段栏让位（全屏聊天），桌面两栏时常驻。
+
+**洞 B：免打扰 / 拉黑没入口了**（`DmVacChat.vue` + `MessagesView.vue`）
+旧布局这两个入口在聊天页头部的「…」菜单。翻库确认：
+- `room-actions` 挂在**会话列表行**上，handler 收 `{action, roomId}`，标题是**全局一份**，没法按「这条会话是否已拉黑」变。
+- `menu-actions` 挂在**聊天页头部**的「…」上，handler 收 `{action, roomId}`，标题能随状态变 → 用它。
+- 新增 `menuActions` computed：`免打扰/取消免打扰`、`拉黑/解除拉黑` 随 `curConv.muted/blocked` 翻。
+- 监听 `menu-action-handler`（和 `room-action-handler` 共用 `onRoomAction`），emit `room-action`。
+- 页面侧 `onVacRoomAction(name)` → `toggleMute(c)` / `toggleBlock(c)`（复用旧布局那两个函数，乐观更新+回滚都在里面）。
+
+**洞 C：搜索没了**
+组件自带 `show-search`（有放大镜 + 房间名过滤），直接开 `'true'`，不再自己造输入框。
+
+**洞 D：伪造在线状态**（`dmMap.js`）
+`convToRoom` 之前给两个 user 塞了 `status.state: "online"` → 每个会话都亮绿点、聊天页标题写「在线」。
+现网没有 presence，这是对用户撒谎。删掉；`dm-map-test` 加 `T4b` 锁死（`users` 里不许出现 `status.state`）。
+
+### 3. 转正才暴露的 3 个真 bug（真浏览器 / 真几何里看到的，不是猜的）
+
+**bug ① 段栏缩成一小团、「会话中心」被折成两行**
+`.dm-wrap` 是 grid 且 `align-items: start`，`.dm-wrap--vac` 改成竖排 flex 后继承了 `start` → 段栏宽度只按内容算。
+修复：`.dm-wrap--vac { display: flex; flex-direction: column; gap: 10px; align-items: stretch; }`。
+实测（726px 宽）：段栏 690px、三个按钮各 225px、单行不折。
+
+**bug ② 桌面上组件只画内容高，下面一大片空底**（最隐蔽的一个）
+`.dm-vac-box` 只给 `min-height` 时，`.dm-page` 的高度是 auto → 组件里的 `height:100%` 解析成 auto →
+组件只画内容高。实测：容器 638px、组件只画 169px，空底 469px。
+修复：`.dm-wrap--vac .dm-vac-box.dm-vac-box { height: calc(100dvh - 262px); min-height: calc(100dvh - 262px); }`
+（262 = 旧的 210 + 段栏 52）。实测（1440×900）：box / host / `.vac-chat-container` / 房间列 / 消息列**全是 638px**，无空底、无滚动。
+
+**bug ③ V19 的断言本身写错，双向验证当场抓到**
+第一版写成 `has(css, /height: calc\(100dvh - 262px\)/)` —— 但 `min-height: calc(...)` 的**尾巴里也有**这个串，
+所以把 `height` 改成 `auto` 它照样绿。改成 `/^\s*height: …/m`（锚行首）后，「只给 min-height」这条改坏才会红。
+这条留着提醒：**正则查 CSS 属性必须锚行首**，否则 `margin` / `padding` 的子串会互相顶包。
+
+### 4. 验证（全部双向）
+
+- `tools/dm-vac-test.mjs`：**20 条全绿**。新增 V16（段栏入口）、V17（免打扰/拉黑接线）、V18（组件自带搜索）、V19（stretch + 让高度）。
+- `tools/dm-map-test.mjs`：**15 条全绿**。新增 T4b（不伪造在线状态）。
+- 改坏还原脚本 `_scratch/vac332-mutate.mjs`：8 处改坏**全部变红、且 MD5 还原一致**：
+  段栏分支 / 漂流瓶入口 / menu-actions 传参 / 免打扰标题 / 页面接 room-action / 组件搜索 / stretch / 只给 min-height。
+- 闸门 `_scratch/run-all-tests.mjs`：**61/61 OK, 0 FAIL**；`npm run build` 0 error。
+- 真浏览器（opencode 浏览器，同一份 dist + 4599）：
+  - 无参数进 `/messages` → `flag: null` 时就是组件版（`wp:dm-ui` 已清空验证过），2 个会话、无绿点、搜索框在位、无页面滚动。
+  - 点「通知」→ 落回旧布局并高亮通知；点「漂流瓶」→ 旧布局漂流瓶段；点「会话中心」→ 回组件版。三段互跳正常。
+  - 进会话 44：段栏让位（`seg: 0`）、标题「探针丙」、1 条消息、头部「…」在位。
+  - 点「…」：菜单出「免打扰 / 拉黑」；点免打扰后标题变「取消免打扰」。
+    ⚠️ 那次点击被假 fetch 拦了（`window.fetch` 换成假响应），**库里没写**；随后恢复真 fetch 并重载，
+    会话行 `muted` 回到 `false`，证明服务端确实没被写。**真实写库仍等用户点头。**
+  - 桌面 1440×900（无头 Edge 探针 `_scratch/desk-probe-332.mjs` / `_scratch/desk-h-332.mjs`）：段栏 906px、三按钮各 297px，
+    box/host/组件/两列全部 638px，`scrollH == innerH == 900`（无竖向滚动）。无头下 `rooms: 0` 是 Cloudflare 挡 API，不是布局问题。
+
+### 5. 新增/改动文件
+
+- `src/utils/dmUiFlag.js`：默认翻成新组件。
+- `src/utils/dmMap.js`：`convToRoom` 增 `muted`/`blocked` 透传；删伪造的 `status.state`。
+- `src/components/DmVacChat.vue`：`menuActions` + `menu-action-handler` 监听/解绑 + `emit("room-action")`；`:show-search` 开；`:room-actions` 移除（改用 menu-actions）。
+- `src/views/MessagesView.vue`：分支条件加 `seg === 'dm'`；补段栏；`onVacRoomAction`；`@room-action`。
+  ⚠️ 该文件仍有并行会话的在途改动，本轮全部是**定点编辑**，未整文件覆盖。
+- `src/style.css`：**追加** `.dm-wrap--vac` 三条规则（在文件末尾轮 332 段落里），未动既有规则。
+- `tools/dm-vac-test.mjs`：20 条；`tools/dm-map-test.mjs`：15 条。
+- `_scratch/vac332-mutate.mjs`（8 处改坏还原）、`_scratch/desk-probe-332.mjs`、`_scratch/desk-h-332.mjs`、`_scratch/session-dump.mjs`。
+- `_scratch/shots-332/`：桌面列表/聊天取证图。
+
+### 6. 仍待用户拍板 / 未做
+
+1. **真实发送一条**（写库）：乐观上屏 → 失败重发 → 落盘 → IndexedDB 镜像 → 撤回。等点头。
+2. **未读红点清零**未单独实测（逻辑沿用 `openConv` 的 `badgeDmConvPatch`）。
+3. 真机复验仍卡设备离线；恢复后 `adb install -r android\app\build\outputs\apk\debug\app-debug.apk`。
+4. `proto-chat.html` / `src/proto/` 的去留、依赖是否保留。
+5. 老待办：本地 4599/4600 服务关闭、`_scratch/` 调试脚本去留、UptimeRobot、Cloudflare Always Use HTTPS、
+   47 条压测帖清理、9 个待执行迁移、管理中心上传 APK + `version.json`。
+
+### 轮 332 补遗 A · 会话菜单从 room-actions 换到 menu-actions（聊天页头部），并在**网络层**取证
+
+**为什么换**：`room-actions` 挂在会话列表**行**上，handler 收到的 `action` 对象是**全局同一份**，
+标题没法按「这条会话是否已拉黑」变（会话 43 已拉黑，行上的标题依然是「拉黑」= 撒谎）。
+`menu-actions` 挂在聊天页**头部「…」**上，`menu-actions` 是一个 computed，每条会话各算各的标题。
+
+- `DmVacChat.vue`：`roomActions` → `menuActions` computed；模板 `:room-actions` 换 `:menu-actions`；
+  监听补 `menu-action-handler`（与 `room-action-handler` 共用 `onRoomAction`，payload 同为 `{action, roomId}`），解绑同步补。
+- `MessagesView.vue`：`@room-action="onVacRoomAction"` 不变 → `toggleMute` / `toggleBlock`。
+- `tools/dm-vac-test.mjs` V17 相应改：正向锁 `:menu-actions` + 标题跟状态；**反向锁** `hasNot(VAC, /:room-actions=/)`。
+
+**取证（`_scratch/dm-vac-menu-probe.mjs`，无头 Edge + CDP `Fetch` 域在网络层只拦两个写接口）**
+
+```
+点「免打扰」→ POST /sb/rest/v1/rpc/dm_mute   body={"p_conv":44,"p_on":true}   ← 参数对
+重开菜单     → ["取消免打扰","拉黑"]                                            ← 标题跟状态走
+点「拉黑」  → POST /sb/rest/v1/rpc/dm_block  body={"p_user":"c9623b89-…"}     ← 对端 id 对
+再开菜单    → ["免打扰","解除拉黑"]                                            ← 标题跟状态走
+```
+
+**零写入三重核对**（用户没点头，一次真实写库都不能有）：
+1. 请求在**网络层**就被 `Fetch.fulfillRequest` 换成假 200，出不了网；
+2. 真浏览器里改 `window.fetch` 复跑一次，同样抓到 `dm_block` / `dm_mute` 的 body（说明两个入口都真发请求，不是空转）；
+3. 结束后恢复真 fetch、重载，`_scratch/check-blocked-332.mjs`（只读）查 `dm_blocks` → `status 200 []`，
+   会话行 `blocked/muted` 均回 `false`，本地快照 `warm-paws-user-blocks-v1:*` 也是 `[]` → **服务端确认没被写**。
+
+⚠️ 中途踩到的坑：无头探针里 `window.fetch` 假响应只覆盖了 `dm_mute`，`dm_block` 走 supabase 客户端
+在模块初始化时抓的那份 fetch，第一次点拉黑**没被拦住**、真发了出去 —— 所以后来改用 CDP `Fetch` 域在网络层拦，
+并加了第 3 步的服务端核对。**教训：验证「没写库」不能只看 window.fetch 有没有被调用，必须回头查服务端。**
+
+### 轮 332 补遗 B · 闸门 61/62，那 1 条红不是本轮引入的
+
+`responsiveness-test.mjs` B4 红（`CommunityView.vue` 里没有 `for (const kk of ["hug","warm","relate","dislike"])`）。
+改动文件是 `src/views/CommunityView.vue`（最后写入 14:22，晚于本轮 14:16），是**并行会话**的在途改动 ——
+它把「四键整包回写」改成了「只回写这次动的 kind」（`if (fr.hug != null) …`），功能意图对，但老锁还认四键循环。
+本轮未碰 `CommunityView.vue` / `responsiveness-test.mjs`，**不代并行会话改**（会撞在途工作）。
+
+其余 61 条全绿；`npm run build` 0 error；`tools/dm-vac-test.mjs` 20 条、`tools/dm-map-test.mjs` 15 条单独跑全绿；
+`_scratch/vac332-mutate.mjs` 8 处改坏全部变红且 MD5 还原一致。
+
+### 轮 332 补遗 C · 组件版把「已拉黑名单」的入口整个弄丢了（用户问上来的）
+
+**用户问**：「已拉黑列表在哪里」。查下来：**新 UI 里没有**。旧布局这枚按钮长在
+`会话中心 → 搜索框下面`（`.dm-blocked-bar` → 展开 `.dm-blocked`），组件版转正时这一条没接回来。
+
+这不是"少个便利入口"，是**死路**：`normal` / `requests` 两个 computed 都会
+`!c.blocked && !isBlocked(c.other_id)` 过滤掉被拉黑的会话 —— 拉黑之后那条会话从列表里消失，
+新 UI 里就**没有任何地方能解除**（只能切 `?ui=legacy`，而 App 没有地址栏）。
+
+**改法**（`MessagesView.vue` + `style.css`）
+- 段栏那一行包进 `.dm-vac-top`：左边还是三段 `.dm-seg`（`flex:1`），右边一枚
+  `.dm-act.dm-blocked-toggle`「已拉黑 · N」（N 只在有数据时出现，和旧布局同口径）。
+- 面板复用旧布局那套：`v-for="b in blockedRows"` + 头像 + 名字 + `unblockOne(b)`，
+  文案 `dm.blockedHint` / `dm.blockedEmpty` / `dm.blockedGo` 一个没新增。
+- **面板必须走浮层**：组件框是定高 `calc(100dvh - 262px)`，内联面板会把整页顶出一条滚动。
+  `.dm-vac-top .dm-blocked--float { position:absolute; right:0; top:48px; z-index:30; }`
+- 进会话时收面板（`onVacOpen` 里 `showBlocked.value = false`），别让浮层跟着进聊天页。
+- 底色从 `--card` 换成 `--wash-strong` + 发丝边：浮层压在组件搜索框上，用 `--card` 会和组件底糊成一片
+  （第一版在真浏览器里就是这样，看着像搜索框自己变形了）。
+
+**实测（真浏览器 726×664）**
+- 段栏 621px + 按钮 62px；三个段按钮各约 207px，单行不折。
+- 点「已拉黑」→ 浮层 `position:absolute`、320px 宽、`top:70`，空态显示「没有拉黑任何人。」；
+  `scrollH 664 == innerH 664`、组件框仍 402px（664-262）→ **零布局位移、零多余滚动**。
+- 点会话 44 → 浮层自动收起，进全屏聊天（段栏让位）、标题「探针丙」。
+- 桌面 1440×900（无头探针）：三按钮各 273px、`boxH 638`、`scrollH 900 == innerH 900` 无滚动。
+
+**验证**
+- `tools/dm-vac-test.mjs` 新增 **V20**（入口在 vac 分支 / 面板是浮层 / 接了 `unblockOne` / 渲染 `blockedRows`
+  / CSS `position:absolute`），改坏还原脚本新增 3 处改坏 → **全部变红、MD5 还原一致**；21 条全绿。
+- V1 的 `[\s\S]{0,1600}` 放宽到 3200：组件版里现在多了段栏和已拉黑面板，到 `<DmVacChat>` 的距离变长了
+  （这条锁的是「分支里挂了组件」，不是字符距离）。
+- 闸门 **61/62**，唯一红仍是并行会话 `CommunityView.vue` 的 B4（见补遗 B），与本轮无关；`npm run build` 0 error。
+
+**未做**：面板里的「行 + 解除按钮」只用源码锁验证过渲染路径，没在真机上用**真实拉黑数据**走一遍 ——
+那需要先真写一条拉黑（写库），等用户点头。服务端 `dm_blocks` 目前是 `[]`。
+
+### 轮 333 · 组件只画消息流（**已被轮 334 取代，别再照着改回去**）
+
+当时的判断：用户要「用新组件，但长得和旧版一样」，于是只把**消息流**交给组件，
+聊天头与输入区仍是旧 DOM，组件自带的 `.vac-room-header / .vac-room-footer` 在皮肤里 `display:none`；
+`.dm-thread` 里是「旧头 + 组件 + 旧输入区」三段。那一轮的战果（气泡/时间/日期胶囊皮肤、
+冷启动同 tick 提交、43↔44 逐帧零空帧）都保留，**唯独「隐藏组件头/输入区」这个决定作废** ——
+用户随后明确「能交给组件的全交给组件，我不信你写的玩意」，轮 334 已改成组件全包。
+
+### 轮 334 · 用户拍板「组件能改成新的全用新的，但设计/功能跟旧版靠拢」
+
+**用户原话**：「组件能改成新的全用新的，我不相信你写的玩意，但是设计上，比如样式，功能跟旧版靠拢。你继续吧」
+
+上一轮（轮 333）我是「组件只画消息流、旧聊天头 + 旧输入区留在外面」，用户这次把话挑明：
+**凡是组件能画的，都交给组件**（因为他不信我手写的那两坨），我只负责把组件调成旧版的样子。
+所以轮 333 的「隐藏组件头部/输入区、用旧 DOM 顶上去」**整段作废**（`jiaojie` 里轮 333 的实现描述不要再当真）。
+
+#### 架构（`MessagesView.vue`）
+
+`.dm-thread` 里 vac 分支只放一个 `<DmVacChat>` —— **聊天头 / 消息流 / 输入区全是组件画的**：
+
+```html
+<DmVacChat v-if="vacUi && seg === 'dm'"
+  :convs :messages :room-id :me-id :peer-name :loading-messages
+  :can-type="canType" :gate="gateText" :placeholder="composePlaceholder"
+  :show-back="isMobileNav" :peer="activeConv || meta || null"
+  @send="onVacSend" @recall="onVacRecall" @load-more="onVacLoadMore"
+  @room-action="onVacRoomAction" @back="backToList" />
+
+<template v-else>   <!-- legacy：旧聊天头 + 旧 .dm-scroll + 旧 .dm-compose 原样 -->
+```
+
+- 旧的三块整体挪进 `<template v-else>`，只有 `?ui=legacy` 才渲染 —— 不会和组件重复出现。
+- 页面骨架不变：左列段栏 / 搜索 / 已拉黑 / 会话行、`.dm-wrap` 两栏、`.dm-thread` 的 flex 列全是旧的。
+- 组件仍 `single-room=true`（左列在旧 DOM 里，组件不需要自己的列表）；`show-rooms-list` 保持 false。
+- 数据层一行没动：发送队列、乐观上屏、失败重发、IndexedDB 镜像、已读水位、拉黑过滤都还是原来那套
+  （`onVacSend` 只把文字塞回 `body.value` 再调旧 `send()`；`onVacRoomAction` 落回 `goUser / mutePeer / blockPeer`）。
+
+#### 组件里补的「旧版能力」
+
+| 旧版 | 组件里怎么接 |
+| --- | --- |
+| 聊天头 `←` | `single-room` 模式下组件不出返回键 → **往 shadow 头部注入** `<button class="dm-vac-back">←</button>`（`showBack` 控制，桌面 `@media (min-width:900px)` 隐藏） |
+| 聊天头 `⋯` | 组件的 `menu-actions`：看 TA 的主页 / 免打扰 / 拉黑（`title` 随状态切换）→ `menu-action-handler` → `room-action` |
+| 输入框 + 发送 | 组件自己的 `send-message` → `send` 事件 → 旧发送队列；不再手写 `van-field` |
+| 消息请求 / 被我拉黑时不给输入 | `canType=false` → 注入 `:host(.vac-gate) .vac-room-footer{display:none}` + 组件外一句说明（`.dm-vac-gate`，虚线 + 灰字居中，位置同旧 `.dm-gate`） |
+| 占位文案 | `text-messages.TYPE_MESSAGE` 跟着页面走：桌面带「Enter 发送，Shift+Enter 换行」，手机「写点什么…」 |
+| 桌面键位提示 | 并入占位（旧版是输入框上方一行灰字，这里不另开一行） |
+
+> 库的一个坑（实测出来的）：**桌面端是 `keyup` Enter 才发送**（keydown 只负责拦换行/选表情）；
+> **手机端 keyup Enter 是换行**，唯一的发送路径是那颗发送键。所以手机截图里输入框回车不会发，
+> 点「发送」才发 —— 这不是接线断，是库的设计。
+
+#### 皮肤（`DmVacChat.vue` 的 `THEME_CSS`，注入 shadowRoot）
+
+- **头部** = 旧 `.dm-thread-head`：`height:60px`、透明底、`1px dashed rgba(204,120,92,.28)`；
+  头像 40px；昵称 15px/600；`.vac-room-info`（在线/最后上线）隐藏；`⋯` 靠右；`position:static`（不再悬浮在消息上，`margin-top:65px` 的让位一并收掉）。
+- **输入区** = 旧 `.dm-compose`：`.vac-box-footer` 透明 + 上边细虚线；textarea 22px 胶囊 + 发丝边 + 14px；
+  发送键把纸飞机 SVG 藏掉、`::after` 换成「发送」胶囊（禁用时珊瑚 45% 透明，和旧 n-button 一致）。
+- **消息**：气泡 16/16/16/4（我方 16/16/4/16）、发丝边 + `--card`、13.5px/1.5、最宽 74%；头像 30px；
+  时间 10.5px 灰字挪到气泡下方（隐藏已读双勾）；日期胶囊 = 旧 `.dm-day`（11px + `--wash-mid` + 999px）。
+- **顶部第一个日期**：组件原本写「会话开始于 10月16日」，旧版是一颗「今天/10月16日」胶囊 →
+  `CONVERSATION_STARTED` 置空、把 `.vac-text-started` 上色成同一颗胶囊（日期文字本身来自 `dmMap.dayLabel`，和旧版同源）。
+- 隐藏组件自带、旧版没有的：`.vac-line-new`（新消息分隔）、`.vac-icon-scroll`（回底气泡）。
+- **手机**：旧版聊天页 `.dm-thread` 左右不留白（头/消息流/输入区各自带 14px），组件里补 `wrapper/ messages / footer` 的左右内边距；
+  手机头部藏头像与 `⋯`（旧版手机只有「← 昵称」）。
+
+#### 实测（都是只读）
+
+**真浏览器 726×664（线上数据 43/44）**
+- 进会话：`← 探针丙` + 虚线 + 日期胶囊 + 珊瑚气泡/灰气泡 + 时间在下面 + 「写点什么…」胶囊 + 「发送」；
+  `scrollH == innerH == 664`，组件头/脚不再 `display:none`（`headerH 61`、`footerH 52`、头像 40、`textarea 42px/22px`）。
+- 点 ← 回列表（`/messages`，两行会话都在）；再点「探针乙」→ `/messages/43`、标题换、3 条消息、`nearBottom 0`（钉底）、← 还在。
+- 桌面 1440×900（无头 + 本地造数）：两栏；头像是 40px、`⋯` 菜单三项（看 TA 的主页 / 免打扰 / 拉黑）；24 条消息滚到底。
+
+**无头 390×844（本地缓存 + IndexedDB 造数，绕开线上 API）**
+- 发送链路（只挡后端域名，不发请求 = **不写库**）：键入 → 发送键点亮 → 点「发送」→ 乐观气泡上屏、
+  输入框清空、失败红感叹号、`nearBottom 0`、无整页滚动、无刷新。
+- 桌面（1200×820）同样流程：**keyup Enter** 发送，结果一致；桌面不出 ←。
+- 门槛（`accepted=false`）：`footerDisp none`、说明「这是对方发来的消息请求，同意后才能回复。」可见、无输入框。
+- 长对话 300 条：首屏 `nearBottom 0`（滚动条在底）；拉到顶后没有多派 `fetch-messages`、没有跳位；再回底仍 `nearBottom 0`。
+
+#### 验证
+
+- `tools/dm-vac-test.mjs`：V1 / V7 / V17 / V19 / V20 按新结构重写，新增 **V21**（← 注入 + 桌面隐藏 + 手机藏头像/⋯）、
+  **V22**（占位跟页面走 / `canType=false` 收输入区 + 说明）→ **23 通过 / 0 失败**。
+- `_scratch/vac334-mutate.mjs`（新）：17 处改坏 → **全部变红**，还原后 MD5 一致、23 条全绿。
+- `npm run build` 0 error（7.6s）。
+- 闸门 `node _scratch/run-all-tests.mjs` → **60/62**：
+  - `responsiveness-test.mjs` B4：并行会话把「四键整包回写」换成「只回写本次 kind」，老锁没跟着改（上一轮就红，与本轮无关）；
+  - `app-download-test.mjs`「pill 条件」：并行会话正在改 `ProfileView.vue`（`git diff --stat` 44+/5-），本轮没碰这个文件。
+
+#### 已知差异 / 未做
+
+- 发送失败：旧版是气泡下方红字「发送失败」，组件是气泡右侧红色「!」（行为一致，样式没复刻）。
+- 回底气泡/新消息分隔被隐藏（旧版没有）；上滑加载历史没有「加载更早的消息」按钮（组件自动触发）。
+- 滚动条样式、`⋯` 菜单的悬浮动画是组件自带的，没逐像素对齐旧版。
+- **真实发送一次（写库）还没做** —— 需要用户点头；本轮只验到「乐观上屏 → 请求失败 → 红 !」。
+- 真机（`adb`）本轮一直离线，键盘留白 / `.cmt-main-bar` / 后退手势没复验。
+
+### 轮 335 · 输入区/键盘交回组件（删掉页面画的假输入条，2026-10-23）
+
+**用户**：「键盘/输入区你也换成组件的，你写的狗屁不是」
+
+**判读**：轮 334 里头部/消息流确实是组件的，但输入区被页面用 CSS「仿」成了旧版：
+`.vac-textarea` 22px 胶囊、`.vac-box-footer` 虚线、把组件的纸飞机 SVG 藏掉后用
+`::after` 画了一颗假的「发送」胶囊；另外页面还在 `onSend` 里手写 `ta.focus()`
+去管「发完键盘别收」。用户看到的输入区 = 我写的皮肤，不是组件。
+
+**改法（只删不改数据）**
+
+- `DmVacChat.vue · THEME_CSS` 第 7 段整段删除：不再碰 `.vac-room-footer` /
+  `.vac-box-footer` / `.vac-textarea` / `.vac-icon-textarea`。输入框尺寸、圆角、边框、
+  16px 字号、纸飞机发送键全部是组件默认；颜色只走 `styles`（`backgroundInput` /
+  `icons.send` / `sendDisabled` 这些官方变量）。手机只留两条颜色/留白：
+  `::placeholder` 上色（组件为防 iOS 缩放默认透明）、头与消息流 14px 内边距。
+- 键盘保持删掉页面那份手写逻辑：组件内部本来就有 `keepKeyboardOpen`（点输入框 /
+  打字置 true）+ `resetMessage()` 里的 `preventKeyboardFromClosing()` 会回焦点。
+  页面再 focus 一次就是两个 focus 抢同一个 textarea。`onSend` 现在只剩
+  `payload().content → emit("send")`。
+- 「不能说话」不再用 `:host(.vac-gate) .vac-room-footer{display:none}` 戳组件内部，
+  改用组件自己的 prop：`:show-footer="canType ? 'true' : 'false'"`；说明那句
+  `.dm-vac-gate` 仍由页面画（那是页面态，不是输入区）。
+
+**实测（只读/离线，不写库）**
+
+- 无头 390×844（本地缓存 + IndexedDB 造数、只挡后端域名）：点组件的纸飞机 →
+  乐观气泡上屏、输入框清空、失败红「!」、`nearBottom 0`、`docH == innerH == 844`；
+  **发送后 `shadowRoot.activeElement.id == "roomTextarea"`** —— 焦点是组件自己收回来的。
+- 无头 1200×820：keyup Enter 发送同样成功，输入框同样清空、焦点仍在输入框。
+- 门槛（`accepted=false`）：`footerDisp none`（`show-footer=false` 生效）、
+  说明「这是对方发来的消息请求，同意后才能回复。」可见、无输入框、无整页滚动。
+- 300 条长对话：首屏 `nearBottom 0`、拉到顶 `fm 0` 不多派、回底仍 `nearBottom 0`。
+- 键盘模拟（`PROBE_KB=1`：加 `html.cap-app` + `--kb-h:320px`，和 `keyboardInset.js`
+  在真机上写的是同一条）：页面高 524 = 844−320，组件输入条底 514、高 51，
+  离键盘上沿 **10px**（旧版 `.dm-thread` 的下内边距），`docH` 仍 844、无整页滚动。
+  截图 `_scratch/shots-334/mob-334-kb320.png`。
+- 桌面 1440×900（本地造数）：两栏、头像 40、`⋯` 三项、textarea 519×46、
+  发送键 38×24（组件的纸飞机），`legacyCompose false`、无 legacy 头。
+
+**验证**
+
+- `tools/dm-vac-test.mjs`：V7 去掉「发完手动补焦点」的锁，改成
+  **禁止**页面碰 `ta.focus/ta.blur`、禁止 `querySelector("textarea.vac-textarea")`，
+  并锁注释里写明键盘归组件的 `keepKeyboardOpen`；V20 反锁「不许再用 CSS 画
+  「发送」/ 不许再改 `.vac-textarea`、`.vac-box-footer`、不许藏发送图标」，
+  并锁颜色必须走 `styles.backgroundInput` / `styles.icons.send`；V22 锁
+  `show-footer` + 禁 `:host(.vac-gate)` → **23 通过 / 0 失败**。
+- `_scratch/vac334-mutate.mjs` 更新到 17 处改坏 → **全部变红**，还原 MD5 一致，
+  复原后 23 全绿。
+- `vite build` 0 error（7.8s；`npm run build` 末尾 npm 自身退出码 1，`vite` 直接跑是 0）。
+- 闸门 `node _scratch/run-all-tests.mjs` → **60/62**，仍是并行会话那两条
+  （`responsiveness-test.mjs` B4、`app-download-test.mjs` pill 条件），本轮没碰。
+
+**与旧版现在可见的差异**：输入区是组件默认样式（无虚线分隔、16px 字、纸飞机
+而不是「发送」胶囊）；其余（头/气泡/时间/日期/头像）仍是旧版皮肤。真机键盘
+（`--kb-h` 留白）仍因 `adb` 离线没复验。
+
+---
+
+## 轮 336 · 表情面板 + 失败重发（组件自带能力，页面只接线）
+
+**这一轮的原则**：能从组件拿的能力就不手写；旧版长什么样，皮肤就往那边靠。
+列表 / 漂流瓶这两块**没动**，原因写在最后。
+
+### 1) 表情 = 组件自带的 `emoji-picker-element`
+
+- 组件本来就有面板（`show-emojis`），缺的只是数据源：默认从 jsDelivr 拉，
+  国内/离线会空转。把 `emoji-picker-element-data@1/en/emojibase/data.json`
+  下载到 `public/emoji/data.json`（430 KB，1923 条），构建后是 `/emoji/data.json`，
+  用 `emoji-data-source="/emoji/data.json"` 指过去 —— **没有写一行表情逻辑**。
+- `show-emojis=true`；`emojis-suggestion-enabled=false`（「: 补全」弹层旧版没有）；
+  `show-reaction-emojis=false`（消息回应要后端存）。
+- 皮肤：只设 `emoji-picker` 的官方 CSS 变量（`--background` / `--indicator-color` /
+  `--border-color` …）到暖爪的米色/珊瑚色，不动面板结构。
+- 位置/高度全归组件：手机（`innerWidth<500 || innerHeight<700`）它自己算
+  `innerHeight - 200 = 644`，桌面按点击位置摆。
+
+**实测（390×844，`PROBE_EMOJI=1`）**：点 😊 → 面板出现，300 CSS 宽 × 640 高，
+`--background` 读到 `rgba(255,255,255,.9)`（= `--wash-strong`），首个分类渲染 173 个；
+点 😄 → `textarea` 值变 `😄`，`shadowRoot.activeElement.id == "roomTextarea"`；
+再点纸飞机发送：输入框清空、焦点仍在 `roomTextarea`、`nearBottom 0`、`docH == 844`。
+截图 `_scratch/shots-334/mob-336-emoji.png` / `mob-336-emoji-picked.png`。
+
+> 面板里的 Search 是英文 —— 组件没暴露 `locale`，数据也是 en；没为此手写面板。
+
+### 2) 失败重发 = 组件的红「!」→ 旧 `send()`
+
+- 组件的失败消息画红「!」，点击发 `open-failed-message`；外壳接住后抛 `resend`。
+- 页面 `onVacResend(id)` 只做三步：找到 `failed` 行 → 从 `msgs` 摘掉（同一句不留两条）
+  → `body = 原文; send()`。网络、乐观上屏、失败标记仍全在旧 `send()` 里，没有第二套发送。
+- **实测（断网，仍不写库）**：失败行 id `-1792752454569` → 点「!」→ 新临时行
+  `-1792752455859`（换了 id = 真的重发），条数仍 7（不重复）、文案不变、
+  仍失败（网络被挡）、焦点仍在输入框、`nearBottom 0`。
+
+### 3) 验证
+
+- `tools/dm-vac-test.mjs`：新增 V23（表情：开关/本地数据源/无 CDN/无补全/无回应/配色 +
+  数据文件存在且 >100KB）、V24（重发：宿主监听/卸载摘监听/抛 id/页面只认 failed/
+  先摘行/走同一个 `send()`）→ **25 通过 / 0 失败**。
+- `_scratch/vac334-mutate.mjs` 加到 24 处改坏 → **全部变红**，还原后 MD5 一致、
+  25 全绿。
+- `vite build` 0 error（7.8s）。
+- 闸门 `node _scratch/run-all-tests.mjs` → **60/62**，仍是并行会话那两条
+  （`responsiveness-test.mjs` B4、`app-download-test.mjs` pill 条件）。
+- 桌面 1200×820 / 1440×900：textarea 481×46、发送键 38×24、`legacyCompose false`、
+  菜单三项（探针把 item 与内层 div 都数了，看起来 6 条，实际 3 条）。
+- 备注：`tools/dm-vac-test.mjs` 这一轮被我用 PowerShell 转码弄坏过一次
+  （中文被替换成 U+FFFD），已按原有 25 条断言整份重写并重新跑绿。
+
+### 4) 没做的两块（会改旧版 UI）
+
+- **左列会话列表整列**：组件列出的是「头像 + 昵称 + 预览 + 时间 + 未读」，
+  没有旧版的段栏、消息请求的「同意/拒绝」、已拉黑入口、免打扰小灰标；
+  要保留这些只能在 `rooms-header` 槽里再手写一遍，等于把旧列表换个壳，还多一层槽。
+- **漂流瓶聊天框**：旧版头部有「漂流瓶」标签 + 父级注入的 `⋯` 菜单；
+  换成组件要么丢这两样，要么再用槽手写一个头，收益不如直接留着。
+- 这两块等你点名：要「功能归组件、UI 可以变」我就做；要「UI 必须和旧版一模一样」
+  就维持现状（现在的旧列表/漂流瓶本来就没有手写消息流的那些毛病）。
+---
+
+## 轮 337 · 左列搜索：搜得到聊天记录，空态不再假装「还没有会话」
+
+**报障**：搜索框里打「给」→ 列表空了，底下写「还没有会话。在暖心墙点开某人的主页…」——
+看起来像整个会话列表丢了。实际是「只搜昵称 + 列表预览」，聊天正文根本没进搜索范围；
+搜不到时又复用了「还没有会话」的文案。
+
+### 1) 搜什么
+
+- 旧口径保留：昵称、`last_preview`（不区分大小写）。
+- 新增：**本机 IndexedDB 全量库里的聊天正文**（`wp-dm-full` / `convs`，纯函数 `dmRules.searchRows`）。
+  - 撤回消息不算（`deleted_at`）、空正文（纯图片）不算；单会话只扫最近 2000 条
+    （全量库软上限 2 万，不能让搜索把主线程拖住）。
+  - 命中行用「命中片段」替代原预览（`…给漂流瓶加一个时间限制…`）；多条时尾巴补「· 共 N 条」。
+  - 输入防抖 260ms + 请求序号：慢响应回来时用户已经改了词就丢弃（`my === hitSeq`）。
+- 会话列表仍是旧 DOM：没有新增卡片/槽，只是预览那一行在命中时换成片段。
+
+### 2) 空态
+
+- `q` 非空且 0 行：`没有找到与「{q}」相关的会话 —— 昵称、预览、本机聊天记录都查过了。`
+- `q` 为空：仍是旧文案「还没有会话。…」。
+- 搜索框自带 clearable 的 ×，清空即恢复全列表。
+
+### 3) 验证
+
+- `tools/dm-search-test.mjs`（新）：S1–S9，纯函数（片段/计数/撤回/大小写/limit）+
+  接线锁（防抖、序号、idbLoad、命中行、空态双语）→ **9 通过 / 0 失败**。
+- `_scratch/search-mutate.mjs`：11 处改坏（去正文匹配、不跳撤回、去省略号、防抖归零、
+  取消防串词、不读 IDB、监听错对象、不并命中行、命中行不渲染、空态退回旧文案、
+  中文丢关键词）→ **11/11 变红**，还原后 MD5 一致、9 全绿。
+- 无头浏览器（1440×900，本地静态服 + 造数，只读不点发送）：
+  - 搜「给漂流瓶」→ 1 行（探针丙），行内显示片段（昵称/预览都不含这三个字）；
+  - 搜「给」→ 2 行（探针丙命中正文 + 给小满命中昵称）；
+  - 搜「撤回」→ 0 行（撤回消息不进结果）；
+  - 搜「ZZZ」→ 0 行 + 新空态文案；
+  - 清空 → 列表恢复。
+  截图 `_scratch/shots-337/search-337-hit.png` / `search-337-nomatch.png`。
+- `vite build` 0 error（7.7s）；闸门 `run-all-tests.mjs` → **61/63**
+  （新增 1 套后仍只红并行会话的 `responsiveness-test.mjs`、`app-download-test.mjs`）。
+
+**已知边界**：只搜本机已有的历史（换设备/没打开过的会话没有正文，只能搜昵称与列表预览）；
+点命中行是打开会话，不跳到具体消息；命中行只显示最新一条命中片段。
+---
+
+## 轮 338 · 漂流瓶记录「一直在找回 / 很慢」
+
+**报障**：私信页 → 漂流瓶 → 「正在找回漂流瓶记录……」，十几秒到几十秒不回来；
+「刷新记录」灰着点不动，只能整页重进。
+
+**实测（本机 → 线上，只读）**
+
+- `/api/bottle/records?mine=true`：3 次里 1 次 45s 不返回（手动 abort），另一次 21.7s；
+  成功时 0.4~0.8s。
+- 直连 Supabase 同一个 RPC：0.4~1.2s；`bottle/mine` 走 Worker 也偶发 >30s（abort）。
+- 结论：偶发卡在链路（Worker → Supabase 子请求 / 弱网），不是 SQL 慢；
+  旧代码没有任何超时，卡住就永远转 + 刷新键 disabled。
+
+**改法**
+
+1. 只读接口 15s 超时（`bottle.js` 的 `withTimeout`：records / mine / held / quota）；
+   写接口不套（服务端可能已经落库，不能给「失败」的错觉）。
+2. 超时把这趟单飞丢掉（`inflight.dropFlight`）—— 点「刷新记录」是真的重发，
+   不会拿回同一个卡住的 Promise。
+3. 超时文案：`记录 15 秒没回来 —— 网络有点慢。点「刷新记录」再试一次。`（中英双语）；
+   出错后 30s 内不自动重试（15s 定时器会正好撞上 15s 超时，把提示闪没）。
+4. 记录 SWR：`dm:bottle-records|<uid>|mine` 先画上次列表（切段 5ms 出内容），
+   网络回来覆盖；key 故意不用 `bottle:` 前缀（`purgeLegacyBottleLocals` 会清老账本）。
+5. 昵称解析 4 路并发，且不再占着 `loading`（原来 30 个串行请求，刷新键陪着等）。
+6. 网关构建（`VITE_API_GATEWAY=1`）也加了请求级超时：默认 30s、上传 120s、bottle 读 15s。
+
+**验证**
+
+- `tools/bottle-records-speed-test.mjs`（新）9 条：超时映射 / 四处只读包装 / 丢飞行语义 /
+  缓存 / 并发 / 冷却 / 网关 / 文案 → **9 通过 / 0 失败**。
+- `_scratch/bottle-speed-mutate.mjs`：16 处改坏 → **16/16 变红**，还原 MD5 一致、9 全绿。
+- 无头浏览器（1440×900，CDP 把 bottle_records 请求挂住不返回）：
+  - 有缓存：点漂流瓶 **5ms** 出现两行（`bottle-338-cache.png`）；
+  - 15.2s：出现超时提示、刷新键恢复可点（`bottle-338-timeout.png`）；
+  - 无缓存：先 loading，15.1s 落到同一提示（`bottle-338-nocache-timeout.png`）。
+- `vite build` 0 error；闸门 **62/64**（仍只有并行会话的 `responsiveness-test.mjs`、
+  `app-download-test.mjs` 两条）。
+- 连带修：`bottle-test.mjs` 网关断言补上新超时参数；`arity-test` 报
+  `withTimeout` 必填 3 参 → 第 3 参给默认值。
+
+**没做**
+
+- Worker 侧 `upstream()` 仍无超时 / 无重试 —— 要从根上掐掉那 20~45s 卡顿，
+  得在 Worker 里加 `AbortSignal.timeout(8000)` + 一次重试，需要部署（本批未提交、未部署）。
+- 手机 `/bottle` 页（BottleView）的记录没有加 SWR（有 15s 超时 + 错误提示），
+  只在私信页的两个记录列表（桌面行式 / 手机卡片）加了缓存。
+---
+
+## 轮 339 · 漂流瓶的聊天框也换成 vue-advanced-chat（和私信同款）
+
+**要求**：「你这漂流瓶的聊天框要改就一起改啊，保持一致性啊。」
+会话段早就是 vue-advanced-chat，漂流瓶「已建会话」还留着轮 330 手写的那套输入区
+（van-field + 自己钉底 + 自己「Enter 发送」提示行）——同一个页面两个输入框，手感不一样。
+
+### 1) 已建会话（accepted）
+
+- 消息流 + 输入区整段交给 `DmVacChat`：纸飞机、表情、键盘保持、失败红「!」点重发、
+  上滑翻历史，全部和私信一模一样；占位统一 `dm.placeholder`。
+- 旧提示行「Enter 发送 · Shift+Enter 换行」不再渲染（组件输入区自带说明），
+  旧 `.dm-compose` / `van-field` / 手写发送键 / 手写钉底全部退役。
+- 数据链一行没改：`dm_list_messages` → 本地库秒开 → 网络增量 → IDB 镜像；
+  发送仍走 `validateSend` → 乐观行 → `dm_send` 吃 `msg_id` → `dmStoreSave` + `idbMerge`；
+  失败行标记 + `@resend` 重发；`@recall` 撤回；`@load-more` 带 `before` 翻页；5s 轮询；已读。
+- 乐观行守卫保留：整窗替换时 `pend`（`id < 0`）接在升序后面，发送中的消息不会被吞。
+
+### 2) 头只能有一个
+
+- 头部仍是旧 `.dm-thread-head`：40px 头像 + 昵称 + 「温暖漂流瓶」胶囊 + 父级 `#headtools` 的 `⋯`。
+- `DmVacChat` 新增 `hideHeader`（默认 false，私信不受影响）：onMounted / 开关变化时注入
+  `style[data-wp-hidehead]` 把 `.vac-room-header` 设成 `display:none`，卸载/关闭时移除。
+- 未建会话（待决定 / 漂流中 / 等你同意 / 已拒绝）那段原样保留：原信 + 回信 + 说明 + 同意/拒绝。
+
+### 3) 验证
+
+- `tools/bottle-vac-test.mjs`（新）9 条：B1 组件挂载且藏头 / B2 事件四件套（send/recall/
+  load-more/resend）/ B3 旧输入区零残留（van-field、dm-compose、钉底、滚动状态机、旧容器）/
+  B4 发送链（乐观行 + `msg_id` 就地落位 + 失败行留痕，且 `sendText` 函数体不许被掏空）/
+  B5 本地库秒开·合并·撤回落盘·5s 轮询 / B6 hideHeader prop + 注入样式 + 关闭回滚 +
+  watch / B7 胶囊 + `⋯` 槽 + 点头像进主页 / B8 待决定分支原信卡与同意拒绝 / B9 与会话段同款
+  输入区口径 → **9 通过 / 0 失败**。
+- `_scratch/bottle-vac-mutate.mjs`：16 处改坏（去 hide-header、msgs/peer 不喂、断 `@send`/
+  `@resend`、塞回 van-field、`sendText` 改名、失败行不留痕、不落库、顶掉 mergeTail、删胶囊、
+  删 `⋯` 槽、拆待决定分支、不注入藏头样式、藏头 CSS 改成显示、删 hideHeader prop）
+  → **16/16 变红**，还原后 MD5 一致、9 全绿。
+- 无头浏览器实测（1440×900，本地静态服；`dm_list_messages` / `dm_send` / `dm_mark_read` /
+  `dm_conv_meta` / `dm_list_convs` / `profiles` / `bottle_records` 全部由 CDP `Fetch` 假数据
+  接管（带 CORS 头），不写库）：
+  - 点一封「已同意聊天」的信：旧头在、「温暖漂流瓶」胶囊在、`.dm-compose` 为 null、
+    页面内 textarea 为 0、组件头 `display:none`、`.vac-textarea` 占位与私信同款；
+    3 条本地库消息秒开（`vacHeaderDisplay:none`、`failure:false`）；
+  - 打字 + 点纸飞机：`dm_send` POST 命中 **1 次**，气泡乐观上屏、回填 `msg_id=900001`、
+    `distributed:true`、`failure:false`、红「!」计数 0（`bottle-339-sent.png`）；
+  - 切回「会话」段打开私信：同一套 footer / 占位，组件头正常显示（`display:flex`）→ 两边同款；
+  - 全程 `errors: []`。
+  截图 `_scratch/shots-339/bottle-339-chat.png` / `bottle-339-sent.png` / `dm-339-compare.png`。
+- `vite build` 0 error（27.87s）；闸门 **66/70**：
+  `responsiveness-test.mjs`、`app-download-test.mjs`、`uifix-test.mjs`（`MAX_LEN` 200→500）、
+  `keyboard-policy-test.mjs`（`MainActivity` insets / `index.html` viewport-fit）——
+  四条红全在并行会话在途文件里，本轮只改了 `BottleChat.vue`、`DmVacChat.vue`、
+  `tools/`、`_scratch/`，与本轮无关。
+
+**没做 / 边界**
+
+- 本次只动 `BottleChat.vue` 的聊天态与 `DmVacChat.vue` 的 `hideHeader`，
+  没碰 `MessagesView.vue` / `style.css` 的并行改动（只做定点追加）。
+- 真机复验（键盘/表情/失败重发）等设备上线后补；本批未提交、未部署。
+- **打包（用户要求）**：`npm run build` → `npm run cap:sync`（cap-strip-hero 正常）→
+  `gradlew assembleDebug` **BUILD SUCCESSFUL** → `app-debug.apk` **5,885,819 B**
+  （sha256 `63f3be38…9a3bd6`，versionCode 3 / 1.0.2），包内 59 个前端 chunk 与 `dist/`
+  完全一致、含本轮 `hideHeader` / `wp-hidehead`；归档 `apk/warm-paws-1.0.2-round339.apk`。
+  未跑 `apk:web`、未重新 build/deploy（线上 `/apk/warm-paws.apk` 仍是 10-22 的包），
+  真机仍离线（`adb devices` 空），未装机。
+---
+
+## 轮 340 · 进会话有时停在顶部、有时滑到底部（消息流钉底）
+
+**报障**：「图一点进去是直接在顶部，图二点进去会下拉到底部……旧版的那个好好的，换个组件全完犊子了。」
+
+**根因（不在旧页面的滚动代码里）**
+
+- 会话段已经整段交给 vue-advanced-chat，旧页面的 `listEl` / `scrollBottom` / `pinning` 在 vac 模式下
+  是**死代码**（`listEl` 只在 `v-else` 的旧 DOM 里，vac 时永远是 null）。所以「`smoothed` 门限 /
+  `restoreScroll` 无效」那套分析解释不了这个现象（`rememberScroll` 确实从没被调用，但那段本来就跑不到）。
+- 组件自己的滚动有两道门：
+  1. `onRoomChanged()` 只在 `messages` **之后变化**时才滚；本地库秒开（消息随 roomId 同帧到场）
+     时它等不到这次变化，干脆不滚；
+  2. 每个消息挂载时走 `onMessageAdded`：已经「离底」时，
+     `autoScroll.receive.newAfterScrollUp` 默认 **false** —— 最后一条是对方发的就不滚；
+     我发的才滚（`send.newAfterScrollUp` 默认 true）。
+  而且它用的是 `setTimeout(50)` + `scrollTo({behavior:"smooth"})`，容器还被挂上 `.vac-scroll-smooth`。
+- 结果就是：**缓存命中的会话看运气**（谁发的最后一条 + 布局跑多快），等网络的会话反而落底。
+  实测 150 条 + 12× CPU 降速：甲（缓存、对方收尾）`gap=15667`（顶部），乙（缓存、我收尾）`gap=1482`（半截），
+  丙/丁（等网络）`gap=0`。
+
+### 修法（只动 `DmVacChat.vue`，旧页面一行没改）
+
+1. 换房 / 首屏消息到场 / loader 收尾 → 外壳直接 `scrollTop = scrollHeight`，**瞬移**：
+   先摘掉 `.vac-scroll-smooth`、再内联 `scroll-behavior:auto`（否则直接赋值也会变成 1s 平滑动画，
+   真机上就是「点进去先停在顶部再往下溜」）。
+2. `ResizeObserver` 盯滚动容器 + `.vac-messages-container`，`rAF` 追 1.2s：
+   刚挂载时容器可能还没被父级 flex 约束（实测 `scrollHeight=18342` 时 `scrollTop` 写不进去，一直是 0），
+   父级一定高 / 消息一条条挂上就立刻补枪。
+3. 用户一上滑就撤销：`wheel(deltaY<0)` / 手指下滑 / `mousedown` 拖滚动条 / `PageUp·Home·↑`。
+4. 翻历史（`load-more`）**绝不钉底**；`loaded` 收尾补枪只在进房 2.5s 内且用户没上滑时执行。
+
+### 验证
+
+- `tools/dm-scroll-test.mjs`（新）S1–S10：钉底 / 瞬移 / 换房重置 / 首屏消息 / RO+rAF /
+  loader 补枪 / 上滑撤销 / 卸载清理 / 翻历史不钉底 / 不误伤私信与漂流瓶 → **10 通过 / 0 失败**。
+- `_scratch/dm-scroll-mutate.mjs`：10 处改坏（不写 scrollTop、不摘 smooth、又改回 smooth、
+  换房不重置、首屏不钉、去 RO、loader 不补、上滑不撤销、卸载不清理、翻历史也钉底）
+  → **10/10 变红**，还原后 MD5 一致、10 全绿。
+- 无头浏览器（手机 390×844，150 条/会话，CPU 12× 降速，网络全假）：
+  甲/乙（本地库命中，最后一条分别对方/我）与 丙/丁（等网络 900ms）**四种组合全部 gap=0**，
+  且第一个采样点（200ms）就在底部（不再有可见的下滑动画）。
+- 桌面 1440×900：两栏里 A→B 换会话（组件不卸载）都落底；手动上滑后 1.5s 内不被拽回
+  （`scrollTop` 停在 200）。
+- 截图 `_scratch/shots-340/`：`探针甲-cache-lastpeer.png`（原来最坏的那个）、`探针乙…`、`丙/丁…`、
+  `desktop-switch.png`、`desktop-scrolled-up.png`。
+- `vite build` 0 error；闸门 **63/66**（新增 1 套后仍只红并行会话的
+  `responsiveness-test.mjs`、`app-download-test.mjs`，以及 `uifix-test.mjs` 的 `MAX_LEN` 200→500 那条）。
+
+**没做 / 边界**
+
+- 旧版（`vacUi=false`）那条 `listEl` 路径没动；`MessagesView.vue` 的 `restoreScroll(route.path)`
+  仍是死调用（`rememberScroll` 全项目没被调用），但 vac 模式跑不到，本批没顺手改（并行会话在改这个文件）。
+- 真机（APK）复验等设备上线；本批未提交、未部署。
+---
+
+## 轮 341 · 消息菜单能撤别人的消息、也不管 15 分钟
+
+**报障**：「这里怎么我还能撤回别人的消息，还有撤回不是有时间限制的吗」
+
+**根因**
+
+- 换组件后 `message-actions` 是**全局一份**：组件只按 `onlyMe` 过滤别人的消息，
+  我们既没标 `onlyMe`，也没把 15 分钟窗口告诉它 —— 于是对方的气泡也能点出「撤回」，
+  两周前的自己的消息也照样给菜单。
+- 旧版（非 vac）那条一直是 `canRecall(it.msg, meId) && !it.msg.pending`，所以只有组件这条漏了。
+
+### 修法
+
+1. `dmMap.rowToMessage` 新增 `{ meId, canRecall }`：映射时按 `canRecall(row, meId)` 算一次，
+   不能撤的 `disableActions: true` —— 组件连 ⋯ 都不出（别人的 / 超 15 分钟 / 在飞 / 失败 / 已撤回）。
+   `rowsToMessages` 逐条透传；不传 `canRecall` 时行为不变（`chat-proto` 原型页不受影响）。
+2. 菜单项加 `onlyMe: true`（双保险：即使映射漏了，别人的消息也过滤掉）。
+3. 点「撤回」时再核一次 `canRecallRow`（停在聊天里跨过 15 分钟那条边界，不给服务器添一次必败请求）。
+4. 规则同源：窗口就是 `dmRules.RECALL_WINDOW_MS = 15 分钟`，与 `dm_recall` 的 interval 一致；
+   旧路径一行没改。
+
+### 验证
+
+- `tools/dm-recall-menu-test.mjs`（新）R1–R10：默认不变 / 自己近期可撤 / 别人的不给 /
+  16 分钟不给 / 15 分钟窗口锁死 / 已撤回不给 / 在飞与失败不给 / 逐条透传 /
+  组件接线（onlyMe + 传参 + 点击复核）/ 旧路径不变 → **10 通过 / 0 失败**。
+- `_scratch/recall-menu-mutate.mjs`：9 处改坏（不判 disableActions、窗口置 true、
+  映射不透传、去掉 onlyMe、允许在飞/失败、绕过规则、点击不复核、窗口改 1 小时、旧路径去掉 !pending）
+  → **9/9 变红**，还原后 MD5 一致、10 全绿。
+- 无头浏览器（1440×900，`dm_recall` 也拦成假响应，不写库）三条消息：
+  - 我·1 分钟前：hover 出 ⋯，菜单里只有「撤回」，点下去 `dm_recall` 命中 1 次、气泡变已撤回；
+  - 对方·1 分钟前：**没有 ⋯**；
+  - 我·20 分钟前：**没有 ⋯**。
+  截图 `_scratch/shots-341/menu-mine-recent.png` / `menu-peer.png` / `menu-mine-old.png` / `after-recall.png`。
+- `vite build` 0 error；闸门 **64/67**（新增 1 套后仍只红并行会话的
+  `responsiveness-test.mjs`、`app-download-test.mjs` 与 `uifix-test.mjs` 的 MAX_LEN 那条）。
+
+**边界**：菜单是按「映射那一刻」算的；如果停在聊天里正好跨过 15 分钟，菜单可能还挂着，
+但点下去会被第 3 条的复核挡住（不会发请求）。本批未提交、未部署。
+---
+
+## 轮 342 · 暖心墙所有输入框换新（一级 / 一级回复 / 二级回复 / 手机底部条）
+
+**用户原话**：「是所有的暖心墙输入框都换，一级二级。」
+
+### 改了什么
+
+1. 新建 `src/components/WpComposer.vue`，观感对齐私信底栏：
+   白色胶囊 + 表情按钮 + 纸飞机发送键；输入自动长高到 120px 后内部滚动；
+   桌面 Enter 发送、Shift+Enter 换行；手机 Enter 只换行（点纸飞机才发）；
+   点组件外面 / Esc 收表情面板；表情数据源走本地 `/emoji/data.json`，不走 CDN。
+2. 抽 `src/utils/composer.js` 纯逻辑：`insertText`（光标插入 / 选区替换 / maxlength 截断）、
+   `enterSends`（桌面 / 手机 / Shift / 输入法组合）、`pickerOpensUp`（表情面板方向）。
+3. `CommunityView.vue` 4 处全换：桌面一级评论、一级回复、二级回复、手机 `.cmt-main-bar`；
+   保留 `mainBarInput` ref 与 `sendTopCmt` / `sendCmt` / `sendMainBar` 原数据链。
+4. `PostDetailView.vue` 4 处全换：桌面一级评论、一级回复、二级回复、手机 `.cmt-main-bar`；
+   保留 `detailBarInput` ref 与 `sendTopCmt` / `sendCmt` / `sendDetailBar`。
+5. 顺手修掉一个视觉 bug：桌面主评论框贴着页面顶时，表情面板往上弹会被视口/卡片裁掉半截。
+   现在按可用空间判方向——上方放不下就往下弹；手机底部条仍往上弹。
+6. `i18n.js` 中英都补 `comment.emoji`（表情 / Emoji）。
+
+### 验证
+
+- `tools/wall-composer-test.mjs`（新）C1–C6 / W1–W6 / P1–P4：纯逻辑 + 组件源码锁 + 两页各 4 处接线，
+  **17 通过 / 0 失败**。
+- `_scratch/wall-composer-mutate.mjs`：18 处定点改坏（光标不前进、超长不截断、Shift/手机也发、
+  贴顶仍往上弹、自动长高上限拿掉、手机走桌面 Enter、表情源换 CDN、点外面不收、方向类去掉、
+  focus 不暴露、底部条 ref 改名、评论塞回 textarea、一级/底部条发送没接、详情页少一处、
+  二级退一级、英文文案丢）→ **18/18 变红**，还原后 MD5 一致、最后全绿。
+- 无头浏览器 1440×900 + 390×844（本地帖，不写库）：
+  - 两张卡各 1 套输入框（2 个胶囊 / 2 个表情 / 2 个纸飞机）；
+  - 表情面板打开 → 插入 `🌸` 到光标 → 点外面关闭；
+  - 桌面 Enter 发送一级评论；Shift+Enter 不发；一级回复、二级回复都发送成功；
+  - 手机点 `.cmt-entry` 打开底部条，点纸飞机发送，条自动关闭；点「回复」切回复模式，
+    占位符变「回复 …」；底部条打开时 TabBar 隐藏，关闭后恢复；
+  - 表情面板在贴顶输入框往下弹、手机底部条往上弹，`getBoundingClientRect()` 全程在视口内；
+  - 页面异常 `[]`。
+- 截图 `_scratch/shots-342/`：`wall-desktop.png`、`wall-desktop-emoji.png`、
+  `wall-mobile.png`、`wall-mobile-emoji.png`。
+- `vite build` 0 error；闸门 **65/68**，仍只红并行会话的
+  `responsiveness-test.mjs`、`app-download-test.mjs`、`uifix-test.mjs`（MAX_LEN 200→500 那条）。
+- `CommunityView.vue` / `i18n.js` 复查仍是纯 CRLF（LF-only 0）；
+  `PostDetailView.vue` / `WpComposer.vue` / `composer.js` 仍是纯 LF。
+
+### 边界 / 没做
+
+- 验证只走本地帖和本机 localStorage，没有真实写库发送；真实发送仍需用户点头。
+- 手机卡片上的 `.cmt-entry` 仍是旧的灰色占位条（它只是「点开底部输入条」的触发器，不是输入框）；
+  真正的输入框是底部 `WpComposer`。保留它是为了不改手机端原有交互路径。
+- 真机 APK 复验等设备上线；本批未提交、未部署。
+- 探针一开始预置评论不显示，定位为云端 feed archive（`wp-feed-archive`）恢复了 20 条云帖，
+  把本地种子帖挤出首屏；探针改为阻断 `/sb/*` 并清 archive 后稳定。不是产品 bug。
+
+---
+
+## 轮 343 · 私信首次打开长记录会话不再跳闪（新会话 + loader）
+
+**报障**：「第一次打开有很长记录的私信会话会跳一下，第二次再开就正常。」
+
+### 根因
+
+- `DmVacChat.vue` 旧版换房固定等 600ms：长记录首开走 IndexedDB / 网络，超过 600ms 就把
+  新会话按空消息 `commit()`，`loaded` 从 false 翻 true，组件先亮一帧「还没有消息」，
+  消息到了再填上并钉底——就是用户看到的跳闪。
+- 第二次打开命中 `dmStore`（localStorage 最近 400 条），同步就有消息，不经过空会话帧。
+- 手机从列表首次点进会话还多一刀：组件 `onMounted` 无条件 `nextTick` 把 `loaded` 翻 true，
+  会把刚开的 loader 又关掉，即使父级还在加载。
+
+### 修法
+
+1. `commit(room, msgs, loading = false)`：`loading=true` 时只把 `loaded` 关到 false、保持 loader，
+   不再 `nextTick` 翻 true；消息到场或父级 `loadingMessages` 落回 false 才收 loader。
+2. `watch`：已知会话 + 正在加载 + 暂无消息 → **立刻换房并 `commit(..., true)`**，绝不提交空态。
+   600ms 兜底只留给「深链首帧 rooms 还没到」的情况，并且兜底也带 `props.loadingMessages`。
+3. `onMounted` 首帧：仍在加载且没有消息时直接 return，不关 loader；消息到了再关。
+
+### 验证
+
+- `tools/dm-first-open-test.mjs`（新）F1–F7：loading 不收 loader / 加载中空消息带 loader 提交 /
+  深链兜底带 loading / 旧 waiting 不再复活 / 消息到场收 loader / `messages-loaded` 仍跟 loaded /
+  `onMounted` 不误关 loader → **7 通过 / 0 失败**。
+- `_scratch/dm-first-open-mutate.mjs`：9 处定点改坏（loading 时仍收 loader、不识别加载中空消息、
+  提交不带 loading、600ms 兜底不限深链、兜底丢 loading、旧 waiting 复活、消息到场不收 loader、
+  首帧无条件收 loader、`messages-loaded` 写死 true）→ **9/9 变红**，还原后 MD5 一致、最后全绿。
+- `tools/dm-vac-test.mjs` 的 V8 / V8b 同步更新到新结构 → **25 通过 / 0 失败**。
+- 无头浏览器（网络全假，乙会话 `dm_list_messages` 延迟 1200ms，IndexedDB 每个场景清空）：
+  - **改前**：桌面点乙后旧会话「探针甲」还停 480ms；+720~960ms 出现「探针乙 + 0 消息 + 无 loader
+    + 还没有消息」的坏帧，+1040ms 才填上 24 条。
+  - **改后**：桌面 / 手机从 +80ms 起就是「探针乙」标题 + loader，直到 +1040ms 消息到场；
+    坏帧桌面 0、手机 0，最终 `gap=0`，页面异常 `[]`。
+- 截图 `_scratch/shots-first-open/`：`after-desktop-loading.png`、`after-mobile-loading.png`、
+  `after-desktop-final.png`、`after-mobile-final.png`；改前坏帧以探针采样日志为准。
+- 轮 342 遗留的**帖子详情页 4 处输入框**视觉实测已补：
+  `_scratch/post-detail-composer-probe.mjs`（假登录 + 只读 `wp-cache` 种子，后端全部 block）在
+  1440×900 / 390×844 实测——桌面一级评论、一级回复（回复 阿蓝…）、二级回复（回复 阿绿…）
+  三个就地框都有胶囊/表情/纸飞机；顶部表情插入 `🌸`、点外面关闭；手机 `.cmt-entry` 打开
+  底部主评论条，点评论「回复」切到「回复 阿蓝…」模式，表情面板向上弹且全程在视口内；
+  桌面不出现 `.cmt-main-bar`，手机不出现桌面就地框，页面异常 `[]`。
+  截图 `_scratch/shots-343-detail/`：`detail-desktop-top.png`、`detail-desktop-reply1.png`、
+  `detail-desktop-reply2.png`、`detail-mobile-main.png`、`detail-mobile-reply.png`。
+- `vite build` 0 error；闸门 **66/69**，仍只红并行会话的
+  `responsiveness-test.mjs`、`app-download-test.mjs`、`uifix-test.mjs`（MAX_LEN 200→500 那条）。
+- `DmVacChat.vue` 复查仍是纯 LF（CRLF 0）。
+
+### 边界 / 没做
+
+- 探针全部拦后端域名、只读本地缓存，没有真实发送 / 写库。
+- 真机 APK 复验等设备上线；本批未提交、未部署。
+
+---
+
+## 轮 344 · 冷开私信页不再先闪「登录后才能收发私信」
+
+**报障**：「经常打开的时候，先跳出这个（登录后才能收发私信），然后才恢复。」
+
+### 根因
+
+- `MessagesView` 的登录闸只看 `signedIn = cloud.ready && cloud.user`。冷开 / F5 时路由组件先挂载，
+  `App.vue onMounted` 里的 `initCloud()` 还在探测配置 / `getSession()`；这段窗口 `cloud.ready=false`，
+  `signedIn=false`，于是先把「未登录」画出来。auth 落位后 `cloud.user` 到位，才切回会话列表。
+- 第二次打开 / 已登录后切页通常已经 ready，所以不是每次都看到；网络慢、设备慢时更容易命中。
+- 知乎/小红书同场景先给骨架/loader，等登录态确定后再决定是内容还是登录页。
+
+### 修法
+
+- 登录闸增加前置分支：`!signedIn && cloud.checking` 时只画中性 spinner（复用 `.rn-busy`），
+  不渲染 `dm.needSignIn`；`cloud.checking` 落位后才走 `v-else-if="!signedIn"` 的登录闸。
+- 等待卡复用 `.dm-wrap` / `.dm-list` 的尺寸（手机端与最终会话卡同高），auth 落地时不因卡片高度变化再跳一下。
+- 未登录用户仍会在检查结束后看到原来的登录闸，文案/按钮/跳转一行没改。
+
+### 验证
+
+- `tools/dm-test.mjs` 新增 2 条源码锁：`v-if="!signedIn && cloud.checking"` + `v-else-if="!signedIn"`；
+  等待期必须是 `dm-auth-wait` + `rn-busy`，`dm.needSignIn` 只在检查结束后的分支。**336 pass / 0 fail**。
+- 双向：把模板改回旧版 `v-if="!signedIn"` → **2 条变红**；还原后 MD5 `5ae972...` 一致，再跑 **336/0**。
+- 无头浏览器（390×844，假登录 + `initCloud` 临时延迟 1.2s 复现慢 auth；业务 RPC block，只读缓存）：
+  - 改前：+166ms 起出现「登录后才能收发私信」+ 双爪 + 「去登录 / 注册」，持续到 +1242ms，
+    **67 帧坏帧**，+1271ms 才切到会话列表。
+  - 改后：同延迟下 **登录闸 0 帧**，+111ms 起是中性 spinner 等待卡，+1271ms 会话列表到场；
+    等待卡与最终会话卡同高，页面异常 `[]`。
+- 截图 `_scratch/shots-344-authgate/`：`mobile-auth-gate-old.png`（改前）、
+  `mobile-auth-wait-v2.png`（改后等待）、`mobile-auth-final-v2.png`（改后落地）。
+- `vite build` 0 error；全闸门 **66/69**，仍只红并行会话的
+  `responsiveness-test.mjs`、`app-download-test.mjs`、`uifix-test.mjs`（MAX_LEN 200→500 那条）。
+
+### 边界 / 没做
+
+- 只修私信页的登录闸；通知 / 收藏 / 我的帖子 / 漂流瓶等页如果也命中同一窗口，仍会先画登录闸，
+  后续可按同一模式补（本轮未动，避免扩大并行文件冲突面）。
+- 探针只读缓存、未真实发送/写库；真机 APK 复验等设备上线；本批未提交、未部署。
+
+---
+
+## 轮 345 · 评论输入框不再「近似复刻」，按会话输入框实测值 1:1 对齐
+
+**报障**：「评论区的输入框跟会话聊天的输入框一模一样，你这是一模一样吗？高度，颜色，位置是一样吗，而且还丑的一批。」
+
+### 根因
+
+- 轮 342 的 WpComposer 只是「照着会话输入框做了一套相近的」：白底 `#fff`、边框 `#e3cfc0`、圆角 22、字号 14.5、图标 34/36；而会话底栏是 `vue-advanced-chat` 的 `.vac-textarea` / `.vac-box-footer`，实测值完全不同。
+- 更刺眼的是焦点态：WpComposer 点开后会把边框改成珊瑚色，再加 3px 珊瑚光晕；会话输入框点开后仍是 `#e6dfd8` 细边、没有光晕。用户截图里那条「橙色描边」就是它。
+- 底栏外壳也不一样：评论底栏是 `#fff7ee` + 10/12 内边距 + 阴影 + 8px gap；会话底栏是 `#faf9f5` + 7/2/7/7 内边距 + 1px 上边 + 无阴影 + 0 gap。
+- 自动长高还算错了 padding：`scrollHeight` 本身含上下内边距，旧代码直接拿它当高度，单行就多出 14px，实测输入框 46~48px，而会话输入框是 36px。
+
+### 修法（只动形态和位置，行为一行没改）
+
+以 390×844 下真实 `DmVacChat`（`/messages/44?ui=vac`，假登录 + 只读缓存）的 `.vac-box-footer` / `.vac-textarea` 为主尺，`/proto-chat.html` 做交叉复核：
+
+- 底栏外壳：`padding: 7px 2px 7px 7px`、`background: var(--page-bg, #faf9f5)`、`border-top: 1px solid var(--hairline, #e6dfd8)`、`box-shadow: none`、`gap: 0`、`align-items: stretch`；桌面 `padding: 10px 8px`。实测底栏 `390×51`，和会话底栏完全同高。
+- 白色胶囊：`308×36`（桌面 46 高）、圆角 20、底色 `var(--wash-strong, #fffdf9)`（真实会话实测 computed 是 `rgba(255,255,255,.9)`，叠在 `#faf9f5` 上与会话同色；不是纯 `#fffdf9`）、描边 `1px #e6dfd8`、无阴影；**删掉 focus-within 的珊瑚描边/光晕**。
+- 输入区：字号 16、手机行高 18（桌面 20）、手机内边距 `7px 7px 7px 12px`（桌面 `12px 16px 12px 12px`），文字起点与会话框同为 x=20。
+- 图标：表情/纸飞机各 `34×24`（桌面 `38×24`），SVG 24，表情键 `margin-left: 5px`；直接用 `vue-advanced-chat` 的两条 path（表情 `M11.99 2…`、纸飞机 `M2,21L23,12…`），不再自绘。暖心墙实测 x=320 / 354、y=807；相对底栏 `y+6`，与会话框逐个像素对齐。
+- 自动长高：先扣掉上下 padding，再夹到 20~300px（视口高度 ≤768 时 120px，和组件 CSS 的 max-height 同口径）。
+- 手机卡内「说点温柔的话…」占位条也换成同一套：36 高、圆角 20、`#fffdf9` 底、`#e6dfd8` 描边、16/18 字；它仍是点击打开底部条，不是第二个真输入框。
+
+### 验证
+
+- `tools/wall-composer-test.mjs` 新增 W7/W8/W9/W10 四条源码锁，**21 通过 / 0 失败**。
+- 双向：把圆角 20→22、字号 16→14.5、底栏内边距 7/2→10/12、占位条 36→42、纸飞机 path 改回旧自绘、胶囊底色改回纯 `#fffdf9`，逐个改坏 **6/6 全部变红**；还原后 MD5 `31aa709d9f87640d542237c3ffa805e1`（WpComposer.vue）/ `468f4221cf97f11e477d7b67e680e42f`（style.css）一致，再跑 **21/0**。
+- 无头浏览器 390×844 同尺实测：
+  - 真实 `DmVacChat` 底栏 `.vac-box-footer`：`390×51`，`padding 7px 2px 7px 7px`，`bg #faf9f5`，`border-top 1px #e6dfd8`；textarea `308×36`，圆角 20，`bg rgba(255,255,255,.9)`（叠在 `#faf9f5` 上采样为 `255,255,254`），`font 16/18`；表情/纸飞机 path 与评论侧逐字一致。
+  - 暖心墙底栏：同 `390×51` / 同 padding / 同底色 / 同上边；胶囊 `308×36`，同圆角/底色/字号；图标 `34×24`，x=320/354，y=807。
+  - 帖子详情「记录口径探针」底栏：输入框相对底栏同一组数值，`errs=[]`。
+- 截图 `_scratch/shots-345/`：`actual-dm-mobile-chat-345.png`（真实 DmVacChat 基准）、`compare-actual-dm-vs-comment.png`（真实会话 / 暖心墙 / 帖子详情三条底栏对齐拼图）、`compare-before-after-345.png`（暖心墙改前/改后）、`dm-proto-mobile-chat-ref.png`（原型交叉复核）、`community-mobile-bar-before.png`（改前）、`community-mobile-bar.png`（改后）、`detail-mobile-bar.png`（详情改后）。
+- 位置口径：真实会话底栏在视口里是 `y=783`，比评论底栏 `y=793` 高 10px——来源是 `.dm-thread` 手机端的 `padding-bottom: 10px`，不是输入框本身；输入框相对底栏都是 `x=7 / y=+8 / 308×36`，图标相对输入框都是 `y+6 / 34×24`。评论底栏是吸底条，保持 `bottom: 0`，不为了这 10px 页面内边距把整条悬空。
+- 回归：`dm-test` **336/0**、`dm-vac-test` **25/0**、`dm-first-open-test` **7/0**；`vite build` 0 error。
+
+### 边界 / 没做
+
+- 没真实发送、没写库；探针全部挡后端域名，只读本地缓存/真实 DmVacChat/原型页。
+- 手机卡内占位条只对齐了高度/颜色/圆角/字号，没有塞表情/纸飞机图标（它点击后打开的就是下面那条真输入框，避免让人误以为能就地输入）。
+- 未提交、未部署；真机 APK 复验等设备上线。
+- `style.css` 只在文件末尾追加了轮 345 覆盖块，没有改并行会话在途的旧规则；`CommunityView.vue` / `PostDetailView.vue` / `MessagesView.vue` / `responsiveness-test.mjs` 未动。
+
+
+---
+
+## 轮 346 · 回应/收藏/免打扰等开关按钮：350ms 内第二下直接无效（用户拍板 A）
+
+**报障**：「回应按钮连点两下，第一下取消了，过几秒又自己回来」；同类跟手开关都要统一口径。
+
+### 根因
+
+- 连点两下被当成两次意图：第一下乐观取消，第二下又乐观点亮，还排进同一个写队列；慢网下第二下要等第一下的往返，于是出现「先取消、过几秒又有了」。
+- `CommunityView.reactSync` 的 `applyAuthoritative` 在 `await` 返回前就先写 UI，外层 `isLatest` 判得太晚——慢的第一次响应可能把第二次点击的本地态盖掉。
+- 同类开关（帖级回应、评论 ❤️/💔、厌恶、收藏、故事点赞/收藏、私信免打扰/拉黑、通知偏好）都是「第一下当场翻、第二下再翻回去」，没有统一的误触闸门。
+
+### 修法
+
+- 新增 `src/utils/tapGuard.js`：`createTapGuard(350)` 按 `key` 记上次被接受的点击时间；同一 key 350ms 内的第二下 `return false`，调用方直接 `return` —— 不改 UI、不进队列、不发请求。按钮外观不变，不做 disabled/变灰。不同 key 独立（抱抱/暖暖/同感、❤️/💔、点赞/收藏各点各的）。
+- 接入：
+  - `CommunityView.vue`：帖级回应 `post:<dbId>:<kind>`、评论回应 `cmt:<dbId>:<kind>`、厌恶 `dislike:<dbId>`、收藏 `fav:<dbId>`；并在 `applyAuthoritative` / `applyRollback` 开头补 `isLatest` 守卫，过期响应不再先写 UI。
+  - `PostDetailView.vue`：帖级回应、评论回应、厌恶、收藏四处同样接入。
+  - `StoryDetailView.vue`：`toggleNow` 的点赞/收藏按 `story:<id>:<key>` 接入。
+  - `MessagesView.vue`：`toggleMute` / `toggleBlock` 及资料卡 `mutePeer` / `blockPeer` 接入（按会话或用户分键）。
+  - `SettingsView.vue`：通知偏好总开关 / 分项开关接入（`settings:notify:master`、`settings:notify:<key>`），避免连点重复写库。
+- 没动的：发送/删除/同意/拒绝/隐藏这类一次性动作（不是开关，连发有业务语义）；`WallerView` 互动、管理中心等本来就有 `busy` 锁的按钮；`FavoritesView` 取消收藏会同步移除行、第二次点击已无目标。
+
+### 验证
+
+- `tools/tap-guard-test.mjs`：**30 通过 / 0 失败**（首击放行、120/349ms 第二下丢弃、350ms 边界恢复、不同 kind/对象独立、双击只产生一次写入意图、五处接入点与分键）。
+- 双向：把 `if (dt >= 0 && dt < windowMs) return false;` 改成 `if (false && ...)` → **26/30，4 条变红**；还原后 MD5 `67A0EE2A2ADAAF7771C43B6FA2620BF3` 一致，再跑 **30/0**。
+- 无头浏览器 390×844（假登录 + 本地缓存；真实后端全部挡在探针里，只放行 `wall_set_reaction` 并延迟 1200ms 回权威值）：
+  - 初始暖暖 `2`（点亮）→ 80ms 内连点两下 → 暖暖 `1`（取消），**只发 1 个写请求**；等慢响应回来再等 1.7s，仍是 `1`，没有「过几秒又回来」。
+  - 超过 350ms 再点一下 → 暖暖 `2`（恢复点亮），累计 2 个请求，证明不是永久锁死；`errs=[]`。
+- 截图 `_scratch/shots-346/followhand-compare.png`（前 / 连点后 1.7s / 350ms 后再点）；原始帧 `wall-followhand-before.png`、`wall-followhand-after-slow.png`、`wall-followhand-after-release.png`，数据 `followhand-proof.json`。
+- 回归：`dm-test` **336/0**、`dm-vac-test` **25/0**、`dm-first-open-test` **7/0**、`wall-composer-test` **21/0**、`post-detail-test` **18/0**、`cmt-style-test` **7/7**、`react-queue-test` **12/0**、`story-test` **223/0**；`vite build` 0 error（新增 `tapGuard-*.js` chunk）。
+- 全闸门仍只红并行会话在途的 `responsiveness-test.mjs` B4（源码里早已没有它期待的 `for (const kk of ...)` 写法，与本次无关）、`app-download-test.mjs`、`uifix-test.mjs`（MAX_LEN 200→500 那条）；未碰。
+
+### 边界 / 没做
+
+- 没真实发送、没写库；探针全部挡后端域名，只读本地缓存。
+- 未提交、未部署、未重新打包 APK；真机复验等设备上线。
+- 只处理开关型「跟手」按钮；发送/删除等一次性动作保持原语义。
+
+## 轮 348 · 表情面板三条（去搜索框 / 点输入框键盘不塌 / 暖心墙与会话同款）
+
+**用户原话**：① app 端把表情包里面的搜索框去掉；② 会话里点了表情包之后，点「写点什么」输入框，下面的输入法折叠了，而不是维持展开；③ app 端暖心墙点表情包还是网页端那样，而不是跟会话一致。
+
+### 1) 去搜索框（会话 + 暖心墙，两个面板都去）
+
+- 新 `src/utils/emojiPanel.js`：`hideEmojiSearch(picker)` 往 `emoji-picker` 自己的 shadowRoot 塞一条 `.search-row{display:none !important}`（`emoji-picker-element` 没有暴露 `::part()`，只能这么干），带 `data-wp-nosearch` 幂等标记；`hideEmojiSearchIn(root)` 批量入口。
+- 会话段：`DmVacChat` 的 `syncEmoji()`（MutationObserver 每次面板重建都会跑）里调 `hideEmojiSearchIn(sr)` —— 组件每次开面板都重建 `<emoji-picker>`，只在打开那一刻塞一次会丢。
+- 暖心墙：`WpComposer` 给 `<emoji-picker ref="picker">`，`watch(emojiOpen)` 里 `nextTick` 调一次、80ms 再补一次（shadow 可能晚一帧）。
+
+### 2) 会话：点输入框键盘不塌（真因 + 修法）
+
+- 真因（无头 390×844 复现 + 读库源码）：库的「点外面收面板」监听的是 **touchstart**（`IS_TOUCH` 时 `EVENTS=["touchstart"]`）。面板一收，footer 的 `padding-bottom` 从 320 直接归零（无过渡），输入框**同一帧**落回屏底；手指抬起时点击目标已经不是输入框 → 浏览器不给焦点 → 输入法永远不弹。看到的「输入法折叠」其实是「面板收了、键盘没起来」。
+- 修法：`bindFooterTap()` 在 footer 上挂 capture 监听 ——
+  - `touchstart` 且点的是输入区（`.vac-box-footer` / textarea，排除面板自身与表情按钮）→ `stopPropagation()`，**先不让库收面板**，浏览器正常把焦点落在输入框；
+  - `click` → 再点一下组件自己的表情按钮收面板，并补一次 `ta.focus()`；
+  - 鼠标（`pointerType !== "touch"`）只在 pointerdown 记标记，click 才收 —— 桌面本来就没这个坑。
+- 实测：点开表情 → 面板 390×320 fixed 贴底、`search-row display:none`、`--kb-h 0px`；点输入框 → 面板收（`pickerOpen:false`）、`shadowRoot.activeElement == roomTextarea`、`focusLog` 只有一条 `in`（不再被抬手那下 `out` 掉）、`errors:[]`。
+
+### 3) 暖心墙：面板与会话同款（贴底整宽）
+
+- `WpComposer` 新增 `isSheet()`（`max-width: 899px`，跟 `DmVacChat` 的媒体查询同一条）：手机上 `.wp-composer-picker` 改成 `position: fixed; left/right 0; bottom 0; width 100%; height: min(46vh, 320px); border-radius: 0; z-index: 170`，高度与会话的 `--wp-emoji-h` 同一条。
+- 打开时跟会话一样先收键盘（`ta.blur()` + `--kb-h: 0px`），否则面板会被输入法压在后面；底条 `bottom` 抬到面板上沿：`style.css` 新增 `html.cap-app .cmt-main-bar.wp-emoji-open, .cmt-main-bar.wp-emoji-open { bottom: min(46vh, 320px) }`。
+- 点输入框：`pointerdown` **只记标记**（`tapClosePending`），到 `click` 才收面板并补 focus —— 暖心墙底条的 `mainBarDocClose` 是按「点击目标还在不在条内」决定关不关条的，pointerdown 就收会让人点空、整条被当「点空白」关掉（实测复现过一次，条直接消失）。
+- 实测（390×844）：点表情 → `barClass: cmt-main-bar wp-emoji-open`、`barBottom: 320px`、面板 `x0 y524 w390 h320 bottom844`、`position:fixed`、`border-radius:0px`、`search-row: none`、`--kb-h 0px`；点输入框 → 面板收、底条回 `bottom:0` 但**没被关掉**、焦点 `TEXTAREA.wp-composer-input`、`errors:[]`。
+
+### 校验
+
+- 新增 `tools/emoji-panel-test.mjs`：**9 pass / 0 fail**（E1 工具真跑：塞一条 + 幂等 + 空输入不炸；E2 会话段同步去搜索框；E3 暖心墙 ref/nextTick/80ms 补刀；E4 touchstart 拦截 + click 收面板 + 回焦点 + 排除面板/表情按钮；E5 pointerdown 只记标记、click 才收；E6 打开先收键盘；E7 贴底整宽 + 高度与会话同一条；E8 底条抬升；E9 桌面浮窗老规则仍在）。
+- `_scratch/emoji-panel-mutate.mjs`：**15 处改坏 15/15 变红**，逐处还原后 md5 一致、9 条全绿。
+- `tools/dm-vac-test.mjs` V7 旧锁（「页面不许碰组件 textarea 焦点」）按本轮真因改成**范围锁**：只许 `bindFooterTap` 里那一下 focus，块外出现 `ta.focus()/ta.blur()/querySelector("textarea.vac-textarea")` 一律红；`_scratch/dm-vac-v7-mutate.mjs` 三种改坏 **3/3 变红**、复原全绿。
+- 全闸门：**67/71 OK**，红 4 条全在并行会话在途文件（`responsiveness-test.mjs`、`app-download-test.mjs`、`uifix-test.mjs` 的 MAX_LEN 200→500、`keyboard-policy-test.mjs` 的 MainActivity insets/index.html viewport-fit）；`vite build` 0 error。
+- 截图：`_scratch/shots-348/348-emoji-open.png`（会话面板）、`348-wall-emoji.png`（暖心墙面板）、`348-after-tap-input.png`、`348-wall-after-input.png`。两个面板现在同一副样子：无搜索框、分类条 + 8 列、贴底整宽、输入条落在面板上沿。
+
+### 边界 / 没做
+
+- 没真实发送、没写库；探针只挡/读，不落库。
+- 未提交、未部署、未重新打包 APK（真机仍离线，键盘那条等装机复验）。
+- `CommunityView.vue` / `ProfileView.vue` / `MainActivity.java` / `index.html` 一行没碰；底条抬升只加了一条 `.cmt-main-bar.wp-emoji-open` 的 CSS。
+
+## 轮 349 · 会话段三处视觉（去虚线 / 日期去白底 / 输入条上下对齐）
+
+**用户原话**：「前面两个框，都不要虚线已经日期的白色背景，下面的输入部分好歹居中吧，这上下位置距离都不一样」（截图 934×869，App 形态：← 头 + 单列消息 + 底栏）。
+
+### 1) 头部虚线
+
+- `.vac-room-header` 的 `border-bottom: 1px dashed rgba(204,120,92,.28)` → `0`。实测 `borderBottom: "0px none"`。
+- 顺手把旧头 / 漂流瓶头 `.dm-thread-head` 的那条同款虚线也去掉（同一个用户要求，两处头部才一致）；桌面 `.dm-thread` 卡片规则没动。
+
+### 2) 日期白底
+
+- 原因：THEME_CSS 里给日期用的是 `background: var(--wash-mid)`，而 `--wash-mid` = `rgba(255,255,255,.72)` —— 就是用户看到的「白色背景」。
+- 顶部「10月24日」（`.vac-text-started`）与消息中间的「今天」（`.vac-card-date`）现在统一 `background: transparent !important`（四条选择器覆盖两种挂载位置：`.vac-col-messages` / `.vac-messages-container` / `.vac-message-wrapper` / 裸 `.vac-card-date`），字色仍是 `--ink-soft` 11px。实测两条 `backgroundColor: "rgba(0, 0, 0, 0)"`。
+
+### 3) 输入条上下距离
+
+- 原因：手机壳 `.dm-thread` 底部还垫了 `calc(10px + --sab)`，底栏 `.vac-box-footer` 自己上下各 10px → 输入条上方 10px、下方 20px，看着往下坠。
+- 改成底部只留安全区：`padding: calc(14px + --sat) 0 var(--sab)`。
+- 实测（934×869）：footer/box `802..868`、textarea `812..858` → 上 10 / 下 10；手机 390×844：box 内边距 7，textarea 36 高 → 上 7 / 下 7。
+- 表情面板打开时 `padding-bottom: 0` 那条（轮 347）保持不动。
+
+### 校验
+
+- 新增 `tools/chat-look-test.mjs`：**6 pass / 0 fail**（L1 头无虚线；L2 两条日期都 transparent 且字色没丢；L3 旧头/漂流瓶头无虚线；L4 底栏底部只留 `--sab`；L5 表情面板让位归零仍在；L6 桌面卡片规则没被顺手改）。
+- `_scratch/chat-look-mutate.mjs`：**7 处改坏 7/7 变红**，逐处还原 md5 一致、6 条全绿。
+- `tools/dm-vac-test.mjs` V20 旧锁「头部没有旧版细虚线」按本轮用户要求改成「头部不许有分隔线」（并指向 chat-look-test 的细账）。
+- 全闸门 **68/72 OK**，红 4 条仍是并行会话在途文件（`responsiveness-test` / `app-download-test` / `uifix-test` MAX_LEN / `keyboard-policy-test`）；`vite build` 0 error。
+- 截图：`_scratch/shots-349/349-after-934.png`（用户同尺寸 934×869）、`349-after-390.png`（手机 390×844）。
+
+### 边界 / 没做
+
+- 没真实发送、没写库；探针全部假数据。
+- 未提交、未部署、未重新打包 APK。
+
+## 轮 349b · 暖心墙内联评论框的表情面板被帖子卡裁掉上半截
+
+**用户原话**：「看看这里」（1900 宽桌面，帖子卡里的「说点温柔的话…」点表情，面板从卡顶开始、上面缺一块，分类导航行整条不见）。
+
+### 根因（跟轮 262 的 ⋯ 菜单同一个坑）
+
+- 实测（1900×933，CDP 取几何）：面板 `.wp-composer-picker` 是 `320×340`、`y=406..746`，挂在 `.post-card` 里；
+  而 `.post-card` 有 `content-visibility: auto`（隐含 paint containment）→ 面板伸到卡顶（`y=542`）以上的
+  **136px 被整块裁掉**：分类导航行（`y=416..450`）+ 第一排表情全没了，视觉上就是「面板从卡顶开始」。
+- 同时 `.card` 的 `z-index: 1` 把面板困在本卡堆叠上下文里，被上一张卡 / 吸顶搜索条盖住。
+- 命中测试取证：修前 `elementFromPoint(1400, 420/450/500/530)` 返回 `.card` / `.wall-search-input` / `.sort-row`；
+  修后同一列 `420..740` 全部返回 `EMOJI-PICKER`。
+
+### 修法（沿用轮 262 的 `:has` 模式，一行）
+
+```css
+.post-card:has(.wp-composer-picker) { content-visibility: visible; z-index: 2; }
+```
+
+- 面板是 `v-if` 渲染（收起即移出 DOM），`:has` 只命中「正打开的那张卡」，其余卡的 `content-visibility` 性能优化原样保留。
+- `z-index` 仍只到 2（低于底部输入条 140 / TabBar 130+），不会盖住它们。
+- 手机端（≤899px）不受影响：内联评论框本来就只在桌面渲染（`!isMobileNav` 门禁），手机走底部条。
+
+### 校验
+
+- `tools/wall-composer-test.mjs` 新增 **P5**（卡必须 `content-visibility: visible` + `z-index: 2` + 面板必须 `v-if`）：**22 通过 / 0 失败**。
+- `_scratch/wall-emoji-clip-mutate.mjs`：**3/3 变红**，逐处还原 md5 一致、全绿。
+- 全闸门 **68/72 OK**，红 4 条仍是并行会话在途文件；`vite build` 0 error。
+- 截图：`_scratch/shots-349/349-wall-inline-emoji-1900.png`（修后：导航行 + 第一排都在，面板完整）。
+
+### 边界 / 没做
+
+- 没真实发送、没写库；探针只登录 + 浏览。
+- 未提交、未部署、未打包。
+
+## 轮 349 · APK 打包（用户要「打包，文件路径 D:\05ruanjian\peiban\apk」）
+
+- 顺序：`npm run build`（vite，0 error）→ `npm run cap:sync`（cap sync android + cap-strip-hero：index.html × 26 / SEO 占位 × 12 / 剥内联 apk 页）→ `gradlew assembleDebug`（JAVA_HOME=jdk-21，BUILD SUCCESSFUL）。
+- 产物：`android/app/build/outputs/apk/debug/app-debug.apk` → 复制为 **`apk/warm-paws-1.0.2-round349.apk`**（5,887,328 字节，2026-10-26 02:56）。
+- 版本没动：`net.de5.warmpaws` / versionCode **3** / versionName **1.0.2** / label `Warm Paws`（aapt dump badging 实测）。
+- 内容核对：APK 内 `assets/public/assets/main-isDjAHMR.css` 的 md5 = `55e3a90a030faeae4b545dd2e202cfdb`，与 `dist/assets/main-isDjAHMR.css` 一致 → 轮 349（去虚线 / 日期去白底 / 底栏上下 10px）+ 轮 349b（帖子卡放开 paint containment）都在包里。
+- 归档：`round339` / `round345` / `round347` 旧包原样保留。
+- 没装机（adb 设备仍离线）、没 deploy、没更新线上 `/apk/warm-paws.apk`、没 bump 版本。
+
+## 轮 350 · 真机实报：会话「面板→输入框」坍缩再展开 / 暖心墙选一个表情就弹键盘（另查出底条同款抖动）
+
+用户原话：「手机连上了，app端，表情包那里会话点击表情再点击输入又一个坍缩再展开的过程，这不对啊，还有暖心墙表情包输入一个之后就自动切换文字输入，你自己测一下，应该还有其他问题」
+
+### 真机取证方式（可复跑）
+- 装机（Xiaomi 23054RA19C / 1080×2460 / dpr 2.75 → 393×895）→ `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>` → CDP 直连 App 内 WebView（`_scratch/device-cdp.mjs`）；触摸用 `Input.dispatchTouchEvent`（真机是触摸环境，库的 click-outside 只听 touchstart）。
+- 每 30~40ms 采一次 DOM：面板在不在、footer `padding-bottom`、`--kb-h`、输入框 `getBoundingClientRect().y`、`.dm-page` 高度。
+
+### 问题 1（会话）：面板 → 点输入框 = 先掉屏底，再被键盘顶回来
+- 实测（修前）：面板开 pad=320 / kb=0 / taY=533；点输入框后 ~150ms 面板收起、pad 320→0，taY 掉到 **840**；键盘 ~335ms（冷启动 600ms）才起来，`--kb-h`=320、`.dm-page` 895→575，taY 又回 **533** —— 300px 的「坍缩再展开」。
+- 修法（`DmVacChat.vue`）：收面板前先挂 `.wp-kb-swap`（`:host(.wp-kb-swap) .vac-room-footer { padding-bottom: var(--wp-emoji-h) !important; transition: none !important; }`），等 `--kb-h > 0` 的那一帧再摘；footer 的 padding 过渡改成常驻 `.22s cubic-bezier(.2,.8,.2,1)`，与 `.dm-page` 的 height 过渡同曲线 —— 两边各走 320px，输入框原地不动。1.2s 等不到键盘就兜底摘掉；网页端（没有 `--kb-h`）不启用。
+- 实测（修后）：taY **518~533**（只剩 `--sab` 16→0 的 15px 抖动）；232ms 时 pad 仍 320，854ms 时 kb=320 / pad=0 / pageH=575，taY 仍是 533。
+- 反向（键盘开着 → 点表情）：taY **533 全程不动**（10 个采样点）。
+
+### 问题 2（暖心墙）：面板里点一个表情 → 输入法弹起来、面板被顶掉
+- 根因：`WpComposer.onEmoji` 里的 `n.focus()`（桌面没键盘，所以一直没暴露）。
+- 修法：贴底面板形态（`isSheet()`）只插字、不 focus，面板保持打开可连续点；插入位置改用记住的光标（`lastCaret`，blur/select/keyup/click 时记）—— 面板打开时输入框是 blur 的，`selectionStart` 会退成 0。
+- 实测（修后）：选完 panel=true、kb=0、焦点在 `EMOJI-PICKER`、val=`😀`；连点第二个 → `😀😀`，面板不关、键盘不弹。
+
+### 顺手查出的第三处（暖心墙底条同款交接抖动）
+- 面板开着点输入框：底条 `bottom` 从 320 掉回 `var(--kb-h)`=0 → barY **518→781**（掉 256px），键盘上来再回 525。
+- 修法（`WpComposer.vue` + `style.css`）：收面板时先给 `.cmt-main-bar` 挂 `.wp-kb-swap`（`bottom: min(46vh,320px)`），等 `--kb-h > 0` 再摘（面板高 = 键盘高 = 320，摘掉几乎不动）；同样只在 App 壳启用。
+- 实测（修后）：panel→kb 全程 barY **509~525**（16px 的 sab 抖动），没有 256px 掉落。
+
+### 校验
+- `tools/chat-look-test.mjs`：L5 改口径 + 新增 **L7**（钉住规则 / 过渡曲线 / holdForKeyboard / 等 kb / isApp 门禁）→ **7 pass / 0 fail**。
+- `tools/wall-composer-test.mjs` 新增 **P6** → **23 通过 / 0 失败**。
+- `tools/emoji-panel-test.mjs`：E4 窗口放宽 + 加「收面板前必须 holdForKeyboard」、E8 选择器改口径 → **9 pass / 0 fail**。
+- 改坏取证：`_scratch/chat-look-mutate.mjs` **10/10 变红**、`_scratch/wall-350-mutate.mjs` **3/3 变红**，逐处还原 md5 一致、全绿。
+- 全闸门 **68/72 OK**（红 4 条仍是并行会话在途：app-download / keyboard-policy / responsiveness / uifix）；`vite build` 0 error。
+- 真机截图：`_scratch/shots-device/dm350-1-panel-open.png`、`dm350-6-1300ms.png`、`w350-c1-picked.png`。
+
+### APK
+- 重新 `build` → `cap:sync` → `assembleDebug` → 装机（`adb install -r`），产物复制为 **`apk/warm-paws-1.0.2-round350.apk`**（5,982,223 字节，md5 `8EB773FDAF0850ED779D330468C9CDC8`）；版本仍 1.0.2 / versionCode 3。
+- 没真实发送、没写库（只在输入框里插表情）；未提交、未部署、没更新线上 `/apk/warm-paws.apk`。
+
+### 发现但没改（并行会话在途文件）
+- `CommunityView` 是 keep-alive：底条开着时若用**程序化**路由离开（如 `history.back()`），`tabbarSuppressed` 不会被 `onUnmounted` 复位 → 别的页 tabbar 消失。真机上用户路径（点空白 / 点 tab / 系统返回=最小化）都会先关条，所以没到用户面前；要修就在 `onDeactivated` 里补一句 `closeMainBar()`。
+
+## 轮 351 · 真机实报：长记录会话第一次进去会跳闪（逐帧定位到「路由没提交先渲染聊天」）
+
+用户原话：「会话消息那里很长的记录的时候，第一次进去会跳闪」
+
+### 真机逐帧取证（可复跑）
+- 冷启动（force-stop → 启动）→ 进 linyi（本地 57 条）→ 页面内 rAF 每帧记录：`shell--chat`、tabbar、`.dm-list`/`.dm-thread` 的 display、`#messages-list` 的 top/sh/ch/visibility。
+- 修前（3 次复现，稳定）：`t=544ms` 聊天已渲染但 `chat=false / tab=true`，列表 `top=0 sh=ch=5659`（父级没定高，整段撑开）；`t=654ms` 路由提交、容器定高 719、`top` 仍是 0；`t=666ms` 才钉到底 → 中间先亮「最早的消息 + 底部 tabbar」再跳底。
+- 根因：`openConv` 里 `activeId` 先落、`router.push` 后提交；App.vue 的 `inChat` 认路由 → 中间 1~2 帧 shell 没有 `shell--chat`，`.dm-thread` 只有 `min-height:60vh`（没定高），列表按整段高度撑开，`scrollTop` 写不进去。旧版 `listRevealed` 揭示门只挂在非 vac 的 `.dm-scroll` 上，vac 路径没有门。
+
+### 修法（两处，互补）
+- `MessagesView.vue`：新增 `paneReady`（手机形态下 `activeId` 必须与 `route.params.id` 对齐；桌面双列恒 true）→ 面板 `v-show`/`v-if` 都挂上；**列表页的 `v-show` 也带 `!paneReady`**（两边不许同时藏，否则等待期是一屏空白，实测 2 帧）；`openConv` 里 400ms 兜底放行（导航被拦时不把聊天永久藏住）。
+- `DmVacChat.vue`：`pinOnce` 落底前先 `visibility:hidden`，`isPinned` = `80 <= clientHeight <= innerHeight+2 && gap < 2` 才亮（`visibility` 不参与布局，量高照常）；`pinBottom` 加 900ms 兜底。只藏本轮挂载的第一次，换会话不再藏。
+
+### 实测（修后，冷启动 3 次）
+- `t≈512~569ms` 第一帧聊天：`chat=true / tab=false / paneDisp=flex / listDisp=none / lvis=visible / top=4694 sh=5413 ch=719` —— 没有 `top=0` 帧，也没有 `listDisp=none && paneDisp=none` 的空白帧（`blank frames: 0`）。
+- 回归：← 返回列表（tabbar 回来）→ 进 47（3 条，top=0 sh=ch=719，内容不够一屏正常显示）→ 再进 → 46（2 条）→ 返回，全对。
+- 表情/键盘（轮 350）未受影响：面板 `panelTop=576 kb=0 taY=533`；点输入框 `kb=320 taY=533`；再点表情 `kb=0 taY=533`。
+
+### 校验
+- `tools/dm-first-open-test.mjs` **10/10**（新增 F8 首帧门控 / F9 900ms 兜底 / F10 面板+列表都等路由）；`_scratch/dm-flash-mutate.mjs` **7/7 变红**、还原 md5 一致全绿。
+- 全闸门 **68/72 OK**（红 4 条仍是并行会话在途）；`vite build` 0 error。
+
+### APK
+- 重新 `build` → `cap:sync` → `assembleDebug` → 装机，产物 **`apk/warm-paws-1.0.2-round351.apk`**（5,982,223 字节，md5 `E353A1A4D15134FEDC9B345703FF147F`）；版本仍 1.0.2 / versionCode 3。
+- 没真实发送、没写库；未提交、未部署。
+
+## 轮 352 · 真机实报：发送消息成功之后会跳
+
+用户原话：「发送消息之后，成功了会跳」。
+
+### 根因（组件行 key 在确认时变了）
+- 组件（vue-advanced-chat）只把 `indexId` 当 v-for key。乐观行的临时 id 是负数，`rowsToMessages` 给它排到尾部的小数 indexId；服务端确认后换成正式 id → indexId 从 `18.001` 变 `19` → TransitionGroup 把同一句当成「旧行淡出（200ms）+ 新行淡入（500ms）」：
+  - 列表先多出一行（旧行还占位 200ms），`scrollHeight` +46px；
+  - 新行 mount 触发组件自己的 `onMessageAdded` → `scrollToBottom()`（smooth）→ 往下溜 45px；
+  - 200ms 后旧行移除、内容缩回 → 浏览器把 `scrollTop` 夹回 → **45px 的「跳」**。
+- 另一个隐患：轮询 `mergeTail` 用服务端行覆盖本地行时会把本地 key 冲掉 → 下一拍（~5s）又重挂一次。
+
+### 修法（稳定行 key）
+- `src/utils/dmRules.js`：新增 `nextMsgKey(rows)` = 现有最大 id/key 之后 +0.001（定到 3 位小数，连发不漂移）；`mergeTail` 用服务端行覆盖时把本地 `key` 带过去。
+- `src/utils/dmMap.js`：`rowToMessage` 的 `indexId` 用 `m.key ?? m.id`。
+- `src/views/MessagesView.vue` + `src/components/BottleChat.vue`：乐观行 `key: nextMsgKey(msgs.value)`，确认行 `key: temp.key`（失败行 spread 自动带上）。
+- 效果：确认时 key 不变 → 组件原地更新那一行（`_id`/时间/勾状态变），不重挂、不淡入淡出、不再多滚一次。
+
+### 验证
+- 新锁 `tools/dm-send-jump-test.mjs` **7/7**（S1 key 生成 / S2 映射认 key / S3 核心「确认前后 indexId 一致」/ S4 连发 / S5 mergeTail 保 key / S6 撤回失败 / S7 接线）。
+- `_scratch/dm-send-jump-mutate.mjs`：5 处改坏（映射不认 key、两处确认行不沿用、乐观行不定 key、mergeTail 不保 key）**全部变红**，还原后 md5 一致、全绿。
+- 无头 A/B（`_scratch/jump-harness/`，直接 import 线上同款 `dmMap.rowsToMessages` + 组件 UMD，桌面 Chrome）：
+  - 旧行为（确认时 indexId 跟着 id 变）：`dupFrames=13 / maxN=20 / afterScrollRange=45`，逐帧可见 `n 19→20`、`sh 1101→1147`、`top 602→647→602`（夹回）。
+  - 新行为（沿用乐观行 key）：`dupFrames=0 / maxN=19 / afterScrollRange=0`，确认后 `n/top/sh` 一条都不变。
+  - `?mode=old&slow=1` 把 200ms 淡出放慢到 6s，截图可拍到同一句被画成两份（真机不慢，只用于目检）。
+- 闸门 **69/73 OK**（红 4 条仍是并行会话在途：app-download / keyboard-policy / responsiveness / uifix）；`vite build` 0 error。
+
+### APK
+- `build` → `cap:sync` → `assembleDebug`，产物 **`apk/warm-paws-1.0.2-round352.apk`**（6,270,584 字节，md5 `287E781B6BAA0B4DB0C0E77C01AE9FB6`）；版本未动 1.0.2 / versionCode 3。
+- 真机 USB 掉线（adb 看不到设备），**未做真机逐帧复验**；装机后发一条即可看还跳不跳。
+- 没真实发送、没写库；未提交、未部署。
+
+## 轮 353 · 真机实报：陌生人首聊 3 条上限，新组件里没有提示
+
+用户原话：「陌生人只能发三条信息，新组件这里没有提示了啊」。
+
+### 根因（提示被留在旧兜底页里）
+- 3 条上限是服务端 `dm_send` 抛 `first-limit`，前端 `sendErrKey` 映射到 `dm.errFirstLimit`（「第一次会话，对方回复前最多发 3 条消息」）→ 写进页面的 `sendErr`。
+- 旧版把这行画在输入框上方（`.dm-compose` 里的 `<p class="sub dm-err">`）；轮 334 把输入区整段换成组件后，它只剩在 `v-else` 的旧兜底页里 → 新组件里用户只看到消息行一个红「!」，不知道是 3 条上限。
+- 漂流瓶聊天框（同一个组件）同样没出口：`sendText` 的失败原因也只写 `sendErr`，没人画。
+
+### 修法（提示回到输入条上方，旧版同位置）
+- `src/components/DmVacChat.vue`：新增 `err` prop；`syncErr()` 把一行 `<p class="wp-dm-err">` 注入 `#room-footer` **最前面**（= 输入条上方），空串时摘掉；`emojiMO` 的 childList 回调（`syncEmoji`）在 footer 重建（切会话）后补回；`watch(props.err)` 重画；样式进 THEME_CSS（12.5px / `#d9534f` / 居中 / 可换行）。
+- 出现时若本来贴底（<120px）补一次贴底：这行多占约 20px，否则最后一条会被切掉；翻历史时不打扰。
+- `src/views/MessagesView.vue`：`:err="sendErr"`；并 `watch(activeId)` 清空 —— 不清的话 A 的报错会跟着用户进 B 的会话（旧版只画在兜底页，影响小；现在会画进组件，必须清）。
+- `src/components/BottleChat.vue`：同样传 `:err="sendErr"`（`onLetter` 本来就会清）。
+
+### 验证
+- `tools/dm-vac-test.mjs` 新增 **V25**：prop 接线 / 注入位置（footer 第一个子节点）/ 清空 / 红字样式 / footer 重建后补回 / 切会话清空 / 漂流瓶同款 / i18n 中英两份 → **26/26**。
+- `_scratch/err-mutate.mjs`：6 处改坏（页面不传 err、注入到 footer 末尾、去掉 watch、footer 重建不补、切会话不清、漂流瓶不传）**全部变红**，还原后 md5 与原文件一致、全绿。
+- 真组件无头实测（`_scratch/err-harness/`：Vite 直接编译线上同款 `DmVacChat.vue`，不连后端、不写库）：
+  - 注入后 `.wp-dm-err` 是 `#room-footer` 的第一个元素；`errBottom=616 ≤ taTop=624`（确实在输入框上方）；颜色 `rgb(217,83,79)`、12.5px；
+  - 切会话（footer 重建）后提示仍在、仍是第一个子节点；清空后节点被移除；
+  - 截图：`_scratch/shots-353/no-hint-before.png`（无提示）、`_scratch/shots-353/err-mobile.png`（红字在输入条上方）。
+- 闸门 **69/73 OK**（红 4 条仍是并行会话在途：app-download / keyboard-policy / responsiveness / uifix）；`vite build` 0 error。
+
+### 没做
+- 没真机复验（USB 一直掉线，`adb devices` 空）；没真实发送、没写库 —— 3 条上限要真发满 4 条才会触发，得用户点头。
+- 未提交、未部署；没打 APK（要装到手机看，说一声就出本地调试包）。
+
+## 轮 354 · 暖心墙回应按钮连着快点，后点的会被旧回包熄灭（帖子三颗 + 评论 ❤️/💔）
+
+用户原话：「暖心墙帖子那几个按钮多次连续点击切换，还是有问题啊」。
+
+### 复现（先证明不是错觉）
+- 无头 390×844，假登录 + 本地缓存；后端域名全挡，只放行 `wall_set_reaction`，由探针按「请求到达时的服务端状态」拍快照、再故意乱序返回（模拟真实网络乱序）。
+- 80ms 间隔连点 抱抱 → 暖暖 → 同感，响应延迟分别 900 / 500 / 700ms：
+  - 乐观态：三个都亮、计数都是 1；
+  - 580ms 暖暖回包（快照 `{1,1,0}`）→ 正常；
+  - 860ms 同感回包（快照 `{1,1,1}`）→ 正常；
+  - **900ms 抱抱的旧快照 `{1,0,0}` 最后到 → 把暖暖、同感按旧快照翻回 0**；
+  - 稳定后只剩抱抱亮（服务端其实三条都写成功了，只是 UI 被旧快照覆盖）。
+- 取证：`_scratch/wall-multikind-probe.mjs` + `_scratch/shots-354/multikind-proof.json`；截图 `multi-optimistic.png`（三个都亮）/ `multi-after.png`（修后仍三个都亮）。
+
+### 根因
+- `wall_set_reaction` 的返回是「写完后整帖三份计数 + 我的三份状态」；但不同 kind 的写队列 key 是 `post:<id>:<kind>` → **三个按钮的请求并行**。
+- `CommunityView.reactSync` 的 `applyAuthoritative` 把返回里的 `hug / warm / relate` **整包写回**，并且 `isLatest` 只按当前 kind 判新旧 —— 抱抱的旧响应在抱抱这个 key 上仍是最新，于是它合法地把另外两个 kind 的旧快照盖了上去。
+- 同类页面 `PostDetailView` 的帖级回应一直只写 `fresh[key]`，所以详情页没这个病；问题只在暖心墙信息流。
+- **评论 ❤️/💔 是同一类病**：`cmtReact` 的成功回包把 `{ heart: res.hearts, broken: res.brokens }` 整包写回，`myReacts` 又用「点击前」的 `prevMine` 重建 —— 两格是不同队列 key（`<cmtId>:<kind>`）并行，先发的旧快照最后到就会把后点的那一格计数/高亮改掉。暖心墙与帖子详情页两处 `cmtReact` 都有。
+
+### 修法
+- `src/utils/wallRules.js` 新增纯函数 `applyReactionAuthoritative(post, kind, fresh)`：只把**本次动的 kind** 的计数 / mine 写回，其它 kind 原样保留。
+- `src/views/CommunityView.vue`：`applyAuthoritative` 改调这个 helper（定点替换，未整文件覆盖；改前 `CommunityView.vue` 最后写入是 10-25 02:20，不是本轮并行会话的在途状态）。
+- `src/utils/comments.js` 新增纯函数 `applyCommentReactionResult(comment, kind, res)`：评论成功回包只写 `reacts[kind]` 与 `myReacts` 里这一格；失败回滚也只回滚这一格。
+- `CommunityView.vue` 与 `PostDetailView.vue` 的 `cmtReact` 都改调这个 helper。
+- 服务端写入语义不变（仍是幂等 set，三条都落库）；只是 UI 不再让旧快照越权改别的 kind。其它 kind 若在别的设备变了，交给下一次信息流刷新校正。
+
+### 验证
+- 新锁 `tools/react-multikind-test.mjs`：**25/25** —— 纯函数乱序回包（A1~A8）、暖心墙接入（B1~B4）、详情页同口径回归（C1~C4）、评论 ❤️/💔 两格互不覆盖（D1~D9）。
+- 双向：`_scratch/react-multikind-mutate.mjs` 五处改坏全部变红（帖子 helper 整包写回 / 暖心墙旧三行 / 详情页整包合并 mine / 评论整包覆盖 / 详情页评论整包覆盖），还原后三个文件 MD5 一致、回归全绿。
+- 无头实测（同一探针，修后）：
+  - 三个连点后 900ms 旧快照到达，三个按钮仍全亮、计数全 1，稳定 1.2s 后不变；
+  - 第二轮反向：三个都亮时再连点一遍取消，旧快照同样晚到，最终三个都灭、计数全 0（不会被旧快照重新点亮）；
+  - 截图 `_scratch/shots-354/multi-after.png` / `multi-off-stable.png`。
+- 评论两格：纯函数锁证明旧快照只写自己那一格；`CommunityView` / `PostDetailView` 两处源码都改为 helper 调用（未单独造评论 UI 探针，评论列表需要额外造数，行为由 D1~D9 + 源码接线锁住）。
+- 闸门 **70/74 OK**（新增本锁；红的 4 条仍是并行会话在途：app-download / keyboard-policy / responsiveness / uifix）；`vite build` 0 error。
+
+### 没做
+- 没提交、没部署、没打 APK；没真实点回应（探针挡后端，不写库）。
+- 没真机复验（USB 仍掉线）。
+- 本轮修帖内三颗回应按钮 + 评论 ❤️/💔；顶部排序按钮（推荐 / 同感最多 / 抱抱最多 / 暖暖最多）未动（如果那里也有具体现象，下一轮单独查）。
+
+## 轮 355 · 私信：列表已有新消息，点进会话却要等好几秒才展示
+
+用户原话：「有新消息，再会话列表那里能看到，但是点击进去又没有，要好几秒之后才展示」。
+
+### 根因
+- 列表预览由 `dm_list_convs` / 实时刷新更新；点进会话时 `loadMessages` 第一帧只读本地库（`dmStore` → IndexedDB），本地库没有这条新消息。
+- 实时通道收到**别的会话**的 INSERT 只触发 `loadConvsImplicit()` 刷列表，没有把消息写进该会话本地库；当前会话收到 INSERT 也走 `pullTail()` 再发一次 `dm_list_messages`，弱网下同样要等。
+- 于是列表有预览、聊天区没有；等跨境 `dm_list_messages` 回来才补上（无头探针固定延迟 2.6s，症状完全复现）。
+
+### 修法
+- `src/utils/dmStore.js` 新增 `dmStoreAppend(me, conv, row)`：只在该会话**已有本地历史**时按 id 合并追加。没有历史不写——否则本地库只剩一条尾部，进会话先显示它，网络回来的更早记录会被 `mergeTail` 追加到它后面，顺序错。
+- `src/views/MessagesView.vue` 新增 `cacheIncoming(cid,row)`：非当前会话实时 INSERT 先 `dmStoreAppend`；若 IndexedDB 已有历史也 `idbMerge` 镜像；同时更新内存列表行预览（下一次 `loadConvsImplicit` 用服务端整行校正）。
+- 当前会话实时 INSERT 直接 `applyTail(cid,[row])` 上屏（实时行就是完整 `dm_messages` 行），不再多绕一次 `dm_list_messages`；`msgs` 还没装这个会话时退回 `cacheIncoming`，由 `loadMessages` 整窗拉取。
+- `pullTail` 抽成 `applyTail`：实时/轮询收到的新消息也整窗落 `dmStore` + `idbMerge`（旧版只有 `loadMessages`/`send` 落库，在会话里收到的消息离开再进又得等网络）。
+- `applyTail` 仍保留 `msgSeq`/会话守卫，只处理当前会话且 `msgsConv===cid`；`entryReady` 为真才落库，避免把一条尾部当完整历史。
+
+### 验证
+- 新锁 `tools/dm-tail-cache-test.mjs` **20/20**：A1~A10 `dmStoreAppend`（有历史追加/排序/去重/more 保持/无历史不写/脏参数）；B1~B10 接线（非当前会话缓存、当前会话直上屏、尾部落库、IDB 镜像、过期守卫、首帧读本地库）。
+- 双向：`_scratch/dm-tail-cache-mutate.mjs` 五处改坏（无历史也写 / 非当前不缓存 / 当前仍走 pullTail / 尾部落库去 dmStore / 去 IDB）全部变红；还原后 `dmStore.js`、`MessagesView.vue` MD5 一致，回归全绿。
+- 无头 A/B（`_scratch/dm-list-newmsg-probe.mjs`，Vite dev 5174，假登录 + 本地缓存；后端域名全挡，`dm_list_messages` 固定延迟 2600ms）：
+  - 旧行为（不喂实时事件）：列表预览已有「新消息来了-355」；点进 700ms 聊天区没有，3.1s 才出现。截图 `_scratch/shots-355/chat-700-no-cache.png` / `chat-3100-no-cache.png`。
+  - 修后（把 INSERT 喂给 App 已建的 `dm-inbox` 通道 `trigger`，走真实 `dmRealtime.handleInsert → onDmInsert → cacheIncoming`）：本地库从 2 条变 3 条、含新消息；点进 700ms 已展示。截图 `_scratch/shots-355/chat-700-with-cache.png`。
+  - 当前会话附加：已在聊天页时再喂一条实时 INSERT，350ms 内「实时直达-355」直接上屏（不等 2600ms 网络）。截图 `_scratch/shots-355/chat-active-insert.png`。
+  - 证据 JSON：`_scratch/shots-355/proof-no-cache.json` / `proof-with-cache.json`。
+- 回归：`dm-race-test` 16/16、`dm-first-open-test` 10/10、`dm-test` 336/336、`dm-scroll` 10/10、`dm-send-jump` 7/7；`vite build` 0 error。
+- 闸门 **71/75 OK**（新增本锁；红 4 条仍是并行会话在途：app-download / keyboard-policy / responsiveness / uifix）。
+
+### 没做
+- 没提交、没部署、没打 APK；没真实发消息、没写库（探针挡后端）。
+- 没真机复验（USB 仍掉线）。
+- 新会话（本地完全没有历史）仍走网络整窗拉取；本轮只保证「已有会话的新消息」本地秒开，不把一条尾部塞进空库。
+
+## 轮 356 · 漂流瓶：写长信时输入框一路长高，直接铺满手机屏幕
+
+用户原话：「漂流瓶那里。app端当写很长的文字的时候，直接铺满屏幕了，这不对吧」。
+
+### 复现（先证明不是错觉）
+- 无头 390×844、假登录 + 本地缓存，打开 `/?tab=bottle`，向「投漂流瓶」输入框灌入 986 字：
+  - 旧版 textarea 高度 **1200px**，整张 `mail-card` 高 **1737px**，`home-track` 高 1749px，页面 scrollHeight **1949px**；手机一屏只有 844px，输入框确实铺满整屏。
+  - 旧版截图在修复复测时被同名文件覆盖；修复后的对照图见下（`bottle-longtext-after-fix.png`）。
+- 根因：Vant `autosize` 只传了 `true`、没传 `maxHeight`，`resizeTextarea()` 会按 `scrollHeight` 无限撑高；漂流瓶正文上限 1000 字，写满就是 1200px。
+
+### 修法
+- `src/components/BottleView.vue` 新增两个封顶常量：
+  - `MAIL_AUTOSIZE = { maxHeight: 160 }`（主写信框，约 6 行）；
+  - `REPLY_AUTOSIZE = { maxHeight: 120 }`（托盘回信 / 记录回信 / 捞信弹窗回信）。
+- 4 个 `van-field` 的裸 `autosize` 全部换成 `:autosize="…"`；超出部分在输入框内滚动，不再撑高页面。没有改发送逻辑、没有改 Vant 默认样式。
+
+### 验证
+- 新锁 `tools/bottle-autosize-test.mjs` **5/5**：4 个多行框都在、主框 160、三个回信框 120、无裸 autosize、封顶值有限。
+- 双向：`_scratch/bottle-autosize-mutate.mjs` 五处改坏（主框/回信框封顶改 9999、主框/回信框退回裸 autosize、少一个 textarea）全部变红；还原后 `BottleView.vue` MD5 一致。
+- 无头复测（同一探针，修复后）：986 字时 textarea 高度 **160px**（scrollHeight 1200、框内滚动），`mail-card` 高 **697px**，页面 scrollHeight **909px**；不再铺满屏幕。截图 `_scratch/shots-356/bottle-longtext-after-fix.png`，数值 `bottle-longtext-after-fix.json`。
+- 回归：bottle-test 81/81、bottle-chat-test 112/112、bottle-vac-test 9/9、bottle-records-speed-test 9/9；`vite build` 0 error。
+- 闸门 **72/76 OK**（新增本锁；红 4 条仍是并行会话在途：app-download / keyboard-policy / responsiveness / uifix）。
+
+### 没做
+- 没提交、没部署、没打 APK；没真实投信/回信（探针挡后端，不写库）。
+- 没真机复验（`adb devices` 仍为空）；真机 USB 恢复后需补看：写长信时输入框停在约 6 行、框内可滚，投信/回信按钮仍可点到。
+
+## 轮 357 · 暖心墙顶部：搜索栏被压在状态栏下面（用户截图红框）
+
+用户原话：「这个排版有问题」+ 截图（红框圈住顶部状态栏区域，下面只露出「推荐」排序行）。
+
+### 根因
+- 暖心墙手机端的 `.wall-scroller` 是 `position: fixed; inset: 0`，它**不吃 App 壳 `main` 的 padding-top**。
+- 这里原先只写了 `paddingTop: env(safe-area-inset-top)`；Capacitor WebView 里这个 env() 常为 0（MainActivity 推的是 `--sat`），于是 fixed 滚动层从窗口最顶上开始，搜索栏正好压在状态栏下面。
+- 用户截图里状态栏胶囊下方的浅色区域不是空白，是**被压住的搜索栏/内容**；下面的「推荐」排序行因此看起来像首行。
+
+### 修法
+- `src/views/CommunityView.vue` 手机端 `.wall-scroller` 的顶部/底部安全区改成与 `main` 同口径：
+  - `paddingTop: var(--sat, env(safe-area-inset-top, 0px))`
+  - `paddingBottom: calc(70px + var(--sab, env(safe-area-inset-bottom, 0px)))`
+- 只动这一处内联样式；桌面分支、fixed 全屏滚动层、搜索/排序结构都没改。系统状态栏胶囊本身是 OS 画的，本轮不改它，只保证网页内容让到它下面。
+
+### 验证
+- 新锁 `tools/community-safe-area-test.mjs` **4/4**：能找到手机端 style 对象、顶部用 `--sat` 而不是裸 env、底部用 `--sab`、仍保留 fixed/inset/overflowY。
+- 双向：`_scratch/community-safe-area-mutate.mjs` 五处改坏（顶部/底部退回裸 env、fixed 改 relative、去掉 inset、overflowY 改 scroll）全部变红；还原后 `CommunityView.vue` MD5 `D3D7B8048B1DF3FFD1FC587867F1E759` 一致，锁重新变绿。
+- 无头 390×844 A/B（`_scratch/community-safe-area-probe.mjs`，注入 `--sat:44px`）：
+  - 旧写法：`.wall-scroller` padding-top **0px**，搜索栏 top **12px**（在状态栏下），排序行 top 64px；
+  - 新写法：padding-top **44px**，搜索栏 top **56px**（状态栏下方），排序行 top 108px；
+  - 截图 `_scratch/shots-357/community-safe-area-before.png` / `community-safe-area-after.png`；另把用户截图里的状态栏贴回无头图做对照（状态栏本身是系统层，无头浏览器没有）：`community-statusbar-before.png` / `community-statusbar-after.png`。
+  - 生产 `dist`（4599 静态服）用同一探针复测：before/after 数值完全一致，排除 dev HMR 影响。
+- 回归：`wall-test` 37/37、`wall-refresh-test` 9/9、`wall-keep-test` 25/25、`wall-reaction-test` 19/19、`app-shell-test` 67/67；`vite build` 0 error。
+- 闸门 **73/77 OK**（新增本锁；红的 4 条仍是并行会话在途：app-download / keyboard-policy / responsiveness / uifix）。
+
+### 打包（2026-10-28，用户单独要求）
+- 顺序：`npm run build`（0 error）→ `npm run cap:sync`（index.html × 26 / 剥 SEO 占位 × 12 / 视口 overlays-content × 26 / 剥内嵌 apk）→ `gradlew assembleDebug`（JAVA_HOME=jdk-21，BUILD SUCCESSFUL in 52s）。
+- 产物：`android/app/build/outputs/apk/debug/app-debug.apk` → **`apk/warm-paws-1.0.2-round357.apk`**（6,270,848 字节，2026-10-28 02:29；md5 `CED1B03C6B0CEF61CC32B2A926D3B3D6`，sha256 `42AFD8EFDD40502286DC39F8BF224F371D4B5BF7718E55A5E8A097AA346F5408`）。
+- 包内核对：versionName **1.0.2** / versionCode **3**；`assets/public/assets/CommunityView-uQXy3iYr.js` 含 `var(--sat, env(safe-area-inset-top, 0px))`；`index.html` 视口 `overlays-content`；无内嵌 `assets/public/apk/`。
+- 未跑 `apk:web`、未部署、未更新线上 `/apk/warm-paws.apk`；`adb devices` 仍为空，未装机。
+
+### 没做
+- 没提交、没部署；APK 已按用户要求单独打包。
+- 没真机复验（`adb devices` 仍为空）；真机恢复后需补看：暖心墙首屏搜索栏完整露在状态栏下方，「推荐」行随之下移，滚动时内容仍从状态栏下穿过。
+
+## 轮 358 · 消息页漂流瓶留白 / 说明文案 / 会话顶部空白
+
+用户原话：
+1. 「app消息-漂流瓶那里，跟下面的漂流瓶记录中间有一大段空白，改一下」
+2. 「漂流瓶下面的一大段文字描述精简一下」
+3. 「会话，点击任意会话进去，结果上面一大段空白，看图片」（截图红框在状态栏与聊天头之间）
+
+### 根因
+- 会话顶部：手机聊天页 `.dm-thread` 的顶部内边距是 `calc(14px + var(--sat))`。状态栏已经由 `--sat` 让过一次，这里又多垫 14px；3x 屏上就是 42 个物理像素，正是用户红框圈出的那条空白。
+- 漂流瓶记录：首页 `.mail-list` 上边距 16px + 内边距 14px；消息页 `.bottle-records` 上边距 20px + 内边距 16px。两处都在分段条/规则文案与记录之间叠出 30~36px 的空带。
+- 文案：`bottle.sub`、`bottle.rules`、`bottle.recordsHint` 都是两大句，手机上一段占两行。
+
+### 修法
+- `src/style.css`：手机聊天页 `.dm-thread` 顶部只让 `--sat`（不再 +14px）；首页 `.mail-list` 改成 `margin-top:8px; padding-top:10px`。
+- `src/components/BottleRecords.vue`：`.bottle-records` 改成 `margin-top:10px; padding-top:10px`。
+- `src/i18n.js`（中文）：
+  - `bottle.sub` → 「写下心事，投进海里，等一句回音。」
+  - `bottle.rules` → 「每天可投 {w} 封 · 捞到并回信才计 1 次（每天 {f} 次）· 不想回可放回海里。」
+  - `bottle.recordsHint` → 「回信会留在这里；是否开聊由原信作者决定。」
+- 只改样式与文案，不动发送/记录/聊天逻辑；`MessagesView.vue` 本轮零改动（避开并行会话在途文件）。
+
+### 验证
+- 新锁 `tools/messages-gap-test.mjs` **6/6**：聊天头顶部只让 `--sat`、两处记录区上边距、三条中文文案长度。
+- 双向：`_scratch/messages-gap-mutate.mjs` 六处逐个改坏全部变红；还原后 `style.css` / `BottleRecords.vue` / `i18n.js` MD5 与改前一致，锁重新全绿。
+- 无头 390×844、注入 `--sat:44px`：
+  - 聊天头 top **58 → 44**（正好贴状态栏下沿）；
+  - 消息页分段条底 → 漂流瓶记录顶 **26 → 16px**；
+  - 首页规则文案底 → 记录 tabs 顶 **35 → 23px**；说明文案高度 **39 → 19px**（两行变一行）。
+  - 截图 `_scratch/shots-358/chat-top.png` / `bottle-seg.png` / `home-bottle.png`。
+- 真机 393×895（`--sat:36px`、`--sab:16px`，debug 包已装）：
+  - 聊天头 top = **36px**，状态栏下沿即聊天头，红框空白消失；
+  - 消息页分段条底 → 漂流瓶记录顶 = **16px**；首页规则底 → tabs 顶 = **23px**。
+  - 整屏截图 `_scratch/shots-358/device-chat-top-full.png` / `device-bottle-seg-full.png` / `device-home-bottle-full.png`。
+- 回归：`chat-look-test` **7/7**（L4 断言同步改成「顶部只让 --sat」，仍禁止底部多垫 10px）、`i18n-test` 19/19、`home-panes-test` 9/9、`bottle-test` 81/81、`bottle-autosize` 5/5、`bottle-vac` 9/9、`dm-vac` 26/26、`dm-first-open` 10/10、`bottle-records-speed` 9/9、`fold-text` 7/7；`vite build` 0 error。
+- 全量闸门 **74/78 OK**（新增本锁；红的 4 条仍是并行会话在途：app-download / keyboard-policy / responsiveness / uifix）。其中 `responsiveness-test` 红在 B4（暖心墙回写保留 💔 计数）、`uifix-test` 红在 T3（500 vs 200），本轮未碰。
+- 真机装包顺序：`npm run build` → `npm run cap:sync` → `gradlew assembleDebug`（JAVA_HOME=jdk-21，BUILD SUCCESSFUL in 42s）→ `adb install -r` 成功；未另存 `apk/` 归档。
+
+### 没做
+- 没提交、没部署、没跑 `apk:web`、没更新线上 APK / `version.json`。
+- 没有真实发送消息或写库；真机只做导航、几何取证与截图。
+
+## 轮 359 · 帖子详情页回应「点了亮、返回再进又没了」
+
+用户原话：
+「暖心墙帖子，点进去详情页之后，再点击暖暖，抱抱，同感，结果返回再进去没有效果」
+
+### 根因
+- `PostDetailView.vue` 里 `hint` 被脚本和模板（`v-if="hint"`）使用，但**漏了声明** `const hint = ref("")`。
+- 点回应时顺序是：先乐观改 `post.value`（按钮当场亮）→ 再 `reactPending.value` / `hint.value = ""` → 最后 `reactQ.push` 落库。
+- `hint.value = ""` 在运行时抛 `ReferenceError: hint is not defined`，**落库队列根本没启动**，所以服务端从未收到 `wall_set_reaction`；返回列表再进详情，SWR 读到的是服务端旧状态 → 看起来「没效果」。
+- 同一个漏声明也会让收藏/厌恶的失败提示、复制提示等走到 `hint.value` 时中断。
+
+### 修法
+- `src/views/PostDetailView.vue`：补 `const hint = ref("");`，不改回应逻辑、不加新 UI。
+- 三条回应（抱抱/暖暖/同感）共用同一条落库链路，声明补上后一起恢复。
+
+### 验证
+- 新锁 `tools/post-detail-test.mjs` **19/19**：断言 `hint` ref 已声明且模板在用。
+- 说明：`undef-check` 只扫「未声明就赋值」，不扫 `hint.value` 这类读取，所以本轮回补了详情页专项锁。
+- 双向：临时删掉 `const hint` → **18 pass / 1 fail**（新锁红）；还原 → **19/19** 绿。
+- 无头 390×844 + 真实后端（帖子 720，脚本 `_scratch/react-persist-verify.mjs`）：
+  - 初始：抱抱 0 / 暖暖 1 / 同感 1，三颗全灭；
+  - 依次点三颗：抱抱 1 / 暖暖 2 / 同感 2，三颗全亮；
+  - 返回再进：仍是 1 / 2 / 2，三颗全亮（服务端已落库）；
+  - 清理：再点三颗 → 0 / 1 / 1，三颗全灭；
+  - 网络：6 次 `wall_set_reaction`（3 次 `p_on:true` + 3 次 `p_on:false`）全部 200/204，无运行时异常。
+  - 截图：`_scratch/shots-359/detail-before.png` / `detail-after.png` / `detail-reenter.png` / `detail-cleanup.png`。
+- 回归：`react-multikind` 25/25、`wall-reaction` 19/19、`react-queue` 12/12、`tap-guard` 30/30、`undef-check` 0 problems、`tdz-check` 0 problems；`vite build` 0 error。
+- 全量闸门 **74/78 OK**，红的 4 条仍是并行会话在途：app-download / keyboard-policy / responsiveness / uifix。
+
+### 没做
+- 没提交、没部署、没打包 APK；真机装着的仍是上一版，需重新 build + install 才能在 App 里看到本修复。
+- 测试用的三颗回应已全部取消（净零），没有留下测试数据。
+
+## 轮 360 · 通知「看全部 / 只看未读」点击只换文案、列表不动
+
+用户原话：
+「通知那里，看全部，跟看已读，点击之后 没有效果」
+
+### 根因
+- `NotificationsView` → `notifyApi.page({ unreadOnly })` → `db.notifPage(...)`。
+- 视图层参数叫 `unreadOnly`，db 适配层契约参数叫 `unread`（直连映射 `p_unread`，网关映射 `&unread=1`）。
+- `notify.js` 原样把 `unreadOnly` 传给 db，db 读 `o.unread` 得到 undefined → `p_unread:false` / 不带 `unread=1`。
+- 所以按钮状态和文案会变（`只看未读` ↔ `看全部`），但请求永远要全部数据，列表自然不动。
+
+### 修法
+- `src/utils/notify.js`：在业务层把 `unreadOnly` 翻译成 db 契约的 `unread`，两边不再各叫各的。
+- 不动 SQL / 网关 / 视图；直连和网关两条实现同时恢复。
+
+### 验证
+- 新契约锁 `tools/api-contract-test.mjs` **114/114**：`notify.page({unreadOnly:true})` 必须发 `p_unread:true`；`false` 必须发 `false`。
+- 双向：把 `unread: unreadOnly` 改回 `unreadOnly` → **113 pass / 1 fail**（新锁红）；还原 → **114/114** 绿。
+- 无头 390×844 + 拦截 `notif_page` 的假后端（2 条：1 未读 + 1 已读）：
+  - 初始「只看未读」，列表 2 条；
+  - 点一下 → 按钮变「看全部」，列表 **1 条**（只剩未读）；
+  - 再点 → 回「只看未读」，列表 **2 条**；
+  - 三次请求 `p_unread` 依次 false / true / false。
+  - 改坏时同样点击：按钮变「看全部」，列表仍 2 条，三次请求全 false。
+  - 截图：`_scratch/shots-360/notif-mock-buggy-after1.png`（坏：2 条）/ `notif-mock-fixed-after1.png`（好：1 条）。
+- 真实后端只读复验：点「只看未读」后请求体为 `p_unread:true`；测试账号通知为空，列表视觉用上面的假后端锁。
+- 回归：`gateway-contract` 107/107、`notify-test` 145/145、`api-contract` 114/114；`vite build` 0 error；全量闸门 **74/78 OK**，红的 4 条仍是并行会话在途（app-download / keyboard-policy / responsiveness / uifix）。
+
+### 没做
+- 没提交、没部署、没打包 APK；真机装着的仍是上一版。
+- 若用户说的「看已读」其实是指「全部已读」按钮，需要再单独复验；本轮锁的是「只看未读 ↔ 看全部」这颗筛选。
+
+## 轮 361 · 漂流瓶回信超过 1000 字，点「回信」没反应、提示不明显
+
+用户原话：
+「漂流瓶回复超过1千字，点击回信没有反应，那个提示也不明显」
+
+### 根因
+- 回信校验在 `bottleReply()` 里：trim 后超过 `BOTTLE_BODY_MAX`（1000）会抛 `bottle-too-long`。
+- `BottleView.doReply()` 捕获后只写页面顶部的 `mailHint`；用户实际在托盘 / 记录卡 / 捞信弹窗里点「回信」，
+  错误提示在视口外，看起来就是按钮没反应。
+- 点击前也没有本地长度拦截；Vant 的 `maxlength` 正常会截到 1000，但输入法组合、粘贴或服务端口径差异
+  仍可能把超限文本送到服务端，最后同样只落到顶部提示。
+
+### 修法
+- `src/components/BottleView.vue`：
+  - 新增按信 id 的 `replyErr`，托盘、记录卡、捞信弹窗三处回信框都在按钮上方显示行内错误；
+  - 三处回信框都加实时字数 `当前/1000`，超限变红；
+  - `doReply()` 在发请求前先按 trim 后长度拦截，超限直接贴行内提示、不发请求；
+  - 服务端 `bottle-too-long` 或其他回信错误也落当前输入框旁，不再只写顶部 `mailHint`；
+  - 用户重新输入时清掉旧错误。
+- `src/i18n.js`：新增双语 `bottle.replyTooLong`（带当前字数 `{n}`）。
+- 组件内新增 scoped 样式 `.reply-meta / .reply-count.over / .reply-err`，不动全局 `style.css`。
+
+### 验证
+- `tools/bottle-test.mjs`：**84/84**（新增 3 条锁：三处行内提示、点击前本地拦截、双语文案）。
+- 双向：
+  - 把 `if (body.length > BOTTLE_BODY_MAX)` 改成 `if (false)` → **83 pass / 1 fail**（新锁红）；还原 → **84/84**。
+  - 把三处 `v-if="replyErr[...]` 改坏 → **83 pass / 1 fail**；还原 → **84/84**。
+- 无头 390×844 + 假后端（1 封 held 信，`bottle_reply` 返回 400 `bottle-too-long`）：
+  - 修复前：托盘里 1000 字点「回信」，请求已发出，但只有页面顶部 `mailHint`，托盘内无提示；
+  - 修复后：托盘内按钮上方出现红字 + `1000/1000`，请求仍按服务端错误落行内；
+  - 记录卡同样复验：错误出现在「发送回信」按钮上方；
+  - 截图：`_scratch/shots-361/bottle-reply-before-fix-after.png`（坏）、
+    `bottle-reply-after-fix-after.png`（托盘好）、`bottle-reply-after-fix-record-record.png`（记录卡好）。
+  - 未写真实库；假后端只影响探针浏览器。
+- 回归：`i18n-test` 19/19、`bottle-autosize` 5/5、`bottle-vac` 9/9、`fold-text` 7/7、
+  `bottle-records-speed` 9/9；`vite build` 0 error；全量闸门 **74/78 OK**，红的 4 条仍是并行会话在途
+  （app-download / keyboard-policy / responsiveness / uifix）。
+
+### 没做
+- 没提交、没部署、没打包 APK；真机当前未连，真机复验要等设备恢复。
+- 没有改全局 `style.css` / `MessagesView.vue`（并行会话未提交改动）。
+
+## 轮 362 · 一个字的消息气泡被撑成 100px
+
+用户原话：
+「一个字的消息太长了吧」
+
+### 根因
+- `vue-advanced-chat` 自带的 `.vac-message-container { min-width: 100px; box-sizing: content-box; }`。
+- 短消息（一个字、两个字）也至少占 100px + 内边距，所以气泡看起来像一条长条；长消息不受影响。
+- 项目原来的 THEME_CSS 只覆盖了 padding / 最大宽度 / 时间位置，没有把这条 min-width 压掉。
+
+### 修法
+- `src/components/DmVacChat.vue` 的 THEME_CSS：
+  `.vac-message-wrapper .vac-message-container` 追加 `min-width: 0 !important;`。
+- 只改这一条；不碰全局 `src/style.css`、`MessagesView.vue`，也不动消息内容/发送逻辑。
+
+### 验证
+- `tools/chat-look-test.mjs` 新增 L8，锁住 `.vac-message-container` 的 `min-width: 0`；现 **8/8**。
+- 双向：删掉 `min-width: 0 !important` → **7 pass / 1 fail**（L8 红）；还原 → **8/8**。
+- 无头实测（真实测试账号 A，只读；把最后一条气泡的 DOM 文本改成 `hj`，不写库）：
+  - 934×869：修复前 container 104 / card 100；修复后 container 44 / card 40。
+  - 390×844：修复前 container 104 / card 100；修复后 container 44 / card 40。
+  - 另测收信侧（B→A）：同样 104→44 / 100→40；截图 `_scratch/shots-362/dm-one-char-mobile-incoming-before.png`（坏）/ `dm-one-char-mobile-incoming-after.png`（好）。
+  - 截图：`_scratch/shots-362/dm-one-char-desktop-before.png`（坏）/ `dm-one-char-desktop-after.png`（好）；
+    `_scratch/shots-362/dm-one-char-mobile-before.png`（坏）/ `dm-one-char-mobile-after.png`（好）。
+- 回归：`dm-vac-test` 26/26、`dm-first-open-test` 10/10；`vite build` 0 error。
+- 本地预览已重建并继续在 `0.0.0.0:4173` 提供最新构建。
+
+### 没做
+- 没提交、没部署线上、没打包 APK。
+- 没有改全局样式文件；真机当前未连，真机复测要等设备恢复。
+
+## 轮 363 · 漂流瓶记录上方空白带还是太宽
+
+用户原话：
+「前面让你改的这个没改啊，还是太宽」
+
+### 根因
+- 手机漂流瓶段的父容器 `.dm-list` 是 `display:flex; gap:6px`。
+- `.bottle-records` 自己又叠了 `margin-top:10px; padding-top:10px`。
+- 所以分段条底部到「漂流瓶记录」标题实际是 6 + 10 + 10 = **26px** 空白；
+  用户红框圈的就是这条空带。
+
+### 修法
+- `src/components/BottleRecords.vue` 的 `.bottle-records` 改成：
+  `margin-top: 0; padding-top: 0;`。
+- 只保留 `.dm-list` 自身的 6px 弹性间距；记录卡片之间的 12px 间距不动。
+
+### 验证
+- 新增 `tools/bottle-gap-test.mjs`：**3/3**。
+- 双向：把 `.bottle-records` 改回 `margin-top:10px; padding-top:10px` → **1 pass / 2 fail**（G1/G2 红）；
+  还原 → **3/3**。
+- 无头 390×844（真实测试账号 A，只读，切到漂流瓶段）：
+  - 修复前：分段条 bottom 85，标题 top 111，空白 **26px**；
+  - 修复后：分段条 bottom 85，标题 top 91，空白 **6px**。
+  - 截图：`_scratch/shots-363/bottle-gap-before-fix.png`（坏）/ `bottle-gap-after.png`（好）。
+- 回归：`bottle-test` 84/84、`bottle-records-speed-test` 9/9、`chat-look-test` 8/8；`vite build` 0 error。
+- 本地预览已重建并继续在 `0.0.0.0:4173` 提供最新构建。
+
+### 没做
+- 没提交、没部署线上、没打包 APK。
+- 没有改 `.dm-list` 的 6px gap（会话/通知两段共用）；没有改记录卡片内部间距。
+
+## 轮 364 · ＋ 弹层图标与「3 万字」文案
+
+用户原话：
+「图标都换一下，不好看，那个三万字的描述去掉，只在写的时候超过的时候提示」
+
+### 修法
+- `src/components/TabBar.vue`：把 ＋ 弹层三个入口的 emoji（🌊 / ✍️ / 📖）换成同一套
+  inline SVG 线图标：漂流瓶、带心形的话泡、打开的书。
+- 图标容器统一成 38×38 圆角底（`var(--accent-soft)` + `var(--accent-deep)`），
+  SVG 22×22，不再靠 `font-size: 26px` 撑 emoji。
+- `src/i18n.js`：`tab.composeStorySub` 去掉「最多 3 万字」/「Up to 30,000 words」，
+  改成「一个人慢慢写」/「Write at your own pace」。
+- `story.sub` / `story.feedSub` 也不再提前写单篇上限；上限只在编辑器里超限时出现。
+- `src/components/story/StoryEditor.vue`：正常计数只显示「N 字 · 约 M 分钟读完」；
+  `over` 为真时才切到 `story.counterOver`：「N 字 · 已超过 30000 字上限」。
+  原有的「超出字数上限」清单项和红色计数态保留。
+- `story.errLong`（提交时服务端/本地超限错误）保留，作为「超过的时候提示」。
+
+### 验证
+- 新增 `tools/tabbar-copy-test.mjs`：**6/6**。
+- 双向：
+  - 把中文 `composeStorySub` 改回「一个人慢慢写，最多 3 万字」→ **5 pass / 1 fail**（C3 红）；还原 → **6/6**。
+  - 把编辑器计数改回永远显示 `{max}` → **5 pass / 1 fail**（C5 红）；还原 → **6/6**。
+  - 把瓶子的一个 `<path>` 换成 emoji → **5 pass / 1 fail**（C1 红）；还原 → **6/6**。
+- 无头 390×844（访客会话，只读；StoryEditor 未登录不会自动存草稿）：
+  - ＋ 弹层：3 个入口，图标均 38×38，SVG path 数 4 / 2 / 3，`icon` 文本为空（不再渲染 emoji）；
+    副标题已是「一个人慢慢写」，无「3 万字」。
+    截图：`_scratch/shots-364/tabbar-sheet-after.png`。
+  - 写故事：填入 30001 字后，计数为「30001 字 · 已超过 30000 字上限」，
+    `st-count--over` 为真，清单含「超出字数上限」。
+    截图：`_scratch/shots-364/story-over-after.png`。
+- 回归：`app-shell-test` 67/67、`story-test` 223/223、`i18n-test` 19/19；`vite build` 0 error。
+- 顺带修正 `tools/messages-gap-test.mjs` 的旧断言：S3 还期待 `.bottle-records` 是 10/10px，
+  与轮 363 已落地的 0/0 冲突；改成 0/0 后 **6/6**。
+- 全量闸门 **76/80 OK**；剩 4 条红仍是并行会话文件（app-download / keyboard-policy /
+  responsiveness / uifix），不是本轮改动引起。
+- 本地预览已重建并继续在 `0.0.0.0:4173` 提供最新构建。
+
+### 没做
+- 没提交、没部署线上、没打包 APK。
+- 没有改全局 `src/style.css`（并行会话未提交改动）；图标样式放在 `TabBar.vue` 的 scoped style 里。
+- 没有改故事的真实 30000 字上限，也没有改 `storyRules.js` 的校验口径
+
+## 轮 365 · 管理中心最近 24 小时日活
+
+用户原话：
+「在管理中心页面增加一个最近24小时日活数据，以最近24小时登录过的账户为准，有什么需要增加的你也加上去」
+
+### 口径
+- 不用 `profiles.created_at`（那是注册数），改用 Supabase Auth 的 `auth.users.last_sign_in_at`。
+- 滚动窗口：`last_sign_in_at >= now() - interval '24 hours'`；按账户 `count(distinct u.id)` 去重。
+- 只统计 `join public.profiles` 的账户，和 `users_total` / 用户名单同口径。
+- 自然日「今日新增」保留不动；DAU 明确是最近 24 小时滚动值。
+
+### 修法
+- 新增 `MIGRATION_admin_dau.sql`（可重复执行）：
+  - `admin_overview()` 增加 `dau_24h`、`recent_logins`（最近 8 个登录账户，含昵称/邮箱/最近登录时间）。
+  - `admin_users_page()` 增加 `last_sign_in_at`，用户名单可直接核对 DAU 口径。
+- `SUPABASE_SETUP.sql` 同步新库安装版函数。
+- `src/views/AdminView.vue`：
+  - 总览新增「24 小时日活」卡片：数值 + 占总用户百分比（`ratePct`）。
+  - 新增「最近登录（24 小时）」面板，按登录时间倒序。
+  - 用户名单行增加「最近登录」；迁移未跑时显示「—」，不误报「从未」。
+  - 迁移未跑时卡片/面板显示「统计未启用 · 执行 MIGRATION_admin_dau.sql」。
+- `src/utils/admin.js` 增加 `ratePct`（脏值归 0、上限 100）。
+- `src/style.css` 修手机用户名单：640px 以下隐藏 UID 列，邮箱弹性、注册时间收窄，避免新增列把昵称挤成竖排单字。
+
+### 验证
+- 新增 `tools/admin-dau-test.mjs`：**9/9**。
+- 双向：
+  - SQL `24 hours` → `48 hours`：**8 pass / 1 fail**（D1 红）；还原 → **9/9**。
+  - 手机 CSS 恢复 UID 列：**8 pass / 1 fail**（D9 红）；还原 → **9/9**。
+- 回归：`admin-test` 46/46、`i18n-test` 19/19、`i18n-usage-test` 2/2；`vite build` 0 error。
+- 全量闸门 **77/81 OK**；4 条红仍是并行会话文件（app-download / keyboard-policy / responsiveness / uifix），不是本轮改动引起。
+- 无头 390×844 / 1280×900（真实测试账号 A 会话，只读；用 fetch 拦截伪造 `is_admin` / `admin_overview` / `admin_users_page`，不写真实后台）：
+  - 总览：24 小时日活 12，占总用户 5%；最近登录面板含小满/阿澈；用户名单显示最近登录。
+  - 截图：`_scratch/shots-365/admin-dau-desktop.png`、`admin-dau-recent.png`、`admin-dau-mobile.png`、`admin-users-last-login.png`。
+  - 证明：`_scratch/shots-365/admin-dau-proof.json`。
+- 本地预览已重建并继续在 `0.0.0.0:4173` 提供最新构建。
+
+### 没做 / 待执行
+- **没有执行 Supabase 迁移**（没有数据库管理员权限）；线上/本地真实后台要看到 DAU，需要先跑 `MIGRATION_admin_dau.sql`。
+- 没提交、没部署线上、没打包 APK。
+- 没改 `auth.users` 结构、没新增登录记录表；直接复用 Supabase Auth 已有的 `last_sign_in_at`。
+
+### 追加验收（用户已执行 SQL）
+- 用户已执行 `MIGRATION_admin_dau.sql`。
+- 只读 smoke：测试账号 A（非管理员）调用 `is_admin` / `admin_overview` / `admin_users_page` 均 200；非管理员仍只拿到 `{admin:false}`，权限门没破。
+- A 不是管理员，真实 DAU 数字仍需管理员账号页面确认。
+
+### 轮 366 · 首页「此刻状态」连点后计数对不上（旧刷新覆盖新预扣）（待提交待部署）
+
+**用户点单**：「这里多次点击，下面的计数对不上，有问题」
+
+**复现（受控延迟：PATCH 1.5s、计数 50ms；生产构建 + 真实测试账号 A 会话，只拦截状态接口，不写真实后台）**
+- 受控初始：选中「随便待着」，睡不着 1、随便待着 2。
+- 快速点「睡不着」→「随便待着」：本地先变成 2/1，再变成 1/2。
+- 旧代码：第一笔 PATCH 回来后立刻刷新，服务端还停在「睡不着」，把界面打回 2/1；从 1.5s 到 3s 之间，卡片选「随便待着」，下面却显示「睡不着 2 / 随便 1」。
+- 这不是最终对不上，而是连点期间会有一段明显错位；最后一笔 PATCH 回来才自愈。
+
+**病根**：`setStatus` 每笔点击各排一次 PATCH，每笔 PATCH 完都 `refreshStatusCounts()`；中间那几笔刷新拿到的是「只落库到前几笔」的旧快照，直接覆盖 `bumpCounts` 已经算好的最终预扣。轮 291 的 pending 只保证「最后再补一趟」，没阻止中间旧快照落地。
+
+**修法（`TodayPane.vue` + `statuses.js`）**：
+- 新增 `statusWriteSeq`（最后一次点击）与 `statusAppliedSeq`（已落库的最后一次 PATCH）。
+- 只有 `seq === statusWriteSeq` 的那笔 PATCH 完成才刷新；前面排队的 PATCH 不再各自刷一趟。
+- 刷新发出时记下 `seq`；回来若 `statusWriteSeq` 已变，或最后一笔还没落库，`statusCountsCanApply()` 返回 false，旧快照直接丢弃。
+- 档案 `refreshMyStatus()` 同样记 `writeSeq`，连点后不被晚到的旧档案覆盖新选择。
+- 游客逻辑不变：不写库、不计入人数。
+
+**验证**：
+- `status-test` **63/63**；新增 7 条轮 366 断言（含纯函数 `statusCountsCanApply` 的旧快照拒绝）。
+- 双向：把 `statusCountsCanApply` 临时改成恒 `true` → **60 pass / 3 fail**；还原 → **63/63**。
+- `status-counts-test` 96 checks 0 fail；`home-panes-test` 9/9；`tdz-check` 0；`undef-check` 0；`page-smoke` 13/13。
+- `vite build` 0 error（`dist/assets/main-BpSuQbV7.js`）。
+- 全量闸门 **77/81 OK**；4 条红仍是并行会话文件（app-download / keyboard-policy / responsiveness / uifix），不是本轮改动。
+- 受控延迟复验（生产构建 + 真实账号 A 会话，只拦截状态接口）：
+  - 修后连点全程保持「选中随便待着 / 睡不着 1 / 随便 2」，只在最后一笔 PATCH 后发 **1 次**计数刷新。
+  - 截图：`_scratch/shots-366/status-race-after.png`；证明：`_scratch/shots-366/status-race-proof.json`。
+
+**没做**：没提交、没部署、没打包 APK；没改真实状态/数据库。
+
+### 轮 367 · 大厅计数改「稳定快照」（用户选定）（待提交待部署）
+
+**用户点单**：「稳定快照，你来改吧」
+
+**策略**：
+- 点状态只本地 ±1；PATCH 完成后**不再拉服务端计数**。
+- 快照只在：进入/登录就绪、KeepAlive 切回「今天」（`onActivated`）、浏览器/App 回到前台（`visibilitychange`）、桌面窗口 `focus`。
+- 同一页面 30s 冷却（`statusCountsDue`）；并发触发直接忽略。**不轮询、不订阅 Realtime。**
+- 旧快照仍按 `statusWriteSeq` / `statusAppliedSeq` 丢弃，防止和点击竞态。
+- 游客逻辑不变：不写库、不计入人数。
+
+**与轮 366 的关系**：轮 366 是「最后一笔 PATCH 后刷新一次」；本轮按用户选择改成「点完不刷新，只在下次进入/回到页面时对账」。
+
+**验证**：
+- `status-test` **68/68**；新增 5 条轮 367 断言。
+- 双向：把 `statusCountsDue` 临时改成恒 `true` → **67 pass / 1 fail**；还原 → **68/68**。
+- `status-counts-test` 96 checks 0 fail；`home-panes-test` 9/9；`tdz-check` 0；`undef-check` 0；`page-smoke` 13/13。
+- `vite build` 0 error（入口 `dist/assets/main-BYrD0j-9.js`）。
+- 全量闸门 **77/81 OK**；4 条红仍是并行会话文件（app-download / keyboard-policy / responsiveness / uifix）。
+- 生产构建受控复验（真实测试账号 A 会话；只拦截状态接口，不写真实后台）：
+  - 连点「睡不着」→「随便待着」：日志只有两笔 PATCH，**没有 status_counts**；界面全程「睡不着 1 / 随便 2」。
+  - 路由 `/community` → `/` 并模拟 31s 后：只发 **1 次** status_counts；快照仍是「睡不着 1 / 随便 2」。
+  - 证明：`_scratch/shots-367/status-stable-proof.json`；界面截图沿用 `_scratch/shots-366/status-race-after.png`。
+
+**打包**（用户点单「打包，路径D:\05ruanjian\peiban\apk」）：
+- `npm.cmd run build` → `npm.cmd run cap:sync` → `android\gradlew.bat assembleDebug`（JAVA_HOME=`D:\00ruanjiananzhuang\jdk-21\jdk-21`）。
+- APK：`D:\05ruanjian\peiban\apk\warm-paws-1.0.2-round367.apk`
+- 大小 6,177,404 bytes；versionCode 3 / versionName 1.0.2；package `net.de5.warmpaws`；minSdk 24 / targetSdk 36。
+- SHA-256：`EB284CE4C6C0EB018CE4BBDAAAE971B59FBFCFD371F639DBF88812F18FBE3175`；v2 签名验证通过；内含 `assets/public/assets/main-BYrD0j-9.js`。
+- 未安装到设备、未部署、未提交。
+
+**没做**：没加轮询/Realtime；没改 UI。
+
+### 轮 368 · 管理中心举报队列：帖子/评论分开 + 批量处理（待提交待部署）
+
+**用户点单**：「举报，这里评论跟帖子分开，还有要有一键驳回，跟一键下架，全选，多选，单选等批量处理功能」
+
+**修法**：
+- 举报页新增「帖子举报 / 评论举报」分类页签；待处理、已处理两档都按目标类型分开，分类页签显示服务端计数。
+- 待处理列表每行加复选框；顶部「全选本页」只选当前页 pending，显示「已选 N 条」；单选、多选、全选后可用「一键驳回」「一键下架」批量处理。
+- 批量下架按目标类型分流：帖子 `remove_post`，评论沿用既有 `delete_comment`；逐条调用既有 `admin_report_handle`，单条失败不拖垮整批，最后报部分成功并保留失败项选中。
+- 行内单条「驳回 / 下架帖子 / 删除评论 / 恢复」保留；已处理历史的动作文案从 SQL 下划线值映射到 i18n camelCase，修掉界面直接显示 `admin.reports.act.*` 的问题。
+- 新增 `src/utils/adminReports.js`：分类、批量动作、分类计数、选中集合、历史动作 key 的纯逻辑。
+- 新增 `MIGRATION_admin_report_filter.sql`（可重复执行）：`admin_report_page` 增加 `p_target_type` 分类参数和 `counts` 四格计数；`MIGRATION_reports.sql` / `SUPABASE_SETUP.sql` 同步四参函数。
+- Worker `/api/admin/reports` 支持 `target_type` 查询参数；直连/网关两个适配器都透传，直连回退旧三参 RPC 时不会多发未知参数。
+- 老库/老 Worker 未迁移时，前端只筛当前页并显示「分类筛选需执行 MIGRATION_admin_report_filter.sql」提示，不把混排列表冒充分类结果；分类请求竞态用 `status:kind` 组合键丢弃晚到旧响应。
+- 手机端 640px 以下举报行改为换行布局：正文独占一行，备注框和操作按钮移到下方，避免正文被挤成竖排单字。
+
+**验证**：
+- `report-test` **77/77**（新增分类参数、counts、批量动作、选中集合、历史动作 key 断言）。
+- `i18n-test` 19/19；`i18n-usage-test` 2/2；`tdz-check` 0；`undef-check` 0；`vite build` 0 error（入口 `dist/assets/main-HYrzCSRk.js`）。
+- 无头 1280×900 / 390×844（fake admin RPC，不写真实后台）：
+  - 帖子/评论分类计数正确；单选 → 多选 → 全选；一键驳回 1 条、一键下架 2 条、一键删除评论 2 条；调用记录分别为 `dismiss` / `remove_post` / `delete_comment`。
+  - 已处理历史动作显示「下架帖子 / 删除评论」，不再露 `admin.reports.act.*`；手机端 `scrollWidth = innerWidth = 390`，无横向溢出。
+  - 模拟老库/老 Worker（不带 `counts`、无视 `p_target_type`）：评论分类只显示本页 2 条评论，出现「分类筛选需执行 MIGRATION_admin_report_filter.sql；当前只筛选本页」提示，不把混排列表冒充分类结果。
+  - 截图：`_scratch/shots-368/01-post-pending-desktop.png` 等；证明：`_scratch/shots-368/admin-reports-proof.json`。
+- 全量闸门 **77/81 OK**；4 条红仍是并行会话文件（app-download / keyboard-policy / responsiveness / uifix），与本轮改动无关。
+
+**没做 / 待执行**：
+- 没有执行 `MIGRATION_admin_report_filter.sql`（没有数据库管理员权限）；真实后台要得到分类分页和准确分类计数，需要先执行它。
+- 没有提交、没有部署线上、没有重新打包 APK；没有写真实举报/通知数据。
+
+### 轮 369 · 漂流瓶记录分页 + 待决定红点置顶（待提交待部署）
+
+**用户点单**：「漂流瓶下面记录那里。翻页之后应该有首页，尾页，中间搜索页数的功能，不然以后太多了怎么翻。消息-漂流瓶-我发布的，那里如果有需要我点击愿意，开始聊天的信。应该有红点通知，且在最前面的啊」
+
+**修法**：
+- `/bottle` 记录区（我发布的 / 我捞到的）统一先取最多 200 条到本地分页；分页条新增「首页 / 尾页 / 页码输入 + 跳转」，保留上一页 / 下一页，页数实时显示为「第 X 页 / Y」。
+- 新增 `bottlePageCount` / `clampBottlePage` / `bottlePageSlice` 纯函数：空列表也显示 1/1，首页、尾页、手输越界都钳在合法范围，翻页不再回源。
+- 新增 `bottlePendingCount`：只数「收到回信、等我同意/拒绝」的信（`bottleChatState === "choose"`）。
+- 消息 → 漂流瓶 → 我发布的：一次取最多 200 条，`sortBottleMine` 把待决定信全局置顶；「我发布的」页签、列表行、消息分段条三处红点同口径显示数量。
+- 切到「我捞到的」时保留「我发布的」红点，不会因为切页签把通知弄丢；换账号才清空。
+- 桌面 BottleChat 同意/拒绝后通过 `decided` 事件让左列重拉，红点与置顶立即消失；手机端在卡片内处理，行状态直接更新。
+- 消息页首屏额外拉一次待决定数量，未点进漂流瓶也能在分段条看到红点；失败静默，进入子列后会再校准。
+- 新增中英 `bottle.pageFirst/pageLast/pageJump/pageGo` 文案；红点复用 `.notif-count`，行内用 `.bottle-need-dot`。
+
+**验证**：
+- `bottle-test` **87/87**（新增分页纯函数、待决定计数、三处红点接线断言）。
+- `app-shell-test` 67/67；`home-panes-test` 9/9；`i18n-test` 19/19；`i18n-usage-test` 2/2；`tdz-check` 0；`undef-check` 0；`vite build` 0 error（入口 `dist/assets/main-B2g118Ah.js`）。
+- 无头 1280×900 / 390×844（fake bottle RPC，不写真实数据）：
+  - 45 条记录 → 5 页；第 1 页 10 条、尾页 5 条、手输 3 跳到第 3 页；两条待决定信从第 4/5 页被排到第 1 页最前；「我发布的」红点 2，切到「我捞到的」红点仍为 2。
+  - 消息桌面：分段条红点 2、我发布的页签红点 2、首行有行内红点且状态为「收到回信 · 同意或拒绝聊天」；手机：同样红点 + 首行置顶，`scrollWidth = innerWidth = 390` 无横向溢出。
+  - 截图：`_scratch/shots-369/01-bottle-desktop-page1.png`、`01b-bottle-desktop-pager.png`、`03-messages-desktop-bottle.png`、`04-messages-mobile-bottle.png`、`05c-bottle-mobile-pager-bottom.png` 等；证明：`_scratch/shots-369/bottle-pager-proof.json`。
+- 全量闸门 **77/81 OK**；4 条红仍是并行会话文件（app-download / keyboard-policy / responsiveness / uifix），与本轮改动无关。
+
+**没做 / 待执行**：
+- 记录分页沿用现有「一次最多 200 条」口径（我发布的旧口径）；若单账号记录超过 200 条，需要后续加服务端总数 RPC 才能把「尾页」做成真正全量尾页。
+- 没有提交、没有部署线上、没有重新打包 APK；没有写真实漂流瓶/消息数据。
+
+### 轮 370 · 帖子详情 ↔ 暖心墙「同感」双向同步（待提交待部署）
+
+**用户点单**：「帖子详细页面点击了同感，返回暖心墙，却没有显示点击了。暖心墙点击了同感，点击详细页面，却等了很久才显示出来」
+
+**根因**：
+- 暖心墙在 KeepAlive 白名单里，从详情返回时**不会重新挂载**；详情只改自己的 `post.value`，墙里的 `cloudPosts` 对象仍是旧 `mine`，所以返回后没亮。
+- 详情页的 SWR 只认 `wall:post:<id>` 缓存；墙内点同感只改内存对象，**没写这份缓存**。于是点进详情只能等 `cloudFetchPost` 的网络往返（弱网就是「等很久」）。
+
+**修法**：
+- 新增纯逻辑 + 进程内事件模块 `src/utils/postReactionSync.js`：
+  - `applyPostReactionPatch(post, patch)` 只合并本次 kind 的 `reacts/mine`，不整包覆盖其它回应；无变化返回原对象。
+  - `publishPostReaction` / `onPostReaction` 让详情页改完回应后，通知仍存活的暖心墙实例。
+- 暖心墙 `CommunityView`：
+  - 进详情前 `goDetail(p)` 先写 `wall:post:<id>` 缓存；墙内乐观/权威/回滚回应也都写这份缓存。
+  - 订阅详情页的回应事件，就地更新 `cloudPosts` 和搜索结果 `searchRows`，KeepAlive 返回墙立即亮；同时回写单帖缓存。
+- 详情页 `PostDetailView`：
+  - 乐观翻转、服务端权威回包、失败回滚三处都广播同一补丁，并写 `wall:post:<id>` 缓存。
+  - 回滚时即使老缓存没有该 kind 键，也明确写回 0，避免墙停在乐观 +1。
+- 未改数据库、未加迁移、未改 i18n；沿用现有 `wall:post` SWR 缓存键。
+
+**验证**：
+- `post-detail-test` **29/29**（新增补丁纯函数、事件订阅、两视图接线断言）；`react-multikind-test` 25/25；`wall-keep-test` 25/25；`app-shell-test` 67/67；`tdz-check` 0；`undef-check` 0；`vite build` 0 error（入口 `dist/assets/main-fx07DrZj.js`）；`page-smoke --serve=dist` 13/13。
+- 无头 1280×900（fake Supabase，不写真实数据；单帖 GET 故意延迟 3s）：
+  - 详情点同感 → 返回墙：墙「同感 🤝 · 1」且主色高亮。
+  - 墙点同感（点亮）→ 马上进详情：**39ms** 先渲染「同感 🤝 · 1」，3s 慢 GET 回来后仍是 1。
+  - 墙点同感（取消）→ 进详情：20ms 显示 0；详情再取消 → 返回墙显示 0。
+  - 全程无 `Runtime.exceptionThrown`；截图 `_scratch/shots-369/post-reaction-sync/03-wall-after-detail-on.png`、`05-detail-instant-on-from-wall.png`、`06-wall-after-detail-off.png`；证明 `_scratch/shots-369/post-reaction-sync/proof.json`。
+- 全量闸门 **77/81 OK**；4 条红仍是并行会话文件（app-download / keyboard-policy / responsiveness / uifix），与本轮改动无关。
+
+**没做 / 待执行**：
+- 没有真机/线上验证；没有提交、没有部署、没有重新打包或安装 APK；没有写真实帖子/回应数据。
+
+### 轮 371 · 漂流瓶待决定红点同步到底部「消息」Tab（待提交待部署）
+
+**用户点单**：「消息那里没有红色通知啊」（截图：漂流瓶分段有 1，底部「消息」Tab 没有红点）
+
+**根因**：
+- 轮 369 只把待决定数量放在 `MessagesView` 的局部 `bottlePending`，只驱动消息页里的「漂流瓶」分段红点。
+- 底部 `TabBar` 与桌面顶栏的角标只读 `badge.dm + badge.requests`，**没有漂流瓶这一项**；所以分段亮、底栏不亮。
+
+**修法**：
+- `badgeStore` 新增 `bottle` 字段，并纳入本地缓存/恢复/登出清零；新增 `refreshBottleBadge()`：
+  - 登录后与回前台各拉一次「我发布的」记录（≤200，和子列同口径），用 `bottlePendingCount` 算待决定数；
+  - 失败静默保留上次值，不影响私信/通知角标。
+- 底部 `TabBar`、桌面顶栏 `App.vue`：消息角标统一改为 `badge.dm + badge.requests + badge.bottle`。
+- `MessagesView`：`bottlePending` 改为直接读 `badge.bottle`；子列 `@pending` 与首屏刷新都写回 store，分段、底栏、桌面顶栏三处同一颗红点。
+- 未改数据库、未加迁移、未改 i18n；没有写真实漂流瓶数据。
+
+**验证**：
+- `app-shell-test` **69/69**（新增底栏/桌面顶栏同口径、badge 缓存与登出清零断言）；`bottle-test` **87/87**；`tdz-check` 0；`undef-check` 0；`vite build` 0 error（入口 `dist/assets/main-BMdrLc0n.js`）。
+- 无头 390×844 / 1280×900（fake RPC，不写真实数据；45 条记录里 2 封待决定）：
+  - 手机消息页：底栏「消息」红点 **2**，分段「漂流瓶」红点 2；`scrollWidth = innerWidth = 390`。桌面顶栏与底栏共用同一 `badge.bottle` 口径（`app-shell-test` 钉住）。
+  - 冷启动/回前台会触发一次 `bottle_records(mine=true, limit=200)`，角标不依赖先点进消息页。
+  - 截图：`_scratch/shots-369/04-messages-mobile-bottle.png`；证明：`_scratch/shots-369/bottle-pager-proof.json`。
+- 全量闸门 **77/81 OK**；4 条红仍是并行会话文件（app-download / keyboard-policy / responsiveness / uifix），与本轮改动无关。
+
+**没做 / 待执行**：
+- 没有真机/线上验证；没有提交、没有部署、没有重新打包或安装 APK；没有写真实漂流瓶/消息数据。
+
+### 轮 372 · 「我的」页 / 我的帖子 ↔ 帖子详情回应数同步（待提交待部署）
+
+**用户点单**：「我的页面，跟帖子详细页面。你看」（截图：我的页面抱抱/暖暖/同感都是 0；详情页同一条帖是 2/2/2，同感高亮）
+
+**根因**：
+- `ProfileView` 的 SWR fetcher 先返回 `rowsToPosts(posts, {}, ...)`，**把回应数 0 写进 `profile-myposts` 缓存**；回应用行是后台另拉的，只改了内存，缓存仍是 0。用户先看到 0，重进又读到 0。
+- `ProfileView` / `MyPostsView` 没有订阅 `postReactionSync`；详情页改回应只通知暖心墙，我的页/我的帖子不更新。
+- `/my-posts` 不在 KeepAlive，返回时会重新挂载；只靠进程内事件会漏，必须同时补列表缓存。
+- 另修一个顺带发现的缓存形状问题：`ProfileView` 挂载时按 `snap.rows` 读 `profile-myposts`，但缓存实际存的是数组，导致「秒出」分支一直没生效。
+
+**修法**：
+- `ProfileView` 改用 `cloudFetchUserPosts(uid, 3)`：帖子和回应数同一批回来再写缓存，不再先写 0；挂载缓存兼容数组与旧 `{rows}` 形状。
+- `postReactionSync` 新增纯函数 `patchPostList(list, dbId, patch)`：只替换命中的那篇，没命中返回原数组。
+- `ProfileView`（KeepAlive）与 `MyPostsView` 订阅详情回应事件，就地更新列表并回写 `profile-myposts` / `myposts` 缓存。
+- `PostDetailView` 每次乐观/权威/回滚广播时，同时用 `cachePatch` 补这两份列表缓存，覆盖 `/my-posts` 已卸载的场景。
+- 我的页/我的帖子进详情前写 `wall:post:<postId>` 缓存，详情第一帧就是正确计数，不等单帖 GET。
+- 未改数据库、未加迁移、未改 i18n。
+
+**验证**：
+- `post-detail-test` **35/35**（新增 `patchPostList`、我的页/我的帖子接线、详情列表缓存补丁断言）；`app-shell-test` 69/69；`bottle-test` 87/87；`tdz-check` 0；`undef-check` 0；`vite build` 0 error（入口 `dist/assets/main-CyBWpBHu.js`）。
+- 无头 1280×900（fake RPC，不写真实数据；单帖 GET 故意延迟 3s）：
+  - 「我的」页首屏：抱抱/暖暖/同感 **2/2/2**，不再显示 0。
+  - 点卡片进详情：**26ms** 先渲染 2/2/2（同感高亮），3s 慢 GET 回来仍是 2/2/2。
+  - 详情取消同感 → 返回「我的」页：**2/2/1**，立即同步。
+  - `/my-posts` 详情取消后返回：缓存补丁生效，卡片直接是 **2/2/1**，不用等网络。
+  - 全程无 `Runtime.exceptionThrown`；截图 `_scratch/shots-372/profile-reaction-sync/01-profile-initial.png`、`04-profile-after-detail-off.png`、`06-myposts-after-detail-off.png`；证明 `_scratch/shots-372/profile-reaction-sync/proof.json`。
+- 全量闸门 **77/81 OK**；4 条红仍是并行会话文件（app-download / keyboard-policy / responsiveness / uifix），与本轮改动无关。
+
+**没做 / 待执行**：
+- 没有真机/线上验证；没有提交、没有部署、没有重新打包或安装 APK；没有写真实帖子/回应数据。
+
+### 轮 373 · App 图标恢复 C「暖窝」（待提交待部署）
+**用户报障**：「app图标现在怎么又改了」
+
+**根因**：
+- 轮 280 的 C 图标只落在 Android `res`；旧的 `tools/make-app-icon.mjs`（蓝爪）仍在。
+- 10/23 02:04 旧生成器被重跑，把 legacy / foreground 覆盖回蓝爪；同时 `ic_launcher_background` 被写回 `#2C3550`。Android 8+ 走 anydpi 自适应图标，于是桌面显示成深蓝底 + 蓝爪，和用户拍板的 C 完全不是一套。
+
+**修法**：
+- 恢复 C 暖窝全密度资源（mdpi~xxxhdpi）；`values/ic_launcher_background.xml` 改回 `#F5F0E8`。
+- 新增 v3 `tools/make-app-icon.mjs` 作为唯一图标入口：米底 + 珊瑚环抱爪，图案保持 52% 安全区；同时生成 `public/favicon.png`、`apple-touch-icon.png`、`icons/icon-192/512/maskable`，避免网页/PWA 还是旧蓝爪。
+- 旧 v1/v2 生成器改名为 `tools/make-app-icon-legacy-blue.mjs` / `make-app-icon-legacy-night.mjs`，防止再次误跑覆盖。
+
+**验证**：
+- 从 `apk/warm-paws-1.0.2-round367.apk` 解出旧图标确认：APK 内仍是蓝爪 + `#2C3550` 背景。
+- 恢复后目检：192 legacy / 432 foreground / 432 cream background / round 圆形遮罩均正常；anydpi XML 指向 `@color/ic_launcher_background`。
+- `node tools/make-app-icon.mjs` 成功重出全部密度；`gradlew :app:processDebugResources` BUILD SUCCESSFUL；`npm run build` 成功。
+- 已重打 APK：`apk/warm-paws-1.0.2-round373.apk`（5,887,423 字节，SHA-256 `FE572FAD16E3ED0A2B70BB16BB7529B8F5BD5A61F83F28FEF89AE531FAE326AC`）；`aapt2` 确认 `net.de5.warmpaws` / versionCode 3 / versionName 1.0.2；APK 内图标已是 C 暖窝。未安装、未部署。
+
+### 轮 374 · 漂流瓶「我发布的」待决定信首屏置顶（待提交待部署）
+
+**用户报障**：「消息-漂流瓶-我发布的，那里如果有需要我点击愿意，开始聊天的信。应该有红点通知，且在最前面的啊——这条我在手机看到的是没有最前面啊」
+
+**根因**：
+- 记录卡/桌面左列有 SWR 缓存，首屏先画缓存；缓存里的旧顺序是时间序，`paintCache()` 没有跑 `sortBottleMine`，所以待决定的信要等网络回来才置顶（弱网/超时下会一直不在最前）。
+- 深链 `?bottle=` 会把指定信无条件插到第一，也会把待决定的信挤下去。
+
+**修法**：
+- `BottleRecords.vue` / `BottleChatList.vue` 的 `paintCache()` 对「我发布的」缓存先 `sortBottleMine(d, userId.value)`，再切片分页；首帧就是 choose 置顶。
+- `BottleRecords.vue` 的 `displayed` 改为 choose → 深链信 → 其余，深链不再挤掉待决定信。
+- 未改数据库、未加迁移、未改 i18n。
+
+**验证**：
+- `bottle-test` **89/89**（新增缓存首屏排序、深链顺序断言）；`tdz-check` 0；`undef-check` 0；`npm run build` 成功。
+- 新 APK：`apk/warm-paws-1.0.2-round374.apk`（5,887,423 字节，SHA-256 `3666482233E0AB3E4B594D66A03967133B73C7E8C7563CF2172FC04DF2B8051F`）；`aapt2` 确认 `net.de5.warmpaws` / versionCode 3 / versionName 1.0.2；签名与 round373 同为 Android Debug。未安装、未部署。
+
+### 轮 375 · 私信「发出去有、再点进来没了 / 日期顺序倒挂」（待提交待部署）
+
+**用户报障**：「我发一条消息，返回有显示，再点进去，消息没了，很久之后才出现」；截图里「今天 14:33」下面跟着「昨天 16:04」。
+
+**根因（三个独立 bug）**：
+- **确认行被整窗替换吞掉**：同会话刷新时，旧 `loadMessages` 只有「没有负数待发行」才走 `mergeTail`；一旦有在飞待发行就整窗替换。发送确认后行 id 已变正数，不在服务端这次快照里 → 被替换掉；只能等下一拍/下一次网络再出现。
+- **确认行没落本地库**：发送期间用户返回列表/切会话时 `onSameConv=false`，旧代码不保存确认行；再点进来本地库没有它，只能等一次 `dm_list_messages` 往返。
+- **显示按 id 排，不按发送时间**：晚确认的消息拿到更大的 bigserial id，但 `created_at` 还是发送当时；按 id 排就落到今天消息后面，日期分隔跟着倒挂。
+
+**修法**：
+- `MessagesView.loadMessages`：同会话刷新一律 `mergeTail`，待发行、刚确认行、已翻历史都保住；`BottleChat` 同步修正。
+- `dmStore.js` 新增 `dmStoreUpsert`：发送确认行无论会话有没有历史都写进该会话本地库；`send()` 切走后也调用它并 `idbMerge`。
+- `dmMap.rowsToMessages`：显示顺序改按 `created_at` 升序，`id/key` 只做同一毫秒稳定次序；待发行仍排最后、key 仍稳定不重挂。
+- `MessagesView` 翻历史锚点改取最小正 id（`oldestServerId`），避免晚到旧行导致锚点错、重复拉页。
+- 未改数据库、未加迁移、未改 i18n。
+
+**验证**：
+- `dm-map-test` **16/16**（新增 T15：晚确认旧消息不能排到今天后面）；`dm-tail-cache-test` **26/26**（新增 `dmStoreUpsert` 与同会话 mergeTail 接线断言）；`dm-test` 336/336；`dm-send-jump-test` 7/7；`dm-race-test` 16/16；`dm-first-open-test` 10/10；`dm-send-ux-test` 16/16；`dm-vac-test` 26/26；`bottle-test` 89/89；`tdz-check` 0；`undef-check` 0；`npm run build` 成功；`page-smoke` 13/13。
+- 未写任何真实消息/数据库行，未安装、未部署。
+
+### 轮 376 · 私信重进/回显/本地库一致性（待提交待部署）
+
+**本轮修掉的独立问题**：
+- 数字/字符串 id 混用：网关有时回 `"12"`，本机 RPC 回 `12`；同一行在 dmStore、IndexedDB、mergeTail、rowsToMessages、applyRows、BottleChat 里会重复。所有去重/合并键统一 `String(id)`，显示排序仍按数值。
+- 发送超时但服务端已插入：新增 `findSentEcho()`，只在“正 id 大于发送开始时的最大 id、发送前不存在、发送者/正文/图片匹配”时认领回显；认领后摘掉负数乐观行、镜像 IDB、更新预览，不再把同一条画成“已发 + 失败”两行。
+- 本地库只有失败草稿时，旧版不再读 IndexedDB 全量历史；现在只要本地没有正数行就先用 IDB 顶出历史，失败草稿仍保留。
+- 撤回预览在本地库为空、只有 IDB 历史时也要把撤回补丁算进“最后一条”，否则列表继续显示旧正文。
+- BottleChat 首屏网络失败后保留 `msgsConv = id`，让 5s tick 能继续补尾部；IDB 里的坏行（null/无 id）先过滤再合并。
+- DmVacChat 改为 watch `roomKnown` 布尔值，避免 `props.convs` 每 15s 刷新时把全部消息重新映射；修正不存在的 `props.rooms` 依赖。
+- 保活停用/卸载时停掉揭示/钉底 rAF，避免后台继续改 DOM。
+
+### 轮 377 · 继续清私信历史分页与异步收尾（待提交待部署）
+
+**本轮修掉的独立问题**：
+- IndexedDB 历史页按字符串 id 做 `<` 比较：`"9" < "100"` 按字典序为 false，翻历史会漏页。新增纯函数 `olderRows()`，统一 `Number(id)` 后比较；`idbOlderThan()` 走它。
+- 回填游标 `backfilledTo` 也按字典序取最小：`"999"` 与 `"1000"` 会取反，导致下一页反复拉同一段。新增 `olderWatermark()`，只认数值最小正 id。
+- `rowsToMessages()` 同 id 去重保留第一条；撤回补丁/确认行通常追加在尾部，旧正文会继续上屏。改为同 id 后到覆盖先到，并补 T10 断言。
+- DmVacChat 首开有消息时 `nextTick` 关 loader 没有校验会话：若 nextTick 前切到“空消息 + 还在加载”的新会话，旧回调会提前关掉新会话 loader。加 `commitSeq`，卸载时作废。
+- KeepAlive 恢复时，若离开前首屏揭示链还没跑完（`listRevealed=false`），旧版只改 `scrollTop`，消息区仍隐藏，只能等 2s 兜底。恢复时重开 `scrollBottom(false, true)` 揭示链。
+- `dmStoreAppend` 原来只判断本地库非空；只有负数失败草稿也会被当成“有历史”，实时尾部一写就有正数行，进会话时 IDB 全量首帧被跳过。现在必须本地已有正数行才追加实时尾部。
+- `BottleChat` 的决定 RPC 没有请求序号：同意/拒绝还在飞时切到另一封信，旧请求回来会解锁新信按钮、把旧错误写到新信上。加 `decideSeq`，切信即作废旧请求的 loading/错误回写。
+- `MessagesView` 无 `msg_id` 兜底重载后没有重新校验会话/账号，用户在 `loadMessages` 期间切走会拿新会话的 `msgs` 去认领回显、写旧会话本地库。重载后重新算 `stillSame`，切走只把失败草稿写回原会话。
+- 发送确认后等 IDB 写入期间可能换号；旧代码用 await 前的 `sameAccount` 做最终收尾，会把旧账号消息写进新账号的会话列表预览。收尾前重新校验账号，滚动也改用重新校验后的 `stillSameConv`。
+- 发送超时后进程被杀/重开：本地留下失败草稿，服务端其实已插入同一条；重进时网络尾部和失败草稿同时上屏，画成“失败 + 已发送”两行。新增 `dropEchoedDrafts()`，只在同发送者、同正文/图片且服务端时间不早于草稿（允许 60s 偏差）时认领，纯正文相同不会误删；整窗替换和 `mergeTail` 都走这条。
+
+**验证**：
+- `dm-test` **352/352**；`dm-map-test` **19/19**；`dm-vac-test` **29/29**；`dm-first-open-test` **11/11**；`dm-entry-fail-test` **17/17**；`dm-tail-cache-test` **53/53**；`dm-send-ux-test` **19/19**；`bottle-chat-test` **114/114**；`bottle-vac-test` **13/13**；`dm-race-test` **17/17**；`dm-scroll-test` **10/10**；`tdz-check` 0；`undef-check` 0；`npm.cmd run build` 成功；`page-smoke.mjs --serve=dist` **13/13**。
+- 未写任何真实消息/数据库行；未提交、未部署、未重新打包/安装 APK。
+
+### 轮379 · 私信草稿串会话 / 每次输入把草稿清空（待提交待部署）
+
+**用户可见问题**：
+- 在 B 会话留了草稿，切到本来没有草稿的 A，A 的输入框里却出现 B 的草稿；这时直接发送会把 B 的草稿发到 A。
+- 在输入框里每打一个字，组件抛出的 `typing-message` 被当成对象读 `d.message`，实际 detail 是字符串，于是本机草稿 Map 被反复写空；只是切会话时靠读 textarea 兜住，极端路径仍可能丢草稿。
+
+**根因**：
+- VAC 2.1.2 的 `typing-message` detail 是当前输入字符串（自定义元素包装后可能是数组），不是 `{ message }`。
+- VAC 切会话时 `roomId` watcher 先 `resetMessage`，但同一次 patch 里 `roomMessage` 可能还是旧会话的值；`roomMessage` 为空时 watcher 又直接忽略，结果旧草稿被填回新会话的 textarea。
+
+**修法**：
+- `DmVacChat.onTyping` 兼容字符串 / 数组 / 对象三种 detail，按当前 `curRoom` 写入本机草稿 Map，不再每键清空。
+- 新增 `clearDraftTextarea(room)`：切到无草稿会话后 `nextTick` 主动清一次 textarea；若用户已经重新输入或该会话已有草稿则跳过。清理时用 `clearingDraft` 抑制 `typing-message`，避免误删旧会话草稿。
+- 发送清草稿时同步把当前 `draftSeed` 置空，避免旧 `roomMessage` 残留。
+
+**验证**：
+- 无头 harness（临时 `draft-probe.html`，已删除；只读 DOM，不写真实消息/DB）：A/B 双向草稿恢复；B 有草稿切到空 A 时 A 为空；发送后 A 清空、B 草稿仍在。
+- `dm-vac-test` **34/34**（新增字符串 detail、主动清理、用户新输入保护断言）；`dm-test` 356/0；`bottle-vac-test` 21/0；`npm.cmd run build` 成功；`page-smoke --serve=dist` 13/13。
+- 未写真实消息/数据库行；未提交、未部署、未重新打包/安装 APK。
+
+### 轮380 · 私信/漂流瓶多轮审计：红点、跨会话回写、卸载竞态、组件重绑（待提交待部署）
+
+**本轮修掉的独立问题**：
+- 用户切到「漂流瓶 / 通知」段后，`activeId` 还留着；此时会话加载迟到或实时/轮询尾部回来，旧代码仍会 `scrollBottom` + `markRead`，把用户没在看的会话红点清掉。现在 `openConv` 回来校验当前段和前台；`applyTail` 只更新消息/预览，只有人在会话段且前台时才清未读；切回会话段和回到前台各补一次已读。
+- 快速 A→B→A 时，A 的发送确认/失败行可能在 B 的列表已经落屏后回来。旧代码只看 `activeId`，会把 A 的行 concat 进 B 的 `msgs`；异常兜底还会拿 B 的消息去认领 A 的回显，甚至整份写进 A 的本地库。新增 `sameWindow`（当前窗口确实装着这条临时行）后再改列表/认领。
+- 漂流瓶组件卸载（切段/离开路由）后，在途的 `loadMessages` / `onLetter` / `tick` / `decide` 还会回来写本地库、抬已读，`decide` 甚至还能 `emit("accepted")` 打开会话。加 `alive` 存活标记，卸载时先作废在途请求再停轮询。
+- VAC 切会话可能整块重建 `#room-footer` / `#messages-list`；旧代码只绑一次（布尔值/`__wpPinBound`），新节点上的「点输入区先别收面板」和「上滑停止自动贴底」会失效。footer 改为按节点判断，贴底/组件 DOM 变化时补绑列表监听。
+- `MessagesView.applyRows` 的同会话判断用原始 `id` 和字符串 `msgsConv` 比；网关若回数字 id 会误判成换会话，整窗替换并丢掉已翻历史。统一用 `cid`。
+
+**验证**：
+- `dm-vac-test` **36/36**（新增 V30 段/前台红点、V31 组件重绑断言）；`dm-send-ux-test` **21/21**（新增 A→B→A 窗口校验、cid 归一断言）；`bottle-vac-test` **22/22**（新增 B14 卸载存活断言）；`dm-test` 356/0；`bottle-chat-test` 114/0；`dm-map-test` 19/19；`dm-tail-cache-test` 53/53；`undef-check` 0；`tdz-check` 0；`npm.cmd run build` 成功；`page-smoke --serve=dist` 13/13。
+- 未改视觉样式、未写真实消息/数据库行；未提交、未部署、未重新打包/安装 APK。
+
+### 轮381 · 私信/漂流瓶继续审计：快速 A→B→A、后台红点、首帧草稿（待提交待部署）
+
+**本轮修掉的独立问题**：
+- 快速 A→B→A 时 `loadMessages` 清空 `msgs`，但旧代码仍保留上一个会话的 `msgsConv`；A 的发送确认/失败行回来后会把「只有一条确认行的空窗口」当成 A 的完整历史，整窗覆盖本地库。现在切会话清屏时同步 `msgsConv = ""`，发送回包只认 `String(msgsConv) === String(convId)`；窗口没装回时只写 A 的库，并把乐观行从当前列表摘掉。
+- 网关没回 `msg_id` 且 `loadMessages` 已把乐观行清掉时，旧兜底要求列表里还能找到 `temp`，否则这条消息静默消失。现在即使 `temp` 不在列表也补失败行，保留正文和红「!」重发入口；会话段和漂流瓶发送路径都修了。
+- 消息页被 KeepAlive 缓存/切到别的路由时，父页 `wasDeactivated` 原来是普通 `let`，模板传不给子组件；漂流瓶聊天仍会在首页后台跑轮询、清红点。改为 `ref`，并给 `BottleChat` 增加 `pageActive`：后台停轮询/已读，回到消息页补一次已读和尾部刷新。
+- `MessagesView.onActivated` 原来只看路由 id，不看当前段；停在漂流瓶段返回消息页也会替旧会话清红点/滚隐藏列表。现在要求 `seg === "dm"` 才恢复已读/滚动。
+- 组件首次挂载/换会话时，`draftSeed` 在 VAC 内部 `message` ref 就绪前就传下去，真实 DOM 实测 `roomMessage` 首帧会错过，父级有草稿但输入框为空；重挂后草稿丢失。新增 `applyDraftTextarea()`：在 textarea 出现后补写；换会话第一拍允许把上一个会话的残留文字替换成新草稿，之后的重试只填空框，用户已输入绝不覆盖；用户主动清空时同步清 `draftSeed`，重试不会把旧草稿塞回来。
+- 消息页被 KeepAlive 切走后，`document.hidden` 仍可能是 false；在飞的轮询返回后 `applyTail` 的 `viewing` 只看了会话段/前台，仍会替缓存会话清红点。`viewing` 增加 `!wasDeactivated`，回到消息页由 `onActivated` 补一次已读。另一个漏洞是认证在缓存期间才就绪时 `boot()` 仍会 `armDmRealtime()`，把实时回调挂到后台页面；现在也受 `!wasDeactivated` 约束，回页由 `onActivated` 重挂。
+- 切会话瞬间旧房间排队的 `send-message` 仍可能冒出来，父级只认 `activeId`，会把 A 的文字发进 B。`DmVacChat.onSend` 现在校验事件 room 与当前 `props.roomId`；`canType` 刚翻 false 的同一拍也不先清空输入框/草稿。
+- 漂流瓶首屏/切信加载期间 `tick` 可能先回来，把「最新 20 条」当成整段历史写进本地库。`tick` 遇到 `loadingMsgs` 直接跳过。
+
+**验证**：
+- 真实 DOM 无头 harness（临时 `tools/_probe-draft` / `_probe-draft2`，已删除；只操作 localStorage/DOM 假数据，不写真实消息/DB）：初始草稿 `draft-one` 能出现；两个会话各自有 `draft-one` / `draft-two` 时 A→B 显示 B 的草稿、B 输入后切 A 再切回恢复 `typed-c2`；卸载/重挂后恢复；用户清空后切走再回来仍为空。两轮均 `ok: true`。
+- `dm-test` **359/0**；`dm-vac-test` **36/0**；`bottle-vac-test` **28/0**；`dm-send-ux-test` **22/0**；`dm-race-test` **17/0**；`dm-tail-cache-test` **53/0**；`dm-entry-fail-test` **17/0**；`dm-map-test` **19/0**；`dm-compose-test` **20/0**；`dm-first-open-test` **11/0**；`dm-recall-menu-test` **11/0**；`dm-scroll-test` **10/0**；`dm-search-test` **9/0**；`dm-send-jump-test` **7/0**；`bottle-chat-test` **114/0**；`undef-check` 0；`tdz-check` 0；`npm.cmd run build` 退出码 0；`page-smoke --serve=dist` **13/13**。
+- 未改视觉样式、未写真实消息/数据库行；未提交、未部署、未重新打包/安装 APK。
+
+### 轮383 · 暖心墙详情二级回复分批展开（待提交待部署）
+
+**用户点单**：「第二级评论太多了，不要一次性展开，每次展开 30 条，下面有个继续展开的按钮」。
+
+**改法**：
+- 新增纯函数 `pageReplies()` / `REPLY_PAGE = 30`（`src/utils/comments.js`）：收起态仍只露前 2 条；展开态每批最多 30 条，最后一次不足 30 按剩余数展开。
+- `PostDetailView.vue` 新增 `repShown` / `repPinned`，`visibleReps()`、`repsHidden()`、`repMoreN()`、`toggleReplies()`、`moreReplies()` 全部走这个口径；收起再展开重置为第一批 30 条。
+- 刚发送成功的回复用 `repPinned` 钉在可见列表末尾，即使落在当前 30 条批次外也能立刻看到；落库失败会摘掉 pin 并还原草稿。
+- `comment.expandBatch` / `comment.moreReplies` 中英成对补齐；≤30 条线程仍用原来的「展开其他 N 条回复」，>30 条收起态改成「展开前 30 条回复」。
+- 未改数据库、未改管理端/漂流瓶行为、未改版本号。
+
+**验证**：
+- `comment-test` **44/0**（H1–H3 批次/钉选/脏入参）；`post-detail-test` **36/0**；`i18n-test` **19/0**；`undef-check` 0；`tdz-check` 0；`npm.cmd run build` 成功；`page-smoke --serve=dist` **13/13**；`cmt-style-test` 7/7。
+- 本地预览真 DOM（假帖子/评论缓存，阻断 wall 读写，不写真实数据）：75 条回复收起露 2 条 → 「展开前 30 条回复」→ 30 条 + 「继续展开 30 条」→ 60 条 + 「继续展开 15 条」→ 75 条且按钮消失；收起再展开回到 30 条。5 条回复线程一次展开 5 条、无「继续展开」。
+- 新 APK：`apk/warm-paws-1.0.2-round383.apk`（5,887,423 字节，SHA-256 `F8C646C19EB26A61F33AAE791171B21C5B9A5E472C3912D91589CACA11DA6A87`）；`aapt2` 确认 `net.de5.warmpaws` / versionCode 3 / versionName 1.0.2；APK 内 `PostDetailView-CuOvqQpI.js` 与构建产物 SHA-256 一致。未安装、未部署。
+
+
+### 轮384 · 私信发送后列表不更新 / 聊天框双条（待提交待部署）
+
+**用户点单**：发完消息立刻退出，消息列表看不到刚才那条，要等很久；发送一条消息，聊天框里经常显示两条。
+
+**根因**：
+- 旧代码只在 `dm_send` 回包、甚至 `dmStore` / IndexedDB 写完之后才 `bumpConvPreview`。发送瞬间返回列表时，预览还是旧值；从对方主页刚开的会话如果 `loadMeta` 还没回来，列表里甚至没有这一行，只能等 meta 或 15s 列表轮询。
+- 实时 INSERT 通常比 `dm_send` 的 HTTP 回包先到。`applyTail` 把正式行插到负数乐观行前面，同一句话会短暂（弱网下可能很久）显示「发送中」+「已发送」两条；localStorage / IndexedDB 快照也可能同时留下 pending 和确认行。
+- `loadMeta` 补行时用空预览 + 当前时间；若和服务端时间戳撞在同一毫秒，列表合并会拿空预览覆盖刚发出的正文。
+
+**修法**：
+- `send()` 插入乐观行后立刻按本地时间 `bumpConvPreview`，不等 RPC / IDB；`bumpConvPreview` 发现列表没有这一行时先插占位行（昵称用 `meta` 或「这位伙伴」），并 `createIfMissing` 写 SWR 缓存。
+- `loadMeta` 回来只补昵称 / 对方 id / 免打扰等资料，保留已存在的 `last_preview` / `last_message_at`，不再拿空预览和新时间覆盖刚发消息。
+- 新增纯函数 `claimPendingEcho()`：实时尾部正式行按发送人、正文、图片、时间窗认领屏上的 pending；`mergeTail`、同会话窗口合并、首屏快照都接入。新增 `dropEchoedPending()` 清掉同一份 localStorage/IDB 快照里同时存在的 pending + 确认行。
+- 每次发送在乐观行里记下 `before_max`（发送前窗口最大正式 id，`maxPositiveId()`）；回显必须比它新。这样**重开 App 后快照里 pending + 确认行同时存在**时也能按 id 去重，不再赌设备时钟只差 5s；只有没有 `before_max` 的旧临时行才退回 5s 时钟容差。同一稳定 key 的确认行不受 id/时钟限制。
+- 映射层 `rowsToMessages()` 再按稳定 key 兜底：同一次发送的 pending 和确认行只留正数确认行；同一时间戳服务端预览为空时，本地刚发预览优先。
+
+**验证**：
+- `dm-test` **376/0**（含 `before_max` id 下限、旧同文行不误删、同 key 不受时钟影响）；`dm-send-ux-test` **23/0**；`dm-tail-cache-test` **56/0**；`dm-vac-test` **36/0**；`bottle-vac-test` **28/0**；`dm-map-test` **20/0**；`dm-entry-fail-test` **17/0**；`dm-race-test` **17/0**；`dm-first-open-test` **11/0**；`dm-send-jump-test` **7/0**；`bottle-chat-test` **114/0**；`dm-scroll-test` **10/0**；`dm-search-test` **9/0**；`app-shell-test` **69/0**；`i18n-test` **19/0**；`undef-check` 0；`tdz-check` 0。
+- `npm.cmd run build` 成功；`page-smoke --serve=dist` **13/13**。
+- 已打包 `apk/warm-paws-1.0.2-round384.apk`（5,887,423 bytes，SHA-256 `AF3FF696E69807F18FAEF6FF69C37E4F2B7C43BA8D1AB8D82E8B30381D4155E9`，Debug，versionCode 3 / versionName 1.0.2）；**未安装**。
+- 未改视觉样式、未写任何真实消息/数据库行；未提交、未部署。
+
+
+### 轮385 · 设置页通知开关「点不动 / 重进复位」（待提交待部署）
+
+**用户点单**：App 端设置里面的开关用不了。
+
+**根因（参数形状错了，不是样式/点击事件）**：
+- `notify.js` 的 `prefsSet()` 把 `comments/reactions/pets/dms` 拆成**四个布尔实参**传给 `db.notifPrefsSet()`；
+- 两个 db 适配层都只收**一个偏好对象**，内部读 `prefs.comments !== false`。拿到的是布尔值 `true/false`，属性全是 `undefined` → `undefined !== false` 永远为 true；
+- 所以无论用户关掉哪一项，写库载荷永远是「全开」。设置页拿到成功回包后还把 UI 设成关，重进/重新拉取又全回来，看起来就是开关没用。
+
+**修法**：
+- `notifyRules.js` 新增纯函数 `prefsPayload(p)`：把四项显式归一为一个对象；
+- `notify.js` 改为 `db.notifPrefsSet(prefsPayload(p))`，不再拆布尔；
+- `SettingsView.savePrefs()` 改**乐观更新**：点击立即翻 UI → 写库成功保持 / 失败回滚；用请求序号防止连续点两个开关时旧请求把新状态盖回去。App 弱网下不再出现「点了没反应」。
+
+**验证**：
+- `notify-test` **148/0**（新增 `prefsPayload` 关项保持 false、缺项全开、notify.js 必须传对象的回归断言）；
+- `api-contract-test` **115/0**（新增 `notify.prefsSet` 调用方→RPC 的端到端载荷断言）、`gateway-contract-test` **107/0**、`app-shell-test` **69/0**、`i18n-test` **19/0**；
+- `undef-check` 0、`tdz-check` 0；
+- `npm.cmd run build` 成功；`page-smoke --serve=dist` **14/14**（新增 /settings 真实挂载）。
+- 已打包 `apk/warm-paws-1.0.2-round385.apk`（5,887,423 bytes，SHA-256 `A26416CE45ED1B5B9B1DC67D2B41A4F02A42D92C54A6CC1BA018B4982EEDF0D1`，Debug，versionCode 3 / versionName 1.0.2）；**未安装**。
+- 未改视觉样式、未写真实消息/数据库行；未提交、未部署。
+
+
+### 轮386 · 设置开关补充：首屏拉取竞态（最终包）
+
+**在轮385基础上补的一处**：
+- `loadPrefs()` 在发请求前记下 `prefsSeq`；回包到达时如果用户已经点过开关（序号变了），旧偏好结果直接丢弃，不再把开关「弹回去」。
+- 场景：App 慢网打开设置页，用户立刻点开关；首屏 `prefs_get` 的旧回包晚到，旧代码会把刚点的状态覆盖成旧值。
+
+**验证**：
+- `notify-test` **149/0**（新增设置页首屏拉取不覆盖用户点击的源码锁）；
+- `api-contract-test` **115/0**；`undef-check` 0、`tdz-check` 0；
+- `npm.cmd run build` 成功；`page-smoke --serve=dist` **14/14**（含 /settings）；
+- 已打包 `apk/warm-paws-1.0.2-round386.apk`（5,887,423 bytes，SHA-256 `6F689BE192BAB22764B7DEF5C37C5A5142ED994EA591BF6F31A2A479D62F8068`，Debug，versionCode 3 / versionName 1.0.2）；**未安装**。
+- 未改视觉样式、未写真实消息/数据库行；未提交、未部署。
+
+### 轮387 · 心情日历跟账号走：跨设备云同步（待提交待部署）
+
+**用户点单**：「我的页面心情日历，是本地的啊，换个账号，换个设备登录之前的就没了」。
+
+**根因**：
+- `moodLog` 只存在 `warm-paws-mood-v1:<uid|guest>`，按账号分档只解决了同一设备换号不串档，**没有上云**；
+- 已有的宠物云同步 `public.pets.state` 只带 `pets / activeId / coins`，把 `moodLog` 漏掉了；
+- 首页「今天是否已打卡」原来读设备级 `wp-mood-<日期>`，换账号后旧账号的日期键还在，新账号会被误判成「今天已打过卡」；
+- 换号时 `pullCloudPet()` 可能先于 `setUserScope()` 跑，旧账号云档晚到还可能写进新账号域。
+
+**修法**：
+- 把 `moods` 加进本人可读的私有 `public.pets.state`（不放进公开的 `pet_profiles`，心情不泄露）；**无需新增表/迁移**，复用现有 `MIGRATION_pet_cloud.sql` 的 `pets` 表。
+- 新增纯函数 `src/utils/moodRules.js`：`normMoodLog` 清洗日期/0~4 值；`mergeMoodLogs` 按日期取并集——两台设备各打过不同日期时都不丢；同一天冲突默认本机胜，云档更新时间更晚才云端胜；`sameMoodLog` 判断是否需要落盘。
+- `pullCloudPet()` 先合并心情再决定整包采纳；云端没有 `moods` 的旧档也能被本地补上并推回。`petStateBlob()` 推云时带 `moods`，`saveMoodLog()` 单独改心情也会排队推云。
+- 换号 `reload()` 先 `cancelCloudPush()` / `cancelPetHomeSync()`，新域读好后再 `pullCloudPet()`；推送/拉取都带 `petScopeId() === String(uid)` 守卫，并在 await 回来后再校验一次，防止 A 的宠物/心情写进 B。
+- `TodayPane` / `SideRails` 的已打卡状态改为直接看账号域 `moodLog[todayKey()]`，不再依赖 `wp-mood-*`；旧键保留不动，仅不再参与判断。
+
+**验证**：
+- `mood-test` **24/0**（新增脏云档清洗、并集合并、同日冲突、等价判断、源码接线锁、两个打卡入口状态源断言）；
+- `pet-home-test` **19/0**（公开快照仍不含私人金币/亲密度/心情）；`app-shell-test` **69/0**；`i18n-test` **19/0**；`undef-check` 0；`tdz-check` 0；
+- `npm.cmd run build` 成功；`page-smoke --serve=dist` **14/14**（含 `/profile`）。
+- 已打包 `apk/warm-paws-1.0.2-round387.apk`（5,887,423 bytes，SHA-256 `042C8B1FC75D701BAD30B4C4516BDE8C81817AB90349C61F02A7F1FD11549C45`，Debug，versionCode 3 / versionName 1.0.2）；APK 内 `ProfileView-C2XybV8k.js` 与构建产物 SHA-256 一致；**未安装**。
+- 未改视觉样式、未改管理端/漂流瓶行为、未写真实消息/数据库行；未提交、未部署。真机 `adb` 仍离线，跨账号/跨设备实际登录未复验。
+- 前提：Supabase 已执行过现有 `MIGRATION_pet_cloud.sql`（宠物云同步本来就用这张表）；若没跑，`pets` 表不存在时仍会静默退回本地。
+
+### 轮388 · 陌生人首聊第 4 条改成本地拦截（待提交待部署）
+
+**用户点单**：「陌生人只能发送三条信息，第四条应该在本地就阻止啊，而不是等发送完了返回在提示没有发出去」。
+
+**根因**：
+- 首聊 3 条限制只在 `dm_send` 服务端检查（`first-limit`）；前端 `send()` 先清输入框、写乐观行、写本地库、调 RPC，失败回来才标红，用户看到「发出去了又失败」；
+- VAC 组件在 emit 后还会 `resetMessage()`；如果只加前端拒绝而不恢复草稿，第四条正文会直接消失。
+
+**修法**：
+- `dmRules.js` 新增 `FIRST_CONTACT_LIMIT = 3` / `firstLimitLocked(meta, msgs, meId, otherId)`：与服务端同口径——对方有未撤回回复即解锁；我方未撤回、未失败消息到 3 即锁；pending 计数，失败/撤回不计数，pending + 确认同 key 去重；未来 RPC 若返回 `peer_replied / my_count` 优先用精确值；老 RPC 只对短会话推断，避免解锁后的长会话最近一屏全是我方而误锁。
+- `MessagesView.send()` 在清空输入框 / 写乐观行 / 调 `dmApi.send` 之前调用 `firstContactBlocked()`，命中直接 `sendErr = dm.errFirstLimit`；重发 `onVacResend()` 也先判再摘失败行，失败草稿不丢。
+- `DmVacChat` 暴露 `restoreDraft(text)`；页面在拦截后下一拍把正文塞回输入框（组件 emit 后会 reset），用户可以直接改，或等对方回复后再发。
+- 不改 SQL / 服务端字段；当前线上 RPC 没有新字段时走本地推断，服务端仍是最终权威。素材未加载完 / 无法确认时放行给服务端兜底，不会误拦已解锁会话。
+
+**验证**：
+- `dm-test` **392/0**（新增首聊上限 16 条：3 条锁、2 条放行、对方回复/撤回、失败/撤回不计数、pending、重复 key、新 RPC 精确字段、老 RPC 长会话防误锁、缺 other_id）；
+- `dm-vac-test` **37/0**（新增 V25b：拦截早于清空/乐观行/`dm_send`，重发先判再摘行，VAC 恢复草稿源码锁）；
+- 相关回归：`dm-compose` 20/0、`dm-send-ux` 23/0、`dm-tail-cache` 56/0、`dm-map` 20/0、`dm-race` 17/0、`dm-first-open` 11/0、`dm-send-jump` 7/0、`dm-recall-menu` 11/0、`dm-entry-fail` 17/0、`dm-search` 9/0、`dm-scroll` 10/0、`messages-gap` 6/0、`chat-look` 8/0、`bottle-vac` 28/0；`app-shell` 69/0、`i18n` 19/0、`api-contract` 115/0、`gateway-contract` 107/0；`undef-check` 0、`tdz-check` 0。
+- `npm.cmd run build` 成功；`page-smoke --serve=dist` **14/14**。
+- 已打包 `apk/warm-paws-1.0.2-round388.apk`（5,887,423 bytes，SHA-256 `494DC74B41DAB1B0EA13B93436D8146C0DFC028E6BE44840F50F2F02F6858364`，Debug，versionCode 3 / versionName 1.0.2）；APK 内 `MessagesView-gTP0Uxtk.js` SHA-256 `79A38DCAC6DF5406B2C0A01D330EC787AA1F4149F7423899162407F7B8C14B2A` = 本地构建，且含 `restoreDraft` / `first-limit`；入口 `main-CuFvryaf.js` 本地/Android assets SHA-256 均为 `F8FB118FAA7A6102109A8FA643A6F464F22F2C74FE3F0630000B73FC8FA70C89`；**未安装**。
+- 未改视觉样式、未改管理端/漂流瓶行为、未写真实消息/数据库行；未提交、未部署。真机 `adb` 仍离线，实机四条发送 / 跨账号复验未做。
+
+### 轮389 · 漂流瓶「我投的信」同意聊天后直接进入聊天框（改动完成、测试过了、待提交待部署）
+
+**用户点单**：「那个漂流瓶。我投的信，在同意聊天之后还是改成直接进入聊天框吧。」
+
+**改法**：
+- 桌面私信页「漂流瓶」段的 `MessagesView.onBottleAccepted(convId)` 不再只 `await loadConvs()` 后留在漂流瓶中列：现在先 `openConv(String(convId))` 直接切到会话段并打开新会话聊天框，`loadConvs()` 转后台补列表，`refreshBadge` 仍按原逻辑等已读落库后校正红点。
+- 手机端记录列表 `BottleRecords -> emit('open') -> openBottleChat()` 本来就是先 `openConv` 再后台 `loadConvs`；独立 `/bottle` 页 `BottleView.decideRec()` 也原本在 accepted 后 `router.push` 到 `/messages/:id`。这两条路径不加行为改动，只补测试防以后退化。
+
+**验证**：
+- `app-shell-test` **70/0**（新增 T57b：`onBottleAccepted` 必须先 `openConv`、不得 `await loadConvs`）；`bottle-test` **90/0**（新增 BottleView accepted 后直接 `router.push` 的源码锁）；
+- 相关回归：`bottle-chat-test` 114/0、`bottle-vac-test` 28/0、`bottle-records-speed-test` 9/0、`i18n-test` 19/0、`undef-check` 0、`tdz-check` 0。
+- `npm.cmd run build` 成功；`page-smoke --serve=dist` **14/14**。
+- 已打包 `apk/warm-paws-1.0.2-round389.apk`（5,887,423 bytes，SHA-256 `5DDB6BF8A000595111514F22D1BC86C12EF5877B8072D393F40D3BC89738CFFC`，Debug，versionCode 3 / versionName 1.0.2）；APK 内 `assets/public/assets/MessagesView-C9V0Kcdu.js` SHA-256 `A526F95871AFAB0266F1171D3BBA1325FB234CD96C1C2548F1BD8EA8158B0965` = 本地构建；入口 `main-FXYKDI6r.js` 本地/Android assets SHA-256 均为 `8D58B35A33FDEEEB4DD268D71B0DA84FC5F4421A25DB78026663F88427AAA11A`；`aapt2` 确认包名 `net.de5.warmpaws`、versionCode 3 / versionName 1.0.2；**未安装**。
+- 未改视觉样式、未改管理端行为、未写真实消息/数据库行；未提交、未部署；`adb` 仍无设备，桌面接受后直进聊天 / 手机端两条入口的真机复验未做。
+
+### 轮390 · 消息-漂流瓶记录标题重复正文（改动完成、测试过了、待提交待部署）
+
+**用户点单**：「还有，消息-漂流瓶那里。下面的信标题重复了啊，标题有信的内容，点开下面还有信的内容。」
+
+**根因**：
+- `MessagesView` 手机端漂流瓶段用的 `BottleRecords.vue` 里，每条记录是 `<details>`：`<summary>` 标题拼了 `row.body.slice(0, 36)`，展开后又渲染完整 `row.body`。短信念标题与正文完全一样，所以看起来重复。
+
+**改法**：
+- 折叠标题只保留「我投的信 / 来自海里的信」和原有的待决定小红点；不再塞正文摘要。
+- 展开区仍显示完整正文、回信、状态和同意/拒绝按钮；正文只出现一次。未改 `BottleView` 独立页和桌面 `BottleChatList` 的布局（它们没有「标题摘要 + 展开正文」这层重复）。
+
+**验证**：
+- `bottle-test` **91/0**（新增：`<summary>` 不得出现 `row.body`，且展开区仍保留正文折叠锚点）；
+- 相关回归：`bottle-gap-test` 3/0、`messages-gap-test` 6/0、`bottle-records-speed-test` 9/0、`app-shell-test` 70/0、`i18n-test` 19/0、`undef-check` 0、`tdz-check` 0；
+- `npm.cmd run build` 成功；`page-smoke --serve=dist` **14/14**；构建产物 `MessagesView-T2kWycL5.js` 已不含 `slice(0,36)` / `body.slice`，仍保留 `bottle.myLetter`。
+- 已打包 `apk/warm-paws-1.0.2-round390.apk`（5,887,423 bytes，SHA-256 `437BBCCDD910F65F2FA2C6686C91793343A7A024874116A74BA634CA2D5DA275`，Debug，versionCode 3 / versionName 1.0.2）；APK 内 `MessagesView-T2kWycL5.js` SHA-256 `6773681311E2FCD03618364725EA57A8445259FD1169C49DAF0CE8465F420F5A` = 本地/Android assets 构建，入口 `main-DaI1eAnh.js` SHA-256 `1FA72AC940DB3F8E6DD3D40D6DE8E5F038ABFB5C47BD285939CE9090C449C599` 三者一致；`aapt2` 确认包名 `net.de5.warmpaws`；**未安装**。
+- 未改桌面列表/独立 `/bottle` 布局、未改管理端、未写真实消息/数据库行；未提交、未部署；`adb` 仍无设备，真机展开效果未复验。
+
+### 轮391 · 故事-我的-草稿箱增加删除草稿（改动完成、测试过了、待提交待部署；迁移待执行）
+
+**用户点单**：「故事-我的-草稿，要有删除草稿的按钮啊。」
+
+**改法**：
+- 新增 `MIGRATION_story_draft_delete.sql`：`story_delete_draft(p_id bigint)` 为 `security definer`，先取 `auth.uid()`，只 `delete from public.stories where id = p_id and user_id = me and status = 'draft'`；删不到就抛 `story-not-found`，已发布行不会被删。`revoke ... from public, anon`，只 `grant execute ... to authenticated`。可重复执行。
+- `src/utils/story.js` 加 `storyDeleteDraft(id)` 包装（非法 id 直接抛 `story-not-found`）；`db.supabase.js` 对 `story_delete_draft` RPC，`db.gateway.js` 对 `POST /story/draft-delete`，`worker/api.js` 加同名路由并校验 `id` 为正整数，三通道同轮补齐。
+- `StoryMine.vue` 草稿行加「删除」按钮（只在 `tab === 'draft'`），`@click.stop` 与整行 `openRow` 隔离；点击先 `window.confirm(t("story.deleteDraftConfirm"))`，确认后乐观从 `drafts` 移除并减 `draft_count`，失败把 `drafts/stats` 原样放回并用 `storyErrKey` 提示；成功后若本地兜底草稿 `id` 相同则 `clearLocalDraft()`，避免下次打开又复活。
+- i18n 中英成对新增 `story.deleteDraft` / `story.deleteDraftConfirm`；`style.css` 只加一条 `.st-mine-del { color: var(--low); }`，沿用现有 `.st-btn` 形状，不覆写样式表。
+
+**验证**：
+- `story-test` **228/0**（新增轮391 5 条：迁移限制、story.js 包装、三通道收口、草稿行按钮/确认/回滚/清本地草稿、i18n 成对）；
+- `gateway-contract-test` **108/0**（新增 `storyDeleteDraft` 端点与 body）；`worker-test` **338/0**（新增 `/story/draft-delete` 转发 `story_delete_draft` + 非法 id 400 且 0 出站）；`app-shell-test` **70/0**；`i18n-test` **19/0**；`undef-check` 0、`tdz-check` 0。
+- `npm.cmd run build` 成功；`page-smoke --serve=dist` **14/14**。
+- 真实 DOM 探针（Vite dev，393×852，注入只读假会话 + 两条内存草稿，不写库）：`deleteCount=2`，两行按钮文字均为「删除」，`title` 与确认文案为「删除这篇草稿？删掉后就找不回来了。」；把 `window.confirm` 置为 dismiss 后点第一条删除，路径仍是 `/story/mine`，两条行仍在，证明 `@click.stop` 没有触发整行进入编辑器。截图 `C:\Users\lin\AppData\Local\Temp\opencode\story-mine-mobile.png`（临时证据，未入库）。
+- 已打包 `apk/warm-paws-1.0.2-round391.apk`（5,887,423 bytes，SHA-256 `67B49BA042B38A5343000B30D01FEB54126D1E177B01B029B1605B16AD21D933`，Debug，versionCode 3 / versionName 1.0.2）；APK 内 `StoryMineView-9Ml-BF5U.js` SHA-256 `54F13B67FEC124B42FD9A6A81452E8D2369DF2D747F5D4231607EB9846678505`、`story-CU_FQjVd.js` SHA-256 `32DA3DEFD28B11D5A7C16BCD05B3FAE1A2419DFE663F40C9A2BCDB4F655BE476`、`main-bJQ39_wU.js` SHA-256 `6B9702659F34403631B6DC08805643CF79812BA6A02289B4C703431BCDB5C14B`，本地/Android assets/APK 内三者一致；`aapt2` 确认包名 `net.de5.warmpaws`、versionCode 3 / versionName 1.0.2；APK 内无 `probe-auth` 临时文件；**未安装**。
+- **未执行/未部署**：`MIGRATION_story_draft_delete.sql` 仍需用户在 Supabase SQL Editor 执行，Worker 也需重新部署；在此之前线上/直连点「删除」会因 RPC/路由不存在而落到错误提示（按钮本身可见）。未写真实草稿/数据库行、未提交、未部署；`adb` 仍无设备，真机删除成功路径未复验。
+
+### 轮392 · 网页故事页「写故事」入口 + 列表底部「加载更多」修正（已部署、未提交）
+
+**用户点单**：
+1. 「网页端故事页怎么进入写作页面啊。你按钮呢，加在这里吧」（截图圈出桌面 `/story` 顶栏「排行榜」左侧空位）。
+2. 「网页端这里没改啊，不该是加载更多吗」（截图圈出列表底部仍显示「阅读」的分页按钮）。
+
+**改法**：
+- `src/views/StoryView.vue` 的桌面 `story-acts` 里，在「排行榜 / 我的」左侧加一枚实心主按钮 `t("story.writeStory")`，`@click="router.push('/story/write')"`；仍保持 `v-if="!isMobileNav"`，手机端不重复塞，继续走底部 ＋ 第三瓣。
+- `src/i18n.js` 中英成对新增 `story.writeStory`：en `Write a story` / zh `写故事`。按钮沿用 `.st-btn`，不加新样式。
+- 列表底部分页按钮源码原本已用 `story.loadMore`，线上旧产物仍显示「阅读」＝旧包没发；本轮把文案收紧为 en `Load more` / zh `加载更多`，并重新构建部署，明确和行尾「阅读」区分。
+- `tools/story-test.mjs` 把轮148「故事页不得有写故事按钮」的旧断言按新需求翻转，新增「写故事在排行榜之前」与词条成对检查；同时把分页文案断言更新为「加载更多」，保留「不得借 openStory」的反向锁。
+
+**验证**：
+- `story-test` **230/0**（轮392 新增 2 条 + 翻转 1 条 + 分页文案改口径）；`app-shell-test` **70/0**；`i18n-test` **19/0**；`undef-check` 0、`tdz-check` 0。
+- `npm.cmd run build` 成功；`page-smoke --serve=dist` **14/14**。
+- 1440×900 真实 DOM 截图：`/story` 顶栏依次为「写故事（实心）/ 排行榜 / 我的」，位于用户圈出的空位；截图 `C:\Users\lin\AppData\Local\Temp\opencode\story-write-button-1440.png`（临时证据，未入库）。
+- 真实点击探针：点「写故事」后 `path=/story/write`、`hasEditor=true`、编辑器标题「投稿」，无数据库写入。
+- **已部署** Worker Version `8e4d45b5-8cb8-4cb2-abc5-d600712e9e39`；线上 `/story` HTML 已指向新入口 `main-Djrw3B96.js`，该文件本地/线上 SHA-256 均 `AA182B449BF02B98DA1AECC908C37577E1AA5849210F35254C6834B1B4F62C70`，含中文「写故事」与「加载更多」；线上 `StoryFeed-y8dXKWXh.js` SHA-256 `7D5344E8CBD9C6931783EB2D1817349AE4F03017CA155BAE80EDA181D702DE23`，含 `loadMore`、不含 `openStory`，本地/线上一致。
+- 已重打 `apk/warm-paws-1.0.2-round393.apk`（5,887,423 bytes，SHA-256 `D376A0BE633243D8A90B215C574A42E2853D53A870B3EAE1E87D29BCA94A761E`，Debug，versionCode 3 / versionName 1.0.2）；APK 内 `main-Djrw3B96.js`、`StoryFeed-y8dXKWXh.js`、`StoryView-Ck8_bYT1.js` 哈希与线上一致，且含「写故事」/`loadMore`/`/story/write`；`aapt2` 确认包名 `net.de5.warmpaws`；**未安装**。
+- 未提交、未装机，`adb` 仍无设备；`MIGRATION_story_draft_delete.sql` 仍未执行，线上草稿删除接口仍会报错（按钮可见）。
+
+### 轮394 · 删除草稿确认改成站内主题弹窗（已部署、未提交）
+
+**用户点单**：「这什么垃圾弹窗啊，不符合主题」（截图里是浏览器原生 `confirm`，白底系统字体，和暖爪主题完全两套）。
+
+**根因**：
+- 轮391 的删除草稿走 `window.confirm(t("story.deleteDraftConfirm"))`，这是浏览器原生对话框，CSS/主题变量都管不到；它不是站内组件，所以看起来像外站弹窗。
+
+**改法**：
+- `src/components/story/StoryMine.vue` 引入 Naive UI `useDialog()`，删除入口 `removeDraft(r)` 改为 `dialog.warning({ title, content, positiveText, negativeText, positiveButtonProps, onPositiveClick })`；标题用 `t("story.deleteDraft")`（删除 / Delete），正文仍是 `t("story.deleteDraftConfirm")`，取消用 `t("common.cancel")`，删除用 `t("common.delete")` 并设 `type: "error"`。
+- 原来的乐观逻辑原样抽到 `doRemoveDraft(r)`：先移除行并减 `draft_count`，失败回滚 `drafts/stats` 并 `storyErrKey` 提示，成功清掉同 id 的本地兜底草稿；`deleting` 防重入和 `@click.stop` 不动。
+- `tools/story-test.mjs` 更新轮391 断言（不再要求 `window.confirm`），新增轮394「主题弹窗 + 无原生 confirm」源码锁。
+
+**验证**：
+- `story-test` **231/0**；`app-shell-test` **70/0**；`i18n-test` **19/0**；`undef-check` 0、`tdz-check` 0。
+- `npm.cmd run build` 成功；`page-smoke --serve=dist` **14/14**。
+- 真实 DOM 探针（Vite dev，1440×900，只读假会话 + 两条内存草稿，不写库）：点第一行「删除」后 `nativeCalled=false`、`hasDialog=true`，标题「删除」、正文「删除这篇草稿？删掉后就找不回来了。」、按钮「取消 / 删除」；截图 `C:\Users\lin\AppData\Local\Temp\opencode\story-delete-dialog.png`（临时证据，未入库）。
+- **已部署** Worker Version `d135936d-fb0e-4707-921c-a90cd89f0c8d`；入口 `main-D7O8Y4Wc.js`（本地 SHA-256 `479CCE03017DD43AE08C7AD944D022A4C692F3F1085F76AC2E0F51A92375B478`），`StoryMineView-gvf-DjAs.js`（本地 SHA-256 `69EF3EF3578758C1EC0AFC66C5E740015B3804E09578213666DCC6B8150167D5`）含 `warning(` / `positiveText` / `negativeText` / `positiveButtonProps`，不含 `window.confirm`。本轮本机外网到 `warmpaws.de5.net` 抓取超时，未能复抓线上文件；以 `wrangler deploy` 成功输出和本地构建哈希记录。
+- 已重打 `apk/warm-paws-1.0.2-round394.apk`（5,887,423 bytes，SHA-256 `A83A01B2CDD47201466FA44069952199D1B5C692590D6EA45EE86BA06D15A395`，Debug，versionCode 3 / versionName 1.0.2）；APK 内 `StoryMineView-gvf-DjAs.js` / `main-D7O8Y4Wc.js` / `StoryFeed-BUeKWYem.js` / `StoryView-Dp7CUF14.js` 与本地 dist 哈希一致；`aapt2` 确认包名 `net.de5.warmpaws`、versionCode 3 / versionName 1.0.2；**未安装**。
+- 未提交、未装机，`adb` 仍无设备；`MIGRATION_story_draft_delete.sql` 仍未执行，线上草稿删除接口仍会报错（按钮与主题确认框可见）。
+
+### 轮395 · 草稿删除迁移已执行 + 重打包（已打包、未提交）
+
+**用户点单**：「sql已经装好了，打包」
+
+**验证**：
+- 用 `.env` 里的 anon key 对 `POST /rest/v1/rpc/story_delete_draft` 发 `{"p_id":-1}`：返回 `401` + `42501 permission denied for function story_delete_draft`。这证明函数已经在库里，且只授给 `authenticated`，anon 不能执行；没有删除任何真实草稿。
+- 代码本轮零改动（SQL 是服务端迁移），重新 `npm.cmd run build`、`npm.cmd run cap:sync`、`gradlew assembleDebug` 均成功；构建产物入口仍是 `main-D7O8Y4Wc.js`。
+
+**打包**：
+- `apk/warm-paws-1.0.2-round395.apk`，5,887,423 bytes，SHA-256 `A83A01B2CDD47201466FA44069952199D1B5C692590D6EA45EE86BA06D15A395`，Debug，`versionCode 3` / `versionName 1.0.2`，包名 `net.de5.warmpaws`；与 round394 字节完全一致（源码未变）。
+- **未安装**；`adb` 仍无设备。真实登录账号下的「确认 → 删除成功 → 列表/统计回落」端到端路径本轮未复验（匿名探针不写数据）。
+
+### 轮396 · 故事页「加载更多」点了没反应（已部署、未提交）
+
+**用户点单**：「你什么玩意 啊，故事那里加载更多，点击之后没反应啊，以前还有的，你他妈瞎几把改」
+
+**根因**：
+- `StoryFeed.vue` 旧逻辑把「还能不能翻页」算成 `more = rows.length >= offset.value + PAGE`，而 `loadMore()` 第一步就是 `offset.value += PAGE`，然后才发请求。
+- 点击瞬间 `rows` 还是 12、`offset` 已是 12，`12 >= 24` 为假 → 按钮立刻从 DOM 消失；如果请求慢/失败/挂住，`offset` 已经前进，按钮再也回不来。用户看到的就是「点一下，按钮没了，也没多出内容」。
+- 线上 `/sb` 代理实测很慢：同一台机器直连 Supabase 的 `story_rank` 很快；经 `https://warmpaws.de5.net/sb/rest/v1/rpc/story_rank` 请求第二页耗时 9.4s（首次冷启动探针 20s 超时）。慢请求把「按钮先消失」放大成「完全没反应」。
+- 另有体验问题：库里当前 14 篇，第二页只有 2 篇；旧 UI 加载完直接隐藏按钮，没有「已经到底」提示，也像没反应。
+
+**改动**：
+- `src/components/story/StoryFeed.vue`：新增 `hasMore`；`more = rows.length > 0 && hasMore`；`offset` 只在 `fresh`/`cached` 成功拿到一页后推进（`offset.value += list.length`）；`hasMore = list.length >= PAGE`；`loadMore()` 只调 `load({ append: true })`，失败不动 `offset`、按钮保留可重试；请求中保留按钮并显示「加载中…」；最后一页显示「没有更多了」。
+- 同一文件加 20s `withTimeout`：线上代理慢时不让按钮永久卡在「加载中」，超时按网络错误提示；`src/utils/storyRules.js` 的 `storyErrKey` 把 `timeout` 归到 `story.errNetwork`。
+- `src/i18n.js` 新增成对 `story.noMore`：中文「没有更多了」/ 英文「No more stories」。
+- `tools/story-test.mjs` 新增轮396 静态锁：`hasMore` 状态机、成功才推进 `offset`、失败保留按钮、`withTimeout`、`story.noMore` 中英成对；`story-test` **232/0**。
+
+**验证**：
+- `story-test` **232/0**、`app-shell-test` **70/0**、`i18n-test` **19/0**、`undef-check` 0、`tdz-check` 0。
+- `npm.cmd run build` 成功；`page-smoke --serve=dist` **14/14**。
+- 1440×900 真实 DOM 探针（mock RPC，无真实写入）：
+  - 成功页：初始 12 篇 +「加载更多」→ 点击后立即「加载中…」disabled → 700ms 后 14 篇、按钮消失、显示「没有更多了」；请求序列 `offset=0` 12 条、`offset=12` 2 条。
+  - 失败页：第二页 mock 500 → 12 篇保留、按钮仍是「加载更多」、错误文案「这里好像有点小状况，再试一次。」，证明失败不丢 offset、可重试。
+  - 真实 Supabase 只读数据（浏览器预加载脚本把 `/sb` 重写到 Supabase 直连，不改库）：12 → 14，与 mock 一致。截图在 `C:\Users\lin\AppData\Local\Temp\opencode\story-loadmore-396-success.png` / `-fail.png` / `-real.png`（临时证据，未提交）。
+  - 393×852 手机视口：滚到底后按钮矩形 `680.75~714.89`，固定底栏 `797~852`，`elementFromPoint(按钮中心)` 命中的就是 `BUTTON.st-btn.st-btn--ghost`（不是底栏），底部净空 82px；点击链路没有被底栏遮挡。
+- **已部署** Worker Version `aeaf0e60-d065-4086-93e5-0be543988934`，入口 `main-C3Hi3Z0k.js`，故事分包 `StoryFeed-DleUGvMA.js`；部署输出 `Uploaded 57 files`、`Deployed warm-paws`、EXIT=0。
+- **线上复核**：部署后线上 `StoryFeed-DleUGvMA.js` 重试第 2 次成功（200，3.8s，4181 bytes），SHA-256 `4FB39DA6B859E93A0C0299998AEF8B9F5DF4E302CF1BE5367D8FBE1732FECA86`，与本地 `dist/assets/StoryFeed-DleUGvMA.js` **逐字节一致**，且含 `story.noMore`。入口 `main-C3Hi3Z0k.js` 因本机到 Cloudflare 反复超时（45s/10.7s fail）未拉到，HTML 入口也未稳定拉到；部署输出与故事分包哈希已足够确认新代码上线。需用户硬刷新后确认实际交互。
+- **未重打 APK**：`round395` 仍是旧代码；如需要在 App 内验证，需用户发话后 `cap:sync + assembleDebug` 重打并安装。未写任何真实故事/草稿数据，未安装 APK。
+
+### 轮397 · 别人主页「发送私信」点了没反应（已部署、未提交）
+
+**用户点单**：「点击别人主页，点击发送私信，没反应」
+
+**根因**：
+- `WallerView.vue` 旧 `startDm()` 点击后只把 `dmBusy` 置为 `true`，按钮 `disabled`，但按钮文案始终是「✉️ 发私信」，没有「正在打开」态。
+- 线上 `/sb` 代理慢（本轮 mock 复现 4s，历史实测可达 9~20s）；这段时间页面没有任何可见变化，用户看到的就是「点了没反应」。
+- 如果 `dm_open` 挂住，按钮会永久 disabled，没有超时兜底；失败时错误文案在按钮下方，弱网下也容易被忽略。
+
+**改动**：
+- `src/views/WallerView.vue`：忙时按钮文案改为 `t("dm.opening")`，并加 `aria-busy`；2.5s 后按钮下方显示 `t("dm.openingSlow")`「网络有点慢，还在打开会话…」。
+- 同一文件加 25s `withTimeout(openConv(uid))`；成功跳 `/messages/:id`，失败/超时按 `sendErrKey` 显示原因，`finally` 一定清定时器并恢复按钮可点，保证可重试。
+- `src/i18n.js` 新增成对 `dm.opening`（EN `Opening…` / ZH `正在打开…`）与 `dm.openingSlow`。
+- `tools/dm-test.mjs` 新增轮397 静态锁：忙态文案、`withTimeout`、`finally` 恢复、2.5s 慢网提示、中英成对；`dm.sendTo/opening/openingSlow` 纳入 i18n 必检键。
+
+**验证**：
+- `dm-test` **402/0**、`app-shell-test` **70/0**、`i18n-test` **19/0**、`dm-entry-fail-test` **17/0**、`dm-first-open-test` **11/0**、`undef-check` 0、`tdz-check` 0。
+- `npm.cmd run build` 成功；`page-smoke --serve=dist` **14/14**。
+- 1440×900 真实 DOM 探针（mock `/sb`，无真实写入；`elementFromPoint` 命中按钮本体）：
+  - 慢网 4s：点击后 150ms 按钮变「正在打开…」disabled；3.15s 显示「网络有点慢，还在打开会话…」；6.15s 路由到 `/messages/999`。
+  - 失败 mock 500：150ms 显示「正在打开…」；1.15s 恢复「✉️ 发私信」可点，并显示「网络不太顺，稍后再试」；不跳页，可重试。
+  - 截图：`C:\Users\lin\AppData\Local\Temp\opencode\dm-start-slow-state-397.png` / `dm-start-fail-397.png`（临时证据，未提交）。
+- **已部署** Worker Version `1c077fa2-2a99-4358-bb06-c0870ff8408a`，`Uploaded 58 files`、`Deployed warm-paws`。
+- **线上复核**：线上 `WallerView-B31Dig8Z.js` 8,316 bytes，SHA-256 `C124A79FC5FA2FFDBB87AEF04D0D6743CE528FA003EED7B94DD92DFF8F965155`，与本地逐字节一致，含 `dm.opening` / `dm.openingSlow` / `25e3`；线上 `main-CjizEG3L.js` 766,572 bytes，SHA-256 `EE0704E5BBA5A15529C6DE6EAC5C278506F7084F4BDD0B1E0F82E82A19DAF37B`，与本地一致，含 `opening` / `openingSlow` 文案。
+- 未写真实会话/消息数据，未重打/安装 APK；真实登录账号下的线上点击仍需用户硬刷新后确认。若实际仍超过 25s，会转为网络错误并恢复按钮，不再永久卡死。
+
+### 轮398 · 漂流瓶记录标题改为「信文前缀」（已部署、未提交）
+
+**用户点单**：「消息-漂流瓶那个标题不显示信了，都不知道是那一封信；之前的全部展示重复了。现在把我投的信跟来自海里的改成信的前面省略部分，就是截取信的前面内容。」
+
+**设计**：
+- 折叠态标题 = 原信正文 `body` 的前缀，单行省略；不再只写「我投的信 / 来自海里的一封信」。
+- 展开态标题 = 类型标签（因为正文已经完整显示在下面），避免同一段全文又当标题又当正文。
+- 换行/连续空白折成单空格，emoji 按 Unicode 码点截断；超长才补「…」，短信直接显示全文。
+- 手机记录卡与桌面左列都取 `body` 前缀；桌面旧逻辑 `row.reply || row.body` 会让回信顶替原信，短回信时完全看不出是哪封，本轮改成原信优先、回信只兜底。
+
+**改动**：
+- `src/utils/bottle.js`：新增 `BOTTLE_TITLE_MAX = 42` 与 `bottleLetterExcerpt(body, max)`（折空白、码点截断、超长补省略号）。
+- `src/components/BottleRecords.vue`：`<summary>` 折叠时渲染 `letterTitle(row)`（`bottleLetterExcerpt(row.body)`，空信文才退回类型文案），加 `.bottle-record-title` 单行省略；`details[open]` 时隐藏前缀、显示 `.bottle-record-open-label` 类型标签。
+- `src/components/BottleChatList.vue`：桌面左列 `preview` 改为 `bottleLetterExcerpt(row.body, 52)`，回信只在正文为空时兜底；预览行加 `title=row.body`。
+- `tools/bottle-test.mjs`：锁折空白、默认长度省略、emoji 不切半、手机折叠/展开两态、桌面正文优先。
+
+**验证**：
+- `bottle-test` **97/0**、`app-shell-test` **70/0**、`i18n-test` **19/0**、`messages-gap-test` **6/0**、`page-smoke --serve=dist` **14/14**、`undef-check` 0、`tdz-check` 0。
+- `npm.cmd run build` 成功。
+- 1440×900 真实 DOM 探针（mock `bottle_records`，无真实写入）：桌面左列 3 行预览均显示原信正文前缀（「海边风很大…」「今天下班路上…」「最近总是睡不好…」），不再被回信替换。
+- 393×852 手机视口：
+  - 「我发布的」折叠卡标题显示信文前缀（如「今天下班路上看到一只小猫，蹲在便利店门…」），展开的待决定卡标题显示「我投的信」+ 下方完整正文，不再全文重复。
+  - 「我捞到的」折叠卡标题显示「如果你也一个人吃饭，就来聊聊吧。我今天…」「我想把今天看到的一片晚霞寄给你。」。
+  - 截图：`C:\Users\lin\AppData\Local\Temp\opencode\bottle-title-mobile-398b.png` / `-held-mobile-398.png` / `-desktop-398b.png`（临时证据，未提交）。
+- **已部署** Worker Version `b155232d-d933-471e-a14f-8dd220de2ef6`，`Uploaded 58 files`、`Deployed warm-paws`。
+- **线上复核**：线上 `MessagesView-BFsrKkV5.js` 99,111 bytes，SHA-256 `E4480C10BEEA521FCEAA173D47BEC5C607643216593771916DAA39F6E6FB0053`，与本地一致，含 `bottle-record-title` / `bottle-record-open-label`；线上 `MessagesView-oyQKJspl.css` 1,645 bytes，SHA-256 `0993B8AE1DDE5CBEB7EAEC923A2AB97ABAE786760FE470599826F9683C8E9A24`，含 `details[open] .bottle-record-title` 规则。
+- 未写真实漂流瓶/回信数据，未重打/安装 APK；线上需硬刷新后确认。
+
+### 轮399 · 桌面漂流瓶左列：信文摘要独占一行（已部署、未提交）
+
+**用户截图反馈**：桌面「消息 → 漂流瓶 → 我捞到的」左列，长状态胶囊（如「等待原作者决定是否开始聊天。」）占满一行，信文摘要只剩「第…」，仍看不出是哪封信；鼠标悬停只能靠 `title` 看全文。
+
+**根因**：`.bcl-preview` 是 `display:flex`，状态胶囊 `flex:0 0 auto` 先占宽，正文摘要只能分到几十像素；在 1440 宽下左列行宽仅 271px，问题更明显。
+
+**改动**：
+- `src/components/BottleChatList.vue`：行结构改成三层——姓名/时间 → **信文摘要独占一行** → 状态胶囊单独一行。
+- `src/style.css`：`.bcl-preview` 从 flex 改成块级单行省略；新增 `.bcl-state` 承载状态胶囊（`margin-top:5px`）。长状态不再挤占摘要宽度。
+- `tools/bottle-test.mjs`：新增轮399 结构锁（`.bcl-preview` 独立 + `.bcl-state` 存在 + 省略号样式）。
+
+**验证**：
+- 1440×900 真实 DOM 探针（mock `bottle_records`）：行宽 271px 时，摘要行宽 203px，能显示「海边风很大，我把烦恼写进这封…」「今天下班路上看到一只小猫，蹲…」；状态胶囊在下一行，宽 148/73px。
+- 行高由 89px 增至 110px，左列滚动正常；列表底部「刷新记录」不受影响。
+- 截图：`C:\Users\lin\AppData\Local\Temp\opencode\bottle-title-desktop-399.png`（临时证据，未提交）。
+- `bottle-test` **98/0**、`app-shell-test` **70/0**、`i18n-test` **19/0**、`page-smoke --serve=dist` **14/14**、`undef-check` 0、`tdz-check` 0。
+- **已部署** Worker Version `a4620620-1da5-4611-bfd9-546815a1c7d1`，`Uploaded 58 files`、`Deployed warm-paws`。
+- **线上复核**：线上 `MessagesView-TfZAuGMp.js` 99,136 bytes，SHA-256 `93EF877C7F0C83615F3997BAC9AE608E1BC9AFF9DB9ED17FF959D2B27C8CBC61`；线上 `main-CU2xrXeF.css` 323,715 bytes，SHA-256 `0F3B6E8F992BF0ADD5A4B675FECC57CD43A1D318442B887D064F1BB13A5F0A22`，均与本地一致，均含 `.bcl-state` / `.bcl-preview`。
+- 未写真实漂流瓶/回信数据，未重打/安装 APK；手机端记录卡不受本轮桌面结构改动影响。
+
+### 轮400 · App 聊天表情键二次点击折叠（已部署、未提交）
+
+**用户点单**：「app端键盘展开，点击表情，在点击表情，直接折叠了。改成微信那样的，点击表情之后，表情那个按钮改成键盘按钮，点击就是键盘展开，也就是输入的高度不变」。
+
+**根因**：
+- 面板打开后，组件自己的表情键仍只执行 `emojiOpened = !emojiOpened`：第二次点击只会把面板从 DOM 摘掉，**不会把焦点还给 textarea**。
+- 焦点不回来 → 系统键盘不弹；同时 footer 的 `padding-bottom: var(--wp-emoji-h)` 随 `:has(.vac-emoji-picker)` 一起归零，输入条直接掉回屏底 = 用户看到的「直接折叠」。
+- 组件的按钮没有「打开时变键盘图标」的状态，用户也无法判断第二下会收面板还是回键盘。
+
+**改动**：
+- `src/components/DmVacChat.vue`：
+  - 新增 `EMOJI_SWAP_HTML`（笑脸 + 键盘两枚静态 SVG）和 `syncEmojiIcon(open)`：把图标塞进 `#room-footer .vac-emoji-wrapper .vac-svg-button`，`data-wp-emoji-key` 标记当前是 `emoji` 还是 `keyboard`；组件重画按钮后由现有 `MutationObserver → syncEmoji → setEmojiOpen` 自动补回。
+  - `THEME_CSS` 用宿主类 `:host(.wp-emoji-open)` 切换两枚图标；手机 ≤768px 沿用旧 SVG 的 5px 间距，桌面 7px，避免按钮宽度跳变。
+  - `bindFooterTap` 增加一个 capture click：**仅当面板已开且点的是表情/键盘键**时，先 `holdForKeyboard()`（把 footer 让位钉在 `--wp-emoji-h`），让组件正常收面板，再 `setTimeout(0)` 把焦点落回 `textarea.vac-textarea`；系统键盘接上后由 `--kb-h` 观察器摘掉 `.wp-kb-swap`，输入条原地不动。
+- `tools/emoji-panel-test.mjs`：新增 E10 锁双图标、宿主类切换、panel-open 时的 `holdForKeyboard()` + `ta.focus()`，并限定只接表情键本身。
+
+**验证**：
+- `emoji-panel-test` **10/0**、`chat-look-test` **8/0**、`dm-vac-test` **37/0**、`bottle-vac-test` **28/0**、`dm-test` **402/0**、`app-shell-test` **70/0**、`i18n-test` **19/0**、`bottle-test` **98/0**、`undef-check` 0、`tdz-check` 0。
+- `npm.cmd run build` 成功；`page-smoke --serve=dist` **14/14**。
+- 393×852 真实 DOM 探针（临时 harness 挂真 `DmVacChat` + mock 会话/消息，`window.androidBridge` 模拟 App，`--kb-h=320px` 模拟系统键盘，无真实写入）：
+  - 初始键盘开：`barTop=481`、`barBottom=532`，图标 `emoji`。
+  - 点表情：面板开、`hostOpen=true`，图标切为 `keyboard`（笑脸 `display:none`、键盘 `display:block`），`barTop=481`、`barBottom=532`。
+  - 再点键盘键：面板关、`hostOpen=false`、`focused=true`、`.wp-kb-swap=true`，`barTop=481`、`barBottom=532`；随后写入 `--kb-h=320px`，`.wp-kb-swap` 摘除，仍是 481/532。
+  - 截图：`C:\Users\lin\AppData\Local\Temp\opencode\dm-emoji-keyboard-400-open.png`（面板打开时表情键已变橙色键盘键，输入条没有被抬走/掉底；临时证据，未提交）。
+- **已部署** Worker Version `de461eb4-c77e-4d32-9bdc-8b064fafae96`，`Uploaded 58 files`、`Deployed warm-paws`。
+- **线上复核**：线上 `MessagesView-GTObf30E.js` 101,736 bytes，SHA-256 `503DB24DD7BCD358857E4C47F4E8DDC82BD9362856DBA3FE0AC5DD65304770F1`，与本地逐字节一致，含 `wp-vac-emoji-swap` / `data-wp-emoji-key`；`main-C7bcPXlx.js` 766,797 bytes，SHA-256 `B7B0079C7EA97654F4455A9EE636E6467B90B265DEF4469EF57577EFD6BC1AB9`；`main-CU2xrXeF.css` 323,715 bytes，SHA-256 `0F3B6E8F992BF0ADD5A4B675FECC57CD43A1D318442B887D064F1BB13A5F0A22`，均本地=线上。
+- **已重打/安装 APK**（用户明确说「装机」后执行）：`npm run build` → `npm run cap:sync` → `android\\gradlew.bat assembleDebug`（`JAVA_HOME=D:\\00ruanjiananzhuang\\jdk-21\\jdk-21`）成功；打包 `apk/warm-paws-1.0.2-round400.apk`，5,887,423 bytes，SHA-256 `421FB5E9BDE58501048D4DC7257CD5DB35A9BAC890FF23DFA59B3077BC5A8FF9`，`versionCode 3` / `versionName 1.0.2` 保持不变。真机 `23054RA19C`（Xiaomi 23054RA19C）`adb install -r` 返回 `Success`，`dumpsys package` 显示 `lastUpdateTime=2026-11-04 02:55:59`；冷启动已进入消息页（截图 `C:\\Users\\lin\\AppData\\Local\\Temp\\opencode\\warmpaws-round400-launch.png`）。**未自动操作真机会话/发送消息**，表情↔键盘手感仍建议用户在实际聊天里点两下确认。
+
+### 轮401 · 暖心墙评论输入也有「表情键二次点击折叠」（已部署、已安装、未提交）
+
+**用户点单**：「停，你不要只改聊天那里啊，暖心墙评论输入的那里也有这个问题啊」。
+
+**根因**：
+- 暖心墙的 `WpComposer.vue` 与私信是同一类问题：面板打开后，表情键的 `toggleEmoji()` 只执行 `emojiOpen.value = false; return;`，没有 `holdForKeyboard()`，也没有把焦点还给 textarea。
+- 焦点不回来 → 系统键盘不弹；同时 `.cmt-main-bar` 的 `wp-emoji-open` 被摘掉，底条从「表情面板高度」直接掉回 `--kb-h=0` 的屏底，看起来就是整条输入区折叠。
+- 按钮也没有打开态图标：用户不知道第二下是「收面板」还是「回键盘」。
+
+**改动**：
+- `src/components/WpComposer.vue`：
+  - 新增 `emojiLabel`，面板打开时按钮 `title` / `aria-label` 从「表情」切「键盘」。
+  - 表情键改为双 SVG：`v-if="emojiOpen"` 显示键盘图标，`v-else` 保留原笑脸；按钮尺寸不变。
+  - `toggleEmoji()` 的关闭分支改成微信式交接：手机形态先 `holdForKeyboard()` 钉住 `.cmt-main-bar` 让位 → `emojiOpen=false` 收面板 → 同步 `ta.focus()` 把焦点交回输入框；系统键盘接上后由现有 `--kb-h` 观察器摘掉 `.wp-kb-swap`，底条原地不动。
+- `src/i18n.js`：`comment` 组新增成对 `keyboard`（EN `Keyboard` / ZH `键盘`）。
+- `tools/wall-composer-test.mjs`：新增 P7 静态锁——图标/文案切换、二次点击 `holdForKeyboard()` + `emojiOpen=false` + `focus()`、双语 key。
+- 覆盖 `CommunityView.vue` / `PostDetailView.vue` 全部 8 处 `WpComposer`（一级评论、一级回复、二级回复、手机底部条），不是只修其中一处。
+
+**验证**：
+- `wall-composer-test` **24/0**、`emoji-panel-test` **10/0**、`chat-look-test` **8/0**、`dm-vac-test` **37/0**、`dm-test` **402/0**、`app-shell-test` **70/0**、`i18n-test` **19/0**、`bottle-test` **98/0**、`bottle-vac-test` **28/0**、`undef-check` 0、`tdz-check` 0。
+- `npm.cmd run build` 成功；`page-smoke --serve=dist` **14/14**。
+- 393×852 真实 DOM 探针（临时 harness 挂真 `WpComposer` 在 `.cmt-main-bar` 内，`window.androidBridge` 模拟 App，`--kb-h=320px` 模拟系统键盘，无真实写入）：
+  - 初始键盘开：`barTop=481`、`barBottom=532`，图标/文案 `表情`。
+  - 点表情：面板开、`barOpen=true`，图标/文案切 `键盘`（键盘 path 生效），`barTop=481`、`barBottom=532`。
+  - 再点键盘键：面板关、`kbSwap=true`、`focused=true`、图标/文案回 `表情`，`barTop=481`、`barBottom=532`；随后写入 `--kb-h=320px`，`kbSwap` 摘除，仍是 481/532。
+  - 截图：`C:\Users\lin\AppData\Local\Temp\opencode\wall-emoji-keyboard-401-open.png`（面板打开时已是橙色键盘键，输入条没有掉底；临时证据，未提交）。
+- **已部署** Worker Version `12a574a5-ab5e-412a-8ce3-b6485e827f69`，`Uploaded 58 files`、`Deployed warm-paws`。
+- **线上复核**：线上 `WpComposer-DUJEXi2L.js` 47,909 bytes，SHA-256 `B45018438E999F72542586ACEBAE7F4048910CF0F8FCA99FBE158343CBCB571C`；`CommunityView-BzkLP387.js` 48,273 bytes，SHA-256 `4C5C43833E5BC887A49A36C6B58065421F48E5A1BF77911E5BB762776A27E3EF`；`PostDetailView-D6ZVixOO.js` 29,917 bytes，SHA-256 `C0D8C8736529B6AEE7D8EDA13B99A5FC8724D2F762A0090FFBC19E7DE14B6947`；`main-Chx_Awou.js` 766,835 bytes，SHA-256 `92AE8A672F9F7F08E0D9DA5C513C0B74F82198E0EA86FB2A48993CBC9F67DDB7`；`WpComposer-DRwCJ07t.css` 3,699 bytes，SHA-256 `E2A5B54CE8F23E785D3DED36A69ECB35BC6F4F72C13853B1E2AA67E0E39E5885`，以上均本地=线上；`WpComposer` 分包含 `M20 5H4` 与 `comment.keyboard`。
+- **已重打/安装 APK**：`npm run build` → `npm run cap:sync` → `android\gradlew.bat assembleDebug`（`JAVA_HOME=D:\00ruanjiananzhuang\jdk-21\jdk-21`）成功；打包 `apk/warm-paws-1.0.2-round401.apk`，5,887,423 bytes，SHA-256 `CE4B01AED0EAA2AB82C491555081F59139BBE3E057479661FF162E62D4C9BD0F`，`versionCode 3` / `versionName 1.0.2` 保持不变。真机 `23054RA19C`（Xiaomi 23054RA19C）`adb install -r` 返回 `Success`，`dumpsys package` 显示 `lastUpdateTime=2026-11-04 03:04:19`；冷启动截图 `C:\Users\lin\AppData\Local\Temp\opencode\warmpaws-round401-launch.png`。未写任何真实评论/回复数据；建议在暖心墙任选一篇，点开评论输入框连点两下表情键确认真机手感。
+
+### 轮402 · 工程加固：统一测试入口 + 数据库备份（未提交、未部署；纯工具链，不影响站点与 App）
+
+> 性质：**零业务代码改动**（只加 `tools/all.mjs`、`tools/backup.mjs`，改 `package.json` / `.gitignore` / `README.md`）。
+> 起因：用户问「还有什么需要加的、需要更改的」，第一条结论是「质量全靠人肉按流程跑」——
+> 117 个测试没有统一入口、库里一份备份都没有。本轮先补这两个地基。
+
+**一、`tools/all.mjs` —— 一条命令跑全量**
+
+- 解决的问题（均有实证）：① 测试清单只存在本文件与 README 的手写命令里，条数会对不上（踩坑 #19 已记过一次）；② 每次「全量跑一遍」都要人工拼命令；③ 新增测试**没有任何机制保证它会被跑到**。
+- 分层（写死在 MANIFEST，`--list` 可查）：`fast` 纯 Node 82 个 / `mount` 需 dist+无头浏览器 1 个（page-smoke）/ `live` 需 CDP·dev server·真机 6 个 / `prod` 线上只读 4 个 / `net` 线上写数据 9 个。
+- 默认只跑 `fast`；`--all` = fast+mount+prod；`live`/`net` 必须显式点名（避免误碰生产库与真机）。
+- 附加守卫：① 扫描 `tools/*.mjs`，**新测试没登记就告警**（防止默默不被跑）；② mount 层前检查 `dist/index.html` 是否存在，并比较 `src/` 最新 mtime 与 dist —— 陈旧 dist 会提示（轮 80 事故那类）；③ `--json` 落 `_scratch/test-report.json` 供机器读。
+- `package.json` 新增 `test` / `test:all` / `test:list` / `backup` / `backup:check`。
+
+**首跑结果（本轮基线，34.1s / 82 脚本 / 1099 断言）**：
+`脚本 82 项：通过 78 · 失败 4`，断言 `1093/1099`。
+
+**4 条失败**均为**本轮之前就红**的既存问题，逐条初判如下（**没有为了让灯变绿而改测试**）：
+
+| 脚本 | 失败断言 | 初判 |
+|---|---|---|
+| `uifix-test` | T3 字数上限：期望 200，实际 500 | **测试过期**：`src/utils/comments.js` 的 `MAX_LEN` 已改成 500，测试还在看旧值 |
+| `keyboard-policy-test` | 三条：MainActivity 要有 `setPadding` / `--kb-h` 取缓存与当前值的较大者 / index.html **不许**写 `viewport-fit=cover` | **测试过期**：`MainActivity` 已重构成 `ViewCompat.setOnApplyWindowInsetsListener` + decorView 方案；`index.html` 现有 `viewport-fit=cover, interactive-widget=resizes-visual` 两者并存 |
+| `app-download-test` | 「我的」页下载 pill 的 `v-if` 条件正则没命中 | 疑似 ProfileView 结构变动后正则失效 |
+| `responsiveness-test` | B4「暖心墙回写权威计数时保留 💔 厌恶计数」 | **可能是真回归**，需要按 F1c 同款口径比对 `CommunityView` 的写回分支 |
+
+> 结论：3 条按「测试跟随实现」修断言即可；B4 要当成疑似缺陷单独查一轮，别顺手改成绿。
+
+**二、`tools/backup.mjs` —— 数据库备份**
+
+- 背景：免费版 Supabase 无自动备份/无 PITR，全站数据只有一份。
+- 能力：`pg_dump` 自定义格式导出 public/auth/storage → `pg_restore --list` 校验可解析 → 统计有数据的表（profiles / wall_posts / wall_comments / dm_messages / pets 为必含）→ SHA-256 记 `backups/MANIFEST.jsonl` → 按时间戳轮转（默认留 14 份，**只删本脚本命名的文件**）。
+- 安全：连接串只从 `SUPABASE_DB_URL` / `.env.backup` 读（均已 gitignore），所有日志与 `--print-cmd` 输出**密码一律脱敏**；失败时删掉半截产物，不让它混进轮转。
+- 错误分流：密码错 / 域名解析 / 连接被拒（含「6543 不支持 pg_dump」的提示）/ 客户端版本低 / schema 权限不足 —— 五类分别给下一步，不再一句「失败了」。
+- `PG_BIN` 支持便携版客户端，不必改系统 PATH。
+
+**验证（三层，如实标注）**：
+1. `--self-test` **12/12**（脱敏 2 / 文件名 1 / 轮转 4 / 必含表与 SETUP 同源 1 / `pg_restore --list` 行列解析 3 / 坏产物必须判失败 1）。其中 S12 用**真 pg_restore 17.6** 喂垃圾文件，确认校验分支会拒绝 —— 这条防的是「解析写错→假绿」。
+2. **真 pg_dump 集成**：便携版 PostgreSQL 17.6 客户端，指向一个不存在的库 → 脚本识别工具、脱敏输出、正确归到「连不上」分支、退出码 1、**备份目录零残留**（实测）。
+3. **未完成：真实导出没跑过** —— 本机没有 `pg_dump`、也没有数据库密码。本轮只把「工具识别 / 参数 / 错误分流 / 校验解析 / 轮转 / 台账」验到位；**第一份真 dump 需要用户提供连接串**（或自己跑 `node tools/backup.mjs`）。**恢复演练同样没做**——没演练过的备份不算备份。
+
+**修掉的一个真 bug（本轮自查发现）**：`pg_restore --list` 的行格式是
+`3456; 0 16391 TABLE DATA public profiles postgres`，**最后一个字段是 owner 不是表名**。
+第一版实现取 `.pop()` 当表名 → 永远匹配不到 `profiles` → 每份好备份都会被误报「核心表缺失」。已改成按 `TABLE DATA <schema> <table>` 定位，并加 S9/S10/S11 三条自检钉住（样本行取自真实格式）。
+
+**环境坑（本机，记一笔）**：这台 Windows 的 `System32` 缺 `api-ms-win-crt-*.dll`（UCRT 转发器，只在 WinSxS 里有），
+导致官方便携版 PostgreSQL 的 `initdb.exe` / `postgres.exe` 一律 exit 127，**只有客户端工具（pg_dump/pg_restore/psql）能跑**。
+所以「本机起一个临时库来演练备份」这条路走不通；真备份必须连线上库。
+
+**回归**：`npm test` = 82 脚本 / 1099 断言 / 34s，结论同上表；`undef-check` 0、`tdz-check` 0（本轮无 `.vue` 改动，跑一遍确认没连累）。
+**未做**：`page-smoke`（本轮不动视图，留待下次改 `.vue` 时随批跑）、真实 dump 与恢复演练（缺凭据）。
+
+### 轮402 补记 · 第一份真备份 + 恢复演练（同日 04:10，未提交）
+
+**一、第一份真 dump（成功）**
+
+```
+backups/warmpaws-20261104-041052.dump   949KB   40.3s
+62 张表有数据 · 714 个对象
+SHA-256 61E8651726B3FE6D78BF4C49CC48282BAF5D812DE40E26C2136BE1E3E8C58AD1
+```
+`public` 27 张表 / 25,801 行；其余在 auth、storage。连接串写入 `.env.backup`（`.gitignore:14`），
+region `ap-northeast-1`（东京），Session pooler 5432。
+
+**二、恢复演练（成功，且固化成 `--drill`）**
+
+判据是**逐表内容指纹**（行 `md5(t::text)` 排序后再 `md5(string_agg())`，与行序无关），
+不是行数——只比行数会漏掉「行数一样但值变了」。
+
+| 轮次 | 做法 | 结果 |
+|---|---|---|
+| 1 | 只恢复 `public` 到纯净库 | 14 条错：13 个 FK 指向不存在的 `auth.users` + 1 个 `gin_trgm_ops` 不存在 |
+| 2 | 补 auth 桩表 + pg_trgm | 仍 13 条 FK 错（因为 auth.users 里没数据） |
+| 3 | **全量恢复**（不打 `--schema`）+ 预装 pg_trgm/pgcrypto | **只剩 1 条良性错**（`schema "public" already exists`），112s |
+| 判据 | 62 张表指纹比对 | **缺失 0 · 多出 0 · 内容不一致 0** |
+
+结论：`62 张表内容逐字节一致，恢复链路可信`。演练库 `wp_drill_*` 验完自动 DROP，
+安全边界是「库名只允许 `[a-z0-9_]` 且必须带 `wp_drill_` 前缀」——这是 DROP 语句的唯一防线。
+
+**三、本轮踩到并修掉的 3 个真 bug（都是自己造的）**
+
+1. **`redact()` 把占位符也脱敏** → `[YOUR-PASSWORD]` 在日志里显示成 `***`，
+   看起来和真密码一样。我因此误判用户「已经填好」，白绕一圈。已改为占位符不脱敏（S16 钉住）。
+2. **`isPlaceholder()` 用了 `/YOUR_/i` 这类弱特征** → 密码里只要含 `your`（如 `YourName2026`）
+   真密码会被判成占位符，直接锁死。已改为「只认整段就是占位符」（S13~S15 钉住）。
+3. **`--drill` 的 `psqlRun()`/`fingerprints()` 忘了把连接串传给 psql** → 报
+   `connection to server at "localhost":5432 failed`。已修。
+
+自检从 12 项增到 **17 项全绿**，并已登记进 `tools/all.mjs` 的 fast 层（`args: ["--self-test"]`，
+为此给 runner 加了 `entry.args` 支持）。注意：不设 `PG_BIN` 时 S12 会被 SKIP，断言数是 16 而非 17。
+
+**四、遗留**
+
+- `backups/` 与 `.env.backup` 均已 gitignore，dump 不进仓库（949KB × 14 份约 13MB，放本地）。
+- **备份还没有自动跑**——目前靠人手。下一步可选：Windows 任务计划 / GitHub Actions 每日 `npm run backup`。
+- 恢复演练目前只验「恢复到同一实例的新库」，没验「恢复到另一个 Supabase 项目」（跨项目会缺 `auth` 的
+  `supabase_auth_admin` 角色依赖，属于平台侧差异，不是 dump 缺陷）。
+
+### 轮403 · App 图标定稿：「实色陶红 + 一枚白爪印」（未提交、未部署）
+
+> 性质：**只动静态资源与工具链**（`public/` 图标、Android mipmap、两个生成脚本、新增 `icon-test`），
+> 零业务代码、零 SQL。起因：用户连否五版（插画 → 单字母 → 双字母 → 汉字 → 反色），
+> 最后自己从 `_scratch/icons/v5` 的五个方案里圈定了 **4 号「爪印」**。
+
+**一、定稿参数（全部量自用户圈定图，不靠目测）**
+
+| 项 | 值 | 来源 |
+|---|---|---|
+| 底色 | `#DF4B2C` | 采样角落/中心，两处同值 → 纯实色，无渐变无阴影 |
+| 爪印色 | `#FFF8F1` | 采样掌垫与趾垫 |
+| 爪印外接宽 | 画布 **55.66%** | 白色像素 bbox 570 / 1024 |
+| 爪印几何 | 4 圆 + 1 椭圆，在单位制里 bbox = x[-63,63] × y[-72.5,41] | 与 v5 生成脚本同源 |
+| 圆角 | 边长 **22.37%** | 与 v5 一致 |
+| 构图 | 按 **bbox 中心**对齐画布中心（实测偏移 0.5px） | bbox 自动归一化 |
+
+> 记一个反直觉点：这个爪印的 bbox 中心**落在趾垫与掌垫之间的空隙里**（掌垫上沿刚好在中心线下方 0.75 单位），
+> 所以「几何居中」不等于「看起来居中」。用户圈定的就是这一版，保持一致，不再另调。
+
+**二、一个脚本出全套（`tools/make-app-icon.mjs` 重写成 v4）**
+
+矢量重画，不是缩位图 —— 48px 也是从矢量栅格化，五个形状边界清晰不粘连（已放大 6 倍目视确认）。
+
+| 产物 | 尺寸 | 处理 |
+|---|---|---|
+| `public/icons/icon-192.png` · `icon-512.png` · `public/favicon.png` | 192 / 512 / 192 | 圆角版 |
+| `public/icons/icon-maskable-512.png` | 512 | **满版**（系统自己裁；留透明会被裁出白角） |
+| `public/apple-touch-icon.png` | 180 | **满版**（iOS 自己加圆角，做圆角会二次裁） |
+| `mipmap-*/ic_launcher.png` | 48/72/96/144/192 | 圆角版 |
+| `mipmap-*/ic_launcher_round.png` | 同上 | 圆形裁切 |
+| `mipmap-*/ic_launcher_foreground.png` | 108/162/216/324/432 | 透明底，爪宽 = **72dp 视口的 55.6%**（落到 108dp 画布是 37.07%） |
+| `mipmap-*/ic_launcher_monochrome.png` | 同上 | 新增，Android 13 主题图标 |
+| `mipmap-*/ic_launcher_background.png` | 同上 | 纯色兜底位图 |
+| `mipmap-anydpi-v26/*.xml` | — | background 走 `@color` + foreground + **`<monochrome>`** |
+| `values/ic_launcher_background.xml` | — | `#F5F0E8` → `#DF4B2C` |
+
+**关键换算**：自适应图标的 108dp 画布只露中间 72dp，所以前景里的爪印不能按 108dp 的 55.6% 落位，
+要按 **72dp 的 55.6%**（= 108dp 的 37.07%），否则套上遮罩后爪印会比定稿大 1.5 倍。这条已写进测试。
+
+**三、Android 13 单色图标（此前一直缺）**
+`<monochrome>` 节点加进两份 anydpi XML（普通 + round），API 33 以下忽略、8.0~12 不受影响。
+compileSdk = 36，aapt 能认这个属性。
+
+**四、修掉一个「双生成器」隐患**
+`tools/make-og.mjs` 原本也在写 `favicon.png` 与 `apple-touch-icon.png`（奶油渐变 + 珊瑚爪），
+谁先跑谁生效 —— 轮 280 的 C 版图标就是被旧生成器这么盖回去的。本轮把这两个输出从 `make-og.mjs` 里删掉，
+**图标的写权只归 `make-app-icon.mjs`**，并在 `icon-test` 里加了一条断言钉死这件事。
+
+**五、新增 `tools/icon-test.mjs`（26 项，已登记 fast 层，198ms）**
+不只查尺寸——尺寸对了但图案不是定稿，是前两次翻车的共同特征。所以钉的是：
+圆角版四角必须透明 / maskable 与 apple-touch 四角必须不透明且为 `#DF4B2C` / 爪宽 55.56%±2% /
+爪印面积占比 12%~26% / 自适应前景四角与四边中点全透明 + 爪宽 37.07%±3% + 必须在 66dp 安全区内 /
+5 个密度 × 5 个文件齐全 / anydpi 三层齐全且 round 版与普通版**逐字节相同** /
+背景色无 `#F5F0E8` 残留 / `make-og.mjs` 不许再写图标。
+
+> 顺手改了一处：本测试的汇总行必须写 `TOTAL n PASS n FAIL n`。`tools/all.mjs` 的 `parseCounts` 只认这个口径，
+> 写成小写 `26 pass` 会被当成「没有断言」，全量断言数就直接漏掉 26 条（本轮实际踩到，已修）。
+
+**六、回归**
+`npm test` = **84 脚本 / 1141 断言 / 33.8s**，通过 80 / 失败 4 —— 仍是轮 402 记录的那 4 条既存失败
+（uifix T3 · keyboard-policy 3 条 · app-download · responsiveness B4），本轮的图标改动没有新增红。
+`icon-test` 26/26。
+
+**七、遗留（如实标注）**
+- **没重打 APK**：本机没有任何 JDK（`C:/Program Files\Java` / Adoptium / Android Studio JBR 全无），
+  `gradlew` 跑不起来，所以 `monochrome` 与自适应配置**只做了静态核对，没经过 aapt 实测**。
+  装机前建议先 `npm run build` → `npx cap sync android` → 打一次 debug APK 看图标。
+- **`og-image.png` 仍是旧风格**（橙色渐变 + 像素字），与新图标不同源；它是分享卡不是 App 图标，本轮没动。
+- **配色差异**：UI 品牌色是 `#CC785C`（DESIGN.md 的 clay），图标用的是更饱和的 `#DF4B2C`。
+  图标要在主屏上抢眼，刻意不跟 UI 同色；要统一说一声。
+- v1~v5 草稿全部留在 `_scratch/icons/`（含本轮选定的 `v5/4-paw.png`），未进 `public/`。
+
+### 轮404 · App 端换肤：「磨砂玻璃 + 九色 pastel」（未提交、未部署）
+
+> 性质：**纯前端样式层**，零业务逻辑、零 SQL、零接口。起因：用户「现在的太丑了」，
+> 指定按 `参考图片/` 里那套小红书风磨砂玻璃重做，并要求**改前先备份，不满意可回退**。
+
+**一、怎么做到「能一键回退」**
+
+没有在 `style.css`（3137 行）里就地改，而是新增一层覆盖：`src/glass.css`（702 行），
+`main.js` 里多一行 `import "./glass.css";`，**排在 `style.css` 之后**。
+回退 = 删掉那一行 import，其它文件一个字都不用动。
+
+改版前快照另存 `_backup/ui-20261104-before-glass/`（`src/` + `index.html` + `RESTORE.md` 回退命令），
+`.gitignore` 已加 `/_backup/`。
+> 备份里有 193 项未提交改动（轮 388~403 攒批），所以**不能靠 `git checkout` 回退**，物理快照才是唯一还原点。
+
+**二、设计语言落地对照（用户给的 6 条）**
+
+| 关键词 | 落地方式 |
+|---|---|
+| 磨砂玻璃 | `backdrop-filter: blur(16px) saturate(1.5)`（弹层/导航 24px）；底色 `rgba(255,255,255,.62)`；顶部 `inset 0 1px 0 rgba(255,255,255,.9)` 做高光；投影两层（远 `0 14px 34px` + 近 `0 2px 8px`） |
+| 九色 pastel | `--p-blue/yellow/mint/peach/pink/lilac/celadon/gray` 八色 + 纯白，各拆 `-a`（底色 42% α）与 `-ink`（文字压深版）两个令牌 |
+| 卡片 23px + 白描边 | `--r-card: 23px`；`border: 1px solid rgba(255,255,255,.72)` |
+| 微旋转 −8~8° | **只给不承担布局的装饰块**（语录卡 −0.8°、＋号三瓣 −1.1°~0.9°）；网格卡片一转就露参差的缝，一律不转。这是该条在本项目的合理尺度 |
+| 字阶靠透明度 | 说明文字统一 `--ink-62`（62%）与 `--ink-44`（44%），不靠层层缩字号 |
+| 一句话标题 + 62% 小字 | 区块标题一律 700 字重 + `letter-spacing: -0.4px`，副标题降到 62% |
+
+**三、踩到的四个坑（都已修）**
+
+1. **底部导航右缘越界 10px**。想做成「浮起来、不贴边」就写了 `left:10px; right:10px`，
+   但 Vant 自带 `width:100%`，宽度优先生效 → 390 视口里右缘实测 400，整页横向溢出。
+   补 `width: auto !important` 才治住。**别把 Vant 组件当普通 div 摆。**
+2. **夜间主题下标题直接消失**。`--ink` 在 night 下变成浅色，我这层默认是「白玻璃 + 浅 pastel」，
+   浅字压浅底 = 看不见。所以整层 pastel 与玻璃都做了 `html[data-theme="night"]` 分支（深玻璃 + 低饱和暗彩），
+   并单独钉住 `today-hi` / `profile-head` / `quote` / `post-card` 这几条写死过浅色渐变的规则。
+3. **暖心墙最后一张卡从胶囊底下钻出来**。`.wall-scroller` 是 `position:fixed` 的独立滚动层，
+   `main` 的 padding 传不进去；它自己的底部留白写在**行内 style** 里（70px），而悬浮条占 66px + 8px 抬升 = 74px。
+   行内样式只能用 `!important` 压 —— 已补 `.shell--mobile-nav .wall-scroller { padding-bottom: 94px }`。
+   > 教训：这个项目里凡是 `position:fixed` 的滚动层，都得单独补底部让位，不能只改 `main`。
+4. **大面模糊很贵**。故事页正文是 1715px 高的整块容器，跟着用 20px 模糊会明显掉帧，降到 12px。
+
+**四、顺手做的几处「不显眼但影响观感」的改动**
+- 心情五连：原来是五个灰白圆，现在是五枚 pastel 小碟（按序 雾蓝/薰衣草/雾灰/蜜桃/薄荷），
+  选中态抬 2px + 品牌色投影；打卡后的禁用态从 `opacity:.45`（在 pastel 上像坏了）提到 `.72`。
+- 标签 chip 按序轮 pastel，不再一律灰白。
+- 底部导航改成悬浮胶囊（`left/right:10px`、`bottom:8px+sab`、圆角 24px、`max-width:620px`）。
+- 中间 ＋ 号的容器保持透明，只有圆钮是墨色 —— 第一版把墨底刷在容器上，出来一个黑方块。
+
+**五、回归**
+- `npm test`：**84 脚本 / 1141 断言 / 33.7s**，通过 80 / 失败 4 —— 仍是那 4 条既存失败
+  （uifix T3 · keyboard-policy ×3 · app-download · responsiveness B4），**本轮没新增红**。
+- `npm run build` 通过（首次因内存压力崩过一次 `memory allocation ... failed`，
+  `NODE_OPTIONS=--max-old-space-size=4096` 重跑即过 —— 是本机同时开着 dev server + Chrome 的缘故，不是代码问题）。
+- 逐屏目视：首页 / 暖心墙 / 我的 / 宠物 / 故事 / 登录 / 发帖 / 设置 / 通知 / 桌面端（1280）。
+  横向溢出专项检查：12 条路由逐个量 `scrollWidth`，全部无溢出。
+
+**六、遗留（如实标注）**
+- **`page-smoke` 本轮没跑成**：收尾时环境已经拉不起无头 Chrome —— `web-probe` 一启动就无输出被 SIGTERM
+  （换 `--serve=dist`、换 `vite preview` + 直连、前台/后台都试过，chrome.exe 进程数始终为 0）。
+  改版中途截图是正常的（那时 Chrome 还能起），所以**逐页目视是用 dev server 那批截图做的**：
+  14 条路由挂载正常、无崩溃盒、无横向溢出。
+  下次在有完整权限的终端补跑一次 `node tools/page-smoke.mjs`，确认 dist 产物也能挂。
+- **深浅两套主题都验了，五套主题只抽验了 night 与 mint**（樱花粉/薰衣草紫没逐张看，走的是同一套变量，风险低）。
+- 桌面端宽屏只抽看了首页；两侧玩法栏的玻璃化是通用规则，未逐页确认。
+- `og-image.png` 仍是旧风格，没跟换肤同步（分享卡不是应用内界面）。
+- 未提交、未 deploy —— 按项目规矩等发话。
+
+### 轮405 · 「已拉黑」从消息列表搬到设置账号下方（已部署、未提交；App 包未重打）
+
+> 性质：**纯前端 UI 搬家 + 复用现有数据接口**。用户原话：「把消息那里的拉黑放到设置里面账号的下面。放在消息那里太丑了。」
+> 不动「拉黑」动作本身，不写真实拉黑/解除数据；下面的探针全部用 mock 名单。
+
+**一、改动**
+- `src/views/MessagesView.vue`：删掉 `blockedRows` / `showBlocked` / `blockedBusy` 等状态、
+  `loadBlocked` / `unblockOne` / `toggleBlockedPanel` 函数、模板 #19 的已拉黑条，以及旧 `.dm-blocked-*` 样式；
+  消息页不再请求 `dm_blocks`。
+- `src/views/SettingsView.vue`：
+  - 引入 `NAvatar`、`* as dmApi`、`unblockUser`。
+  - 账号卡片在「修改密码」之后新增「🚫 已拉黑」行；只对已登录用户显示，点行展开/收起。
+  - 展开时才 `dmApi.blocks()`；加载中显示省略号，空名单显示 `dm.blockedEmpty`；桌面显示 `dm.blockedHint`，
+    手机沿用旧版隐藏说明。
+  - 每行头像 + 昵称 + 「解除」按钮；解除走 `unblockUser()`，成功后本地移除并同步计数，失败回滚。
+  - 复用 `dm.blockedTitle` / `blockedHint` / `blockedEmpty` / `blockedGo`，不新增重复文案。
+- `src/style.css`：删掉 `.dm-blocked-bar` / `.dm-blocked` / `.dm-blocked-row` 旧规则；
+  新样式收在 Settings scoped 的 `.set-blocked-*`。
+- `tools/dm-vac-test.mjs`：V20 从「旧消息列表有入口」改为「设置页有入口/名单/数据/解除包装，消息页不再有」。
+
+**二、行为**
+- 「拉黑用户」动作仍在聊天/个人页菜单里，这次只是把名单集中到设置里查看与解除。
+- 解除后 `userBlocks` 缓存立即更新，暖心墙用同一份缓存过滤，不用等刷新。
+- 入口在账号组内、登录后才出现；未登录仍是原来的「去登录」行。
+
+**三、验证**
+- `dm-vac-test` **37/0**、`dm-test` **402/0**、`app-shell-test` **70/0**、`i18n-test` **19/0**、
+  `auth-test` / `notify-test` / `tap-guard-test` 通过、`undef-check` 0、`tdz-check` 0。
+- `npm run build` 成功；`page-smoke --serve=dist` **14/14**（含 `/settings`）。
+- 真实 DOM（临时 harness 挂真 `SettingsView` + `glass.css`，mock `dmApi.blocks` 返回小橘/阿眠，无真实数据）：
+  - 1440×900：入口在账号组内，顺序为「修改密码 → 已拉黑」；展开后面板出现、计数 2、
+    两行头像/昵称/解除按钮；截图 `C:\Users\lin\AppData\Local\Temp\opencode\settings-blocked-405-desktop.png`。
+  - 393×852：同上，移动端不显示桌面 hint；截图 `C:\Users\lin\AppData\Local\Temp\opencode\settings-blocked-405-mobile.png`。
+  - 点第一行「解除」：名单 2→1、计数 2→1，`unblockUser()` 链路成功；没有写线上数据。
+- 线上资产（本地=线上）：
+  - Worker Version `a03c84ba-e22a-45cb-885a-c18e707a77c3`
+  - `SettingsView-BMXTdy9x.js` SHA-256 `75F99680126E35DE14F41A8A0F80DE952EBDFB53746E9EAC08E972AF854D20F5`
+  - `SettingsView-Ixn4tKYz.css` SHA-256 `04AA6170345BC100B98D1AFD5591776965C0D778564397C7A6772575B968C0D7`
+  - `MessagesView-Zq2y38kQ.js` SHA-256 `7D260128AF9607EC89A77AE70A933D4FCDC58ECD690B2282EC7F1E219CD0BA54`
+  - `userBlocks-C1yNw9Nc.js` SHA-256 `58AFA0B59E5528A192FFA14B46583BBB3C65B9D920358FF986B248B99D9ACCF3`
+
+**四、遗留**
+- **APK 未重打、未安装**：按约定等「装机」指令；当前真机仍是 round401 包，看不到这次设置页改动。
+- 未提交；需要时一起提交/推送。

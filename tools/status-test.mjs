@@ -12,7 +12,9 @@
  * 运行：node tools/status-test.mjs
  */
 import fs from "node:fs";
-import { STATUS_KEYS, STATUS_WINDOW_MS, statusFresh } from "../src/utils/statuses.js";
+import {
+  STATUS_KEYS, STATUS_WINDOW_MS, statusFresh, statusCountsCanApply, statusCountsDue,
+} from "../src/utils/statuses.js";
 import { messages } from "../src/i18n.js";
 
 let pass = 0;
@@ -49,6 +51,31 @@ ok("statusFresh：空/非法值都当过期（不抛错）",
   statusFresh("") === false && statusFresh(null) === false && statusFresh(undefined) === false && statusFresh("昨天") === false);
 ok("statuses.js 不再导出 emoji 映射（emoji 归 i18n 文案，避免模板重复拼）",
   !read("src/utils/statuses.js").includes("STATUS_EMOJI"));
+
+/* 轮 366：连点状态时，旧服务端快照不能覆盖新预扣。
+ * 场景：点 A（seq 1）→ 点 B（seq 2）；A 的 PATCH 回来时服务端只有 A，
+ * 这份快照必须丢弃；B 落库后的快照才允许落地。 */
+ok("轮 366：没有本地点击时服务端快照可落地", statusCountsCanApply(0, 0, 0));
+ok("轮 366：请求发出后又点了，旧快照不能落地", !statusCountsCanApply(0, 2, 2));
+ok("轮 366：最后一笔 PATCH 还没落库，不能提前落地", !statusCountsCanApply(1, 1, 0));
+ok("轮 366：最后一笔已落库且期间没再点，快照可落地", statusCountsCanApply(1, 1, 1));
+ok("轮 366：连点后只有最后一次请求可落地", !statusCountsCanApply(1, 4, 4) && statusCountsCanApply(4, 4, 4));
+ok("TodayPane 轮 366：快照回来的旧数据按序号丢弃",
+  has(todayPane, "statusAppliedSeq = seq;",
+    "statusCountsCanApply(seq, statusWriteSeq, statusAppliedSeq)"));
+ok("TodayPane 轮 366：档案回来时若已点过状态，不覆盖新选择",
+  has(todayPane, "const writeSeq = statusWriteSeq;", "writeSeq !== statusWriteSeq"));
+
+/* 轮 367：稳定快照。点状态只本地 ±1，不在 PATCH 后拉服务端；
+ * 快照只由进入/回到页面触发，30s 内不重复。 */
+ok("轮 367：首次无快照记录时可拉", statusCountsDue(0, 0, 30000));
+ok("轮 367：30s 内不重复拉快照", !statusCountsDue(1000, 30999, 30000));
+ok("轮 367：满 30s 可重新拉快照", statusCountsDue(1000, 31000, 30000));
+ok("TodayPane 轮 367：点状态只本地 ±1，不在 PATCH 后立刻拉快照",
+  has(todayPane, "bumpCounts(prev, next);", "statusAppliedSeq = seq;")
+    && !todayPane.includes("return refreshStatusCounts();"));
+ok("TodayPane 轮 367：进入/回到页面才拉快照，并走 30s 冷却",
+  has(todayPane, "onActivated(", "visibilitychange", "statusCountsDue(statusCountsLastFetchAt"));
 
 /* ───────── i18n：四个状态 + 大厅流文案，中英对称 ───────── */
 for (const lang of ["zh", "en"]) {
@@ -175,9 +202,10 @@ ok("TodayPane：登录才上云，写失败按 errorKind 区分「未开启」�
 ok("TodayPane：再点一次同一状态即清除（本地与云端一起清）",
   has(todayPane, 'const next = myStatus.value === k ? "" : k')
     && has(todayPane, 'if (next) setItem("wp-status", next);') && has(todayPane, "removeItem(\"wp-status\")"));
-ok("TodayPane：单独读取自己的档案，状态更新后刷新人数（轮 238 起为后台队列刷新，不锁按钮）",
+ok("TodayPane：单独读取自己的档案；状态更新只本地 ±1，不立刻刷人数（轮 367 稳定快照）",
   has(todayPane, "await cloudFetchProfile(uid)", "revision !== statusRevision")
-  && todayPane.includes("return refreshStatusCounts();"));
+  && !todayPane.includes("return refreshStatusCounts();")
+  && has(todayPane, "bumpCounts(prev, next);", "onActivated("));
 ok("TodayPane：云端不可用时不伪造人数，也不覆盖本机状态",
   has(todayPane, 'v-if="statusCounts && statusCounts.length"', "if (!profile ||", "if (!uid || !cloud.ready) return;"));
 ok("HomeView：抽件接线（桌面拼回 + 手机三联都挂同一 TodayPane）",

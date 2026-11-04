@@ -689,6 +689,14 @@ begin
   return jsonb_build_object(
     'admin', true,
 
+    /* 轮 365：最近 24 小时登录过的账户（滚动窗口，去重） */
+    'dau_24h', (
+      select count(distinct u.id)
+        from auth.users u
+        join public.profiles p on p.id = u.id
+       where u.last_sign_in_at >= now() - interval '24 hours'
+    ),
+
     'users_total',    (select count(*) from public.profiles),
     'users_today',    (select count(*) from public.profiles
                         where (timezone('Asia/Shanghai', created_at))::date = v_today),
@@ -743,6 +751,24 @@ begin
                'posts', (select count(*) from public.wall_posts p where p.user_id = u.id)
              ) order by u.created_at desc)
         from (select * from public.profiles order by created_at desc limit 8) u
+    ),
+
+    /* 轮 365：DAU 卡片明细（最近 8 个登录账户；邮箱只给管理员） */
+    'recent_logins', (
+      select coalesce(jsonb_agg(jsonb_build_object(
+               'id', u.id,
+               'nickname', coalesce(u.nickname, ''),
+               'email', coalesce(u.email, ''),
+               'last_sign_in_at', u.last_sign_in_at
+             ) order by u.last_sign_in_at desc), '[]'::jsonb)
+        from (
+          select u.id, u.email, u.last_sign_in_at, p.nickname
+            from auth.users u
+            join public.profiles p on p.id = u.id
+           where u.last_sign_in_at >= now() - interval '24 hours'
+           order by u.last_sign_in_at desc
+           limit 8
+        ) u
     )
   );
 end $$;
@@ -775,7 +801,8 @@ begin
                'id', p.id,
                'nickname', p.nickname,
                'email', coalesce(u.email, ''),
-               'created_at', p.created_at
+               'created_at', p.created_at,
+               'last_sign_in_at', u.last_sign_in_at
              ) order by p.created_at desc, p.id desc)
         from (select *
                 from public.profiles
@@ -2183,22 +2210,41 @@ grant execute on function public.report_create(text, bigint, text, text) to auth
 -- 4) 管理端：举报/复核分页（pending / handled 两档）
 --    非管理员 → {admin:false}；items 带被举报内容正文/作者与「几人举报过」聚合
 -- ─────────────────────────────────────────────
-create or replace function public.admin_report_page(p_status text default 'pending', p_offset integer default 0, p_limit integer default 20)
+drop function if exists public.admin_report_page(text, integer, integer);
+
+create or replace function public.admin_report_page(
+  p_status text default 'pending',
+  p_offset integer default 0,
+  p_limit integer default 20,
+  p_target_type text default null
+)
 returns jsonb language plpgsql stable security definer set search_path = public as $$
 declare
   v_status text := lower(coalesce(p_status, 'pending'));
+  v_target text := lower(nullif(btrim(coalesce(p_target_type, '')), ''));
   v_total  bigint;
 begin
   if not exists (select 1 from public.admin_users where user_id = auth.uid()) then
     return jsonb_build_object('admin', false, 'total', 0, 'items', '[]'::jsonb);
   end if;
   if v_status not in ('pending','handled') then v_status := 'pending'; end if;
+  if v_target not in ('post','comment') then v_target := null; end if;
 
-  select count(*) into v_total from public.reports where status = v_status;
+  select count(*) into v_total
+    from public.reports
+   where status = v_status
+     and (v_target is null or target_type = v_target);
 
   return jsonb_build_object(
     'admin', true,
     'total', v_total,
+    /* 轮 368：分类页签的计数；不受当前筛选影响，一次返回四格。 */
+    'counts', jsonb_build_object(
+      'post_pending', (select count(*) from public.reports where status = 'pending' and target_type = 'post'),
+      'post_handled', (select count(*) from public.reports where status = 'handled' and target_type = 'post'),
+      'comment_pending', (select count(*) from public.reports where status = 'pending' and target_type = 'comment'),
+      'comment_handled', (select count(*) from public.reports where status = 'handled' and target_type = 'comment')
+    ),
     'items', coalesce((
       select jsonb_agg(jsonb_build_object(
                'id', r.id,
@@ -2240,6 +2286,7 @@ begin
         from (select *
                 from public.reports
                where status = v_status
+                 and (v_target is null or target_type = v_target)
                order by created_at desc, id desc
                limit least(greatest(coalesce(p_limit, 20), 1), 100)
               offset greatest(coalesce(p_offset, 0), 0)) r
@@ -2248,8 +2295,8 @@ begin
   );
 end $$;
 
-revoke all on function public.admin_report_page(text, integer, integer) from public, anon;
-grant execute on function public.admin_report_page(text, integer, integer) to authenticated;
+revoke all on function public.admin_report_page(text, integer, integer, text) from public, anon;
+grant execute on function public.admin_report_page(text, integer, integer, text) to authenticated;
 
 -- ─────────────────────────────────────────────
 -- 5) 管理端：处理一条举报/复核
@@ -2435,7 +2482,7 @@ $$;
 grant execute on function public.wall_feed_page(int) to anon, authenticated;
 
 -- ═══ 轮 208 · 宠物数据上云 ═══
--- 宠物栏全量状态（pets 数组 + 当前宠物 + 金币）按用户一份，JSONB 整包存取。
+-- 宠物栏全量状态（pets 数组 + 当前宠物 + 金币 + 心情日历 moods）按用户一份，JSONB 整包存取。
 -- RLS：只允许本人读写。未跑本迁移时 App 静默跳过云同步（行为退回纯本地），随时可补跑。
 
 create table if not exists public.pets (

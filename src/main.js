@@ -8,8 +8,11 @@ import { router } from "./router.js";
 import { initPet, tickPet, savePet, tickAdventure } from "./stores/petStore.js";
 import { initUserScope } from "./utils/userScope.js";
 import { installErrorBeacon } from "./utils/beacon.js";
+import { initKeyboardInset } from "./utils/keyboardInset.js";   /* 轮 322：键盘让位（App 壳） */
 import { isApp, checkForUpdate, takePromptOnce } from "./utils/appVersion.js";   /* 轮 297 */
 import "./style.css";
+/* 轮 404 · 磨砂玻璃皮肤（整层可回退：删掉下面这行即回到米色平涂） */
+import "./glass.css";
 
 /* 轮 38：启动页显示的权威判据。
  * index.html 的 head 脚本只能靠 UA / 注入对象猜（轮 30 就是只看 UA 里的 "capacitor"，
@@ -21,6 +24,11 @@ try {
     document.documentElement.classList.add("cap-app");
   }
 } catch (e) { /* 非 Capacitor 环境忽略 */ }
+
+/* 轮 322：键盘让位。窗口已不再随输入法缩放（adjustNothing + SystemBars 不吞输入法），
+ * 输入法高度改由 CSS 变量 --kb-h 驱动 —— 否则键盘弹起那一瞬会露一条空区。
+ * 网页端在函数内部直接 return，零影响。 */
+initKeyboardInset();
 
 /* 轮 256：无声错误信标——未捕获异常/未处理拒绝 POST 给 Worker /api/client-log，
  * 否则错误边界把崩溃盖成「小状况」提示，开发者这边一无所知（轮 42/80 两次事故的盲区）。 */

@@ -131,6 +131,19 @@ export function targetOf(n) {
   return null;
 }
 
+/** 偏好写库载荷：四个布尔显式落成对象。db 适配层的 notifPrefsSet 只收这个对象；
+ *  旧版 notify.js 把四个布尔拆开传，适配层读 prefs.comments 永远 undefined，
+ *  于是每次保存都写成「全开」—— App/网页的设置开关看起来能动，重进又全回来。 */
+export function prefsPayload(p) {
+  const o = p && typeof p === "object" ? p : {};
+  return {
+    comments: o.comments !== false,
+    reactions: o.reactions !== false,
+    pets: o.pets !== false,
+    dms: o.dms !== false,
+  };
+}
+
 /** 偏好展示态（缺行 = 全开，与 notif_prefs_get 对齐） */
 export function normPrefs(p) {
   const o = p && typeof p === "object" ? p : {};

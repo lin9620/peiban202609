@@ -12,7 +12,13 @@
     "deploy:dry": "wrangler deploy --dry-run --outdir .edge-final",
     "cap:sync": "cap sync android && node tools/cap-strip-hero.mjs",
     "release": "node tools/bump-version.mjs",
-    "apk:web": "node tools/apk-to-web.mjs"
+    "apk:web": "node tools/apk-to-web.mjs",
+    "test": "node tools/all.mjs",
+    "test:all": "node tools/all.mjs --all",
+    "test:list": "node tools/all.mjs --list",
+    "backup": "node tools/backup.mjs",
+    "backup:check": "node tools/backup.mjs --check",
+    "backup:drill": "node tools/backup.mjs --drill"
   },
   "dependencies": {
     "@capacitor/android": "8.5.2",
@@ -29,6 +35,7 @@
     "qrcode": "^1.5.4",
     "vant": "^4.10.2",
     "vue": "^3.5.0",
+    "vue-advanced-chat": "^2.1.2",
     "vue-router": "^4.4.0"
   },
   "devDependencies": {

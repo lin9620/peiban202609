@@ -19,6 +19,7 @@ const read = (p) => fs.readFileSync(new URL("../" + p, import.meta.url), "utf8")
 const has = (src, ...parts) => parts.every((p) => src.includes(p));
 
 const migration = read("MIGRATION_reports.sql");
+const reportFilterMigration = read("MIGRATION_admin_report_filter.sql");
 const setupSql = read("SUPABASE_SETUP.sql");
 const worker = read("worker/api.js");
 const sbAdapter = read("src/utils/api/db.supabase.js");
@@ -56,6 +57,15 @@ ok("帖子不因举报数下架（拍板口径：仅厌恶阈值下架）",
 ok("admin_report_page：pending/handled 两档 + 聚合人数 + 内容丢失标记",
   has(migration, "create or replace function public.admin_report_page",
     "'pending','handled'", "content_gone", "'reporters'"));
+ok("轮 368：admin_report_page 支持 p_target_type 分类 + counts 四格",
+  has(migration, "p_target_type text default null", "'post_pending'", "'comment_pending'",
+    "v_target is null or target_type = v_target"));
+ok("轮 368：分类迁移与 SETUP 同源（旧三参先 drop，四参再建）",
+  has(reportFilterMigration, "drop function if exists public.admin_report_page(text, integer, integer)",
+    "p_target_type text default null", "'counts'", "grant execute on function public.admin_report_page(text, integer, integer, text)"));
+ok("轮 368：SETUP 已同步四参分类函数与分类计数",
+  has(setupSql, "p_target_type text default null", "'post_pending'", "'comment_pending'",
+    "public.admin_report_page(text, integer, integer, text)"));
 ok("admin_report_handle：五动作 + 幂等 + 处理后给举报人发 system 通知",
   has(migration, "create or replace function public.admin_report_handle",
     "'dismiss','remove_post','restore_post','delete_comment','unhide_comment'",
@@ -84,17 +94,21 @@ ok("SETUP 的 admin_overview 与 wall_toggle_dislike 只保留一份定义（不
 ok("Worker：POST /api/reports → report_create（参数透传）",
   has(worker, 'seg[0] === "reports" && seg.length === 1 && m === "POST"',
     '"report_create"', "p_target_type", "p_target_id", "p_reason", "p_detail"));
-ok("Worker：GET /api/admin/reports?status= → admin_report_page",
+ok("Worker：GET /api/admin/reports?status=&target_type= → admin_report_page",
   has(worker, 'seg[1] === "reports" && seg.length === 2 && m === "GET"',
-    '"admin_report_page"', "p_status", "p_offset", "p_limit"));
+    '"admin_report_page"', "p_status", "p_offset", "p_limit", "p_target_type", "target_type"));
 ok("Worker：POST /api/admin/reports/:id/handle → admin_report_handle",
   has(worker, 'seg[3] === "handle" && m === "POST"', '"admin_report_handle"', "p_report", "p_action", "p_note"));
 
 /* ───────── 4) db 双模式成对（0.2 铁律） ───────── */
 ok("直连模式：reportCreate / adminReportPage / adminReportHandle 走 RPC",
   has(sbAdapter, 'rpc("report_create"', 'rpc("admin_report_page"', 'rpc("admin_report_handle"'));
+ok("轮 368：直连模式只有分类筛选才带 p_target_type（回退旧三参不报错）",
+  has(sbAdapter, "if (targetType) args.p_target_type = targetType;"));
 ok("网关模式：同名方法走 /api/reports 与 /api/admin/reports*",
   has(gwAdapter, 'call("/reports", { method: "POST"', "`/admin/reports?status=", "/handle`"));
+ok("轮 368：网关模式带 target_type 查询参数",
+  has(gwAdapter, "target_type=${enc(targetType)}"));
 ok("两模式方法名一一对应（成对改，不许只改一头）",
   ["reportCreate(", "adminReportPage(", "adminReportHandle("]
     .every((m) => sbAdapter.includes(m) && gwAdapter.includes(m)));
@@ -118,8 +132,40 @@ const bilingual = [
   ["You blocked", "你拉黑了作者"],
   ["Pending", "待处理"], ["Take down", "下架帖子"], ["Restore post", "恢复帖子"],
   ["Delete comment", "删除评论"], ["Restore comment", "恢复评论"],
+  ["Post reports", "帖子举报"], ["Comment reports", "评论举报"],
+  ["Dismiss selected", "一键驳回"], ["Take down selected", "一键下架"],
+  ["Delete selected comments", "一键删除评论"],
 ];
 for (const [en, zh] of bilingual) ok(`双语成对：${en} / ${zh}`, i18n.includes(en) && i18n.includes(zh), en);
+
+/* ───────── 5b) 轮 368 举报队列纯逻辑 ───────── */
+const {
+  reportKindOf, reportBatchAction, reportKindCount, reportSelectableIds,
+  reportToggleSelection, reportActionKey,
+} = await import("../src/utils/adminReports.js");
+ok("举报分类：comment 归评论，其余归帖子",
+  reportKindOf({ target_type: "comment" }) === "comment"
+  && reportKindOf({ target_type: "post" }) === "post"
+  && reportKindOf({}) === "post");
+ok("批量动作：驳回 / 帖子下架 / 评论删除 / 未知类型不动作",
+  reportBatchAction("post", "dismiss") === "dismiss"
+  && reportBatchAction("post", "takeDown") === "remove_post"
+  && reportBatchAction("comment", "takeDown") === "delete_comment"
+  && reportBatchAction("comment", "other") === "");
+ok("分类计数：缺失/脏值返回 null，不伪造 0",
+  reportKindCount(null, "post", "pending") === null
+  && reportKindCount({ post_pending: "3" }, "post", "pending") === 3
+  && reportKindCount({ post_pending: "x" }, "post", "pending") === null);
+ok("全选只收 pending 且保留 id；单选可加可删",
+  JSON.stringify(reportSelectableIds([{ id: 1, status: "pending" }, { id: 2, status: "handled" }, { id: 3 }])) === "[1]"
+  && JSON.stringify(reportToggleSelection([1], 2)) === "[1,2]"
+  && JSON.stringify(reportToggleSelection([1, 2], 1)) === "[2]");
+ok("历史动作下划线 → i18n camelCase；未知动作回退 dismiss",
+  reportActionKey("remove_post") === "removePost"
+  && reportActionKey("restore_post") === "restorePost"
+  && reportActionKey("delete_comment") === "deleteComment"
+  && reportActionKey("unhide_comment") === "unhideComment"
+  && reportActionKey("wat") === "dismiss");
 
 /* ───────── 6) 通知：处理结果走独立文案（notifyRules 纯函数真跑） ───────── */
 const { itemView } = await import("../src/utils/notifyRules.js");
@@ -152,14 +198,22 @@ ok("WallerView：拉黑两步确认 + 撤销 + 名单刷新",
 ok("AdminView：举报页签（待处理/已处理）+ 红点 + 处理动作",
   has(admin, "'overview', 'posts', 'comments', 'reports'", "switchRepTab('pending')", "switchRepTab('handled')",
     "admin-tab-dot", "handleReport(r, 'remove_post')", "handleReport(r, 'unhide_comment')", "pendingReports > 0"));
+ok("轮 368：AdminView 帖子/评论分类 + 批量选择/驳回/下架",
+  has(admin, "repKind", "switchRepKind('post')", "switchRepKind('comment')", "repSelected",
+    "toggleRepAll", "batchReports('dismiss')", "batchReports('takeDown')", "reportBatchAction",
+    "repFilterFallback", "reportActionLabel", "class=\"rep-check\""));
 ok("管理端待处理计数来自 admin_overview 的 reports_pending",
   has(admin, "ov.value && ov.value.reports_pending"));
 
 /* ───────── 8b) 消息页拉黑管理走 userBlocks（轮 34：名单与内容过滤同一份缓存） ───────── */
 const messages = read("src/views/MessagesView.vue");
+const settings = read("src/views/SettingsView.vue");
 ok("MessagesView：拉黑/解除走 userBlocks 包装（不再直调 dmApi.block/unblock）",
-  has(messages, "blockUser(c.other_id)", "unblockUser(c.other_id)", "unblockUser(b.user_id)")
+  has(messages, "blockUser(c.other_id)", "unblockUser(c.other_id)", "unblockUser(uid)")
   && !/dmApi\.(block|unblock)\(/.test(messages));
+ok("SettingsView：已拉黑名单/解除走 userBlocks 包装（不再直调 dmApi.block/unblock）",
+  has(settings, "dmApi.blocks()", "unblockUser(b.user_id)")
+  && !/dmApi\.(block|unblock)\(/.test(settings));
 ok("MessagesView：进页同步拉黑名单 + 拉黑提示升级为全站口径（文案在 i18n）",
   has(messages, "refreshBlocks()")
   && i18n.includes("TA 在暖心墙的帖子/评论也会对你隐藏")

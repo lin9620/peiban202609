@@ -39,6 +39,9 @@
 
 ### 💛 暖心墙
 留言 + 发图（自动压缩），用 **抱抱🫂 / 暖暖☀️ / 同感🤝** 代替点赞（每种回应每人限一次）
+- **回应跨页同步**：帖子详情点回应，返回暖心墙立即亮；墙内点回应后进详情，先用本地状态秒开，弱网不再空等（轮 370）
+- **漂流瓶红点不漏**：收到回信、等你「愿意，开始聊天」时，消息页「漂流瓶」分段、底部「消息」Tab、桌面顶栏同时亮红点（轮 371）
+- **我的页面回应数不再 0**：「我的」页 / 我的帖子与详情页同一份计数；详情改完返回立即同步，点进详情也先用本地计数秒开（轮 372）
 - **每条帖子都有评论区**：可回复 / 删除自己的评论，示范评论只在首次访问注入一次（删了就不会复活）
 - 评论逻辑抽成纯函数模块 `src/utils/comments.js`（注入幂等 / 200 字截断 / 权限校验 / 脏数据兜底）
 - **排序**：默认「最新」（按时间倒序；**按钮已按要求去掉**，只作默认行为），可切换「同感最多 / 抱抱最多 / 暖暖最多」（票数相同按时间倒序，选择持久化）→ `src/utils/wallRules.js`
@@ -63,6 +66,12 @@
 - **5 套 UI 主题**（右上角 🎨 下拉切换，选择持久化）：奶油橘 / 樱花粉 / 薄荷森林 / 薰衣草紫 / 星夜蓝（深色，Naive UI darkTheme 联动）→ `src/data/themes.js`
 - **两侧玩法栏**（宽屏显示）：左侧宠物速养面板（摸头 / 投喂 / 呼吸放松练习），右侧小道具体验 → `src/components/SideRails.vue`
 - 设计系统：暖色奶油渐变背景 + 光斑装饰 + 毛玻璃卡片 + 多层阴影 + 页面切换过渡
+- **磨砂玻璃皮肤（轮 404，独立文件 `src/glass.css`）**：手机壳整体换成「磨砂玻璃 + 九色 pastel」——
+  `backdrop-filter: blur(16~24px) saturate(1.5)`、23px 卡片圆角 + 半透明白描边、顶部 1px 高光、
+  卡片按序取 pastel 底色（雾蓝/鹅黄/薄荷/蜜桃/樱粉/薰衣草/青瓷/雾灰/纯白）、说明文字统一 62% 不透明度、
+  装饰块 −1° 级微旋转、底部导航改成悬浮胶囊、Android 13 夜间主题全套深玻璃覆盖。
+  **它是一层覆盖，不改 `style.css` 一行** —— 想退回旧观感，删掉 `src/main.js` 里 `import "./glass.css";` 即可。
+  改版前的完整快照在 `_backup/ui-20261104-before-glass/`（含 `RESTORE.md` 回退命令）。
 - UI 组件库 **Naive UI**，主题在 `src/theme.js` 定制（品牌橙 #FF9F5A、圆角胶囊按钮、毛玻璃输入框）
 - 四个页面全部重做为现代治愈风版式：首页（宠物主视觉 hero + 双栏语录/故事）、宠物乐园（舞台 + 侧栏）、暖心墙（杂志式动态流）、我的（头像卡 + 数据统计 + 心情热力格）
 - 字体：Quicksand（英文圆润）+ 霞鹜文楷（中文手写温度感）
@@ -76,6 +85,21 @@
 ```
 
 ## 🧪 测试与静态检查
+
+**一条命令跑全部离线测试（轮 402 起，推荐入口）**：
+
+```bash
+npm test                    # = node tools/all.mjs，默认只跑 fast 层（82 个脚本，~35s）
+npm run test:all            # fast + mount + prod（含 page-smoke 真挂载、线上只读探针）
+node tools/all.mjs --list   # 看清单与分层；新加测试忘了登记会在这里被告警
+node tools/all.mjs --only=dm,i18n    # 按文件名过滤
+node tools/all.mjs --tier=live       # 需要 CDP 9222 / dev server / 真机的那一组
+node tools/all.mjs --tier=net        # 线上端到端（会注册 wp-* 账号、写生产库），谨慎
+```
+
+分层口径写在 `tools/all.mjs` 头部注释里：`fast` 纯 Node、`mount` 需 dist + 无头浏览器、`live` 需活体环境、`prod` 线上只读、`net` 线上写数据。
+
+下面是各脚本的单项说明（要单独排障时用）：
 
 ```bash
 node tools/comment-test.mjs   # 评论系统纯函数单测（35 项：二级回复/parentId 封顶/级联删除/评论数兜底/轮84 回应计数与切换/最新最热排序/墙内前3条/拷贝文本）
@@ -91,11 +115,11 @@ node tools/food-painter-test.mjs # 手绘食物画板单测（20 项：保存后
 node tools/api-contract-test.mjs # 云端数据访问适配层契约测试（87 项：表名 / 过滤 / 排序 / RPC 参数 / Storage 桶与路径 / 降级查询形状 / upsert 只写 user_id+data+updated_at 的计数红线）
 node tools/gateway-contract-test.mjs # 网关模式前端侧契约测试（80 项：/api/* 端点形状 / 鉴权头 / 计数红线 / 错误上抛）
 node tools/worker-test.mjs    # API 网关 Worker 契约测试（247 项：/api/* → Supabase REST 翻译形状 / JWT 透传 / PGRST116→null / 路径穿越防护 / 图片边缘缓存 MISS→HIT 与降级 / 自助删号透传 / 轮84 评论回应三端点 / 轮85-86 /u noindex+/post存在性壳+标题正文OG注入+动态sitemap）
-node tools/dm-test.mjs        # 私信规则层单测（333 项：撤回窗口 / 未读计数 / 日期分隔 / 错误码→i18n 映射 / 迁移覆盖 / 轮296 冷开落在消息页的认证就绪补跑通道 + 轮询兜底回写 SWR 缓存）
+node tools/dm-test.mjs        # 私信规则层单测（336 项：撤回窗口 / 未读计数 / 日期分隔 / 错误码→i18n 映射 / 迁移覆盖 / 轮296 冷开落在消息页的认证就绪补跑通道 + 轮询兜底回写 SWR 缓存 / 轮344 登录态恢复中不画未登录闸）
 node tools/notify-test.mjs    # 通知规则层单测（149 项：分栏白名单(私信已退出) / 聚合语义 / 点击落点 / 未读兜底）
 node tools/status-test.mjs    # 陪你大厅状态规则层单测（49 项：四键前后端一致 / 24h 窗口纯函数 / emoji 归文案不重复 / 两条链路契约 / 降级分支 / 迁移与文档覆盖）
 node tools/status-counts-test.mjs # 大厅人数接口单测（92 项：单条 RPC status_counts 成功形状 / 能力标记只试一次 / 迁移未跑自动回退 4 次 HEAD 精确计数 / 非「函数缺失」不降级 / 上游不可用与 8 例脏值一律报错绝不补 0 / 非法日期零上游调用 / 迁移 SQL 与直连·网关双实现同源）
-node tools/bottle-test.mjs    # 温暖漂流瓶规则层单测（60 项：每日 3 封 7 瓶 / 48h 回海 / 1000 字上限 / 错误码↔i18n 闭环 / 六 RPC 与 Worker 路由契约 / RLS 可见性 / 旧信箱清理）
+node tools/bottle-test.mjs    # 温暖漂流瓶规则层单测（87 项：每日 5 封 7 瓶 / 48h 回海 / 1000 字上限 / 错误码↔i18n 闭环 / 六 RPC 与 Worker 路由契约 / RLS 可见性 / 记录分页与待决定红点 / 旧信箱清理）
 node tools/bottle-chat-test.mjs # 漂流瓶续聊离线回归（86 项：规则与状态机 / 通知文案与跳转落点 / 双适配器与 Worker 转发 / SQL 与 SUPABASE_SETUP 同源检查；不执行数据库迁移）
 node tools/i18n-test.mjs      # 文案完整性与插值回归（19 项：en/zh 键集合对称、修复过的 key、$ 特殊字符）
 node tools/i18n-usage-test.mjs # i18n 死键/漏键检查（2 项：代码引用了但没定义=漏键；定义了但没人用=死键；动态拼接/反引号模板/属性链直读自动豁免）
@@ -124,10 +148,12 @@ node tools/smoke.mjs          # 模块冒烟：需 dev 服务器在跑，探测 
 node tools/live-check.mjs     # 线上部署验证：页面/缓存/安全头/SEO 资产（部署后跑，应输出 LIVE ALL PASS）
 node tools/online-check.mjs   # 旧版线上检查（已被 live-check 替代，如无特别需要可忽略）
 node tools/mood-test.mjs      # 心情打卡纯逻辑单测（12 项：连续天数/死循环回归）
-node tools/make-og.mjs        # 重新生成分享图与图标到 public/（改了品牌色或文案后可跑）
+node tools/make-og.mjs        # 重新生成分享卡 og-image.png 到 public/（改了品牌色或文案后可跑）
+node tools/make-app-icon.mjs  # 重新生成全套图标：public/icons、favicon、apple-touch-icon、Android 全密度 mipmap + anydpi/单色（改图标只跑这个，跑完跑 icon-test）
+node tools/icon-test.mjs      # 图标守护（26 项：尺寸/底色/爪印占比/圆角 vs 满版/自适应安全区/monochrome/唯一生成器）
 node tools/uifix-test.mjs     # 修复项回归（24 项：评论字数上限/立绘上传校验/大厅文案/状态同步提示/安全头/浏览眼睛摘除/我的页帖子/角色名额口径）
 node tools/app-shell-test.mjs # App 外壳与手机形态回归（64 项：T5 顶栏/TabBar/页脚让位 · T7 私信↔通知分栏与红点 · 聊天整屏(align-items:stretch) · 桌面提示隐藏 · 系统返回键逐级返回/根视图最小化 · 我的页钱包 · 睡着了送行弹窗 · 我的食谱回原版 · 二级评论就地回复框 · 发帖页整屏样式 · 桌面零变化 · 轮142 私信页两段一体与漂流瓶独立聊天 · 轮143 两列化+头部⋯菜单+瓶聊昵称进空间 · 轮144 ⋯点空白关+暖心墙页内刷新）
-node tools/story-test.mjs  # 故事栏单测（101 项：3 万字/标题/标签边界 · 四种排序 · period_key 月→周榜预留 · 轮廓渲染 i18n 中英成对 · 三通道端点形状 · MIGRATION_story.sql 结构 · 批2 评论/书架/精选/数据面板 SQL 结构）
+node tools/story-test.mjs  # 故事栏单测（217 项：3 万字/标题/标签边界 · 四种排序 · period_key 月→周榜预留 · 轮廓渲染 i18n 中英成对 · 三通道端点形状 · MIGRATION_story.sql 结构 · 批2 评论/书架/精选/数据面板 SQL 结构 · 批3 幂等「设置」语义 + 详情页乐观更新 + 评论乐观上屏）
 node tools/react-queue-test.mjs # 回应按钮连点收敛器单测（12 项：同键串行不并发 · 前一个失败不卡后一个 · 过期响应不回写 · 连点三下奇偶正确 · 单次点击照常回写；纯逻辑无网络）
 node tools/back-stack-test.mjs # 系统返回键拦截栈单测（9 项：空栈不吞键 / true 才算已处理 / 后进先出 / 顶层 false 下层接手 / 拦截器异常不吞键 / 卸载弹栈 / 陌生函数不误删）
 node tools/post-detail-test.mjs # 帖子详情页回归（15 项：/post/:id 路由与数据链单帖读取 / 评论两级展开与就地回复 / 与暖心墙同款结构）
@@ -138,7 +164,7 @@ node tools/bump-version.mjs # 发版 bump 版本号（`npm run release -- 1.2`�
 node tools/splash-test.mjs    # 启动页回归（18 项：静态层结构与加厚内容 / 2.5s 兜底放行 / 看门狗摘除 / 只在 App 壳保留 / 深色模式三道闸）
 node tools/userScope-test.mjs # 账号域单测（8 项：分域读写往返 / 老档迁移进 guest(幂等+触发reload) / 首次登录认领(不覆盖已有档·只认一次) / 换域 flush→reload 顺序 / 新注册账号必为全新档）
 node tools/page-smoke.mjs    # 页面挂载冒烟（12 条关键路由真实无头挂载：无崩溃盒 + 挂载成功；抓构建查不到的 TDZ/运行时崩溃）
-node tools/report-test.mjs   # 举报/审核/拉黑契约（61 项：迁移与 SETUP 同源 / 三 RPC 与 Worker 路由 / db 双模式成对 / 错误码↔i18n 闭环 / 通知 reportDone 分支 / userBlocks 过滤与换域重置 / 三视图与管理端接线）
+node tools/report-test.mjs   # 举报/审核/拉黑契约（77 项：迁移与 SETUP 同源 / 三 RPC 与 Worker 路由 / 举报分类与批量动作 / db 双模式成对 / 错误码↔i18n 闭环 / 通知 reportDone 分支 / userBlocks 过滤与换域重置 / 三视图与管理端接线）
 node tools/web-probe.mjs      # 无头浏览器 + CDP 取真机等价实证（`--serve=dist --url=/messages --w=393 --h=852 --file=./expr.js`：真实构建产物 + 精确视口，量盒模型/命中规则；不依赖手机）
 node tools/cdp-eval.mjs       # 真机 WebView CDP 求值（`adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>` 后 `--file=./expr.js`；页面自动进入焦点模拟，息屏也能取数）
 node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite 只在启动时读环境变量）
@@ -195,6 +221,12 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 
 > 15. `MIGRATION_wall_add_views.sql` —— **浏览计数批量化：20 次 `wall_add_view` 合成 1 次 `wall_add_views`**（轮 302，老库升级用；新装库跑 `SUPABASE_SETUP.sql` **已含同款**，就在单帖版 `wall_add_view` 下面）：RPC `wall_add_views(p_posts bigint[], p_viewer text)` 把「今天还没看过的每条帖」的逐条计数搬进一个函数里循环（`distinct` 去重、`on conflict do nothing` 记 `found`、帖不存在该条回 `not-found`、整体仍 `ok:true`）。**语义与单帖版逐格等价**，只是把 20 个串行往返压成 1 个。为什么值得：按 2026-10 免费额度实测，暖心墙首屏 = 1× `wall_feed_page` + **20× `wall_add_view`**（串行），是全站请求数的最大头，而 **Cloudflare Workers 免费档硬上限 10 万请求/天** —— 这一项直接决定免费额度能撑多少日活（标准访问 28 请求 → 9 请求，容量约翻 2~3 倍）。**必须是 security definer**（`wall_post_views` 不开 insert 策略，写入只能走函数，与单帖版一致）。**没跑它时**：页面照常 —— 直连模式、网关模式都会自动退回旧的「逐帖 `wall_add_view` 循环」（判定复用 `authRules.isMissingFnError` / Worker 的 `MISSING_FN_CODES`，只认「函数还没建」，别的错误照旧报错、绝不把脏值当成浏览数），且能力标记只试一次、不会每趟白多一个来回。跑完后前端自动切到批量，**不用改前端代码、也不用先发版**。离线回归：`node tools/wall-addviews-test.mjs`（100 项）；线上实测：`node tools/wall-addviews-e2e.mjs`。
 
+> 16. `MIGRATION_story_b3.sql` —— **故事详情页点赞/收藏「点了没反应」的根治**（轮 321，老库升级用；前置：已跑 `MIGRATION_story.sql` 与 `MIGRATION_story_b2.sql`）：加三个 security definer RPC —— `story_set_like(p_id, p_on)` / `story_set_bookmark(p_id, p_on)`（**幂等的「设成目标态」语义**，不是翻转；翻转语义在「乐观更新 + 失败重试」下会把状态翻反）、`story_my_flags(p_ids)`（一次往返取回「我赞了哪些/收藏了哪些」）；同时 `story_get` 补上 `marked` 字段（以前只带 `liked` → 收藏星永远不亮、刷新后状态丢失；⚠️ `story_get` 的返回类型变了，脚本里是 **`drop function` + `create function`** 而不是 `create or replace` —— PostgreSQL 不允许 `CREATE OR REPLACE` 改函数返回类型，会报 `42P13 cannot change return type of existing function`；drop 后要重新 `grant execute`（脚本已包含），否则匿名读故事会变成权限拒绝）。**没跑它时**：点赞/收藏照常可用 —— 前端自动退回旧的翻转 RPC（判定复用 `authRules.isMissingFnError`，只认「函数还没建」）并做一次「翻转 + 校准」，结果一致只是多一趟往返；收藏星仍可能不亮（缺 `marked` 初态）。跑完后详情页点赞/收藏是**乐观更新**（点一下当场变色、计数当场 ±1，落库按故事串行、失败才回滚），评论发送**乐观上屏**（不再等一次全量重拉）。离线回归：`node tools/story-test.mjs`（223 项）；线上实测：`node tools/story-b3-e2e.mjs`（16 项：迁移前置 · 匿名读权限 · 匿名写被拒 · 幂等设置语义 · marked 跟随 · my_flags 一致 · 收尾恢复原状）。
+
+> 16b. `MIGRATION_story_b3_fix1.sql` —— **批 3 补丁：修两个写 RPC 的空判断 bug**（轮 321，老库升级用；**跑完 `MIGRATION_story_b3.sql` 之后**再跑这个）：现象是 `story_set_like` / `story_set_bookmark` 调完「成功返回」，但赞/藏**根本没写进去**（计数不变、`story_get.liked/marked` 仍是 false）—— 也就是「点赞点了没反应」。原因是 plpgsql 的 `select true into had from ... where ...` **查不到行时目标变量保持 NULL（不是 false）** → `if p_on and not had` 求值成 NULL → IF 判假 → 写入分支永不执行，而函数却正常返回了。老函数 `story_toggle_like` 用的是 `if found then`（FOUND 特殊变量）所以没事，只有批 3 新写的两个 RPC 踩了这个坑。补丁把两处判断改成 `exists(...)`（永远返回非 NULL 的 boolean），并加上「故事不存在就报 `story-not-found`」。**没跑它时**：点赞/收藏看着像成功但实际不落库（前端已做乐观更新，所以按钮会变色，但刷新后状态丢失、计数不变）。跑完即恢复。线上实测：`node tools/story-b3-e2e.mjs`。
+
+> 16c. **Worker 路由顺序坑（代码层，无需迁移）**：批 3 新增的 `GET /story/mine-flags` 是**固定名**路由，必须排在 `GET /story/:id` **之前** —— `:id` 那条分支是 `seg.length===2 && GET`，会把 `"mine-flags"` 也当成 id 吃掉（`Number("mine-flags")` = NaN → `400 bad-id`），前端就永远拿不到赞/藏初态（收藏星不亮、刷新丢状态）。已在 `worker/api.js` 里把 `mine-flags` 上移到 `:id` 之前，并补了契约测试钉住顺序。**改了 Worker 需要重新部署**（`wrangler deploy`），否则线上还是旧的。
+
 **② 配置密钥**（二选一，anon key 是公开密钥，安全由 RLS 保证）：
 - 左侧 **Settings → API** 复制 `Project URL` 和 `anon public key`，然后：
 - 方式 A：项目根目录新建 `.env`：
@@ -232,7 +264,9 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 | `public/favicon.png` · `apple-touch-icon.png` | 浏览器标签页图标 / iOS 主屏图标（真实 PNG，搜索结果里也能显示） |
 | `index.html` | canonical、description、robots、theme-color、Open Graph、Twitter 大卡、JSON-LD 结构化数据、`noscript` 兜底文案 |
 
-> 上面三张图由 `node tools/make-og.mjs` 生成（纯 Node、零依赖，手写 PNG 编码器画出品牌爪印）。改了品牌色或文案后重跑即可，产物直接覆盖 `public/`。
+> `og-image.png` 由 `node tools/make-og.mjs` 生成（纯 Node、零依赖，手写 PNG 编码器画出品牌爪印）。
+> `favicon.png` / `apple-touch-icon.png` 与全部 App 图标由 `node tools/make-app-icon.mjs` 统一产出
+> （轮 403 起：陶红 `#DF4B2C` 实色底 + 白爪印，爪宽 55.6%；改图标只改这个脚本，`make-og.mjs` 已不再碰图标）。
 
 **Search Console 验证（域名属性走 DNS TXT）**
 
@@ -318,11 +352,31 @@ npm run deploy   # wrangler deploy 发布到 Worker warm-paws（warmpaws.de5.net
 >
 > ⚠️ 第 2 步省不得：`version.json` 里的 `versionCode` 一旦**大于 APK 里实际的值**，客户端装完仍算「有新版」→ 无限循环；叠上「必须更新」就是用户永远关不掉、只能重装的窗。管理中心会在 versionCode 与当前构建不一致时显式警告，但拦不住「构建本身太旧」。
 
+## 💾 数据库备份（轮 402）
+
+Supabase 免费版**没有自动备份、没有 PITR** —— 帖子 / 评论 / 私信 / 漂流瓶 / 故事 / 宠物全在一个库里，误删就是永久损失。本地导一份是最便宜的保险。
+
+```bash
+node tools/backup.mjs --check     # 体检：pg_dump 在不在、连接串有没有、连得上吗
+node tools/backup.mjs             # 导一份到 backups/（保留最近 14 份，自动轮转）
+node tools/backup.mjs --drill     # 恢复演练：灌进临时空库 → 逐表比对内容指纹 → 验完删库
+node tools/backup.mjs --self-test # 不碰数据库，自检脱敏/占位符/解析/轮转/坏产物判定 17 项
+```
+
+- 连接串放项目根目录 `.env.backup`（已 gitignore）：
+  `SUPABASE_DB_URL=postgresql://postgres.<ref>:<数据库密码>@aws-0-<region>.pooler.supabase.com:5432/postgres`
+  取值：Dashboard → 右上 `Connect` → `Direct Connection string` → `Session pooler`。**5432 才对，Transaction pooler（6543）不支持 pg_dump。**
+  ⚠️ Copy 出来的原文里密码段是 `[YOUR-PASSWORD]` 占位符，Supabase 不回显密码，必须手工替换；密码含 `@ : / ? #` 要写 `%40` 这种 URL 编码。
+- 需要本机有 `pg_dump`（PostgreSQL 客户端，版本 ≥ 服务端）：`winget install --id PostgreSQL.PostgreSQL.17 -e`；或用便携版并设 `PG_BIN=<bin 目录>`。
+- 每份 dump 都会：`pg_restore --list` 校验可解析 → 统计有数据的表 → 记 SHA-256 到 `backups/MANIFEST.jsonl` → 轮转旧份。**校验不过的产物按失败处理**，不会留下“看着有文件、其实恢复不了”的假备份。
+- **恢复演练（`--drill`）判定的是内容而不是行数**：行哈希排序后聚合做逐表指纹，和生产逐表相等才算过（只比行数会漏掉“行数一样但值变了”）。它只操作 `wp_drill_*` 前缀的库、验完自动 DROP；`--keep-drill` 可留库排查。生产上 `pg_trgm`/`pgcrypto` 装在 `public`，演练库会先补装，否则 trgm 索引与部分约束恢复不出来。
+- 手工恢复：`pg_restore --clean --if-exists --no-owner -d "<目标库连接串>" <文件>`。**先 `--drill` 或空库演练一次**再谈生产恢复 —— 没演练过的备份不算备份。
+
 ## 📁 结构
 
 ```
 src/
-  main.js / App.vue / router.js / i18n.js / style.css / theme.js
+  main.js / App.vue / router.js / i18n.js / style.css / glass.css / theme.js
   data/
     stories.js         每日内容库（故事 / 语录 / 每日一问）
     pets.js            SPECIES 物种 / PERSONALITIES 性格 / LINES 台词库
@@ -362,8 +416,10 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 | P2 | 缺常见安全响应头 | 补 CSP + HSTS（原有 nosniff / Referrer-Policy / X-Frame-Options / Permissions-Policy 保留） | `public/_headers` |
 | 体验 | `#/` 路由直接访问 `/pet` 会 404 | 迁移到 history 模式 + 每条路由独立静态 HTML + SPA 回退 | `router.js` / `vite.config.js` / `wrangler.jsonc` |
 | 体验 | 「在线陪伴数」是本地随机数，易误导 | 去掉虚构人数，改如实文案（路线图保留"等有真实统计再接"） | `views/HomeView.vue` / `i18n.js` |
+| 体验 | App 图标被旧生成器覆盖回蓝爪 | 恢复 C「暖窝」，旧 v1/v2 生成器改名，v3 统一出 Android + PWA 图标 | `tools/make-app-icon.mjs` / `android/app/src/main/res` |
+| 体验 | 图标换成用户圈定的「实色陶红 + 白爪印」 | 轮 403：v5 #4 定稿；一张脚本出满 Web/PWA/iOS/Android（含 Android 13 单色），`make-og.mjs` 交出图标写权，`icon-test` 26 项钉住 | `tools/make-app-icon.mjs` / `tools/icon-test.mjs` |
 
-回归验证（全部本地可跑）：`wall-rules-test` 49 项 · `comment-test` 35 项 · `wall-test` 37 项 · `pet-home-test` 19 项 · `pet-visual-test` 163 项 · `food-painter-test` 20 项 · `uifix-test` 24 项 · `image-fit` 20 项 · `snack-test` 24 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 130 项 · `privacy-test` 34 项 · `arity-test` 8 项 · `seo-test` 50 项 · `dm-test` 333 项 · `notify-test` 149 项 · `status-test` 49 项 · `status-counts-test` 92 项 · `bottle-test` 71 项 · `bottle-chat-test` 94 项 · `api-contract-test` 87 项 · `gateway-contract-test` 80 项 · `worker-test` 247 项 · `cache-test` 12 项 · `home-panes-test` 9 项 · `app-shell-test` 64 项 · `react-queue-test` 12 项 · `back-stack-test` 9 项 · `post-detail-test` 17 项 · `splash-test` 21 项 · `app-version-test` 117 项 · `userScope-test` 8 项 · `report-test` 61 项 · `feed-perf-test` 27 项 · `feed-window-test` 19 项 · `feed-window-live` 10 项（需 dev 服务器）· `web-refresh-test` 6 项 · `story-test` 101 项 · `rail-test` 31 项 · `rps-test` 14 项 · `page-smoke` 12 项 · `undef-check`（`--selftest` 10 项）· `tdz-check`。
+回归验证（全部本地可跑）：`wall-rules-test` 49 项 · `comment-test` 35 项 · `wall-test` 37 项 · `pet-home-test` 19 项 · `pet-visual-test` 163 项 · `food-painter-test` 20 项 · `uifix-test` 24 项 · `image-fit` 20 项 · `snack-test` 24 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 130 项 · `privacy-test` 34 项 · `arity-test` 8 项 · `seo-test` 50 项 · `icon-test` 26 项 · `dm-test` 336 项 · `notify-test` 149 项 · `status-test` 49 项 · `status-counts-test` 92 项 · `bottle-test` 87 项 · `bottle-chat-test` 94 项 · `api-contract-test` 87 项 · `gateway-contract-test` 80 项 · `worker-test` 327 项 · `cache-test` 16 项 · `home-panes-test` 9 项 · `app-shell-test` 67 项 · `react-queue-test` 12 项 · `back-stack-test` 9 项 · `post-detail-test` 17 项 · `splash-test` 21 项 · `app-version-test` 117 项 · `userScope-test` 8 项 · `report-test` 77 项 · `feed-perf-test` 27 项 · `feed-window-test` 19 项 · `feed-window-live` 10 项（需 dev 服务器）· `web-refresh-test` 6 项 · `story-test` 223 项 · `story-b3-e2e` 16 项（需线上库）· `rail-test` 31 项 · `rps-test` 14 项 · `page-smoke` 12 项 · `undef-check`（`--selftest` 10 项）· `tdz-check`。
 
 ## 🗺️ 路线图
 

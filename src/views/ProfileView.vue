@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onActivated } from "vue";
+import { ref, computed, watch, onActivated, onMounted, onBeforeUnmount } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { NButton, NInput, NAvatar, NTag, NProgress } from "naive-ui";
 import { t, i18n } from "../i18n.js";
@@ -20,10 +20,11 @@ import { MIN_PASSWORD, NICK_MAX, passwordProblem } from "../utils/authRules.js";
  * 与暖心墙 / 详情页 / 我的帖子 / 收藏页同一口径，并把 locale 传进去。 */
 import { fmtWhen } from "../utils/wallRules.js";
 import { db } from "../utils/api/db.js";
-import { rowsToPosts, publicUrl, aggregateReactions } from "../utils/wall.js";
-import { cacheKey, cachePeek, cacheSet, swr } from "../utils/cache.js";
+import { cloudFetchUserPosts } from "../utils/wall.js";
+import { cacheKey, cachePeek, cacheSet, cachePatch, swr } from "../utils/cache.js";
 import { avatarUrlFor } from "../utils/avatar.js";   /* 轮 238:萌宠头像池 */
 import { setPostNav } from "../utils/postNav.js";    /* 轮 279:进详情前存列表快照,左右滑用 */
+import { onPostReaction, patchPostList } from "../utils/postReactionSync.js";
 
 /* 轮 288:与 WallerView / PostDetailView 同名同口径的时间文案（到分） */
 const when = (ts) => fmtWhen(ts, i18n.locale);
@@ -88,7 +89,9 @@ const myPostsBusy = ref(false);
     const uid = getItem("wp-uid") || ((cloud.user && cloud.user.id) || "");
     if (!uid) return;
     const snap = cachePeek(cacheKey("profile-myposts", uid));
-    if (snap && Array.isArray(snap.rows)) myPosts.value = snap.rows;
+    /* 正常缓存是 rowsToPosts 数组；兼容早期 {rows:[...]} 形状，避免旧包升级后首屏空白。 */
+    if (Array.isArray(snap)) myPosts.value = snap;
+    else if (snap && Array.isArray(snap.rows)) myPosts.value = snap.rows;
   } catch (e) { /* 忽略 */ }
 })();
 /* 轮 281：加载抽成函数——watch（登录态就绪）与 onActivated（KeepAlive 切回页签）共用。
@@ -108,16 +111,10 @@ async function loadMyPosts() {
       fresh: (rows) => { myPosts.value = rows; },
     },
     async () => {
-      /* 轮 213：慢网提速——先一趟 listPostsByUser 出帖子，回应数后台补（两趟串行=手机上 10s 空窗） */
-      const posts = (await db.listPostsByUser(uid, 3)) || [];
-      const got = rowsToPosts(posts, {}, publicUrl);
-      db.listReactionsByPosts(got.map((x) => x.dbId)).then((rk) => {
-        const reactions = aggregateReactions(rk || [], uid);
-        myPosts.value = myPosts.value.map((p) => {
-          const r = reactions[p.dbId];
-          return r ? { ...p, ...r } : p;
-        });
-      }).catch(() => { /* 回应数失败不阻塞帖子 */ });
+      /* 轮 372：回应数必须跟帖子一起回来再写缓存。
+       * 旧写法先回写 0，再在后台改内存——用户会看到「我的页面 0 / 详情 2」，
+       * 而且下一次进页又从缓存读到 0。这里复用暖心墙/我的帖子同一取数口径。 */
+      const got = (await cloudFetchUserPosts(uid, 3)) || [];
       return got.length ? got : null;   /* 空列表/失败不覆盖快照、不回写 */
     },
   );
@@ -138,6 +135,30 @@ onActivated(() => {
   if (!myPostsActivated) { myPostsActivated = true; return; }
   loadMyPosts();
 });
+
+/* 轮 372：详情页改回应 → 仍被 KeepAlive 保活的「我的」页立刻同步。
+ * 旧问题：详情显示 2，返回我的页面还是缓存里的 0，要等下一次网络刷新。
+ * 同时回写 profile-myposts 缓存，切页签/重进也不会退回 0。 */
+function syncProfileReaction(id, patch) {
+  const uid = (cloud.user && cloud.user.id) || "";
+  if (!uid) return;
+  const next = patchPostList(myPosts.value, id, patch);
+  if (next !== myPosts.value) myPosts.value = next;
+  cachePatch(cacheKey("profile-myposts", uid), (rows) => patchPostList(rows, id, patch));
+}
+let stopPostReactionSync = null;
+onMounted(() => { stopPostReactionSync = onPostReaction(syncProfileReaction); });
+onBeforeUnmount(() => {
+  if (stopPostReactionSync) stopPostReactionSync();
+  stopPostReactionSync = null;
+});
+
+/* 进详情前把当前这篇帖写进 wall:post 缓存：详情页 0ms 先渲染正确计数，弱网不空等。 */
+function openMyPost(p) {
+  if (!p || p.dbId == null) return;
+  setPostNav(myPosts.value);
+  cacheSet(cacheKey("wall:post", p.dbId), p);
+}
 
 /* 轮 254：内嵌收藏逻辑（favRows/watch/unFav/showFavs）已迁往独立页 FavoritesView；
    头部按钮改为 router.push('/favorites')，缓存键 profile-favs 两页同用。 */
@@ -246,6 +267,39 @@ async function doSetPassword() {
   cloudClearRecovery();
   flash.value = t("profile.resetDone");
 }
+/* 轮 333：分享当前页面（网页端）。优先 Web Share API，不支持时复制链接并提示。 */
+async function sharePage() {
+  const url = location.href;
+  if (typeof navigator !== "undefined" && navigator.share) {
+    try {
+      await navigator.share({
+        title: t("profile.sharePage"),
+        text: t("profile.shareText"),
+        url,
+      });
+      return;
+    } catch (e) {
+      /* 用户点取消（AbortError）不算失败，静默忽略 */
+      if (e && e.name !== "AbortError") {
+        await copyLink(url);
+      }
+      return;
+    }
+  }
+  await copyLink(url);
+}
+
+async function copyLink(url) {
+  try {
+    await navigator.clipboard.writeText(url);
+    flash.value = t("profile.shareCopied");
+    setTimeout(() => { flash.value = ""; }, 2200);
+  } catch {
+    flash.value = t("profile.shareFail");
+    setTimeout(() => { flash.value = ""; }, 2200);
+  }
+}
+
 function leaveRecovery() {
   newPass.value = "";
   passMsg.value = "";
@@ -338,11 +392,17 @@ const brightRatio = computed(() => {
           ⚙️ {{ t("settings.entry") }}
         </router-link>
         <!-- 轮 308 回炉（用户拍板）：下载 App 入口只放「我的」页、紧贴设置 ——
-             不再每页顶部挂条（打扰）。条件 = 手机浏览器（桌面走横幅、App 内不显示） -->
-        <button v-if="isMobileNav && !isApp" type="button" class="admin-entry m-dl-pill"
-          :title="t('appDownload.button')" @click="openDownload">
-          <span class="m-dl-ico" aria-hidden="true">⤓</span>{{ t("appDownload.button") }}
-        </button>
+             不再每页顶部挂条（打扰）。条件 = 网页端（桌面 + 手机浏览器；App 内不显示） -->
+        <div v-if="!isApp" class="admin-row">
+          <button type="button" class="admin-entry m-dl-pill"
+            :title="t('appDownload.button')" @click="openDownload">
+            <span class="m-dl-ico" aria-hidden="true">⤓</span>{{ t("appDownload.button") }}
+          </button>
+          <button type="button" class="admin-entry m-share-pill"
+            :title="t('profile.sharePage')" @click="sharePage">
+            <span class="m-share-ico" aria-hidden="true">↗</span>{{ t("profile.sharePage") }}
+          </button>
+        </div>
       </div>
     </section>
 
@@ -508,7 +568,7 @@ const brightRatio = computed(() => {
         <router-link
           v-for="p in myPosts" :key="p.id"
           class="post-card card my-post" :to="'/post/' + p.dbId"
-          @click="setPostNav(myPosts)">
+          @click="openMyPost(p)">
           <div class="post-head">
             <n-avatar round :size="42" class="post-avatar" :src="avatarUrlFor(cloud.user && cloud.user.id) || undefined"><template v-if="!avatarUrlFor(cloud.user && cloud.user.id)" #default>🙂</template><template v-else #fallback>🙂</template></n-avatar>
             <div class="post-meta">

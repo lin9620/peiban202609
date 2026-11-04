@@ -44,8 +44,9 @@ const inChat = computed(() => isMobileNav.value
   && ((route.name === "messages" && !!route.params.id) || route.name === "compose"));
 
 /* 私信 / 通知角标：登录后由 badgeStore 每 30s 智能轮询（后台暂停）。
- * #14：红点只挂在聊天入口（💬）——🔔 不再显示红点，通知进页面看。 */
-const dmBadge = computed(() => badge.dm + badge.requests);
+ * #14：红点只挂在聊天入口（💬）——🔔 不再显示红点，通知进页面看。
+ * 轮 371：漂流瓶「待我同意/拒绝」也算消息未处理，桌面顶栏与底栏同一口径。 */
+const dmBadge = computed(() => badge.dm + badge.requests + badge.bottle);
 
 const streak = computed(() => moodStreak());
 /* 轮 132 · 桌面 welcome 横幅（参考图 1）：显示名 = 云昵称 > 本地昵称 > 访客 */

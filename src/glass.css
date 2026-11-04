@@ -1,0 +1,708 @@
+/* ════════════════════════════════════════════════════════════════
+   轮 404 · 磨砂玻璃皮肤（Pastel Glass）
+   ────────────────────────────────────────────────────────────────
+   为什么单独一个文件：整套改版都在这一层，`style.css` 一行不改。
+   不满意回退 = 删掉 `main.js` 里那行 `import "./glass.css";`（或整文件删掉），
+   立刻回到改版前的米色平涂。改版前的 src 快照在
+   `_backup/ui-20261104-before-glass/`。
+
+   设计语言（对照参考图，6 条）：
+   ① 磨砂玻璃：backdrop blur 20px + 顶部高光 + 柔和投影
+   ② 九色 Pastel：雾蓝 / 鹅黄 / 薄荷绿 / 蜜桃橙 / 樱粉 / 薰衣草紫 / 青瓷 / 雾灰 / 纯白
+   ③ 卡片圆角 23px，白色半透明描边
+   ④ 微旋转 −8~8°，叠压层级递增
+   ⑤ 字阶靠透明度分层，不靠字号堆叠
+   ⑥ 一句话标题 + 62% 透明说明小字
+
+   优先级策略：组件里的 <style scoped> 带 [data-v-xxx]，特异性比全局类名高，
+   所以下面凡是要压过 scoped 的规则都带 !important —— 只碰视觉属性
+   （背景/描边/圆角/阴影/模糊/字色），不碰布局，避免把某页撑歪。
+   ════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── 玻璃三件套 ── */
+  --g-blur: 20px;
+  --g-bg: rgba(255, 255, 255, 0.62);
+  --g-bg-soft: rgba(255, 255, 255, 0.46);
+  --g-bg-strong: rgba(255, 255, 255, 0.74);
+  --g-line: rgba(255, 255, 255, 0.72);
+  --g-line-ink: rgba(90, 78, 68, 0.10);
+  --g-hi: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  --g-shadow: 0 14px 34px rgba(58, 46, 42, 0.10), 0 2px 8px rgba(58, 46, 42, 0.05);
+  --g-shadow-sm: 0 6px 18px rgba(58, 46, 42, 0.07);
+  --r-card: 23px;
+  --r-inner: 16px;
+  --r-pill: 999px;
+
+  /* ── 九色 Pastel（-a 是叠在玻璃上的半透明版，-ink 是同色系深字色）── */
+  --p-blue: #D9E4FA;      --p-blue-a: rgba(217, 228, 250, 0.78);      --p-blue-ink: #47598A;
+  --p-yellow: #FAF0C5;    --p-yellow-a: rgba(250, 240, 197, 0.80);    --p-yellow-ink: #7A6520;
+  --p-mint: #D3EFDB;      --p-mint-a: rgba(211, 239, 219, 0.80);      --p-mint-ink: #376A4B;
+  --p-peach: #FBD9C0;     --p-peach-a: rgba(251, 217, 192, 0.80);     --p-peach-ink: #8A5330;
+  --p-pink: #FBD6E2;      --p-pink-a: rgba(251, 214, 226, 0.80);      --p-pink-ink: #8B4761;
+  --p-lilac: #E1D8FB;     --p-lilac-a: rgba(225, 216, 251, 0.80);     --p-lilac-ink: #574986;
+  --p-celadon: #CDE8E4;   --p-celadon-a: rgba(205, 232, 228, 0.80);   --p-celadon-ink: #2E6360;
+  --p-gray: #E4E3E7;      --p-gray-a: rgba(228, 227, 231, 0.80);      --p-gray-ink: #57545B;
+  --p-white: #FFFFFF;
+
+  /* 字阶：说明文字统一 62% 不透明度 */
+  --ink-62: rgba(20, 20, 19, 0.62);
+  --ink-44: rgba(20, 20, 19, 0.44);
+
+  /* ── 把老色板整体搬到玻璃上 ──
+   * 这是最省事也最关键的一步：全站 664 处 var() 里，凡是还在用 --card / --hairline /
+   * --accent-soft 的表面，会一次性从「米色实心」变成「半透明白」，
+   * 不用逐个类名去改（story-main 这种大块就是靠这条从 #EFE9DE 变玻璃的）。 */
+  --card: rgba(255, 255, 255, 0.62);
+  --hairline: rgba(92, 80, 70, 0.10);
+  --accent-soft: rgba(251, 214, 226, 0.46);
+  --glass: rgba(255, 255, 255, 0.62);
+  --glass-strong: rgba(255, 255, 255, 0.76);
+  --wash: rgba(255, 255, 255, 0.42);
+  --wash-mid: rgba(255, 255, 255, 0.58);
+  --wash-strong: rgba(255, 255, 255, 0.78);
+  --shadow-sm: 0 4px 12px rgba(58, 46, 42, 0.06);
+}
+
+/* ═══════════════ ① 画布：奶油底 + 九色柔光斑 ═══════════════
+ * 参考图的背景是「灰调玻璃 + 几团糊开的彩光」，不是纯色。
+ * 用 fixed 的多层 radial-gradient 做，零额外 DOM、不参与滚动重绘。
+ * 主题切换（sakura/mint/lavender/night）仍按 --page-bg 走，
+ * 这里只在最外层叠光斑，深浅主题都不会被吃掉。 */
+html {
+  background: #F5F3F0;
+}
+body {
+  background:
+    radial-gradient(58% 40% at 10% 2%, rgba(251, 214, 226, 0.62) 0%, rgba(251, 214, 226, 0) 62%),
+    radial-gradient(54% 38% at 94% 4%, rgba(217, 228, 250, 0.66) 0%, rgba(217, 228, 250, 0) 60%),
+    radial-gradient(48% 34% at 82% 46%, rgba(225, 216, 251, 0.46) 0%, rgba(225, 216, 251, 0) 62%),
+    radial-gradient(62% 42% at 14% 74%, rgba(211, 239, 219, 0.48) 0%, rgba(211, 239, 219, 0) 64%),
+    radial-gradient(52% 36% at 92% 94%, rgba(250, 240, 197, 0.52) 0%, rgba(250, 240, 197, 0) 62%),
+    #F6F4F1;
+  background-attachment: fixed;
+}
+html[data-theme="night"] body {
+  background:
+    radial-gradient(58% 40% at 10% 2%, rgba(120, 90, 140, 0.34) 0%, rgba(120, 90, 140, 0) 62%),
+    radial-gradient(54% 38% at 94% 4%, rgba(70, 96, 150, 0.34) 0%, rgba(70, 96, 150, 0) 60%),
+    radial-gradient(62% 42% at 14% 74%, rgba(60, 120, 110, 0.26) 0%, rgba(60, 120, 110, 0) 64%),
+    #191A22;
+}
+
+/* 原来 display:none 的三颗光斑重新启用，做成大而糊的彩团（比渐变更「玻璃」） */
+.orb {
+  display: block !important;
+  position: fixed; border-radius: 50%;
+  filter: blur(64px); opacity: .55;
+  pointer-events: none; z-index: 0;
+}
+.orb-1 { width: 300px; height: 300px; top: -90px; right: -70px; background: #F7C9DA; }
+.orb-2 { width: 260px; height: 260px; bottom: -80px; left: -80px; background: #CFD9F7; }
+.orb-3 { width: 200px; height: 200px; top: 46%; left: 8%; background: #D6CBF6; }
+html[data-theme="night"] .orb { opacity: .28; }
+
+/* ═══════════════ ② 卡片：玻璃主体 ═══════════════
+ * 白 56% + 20px 模糊 + 白色描边 + 顶部一道内高光 + 双层柔和投影。
+ * 列表里的 .card 很多，模糊交给合成层，Chromium/WebView 走 GPU，长列表实测无掉帧。 */
+.card,
+.glass,
+.dl-modal,
+.n-card {
+  background: var(--g-bg) !important;
+  -webkit-backdrop-filter: blur(var(--g-blur)) saturate(1.6) !important;
+  backdrop-filter: blur(var(--g-blur)) saturate(1.6) !important;
+  border: 1px solid var(--g-line) !important;
+  border-radius: var(--r-card) !important;
+  box-shadow: var(--g-shadow), var(--g-hi) !important;
+}
+.card { padding: 20px 18px; }
+.card:hover { box-shadow: var(--g-shadow), var(--g-hi) !important; }
+
+/* ═══════════════ ③ 字阶：靠透明度分层 ═══════════════ */
+.card h2,
+.hall-title,
+.section-title {
+  font-size: 16.5px !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.2px !important;
+}
+.sec-label {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.09em !important;
+  text-transform: uppercase;
+  color: var(--ink-62) !important;
+}
+.sub,
+.streak-note,
+.notice,
+.post-time,
+.status-sub,
+.hall-warn,
+.hero-sub,
+.wall-empty-desc {
+  color: var(--ink-62) !important;
+  font-size: 12.5px !important;
+  font-weight: 450 !important;
+  line-height: 1.6 !important;
+}
+
+/* ═══════════════ ④ 顶部栏 / 底部 Tab：固定玻璃层（永不透明） ═══════════════ */
+.topbar {
+  background: var(--g-bg-strong) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(1.7) !important;
+  backdrop-filter: blur(22px) saturate(1.7) !important;
+  border: 1px solid var(--g-line) !important;
+  box-shadow: var(--g-shadow-sm), var(--g-hi) !important;
+}
+.topbar .nav a.active {
+  background: var(--ink) !important;
+  color: #fff !important;
+}
+
+/* 底部导航：改成「悬浮胶囊」（参考图里的 tabbar 是浮起来的一块玻璃，不贴边） */
+.tabbar.van-tabbar,
+.tabbar {
+  left: 10px !important; right: 10px !important;
+  /* 必须 width:auto —— Vant 给的是 width:100%，配上 left/right 会以宽度优先，
+   * 结果右缘越过视口 10px（实测 390 视口里 tabbar 右缘 400），整页横向溢出。 */
+  width: auto !important;
+  box-sizing: border-box !important;
+  bottom: calc(8px + var(--sab, env(safe-area-inset-bottom, 0px))) !important;
+  max-width: 620px !important;
+  border: 1px solid var(--g-line) !important;
+  border-top: 1px solid var(--g-line) !important;
+  border-radius: 24px !important;
+  background: var(--g-bg-strong) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(1.8) !important;
+  backdrop-filter: blur(24px) saturate(1.8) !important;
+  box-shadow: 0 12px 30px rgba(58, 46, 42, 0.14), var(--g-hi) !important;
+  padding: 4px 10px !important;
+  overflow: visible !important;
+}
+.tabbar .tab-label { font-size: 12.5px !important; font-weight: 600 !important; letter-spacing: 0.2px; }
+.tabbar .van-tabbar-item--active .tab-label { color: var(--ink) !important; }
+/* 中间 ＋：容器保持透明，圆才是那个墨色圆钮（第一版把墨底刷在容器上 → 出来一个黑方块） */
+.tabbar .tab-compose { background: transparent !important; }
+.tabbar .tab-compose-x {
+  background: var(--ink) !important;
+  color: #fff !important;
+  border: 3px solid rgba(255, 255, 255, 0.9) !important;
+  box-shadow: 0 8px 20px rgba(20, 20, 19, 0.28) !important;
+}
+/* 悬浮条多出 8px，主内容底部让位同步加 8 */
+.shell--mobile-nav main { padding-bottom: calc(86px + var(--sab, env(safe-area-inset-bottom, 0px))) !important; }
+/* 首页四联是横向分页容器，每页自己的滚动区不吃 main 的 padding，单独补 */
+.home-pane { padding-bottom: calc(88px + var(--sab, env(safe-area-inset-bottom, 0px))) !important; }
+/* 暖心墙自己是一个 position:fixed 的滚动层（.wall-scroller），main 的 padding 传不进来：
+ * 它的底部留白写在行内 style 里（70px），而悬浮条占 66px + 8px 抬升 = 74px，
+ * 于是最后一张卡的下沿会从胶囊底下钻出来。行内样式只能用 !important 压。 */
+.shell--mobile-nav .wall-scroller {
+  padding-bottom: calc(94px + var(--sab, env(safe-area-inset-bottom, 0px))) !important;
+}
+.shell--mobile-nav.shell--chat .home-pane { padding-bottom: 0 !important; }
+
+/* 胶囊里的弹层（＋ 号那三瓣） */
+.tabbar-sheet {
+  background: var(--g-bg-strong) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(1.7) !important;
+  backdrop-filter: blur(24px) saturate(1.7) !important;
+  border: 1px solid var(--g-line) !important;
+  border-radius: 26px !important;
+  box-shadow: var(--g-shadow) !important;
+}
+
+/* ═══════════════ ⑤ 按钮 / 胶囊 / 输入 ═══════════════ */
+.btn {
+  border-radius: var(--r-pill) !important;
+  font-weight: 600 !important;
+  background: var(--accent) !important;
+  box-shadow: 0 8px 20px rgba(169, 88, 62, 0.22) !important;
+}
+.btn.ghost {
+  background: var(--g-bg-strong) !important;
+  border: 1px solid var(--g-line) !important;
+  color: var(--ink) !important;
+  box-shadow: var(--g-shadow-sm), var(--g-hi) !important;
+}
+.input,
+textarea.input,
+.wall-search-input,
+.q-input input,
+.q-input textarea {
+  background: rgba(255, 255, 255, 0.62) !important;
+  border: 1px solid var(--g-line) !important;
+  border-radius: var(--r-inner) !important;
+  box-shadow: inset 0 1px 2px rgba(58, 46, 42, 0.05) !important;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+.input:focus,
+.wall-search-input:focus {
+  border-color: rgba(204, 120, 92, 0.55) !important;
+  box-shadow: 0 0 0 4px rgba(204, 120, 92, 0.14) !important;
+}
+.chip,
+.soft-tag,
+.n-tag {
+  border-radius: var(--r-pill) !important;
+}
+.chip {
+  background: rgba(255, 255, 255, 0.58) !important;
+  border: 1px solid var(--g-line) !important;
+  box-shadow: var(--g-hi), 0 4px 12px rgba(58, 46, 42, 0.05) !important;
+  color: var(--ink) !important;
+}
+.chip.on,
+.chip.on:hover {
+  background: var(--ink) !important;
+  border-color: transparent !important;
+  color: #fff !important;
+  box-shadow: 0 8px 20px rgba(20, 20, 19, 0.24) !important;
+}
+.soft-tag {
+  background: rgba(255, 255, 255, 0.66) !important;
+  border: 1px solid var(--g-line) !important;
+  color: var(--ink) !important;
+}
+
+/* ═══════════════ ⑥ 首页：问候 + 状态九宫 + 今日心情 ═══════════════ */
+.today-hi {
+  padding: 22px 20px !important;
+  background:
+    linear-gradient(140deg, rgba(251, 214, 226, 0.55), rgba(255, 255, 255, 0.5) 58%, rgba(217, 228, 250, 0.5)) !important;
+  border: 1px solid var(--g-line) !important;
+  box-shadow: var(--g-shadow), var(--g-hi) !important;
+}
+.today-hi-title {
+  font-size: 27px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.8px !important;
+  line-height: 1.18 !important;
+}
+.today-hi-sub { color: var(--ink-62) !important; font-size: 13px !important; margin-top: 6px !important; }
+.today-hi-heart {
+  width: 40px !important; height: 40px !important;
+  border-radius: 50% !important;
+  background: rgba(255, 255, 255, 0.62) !important;
+  border: 1px solid var(--g-line) !important;
+  box-shadow: var(--g-hi) !important;
+}
+
+/* 四张状态卡：四种 pastel（不做旋转——网格里一旋就出现参差的缝，参考图的旋转是给
+ * 「自由摆放的便签堆」用的，不是给等高网格用的） */
+.status-card {
+  background: var(--g-bg) !important;
+  border: 1px solid var(--g-line) !important;
+  border-radius: 20px !important;
+  box-shadow: var(--g-shadow-sm), var(--g-hi) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(1.5) !important;
+  backdrop-filter: blur(16px) saturate(1.5) !important;
+  transition: transform .22s cubic-bezier(.22, 1, .36, 1), box-shadow .22s ease !important;
+}
+.status-card:nth-child(4n + 1) {
+  background: linear-gradient(150deg, var(--p-blue-a), rgba(255, 255, 255, 0.68)) !important;
+}
+.status-card:nth-child(4n + 2) {
+  background: linear-gradient(150deg, var(--p-yellow-a), rgba(255, 255, 255, 0.68)) !important;
+}
+.status-card:nth-child(4n + 3) {
+  background: linear-gradient(150deg, var(--p-mint-a), rgba(255, 255, 255, 0.68)) !important;
+}
+.status-card:nth-child(4n + 4) {
+  background: linear-gradient(150deg, var(--p-pink-a), rgba(255, 255, 255, 0.68)) !important;
+}
+.status-card:hover { transform: translateY(-2px) !important; }
+.status-card.is-on {
+  border-color: rgba(169, 88, 62, 0.5) !important;
+  box-shadow: 0 10px 26px rgba(169, 88, 62, 0.20), var(--g-hi) !important;
+}
+.status-ico {
+  width: 36px !important; height: 36px !important;
+  display: inline-flex !important; align-items: center !important; justify-content: center !important;
+  border-radius: 13px !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.85) !important;
+  font-size: 18px !important;
+}
+.status-name { font-weight: 600 !important; font-size: 13.5px !important; }
+
+/* 大厅此刻四格：pastel 顶色小砖 */
+.hall-now-cell {
+  background: rgba(255, 255, 255, 0.56) !important;
+  border: 1px solid var(--g-line) !important;
+  border-radius: 18px !important;
+  box-shadow: var(--g-hi) !important;
+}
+.hall-now-cell:nth-child(4n + 1) { background: linear-gradient(160deg, var(--p-celadon-a), rgba(255, 255, 255, 0.6)) !important; }
+.hall-now-cell:nth-child(4n + 2) { background: linear-gradient(160deg, var(--p-yellow-a), rgba(255, 255, 255, 0.6)) !important; }
+.hall-now-cell:nth-child(4n + 3) { background: linear-gradient(160deg, var(--p-lilac-a), rgba(255, 255, 255, 0.6)) !important; }
+.hall-now-cell:nth-child(4n + 4) { background: linear-gradient(160deg, var(--p-peach-a), rgba(255, 255, 255, 0.6)) !important; }
+
+/* 心情五连：玻璃卡 + 选中放大 */
+.mood-chip {
+  background: rgba(255, 255, 255, 0.56) !important;
+  border: 1px solid var(--g-line) !important;
+  border-radius: 18px !important;
+  box-shadow: var(--g-hi), 0 6px 16px rgba(58, 46, 42, 0.05) !important;
+}
+.mood-chip:hover { background: rgba(255, 255, 255, 0.78) !important; transform: translateY(-2px) !important; }
+.mood-chip.on,
+.mood-chip.is-on {
+  background: linear-gradient(150deg, var(--p-peach-a), var(--p-pink-a)) !important;
+  border-color: rgba(255, 255, 255, 0.9) !important;
+}
+
+/* 每日一句：整块染色玻璃 */
+.quote-box {
+  background: linear-gradient(150deg, rgba(251, 217, 192, 0.5), rgba(251, 214, 226, 0.42)) !important;
+  border: 1px solid var(--g-line) !important;
+  border-radius: 20px !important;
+  padding: 18px 16px 14px !important;
+  box-shadow: var(--g-hi) !important;
+  font-size: 14.5px !important;
+  line-height: 1.85 !important;
+}
+.task-row {
+  background: rgba(255, 255, 255, 0.54) !important;
+  border: 1px solid var(--g-line) !important;
+  border-radius: 18px !important;
+  box-shadow: var(--g-hi) !important;
+}
+.task-row .t-ico { border-radius: 12px !important; }
+
+/* 首页四联的分段（宠物/今日/漂流瓶/故事）：条本身透明，只有选中项是墨色胶囊 */
+.home-chips {
+  background: transparent !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  padding: 8px 4px 10px !important;
+}
+.home-chip,
+.home-chips .home-chip {
+  border-radius: var(--r-pill) !important;
+  background: rgba(255, 255, 255, 0.42) !important;
+  border: 1px solid rgba(255, 255, 255, 0.6) !important;
+  color: var(--ink-62) !important;
+  font-weight: 600 !important;
+  min-height: 36px !important;
+  padding: 4px 16px !important;
+}
+.home-chips .home-chip.on {
+  background: var(--ink) !important;
+  border-color: transparent !important;
+  color: #fff !important;
+  box-shadow: 0 8px 18px rgba(20, 20, 19, 0.22) !important;
+}
+
+/* ═══════════════ ⑦ 暖心墙：玻璃帖卡 + 染色头像圈 ═══════════════ */
+.post-card {
+  background: var(--g-bg) !important;
+  border: 1px solid var(--g-line) !important;
+  border-radius: var(--r-card) !important;
+  box-shadow: var(--g-shadow-sm), var(--g-hi) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(1.5) !important;
+  backdrop-filter: blur(20px) saturate(1.5) !important;
+}
+/* 每条帖子按序换一层极淡的 pastel 顶光，列表不再是一片白 */
+.post-card:nth-child(4n + 1) { background: linear-gradient(180deg, rgba(251, 214, 226, 0.42), var(--g-bg) 42%) !important; }
+.post-card:nth-child(4n + 2) { background: linear-gradient(180deg, rgba(217, 228, 250, 0.42), var(--g-bg) 42%) !important; }
+.post-card:nth-child(4n + 3) { background: linear-gradient(180deg, rgba(211, 239, 219, 0.40), var(--g-bg) 42%) !important; }
+.post-card:nth-child(4n + 4) { background: linear-gradient(180deg, rgba(250, 240, 197, 0.40), var(--g-bg) 42%) !important; }
+.post-avatar { box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9) !important; }
+.post-name { font-weight: 600 !important; }
+.post-text { font-size: 14.5px !important; line-height: 1.72 !important; }
+.wall-search {
+  background: transparent !important;
+  border: none !important;
+}
+.wall-tag-row .chip { font-size: 12px !important; }
+
+/* 排序条：选中的那颗换成墨色胶囊（参考图的筛选项就是黑选中态） */
+.wall-sort .sort-btn.on,
+.sort-btn.on {
+  background: var(--ink) !important;
+  color: #fff !important;
+  border-color: transparent !important;
+}
+
+/* ═══════════════ ⑧ 我的：渐变 hero + 三色数据砖 ═══════════════ */
+.profile-head {
+  background:
+    linear-gradient(150deg, rgba(225, 216, 251, 0.72), rgba(251, 214, 226, 0.55) 55%, rgba(217, 228, 250, 0.6)) !important;
+  border: 1px solid rgba(255, 255, 255, 0.82) !important;
+  box-shadow: var(--g-shadow), var(--g-hi) !important;
+}
+.profile-avatar {
+  box-shadow: 0 8px 20px rgba(87, 73, 134, 0.18), 0 0 0 3px rgba(255, 255, 255, 0.85) !important;
+}
+.stat-row { gap: 10px !important; }
+.stat {
+  background: rgba(255, 255, 255, 0.56) !important;
+  border: 1px solid var(--g-line) !important;
+  border-radius: 18px !important;
+  padding: 12px 10px !important;
+  box-shadow: var(--g-hi) !important;
+}
+.stat:nth-child(3n + 1) { background: linear-gradient(160deg, var(--p-yellow-a), rgba(255, 255, 255, 0.6)) !important; }
+.stat:nth-child(3n + 2) { background: linear-gradient(160deg, var(--p-mint-a), rgba(255, 255, 255, 0.6)) !important; }
+.stat:nth-child(3n + 3) { background: linear-gradient(160deg, var(--p-celadon-a), rgba(255, 255, 255, 0.6)) !important; }
+.stat .stat-num,
+.stat strong { font-size: 21px !important; font-weight: 700 !important; letter-spacing: -0.4px; }
+
+/* 设置类入口行 / 列表行：一条条玻璃条 */
+.admin-entry,
+.m-dl-pill,
+.m-share-pill {
+  background: rgba(255, 255, 255, 0.6) !important;
+  border: 1px solid var(--g-line) !important;
+  border-radius: var(--r-pill) !important;
+  box-shadow: var(--g-hi) !important;
+}
+
+/* ═══════════════ ⑨ 消息 / 通知：玻璃列表 + 分段控件 ═══════════════ */
+.dm-list {
+  background: var(--g-bg) !important;
+  border: 1px solid var(--g-line) !important;
+  border-radius: var(--r-card) !important;
+  box-shadow: var(--g-shadow-sm), var(--g-hi) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(1.5) !important;
+  backdrop-filter: blur(20px) saturate(1.5) !important;
+}
+.dm-row {
+  border-radius: var(--r-inner) !important;
+  transition: background .16s ease !important;
+}
+.dm-row:hover { background: rgba(255, 255, 255, 0.5) !important; }
+.dm-seg {
+  background: rgba(255, 255, 255, 0.45) !important;
+  border: 1px solid var(--g-line) !important;
+  border-radius: var(--r-pill) !important;
+  padding: 4px !important;
+  box-shadow: var(--g-hi) !important;
+}
+.dm-seg-btn {
+  border-radius: var(--r-pill) !important;
+  font-weight: 600 !important;
+}
+.dm-seg-btn.on {
+  background: var(--ink) !important;
+  color: #fff !important;
+  box-shadow: 0 6px 14px rgba(20, 20, 19, 0.2) !important;
+}
+.notif-tab,
+.notif-act {
+  border-radius: var(--r-pill) !important;
+  background: rgba(255, 255, 255, 0.55) !important;
+  border: 1px solid var(--g-line) !important;
+}
+.notif-tab.on,
+.notif-act.on { background: var(--ink) !important; color: #fff !important; }
+
+/* ═══════════════ ⑩ 弹层：玻璃 + 23px ═══════════════ */
+.n-modal,
+.n-dialog,
+.n-card,
+.van-popup,
+.van-dialog,
+.rp-sheet,
+.dm-menu {
+  background: var(--g-bg-strong) !important;
+  -webkit-backdrop-filter: blur(26px) saturate(1.7) !important;
+  backdrop-filter: blur(26px) saturate(1.7) !important;
+  border: 1px solid var(--g-line) !important;
+  border-radius: var(--r-card) !important;
+  box-shadow: 0 24px 60px rgba(45, 36, 32, 0.18), var(--g-hi) !important;
+}
+.n-modal-mask,
+.van-overlay,
+.n-dialog-mask {
+  background: rgba(46, 38, 34, 0.28) !important;
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+}
+.dl-modal { border-radius: var(--r-card) !important; }
+
+/* ═══════════════ ⑪ 桌面 ≥900px：同一套语言，密度放宽 ═══════════════ */
+@media (min-width: 900px) {
+  .card { padding: 24px 26px; }
+  .shell { padding-bottom: 56px; }
+  .today-hi { padding: 26px 28px !important; }
+  .today-hi-title { font-size: 30px !important; }
+  .status-card { transform: none; }
+  .status-card:hover { transform: translateY(-3px) !important; }
+}
+
+/* ═══════════════ ⑫ 故事 / 漂流瓶 / 宠物：补齐大块容器 ═══════════════ */
+/* 故事页正文是整块 var(--card)（改成半透明白后成了玻璃底），这里补一层轻模糊与描边，
+ * 只在桌面/手机都生效；1715px 高的元素不做 20px 模糊（大面模糊很贵），用 12px。 */
+.story-main {
+  background: var(--g-bg) !important;
+  border: 1px solid var(--g-line) !important;
+  border-radius: var(--r-card) !important;
+  box-shadow: var(--g-shadow-sm), var(--g-hi) !important;
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  backdrop-filter: blur(12px) saturate(1.4);
+}
+.story-head .st-btn,
+.st-btn {
+  border-radius: var(--r-pill) !important;
+}
+.st-btn--mark { background: rgba(255, 255, 255, 0.6) !important; border: 1px solid var(--g-line) !important; }
+
+/* 宠物页：底部让位（该页自带滚动容器，不吃 main 的 padding）+ 场景框玻璃化 */
+.pet-page,
+.pet-wrap,
+.pet-main {
+  padding-bottom: calc(92px + var(--sab, env(safe-area-inset-bottom, 0px))) !important;
+}
+.pet-stage,
+.pet-scene,
+.scene-box,
+.stage-pet {
+  border-radius: var(--r-card) !important;
+}
+.pet-stage,
+.pet-scene,
+.scene-box {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.72), 0 18px 40px rgba(58, 46, 42, 0.12) !important;
+}
+
+/* ═══════════════ ⑬ 底部导航的文字层级 ═══════════════ */
+.tabbar .van-tabbar-item {
+  color: var(--ink-44) !important;
+}
+.tabbar .van-tabbar-item--active {
+  color: var(--ink) !important;
+}
+.tabbar .van-tabbar-item--active .tab-label {
+  font-weight: 700 !important;
+  letter-spacing: 0 !important;
+}
+
+/* ═══════════════ ⑭ 收尾：字重 / 微旋转 / 标签配色 ═══════════════ */
+/* 参考图的 section 标题一律 700，字阶靠「大标题 vs 62% 小字」拉开，不靠多层字号 */
+.card h2,
+.hall-title,
+.mood-card .row-between h2,
+.today-hi-title {
+  font-weight: 700 !important;
+  letter-spacing: -0.4px !important;
+}
+.stat .stat-num,
+.hall-now-cell .n,
+.hall-now-cell strong {
+  font-weight: 700 !important;
+  letter-spacing: -0.5px !important;
+}
+
+/* 微旋转：只给「不承担布局」的装饰块，网格里的卡片一律不转（一转就是参差的缝）。
+   这是设计语言第 4 条（−8~8°叠压）在本项目里的落地尺度——1° 级别，
+   多了会像贴纸没贴正，少了看不出来。 */
+.quote-box,
+.quote-card {
+  transform: rotate(-0.8deg);
+  transform-origin: 50% 60%;
+}
+.tabbar-sheet .tabbar-opt:nth-child(1) { transform: rotate(-1.1deg); }
+.tabbar-sheet .tabbar-opt:nth-child(2) { transform: rotate(0.9deg); }
+.tabbar-sheet .tabbar-opt:nth-child(3) { transform: rotate(-0.6deg); }
+.tabbar-sheet .tabbar-opt:active { transform: rotate(0deg) scale(0.98); }
+
+/* 标签 chip 按序换 pastel，别一律灰白 */
+.post-tags .tag:nth-child(5n + 1),
+.wall-tag-row .chip:nth-child(5n + 1) { background: var(--p-pink-a) !important; border-color: transparent !important; }
+.post-tags .tag:nth-child(5n + 2),
+.wall-tag-row .chip:nth-child(5n + 2) { background: var(--p-blue-a) !important; border-color: transparent !important; }
+.post-tags .tag:nth-child(5n + 3),
+.wall-tag-row .chip:nth-child(5n + 3) { background: var(--p-mint-a) !important; border-color: transparent !important; }
+.post-tags .tag:nth-child(5n + 4),
+.wall-tag-row .chip:nth-child(5n + 4) { background: var(--p-yellow-a) !important; border-color: transparent !important; }
+.post-tags .tag:nth-child(5n + 5),
+.wall-tag-row .chip:nth-child(5n + 5) { background: var(--p-lilac-a) !important; border-color: transparent !important; }
+.post-tags .tag {
+  border-radius: var(--r-pill) !important;
+  font-weight: 600 !important;
+}
+
+/* ═══════════════ ⑮ 今日心情：五枚 pastel 小碟 ═══════════════ */
+.mood-row { gap: 8px !important; }
+.mood-face {
+  background: rgba(255, 255, 255, 0.52) !important;
+  border: 1px solid var(--g-line) !important;
+  border-radius: 20px !important;
+  padding: 10px 2px 9px !important;
+  box-shadow: var(--g-hi) !important;
+  transition: transform .18s ease, box-shadow .18s ease !important;
+}
+.mood-face:nth-child(5n + 1) { background: var(--p-blue-a) !important; --mf-ink: #6C7CA6 !important; }
+.mood-face:nth-child(5n + 2) { background: var(--p-lilac-a) !important; --mf-ink: #7A6AA8 !important; }
+.mood-face:nth-child(5n + 3) { background: var(--p-gray-a) !important; --mf-ink: #6B6770 !important; }
+.mood-face:nth-child(5n + 4) { background: var(--p-peach-a) !important; --mf-ink: #A26A3F !important; }
+.mood-face:nth-child(5n + 5) { background: var(--p-mint-a) !important; --mf-ink: #4C7A5C !important; }
+.mood-face.is-on {
+  --mf-ink: var(--accent) !important;
+  box-shadow: 0 10px 22px rgba(169, 88, 62, 0.18), var(--g-hi) !important;
+  transform: translateY(-2px);
+}
+/* 已打卡后禁用态别整排糊成灰（0.45 在 pastel 上像坏掉了） */
+.mood-face:disabled { opacity: 0.72 !important; }
+.mood-face-txt { color: var(--ink-62) !important; font-weight: 600 !important; }
+.mood-face.is-on .mood-face-txt { color: var(--accent-deep) !important; }
+
+/* ═══════════════ ⑯ 夜间主题适配 ═══════════════
+ * 夜间下 --ink 变成浅色，而我这层默认是「白玻璃 + 浅 pastel」——
+ * 浅字压在浅底上等于看不见（实测状态卡标题直接消失）。
+ * 所以夜间把玻璃与 pastel 全部换成「深玻璃 + 低饱和暗彩」，并单独钉住几条
+ * 写死过浅色渐变的规则（hero / 引用块 / 帖子卡）。 */
+html[data-theme="night"] {
+  --g-bg: rgba(34, 35, 44, 0.66);
+  --g-bg-soft: rgba(34, 35, 44, 0.5);
+  --g-bg-strong: rgba(28, 29, 37, 0.86);
+  --g-line: rgba(255, 255, 255, 0.10);
+  --g-hi: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --g-shadow: 0 14px 34px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
+  --g-shadow-sm: 0 6px 18px rgba(0, 0, 0, 0.35);
+  --ink-62: rgba(255, 255, 255, 0.62);
+  --ink-44: rgba(255, 255, 255, 0.42);
+  --p-blue-a: rgba(96, 124, 186, 0.26);   --p-blue-ink: #AFC0E0;
+  --p-yellow-a: rgba(186, 168, 96, 0.24); --p-yellow-ink: #E2D5A2;
+  --p-mint-a: rgba(96, 168, 122, 0.24);   --p-mint-ink: #AEDCC0;
+  --p-peach-a: rgba(190, 132, 92, 0.26);  --p-peach-ink: #EBC1A2;
+  --p-pink-a: rgba(186, 110, 138, 0.26);  --p-pink-ink: #EFB6CA;
+  --p-lilac-a: rgba(128, 110, 190, 0.26); --p-lilac-ink: #C9BCEE;
+  --p-celadon-a: rgba(84, 158, 152, 0.24);--p-celadon-ink: #A8DCD8;
+  --p-gray-a: rgba(140, 140, 152, 0.24);  --p-gray-ink: #C8C6CE;
+}
+html[data-theme="night"] .today-hi {
+  background: linear-gradient(150deg, rgba(150, 104, 132, 0.42), rgba(44, 46, 58, 0.68) 58%, rgba(80, 100, 156, 0.4)) !important;
+}
+html[data-theme="night"] .profile-head {
+  background: linear-gradient(150deg, rgba(126, 108, 186, 0.44), rgba(150, 104, 132, 0.34) 55%, rgba(80, 100, 156, 0.4)) !important;
+}
+html[data-theme="night"] .quote-box,
+html[data-theme="night"] .quote-card {
+  background: linear-gradient(150deg, rgba(170, 120, 92, 0.3), rgba(160, 96, 120, 0.26)) !important;
+}
+html[data-theme="night"] .post-card:nth-child(4n + 1) { background: linear-gradient(180deg, rgba(186, 110, 138, 0.22), var(--g-bg) 42%) !important; }
+html[data-theme="night"] .post-card:nth-child(4n + 2) { background: linear-gradient(180deg, rgba(96, 124, 186, 0.22), var(--g-bg) 42%) !important; }
+html[data-theme="night"] .post-card:nth-child(4n + 3) { background: linear-gradient(180deg, rgba(96, 168, 122, 0.20), var(--g-bg) 42%) !important; }
+html[data-theme="night"] .post-card:nth-child(4n + 4) { background: linear-gradient(180deg, rgba(186, 168, 96, 0.20), var(--g-bg) 42%) !important; }
+html[data-theme="night"] .status-card:nth-child(4n + 1) { background: linear-gradient(150deg, var(--p-blue-a), rgba(40, 42, 52, 0.7)) !important; }
+html[data-theme="night"] .status-card:nth-child(4n + 2) { background: linear-gradient(150deg, var(--p-yellow-a), rgba(40, 42, 52, 0.7)) !important; }
+html[data-theme="night"] .status-card:nth-child(4n + 3) { background: linear-gradient(150deg, var(--p-mint-a), rgba(40, 42, 52, 0.7)) !important; }
+html[data-theme="night"] .status-card:nth-child(4n + 4) { background: linear-gradient(150deg, var(--p-pink-a), rgba(40, 42, 52, 0.7)) !important; }
+html[data-theme="night"] .hall-now-cell { background: rgba(42, 44, 54, 0.6) !important; }
+html[data-theme="night"] .stat { background: rgba(42, 44, 54, 0.6) !important; }
+html[data-theme="night"] .mood-face { --mf-ink: rgba(255, 255, 255, 0.74) !important; }
+html[data-theme="night"] .status-ico,
+html[data-theme="night"] .soft-tag,
+html[data-theme="night"] .chip,
+html[data-theme="night"] .admin-entry {
+  background: rgba(255, 255, 255, 0.10) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+html[data-theme="night"] .home-chip { background: rgba(255, 255, 255, 0.10) !important; border-color: rgba(255, 255, 255, 0.12) !important; color: rgba(255,255,255,.72) !important; }
+html[data-theme="night"] .home-chips .home-chip.on { background: rgba(255, 255, 255, 0.9) !important; color: #1b1c24 !important; }
+html[data-theme="night"] .tabbar .tab-compose-x { background: rgba(255, 255, 255, 0.9) !important; color: #1b1c24 !important; border-color: rgba(30, 31, 40, 0.9) !important; }

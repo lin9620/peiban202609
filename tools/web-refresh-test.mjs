@@ -71,6 +71,26 @@ t("T5 中英文都有 community.refreshBtn（i18n 词条对齐，缺一个就是
   assert.ok(messages.zh.community.refreshBtn.length > 0, "zh 词条为空");
 });
 
+/* ══════════ 轮 323：提示停留时长 ══════════ */
+
+t("T8 轮 323：App 壳里「已刷新 / 换了一批内容」提示 = 2200 × 2/3，网页端仍 2200", () => {
+  const base = view.match(/const NOTE_OK_MS\s*=\s*(\d+)/);
+  assert.ok(base, "找不到 NOTE_OK_MS 基准");
+  assert.equal(Number(base[1]), 2200, "NOTE_OK_MS 基准被改了（用户只要求 App 端减 1/3）");
+  assert.ok(/const NOTE_OK_MS_APP\s*=\s*Math\.round\(\(NOTE_OK_MS\s*\*\s*2\)\s*\/\s*3\)/.test(view),
+    "App 侧时长不是 NOTE_OK_MS × 2/3（用户：「减少 1/3 的时间」）");
+  /* noteMs 自己的函数体：fail 仍走自己的常量，ok/batch 才按 App 壳分叉 */
+  const fn = view.slice(view.indexOf("const noteMs"), view.indexOf("const newestSeenTs"));
+  assert.ok(/===\s*"fail"/.test(fn) && /NOTE_FAIL_MS/.test(fn), "noteMs 不再单独处理 fail");
+  assert.ok(/isApp\s*\?\s*NOTE_OK_MS_APP\s*:\s*NOTE_OK_MS/.test(fn), "noteMs 没有按 App 壳分叉");
+  assert.ok(/import\s*\{[^}]*\bisApp\b[^}]*\}\s*from\s*"\.\.\/stores\/uiStore\.js"/.test(view),
+    "没从 uiStore 引入 isApp（App 端判定丢了就会静默退回 2200）");
+  /* 两个入口（下拉 te / 点刷新钮 manualRefresh）都只能走 noteMs，不许在调用点写死毫秒 */
+  assert.ok(!/setTimeout\(\(\)\s*=>\s*\{\s*refreshNote\.value\s*=\s*"";\s*\},\s*\d/.test(view),
+    "有调用点写死了毫秒（应走 noteMs）");
+  assert.equal((view.match(/noteMs\(/g) || []).length, 2, "noteMs 调用点应恰好两处（下拉 te + 刷新钮路径）");
+});
+
 /* ══════════ 自检（跟 feed-perf-test T16 同款：exit 之后不许再有用例） ══════════ */
 
 t("T7 轮 304：回顶三处全 instant + manualRefresh 真读 pin —— 深滚刷新秒回顶，不许 smooth 回潮", () => {

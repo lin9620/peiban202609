@@ -7,7 +7,8 @@
 
          注意：values-v31 里的同名 style 是整体替换（不是合并），所以要写全 parent + items。 -->
     <style name="AppTheme.NoActionBarLaunch" parent="AppTheme.NoActionBar">
-        <item name="android:windowSplashScreenBackground">#FFF7EE</item>
+        <!-- 轮 322：与窗口底/页面底统一成 #FAF9F5（原来是 #FFF7EE，比页面亮一档）。 -->
+        <item name="android:windowSplashScreenBackground">#FAF9F5</item>
         <!-- 轮 43：图标位留空（用户不要大爪子页面）。不能直接删这一项——不设时
              系统默认放 App 启动图标（仍是爪印），所以指到全透明 drawable；
              轮 38 那枚爪印 drawable 已删（测试守「启动链零爪印」）。 -->

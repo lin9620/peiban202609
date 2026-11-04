@@ -61,6 +61,47 @@ export function cacheDrop(prefix) {
   for (const k of keys(head)) removeItem(k);
 }
 
+/**
+ * 就地补丁一份缓存（数组）。
+ * 用途：本地已经知道「某条记录变了」（如刚发出一条消息 → 该会话的预览/时间变了），
+ * 但服务端整包还没回来。此时把变化**直接写回缓存快照**，下次读缓存即命中新值，
+ * 不必等一次完整网络刷新（否则用户返回列表时看到的是旧预览）。
+ * @param {string} key 缓存键
+ * @param {(arr:any[])=>any[]} patch 纯函数：接收旧数组，返回新数组
+ */
+export function cachePatch(key, patch, { createIfMissing = false } = {}) {
+  if (!key || typeof patch !== "function") return;
+  const cur = cachePeek(key);
+  const base = Array.isArray(cur) ? cur.slice() : null;
+  if (!base && !createIfMissing) return;
+  let next;
+  try { next = patch(base || []); } catch (e) { return; }
+  if (!Array.isArray(next)) return;
+  cacheSet(key, next);
+}
+
+/**
+ * 就地合并一份**对象**缓存（对象合并版 cachePatch）。
+ * 用途：详情页点赞/收藏是「开关型」局部变更（liked / marked / like_count），
+ * 整篇重拉不划算（跨境慢），也不该只改内存（下次进来又变回旧样）。
+ * 这里把变更直接写回快照，下一次读缓存即命中新值。
+ * @param {string} key 缓存键
+ * @param {Object} patch 要合并的字段（浅合并；值为 undefined 的字段忽略）
+ */
+export function cacheMerge(key, patch) {
+  if (!key || !patch || typeof patch !== "object" || Array.isArray(patch)) return;
+  const cur = cachePeek(key);
+  const base = cur && typeof cur === "object" && !Array.isArray(cur) ? { ...cur } : {};
+  let changed = false;
+  for (const k of Object.keys(patch)) {
+    if (patch[k] === undefined) continue;
+    if (base[k] !== patch[k]) changed = true;
+    base[k] = patch[k];
+  }
+  if (!changed && cur) return;   /* 无变化就别白写一次（省掉一次序列化 + 淘汰记账） */
+  cacheSet(key, base);
+}
+
 /* 容量护栏：超出上限按写入时间淘汰最旧（顺手清掉解析失败的残骸） */
 function prune() {
   const head = NS + VERSION + ":";

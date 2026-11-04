@@ -79,14 +79,17 @@ const bv = read("src/components/BottleView.vue");
 eq(/fishPop\.value = \{ show: true, mode: "msg", letter: null, msg: t\(k\) \}/.test(bv), true); /* 失败也弹窗 */
 eq(bv.includes("loadRecords(true);    /* 轮 303"), true);                       /* 成功后台重拉记录 */
 eq(bv.includes("sendGen++") && /if \(alive\(\)\) fishPop/.test(bv), true);       /* 投信代际守卫（失败弹窗切走不复活；轮 315 改为只护失败路径） */
-/* 轮 315 · 投信成功行内绿 flash（用户拍板：不再弹窗）+ 乐观不等服务端 */
+/* 轮 315/316 · 行内状态机：点下即「投递中」(转圈)、服务端确认才「投递成功」（非弹窗）+ 失败恢复草稿 */
 const bv2 = read("src/components/BottleView.vue");
-eq(bv2.includes('t("bottle.sentFlash")') && bv2.includes('mailHint === "ok" ?'), true);
-eq(/mailHint\.value = "ok";\s*\n\s*mailDraft\.value = "";/.test(bv2), true);
+eq(bv2.includes('t("bottle.sentFlash")') && bv2.includes('t("bottle.sending")'), true);
+eq(/mailHint\.value = "sending";\s*\n\s*mailDraft\.value = "";/.test(bv2), true);
+eq(/mailHint\.value = "sent";\s*\/\* 轮 317/.test(bv2), true);
 eq(/mailDraft\.value = body;/.test(bv2), true);
 eq(/失败：行内红字 \+ 弹窗/.test(bv2), true);
 const i18n2 = read("src/i18n.js");
-eq(/sentFlash: "信已投进海里/.test(i18n2) && /sentFlash: "Letter's in the sea/.test(i18n2), true);
+eq(/sending: "投递中"/.test(i18n2) && /sentFlash: "投递成功"/.test(i18n2)
+  && /sending: "Sending…"/.test(i18n2) && /sentFlash: "Sent"/.test(i18n2), true);
+eq(/class="mail-spin"/.test(bv2), true);   /* 投递中带转圈动画 */
 // 静态迁移检查：仅确认脚本包含关键步骤，不证明事务及幂等行为已在数据库通过。
 const sql = read("MIGRATION_bottle_chat.sql");
 for (const text of ["begin;", "commit;", "bottle_reply_notification", "bottle_chat_decide", "bottle_records", "letter.body, letter.created_at", "letter.reply, letter.reply_at"]) eq(sql.includes(text), true);

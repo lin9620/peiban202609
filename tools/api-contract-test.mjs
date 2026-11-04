@@ -8,8 +8,9 @@
  * 以后换后端（Hyperdrive 接别的 Postgres / D1 / 自建 API）：先改 db.js，再跑本测试 —— 形状跑偏这里立刻报。
  * 运行：node tools/api-contract-test.mjs
  */
-import { db, setDbClient } from "../src/utils/api/db.js";
+import { db, setDbClient, __resetRpcProbes } from "../src/utils/api/db.js";
 import { getClient } from "../src/utils/supabase.js";
+import * as notifyApi from "../src/utils/notify.js";
 
 /* —— 假客户端：每个 builder 记录自己的调用链（from|select|eq|...），await 时从 script 队列弹一个结果 —— */
 function makeFake(script = []) {
@@ -32,7 +33,12 @@ function makeFake(script = []) {
       is: (k, v) => { ops.push(`is:${k}:${JSON.stringify(v)}`); return b; },
       insert: (row) => { ops.push(`insert:${JSON.stringify(row)}`); return b; },
       update: (row) => { ops.push(`update:${JSON.stringify(row)}`); return b; },
-      upsert: (row) => { ops.push(`upsert:${JSON.stringify(row)}`); return b; },
+      /* 轮 333：upsert 的 options 要记进调用链 —— ignoreDuplicates/onConflict 决定
+         「重复插入是否报错」，是幂等写入的关键，测不到就等于没测。 */
+      upsert: (row, opts) => {
+        ops.push(`upsert:${JSON.stringify(row)}${opts ? `|opts:${JSON.stringify(opts)}` : ""}`);
+        return b;
+      },
       delete: () => { ops.push("delete"); return b; },
       single: () => { ops.push("single"); return b; },
       maybeSingle: () => { ops.push("maybeSingle"); return b; },
@@ -273,6 +279,76 @@ const rows = [{ id: 1 }, { id: 2 }];
   ok("错误上抛（unwrap 契约：error → reject）", out && out.failed === true);
 }
 
+/* ─────────── 轮 333 · 帖级回应的原子写入 ─────────── */
+{
+  const { fake } = await run([{ data: null }], () => db.upsertReaction({ post_id: 5, user_id: "u1", kind: "hug" }));
+  ok("upsertReaction 形状：幂等插入（on conflict do nothing）",
+    fake.calls[0] === 'from:wall_reactions|upsert:{"post_id":5,"user_id":"u1","kind":"hug"}|opts:{"onConflict":"post_id,user_id,kind","ignoreDuplicates":true}',
+    fake.calls[0]);
+}
+{
+  /* 幂等写入的主路径：RPC wall_set_reaction */
+  __resetRpcProbes();
+  const rpcOut = {
+    data: {
+      ok: true,
+      on: true,
+      counts: { hug: 3, warm: 0, relate: 1 },
+      mine: { hug: true, warm: false, relate: false },
+    },
+  };
+  const { fake, out } = await run([rpcOut], () => db.setReaction(5, "hug", true));
+  ok("setReaction RPC 形状（一条语句完成「确保存在」）",
+    fake.calls[0] === 'rpc:wall_set_reaction:{"p_post":5,"p_kind":"hug","p_on":true}', fake.calls[0]);
+  ok("setReaction 只发 1 次请求（没有前置 findReaction）", fake.calls.length === 1, String(fake.calls.length));
+  ok("setReaction 返回归一化的权威状态",
+    out && out.on === true && out.counts.hug === 3 && out.counts.relate === 1 && out.mine.hug === true,
+    JSON.stringify(out));
+}
+{
+  /* p_on=false → 确保不存在：同样是幂等的一条语句 */
+  __resetRpcProbes();
+  const rpcOut = {
+    data: {
+      ok: true,
+      on: false,
+      counts: { hug: 2, warm: 0, relate: 0 },
+      mine: { hug: false, warm: false, relate: false },
+    },
+  };
+  const { fake, out } = await run([rpcOut], () => db.setReaction(5, "hug", false));
+  ok("setReaction p_on=false 形状",
+    fake.calls[0] === 'rpc:wall_set_reaction:{"p_post":5,"p_kind":"hug","p_on":false}', fake.calls[0]);
+  ok("setReaction p_on=false 返回 on=false", out && out.on === false, JSON.stringify(out));
+}
+{
+  /* 迁移没跑（PGRST202）→ 返回 null（调用方走回退），且只试一次 */
+  __resetRpcProbes();
+  const missing = { error: { code: "PGRST202", message: "Could not find the function public.wall_set_reaction" } };
+  const a = await run([missing], () => db.setReaction(5, "hug", true));
+  ok("setReaction：RPC 缺失时返回 null（不是抛错）", a.out === null, JSON.stringify(a.out));
+  const b = await run([{ data: null }], () => db.setReaction(5, "hug", true));
+  ok("setReaction：确认不可用后不再白试（0 次请求）", b.fake.calls.length === 0, String(b.fake.calls.length));
+}
+{
+  /* RPC 真的报错（权限/网络）→ 上抛，不能静默成「没写成」 */
+  __resetRpcProbes();
+  const { out } = await run([{ error: { message: "permission denied" } }], async () => {
+    try { await db.setReaction(5, "hug", true); return { failed: false }; }
+    catch (e) { return { failed: e && e.message === "permission denied" }; }
+  });
+  ok("setReaction：真错误原样上抛（不降级）", out && out.failed === true);
+}
+{
+  /* 脏数据（计数缺字段）→ 上抛，绝不补 0 */
+  __resetRpcProbes();
+  const { out } = await run([{ data: { ok: true, on: true, counts: { hug: null }, mine: {} } }], async () => {
+    try { await db.setReaction(5, "hug", true); return { failed: false }; }
+    catch (e) { return { failed: e && e.message === "invalid-set-reaction" }; }
+  });
+  ok("setReaction：脏计数上抛（不补 0）", out && out.failed === true, JSON.stringify(out));
+}
+
 /* ─────────── RPC（服务端权威逻辑） ─────────── */
 {
   const { fake, out } = await run([{ data: { ok: true, views: 3 } }], () => db.addView(1, "v"));
@@ -491,6 +567,16 @@ if (!getClient()) {
   const { fake } = await run([{ data: [] }], () => db.notifPage({ offset: 0, limit: 30, kinds: ["comment", "reply"], unread: true }));
   ok("notifPage 过滤（kinds 拼接 + unread）", fake.calls[0] === 'rpc:notif_page:{"p_offset":0,"p_limit":30,"p_kinds":"comment,reply","p_unread":true}', fake.calls[0]);
 }
+/* 轮 360：视图层传的是 unreadOnly，db 契约认的是 unread —— 这层翻译漏了会让
+ * 「只看未读 / 看全部」永远请求 p_unread:false（按钮只换字、列表不动）。 */
+{
+  const { fake } = await run([{ data: [] }], () => notifyApi.page({ offset: 0, limit: 20, kinds: "comment,reply", unreadOnly: true }));
+  ok("notify.page 把 unreadOnly 翻译成 p_unread=true", fake.calls[0] === 'rpc:notif_page:{"p_offset":0,"p_limit":20,"p_kinds":"comment,reply","p_unread":true}', fake.calls[0]);
+}
+{
+  const { fake } = await run([{ data: [] }], () => notifyApi.page({ offset: 0, limit: 20, kinds: null, unreadOnly: false }));
+  ok("notify.page unreadOnly=false → p_unread=false", fake.calls[0] === 'rpc:notif_page:{"p_offset":0,"p_limit":20,"p_kinds":null,"p_unread":false}', fake.calls[0]);
+}
 {
   const { fake } = await run([{ data: { total: 0 } }], () => db.notifUnread());
   ok("notifUnread 形状", fake.calls[0] === "rpc:notif_unread:undefined", fake.calls[0]);
@@ -510,6 +596,16 @@ if (!getClient()) {
 {
   const { fake } = await run([{ data: { ok: true } }], () => db.notifPrefsSet({ comments: true, reactions: false, pets: true, dms: false }));
   ok("notifPrefsSet 形状（布尔强转）", fake.calls[0] === 'rpc:notif_prefs_set:{"p_comments":true,"p_reactions":false,"p_pets":true,"p_dms":false}', fake.calls[0]);
+}
+{
+  /* 轮385：设置页走 notifyApi.prefsSet，不能绕过适配层的对象契约。
+     旧版 notify.js 把四项拆成四个布尔实参，适配层收到的是 true/false，
+     属性全 undefined → 每次都写成全开（开关重进复位）。这条测的是调用方，
+     只测 db.notifPrefsSet({...}) 是抓不到的。 */
+  const { fake } = await run([{ data: { ok: true } }], () =>
+    notifyApi.prefsSet({ comments: false, reactions: false, pets: true, dms: true }));
+  ok("notify.prefsSet 把关项原样传到 RPC（不再拆四个布尔）",
+    fake.calls[0] === 'rpc:notif_prefs_set:{"p_comments":false,"p_reactions":false,"p_pets":true,"p_dms":true}', fake.calls[0]);
 }
 {
   const { fake } = await run([{ data: { admin: true, bid: "b", sent: 0, total: 1, done: false } }], () => db.adminBroadcastStart("hi"));

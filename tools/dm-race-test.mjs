@@ -58,9 +58,9 @@ ok("R2 有过期判据 isStale（号被顶掉 或 已切走，二者缺一不可
 /* ══════════ loadMessages：全链路校验 ══════════ */
 const lm = fnBody(mv, "async function loadMessages(");
 ok("R3 loadMessages 函数体切取成功", lm.length > 400, "切分失败（签名改了？）");
-ok("R4 每轮加载都取新号并锁定会话 id",
+ok("R4 每轮加载都取新号并锁定会话 id（换号也作废旧响应）",
   /const mySeq = \+\+msgSeq;/.test(lm) && /const cid = String\(id\);/.test(lm)
-    && /const stale = \(\) => isStale\(mySeq, cid\);/.test(lm));
+    && /const stale = \(\) => isStale\(mySeq, cid\)(?: \|\| \(!!owner && meId\.value !== owner\))?;/.test(lm));
 ok("R5 applyRows 第一件事就是丢弃过期响应",
   /const applyRows = \(rows, more\) => \{\s*if \(stale\(\)\) return false;/.test(lm),
   "applyRows 没有首行 stale 校验 —— 这是串会话最直接的入口");
@@ -74,14 +74,16 @@ ok("R8 落库 / 镜像 / 回填都用锁定后的 cid",
   /dmStoreSave\(meId\.value, cid, msgs\.value, hasMore\.value\)/.test(lm)
     && /idbMerge\(cid, msgs\.value\)/.test(lm)
     && /backfillOlder\(cid\)/.test(lm));
+ok("R8b IndexedDB 更早页先翻成新→旧再交给 applyRows（否则 raw 顺序会倒）",
+  /applyRows\(idbRows\.slice\(\)\.reverse\(\), true\)/.test(lm));
 ok("R9 过期时不碰 loadingMsgs（新请求正在管它）",
   /if \(stale\(\)\) return false;[\s\S]{0,120}?loadingMsgs\.value = false;/.test(lm));
 
 /* ══════════ openConv：await 后校验 ══════════ */
 const oc = fnBody(mv, "async function openConv(");
-ok("R10 openConv 等完消息后校验 activeId，才动滚动与已读",
+ok("R10 openConv 等完消息后校验 activeId/分段/前台，才动滚动与已读",
   /const smoothed = await loadMessages\(id\);/.test(oc)
-    && /if \(String\(activeId\.value\) !== String\(id\)\) return;/.test(oc));
+    && /if \(String\(activeId\.value\) !== String\(id\) \|\| seg\.value !== "dm"[\s\S]{0,120}?return;/.test(oc));
 
 /* ══════════ tick：轮询不能把旧会话数据并进来 ══════════ */
 /* 轮 269：尾部刷新已抽成 pullTail（tick 内联 → 独立函数，实时通道复用）——
@@ -98,9 +100,11 @@ ok("R11 轮询在 await 后丢弃旧会话的尾部数据",
 const sd = fnBody(mv, "async function send(");
 ok("R12 发送回来先确认还在同一会话（onSameConv）",
   /const onSameConv = String\(activeId\.value\) === String\(convId\);/.test(sd));
-ok("R13 发送的换行 / 落库 / 滚动都在 onSameConv 之内",
-  /if \(onSameConv\) \{[\s\S]{0,400}?dmStoreSave\(meId\.value, convId,/.test(sd)
-    && /if \(onSameConv\) scrollBottom\(true\);/.test(sd));
+ok("R13 发送的落库 / 滚动都在同会话校验之内",
+  /* 轮381：确认行只有在 sameWindow（msgsConv 仍属于该会话）时才整窗落库；
+     否则走 dmStoreReplace 只写原会话库。轮 377 的滚动仍用重新校验的 stillSameConv。 */
+  /else if \(sameWindow\) \{[\s\S]{0,900}?dmStoreSave\(meId\.value, convId,/.test(sd)
+    && /if \(stillSameConv && !userScrolling\.value\) scrollBottom\(true\);/.test(sd));
 
 /* ══════════ recall：先捕获归属会话 ══════════ */
 const rc = fnBody(mv, "async function recall(");

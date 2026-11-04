@@ -27,9 +27,25 @@ const uid = String(route.params.id || "");
 /* —— 发私信：登录且不是自己的主页才显示；点一下开/建会话再跳进对话 —— */
 const router = useRouter();
 const dmBusy = ref(false);
+const dmSlow = ref(false);
 const dmMsg = ref("");
+let dmSlowTimer = 0;
 const isSelf = computed(() => !!(cloud.user && cloud.user.id === uid));
 const canDm = computed(() => !!(cloud.ready && cloud.user && uid && !isSelf.value));
+
+/* 轮397：线上 /sb 代理实测 5~20s，旧按钮只置灰不改字，用户看起来就是「点了没反应」。
+ * 这里给打开会话一个兜底超时，并在 2.5s 后补一句慢网提示；成功/失败都恢复按钮可点。 */
+function withTimeout(p, ms = 25000) {
+  let timer = 0;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const e = new Error("timeout");
+      e.timeout = true;
+      reject(e);
+    }, ms);
+  });
+  return Promise.race([p, timeout]).finally(() => clearTimeout(timer));
+}
 
 /* 轮 271：点 TA 的帖子（正文/图）进详情页（/post/:id）——与暖心墙轮 84 同款口径：
  * cloudFetchUserPosts 返回 rowsToPosts 同款行（dbId 恒有）；没 dbId 的行不响应。 */
@@ -42,15 +58,20 @@ function goDetail(p) {
 async function startDm() {
   if (dmBusy.value || !canDm.value) return;
   dmBusy.value = true;
+  dmSlow.value = false;
   dmMsg.value = "";
+  dmSlowTimer = setTimeout(() => { dmSlow.value = true; }, 2500);
   try {
-    const convId = await openConv(uid);
+    const convId = await withTimeout(openConv(uid));
     if (convId) router.push({ name: "messages", params: { id: String(convId) } });
     else dmMsg.value = t("dm.errNetwork");
   } catch (e) {
     dmMsg.value = t(sendErrKey(e));
+  } finally {
+    clearTimeout(dmSlowTimer);
+    dmSlow.value = false;
+    dmBusy.value = false;
   }
-  dmBusy.value = false;
 }
 
 /* —— 拉黑（轮 33）：一个「拉黑」全站生效 —— 私信拦截（dm RPC）+ 暖心墙内容对我隐藏
@@ -187,13 +208,16 @@ onMounted(async () => {
         </span>
         <!-- 发私信：登录且非本人主页才有；失败原因按 dmRules.sendErrKey 映射 -->
         <div v-if="!failed && !loading && canDm" class="waller-dm">
-          <button class="waller-act" :disabled="dmBusy" @click="startDm">✉️ {{ t("dm.sendTo") }}</button>
+          <button class="waller-act" :disabled="dmBusy" :aria-busy="dmBusy" @click="startDm">
+            {{ dmBusy ? t("dm.opening") : "✉️ " + t("dm.sendTo") }}
+          </button>
           <button
             class="waller-act waller-block" :class="{ armed: blockArm, blocked: isBlockedHere }"
             :disabled="blockBusy" @click="toggleBlock">
             {{ isBlockedHere ? t("wall.unblock") : (blockArm ? t("wall.blockConfirm") : t("wall.block")) }}
           </button>
           <span v-if="dmMsg" class="sub" style="margin: 6px 0 0">{{ dmMsg }}</span>
+          <span v-else-if="dmBusy && dmSlow" class="sub" style="margin: 6px 0 0">{{ t("dm.openingSlow") }}</span>
           <span v-else-if="isBlockedHere" class="sub" style="margin: 6px 0 0">{{ t("wall.blockedTip") }}</span>
         </div>
       </div>

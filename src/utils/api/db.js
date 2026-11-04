@@ -7,14 +7,14 @@
  * 契约测试：tools/api-contract-test.mjs（直连）+ tools/gateway-contract-test.mjs（网关）
  *           + tools/worker-test.mjs（Worker 侧）。
  */
-import { db as directDb, setDbClient, IMAGE_BUCKET } from "./db.supabase.js";
+import { db as directDb, setDbClient, __resetRpcProbes, IMAGE_BUCKET } from "./db.supabase.js";
 import { db as gatewayDb } from "./db.gateway.js";
 
 /* import.meta.env 由 Vite 构建期注入；Node 单测里是 undefined —— 兜底空对象 */
 const env = import.meta.env || {};
 const flag = String(env.VITE_API_GATEWAY || "").trim().toLowerCase();
 export const db = flag === "1" || flag === "true" ? gatewayDb : directDb;
-export { setDbClient, IMAGE_BUCKET };
+export { setDbClient, __resetRpcProbes, IMAGE_BUCKET };
 
 /* 轮 238 · App 安装包公开下载地址（固定对象名 warm-paws.apk，管理员上传后内容即新包）。
  * 走 /sb 代理（生产同源；App 端 VITE_API_BASE 指向站点），国内直连 Storage 的问题一并绕开。 */

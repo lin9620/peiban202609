@@ -2,8 +2,10 @@
  * 回归重点：moodStreak() 曾用 todayKey() 逐日往前翻（key 不随 d 变化），
  * 今日一打卡就会永远命中同一个有值的 key → 无限循环 → 点击打卡后整页卡死。
  */
+import { readFileSync } from "node:fs";
 import { moodLog, moodStreak, checkInMood, MAX_STREAK_DAYS } from "../src/stores/petStore.js";
 import { dateKey } from "../src/utils/daily.js";
+import { mergeMoodLogs, normMoodLog, sameMoodLog } from "../src/utils/moodRules.js";
 
 let pass = 0, fail = 0;
 const ok = (n, c) => { if (c) { pass++; console.log("PASS ", n); } else { fail++; console.log("FAIL ", n); } };
@@ -76,6 +78,56 @@ ok("T9 隔了几天再打卡则连续天数重置为 1", moodStreak() === 1);
 
 /* —— T10 上限常量合理（一年内，且大于任何合理连续天数）—— */
 ok("T10 上限常量 = 3660", MAX_STREAK_DAYS === 3660);
+
+/* —— T11 跨设备同步：只接受合法日期 + 0~4 的整数 —— */
+const dirty = normMoodLog({
+  "2026-11-1": 0,
+  "2026-11-2": "4",
+  "2026-13-1": 2,      // 非法月份
+  "2026-11-3": 5,      // 越界
+  "2026-11-4": -1,     // 越界
+  "2026-11-5": "x",    // 非数字
+  bad: 2,
+});
+ok("T11 脏云档归一化：合法项保留、非法键/值丢弃",
+  JSON.stringify(dirty) === JSON.stringify({ "2026-11-1": 0, "2026-11-2": 4 }));
+
+/* —— T12 并集：不能因为整包覆盖丢掉另一台设备的日期 —— */
+const localMoods = { "2026-11-1": 1, "2026-11-2": 2 };
+const cloudMoods = { "2026-11-2": 3, "2026-11-3": 4 };
+const mergedLocal = mergeMoodLogs(localMoods, cloudMoods, false);
+ok("T12 合并取并集，同一天默认保留本地",
+  JSON.stringify(mergedLocal) === JSON.stringify({ "2026-11-1": 1, "2026-11-2": 2, "2026-11-3": 4 }));
+ok("T12b 云档较新时才让云端覆盖同一天",
+  mergeMoodLogs(localMoods, cloudMoods, true)["2026-11-2"] === 3);
+ok("T12c 合并不修改入参",
+  localMoods["2026-11-2"] === 2 && cloudMoods["2026-11-2"] === 3);
+
+/* —— T13 等价判断忽略键顺序，供「是否需要落盘」使用 —— */
+ok("T13 sameMoodLog 忽略键顺序",
+  sameMoodLog({ "2026-11-1": 1, "2026-11-2": 2 }, { "2026-11-2": 2, "2026-11-1": 1 }));
+ok("T13b sameMoodLog 能识别值差异",
+  !sameMoodLog({ "2026-11-1": 1 }, { "2026-11-1": 2 }));
+
+/* —— T14 接线锁：云端存档带 moods；换号先撤队列、新域就位后再拉云 —— */
+const storeSrc = readFileSync(new URL("../src/stores/petStore.js", import.meta.url), "utf8");
+ok("T14 推云 state 含 moods", /moods:\s*normMoodLog\(moodLog\)/.test(storeSrc));
+ok("T14b 拉云合并 moods（不是整包覆盖）",
+  /mergeMoodLogs\(localMoods, cloudState && cloudState\.moods/.test(storeSrc));
+ok("T14c 换号 reload 先撤云队列、再拉新域云档",
+  /cancelCloudPush\(\);[\s\S]{0,800}pullCloudPet\(\);/.test(storeSrc));
+ok("T14d 云推/拉带账号域守卫",
+  /petScopeId\(\) !== String\(uid\)/.test(storeSrc));
+
+/* —— T15 今日是否已打卡只看账号域 moodLog，不再看设备级 wp-mood-* —— */
+const todaySrc = readFileSync(new URL("../src/components/TodayPane.vue", import.meta.url), "utf8");
+const railsSrc = readFileSync(new URL("../src/components/SideRails.vue", import.meta.url), "utf8");
+ok("T15 TodayPane 已打卡状态来自 moodLog",
+  /const checkedToday = computed\(\(\) => moodPicked\.value !== undefined\)/.test(todaySrc)
+    && !/getItem\("wp-mood-"/.test(todaySrc));
+ok("T15b SideRails 已打卡状态来自 moodLog",
+  /const checkedToday = computed\(\(\) => moodLog\[todayKey\(\)\] !== undefined\)/.test(railsSrc)
+    && !/getItem\("wp-mood-"/.test(railsSrc));
 
 console.log(`\nTOTAL ${pass + fail}  PASS ${pass}  FAIL ${fail}`);
 process.exit(fail ? 1 : 0);

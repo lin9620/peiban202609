@@ -308,6 +308,63 @@ async function hit(script, path, init) {
     c.outbound[0].url);
 }
 
+/* ─────────── 轮 333 · 帖级回应的原子写入 ─────────── */
+{
+  const { res, c } = await hit(
+    [{ body: { ok: true, on: true, counts: { hug: 2, warm: 0, relate: 0 }, mine: { hug: true } } }],
+    "/api/reactions/set",
+    { method: "POST", body: JSON.stringify({ post_id: 7, kind: "hug", on: true }) },
+  );
+  ok("setReaction → rpc wall_set_reaction（出站 URL/body）",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/wall_set_reaction` &&
+    c.outbound[0].init.body === JSON.stringify({ p_post: 7, p_kind: "hug", p_on: true }),
+    c.outbound[0].url + " " + c.outbound[0].init.body);
+  ok("setReaction 200 且原样透出 RPC 返回", res.status === 200);
+}
+{
+  /* 参数体检：kind 白名单 / on 必须是布尔 / id 必须是正整数 */
+  const bad1 = await hit([{ body: {} }], "/api/reactions/set", {
+    method: "POST", body: JSON.stringify({ post_id: 7, kind: "dislike", on: true }),
+  });
+  ok("setReaction 拒绝非法 kind（dislike 走另一条 RPC）", bad1.res.status === 400);
+  const bad2 = await hit([{ body: {} }], "/api/reactions/set", {
+    method: "POST", body: JSON.stringify({ post_id: 7, kind: "hug", on: "yes" }),
+  });
+  ok("setReaction 拒绝非布尔的 on", bad2.res.status === 400);
+  const bad3 = await hit([{ body: {} }], "/api/reactions/set", {
+    method: "POST", body: JSON.stringify({ post_id: 0, kind: "hug", on: true }),
+  });
+  ok("setReaction 拒绝非法 post_id", bad3.res.status === 400);
+}
+{
+  /* RPC 不存在（迁移没跑）→ 404 + PGRST202 → 前端据此退回旧链路 */
+  const { res } = await hit(
+    [{ status: 404, body: { code: "PGRST202", message: "Could not find the function" } }],
+    "/api/reactions/set",
+    { method: "POST", body: JSON.stringify({ post_id: 7, kind: "hug", on: true }) },
+  );
+  const j = await res.json().catch(() => null);
+  ok("setReaction：RPC 缺失 → 404 且带 PGRST202 code（前端据此降级）",
+    res.status === 404 && j && j.code === "PGRST202" && j.reason === "not-migrated",
+    res.status + " " + JSON.stringify(j));
+}
+{
+  /* 幂等插入：body 带 on_conflict → Prefer: resolution=ignore-duplicates + on_conflict 查询参数 */
+  const { c } = await hit([{ status: 201 }], "/api/reactions", {
+    method: "POST",
+    body: JSON.stringify({ post_id: "p", user_id: "u", kind: "hug", on_conflict: "post_id,user_id,kind" }),
+  });
+  ok("upsertReaction 出站 URL（on_conflict 查询参数）",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/wall_reactions?on_conflict=${enc("post_id,user_id,kind")}`,
+    c.outbound[0].url);
+  ok("upsertReaction 带 Prefer: resolution=ignore-duplicates（重复插入不报错）",
+    String(hdr(c.outbound[0].init).get("prefer") || "").includes("resolution=ignore-duplicates"),
+    String(hdr(c.outbound[0].init).get("prefer")));
+  ok("upsertReaction body 不含 on_conflict（那是控制参数，不是列）",
+    c.outbound[0].init.body === JSON.stringify({ post_id: "p", user_id: "u", kind: "hug" }),
+    c.outbound[0].init.body);
+}
+
 /* ─────────── 轮 84 · 评论回应（👍心 / 💔碎心） ─────────── */
 {
   const { c } = await hit([{ body: [] }], "/api/comments/reactions?ids=1,2");
@@ -376,6 +433,46 @@ async function hit(script, path, init) {
     c.outbound[0].init.body === JSON.stringify({ p_owner: "o1", p_kind: "pat", p_viewer: "anon" }));
 }
 
+/* ─────────── 故事栏批 3（轮 321）：幂等「设置」端点 + 固定名路由顺序 ─────────── */
+{
+  /* like-set：调 story_set_like（幂等设置），不调翻转 */
+  const { c } = await hit([{ body: 3 }],
+    "/api/story/like-set", { method: "POST", body: JSON.stringify({ id: 12, on: true }) });
+  ok("story like-set → story_set_like rpc（幂等设置语义）",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/story_set_like` &&
+    c.outbound[0].init.body === JSON.stringify({ p_id: 12, p_on: true }),
+    c.outbound[0] && c.outbound[0].init.body);
+}
+{
+  const { c } = await hit([{ body: 2 }],
+    "/api/story/bookmark-set", { method: "POST", body: JSON.stringify({ id: 12, on: false }) });
+  ok("story bookmark-set → story_set_bookmark rpc",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/story_set_bookmark` &&
+    c.outbound[0].init.body === JSON.stringify({ p_id: 12, p_on: false }),
+    c.outbound[0] && c.outbound[0].init.body);
+}
+{
+  /* ★ 路由顺序回归：「GET /story/mine-flags」是固定名，必须排在「GET /story/:id」之前。
+       否则 :id 分支会把 "mine-flags" 当 id 吃掉（Number("mine-flags")=NaN → 400 bad-id），
+       前端就永远拿不到赞/藏初态。 */
+  const { res, c } = await hit([{ body: [{ story_id: 12, liked: true, marked: false }] }],
+    "/api/story/mine-flags?ids=12");
+  ok("story mine-flags → story_my_flags rpc（固定名路由不被 :id 吃掉）",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/story_my_flags` &&
+    c.outbound[0].init.body === JSON.stringify({ p_ids: [12] }),
+    (c.outbound[0] && c.outbound[0].init.body) || `status=${res.status}`);
+  ok("story mine-flags 返回数组（不是 400 bad-id）",
+    res.status === 200 && Array.isArray(await res.json()),
+    `status=${res.status}`);
+}
+{
+  /* mine-flags 空 ids → 直接返回空数组，不出站 */
+  const { res, c } = await hit([], "/api/story/mine-flags?ids=");
+  ok("story mine-flags 空 ids → 200 空数组且 0 出站",
+    res.status === 200 && Array.isArray(await res.json()) && c.outbound.length === 0,
+    `status=${res.status} out=${c.outbound.length}`);
+}
+
 /* ─────────── 故事栏（轮 145）：Worker 入参体检 + story_* RPC 翻译 ─────────── */
 {
   const { c } = await hit([{ body: { ok: true } }],
@@ -437,6 +534,20 @@ async function hit(script, path, init) {
     { method: "POST", body: JSON.stringify({ id: null, title: "", body: "草", tags: [] }) });
   ok("story 草稿不受 100 字下限约束（半成品随时能存）",
     res.status === 200 && c.outbound[0].url.endsWith("/rpc/story_save_draft"));
+}
+{
+  const { c } = await hit([{ body: true }],
+    "/api/story/draft-delete", { method: "POST", body: JSON.stringify({ id: 21 }) });
+  ok("轮391 storyDeleteDraft rpc URL + body",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/story_delete_draft` &&
+    c.outbound[0].init.body === JSON.stringify({ p_id: 21 }),
+    c.outbound[0] && c.outbound[0].init.body);
+}
+{
+  const { res, c } = await hit([], "/api/story/draft-delete",
+    { method: "POST", body: JSON.stringify({ id: 0 }) });
+  ok("轮391 story 删除草稿缺/非法 id → 400 bad-id 且 0 出站",
+    res.status === 400 && c.outbound.length === 0);
 }
 {
   const { c } = await hit([{ body: { ok: true } }],

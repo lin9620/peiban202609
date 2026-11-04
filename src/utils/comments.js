@@ -7,8 +7,8 @@
  */
 
 export const CMT_KEY = "warm-paws-comments-v1";
-export const MAX_LEN = 200;
-export const MAX_PER_POST = 100;
+export const MAX_LEN = 500;
+/* MAX_PER_POST 已退役：单帖评论数不设上限，由服务端/存储容量自然兜底 */
 
 /* 存储结构：{ <postKey>: [comment, ...] }
    轮 146：示例帖下线，示范评论机制（seedComments/SEEDS/SEED_FLAG/SEED_META）整体移除。
@@ -103,6 +103,32 @@ export function renderTops(all) {
 export function renderReplies(all, topId) {
   const arr = Array.isArray(all) ? all : [];
   return arr.filter((c) => c && typeof c === "object" && c.parentId === topId && !isDeleted(c));
+}
+
+/* ══════════ 轮 383 · 二级回复分批展开 ══════════
+ * 回复动辄几十上百条，展开时一次性挂满 DOM 会卡顿。口径：
+ *   - 收起：仍只露前 2 条（轮 50 口径不变）；
+ *   - 展开：每次最多 30 条，底部「继续展开」再续 30；
+ *   - pinned：本会话刚发出的回复即便落在批次外，也附在末尾先露一眼，
+ *     避免「发送成功但被折叠在 100 条里看不见」。
+ * 纯函数，工具脚本可直接断言。 */
+export const REPLY_PAGE = 30;
+
+export function pageReplies(list, open = false, shown = REPLY_PAGE, pinned = []) {
+  const arr = Array.isArray(list) ? list : [];
+  if (!open) return arr.slice(0, 2);
+  const raw = Number(shown);
+  const n = Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : REPLY_PAGE;
+  const out = arr.slice(0, n);
+  if (!Array.isArray(pinned) || !pinned.length) return out;
+  const seen = new Set(out.map((r) => (r && r.id != null ? String(r.id) : "")));
+  for (const id of pinned) {
+    const key = id == null ? "" : String(id);
+    if (!key || seen.has(key)) continue;
+    const row = arr.find((r) => r && r.id != null && String(r.id) === key);
+    if (row) { out.push(row); seen.add(key); }
+  }
+  return out;
 }
 
 /* ══════════ 轮 301 · 回复守卫 + 目标判定（两视图同形逻辑收口） ══════════
@@ -202,7 +228,6 @@ export function addComment(store, post, { name, text, parentId = null, replyTo =
   const k = postKey(post);
   const next = { ...store };
   const arr = Array.isArray(next[k]) ? next[k].slice() : [];
-  if (arr.length >= MAX_PER_POST) return { ok: false, reason: "full", store };
 
   const target = findComment(arr, parentId);
   const rootId = target ? (target.parentId || target.id) : null; /* 两级封顶 */
@@ -317,6 +342,29 @@ export function toggleReact(comment, kind, on) {
       : Array.isArray(comment.mine) ? comment.mine : [],
   );
   if (on) mine.add(kind); else mine.delete(kind);
+  return { ...comment, reacts, myReacts: [...mine] };
+}
+
+/**
+ * 轮 354：把一次评论回应的服务端结果并回评论 —— **只写本次动的 kind**。
+ *
+ * 评论的 ❤️ / 💔 和帖子三颗回应一样，是**不同队列 key**（`<cmtId>:<kind>`）并行落库。
+ * 服务端返回的 `{hearts, brokens, on}` 是「这一下写完后」的整条评论快照；
+ * 若整包写回，先发的旧快照最后到，就会把后点的另一格计数 / 高亮按旧值改掉
+ * （实测与帖子同形：连点 ❤️→💔 后只剩后点的那一格亮）。
+ *
+ * @param {Object} comment 视图评论
+ * @param {"heart"|"broken"} kind 本次写入的 kind
+ * @param {Object} res 服务端返回 {ok,on,hearts,brokens}
+ * @returns {Object} 新的评论对象（只改 reacts[kind] 与 myReacts 里这一格）
+ */
+export function applyCommentReactionResult(comment, kind, res) {
+  if (!comment || !CMT_REACT_KINDS.includes(kind) || !res || res.ok !== true) return comment;
+  const reacts = { ...(comment.reacts || {}) };
+  const count = kind === "heart" ? res.hearts : res.brokens;
+  reacts[kind] = Math.max(0, Number(count) || 0);
+  const mine = new Set(Array.isArray(comment.myReacts) ? comment.myReacts : []);
+  if (res.on === true) mine.add(kind); else mine.delete(kind);
   return { ...comment, reacts, myReacts: [...mine] };
 }
 

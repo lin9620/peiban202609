@@ -4,13 +4,18 @@
 <script setup>
 import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
+import { useDialog } from "naive-ui";
 import { t } from "../../i18n.js";
 import { storyErrKey } from "../../utils/storyRules.js";
-import { storyMine, storyBookmarkList, storyMyStats, canStory } from "../../utils/story.js";
+import {
+  storyMine, storyBookmarkList, storyMyStats, storyDeleteDraft,
+  loadLocalDraft, clearLocalDraft, canStory,
+} from "../../utils/story.js";
 import { setStorySeed } from "../../utils/storySeed.js";
 
 const emit = defineEmits(["edit"]);
 const router = useRouter();
+const dialog = useDialog();
 const signedIn = computed(() => canStory());
 
 const tab = ref("draft");
@@ -20,6 +25,7 @@ const shelf = ref([]);
 const stats = ref(null);
 const loading = ref(false);
 const err = ref("");
+const deleting = ref(null);
 
 const rows = computed(() => {
   if (tab.value === "draft") return drafts.value;
@@ -63,6 +69,44 @@ function openRow(r) {
   if (!r || r.id == null) return;
   setStorySeed(r);   /* 轮 313：已发布/书架行也带标题 → 详情页首帧就有内容 */
   router.push(`/story/${r.id}`);
+}
+/** 删草稿：只对草稿行显示按钮；先走主题弹窗确认，再乐观移除，失败放回并提示。 */
+function removeDraft(r) {
+  if (!r || r.id == null || deleting.value != null) return;
+  dialog.warning({
+    title: t("story.deleteDraft"),
+    content: t("story.deleteDraftConfirm"),
+    positiveText: t("common.delete"),
+    negativeText: t("common.cancel"),
+    positiveButtonProps: { type: "error" },
+    onPositiveClick: () => doRemoveDraft(r),
+  });
+}
+async function doRemoveDraft(r) {
+  const id = r.id;
+  const prevDrafts = drafts.value;
+  const prevStats = stats.value;
+  deleting.value = id;
+  err.value = "";
+  drafts.value = drafts.value.filter((x) => x.id !== id);
+  if (stats.value) {
+    stats.value = {
+      ...stats.value,
+      draft_count: Math.max(0, Number(stats.value.draft_count || 0) - 1),
+    };
+  }
+  try {
+    await storyDeleteDraft(id);
+    /* 本地兜底草稿若指向刚删的这篇，一并清掉，避免下次打开又“复活” */
+    const local = loadLocalDraft();
+    if (local && Number(local.id) === Number(id)) clearLocalDraft();
+  } catch (e) {
+    drafts.value = prevDrafts;
+    stats.value = prevStats;
+    err.value = t(storyErrKey(e));
+  } finally {
+    deleting.value = null;
+  }
 }
 const day = (s) => String(s || "").slice(0, 10);
 const saved = (s) => day(s);
@@ -116,9 +160,14 @@ defineExpose({ load });
             </span>
           </span>
           <span class="st-mine-go">{{ r.status === "published" || tab === 'shelf' ? t("story.openStory") : t("story.continueWrite") }}</span>
+          <!-- 轮 391：草稿行补删除入口；点按钮不冒泡到整行的“继续写”。 -->
+          <button
+            v-if="tab === 'draft'" class="st-btn st-btn--ghost st-btn--mark st-mine-del" type="button"
+            :disabled="deleting === r.id" :title="t('story.deleteDraftConfirm')"
+            @click.stop="removeDraft(r)">{{ t("story.deleteDraft") }}</button>
           <!-- 轮 150：已发布的故事也要能改。服务端 story_publish 的 else 分支本来就允许改已发布的
                （status <> 'removed'，且 published_at 用 coalesce 保住原发布时间），这里只补 UI 入口。
-               只给已发布行挂按钮：草稿行点整行就已进编辑器，再挂一个是重复入口。 -->
+               草稿行点整行就已进编辑器，所以只给它挂“删除”，不再重复挂“修改”。 -->
           <button
             v-if="tab === 'published'" class="st-btn st-btn--ghost st-btn--mark" type="button"
             @click.stop="emit('edit', r)">{{ t("story.editStory") }}</button>

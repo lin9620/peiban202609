@@ -56,6 +56,35 @@ export function validatePublish({ title, body, tags } = {}) {
   return null;
 }
 
+/* ── 点赞/收藏的乐观状态切换（轮 321：详情页「点了没反应」的纯逻辑层）──
+ * 背景：旧写法是「等服务端 RPC 回来才改 UI」——跨境弱网 0.5~3s 期间按钮被 :disabled 锁住、
+ * 外观一点不变，用户看到的就是「点了没动静」；连点还会被 disabled 吞掉。
+ * 这里把「开关型字段（liked/marked）+ 可选计数」的状态切换抽成纯函数：
+ *   - applyStoryToggle(cur, key, countKey, target)：幂等地「设成目标态」，
+ *     目标与当前一致时原样返回（不发多余请求）；不一致才翻转并同步计数。
+ *   - flipStoryToggle(cur, key, countKey)：乐观翻转（点一下立刻变色 +1/-1）。
+ * 计数下限 0：连点后计数不会变负。 */
+
+/** 幂等设置开关态（target=true 点赞/收藏，false 取消） */
+export function applyStoryToggle(cur, key, countKey, target) {
+  const base = cur && typeof cur === "object" ? cur : {};
+  const want = !!target;
+  if (!!base[key] === want) return { ...base };
+  const out = { ...base };
+  out[key] = want;
+  if (countKey) {
+    const n = Number(base[countKey]) || 0;
+    out[countKey] = Math.max(0, n + (want ? 1 : -1));
+  }
+  return out;
+}
+
+/** 乐观翻转：点一下立刻生效（不等网络） */
+export function flipStoryToggle(cur, key, countKey) {
+  const base = cur && typeof cur === "object" ? cur : {};
+  return applyStoryToggle(base, key, countKey, !base[key]);
+}
+
 /* ── 周期键：月 'YYYY-MM'（现用）；周 'YYYY-Www'（以后改周榜只换这个口径） ── */
 export function periodKey(d = new Date()) {
   const dt = d instanceof Date && !Number.isNaN(d.getTime()) ? d : new Date();
@@ -81,6 +110,11 @@ function esc(s) {
 function inline(s) {
   return esc(s).replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
 }
+/* 首行缩进判定：CJK（中文/日文/韩文字符）开头的正文段落自动 data-indent。
+ * 英文段落按西文排版惯例不缩进。导出供单测。 */
+export function paraIndent(line) {
+  return /^[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff00-\uffef]/.test(line.trim()) ? "1" : "";
+}
 export function renderLiteMd(text) {
   const lines = String(text ?? "").split(/\r?\n/);
   const out = [];
@@ -95,7 +129,8 @@ export function renderLiteMd(text) {
     if (/^##\s+/.test(l)) { out.push(`<h2>${inline(l.replace(/^##\s+/, ""))}</h2>`); continue; }
     if (/^(-{3,}|—{3,})$/.test(l)) { out.push("<hr>"); continue; }
     if (!l) { out.push(""); continue; }
-    out.push(`<p>${inline(l)}</p>`);
+    const ind = paraIndent(l) ? ' data-indent="1"' : "";
+    out.push(`<p${ind}>${inline(l)}</p>`);
   }
   flushQuote();
   return out.join("\n");
@@ -122,6 +157,6 @@ export function storyErrKey(e) {
   if (/story-auth|JWT|401|not authenticated/i.test(raw)) return "story.errAuth";
   if (/story-bad-mode/.test(raw)) return "story.errMode";
   if (/429|rate|quota/.test(raw)) return "story.errRate";
-  if (/network|fetch|Failed to fetch|502/i.test(raw)) return "story.errNetwork";
+  if (/network|fetch|Failed to fetch|timeout|502/i.test(raw)) return "story.errNetwork";
   return "story.errGeneric";
 }

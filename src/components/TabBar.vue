@@ -1,7 +1,7 @@
 <script setup>
 /* ═══ App 轨道 T5：底部 Tab Bar（5 位，中间 ＋）═══
  * 仅 isApp / 窄屏渲染（App.vue 里 v-if="isMobileNav"）；桌面 ≥900px 永远看不到。
- * 红点口径与桌面顶栏一致：消息 = 私信未读 + 好友申请（badgeStore 30s 轮询）。 */
+ * 红点口径与桌面顶栏一致：消息 = 私信未读 + 好友申请 + 漂流瓶待决定（badgeStore 30s 轮询）。 */
 import { ref, computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { Tabbar as VanTabbar, TabbarItem as VanTabbarItem } from "vant";
@@ -13,7 +13,7 @@ import { retapTab } from "../stores/uiStore.js";
 const route = useRoute();
 const router = useRouter();
 
-const dmBadge = computed(() => badge.dm + badge.requests);
+const dmBadge = computed(() => badge.dm + badge.requests + badge.bottle);
 
 const TABS = [
   { path: "/", icon: "🏠", key: "tab.home", exact: true },
@@ -94,21 +94,39 @@ function composeStory() {
     <div v-if="open" class="tabbar-mask" @click="close"></div>
     <div v-if="open" class="tabbar-sheet">
       <button class="tabbar-opt" @click="composeBottle">
-        <span class="tabbar-opt-ico">🌊</span>
+        <span class="tabbar-opt-ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+            <path d="M9.5 3h5" />
+            <path d="M10.5 3v3.1c0 .5-.2 1-.6 1.4l-1.2 1.2c-.4.4-.7 1.1-.7 1.7V19a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-8.6c0-.6-.3-1.3-.7-1.7l-1.2-1.2c-.4-.4-.6-.9-.6-1.4V3" />
+            <path d="M8 14.5h8" />
+            <path d="M10 17.2c.6.5 1.3.8 2 .8s1.4-.3 2-.8" />
+          </svg>
+        </span>
         <span class="tabbar-opt-txt">
           <b>{{ t("tab.composeBottle") }}</b>
           <small>{{ t("tab.composeBottleSub") }}</small>
         </span>
       </button>
       <button class="tabbar-opt" @click="composePost">
-        <span class="tabbar-opt-ico">✍️</span>
+        <span class="tabbar-opt-ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+            <path d="M21 11.5a8.5 8.5 0 0 1-12.5 7.5L4 20l1.2-4.4A8.5 8.5 0 1 1 21 11.5Z" />
+            <path d="M12.5 15s-2.8-1.6-2.8-3.3c0-.9.7-1.6 1.6-1.6.5 0 1 .2 1.2.7.2-.5.7-.7 1.2-.7.9 0 1.6.7 1.6 1.6 0 1.7-2.8 3.3-2.8 3.3Z" />
+          </svg>
+        </span>
         <span class="tabbar-opt-txt">
           <b>{{ t("tab.composePost") }}</b>
           <small>{{ t("tab.composePostSub") }}</small>
         </span>
       </button>
-    <button class="tabbar-opt" @click="composeStory">
-        <span class="tabbar-opt-ico">📖</span>
+      <button class="tabbar-opt" @click="composeStory">
+        <span class="tabbar-opt-ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+            <path d="M3.5 5.5A2.5 2.5 0 0 1 6 3h5.2v16H6a2.5 2.5 0 0 0-2.5 2.5V5.5Z" />
+            <path d="M20.5 5.5A2.5 2.5 0 0 0 18 3h-5.2v16H18a2.5 2.5 0 0 1 2.5 2.5V5.5Z" />
+            <path d="M6.5 7.5h2M15.5 7.5h2M6.5 10.5h2M15.5 10.5h2" />
+          </svg>
+        </span>
         <span class="tabbar-opt-txt">
           <b>{{ t("tab.composeStory") }}</b>
           <small>{{ t("tab.composeStorySub") }}</small>
@@ -117,3 +135,18 @@ function composeStory() {
     </div>
   </van-tabbar>
 </template>
+
+<style scoped>
+.tabbar-opt-ico {
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: var(--accent-soft, #f5f0e8);
+  color: var(--accent-deep, #a9583e);
+}
+.tabbar-opt-ico svg { width: 22px; height: 22px; display: block; }
+</style>

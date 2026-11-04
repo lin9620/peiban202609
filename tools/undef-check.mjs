@@ -299,6 +299,27 @@ export function scanUnassigned(rel, code, bound) {
   return out;
 }
 
+/* 2a) 导出名「用了但没导入/没定义」——单独抽成函数，好让 --selftest 直接钉住。
+   ⚠ 误报史：Vue 模板的**属性名** `:messages="msgs"` 里的 messages 是 prop 名不是变量，
+     正好和 i18n.js 的导出 `messages` 撞名 → 满屏假警报。所以前置 `:` 必须排除。 */
+export function findUnimported(rel, scan, exported, bound) {
+  const out = [];
+  for (const name of exported.keys()) {
+    if (bound.has(name)) continue;
+    /* 排除：属性访问 obj.name、标签名 <name-xxx>（如 router-link）、标识符内部子串、
+       对象键名（i18n 词条字典里的 adventure: / feedVisitor: 这类键不是标识符使用）、
+       Vue 模板的**属性名**（`:messages="msgs"` 里的 messages 是 prop 名不是变量；
+       否则与 i18n.js 的导出 `messages` 撞名 → 误报）。 */
+    const esc = name.replace(/[$]/g, "\\$");
+    /* 前置 `:` 一并排除：只吃掉模板属性名，不影响值位置（值在引号里，已被剥成 ""）。 */
+    const re = new RegExp("(?<![\\w$.:-])" + esc + "(?!\\s*:)(?![\\w$-])");
+    if (re.test(scan)) {
+      out.push(rel + "  →  使用了 " + name + "（定义在 " + exported.get(name) + "）但未导入/未定义");
+    }
+  }
+  return out;
+}
+
 /* ── 自检：`node tools/undef-check.mjs --selftest` ──
    2b 这一档是「用正则近似 JS 语义」，最怕两件事：加了新语法后**漏报**真问题，
    或者反过来**误报**一片（初版就误报过 365 条）。这里把两类都用最小样本钉住。 */
@@ -340,14 +361,33 @@ if (process.argv.includes("--selftest")) {
       ["alpha", "beta"]],
   ];
   let pass = 0;
+  /* 2a 的自测：用一个假的导出表，验「用了没导入」这条判定 */
+  const fakeExported = new Map([["messages", "src/i18n.js"], ["cloudSetReaction", "src/utils/wall.js"]]);
+  const a = (src) => findUnimported("t.vue", stripNoise(src), fakeExported, buildBound(src)).length;
+  const aCases = [
+    ["Vue 模板属性名 :messages 不误报（prop 名不是变量）",
+      '<script setup>\nconst a = 1;\nvoid a;\n</script>\n<template><C :messages="msgs" /></template>', 0],
+    ["真用了没导入的导出名 → 要报",
+      '<script setup>\nconst a = 1;\nvoid a;\ncloudSetReaction(1, "hug", true);\n</script>', 1],
+    ["本地 import 过 → 不报",
+      '<script setup>\nimport { cloudSetReaction } from "../utils/wall.js";\nvoid cloudSetReaction;\n</script>', 0],
+    ["本地定义过 → 不报",
+      '<script setup>\nconst cloudSetReaction = () => {};\nvoid cloudSetReaction;\n</script>', 0],
+  ];
+  for (const [label, src, want] of aCases) {
+    const got = a(src);
+    const ok = got === want;
+    console.log(`${ok ? "PASS" : "FAIL"}  ${label}` + (ok ? "" : `\n      want=${want} got=${got}`));
+    if (ok) pass++;
+  }
   for (const [label, src, want] of cases) {
     const got = names(src);
     const ok = got.length === want.length && want.every((w) => got.includes(w));
     console.log(`${ok ? "PASS" : "FAIL"}  ${label}` + (ok ? "" : `\n      want=${JSON.stringify(want)} got=${JSON.stringify(got)}`));
     if (ok) pass++;
   }
-  console.log(`\nTOTAL ${cases.length}  PASS ${pass}  FAIL ${cases.length - pass}`);
-  process.exit(pass === cases.length ? 0 : 1);
+  console.log(`\nTOTAL ${cases.length + aCases.length}  PASS ${pass}  FAIL ${cases.length + aCases.length - pass}`);
+  process.exit(pass === cases.length + aCases.length ? 0 : 1);
 }
 
 /* 1) 收集所有项目内的导出符号 */
@@ -379,16 +419,7 @@ for (const f of files) {
   /* 2b) 未声明就赋值（见文件头与 scanUnassigned 的说明） */
   for (const p of scanUnassigned(rel, code, bound)) problems.push(p);
 
-  for (const name of exported.keys()) {
-    if (bound.has(name)) continue;
-    /* 排除：属性访问 obj.name、标签名 <name-xxx>（如 router-link）、标识符内部子串、
-       对象键名（i18n 词条字典里的 adventure: / feedVisitor: 这类键不是标识符使用） */
-    const esc = name.replace(/[$]/g, "\\$");
-    const re = new RegExp("(?<![\\w$.-])" + esc + "(?!\\s*:)(?![\\w$-])");
-    if (re.test(scan)) {
-      problems.push(rel + "  →  使用了 " + name + "（定义在 " + exported.get(name) + "）但未导入/未定义");
-    }
-  }
+  problems.push(...findUnimported(rel, scan, exported, bound));
 }
 
 const out = [

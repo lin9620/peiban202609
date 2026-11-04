@@ -449,34 +449,83 @@ function isDuplicateRow(e) {
  * @param {boolean} on  true=点上，false=取消
  * @returns {Promise<Object|null>} 最新计数 {hug,warm,relate,mine} 或 null（失败）
  *
- * 为什么要有「设置」而不是「切换」：用户连点两下时，两次请求会并发跑
- * `findReaction → insert/delete`。第二次的查询往往在第一次 insert 落库前返回
- * 「没点过」→ 再插一次 → 撞唯一键报错 → 界面回滚成「点了没反应」。
- * 现在改成幂等写入：想点就确保存在（重复键当成功）、想取消就确保删掉，
- * 连点多少次都不会因为竞态而失败。
+ * ── 轮 333：改成服务端原子写入（RPC wall_set_reaction）────────────────
+ * 旧写法是「先查再写」（findReaction → insert/delete）。这个模式有三个问题：
+ *   ① **竞态窗口**：查和写之间有时间差。用户连点两下时，两次请求并发跑，
+ *      第二次的查询常在第一次 insert 落库前返回「没点过」→ 再插一次 →
+ *      撞唯一键 → 界面回滚成「点了没反应」。
+ *   ② **查询失败被当成「没点过」**（老代码 catch 里吞掉）—— 最危险的一个：
+ *      用户点「取消抱抱」，那次查询恰好失败 → 直接跳过 delete → 库里那行还在 →
+ *      界面显示已取消、服务端仍算已回应。**静默不一致**，比计数漂移更难发现。
+ *   ③ 多一次往返。
+ *
+ * 现在：
+ *   - 迁移已跑 → 一条 RPC 原子完成「确保存在 / 确保不存在」，并回权威计数；
+ *   - 迁移没跑 → 回退到**无前置查询**的旧写法：
+ *       on=true  → upsert(ignoreDuplicates)（等价 on conflict do nothing，重复插入不报错）
+ *       on=false → 直接 DELETE（删不存在的行也不报错）
+ *     这两条本身就是幂等的，**不需要先查** —— 顺手把 ② 那个 bug 消掉了。
+ *
+ * 为什么用「设置」而不是「切换」：切换语义下重复请求会把状态反向翻转；
+ * 设置语义下重复请求是幂等的，连点/重试/多设备同时点都不会互相打架。
  */
-export async function cloudSetReaction(dbPostId, kind, on) {
+/**
+ * 设置帖级回应（hug/warm/relate），幂等「设置」语义。
+ *
+ * @param {number|string} dbPostId 帖子 dbId
+ * @param {string} kind            'hug' | 'warm' | 'relate'
+ * @param {boolean} on             true=确保已回应，false=确保未回应
+ * @param {Object} [opts]          乐观更新回调（由调用方/视图层提供，wall.js 不直接碰 UI）
+ *   opts.applyOptimistic({postId, kind, on})  写入**前**调用，把本地 UI 先改成目标状态
+ *   opts.applyAuthoritative({postId, kind, on, fresh})  写入**成功后**调用，用服务端权威数据校正本地 UI
+ *   opts.applyRollback({postId, kind, on})    写入**失败**时调用，回滚本地 UI
+ * @returns {Object|null} 服务端权威 {hug, warm, relate, mine}，或 null（未登录/写入失败）
+ */
+export async function cloudSetReaction(dbPostId, kind, on, opts = {}) {
   if (!canUseWall()) return null;
+  const normalizedOn = !!on;
   try {
     const uid = cloud.user.id;
-    /* 先看我点过没：查询失败就当「没点过」（与原有行为一致，不因一次抖动中断这次操作） */
-    let existing = null;
-    try { existing = await db.findReaction({ postId: dbPostId, userId: uid, kind }); } catch (e) { /* 视为未点过 */ }
-    if (on) {
-      if (!existing) {
-        try { await db.insertReaction({ post_id: dbPostId, user_id: uid, kind }); }
-        catch (e) { if (!isDuplicateRow(e)) throw e; }   /* 已经存在 = 目标状态已达成 */
-      }
-    } else if (existing) {
-      try { await db.deleteReaction({ postId: dbPostId, userId: uid, kind }); }
-      catch (e) { /* 已经不在了 = 目标状态已达成；其它错误交给重拉/上抛判断 */ }
+    /* ── 1) 先本地乐观生效（调用方通过回调把 UI 改成目标状态；只动当前 kind，不碰其他 kind） ── */
+    if (opts.applyOptimistic) opts.applyOptimistic({ postId: dbPostId, kind, on: normalizedOn });
+
+    /* ── 2) 快路径：服务端原子写入（迁移已跑） ──
+       返回 null = RPC 不可用（迁移没跑）→ 走下面的回退；
+       其它错误一律上抛（网络/权限/脏数据）—— 不把真失败静默成「没写成」。 */
+    const viaRpc = await db.setReaction(dbPostId, kind, normalizedOn);
+    if (viaRpc) {
+      const c = viaRpc.counts || {};
+      const m = viaRpc.mine || {};
+      const result = {
+        hug: Math.max(0, Number(c.hug) || 0),
+        warm: Math.max(0, Number(c.warm) || 0),
+        relate: Math.max(0, Number(c.relate) || 0),
+        mine: { hug: m.hug === true, warm: m.warm === true, relate: m.relate === true },
+      };
+      /* ── 3) 服务端权威数据回写（调用方用它校正本地状态） ── */
+      if (opts.applyAuthoritative) opts.applyAuthoritative({ postId: dbPostId, kind, on: normalizedOn, fresh: result });
+      return result;
+    }
+    /* ── 4) 回退：迁移没跑时的老库 ──
+       无前置查询：upsert(ignoreDuplicates) 与 DELETE 本身幂等。 */
+    if (normalizedOn) {
+      try { await db.upsertReaction({ post_id: dbPostId, user_id: uid, kind }); }
+      catch (e) { if (!isDuplicateRow(e)) throw e; }   /* 已经存在 = 目标状态已达成 */
+    } else {
+      /* 删不存在的行不报错（DELETE 影响 0 行）→ 「确保不存在」天然幂等。
+         只有真错误（权限/网络）才上抛。 */
+      await db.deleteReaction({ postId: dbPostId, userId: uid, kind });
     }
     /* 重拉该帖回应，返回权威计数；重拉失败不影响「本次写入已生效」 */
     let rk = [];
     try { rk = (await db.listReactionsByPost(dbPostId)) || []; } catch (e) { /* 退化成默认计数 */ }
     const ag = aggregateReactions(rk, uid);
-    return ag[dbPostId] || { hug: 0, warm: 0, relate: 0, mine: { hug: false, warm: false, relate: false } };
+    const fallback = ag[dbPostId] || { hug: 0, warm: 0, relate: 0, mine: { hug: false, warm: false, relate: false } };
+    if (opts.applyAuthoritative) opts.applyAuthoritative({ postId: dbPostId, kind, on: normalizedOn, fresh: fallback });
+    return fallback;
   } catch (e) {
+    /* ── 5) 失败：回滚 ── */
+    if (opts.applyRollback) opts.applyRollback({ postId: dbPostId, kind, on: normalizedOn });
     console.warn("[cloud] setReaction:", e);
     cloud.error = e && e.message ? e.message : String(e);
     return null;

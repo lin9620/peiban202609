@@ -9,6 +9,10 @@ dist/
 supabase.json
 .dev.vars
 
+# 数据库备份（轮 402）：dump 里有全部用户数据，绝不入库；连接串同理
+backups/
+.env.backup
+
 # 工具生成的报告与运行日志
 undef-report.txt
 comment-test.txt
@@ -19,6 +23,13 @@ arity-test.txt
 .wrangler/
 .edge-final/
 /_scratch/
+# UI 改版回滚点（轮 404）：整份 src 快照，体积大且只在本机有意义
+/_backup/
+# 本地探针构建产物 / 设计参考图 / 代理工具目录
+/dist-*/
+/.workbuddy/
+/_icon-concepts/
+/参考图片/
 _*.mjs
 _*.txt
 _*.ps1

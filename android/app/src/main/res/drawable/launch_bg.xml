@@ -3,11 +3,13 @@
      米色与网页端 (#fff7ee)、capacitor.config.json 的 backgroundColor 三处同值，
      所以 WebView 还没铺满时露出的也是米色，不再是一圈黑边。
      轮 43：按用户要求去掉居中爪印（「启动页不要那个大爪子的页面」）——
-     本层退成纯米色，品牌呈现全部交给随后的网页启动页（#app-splash）。 -->
+     本层退成纯米色，品牌呈现全部交给随后的网页启动页（#app-splash）。
+     轮 322：统一成页面底色 #FAF9F5（窗口底 / 启动层 / web 页面底三者同值，
+      键盘让位动画期间露出的那一条缝才不会显形）。 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <shape android:shape="rectangle">
-            <solid android:color="#FFF7EE" />
+            <solid android:color="#FAF9F5" />
         </shape>
     </item>
 </layer-list>

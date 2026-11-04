@@ -18,7 +18,7 @@ import { getAuthToken } from "./authToken.js";
 /* 轮 285：删评论改软删 —— 老库没跑迁移时认出「函数还没建」再退回硬删（不把没跑迁移当删除失败） */
 import { isMissingFnError } from "../authRules.js";
 /* 轮 302：批量记浏览的整形与校验（纯函数，与直连实现共用同一份口径） */
-import { wallViewIds, normalizeWallAddViews } from "../wallRules.js";
+import { wallViewIds, normalizeWallAddViews, normalizeSetReaction } from "../wallRules.js";
 
 /* 轮 160：单测可注入的「刷新会话」替身；生产走 supabase.js 的 refreshAccessToken */
 let refresher = null;
@@ -43,6 +43,17 @@ export function __resetGatewayRateBackoff() { rateBackoffUntil = 0; }
  *  老 Worker 没这条路由（404）→ 本会话此后都走逐帖 /view，不再每趟白试。 */
 let wallAddViewsRoute = null;
 
+/** 轮 333：帖级回应原子写入路由（POST /api/reactions/set）是否可用（null = 还没试过）。
+ *  老 Worker 没这条路由（404）→ 本会话此后都走旧链路，不再每趟白试。 */
+let wallSetReactionRoute = null;
+
+/** 单测重置「路由只试一次」的探测状态（tools/gateway-contract-test.mjs）。
+ *  与直连实现的 __resetRpcProbes 对称 —— 单测要反复切换「有/无新路由」两种 Worker。 */
+export function __resetGatewayRouteProbes() {
+  wallAddViewsRoute = null;
+  wallSetReactionRoute = null;
+}
+
 let probe = null;
 /** 单测注入「auth 就绪」探针；生产代码不要调用（与 db.supabase 的 setDbClient 对称） */
 export function setGatewayAuthProbe(fn) {
@@ -63,8 +74,15 @@ function authHeaders(extra = {}) {
 /** 一次网关调用：非 2xx → throw（消息取错误体的 message/error），2xx 空 body → null。
  * 轮 160：带身份的请求吃 401 时——本地会话大概率是「后台刷新失败后一直揣着过期 JWT」
  * （顶栏已显示登录、接口却 401 的假登录态）——强制刷新一次会话（单飞）再重试本请求；
- * 只重试一次（刷新失败 / 仍 401 都按原错误上抛），绝不循环。 */
-async function call(path, { method = "GET", body, headers } = {}) {
+ * 只重试一次（刷新失败 / 仍 401 都按原错误上抛），绝不循环。
+ * 轮 338：加请求超时 —— 线上实测 /api/bottle/records 偶发 20~45s 不返回
+ * （Worker → Supabase 的子请求卡住），而旧代码没有任何超时，界面会永远停在
+ * 「正在找回漂流瓶记录……」且刷新键被 disabled 卡死。默认 30s；带字节体的上传 120s；
+ * 读接口可用 timeout 单独收紧（漂流瓶记录传 15s）。超时**不重试**（不是 401），
+ * 由界面提示 + 用户/定时器再发起一次新请求。 */
+const TIMEOUT_DEFAULT = 30000;
+const TIMEOUT_UPLOAD = 120000;
+async function call(path, { method = "GET", body, headers, timeout } = {}) {
   if (!authReady()) throw new Error("cloud-not-ready");
   /* 轮 311：429 退避期内不发网络（fail fast），防重试风暴 */
   if (Date.now() < rateBackoffUntil) {
@@ -73,38 +91,59 @@ async function call(path, { method = "GET", body, headers } = {}) {
     throw e;
   }
   const hadAuth = !!getAuthToken();
+  const isBytes = body instanceof ArrayBuffer || body instanceof Uint8Array;
+  const budget = Number(timeout) > 0 ? Number(timeout) : (isBytes ? TIMEOUT_UPLOAD : TIMEOUT_DEFAULT);
   const attempt = async () => {
-    let res;
+    const ctrl = typeof AbortController === "function" ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(() => { try { ctrl.abort(); } catch (e) {} }, budget) : 0;
     try {
-      const isBytes = body instanceof ArrayBuffer || body instanceof Uint8Array;
-      res = await fetch(BASE + path, {
-        method,
-        headers: authHeaders({
-          ...(body !== undefined && !isBytes ? { "content-type": "application/json" } : {}),
-          ...(headers || {}),
-        }),
-        body: body === undefined ? undefined : isBytes ? body : JSON.stringify(body),
-      });
-    } catch (e) {
-      throw new Error("gateway-unreachable");
-    }
-    const text = await res.text();
-    let data = null;
-    if (text) {
-      try { data = JSON.parse(text); } catch (e) { data = null; }
-    }
-    if (!res.ok) {
-      const msg = (data && (data.message || data.error)) || `HTTP ${res.status}`;
-      const err = new Error(String(msg));
-      err.status = res.status;
-      /* 轮 311：命中 Worker 统一限流闸 → 按 Retry-After 进入退避（退避期内 fail fast） */
-      if (res.status === 429) {
-        const ra = Number(res.headers.get("retry-after"));
-        rateBackoffUntil = Date.now() + (Number.isFinite(ra) && ra > 0 ? ra : 5) * 1000;
+      let res;
+      try {
+        res = await fetch(BASE + path, {
+          method,
+          headers: authHeaders({
+            ...(body !== undefined && !isBytes ? { "content-type": "application/json" } : {}),
+            ...(headers || {}),
+          }),
+          body: body === undefined ? undefined : isBytes ? body : JSON.stringify(body),
+          signal: ctrl ? ctrl.signal : undefined,
+        });
+      } catch (e) {
+        if (ctrl && ctrl.signal.aborted) {
+          const x = new Error("gateway-timeout");
+          x.timeout = true;
+          throw x;
+        }
+        throw new Error("gateway-unreachable");
       }
-      throw err;
+      const text = await res.text();
+      let data = null;
+      if (text) {
+        try { data = JSON.parse(text); } catch (e) { data = null; }
+      }
+      if (!res.ok) {
+        const msg = (data && (data.message || data.error)) || `HTTP ${res.status}`;
+        const err = new Error(String(msg));
+        err.status = res.status;
+        /* 轮 311：命中 Worker 统一限流闸 → 按 Retry-After 进入退避（退避期内 fail fast） */
+        if (res.status === 429) {
+          const ra = Number(res.headers.get("retry-after"));
+          rateBackoffUntil = Date.now() + (Number.isFinite(ra) && ra > 0 ? ra : 5) * 1000;
+        }
+        throw err;
+      }
+      return data;
+    } catch (e) {
+      /* 读响应体时被 abort（headers 已到、body 卡住）也按超时算 */
+      if (e && (e.timeout || e.name === "AbortError" || (ctrl && ctrl.signal.aborted))) {
+        const x = new Error("gateway-timeout");
+        x.timeout = true;
+        throw x;
+      }
+      throw e;
+    } finally {
+      if (timer) clearTimeout(timer);
     }
-    return data;
   };
   try {
     return await attempt();
@@ -247,10 +286,39 @@ export const db = {
     await call("/reactions", { method: "POST", body: row });
   },
 
+  /* 轮 333：幂等插入（等价 SQL 的 on conflict do nothing）。
+     迁移没跑时用它替代「先查再写」—— 重复插入不报错，「确保存在」天然幂等。
+     ⚠ on_conflict 写在 body 里（Worker 据此改走 Prefer: resolution=ignore-duplicates），
+     不能写成查询参数 —— Worker 的 /reactions POST 只认 body。 */
+  async upsertReaction(row) {
+    await call("/reactions", { method: "POST", body: { ...row, on_conflict: "post_id,user_id,kind" } });
+  },
+
   async deleteReaction({ postId, userId, kind }) {
     await call(`/reactions?post_id=${enc(postId)}&user_id=${enc(userId)}&kind=${enc(kind)}`, {
       method: "DELETE",
     });
+  },
+
+  /* 轮 333：帖级回应的服务端原子写入（RPC wall_set_reaction）。
+     迁移没跑时返回 null（调用方退回旧链路）；其它错误上抛。
+     ⚠ 与直连实现同契约：null = 不可用，不是「失败」。 */
+  async setReaction(postId, kind, on) {
+    if (wallSetReactionRoute !== false) {
+      try {
+        const out = normalizeSetReaction(
+          await call("/reactions/set", { method: "POST", body: { post_id: postId, kind, on: !!on } }),
+        );
+        wallSetReactionRoute = true;
+        return out;
+      } catch (e) {
+        /* 老 Worker 没有这条路由（404）→ 退回旧链路；其余错误照抛 */
+        if (!(e && e.status === 404)) throw e;
+        wallSetReactionRoute = false;   /* 本次及本会话此后都走旧链路 */
+        return null;
+      }
+    }
+    return null;   /* RPC 不可用（已确认），调用方走回退 */
   },
 
   /* ══════════ 轮 84 · 评论回应（👍心 / 💔碎心） ══════════ */
@@ -342,7 +410,8 @@ export const db = {
     if (id) qs.push(`id=${enc(id)}`);
     if (mine === true || mine === false) qs.push(`mine=${mine}`);
     if (limit > 0) qs.push(`limit=${enc(limit)}`);
-    return call(`/bottle/records?${qs.join("&")}`);
+    /* 轮 338：15s 收紧——线上偶发 20s+ 卡住，宁可先报错让用户按「刷新记录」重来 */
+    return call(`/bottle/records?${qs.join("&")}`, { timeout: 15000 });
   },
   bottleChatDecide(id, accept) {
     return call("/bottle/chat", { method: "POST", body: { id, accept } });
@@ -350,17 +419,17 @@ export const db = {
 
   /** 我投的信（含收到的回信），新→旧 */
   bottleMine() {
-    return call("/bottle/mine");
+    return call("/bottle/mine", { timeout: 15000 });
   },
 
   /** 我捞到、还没回的信 */
   bottleHeld() {
-    return call("/bottle/held");
+    return call("/bottle/held", { timeout: 15000 });
   },
 
   /** 今日已用次数（服务端权威，UTC 日）：{ sent, fished }（轮 18：跨端不再打架） */
   bottleQuota() {
-    return call("/bottle/quota");
+    return call("/bottle/quota", { timeout: 15000 });
   },
 
   /* ══════════ 故事栏（轮 145：Worker 收口 /api/story/*，同名 RPC 在 DB 里） ══════════ */
@@ -368,6 +437,11 @@ export const db = {
   /** 存草稿（宽容：标题可空） */
   storySaveDraft(id, title, body, tags) {
     return call("/story/draft", { method: "POST", body: { id, title, body, tags: tags || [] } });
+  },
+
+  /** 删除草稿（服务端只允许作者删 status=draft） */
+  storyDeleteDraft(id) {
+    return call("/story/draft-delete", { method: "POST", body: { id } });
   },
 
   /** 发布（服务端校验 标题/正文≤3万/标签1~3） */
@@ -425,6 +499,30 @@ export const db = {
   /** 收藏/取消：true=已收藏 */
   storyToggleBookmark(id) {
     return call("/story/bookmark", { method: "POST", body: { id } });
+  },
+
+  /* ══════════ 故事栏批 3（轮 321：幂等「设置」语义 + marked 初态） ══════════ */
+
+  /** 赞：设成目标态（幂等）→ { ok, count }；count 为服务端权威赞数（拿不到 null） */
+  async storySetLike(id, on) {
+    const r = await call("/story/like-set", { method: "POST", body: { id, on: !!on } });
+    const n = r && typeof r === "object" ? Number(r.count) : NaN;
+    return { ok: true, count: Number.isFinite(n) ? n : null };
+  },
+
+  /** 收藏：设成目标态（幂等）→ { ok, count } */
+  async storySetBookmark(id, on) {
+    const r = await call("/story/bookmark-set", { method: "POST", body: { id, on: !!on } });
+    const n = r && typeof r === "object" ? Number(r.count) : NaN;
+    return { ok: true, count: Number.isFinite(n) ? n : null };
+  },
+
+  /** 我赞了/收藏了哪些：[{ story_id, liked, marked }]；拿不到（批 3 没跑）→ null */
+  async storyMyFlags(ids) {
+    const list = (ids || []).map((x) => Number(x)).filter((x) => Number.isFinite(x));
+    if (!list.length) return [];
+    const r = await call(`/story/mine-flags?ids=${enc(list.join(","))}`);
+    return Array.isArray(r) ? r : null;
   },
 
   /** 我的书架 */
@@ -513,8 +611,8 @@ export const db = {
   },
 
   /** 举报/复核队列（status: pending|handled；items 带正文与聚合人数） */
-  adminReportPage(status, offset, limit) {
-    return call(`/admin/reports?status=${enc(status)}&offset=${enc(offset)}&limit=${enc(limit)}`);
+  adminReportPage(status, offset, limit, targetType = "") {
+    return call(`/admin/reports?status=${enc(status)}&offset=${enc(offset)}&limit=${enc(limit)}&target_type=${enc(targetType)}`);
   },
 
   /** 处理一条举报/复核（action: dismiss|remove_post|restore_post|delete_comment|unhide_comment） */

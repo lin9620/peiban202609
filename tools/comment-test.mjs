@@ -4,12 +4,14 @@ import {
   /* 轮 146：示例帖下线，示范评论机制（seedComments/SEEDS/SEED_FLAG/SEED_META）整体移除。
      下面只保留真实评论能力；示范机制「不得回潮」由 T1 断言钉住。 */
   listComments, countComments, addComment, removeComment,
-  canDelete, normalizeText, postKey, MAX_LEN, MAX_PER_POST,
+  canDelete, normalizeText, postKey, MAX_LEN,
   topComments, repliesOf, replyCount, displayCount,
   /* 轮 285：软删口径（删一级评论不再连带删掉它的二级回复） */
   renderTops, renderReplies, liveComments, markDeleted, isDeleted,
   /* 轮 301：回复守卫收口（两视图同判据，防轮 298 连坐 bug 回潮） */
   replyBlocked, replyTarget, buildCommentRow,
+  /* 轮 383：二级回复分批展开（每批 30 条） */
+  REPLY_PAGE, pageReplies,
   /* 轮 84：评论回应 / 排序 / 墙内前 3 条 / 拷贝文本 */
   CMT_REACT_KINDS, WALL_TOP_LIMIT, SORT_MODES, reactCount, hasReacted, toggleReact,
   sortComments, wallTopComments, hasMoreComments, postCopyText, commentCopyText,
@@ -73,8 +75,8 @@ t("T5 空 / 纯空格输入被拒绝", () => {
   }
 });
 
-t("T6 超长文本截断到 200 字", () => {
-  const r = addComment(EN, { id: "s1", sample: true }, { name: "A", text: "x".repeat(500) });
+t("T6 超长文本截断到 MAX_LEN 字", () => {
+  const r = addComment(EN, { id: "s1", sample: true }, { name: "A", text: "x".repeat(600) });
   assert.equal(r.ok, true);
   assert.equal(listComments(r.store, { id: "s1", sample: true }).at(-1).text.length, MAX_LEN);
 });
@@ -115,17 +117,7 @@ t("T10 只能删除自己的评论", () => {
   assert.equal(canDelete(null, "Alice"), false);
 });
 
-t("T11 每帖评论数上限", () => {
-  let s = EN;
-  for (let i = 0; i < MAX_PER_POST; i++) {
-    s = addComment(s, { id: "s1", sample: true }, { name: "A", text: "c" + i }).store;
-  }
-  const r = addComment(s, { id: "s1", sample: true }, { name: "A", text: "overflow" });
-  assert.equal(r.ok, false);
-  assert.equal(r.reason, "full");
-});
-
-t("T12 用户帖（数字 id）与示例帖键名一致可比", () => {
+t("T11 用户帖（数字 id）与示例帖键名一致可比", () => {
   assert.equal(postKey({ id: 1730000000000 }), "1730000000000");
   assert.equal(postKey({ id: "s1", sample: true }), "s1");
 });
@@ -143,7 +135,7 @@ t("T14 normalizeText 边界", () => {
   assert.equal(normalizeText("abc"), "abc");
   assert.equal(normalizeText("   "), "");
   assert.equal(normalizeText(null), "");
-  assert.equal(normalizeText("字".repeat(300)).length, MAX_LEN);
+  assert.equal(normalizeText("字".repeat(600)).length, MAX_LEN);
 });
 
 t("T15 空存储 / 脏数据不崩", () => {
@@ -268,20 +260,6 @@ t("T25 displayCount：没拉评论明细时先用云端聚合数（评论数不�
   assert.equal(displayCount([], 5), 0, "已拉到本地且为空 → 以本地为准");
   assert.equal(displayCount([1, 2, 3], 0), 3, "本地增删即时反映");
   assert.equal(displayCount([1, 2], 99), 2);
-});
-
-t("T26 每帖上限把回复也算进去（回复绕不过 MAX_PER_POST）", () => {
-  const p = { id: 91009 };
-  let s = addComment({}, p, { name: "A", text: "root" }).store;
-  const rid = topComments(s, p)[0].id;
-  for (let i = 1; i < MAX_PER_POST; i++) {
-    s = addComment(s, p, { name: "B", text: "r" + i, parentId: rid }).store;
-  }
-  assert.equal(countComments(s, p), MAX_PER_POST);
-  const over = addComment(s, p, { name: "B", text: "more", parentId: rid });
-  assert.equal(over.ok, false);
-  assert.equal(over.reason, "full");
-  assert.equal(replyCount(over.store, p, rid), MAX_PER_POST - 1);
 });
 
 /* ══════════ 轮 285 · 软删口径补充用例（删一级评论不再连带删掉它的二级回复） ══════════ */
@@ -437,6 +415,39 @@ t("G3 buildCommentRow：载荷与两视图发送体同形（parent_id 恒取一�
   const r3 = buildCommentRow({ postDbId: 9, userId: "u", name: "A", text: "x", cm: null, rp: null, at: "" });
   assert.equal(r3.row.parent_id, null, "直接评帖子无 parent");
   assert.equal(r3.row.reply_to_name, null);
+});
+
+/* ══════════ 轮 383 · H 组：二级回复分批展开（别一次挂满 DOM） ══════════ */
+
+t("H1 pageReplies：收起只露前 2；展开每批 30；继续再续 30", () => {
+  const xs = Array.from({ length: 75 }, (_, i) => ({ id: "c" + i }));
+  assert.equal(REPLY_PAGE, 30);
+  assert.deepEqual(pageReplies(xs, false).map((r) => r.id), ["c0", "c1"]);
+  assert.equal(pageReplies(xs, true).length, 30);
+  assert.equal(pageReplies(xs, true).at(-1).id, "c29");
+  assert.equal(pageReplies(xs, true, 60).length, 60);
+  assert.equal(pageReplies(xs, true, 60).at(-1).id, "c59");
+  assert.equal(pageReplies(xs, true, 999).length, 75);
+});
+
+t("H2 pageReplies：刚发的新回复批外也钉在末尾；批内不重复；收起不钉", () => {
+  const xs = Array.from({ length: 75 }, (_, i) => ({ id: "c" + i }));
+  const out = pageReplies(xs, true, 30, ["c74"]);
+  assert.equal(out.length, 31);
+  assert.equal(out[30].id, "c74");
+  const dup = pageReplies(xs, true, 30, ["c5", "c5", null, "c74"]);
+  assert.equal(dup.length, 31);
+  assert.equal(dup.filter((r) => r.id === "c5").length, 1);
+  assert.deepEqual(pageReplies(xs, false, 30, ["c74"]).map((r) => r.id), ["c0", "c1"], "收起态不露出 pin");
+});
+
+t("H3 pageReplies：脏入参兜底（null/非数组/shown 非法）", () => {
+  assert.deepEqual(pageReplies(null), []);
+  assert.deepEqual(pageReplies("x", true), []);
+  const xs = [{ id: "a" }, null, { id: "b" }];
+  assert.equal(pageReplies(xs, true, NaN).length, 3);
+  assert.equal(pageReplies(xs, true, -5).length, 3);
+  assert.equal(pageReplies(xs, true, 1, ["b", "missing"]).length, 2);
 });
 
 out.push("");

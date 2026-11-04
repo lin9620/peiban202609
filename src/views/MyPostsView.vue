@@ -7,9 +7,10 @@ import { NButton, NAvatar } from "naive-ui";
 import { t, i18n } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
 import { cloudFetchUserPosts } from "../utils/wall.js";
-import { cacheKey, swr } from "../utils/cache.js";
+import { cacheKey, cachePatch, cacheSet, swr } from "../utils/cache.js";
 import { avatarUrlFor } from "../utils/avatar.js";   /* 轮 238:萌宠头像池 */
 import { setPostNav } from "../utils/postNav.js";    /* 轮 279:进详情前存列表快照,左右滑用 */
+import { onPostReaction, patchPostList } from "../utils/postReactionSync.js";
 
 /* 轮 286:帖子时间接上统一的格式化函数 —— 此前这里是个裸 toLocaleDateString(),
  * 只出「2026/10/14」,连时分都没有。
@@ -89,7 +90,17 @@ watch(uid, () => { offset = 0; done.value = false; rows.value = []; load(false);
 /* 触底自动续载（IntersectionObserver，与暖心墙同款） */
 const sentEl = ref(null);
 let io = null;
+let stopPostReactionSync = null;
 onMounted(() => {
+  /* 轮 372：详情页改回应 → 本页若还在（返回瞬间）立刻同步；缓存也一并回写，
+   * 避免「我的帖子 0 / 详情 2」，或返回后先闪一下 0 再等网络。 */
+  stopPostReactionSync = onPostReaction((id, patch) => {
+    const u = uid.value;
+    if (!u) return;
+    const next = patchPostList(rows.value, id, patch);
+    if (next !== rows.value) rows.value = next;
+    cachePatch(cacheKey("myposts", u), (list) => patchPostList(list, id, patch));
+  });
   if (typeof IntersectionObserver === "undefined") return;
   io = new IntersectionObserver((es) => {
     for (const e of es) if (e.isIntersecting) load(true);
@@ -102,7 +113,11 @@ watch(rows, async () => {
   await nextTick();
   if (sentEl.value) { io.unobserve(sentEl.value); io.observe(sentEl.value); }
 });
-onBeforeUnmount(() => { if (io) io.disconnect(); });
+onBeforeUnmount(() => {
+  if (io) io.disconnect();
+  if (stopPostReactionSync) stopPostReactionSync();
+  stopPostReactionSync = null;
+});
 
 /* 原生下拉刷新（手机端 6 同款）：touchstart 在顶部下拉 → 松手刷新 */
 let pullStart = 0, pulling = false;
@@ -127,6 +142,7 @@ function openWall(p) {
   /* 轮 19：独立详情页（完整帖子 + 评论展开），不再跳回暖心墙信息流 */
   if (p.dbId == null) return;
   setPostNav(rows.value);   /* 轮 279：我的帖子列表快照,详情页左右滑用 */
+  cacheSet(cacheKey("wall:post", p.dbId), p);   /* 轮 372：详情 0ms 先渲染正确回应数 */
   router.push({ path: `/post/${p.dbId}` });
 }
 </script>

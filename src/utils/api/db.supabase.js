@@ -20,7 +20,9 @@ import { getClient } from "../supabase.js";
 /* 轮 285：删评论改软删 —— 老库没跑迁移时认出「函数还没建」再退回硬删（不把没跑迁移当删除失败） */
 import { isMissingFnError } from "../authRules.js";
 /* 轮 302：批量记浏览的整形与校验（纯函数，与网关实现共用同一份口径） */
-import { wallViewIds, normalizeWallAddViews } from "../wallRules.js";
+/* 轮 302：批量记浏览的整形与校验（纯函数，与直连实现共用同一份口径）
+ * 轮 333：帖级回应的服务端原子写入 —— 归一化口径也共用同一份（直连/网关两套实现） */
+import { wallViewIds, normalizeWallAddViews, normalizeSetReaction } from "../wallRules.js";
 
 /** 表名集中在此：换库时只改这里的映射 */
 const T = {
@@ -77,6 +79,21 @@ let statusCountsRpc = null;
 /** wall_add_views（轮 302 批量记浏览）是否已确认可用（null = 还没试过）。同上：只试一次 ——
  *  迁移没跑时每趟都先白试一趟，反而比逐帖链路还多一个上游往返。 */
 let wallAddViewsRpc = null;
+
+/** wall_set_reaction（轮 333 · 帖级回应原子写入）是否已确认可用（null = 还没试过）。
+ *  同上：只试一次 —— 迁移没跑时若每趟都先白试一趟，比旧链路还多一个上游往返。
+ *  注意：与 statusCountsRpc 不同，这里「确认不可用」只影响**写**路径；
+ *  读路径（feed 聚合）不受影响，不需要回退。 */
+let wallSetReactionRpc = null;
+
+/** 单测重置「RPC 只试一次」的探测状态（tools/api-contract-test.mjs）。
+ *  探测是 sticky 的（确认不可用后本会话不再试），单测要反复切换「有迁移 / 没迁移」两种库，
+ *  必须能把它拨回「还没试过」。生产代码不要调用。 */
+export function __resetRpcProbes() {
+  statusCountsRpc = null;
+  wallAddViewsRpc = null;
+  wallSetReactionRpc = null;
+}
 
 /** RPC 行 → 老契约 [{status, count}]，四行、按 STATUS_ORDER 排。
  *  缺行/多行/重复/脏值一律上抛 —— 宁可这一格整格不显示，也不能补 0
@@ -355,8 +372,39 @@ export const db = {
     return unwrap(sb().from(T.reactions).insert(row));
   },
 
+  /* 轮 333：幂等插入（等价 SQL 的 on conflict do nothing）。
+     重复插入同一 (post_id,user_id,kind) 不报错 —— 「确保存在」天然幂等，
+     迁移没跑时用它替代「先查再写」，顺手消掉「查询失败被当成没点过」那个静默不一致。
+     ⚠ on_conflict 要写全主键列，PostgREST 才能定位唯一约束。 */
+  upsertReaction(row) {
+    return unwrap(
+      sb().from(T.reactions)
+        .upsert(row, { onConflict: "post_id,user_id,kind", ignoreDuplicates: true }),
+    );
+  },
+
   deleteReaction({ postId, userId, kind }) {
     return unwrap(sb().from(T.reactions).delete().eq("post_id", postId).eq("user_id", userId).eq("kind", kind));
+  },
+
+  /* 轮 333：帖级回应改成服务端原子写入（RPC wall_set_reaction）。
+     旧链路是「先查再写」（findReaction → insert/delete）—— 查与写之间有时间窗，
+     且查询失败会被上层当成「没点过」（见 wall.js cloudSetReaction）→ 取消回应可能没删掉。
+     RPC 把「确保存在 / 确保不存在」收成一条语句，顺带省掉一次往返。
+     迁移没跑时退回旧链路（只试一次，不每趟白试）。 */
+  async setReaction(postId, kind, on) {
+    if (wallSetReactionRpc !== false) {
+      try {
+        const out = await unwrap(sb().rpc("wall_set_reaction", { p_post: postId, p_kind: kind, p_on: !!on }));
+        wallSetReactionRpc = true;
+        return normalizeSetReaction(out);
+      } catch (e) {
+        if (!isMissingFnError(e && e.message, e && e.code)) throw e;
+        wallSetReactionRpc = false;   /* 本次及本会话此后都走旧链路，不再每趟白试一次往返 */
+        return null;   /* null = RPC 不可用，调用方走自己的回退（wall.js 需要 uid 才能回退） */
+      }
+    }
+    return null;   /* RPC 不可用（已确认），调用方走回退 */
   },
 
   /* ══════════ 轮 84 · 评论回应（👍心 / 💔碎心） ══════════ */
@@ -483,6 +531,11 @@ export const db = {
       { p_id: id, p_title: title, p_body: body, p_tags: tags || [] }));
   },
 
+  /** 删除草稿（服务端只允许作者删 status=draft；已发布不在此接口） */
+  storyDeleteDraft(id) {
+    return unwrap(sb().rpc("story_delete_draft", { p_id: id }));
+  },
+
   /** 发布（校验不过抛 story-bad-* 错误码，前端用 storyErrKey 归类） */
   storyPublish(id, title, body, tags) {
     return unwrap(sb().rpc("story_publish",
@@ -556,6 +609,46 @@ export const db = {
   /** 设/撤每日精选（仅管理员） */
   storySetFeatured(id, on) {
     return unwrap(sb().rpc("story_set_featured", { p_id: id, p_on: !!on }));
+  },
+
+  /* ══════════ 故事栏批 3（轮 321：幂等「设置」语义 + marked 初态）══════════ */
+  /* 批 3 迁移没跑时（RPC 不存在）不能直接把页面搞挂 —— 这里抛一个可识别的错误
+     「story-set-like-missing」，由上层用旧的翻转 RPC 兜底（逻辑与 story.js/视图层同源）。
+     网关模式不用管：Worker 的 /story/like-set 内部已经做了同样的降级。 */
+
+  /** 赞：设成目标态（幂等）。返回 { ok, count } —— count 为服务端权威赞数（拿不到则 null） */
+  async storySetLike(id, on) {
+    try {
+      const n = await unwrap(sb().rpc("story_set_like", { p_id: id, p_on: !!on }));
+      return { ok: true, count: Number(n) || 0 };
+    } catch (e) {
+      if (isMissingFnError(e?.message, e?.code)) throw new Error("story-set-like-missing");
+      throw e;
+    }
+  },
+
+  /** 收藏：设成目标态（幂等）。返回 { ok, count } */
+  async storySetBookmark(id, on) {
+    try {
+      const n = await unwrap(sb().rpc("story_set_bookmark", { p_id: id, p_on: !!on }));
+      return { ok: true, count: Number(n) || 0 };
+    } catch (e) {
+      if (isMissingFnError(e?.message, e?.code)) throw new Error("story-set-bookmark-missing");
+      throw e;
+    }
+  },
+
+  /** 我赞了/收藏了哪些（批量一次往返）：[{ story_id, liked, marked }] */
+  async storyMyFlags(ids) {
+    const list = (ids || []).map((x) => Number(x)).filter((x) => Number.isFinite(x));
+    if (!list.length) return [];
+    try {
+      const data = await unwrap(sb().rpc("story_my_flags", { p_ids: list }));
+      return data || [];
+    } catch (e) {
+      if (!isMissingFnError(e?.message, e?.code)) throw e;
+      return null;   /* 批 3 没跑：调用方按「拿不到初态」处理（不影响点赞/收藏） */
+    }
   },
 
   /** 我的数据面板（单行汇总） */
@@ -649,10 +742,11 @@ export const db = {
   },
 
   /** 举报/复核队列（status: pending|handled；items 带正文与聚合人数） */
-  adminReportPage(status, offset, limit) {
-    return unwrap(sb().rpc("admin_report_page", {
-      p_status: status, p_offset: offset, p_limit: limit,
-    }));
+  adminReportPage(status, offset, limit, targetType = "") {
+    const args = { p_status: status, p_offset: offset, p_limit: limit };
+    /* 只有分类筛选才带 p_target_type；回退到旧三参 RPC 时不能多发未知参数。 */
+    if (targetType) args.p_target_type = targetType;
+    return unwrap(sb().rpc("admin_report_page", args));
   },
 
   /** 处理一条举报/复核（action: dismiss|remove_post|restore_post|delete_comment|unhide_comment） */

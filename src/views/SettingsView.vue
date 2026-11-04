@@ -4,18 +4,21 @@
 <script setup>
 import { ref, computed, onMounted, watch } from "vue";
 import { useRouter } from "vue-router";
-import { NInput } from "naive-ui";
+import { NInput, NAvatar } from "naive-ui";
 import { t, i18n } from "../i18n.js";
 import { cloud, cloudUpdateNickname, cloudChangePassword, cloudDeleteAccount } from "../utils/supabase.js";
 import { NICK_MAX, MIN_PASSWORD, passwordProblem } from "../utils/authRules.js";
 import * as notifyApi from "../utils/notify.js";
 import { normPrefs } from "../utils/notifyRules.js";
+import { createTapGuard } from "../utils/tapGuard.js";
 import { avatarUrlFor } from "../utils/avatar.js";   /* 轮 238:萌宠头像池 */
 import {
   themeKey, themeOptions, applyTheme,
   langOptions, onLangPick, isMobileNav, isApp,
 } from "../stores/uiStore.js";
 import { getItem } from "../utils/storage.js";
+import * as dmApi from "../utils/dm.js";
+import { unblockUser } from "../utils/userBlocks.js";
 /* 轮 297 · 版本与检查更新 */
 import { currentVersion, checkForUpdate } from "../utils/appVersion.js";
 import UpdateDialog from "../components/UpdateDialog.vue";
@@ -75,6 +78,35 @@ async function checkUpdates() {
 const open = ref({});
 function toggleRow(k) { open.value = { ...open.value, [k]: !open.value[k] }; }
 const isOpen = (k) => !!open.value[k];
+
+/* 轮405 · 已拉黑从消息列表移到设置「账号」下方。
+ * 名单仍来自 dm_blocks；解除拉黑走 userBlocks 包装，暖心墙内容过滤缓存同步恢复。 */
+const blockedRows = ref([]);
+const blockedBusy = ref("");
+const blockedLoading = ref(false);
+async function loadBlocked() {
+  if (blockedLoading.value) return;
+  blockedLoading.value = true;
+  try { blockedRows.value = (await dmApi.blocks()) || []; }
+  catch (e) { blockedRows.value = []; }
+  finally { blockedLoading.value = false; }
+}
+async function unblockOne(b) {
+  blockedBusy.value = b.user_id;
+  const idx = blockedRows.value.findIndex((x) => x.user_id === b.user_id);
+  const removed = idx >= 0 ? blockedRows.value.splice(idx, 1)[0] : null;
+  try {
+    await unblockUser(b.user_id);
+  } catch (e) {
+    if (removed) blockedRows.value.splice(Math.min(idx, blockedRows.value.length), 0, removed);
+  } finally {
+    blockedBusy.value = "";
+  }
+}
+function toggleBlocked() {
+  toggleRow("blocked");
+  if (isOpen("blocked")) loadBlocked();
+}
 
 /* 当前选中值（行右侧展示） */
 const themeName = computed(() => {
@@ -167,29 +199,51 @@ const PREFS = [
 const prefs = ref({ comments: true, reactions: true, pets: true, dms: true });
 const prefsBusy = ref(false);
 const prefsMsg = ref("");
+/* 用户拍板 A：通知偏好也是开关型，同一颗 350ms 内第二下直接丢弃（不重复写库）。 */
+const tapGuard = createTapGuard(350);
 const masterOn = computed(() => PREFS.some((x) => prefs.value[x.key]));
+let prefsSeq = 0;
 
 async function loadPrefs() {
   if (!cloudSigned.value) return;
+  /* 首屏拉取可能比用户手速慢：如果这次请求发出后用户已经点了开关
+     （prefsSeq 变了），旧回包不能再把新状态盖回去，否则开关会「自己跳回来」。 */
+  const seq = prefsSeq;
   try {
-    prefs.value = normPrefs(await notifyApi.prefsGet());
+    const loaded = await notifyApi.prefsGet();
+    if (seq === prefsSeq) prefs.value = normPrefs(loaded);
   } catch (e) { /* 缺行 = 全开，normPrefs 已兜底 */ }
 }
 
 async function savePrefs(next) {
+  /* 先乐观翻开关，再写库：App 弱网下点一下要等一次 RPC 才动，会被当成「开关坏了」。
+   * 失败回滚到最后一次已接受的状态；用序号防止连续点两个开关时旧请求
+   * 失败/晚到把新状态盖回去。 */
+  const seq = ++prefsSeq;
+  const prev = prefs.value;
+  const clean = normPrefs(next);
+  prefs.value = clean;
   prefsBusy.value = true;
   prefsMsg.value = "";
   try {
-    await notifyApi.prefsSet(next);
-    prefs.value = normPrefs(next);
-    prefsMsg.value = "notif.prefsSaved";
+    await notifyApi.prefsSet(clean);
+    if (seq === prefsSeq) {
+      prefs.value = clean;
+      prefsMsg.value = "notif.prefsSaved";
+    }
   } catch (e) {
-    prefsMsg.value = "notif.loadFail";
-  } finally { prefsBusy.value = false; }
+    if (seq === prefsSeq) {
+      prefs.value = prev;
+      prefsMsg.value = "notif.loadFail";
+    }
+  } finally {
+    if (seq === prefsSeq) prefsBusy.value = false;
+  }
 }
 
 /* 总开关：关 = 全关（服务器不再投递任何通知）；开 = 全开（回到默认收齐） */
 function toggleMaster() {
+  if (!tapGuard.accept("settings:notify:master")) return;
   if (masterOn.value) {
     savePrefs({ comments: false, reactions: false, pets: false });
   } else {
@@ -197,6 +251,7 @@ function toggleMaster() {
   }
 }
 function togglePref(key) {
+  if (!tapGuard.accept(`settings:notify:${key}`)) return;
   const next = { ...prefs.value, [key]: !prefs.value[key] };
   savePrefs(next);
 }
@@ -322,6 +377,31 @@ onMounted(() => { loadPrefs(); });
         <span class="set-val"></span>
         <span class="set-arrow on">&#8250;</span>
       </div>
+
+      <!-- 轮405：已拉黑名单从消息列表迁到「账号」下方，点行展开 -->
+      <template v-if="cloudSigned">
+        <div class="set-row" :class="{ open: isOpen('blocked') }" @click="toggleBlocked">
+          <span class="set-ico" aria-hidden="true">&#128683;</span>
+          <span class="set-label">{{ t("dm.blockedTitle") }}</span>
+          <span class="set-val set-mini">{{ blockedRows.length || "" }}</span>
+          <span class="set-arrow" :class="{ on: isOpen('blocked') }">&#9662;</span>
+        </div>
+        <div v-if="isOpen('blocked')" class="set-panel set-blocked-panel">
+          <p v-if="!isMobileNav" class="sub">{{ t("dm.blockedHint") }}</p>
+          <p v-if="blockedLoading" class="sub">…</p>
+          <p v-else-if="!blockedRows.length" class="sub">{{ t("dm.blockedEmpty") }}</p>
+          <div v-for="b in blockedRows" :key="b.user_id" class="set-blocked-row">
+            <n-avatar round :size="30" :src="avatarUrlFor(b.user_id) || undefined">
+              <template v-if="!avatarUrlFor(b.user_id)" #default>{{ (b.nickname || "?").slice(0, 1).toUpperCase() }}</template>
+              <template v-else #fallback>{{ (b.nickname || "?").slice(0, 1).toUpperCase() }}</template>
+            </n-avatar>
+            <b class="set-blocked-name">{{ b.nickname || t("dm.someone") }}</b>
+            <button class="set-opt" :disabled="blockedBusy === b.user_id" @click.stop="unblockOne(b)">
+              {{ t("dm.blockedGo") }}
+            </button>
+          </div>
+        </div>
+      </template>
     </section>
 
     <!-- 通知：总开关 + 三类偏好（#23 私信已退出通知中心，无开关） -->
@@ -479,6 +559,13 @@ onMounted(() => { loadPrefs(); });
 /* 展开面板 */
 .set-panel { padding: 2px 16px 12px 56px; display: flex; flex-direction: column; gap: 8px; }
 .set-panel .set-opts { margin-top: 0; }
+.set-blocked-panel .sub { margin-bottom: 0; }
+.set-blocked-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.set-blocked-name {
+  flex: 1; min-width: 0; font-size: 13.5px; font-weight: 500;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.set-blocked-row .set-opt { flex: none; }
 .set-hint { padding: 0 16px 4px 56px; }
 
 /* 开关 */

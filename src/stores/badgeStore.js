@@ -12,10 +12,12 @@ import { getItem, setItem, removeItem } from "../utils/storage.js";
 import { cloud } from "../utils/supabase.js";
 import { unreadTotalSafe } from "../utils/dm.js";
 import { unreadSafe } from "../utils/notify.js";
+import { bottleRecords, bottlePendingCount } from "../utils/bottle.js";
 
 export const badge = reactive({
   dm: 0,        // 私信未读（不含消息请求）
   requests: 0,  // 待处理的消息请求
+  bottle: 0,    // 漂流瓶「我发布的」里等我同意/拒绝聊天（轮 371：底部消息 Tab 也要亮）
   dmConvs: {},  // 轮 268：行级未读 {conv_id: unread}——badge 请求捎带的明细，
                 // 让会话列表行红点与顶/底角标同时出现（MIGRATION_dm_unread_convs.sql 跑过才有）
   notif: 0,     // 通知未读（total）
@@ -63,7 +65,7 @@ function writeBadgeCache() {
   if (!key) return;
   try {
     setItem(key, JSON.stringify({
-      dm: badge.dm, requests: badge.requests, notif: badge.notif,
+      dm: badge.dm, requests: badge.requests, bottle: badge.bottle, notif: badge.notif,
       comments: badge.comments, reactions: badge.reactions,
       pets: badge.pets, system: badge.system,
       dmConvs: badge.dmConvs,
@@ -75,12 +77,13 @@ function writeBadgeCache() {
 function hydrateBadge(uid) {
   cacheUid = uid || "";
   const key = badgeCacheKey(cacheUid);
-  const zero = { dm: 0, requests: 0, notif: 0, comments: 0, reactions: 0, pets: 0, system: 0 };
+  const zero = { dm: 0, requests: 0, bottle: 0, notif: 0, comments: 0, reactions: 0, pets: 0, system: 0 };
   let raw = null;
   try { raw = key ? JSON.parse(getItem(key)) : null; } catch (e) { raw = null; }
   const src = raw && typeof raw === "object" ? raw : zero;
   badge.dm = Math.max(0, src.dm || 0);
   badge.requests = Math.max(0, src.requests || 0);
+  badge.bottle = Math.max(0, src.bottle || 0);
   badge.dmConvs = normDmConvs(src.dmConvs);   /* 轮 268：行级映射也随缓存秒恢复 */
   badge.notif = Math.max(0, src.notif || 0);
   badge.comments = Math.max(0, src.comments || 0);
@@ -108,6 +111,27 @@ function apply(dm, notif) {
   /* 写入缓存：只是几个数字 + conv_id→数字映射（无隐私内容），下次冷启动当首屏兜底；
    * 按 uid 分开存，换账号不会把上一个人的角标带出来；登出时 stopBadge 会清掉。 */
   writeBadgeCache();
+}
+
+/* 轮 371 · 漂流瓶待决定角标：底部「消息」Tab / 桌面顶栏也要亮。
+ * 口径与 MessagesView 的「我发布的」红点完全一致（bottlePendingCount）；
+ * 只取一次最多 200 条，失败静默保留上次值，不影响私信/通知角标。 */
+export async function refreshBottleBadge() {
+  const uid = (cloud.user && cloud.user.id) || "";
+  if (!uid) {
+    badge.bottle = 0;
+    writeBadgeCache();
+    return 0;
+  }
+  try {
+    const rows = await bottleRecords(null, 0, { mine: true, limit: 200 });
+    if (!cloud.user || cloud.user.id !== uid) return badge.bottle;
+    badge.bottle = bottlePendingCount(Array.isArray(rows) ? rows : [], uid);
+    writeBadgeCache();
+    return badge.bottle;
+  } catch (e) {
+    return badge.bottle;
+  }
 }
 
 /* 刷一次（页面回前台 / 发消息后 / 读通知后都可手动触发）。返回是否成功（供退避用）。
@@ -188,6 +212,7 @@ export function startBadge() {
   if (uid !== cacheUid) hydrateBadge(uid);
   if (timer) return;
   refreshBadge();
+  refreshBottleBadge();   /* 轮 371：冷启动就把漂流瓶待决定红点挂到「消息」Tab */
   schedule();
   if (typeof document !== "undefined") {
     document.addEventListener("visibilitychange", onVisible);
@@ -200,7 +225,7 @@ export function stopBadge() {
   if (typeof document !== "undefined") {
     document.removeEventListener("visibilitychange", onVisible);
   }
-  badge.dm = 0; badge.requests = 0; badge.notif = 0;
+  badge.dm = 0; badge.requests = 0; badge.bottle = 0; badge.notif = 0;
   badge.dmConvs = {};   /* 轮 268：登出行级映射一并清零（缓存随后整键删除） */
   badge.comments = 0; badge.reactions = 0; badge.pets = 0; badge.system = 0;
   /* 登出：只清掉这位用户的角标缓存 —— 换账号登录时，新 uid 读的是它自己的那份，
@@ -211,5 +236,8 @@ export function stopBadge() {
 }
 
 function onVisible() {
-  if (typeof document !== "undefined" && !document.hidden) refreshBadge();
+  if (typeof document !== "undefined" && !document.hidden) {
+    refreshBadge();
+    refreshBottleBadge();   /* 回前台补一次：新回信/新待决定别等进消息页才亮 */
+  }
 }

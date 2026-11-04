@@ -439,7 +439,8 @@ function appVersion() {
 export default defineConfig({
   plugins: [vue({
     /* 轮 188：emoji-picker-element 是 Web Component（自定义元素），别让 Vue 当组件解析 */
-    template: { compilerOptions: { isCustomElement: (tag) => tag === "emoji-picker" } },
+    /* 轮 326：vue-advanced-chat 也是自定义元素（会话页原型 /proto-chat.html 用） */
+    template: { compilerOptions: { isCustomElement: (tag) => tag === "emoji-picker" || tag === "vue-advanced-chat" } },
   }), seoSitemap(), seoRoutes(), envGuard(), appVersion()],
   server: {
     port: 5173,
@@ -453,6 +454,12 @@ export default defineConfig({
   build: {
     chunkSizeWarningLimit: 900,
     rollupOptions: {
+      /* 轮 326：多一个独立入口 proto-chat.html（会话组件原型）。
+       * 它是评估用的试验页，不参与 App 路由；定案后会连同 src/proto/ 一起删。 */
+      input: {
+        main: path.resolve(rootDir, "index.html"),
+        proto: path.resolve(rootDir, "proto-chat.html"),
+      },
       output: {
         /* 第三方库分包：利于浏览器缓存，避免单文件过大 */
         manualChunks: {

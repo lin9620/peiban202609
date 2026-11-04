@@ -5,7 +5,7 @@
  * 运行：node tools/admin-test.mjs
  */
 import {
-  fmtNum, fmtBytes, clip, dailySeries, barHeights, sumReactions, dayOf, dayTimeOf,
+  fmtNum, fmtBytes, clip, dailySeries, barHeights, sumReactions, dayOf, dayTimeOf, ratePct,
 } from "../src/utils/admin.js";
 
 let pass = 0;
@@ -40,6 +40,15 @@ eq("clip 短文本原样", clip("hello", 10), "hello");
 eq("clip 长文本截断", clip("abcdef", 5), "abcd…");
 eq("clip 非字符串 → 空串", clip(null, 5), "");
 eq("clip n=0 → 只剩省略号", clip("abc", 0), "…");
+
+/* ratePct：24h 登录率（0~100 整数；脏值不吹牛） */
+eq("ratePct 3/10", ratePct(3, 10), 30);
+eq("ratePct 四舍五入", ratePct(2, 3), 67);
+eq("ratePct 0 人登录", ratePct(0, 10), 0);
+eq("ratePct 总数为 0", ratePct(3, 0), 0);
+eq("ratePct 脏值", ratePct("x", 10), 0);
+eq("ratePct 负数", ratePct(-1, 10), 0);
+eq("ratePct 超过总数压回 100", ratePct(12, 10), 100);
 
 /* dailySeries：固定 14 天、缺行补零、脏行兜底 */
 const ds = dailySeries([

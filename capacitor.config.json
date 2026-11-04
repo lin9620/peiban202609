@@ -4,10 +4,15 @@
   "webDir": "dist",
   "android": {
     "allowMixedContent": false,
-    "backgroundColor": "#fff7ee",
+    "backgroundColor": "#faf9f5",
     "appendUserAgent": "WarmPawsApp"
   },
   "server": {
     "androidScheme": "https"
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "disable"
+    }
   }
 }

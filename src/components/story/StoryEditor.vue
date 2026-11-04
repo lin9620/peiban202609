@@ -234,7 +234,7 @@ onBeforeUnmount(() => {
 
     <footer class="st-ed-foot">
       <span class="st-count" :class="{ 'st-count--over': over }">
-        {{ t("story.counter", { n: chars, max: BODY_MAX, min: minutes }) }}
+        {{ over ? t("story.counterOver", { n: chars, max: BODY_MAX }) : t("story.counter", { n: chars, min: minutes }) }}
       </span>
       <span class="st-hint">
         <template v-if="saving">{{ t("story.saving") }}</template>

@@ -16,7 +16,8 @@ import {
   TITLE_MAX, BODY_MAX, BODY_MIN, TAGS_MAX, TAG_MAX, READ_CHARS_PER_MIN,
   SORT_MODES, DEFAULT_MODE, RANK_TABS,
   countChars, readMinutes, normalizeTags, validatePublish,
-  periodKey, periodKeyWeek, renderLiteMd, storyErrKey,
+  periodKey, periodKeyWeek, renderLiteMd, storyErrKey, paraIndent,
+  applyStoryToggle, flipStoryToggle,
 } from "../src/utils/storyRules.js";
 import { setStorySeed, takeStorySeed, peekStorySeed } from "../src/utils/storySeed.js";
 
@@ -30,6 +31,7 @@ const read = (p) => fs.readFileSync(p, "utf8");
 const has = (src, ...parts) => parts.every((p) => src.includes(p));
 
 const sql = read("MIGRATION_story.sql");
+const delSql = read("MIGRATION_story_draft_delete.sql");
 const worker = read("worker/api.js");
 const sb = read("src/utils/api/db.supabase.js");
 const gw = read("src/utils/api/db.gateway.js");
@@ -103,8 +105,14 @@ ok("## 变 h2", renderLiteMd("## 小标题").includes("<h2>小标题</h2>"));
 ok("> 变 blockquote", renderLiteMd("> 引用一句").includes("<blockquote>引用一句</blockquote>"));
 ok("--- 变 hr", renderLiteMd("---").includes("<hr>"));
 ok("**粗体** 变 strong", renderLiteMd("**暖**").includes("<strong>暖</strong>"));
-ok("普通段落包 p", renderLiteMd("一句话").startsWith("<p>"));
+ok("普通段落包 p", renderLiteMd("一句话").startsWith("<p"));
 ok("属性注入被转义", renderLiteMd('" onmouseover="x').includes("&quot;"));
+/* ── 中文段落首行自动缩进 2em（英文段落不缩进：西文排版惯例） ── */
+ok("中文段落挂 data-indent", renderLiteMd("陈渡接手灯塔那年").includes('<p data-indent="1">'));
+ok("英文段落不挂 data-indent", renderLiteMd("On his last week.").startsWith("<p>On"));
+ok("paraIndent 中英分流", paraIndent("山里的春天") === "1" && paraIndent("The night train") === "");
+ok("缩进样式接上 data-indent", read("src/style.css").includes('.st-read-body > p[data-indent="1"]')
+  && read("src/style.css").includes("text-indent: 2em"));
 
 /* ───────── 错误码归类 ───────── */
 ok("story-bad-title → errTitle", storyErrKey(new Error("story-bad-title")) === "story.errTitle");
@@ -220,17 +228,20 @@ ok("whyDisabled 取 blockers 首条（按钮 title 仍用第一条）",
 ok("清单文案中英成对", !!(messages.en.story.whyTitle && messages.zh.story.whyTitle
   && messages.en.story.readyToPublish && messages.zh.story.readyToPublish));
 ok("清单卡片有样式", css.includes(".st-why-list") && css.includes(".st-why--ok"));
-// 投稿入口统一到底部 ＋ 第三瓣；纯阅读页里不再放发布按钮。
+// 轮392：手机端投稿入口仍统一在底部 ＋ 第三瓣；桌面故事页顶栏单独恢复「写故事」。
 ok("底部 ＋ 有第三瓣「写故事」→ /story/write",
   tabBar.includes("composeStory") && tabBar.includes('router.push("/story/write")')
   && tabBar.includes('t("tab.composeStory")'));
 ok("投稿词条中英成对", !!(messages.en.tab.composeStory && messages.zh.tab.composeStory
   && messages.en.tab.composeStorySub && messages.zh.tab.composeStorySub));
+ok("桌面「写故事」按钮词条中英成对", !!(messages.en.story.writeStory && messages.zh.story.writeStory));
 // 只查模板区（<template> 之后），注释里提到 /story/write 不算
 const tpl = (s) => s.slice(s.indexOf("<template>"));
-ok("故事页不再直接给「写故事」按钮（纯阅读）",
-  !tpl(viewVue).includes("/story/write") && !tpl(viewVue).includes("story.writeStory"));
-ok("我的页也不给「写故事」按钮",
+ok("桌面故事页顶栏恢复「写故事」按钮 → /story/write",
+  tpl(viewVue).includes("/story/write") && tpl(viewVue).includes('t("story.writeStory")'));
+ok("「写故事」排在排行榜之前（对齐用户截图位置）",
+  tpl(viewVue).indexOf("story.writeStory") < tpl(viewVue).indexOf("story.tabRank"));
+ok("我的页不重复给「写故事」按钮",
   !tpl(mineView).includes("/story/write") && !tpl(mineView).includes("story.writeStory"));
 ok("首页故事联尾不再重复给「写故事」", !homeVue.includes('t("story.writeStory")'));
 ok("发现页不再直接嵌编辑器（投稿已独立成页）", !viewVue.includes("StoryEditor"));
@@ -251,14 +262,15 @@ ok("StoryShell 渲染四联频道条并复用 panes.js 手势判定",
   && shellVue.includes("swipeDir") && shellVue.includes('query: { tab: k }'));
 ok("StoryShell 子页(mine/rank)归到故事联高亮，不是第五联",
   shellVue.includes('"mine"') && shellVue.includes('"rank"') && shellVue.includes('"story"'));
-// 投稿入口只在底部 ＋ 第三瓣，故事页与首页联内都不得再放。
+// 轮392：投稿入口 = 手机底部 ＋ 第三瓣 + 桌面故事页顶栏；首页联内仍不得重复。
 // 注意：只查「代码」不查注释 —— 两个文件的注释里都写了「投稿入口搬到底部 ＋ 第三瓣」这句话，
 // 直接 includes 会把注释当命中，断言永远绿/永远红都没意义。
 const codeOnly = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/<!--[\s\S]*?-->/g, "").split(/\r?\n/)
   .filter((l) => !/^\s*(\/\/|\*|<!--)/.test(l)).join("\n");
-ok("投稿入口只在底部 ＋ 第三瓣",
+ok("投稿入口 = 底部 ＋ 第三瓣 + 桌面故事页顶栏",
   tabBar.includes("composeStory") && tabBar.includes("composeStorySub")
-  && !codeOnly(viewVue).includes("/story/write")
+  && codeOnly(viewVue).includes("/story/write")
+  && codeOnly(viewVue).includes("story.writeStory")
   && !codeOnly(homeVue).includes("/story/write"));
 ok("首页故事联尾不再挂按钮（避免第三处重复入口）", !homeVue.includes("home-pane-foot"));
 // 回退不再用 router.push('/story')：mine/rank 的顶部操作条改走 storyBack（与物理返回键同一入口），
@@ -327,7 +339,7 @@ ok("详情页点赞/收藏为 ghost 开关按钮（未操作不亮）",
   && css.includes(".st-btn--on:hover { background: var(--accent-deep); color: #fff; }"));
 // 操作条要有间距，否则糊成色斑时两个按钮视觉上粘成一块
 ok("阅读页操作条有间距（点赞/收藏不粘连）", /\.st-read-foot\s*\{[^}]*gap:\s*1\dpx/.test(css));
-ok("阅读页：点赞 + 相关推荐 + 浏览计数", has(detailVue, "storyToggleLike", "storyAddView", "story.related"));
+ok("阅读页：点赞 + 相关推荐 + 浏览计数", has(detailVue, "storySetLike", "storyAddView", "story.related"));
 ok("全屏写作可续写草稿", has(writeVue, "route.query.id", "storyGet", "full"));
 
 /* ───────── 批 2：错误码归类 ───────── */
@@ -435,9 +447,206 @@ ok("i18n：needMore/errShort/minbar 中英成对",
     !/@click="router\.push\(`\/story\//.test(feedVue) && !/@click="open\(r\.id\)"/.test(rankVue));
   ok("轮313 种子工具只挑详情页认识的字段（白名单，不整个对象照搬）",
     /FIELDS\s*=\s*\[/.test(seedSrc) && seedSrc.includes('"view_count"') && !seedSrc.includes('"body"'));
+  /* ── 轮 320b：列表底部分页按钮文案（用户实测：顶着"阅读"的名字干"加载更多"的活） ── */
+  ok("分页按钮用 loadMore/loadingMore，不再借 openStory/saving",
+    feedVue.includes('t("story.loadMore")') && feedVue.includes('t("story.loadingMore")')
+    /* 反向锁只看模板段：脚本里的 openStory() 是合法的「点卡片进详情」 */
+    && !/t\(["']story\.openStory["']\)/.test(feedVue)
+    && !/t\(["']story\.saving["']\)/.test(feedVue));
+  ok("story.loadMore/loadingMore 中英成对",
+    messages.zh.story.loadMore === "加载更多" && messages.zh.story.loadingMore === "加载中…"
+    && messages.en.story.loadMore === "Load more" && messages.en.story.loadingMore === "Loading more…");
+  /* 轮396：用户实测「加载更多点了没反应」——旧逻辑先 offset+12，再靠 rows/offset 算按钮；
+   * 请求没回来时按钮已消失，失败/挂住就永远回不来。改成「成功才推进 offset + hasMore」。 */
+  ok("轮396 加载更多成功才推进 offset，失败保留按钮可重试",
+    feedVue.includes("const hasMore = ref(true)")
+    && feedVue.includes("const more = computed(() => rows.value.length > 0 && hasMore.value)")
+    && !feedVue.includes("rows.value.length >= offset.value + PAGE")
+    && feedVue.includes("offset.value += list.length")
+    && feedVue.includes("hasMore.value = list.length >= PAGE")
+    && feedVue.includes("if (loading.value || !hasMore.value) return;")
+    && feedVue.includes("load({ append: true })")
+    && feedVue.includes("withTimeout")
+    && feedVue.includes('t("story.noMore")')
+    && messages.zh.story.noMore === "没有更多了"
+    && messages.en.story.noMore === "No more stories");
+  /* 全局反向锁：「阅读」(story.openStory) 只允许出现在「我的故事」行尾（点已发布故事→进详情），
+     任何别的按钮再借这个键＝又顶着「阅读」的名字干别的活（本轮就是这么翻车的）。 */
+  {
+    const storyViews = ["src/components/story/StoryFeed.vue", "src/components/story/StoryRank.vue",
+      "src/components/story/StoryShell.vue", "src/views/StoryView.vue", "src/views/StoryDetailView.vue",
+      "src/views/StoryRankView.vue", "src/views/StoryMineView.vue", "src/views/StoryWriteView.vue",
+      "src/components/story/StoryEditor.vue", "src/components/story/StoryComments.vue"];
+    const misuses = storyViews.filter((f) => /t\(["']story\.openStory["']\)/.test(read(f)));
+    ok("story.openStory（值=「阅读」）只许出现在「我的故事」页，别处不得借位",
+      misuses.length === 0, misuses.join(","));
+    ok("「我的故事」行尾仍用 openStory（点已发布故事进详情，语义正确）",
+      /t\(["']story\.openStory["']\)/.test(mineVue));
+  }
+
+  /* ───────── 轮 321：故事详情页「点了没反应」+ 评论发送慢 ─────────
+     背景（用户实测）：故事详情页点赞/收藏点了没有即时反馈；
+     评论发出去后还要等一次全量重拉才看得到。根因：
+       ① 旧写法「等服务端 RPC 回来才改 UI」+ 按钮 :disabled → 弱网下像没反应；
+       ② 服务端 story_get 不带 marked → 收藏星永远不亮；
+       ③ 评论发送成功后 await load() 又是一趟跨境往返。
+     这一批钉住：乐观更新 + 幂等「设置」语义 + 失败回滚 + 评论乐观上屏。 */
+  {
+    const sql3 = read("MIGRATION_story_b3.sql");
+    const cmtVue = read("src/components/story/StoryComments.vue");
+    const rulesSrc = read("src/utils/storyRules.js");
+
+    /* 纯函数：幂等设置 —— 目标与当前一致时不动（不发多余请求） */
+    ok("轮321 applyStoryToggle：幂等（已赞再设 true 不重复加计数）",
+      applyStoryToggle({ liked: true, like_count: 3 }, "liked", "like_count", true).like_count === 3);
+    ok("轮321 applyStoryToggle：未赞设 true → 计数 +1",
+      applyStoryToggle({ liked: false, like_count: 3 }, "liked", "like_count", true).like_count === 4);
+    ok("轮321 applyStoryToggle：已赞设 false → 计数 -1",
+      applyStoryToggle({ liked: true, like_count: 3 }, "liked", "like_count", false).like_count === 2);
+    ok("轮321 applyStoryToggle：计数不会变负",
+      applyStoryToggle({ liked: true, like_count: 0 }, "liked", "like_count", false).like_count === 0);
+    ok("轮321 applyStoryToggle：收藏无计数字段（countKey=null）只翻开关",
+      applyStoryToggle({ marked: false }, "marked", null, true).marked === true
+      && applyStoryToggle({ marked: false }, "marked", null, true).like_count === undefined);
+    ok("轮321 flipStoryToggle：乐观翻转（点一下立刻变色）",
+      flipStoryToggle({ liked: false, like_count: 1 }, "liked", "like_count").liked === true
+      && flipStoryToggle({ liked: false, like_count: 1 }, "liked", "like_count").like_count === 2);
+    ok("轮321 applyStoryToggle 不改原对象（纯函数）",
+      (() => { const o = { liked: false, like_count: 1 }; applyStoryToggle(o, "liked", "like_count", true); return o.liked === false; })());
+    ok("轮321 纯函数已落到 storyRules（便于 story-test 直测）",
+      rulesSrc.includes("export function applyStoryToggle") && rulesSrc.includes("export function flipStoryToggle"));
+
+    /* 迁移：幂等「设置」语义的 RPC + story_get 补 marked */
+    ok("轮321 迁移有 story_set_like（幂等设置赞）",
+      sql3.includes("create or replace function public.story_set_like"));
+    ok("轮321 迁移有 story_set_bookmark（幂等设置收藏）",
+      sql3.includes("create or replace function public.story_set_bookmark"));
+    ok("轮321 迁移有 story_my_flags（批量取赞/藏初态）",
+      sql3.includes("create or replace function public.story_my_flags"));
+    ok("轮321 story_get 补了 marked 字段（收藏星要能亮）",
+      /story_get[\s\S]{0,900}marked boolean/.test(sql3) && sql3.includes("as marked"));
+    ok("轮321 幂等 RPC 已授权给 authenticated",
+      sql3.includes("grant execute on function public.story_set_like(bigint, boolean) to authenticated")
+      && sql3.includes("grant execute on function public.story_set_bookmark(bigint, boolean) to authenticated"));
+
+    /* 迁移：story_get 改了返回类型（多一列 marked）→ 必须 drop + create，
+       不能 create or replace（PostgreSQL 报 42P13 cannot change return type）。
+       而且 drop 会把执行权限一起带走，必须重新 grant。 */
+    ok("轮321 story_get 改返回类型必须先 drop 再 create（不能 create or replace）",
+      /drop function if exists public\.story_get\(bigint\);/.test(sql3)
+      && /create function public\.story_get\(p_id bigint\)/.test(sql3)
+      && !/create or replace function public\.story_get/.test(sql3));
+    ok("轮321 drop+create 之后要重新授权 story_get（否则详情页权限被拒）",
+      sql3.includes("grant execute on function public.story_get(bigint) to authenticated, anon"));
+    ok("轮321 迁移仍是整段事务（失败不留半截状态）",
+      /^\s*begin;/m.test(sql3) && /^\s*commit;/m.test(sql3));
+
+    /* ★ plpgsql 的坑：SELECT ... INTO 查不到行时目标变量保持 NULL（不是 false），
+       于是 `if p_on and not had` 求值成 NULL → IF 判假 → 写入分支永不执行，
+       函数却「成功返回」（计数不变、liked 不变）—— 表现就是「点赞点了没反应」。
+       所以批 3 的两个写 RPC 必须用 exists(...)，不能用 select true into had。 */
+    ok("轮321 story_set_like 用 exists 判断现状（不踩 SELECT INTO 得 NULL 的坑）",
+      /story_set_like[\s\S]{0,1800}?exists \(select 1 from public\.story_likes/.test(sql3)
+      && !/story_set_like[\s\S]{0,1200}?^\s*select true into had/m.test(sql3));
+    ok("轮321 story_set_bookmark 用 exists 判断现状（同上）",
+      /story_set_bookmark[\s\S]{0,1800}?exists \(select 1 from public\.story_bookmarks/.test(sql3)
+      && !/story_set_bookmark[\s\S]{0,1200}?^\s*select true into had/m.test(sql3));
+    ok("轮321 写 RPC 会先确认故事存在（不存在就报 story-not-found，不静默成功）",
+      /story_set_like[\s\S]{0,1200}?raise exception 'story-not-found'/.test(sql3)
+      && /story_set_bookmark[\s\S]{0,1200}?raise exception 'story-not-found'/.test(sql3));
+
+    /* 详情页：乐观更新 + 队列 + 缓存同步 */
+    ok("轮321 详情页用了写队列（连点不并发撞车、旧响应作废）",
+      detailVue.includes("createWriteQueue") && detailVue.includes("writeQueue.claim")
+      && detailVue.includes("writeQueue.isLatest") && detailVue.includes("writeQueue.push"));
+    ok("轮321 详情页点赞/收藏是乐观更新（点一下先翻转本地再落库）",
+      detailVue.includes("applyStoryToggle") && detailVue.includes("toggleNow"));
+    ok("轮321 详情页点赞/收藏用幂等的「设置」接口（不是翻转）",
+      detailVue.includes("storySetLike") && detailVue.includes("storySetBookmark"));
+    ok("轮321 详情页失败要回滚到服务端确认态",
+      /catch[\s\S]{0,320}row\.value\s*=\s*\{\s*\.\.\.row\.value,\s*\.\.\.before\s*\}/.test(detailVue));
+    ok("轮321 详情页乐观态写回 SWR 缓存（下次进来不闪回旧样）",
+      detailVue.includes("cacheMerge") && detailVue.includes("syncCache"));
+    ok("轮321 SWR 后台刷新不能盖掉未确认的乐观态（按钮不闪回未点赞）",
+      detailVue.includes("mergePending") && /cached:\s*\(d\)\s*=>\s*\{[^}]*mergePending\(d\)/.test(detailVue)
+      && /fresh:\s*\(d\)\s*=>\s*\{[^}]*mergePending\(d\)/.test(detailVue));
+    ok("轮321 换篇时清掉上一份的待确认乐观态（不串到新篇）",
+      /pendingFlags\.value\s*=\s*\{\}/.test(detailVue));
+    ok("轮321 回滚前要确认还是同一篇（别把上一篇的态写到新篇）",
+      /catch[\s\S]{0,320}row\.value\.id\s*===\s*id/.test(detailVue));
+    ok("轮321 详情页按钮不再 :disabled（弱网下不能锁死按钮）",
+      !/st-btn--ghost[^>]*:disabled/.test(detailVue));
+    ok("轮321 详情页点赞/收藏失败提示就近显示",
+      detailVue.includes("actErr") && detailVue.includes("st-err--near"));
+
+    /* 评论区：乐观上屏 + 不再全量 load */
+    ok("轮321 评论发送后立刻上屏（乐观插入临时评论）",
+      cmtVue.includes("rows.value = [...rows.value, mine]"));
+    ok("轮321 评论发送后不再 await load() 全量重拉（代码里没有，注释不算）",
+      !/await\s+load\(\)/.test(cmtVue.replace(/\/\*[\s\S]*?\*\//g, "").replace(/<!--[\s\S]*?-->/g, "")));
+    ok("轮321 评论写入失败要撤掉临时评论并把稿还回输入框",
+      cmtVue.includes("rows.value.filter((x) => x.id !== tmpId)") && cmtVue.includes("draft.value = body"));
+    ok("轮321 评论发送中不再锁住输入框",
+      !/:disabled="sending"[\s\S]{0,40}st-cmt-input/.test(cmtVue) && !/st-cmt-input[\s\S]{0,120}:disabled="sending"/.test(cmtVue));
+
+    /* 三通道齐：直连 / 网关 / Worker */
+    ok("轮321 直连实现有 storySetLike/storySetBookmark/storyMyFlags",
+      has(sb, "storySetLike(", "storySetBookmark(", "storyMyFlags("));
+    ok("轮321 网关实现有 storySetLike/storySetBookmark/storyMyFlags",
+      has(gw, "storySetLike(", "storySetBookmark(", "storyMyFlags("));
+    ok("轮321 Worker 有 /story/like-set 与 /story/bookmark-set 路由",
+      worker.includes('"/story/like-set"') === false && worker.includes('seg[1] === "like-set"')
+      && worker.includes('seg[1] === "bookmark-set"'));
+    ok("轮321 Worker 有 /story/mine-flags 路由",
+      worker.includes('seg[1] === "mine-flags"'));
+    ok("轮321 story.js 对外导出三个新接口",
+      has(storyJs, "export async function storySetLike", "export async function storySetBookmark",
+        "export function storyMyFlags"));
+    ok("轮321 老库兜底：批 3 迁移没跑时退回翻转 + 校准",
+      storyJs.includes("story-set-like-missing") && storyJs.includes("story-set-bookmark-missing")
+      && storyJs.includes("setLikeFallback") && storyJs.includes("setBookmarkFallback"));
+  }
 }
 
 /* ───────── 结果 ───────── */
+/* ───────── 轮391：我的-草稿箱删除草稿 ───────── */
+{
+  ok("轮391 迁移：story_delete_draft 只删自己的草稿",
+    delSql.includes("function public.story_delete_draft(")
+    && delSql.includes("user_id = me") && delSql.includes("status = 'draft'")
+    && delSql.includes("from public, anon") && delSql.includes("to authenticated"));
+  ok("轮391 story.js 导出删除草稿并挡非法 id",
+    storyJs.includes("export function storyDeleteDraft")
+    && storyJs.includes("db.storyDeleteDraft(n)")
+    && storyJs.includes("story-not-found"));
+  ok("轮391 直连/网关/Worker 都收口到 story_delete_draft",
+    sb.includes('rpc("story_delete_draft"')
+    && gw.includes('"/story/draft-delete"')
+    && worker.includes('seg[1] === "draft-delete"')
+    && worker.includes('rpc(env, request, "story_delete_draft"'));
+  ok("轮391 我的草稿行有删除按钮，且不冒泡进编辑器",
+    mineVue.includes('v-if="tab === \'draft\'"')
+    && mineVue.includes('@click.stop="removeDraft(r)"')
+    && mineVue.includes('t("story.deleteDraft")')
+    && mineVue.includes("drafts.value.filter((x) => x.id !== id)")
+    && mineVue.includes("drafts.value = prevDrafts")
+    && mineVue.includes("stats.value = prevStats")
+    && mineVue.includes("clearLocalDraft()"));
+  ok("轮394 删除确认用主题弹窗，不再用浏览器原生 confirm",
+    mineVue.includes('import { useDialog } from "naive-ui"')
+    && mineVue.includes("const dialog = useDialog()")
+    && mineVue.includes("dialog.warning({")
+    && mineVue.includes('positiveText: t("common.delete")')
+    && mineVue.includes('negativeText: t("common.cancel")')
+    && mineVue.includes('positiveButtonProps: { type: "error" }')
+    && !mineVue.includes("window.confirm"));
+  ok("轮391 删除草稿文案中英成对",
+    messages.en.story.deleteDraft === "Delete"
+    && messages.zh.story.deleteDraft === "删除"
+    && (i18nSrc.match(/deleteDraft:/g) || []).length === 2
+    && (i18nSrc.match(/deleteDraftConfirm:/g) || []).length === 2);
+}
+
 if (fails.length) {
   console.log(`story-test: ${pass} pass, ${fails.length} FAIL`);
   for (const f of fails) console.log("  ✗ " + f);

@@ -666,6 +666,19 @@ async function insertRow(env, request, table, body) {
   return res || fail(502, "upstream-unreachable");
 }
 
+/** 幂等插入（轮 333）：on conflict do nothing —— 重复插同一行不报错。
+ *  PostgREST 语义：Prefer: resolution=ignore-duplicates + ?on_conflict=列名
+ *  （on_conflict 要写全唯一约束的列，缺列会退化成「全部列比较」而失效）。 */
+async function upsertRow(env, request, table, body, onConflict) {
+  const qs = onConflict ? `on_conflict=${encodeURIComponent(onConflict)}` : "";
+  const res = await upstream(env, request, restUrl(env, table, qs), {
+    method: "POST",
+    body: JSON.stringify(body),
+    headers: { prefer: "resolution=ignore-duplicates" },
+  });
+  return res || fail(502, "upstream-unreachable");
+}
+
 /** 插入 + .single()：回传整行（return=representation + object accept） */
 async function insertSingle(env, request, table) {
   const parsed = await readJson(request);
@@ -1371,6 +1384,13 @@ async function handleApi(request, env, ctx) {
           if (m === "POST") {
             const b = await readJson(request);
             if (b.err) return b.err;
+            /* 轮 333：带 on_conflict 的请求走幂等插入（on conflict do nothing）。
+               前端用它替代「先查再写」—— 重复插同一行不报错，「确保存在」天然幂等。 */
+            const oc = b.body && b.body.on_conflict;
+            if (typeof oc === "string" && oc) {
+              const { on_conflict, ...rest } = b.body;
+              return upsertRow(env, request, TABLE.reactions, rest, on_conflict);
+            }
             return insertRow(env, request, TABLE.reactions, b.body);
           }
           if (m === "DELETE") {
@@ -1379,6 +1399,33 @@ async function handleApi(request, env, ctx) {
           }
         } else if (seg.length === 2 && seg[1] === "mine" && m === "GET") {
           return findReaction(env, request, q);
+        } else if (seg.length === 2 && seg[1] === "set" && m === "POST") {
+          /* 轮 333：帖级回应的原子写入（RPC wall_set_reaction）。
+             幂等「设置」语义：on=true 确保存在、on=false 确保不存在。
+             函数没建（迁移没跑）→ 404 + code=PGRST202，前端据此退回旧链路。 */
+          const b = await readJson(request);
+          if (b.err) return b.err;
+          const id = Number(b.body && b.body.post_id);
+          const kind = b.body && b.body.kind;
+          const on = b.body && b.body.on;
+          if (!Number.isFinite(id) || id <= 0) return fail(400, "bad-id");
+          if (kind !== "hug" && kind !== "warm" && kind !== "relate") return fail(400, "bad-kind");
+          if (typeof on !== "boolean") return fail(400, "bad-on");
+          const res = await rpc(env, request, "wall_set_reaction", { p_post: id, p_kind: kind, p_on: on });
+          /* RPC 不存在时把上游 404 原样透出（带 PGRST202 code）→ 前端识别「没跑迁移」 */
+          if (res && !res.ok) {
+            let code = "";
+            let msg = "";
+            try {
+              const body = await res.clone().json();
+              code = String((body && body.code) || "").toUpperCase();
+              msg = String((body && body.message) || "");
+            } catch (e) { /* 非 JSON 错误体 */ }
+            if (res.status === 404 || MISSING_FN_CODES.has(code)) {
+              return json({ ok: false, reason: "not-migrated", code: code || "PGRST202", message: msg }, 404);
+            }
+          }
+          return res;
         }
       }
 
@@ -1539,6 +1586,14 @@ async function handleApi(request, env, ctx) {
           return rpc(env, request, seg[1] === "draft" ? "story_save_draft" : "story_publish",
             { p_id: rawId, p_title: title, p_body: text, p_tags: tags });
         }
+        /* POST /story/draft-delete：{ id } —— 删自己的草稿（服务端 status=draft 兜底） */
+        if (seg[1] === "draft-delete" && seg.length === 2 && m === "POST") {
+          const b = await readJson(request);
+          if (b.err) return b.err;
+          const id = Number((b.body || {}).id);
+          if (!Number.isInteger(id) || id <= 0) return fail(400, "bad-id");
+          return rpc(env, request, "story_delete_draft", { p_id: id });
+        }
         /* POST /story/like | /story/view：{ id } */
         if ((seg[1] === "like" || seg[1] === "view") && seg.length === 2 && m === "POST") {
           const b = await readJson(request);
@@ -1596,6 +1651,33 @@ async function handleApi(request, env, ctx) {
             p_limit: parseLimit(q.get("limit"), 30), p_offset: parseOffset(q.get("offset")),
           });
         }
+        /* POST /story/like-set | /story/bookmark-set：{ id, on } —— 幂等「设成目标态」
+           轮 321：详情页要「点了就变色」的乐观更新 + 失败重试，翻转语义会把状态翻反，
+           这里给 Worker 补上设置语义（与 MIGRATION_story_b3.sql 的 story_set_* 对应）。
+           批 3 迁移没跑时（RPC 不存在）→ 降级成翻转 + 校准，前端结果一致。 */
+        if ((seg[1] === "like-set" || seg[1] === "bookmark-set") && seg.length === 2 && m === "POST") {
+          const b = await readJson(request);
+          if (b.err) return b.err;
+          const t = b.body || {};
+          const id = Number(t.id);
+          if (!Number.isInteger(id) || id <= 0) return fail(400, "bad-id");
+          const on = t.on === true || t.on === "true" || t.on === 1;
+          const fn = seg[1] === "like-set" ? "story_set_like" : "story_set_bookmark";
+          const res = await rpc(env, request, fn, { p_id: id, p_on: on });
+          if (res.ok) return res;
+          /* 批 3 迁移没跑 → 用翻转 + 校准达到同一目标态 */
+          const legacy = seg[1] === "like-set" ? "story_toggle_like" : "story_toggle_bookmark";
+          const first = await rpc(env, request, legacy, { p_id: id });
+          if (!first.ok) return first;
+          let now = null;
+          try { now = await first.json(); } catch (e) { now = null; }
+          if (!!now === on) return json({ ok: true, count: null, on: !!now }, 200);
+          const second = await rpc(env, request, legacy, { p_id: id });
+          if (!second.ok) return second;
+          let back = null;
+          try { back = await second.json(); } catch (e) { back = null; }
+          return json({ ok: true, count: null, on: !!back }, 200);
+        }
         /* POST /story/bookmark —— 收藏/取消（body: {id}） */
         if (seg[1] === "bookmark" && seg.length === 2 && m === "POST") {
           const b = await readJson(request);
@@ -1628,6 +1710,20 @@ async function handleApi(request, env, ctx) {
           if (!body) return fail(400, "story-comment-empty");
           if (body.length > 1000) return fail(400, "story-comment-long");
           return rpc(env, request, "story_add_comment", { p_story_id: id, p_body: body });
+        }
+        /* GET /story/mine-flags?ids=1,2,3 —— 我赞了/收藏了哪些（批量一次往返）
+           ★ 必须排在下面「GET /story/:id」之前 —— 那条分支 seg.length===2 && GET
+             会把 "mine-flags" 也当成 id 吃掉（Number("mine-flags")=NaN → 400 bad-id）。
+             固定名路由一定要放在 :id 通配之前。 */
+        if (seg[1] === "mine-flags" && seg.length === 2 && m === "GET") {
+          const ids = String(q.get("ids") || "").split(",")
+            .map((x) => Number(x)).filter((x) => Number.isInteger(x) && x > 0).slice(0, 200);
+          if (!ids.length) return json([], 200);
+          const res = await rpc(env, request, "story_my_flags", { p_ids: ids });
+          if (!res.ok) return res;   /* 批 3 没跑 → 前端按「拿不到初态」处理 */
+          let arr = [];
+          try { arr = await res.json(); } catch (e) { arr = []; }
+          return json(Array.isArray(arr) ? arr : [], 200);
         }
         /* GET /story/:id —— 未发布且非本人 → 200 null（与直连实现的 maybeSingle 同契约） */
         if (seg.length === 2 && m === "GET") {
@@ -1682,11 +1778,15 @@ async function handleApi(request, env, ctx) {
         }
         /* 轮 33：举报/复核队列（待处理 pending / 已处理 handled） */
         if (seg[1] === "reports" && seg.length === 2 && m === "GET") {
-          return rpc(env, request, "admin_report_page", {
+          const args = {
             p_status: q.get("status") || "pending",
             p_offset: parseOffset(q.get("offset")),
             p_limit: parseLimit(q.get("limit"), 20),
-          });
+          };
+          /* 轮 368：帖子/评论分类；老库没有这个参数时回退请求不带它。 */
+          const targetType = q.get("target_type");
+          if (targetType) args.p_target_type = targetType;
+          return rpc(env, request, "admin_report_page", args);
         }
         /* 轮 270：客户端错误日志（管理中心「客户端错误」页签）。
          * 只读、只翻译：是否管理员由 RPC 内的 admin_users 判定，Worker 不做第二道判断。

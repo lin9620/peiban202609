@@ -69,14 +69,14 @@ ok("轮 38 ② 判据多信号（androidBridge/Capacitor/UA）+ main.js 用 Capa
 ok("轮 38 ③ 米色窗口底挂在「Activity 真正使用」的主题上（轮 25 写在了没人用的 AppTheme.NoActionBar 上）",
   manifest.includes('android:theme="@style/AppTheme.NoActionBarLaunch"')
     && /<style name="AppTheme\.NoActionBarLaunch" parent="AppTheme\.NoActionBar">/.test(styles)
-    && /<style name="AppTheme\.NoActionBar"[\s\S]*?<item name="android:windowBackground">#FFF7EE<\/item>/.test(styles));
+    && /<style name="AppTheme\.NoActionBar"[\s\S]*?<item name="android:windowBackground">#FAF9F5<\/item>/.test(styles));
 ok("轮 38 ④ 原生启动层是米色窗口底，Capacitor 默认蓝色 X splash.png 已删净（主题零 @drawable/splash 引用）",
   styles.includes("@drawable/launch_bg")
     && !/@drawable\/splash\b/.test(styles)
     && !/@drawable\/splash\b/.test(stylesV31)
     && filesUnder("android/app/src/main/res", /splash/i).length === 0);
 ok("轮 38 ⑤ Android 12+ 系统启动画面同样米色（不设就退回 ?colorBackground=黑 → 冷启动一圈黑）",
-  stylesV31.includes('<item name="android:windowSplashScreenBackground">#FFF7EE</item>')
+  stylesV31.includes('<item name="android:windowSplashScreenBackground">#FAF9F5</item>')
     && stylesV31.includes('parent="AppTheme.NoActionBar"'));
 
 /* ─── 轮 39：深色模式「黑屏」的守护（用户夜测报「黑屏没改」）──────────────────
@@ -108,7 +108,7 @@ const launchBg = read("android/app/src/main/res/drawable/launch_bg.xml");
 ok("轮 43 ① 原生启动链零爪印：launch_bg 纯米色 + launch_paw 已删（主题与 drawable 双查）",
   !styles.includes("launch_paw") && !stylesV31.includes("launch_paw")
     && !launchBg.includes("launch_paw")
-    && launchBg.includes("#FFF7EE")
+    && launchBg.includes("#FAF9F5")
     && !fs.existsSync("android/app/src/main/res/drawable/launch_paw.xml"));
 ok("轮 43 ② 系统启动画面图标位全透明（不设会默认放 App 图标 = 另一枚爪印）",
   stylesV31.includes('<item name="android:windowSplashScreenAnimatedIcon">@drawable/launch_transparent</item>')

@@ -184,18 +184,11 @@ const made = [];
   made.push(cv.save("og-image.png"));
 }
 
-/* ② 图标：爪印居中（favicon / apple-touch-icon 同款构图）
- *    爪印外接尺寸：宽 356s / 高 324s（相对缩放 s），留 11% 边距并做垂直居中 */
-function icon(size, file) {
-  const cv = new Canvas(size, size);
-  cv.verticalGradient(CREAM, PEACH);
-  cv.glow(size * 0.85, size * 0.9, size * 0.7, ACCENT, 0.28);
-  const s = (size * 0.78) / 356;
-  cv.paw(size / 2, size / 2 + 74 * s, s, ACCENT, 1);
-  made.push(cv.save(file));
-}
-icon(192, "favicon.png");
-icon(180, "apple-touch-icon.png");
+/* ② 站点图标已迁走（轮 403）。
+ *    favicon.png / apple-touch-icon.png 现在由 tools/make-app-icon.mjs 统一产出
+ *    ——「陶红实色底 + 白爪印」，和 App 图标同一套几何。这个脚本以前会用
+ *    「奶油渐变 + 珊瑚爪印」把这两枚覆盖掉，属于双生成器打架，已删除那两个输出。
+ *    社交分享大图（og-image.png）仍留在本脚本，与本文件的像素风格一致。 */
 
 for (const f of made) {
   console.log("OK  " + f + "  " + fs.statSync(path.join(outDir, f)).size + " bytes");

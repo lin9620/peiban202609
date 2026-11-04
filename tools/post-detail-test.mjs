@@ -3,6 +3,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { applyPostReactionPatch, patchPostList, onPostReaction, publishPostReaction } from "../src/utils/postReactionSync.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (p) => readFileSync(join(root, p), "utf8");
@@ -18,6 +19,7 @@ const has = (src, ...needles) => needles.every((n) => src.includes(n));
 const router = read("src/router.js");
 const myPosts = read("src/views/MyPostsView.vue");
 const detail = read("src/views/PostDetailView.vue");
+const community = read("src/views/CommunityView.vue");
 const wall = read("src/utils/wall.js");
 const dbSupa = read("src/utils/api/db.supabase.js");
 const dbGate = read("src/utils/api/db.gateway.js");
@@ -47,6 +49,10 @@ ok("PostDetailView：完整帖子卡（全文不截断 + 头像/署名/时间/�
     'class="react-row"', 'class="post-foot"', "community.views"));
 ok("PostDetailView：评论点击展开（cmt-toggle ↔ comment.count），两级回复可展开（轮88 底部展开钮 comment.expandOthers）",
   has(detail, 'class="cmt-toggle"', "comment.count", "comment.expandOthers", "toggleReplies"));
+/* 轮 383：二级回复一次不挂满，每批 30 条 + 底部继续展开（用户拍板） */
+ok("PostDetailView 轮383：二级回复每批 30 条，未展示完时给「继续展开」钮",
+  has(detail, "REPLY_PAGE", "pageReplies", "function moreReplies", "repsHidden", "comment.moreReplies")
+    && detail.indexOf("repsHidden(cm) > 0") < detail.indexOf('v-if="repsOf(cm).length > 2"'));
 ok("PostDetailView：就地回复（回复「回复」仍挂一级下并 @ 对方；轮108续5 起手机端走底部输入条，桌面就地框）",
   has(detail, "function startReply(cm, rp = null, e = null)") && has(detail, "cm.id + \":\" + rp.id")
     && has(detail, "comment.replyPh"));
@@ -80,6 +86,11 @@ ok("PostDetailView 轮298：守卫按「回复目标被删没」判——直接�
   has(detail, "replyBlocked(cm, rp)")
     && !/if\s*\(\s*cm\s*&&\s*cm\.deleted\s*\)\s*return/.test(detail)   /* 裸连坐判断不许回来 */
     && has(detail, "if (rp && rp.deleted) return;"));
+/* 轮 359：hint 是模板/脚本共用的提示状态。漏声明时，回应按钮的乐观更新已经上屏，
+ * 但紧接着 `hint.value = ""` 抛 ReferenceError，落库队列根本不会启动 —— 用户看到
+ * 「点完亮了，返回再进又没了」。这条锁住声明本身，避免同类漏声明再次静默。 */
+ok("PostDetailView 轮359：hint 提示 ref 已声明（漏声明会中断回应/收藏落库）",
+  /const\s+hint\s*=\s*ref\(/.test(detail) && detail.includes('v-if="hint"'));
 ok("PostDetailView：进页计一次浏览（cloudAddView 幂等）+ 返回上一页",
   has(detail, "await cloudAddView(post.value.dbId, myId.value)")   /* 轮 172：p → post.value */
     && has(detail, "function goBack()") && has(detail, "router.back()"));
@@ -99,6 +110,71 @@ ok("worker：GET /posts/:id 单帖路由（objectOrPassthrough 翻译行不存�
   has(worker, "} else if (seg.length === 2 && m === \"GET\") {")
     && has(worker, "return objectOrPassthrough(res);")
     && has(worker, '"&removed=eq.false" : ""'));
+
+/* 轮 370 · 详情 ↔ 暖心墙回应同步（用户实测：详情点同感，返回墙没亮；墙点同感，进详情等很久） */
+const basePost = {
+  dbId: 7,
+  reacts: { hug: 2, warm: 0, relate: 1 },
+  mine: { hug: true, warm: false, relate: false },
+};
+const merged = applyPostReactionPatch(basePost, {
+  reacts: { relate: 2 },
+  mine: { relate: true },
+});
+ok("postReactionSync：只合并本次 kind，其它回应保持原样",
+  merged !== basePost && merged.reacts.relate === 2 && merged.mine.relate === true
+    && merged.reacts.hug === 2 && merged.mine.hug === true
+    && merged.reacts.warm === 0 && merged.mine.warm === false);
+ok("postReactionSync：同值补丁返回原对象（避免无意义重渲染）",
+  applyPostReactionPatch(basePost, { reacts: { relate: 1 }, mine: { relate: false } }) === basePost);
+ok("postReactionSync：负计数钳到 0", applyPostReactionPatch(basePost, { reacts: { relate: -9 } }).reacts.relate === 0);
+const otherPost = { dbId: 8, reacts: { relate: 5 }, mine: { relate: true } };
+const list = [basePost, otherPost];
+const listPatched = patchPostList(list, "7", { reacts: { relate: 2 }, mine: { relate: true } });
+ok("postReactionSync：patchPostList 只改命中的那篇，未命中返回原数组",
+  listPatched !== list && listPatched[0].reacts.relate === 2
+    && listPatched[0].mine.relate === true && listPatched[1] === otherPost
+    && patchPostList(list, "999", { reacts: { relate: 0 } }) === list);
+let busHit = null;
+const stopBus = onPostReaction((id, patch) => { busHit = { id, patch }; });
+publishPostReaction(7, { reacts: { relate: 2 }, mine: { relate: true } });
+ok("postReactionSync：跨页事件带字符串帖 id 与补丁", busHit && busHit.id === "7" && busHit.patch.mine.relate === true);
+stopBus();
+const oldHit = busHit;
+publishPostReaction(7, { reacts: { relate: 0 } });
+ok("postReactionSync：取消订阅后不再收到事件", busHit === oldHit);
+
+const goDetailBody = community.slice(
+  community.indexOf("function goDetail(p)"),
+  community.indexOf("function goDetailReplies"),
+);
+ok("CommunityView：进详情前写 wall:post 缓存（弱网先渲染，不再空等）",
+  goDetailBody.includes("cachePostView(p)"));
+ok("CommunityView：墙内乐观/权威回应都写单帖缓存（详情进来先看到已点状态）",
+  community.includes("马上点进详情") && community.includes("详情页进来先读这份缓存"));
+ok("CommunityView：订阅详情页的回应事件，KeepAlive 返回墙立即更新",
+  has(community, "onPostReaction((id, patch) =>", "applyPostReactionPatch", "stopPostReactionSync")
+    && community.includes("nextCloud !== cloudPosts.value"));
+ok("PostDetailView：乐观回应立即广播 + 写缓存（返回墙立刻亮）",
+  detail.includes("publishPostReaction(p.dbId, { reacts: { [key]: reacts[key] }, mine: { [key]: target } })")
+    && detail.includes("cacheSet(cacheKey(\"wall:post\", uid.value), post.value);"));
+ok("PostDetailView：权威回包/失败回滚都同步墙（墙不会停在乐观值或失败值）",
+  (detail.match(/publishPostReaction\(p\.dbId, patch\)/g) || []).length >= 1
+    && detail.includes("publishPostReaction(dbId, patch)"));
+
+/* 轮 372 · 我的页 / 我的帖子 ↔ 详情回应同步（用户实测：我的页 0，详情 2） */
+ok("ProfileView：回应数随帖子一起回来再写缓存（不再先写 0 再后台补）",
+  profileView.includes("cloudFetchUserPosts(uid, 3)")
+    && !profileView.includes("db.listPostsByUser(uid, 3)"));
+ok("ProfileView：KeepAlive 下订阅详情回应并回写 profile-myposts 缓存",
+  has(profileView, "onPostReaction(syncProfileReaction)", "patchPostList", "cachePatch(cacheKey(\"profile-myposts\", uid)"));
+ok("ProfileView：进详情前写 wall:post 缓存（详情先渲染正确计数）",
+  has(profileView, "function openMyPost(p)", "cacheSet(cacheKey(\"wall:post\", p.dbId), p)", "@click=\"openMyPost(p)\""));
+ok("MyPostsView：订阅详情回应并回写 myposts 缓存 + 进详情写 wall:post",
+  has(myPosts, "onPostReaction((id, patch)", "patchPostList", "cachePatch(cacheKey(\"myposts\", u)",
+    "cacheSet(cacheKey(\"wall:post\", p.dbId), p)"));
+ok("PostDetailView：回应变化补两份列表缓存（/my-posts 不在 KeepAlive 也不漏）",
+  has(detail, "function syncReactionListCaches", "cachePatch(cacheKey(name, u)", "patchPostList(list, dbId, patch)"));
 
 /* 轮 201：表情面板功能整体移除（用户定案）——轮 180 的表情覆盖断言一并摘除。
  * 输入框回归纯文字；用户仍可用输入法自带表情。 */

@@ -17,6 +17,8 @@ import { messages } from "../src/i18n.js";
 import {
   BOTTLE_SEND_MAX, BOTTLE_FISH_MAX, BOTTLE_BODY_MAX, BOTTLE_HOLD_TTL_MS,
   bottleErrKey, purgeLegacyBottleLocals, sortBottleMine,
+  bottlePendingCount, bottlePageCount, clampBottlePage, bottlePageSlice,
+  bottleLetterExcerpt, BOTTLE_TITLE_MAX,
 } from "../src/utils/bottle.js";
 import { getItem, setItem } from "../src/utils/storage.js";
 
@@ -38,6 +40,7 @@ const worker = read("worker/api.js");
 const sbAdapter = read("src/utils/api/db.supabase.js");
 const gwAdapter = read("src/utils/api/db.gateway.js");
 const bottleJs = read("src/utils/bottle.js");
+const bottleRecords = read("src/components/BottleRecords.vue");
 const home = read("src/views/HomeView.vue");
 const bottleView = read("src/components/BottleView.vue");   /* T6 抽件：漂流瓶逻辑在这里 */
 const css = read("src/style.css");
@@ -61,7 +64,7 @@ for (const lang of ["zh", "en"]) {
   const b = messages[lang] && messages[lang].bottle;
   const need = ["title", "sub", "placeholder", "leftSend", "send", "seaTitle", "fish", "leftFish",
     "rules", "fromSea", "replyPlaceholder", "reply", "release", "replyFrom", "pending",
-    "signInHint", "errSendLimit", "errFishLimit", "errEmpty", "errNotHolder", "errTooLong", "errGeneric"];
+    "signInHint", "errSendLimit", "errFishLimit", "errEmpty", "errNotHolder", "errTooLong", "replyTooLong", "errGeneric"];
   const missing = need.filter((k) => !b || typeof b[k] !== "string" || !b[k].trim());
   ok(`${lang}: 漂流瓶文案齐备（${need.length} 键）`, missing.length === 0, missing.join(","));
   ok(`${lang}: 次数文案带 {n}、规则文案带 {w}/{f}`,
@@ -160,8 +163,8 @@ ok("gateway 适配器：六个方法走 /bottle/*（body 字段名与 Worker 对
     && has(gwAdapter, 'call("/bottle/fish", { method: "POST", body: {} })')
     && has(gwAdapter, 'call("/bottle/reply", { method: "POST", body: { id, reply } })')
     && has(gwAdapter, 'call("/bottle/release", { method: "POST", body: { id } })')
-    && has(gwAdapter, 'call("/bottle/mine")')
-    && has(gwAdapter, 'call("/bottle/held")'));
+    && has(gwAdapter, 'call("/bottle/mine", { timeout: 15000 })')
+    && has(gwAdapter, 'call("/bottle/held", { timeout: 15000 })'));
 ok("bottle.js：登录才可用（cloud.ready + cloud.user），发信/回信先在本层拦空与超长",
   has(bottleJs, "!!(cloud.ready && cloud.user)")
     && has(bottleJs, "if (!text) throw new Error(\"bottle-empty-body\")")
@@ -191,7 +194,7 @@ ok("BottleView 全线上（轮 37）：本机不许再有次数账本 / SWR 快�
     && !has(bottleView, 'from "../utils/storage.js"') && !has(bottleView, 'from "../utils/cache.js"'));
 ok("BottleView 全线上：托盘与记录都现拉服务器，失败如实报错（trayErr / recErr）",
   has(bottleView, "const rows = await bottleHeld()") && has(bottleView, "trayErr.value = bottleErrKey(e)")
-    && has(bottleView, "const got = await bottleRecords(null, target * REC_PAGE")
+    && has(bottleView, "const got = await bottleRecords(null, 0, { mine: recTab.value === \"mine\", limit: REC_ALL_LIMIT })")
     && has(bottleView, "recErr.value = bottleErrKey(e)"));
 ok("BottleView：发信/回信成功后只回读服务端次数（不做本地 +1）",
   (() => {
@@ -214,6 +217,23 @@ ok("BottleView：登录就绪/换号自动加载（修「首次进主页记录�
 ok("BottleView：收了回信还没决定 → 记录上直接给「同意/拒绝」（不再让用户去消息页找卡）",
   has(bottleView, '"bottle.stDecide"') && has(bottleView, "async function decideRec(l, accept)")
     && has(bottleView, "bottleChatDecide(l.id, accept)"));
+ok("BottleView: accepting a chat opens the DM chat directly", (() => {
+  const i = bottleView.indexOf("async function decideRec(l, accept)");
+  const b = bottleView.slice(i, i + 900);
+  return b.includes('r.decision === "accepted"') && b.includes('router.push({ name: "messages"');
+})());
+ok("BottleRecords: 折叠标题只放正文前缀，不重复展开后的完整正文", (() => {
+  const i = bottleRecords.indexOf("<summary>");
+  const j = bottleRecords.indexOf("</summary>", i);
+  /* Guard against a missing/renamed summary making this pass vacuously. */
+  if (i < 0 || j < 0 || !bottleRecords.includes("foldRef(foldKey(row.id, 'body'))")) return false;
+  const summary = bottleRecords.slice(i, j);
+  return summary.includes("letterTitle(row)")
+    && summary.includes("bottle-record-title")
+    && summary.includes("bottle-record-open-label")
+    && !summary.includes("{{ row.body }}")
+    && bottleRecords.includes("details[open] .bottle-record-title");
+})());
 ok("BottleView：被捞走/在我手里两态文案不再一律「漂流中」，放回也能按信操作",
   has(bottleView, '"bottle.stPicked"') && has(bottleView, '"bottle.stInHand"')
     && has(bottleView, '"bottle.stReleased"'));
@@ -354,11 +374,59 @@ ok("轮144 utils排序：choose 置顶且同档保持原时间序，其余顺序
   ];
   return sortBottleMine(rows, me).map((r) => r.id).join(",") === "9,7,10,8";
 })());
-ok("轮144 BottleView 接线：我发布的整批拉回（≤200）+ 置顶排序 + 本地分页（翻页不回源、失败清全量）",
+ok("轮144/368 BottleView 接线：两类都整批拉回（≤200）+ 置顶排序 + 本地分页（翻页不回源、失败清全量）",
   has(bottleView, "sortBottleMine(Array.isArray(got) ? got : [], myId.value)",
-    "mine: true, limit: 200", "recAll.value = rows;",
-    "recRows.value = recAll.value.slice(next * REC_PAGE, next * REC_PAGE + REC_PAGE)",
-    "recAll.value = []"));
+    "mine: recTab.value === \"mine\", limit: REC_ALL_LIMIT", "recAll.value = rows;",
+    "bottlePageSlice(rows, 0, REC_PAGE)", "recAll.value = []",
+    "bottlePageCount(recAll.value.length, REC_PAGE)", "pageFirst", "pageLast", "pageJump"));
+
+/* 轮 368：记录分页 + 待决定红点的纯规则（UI 只做展示，边界都在这里测） */
+ok("轮368 bottlePageCount / clampBottlePage / bottlePageSlice：空列表 1 页、首页尾页与手输越界都钳住", (() => {
+  const rows = Array.from({ length: 25 }, (_, i) => ({ id: i + 1 }));
+  return bottlePageCount(0, 10) === 1
+    && bottlePageCount(25, 10) === 3
+    && clampBottlePage(-3, 25, 10) === 0
+    && clampBottlePage(99, 25, 10) === 2
+    && bottlePageSlice(rows, 0, 10).map((r) => r.id).join(",") === "1,2,3,4,5,6,7,8,9,10"
+    && bottlePageSlice(rows, 2, 10).map((r) => r.id).join(",") === "21,22,23,24,25"
+    && bottlePageSlice(rows, 99, 10).map((r) => r.id).join(",") === "21,22,23,24,25";
+})());
+ok("轮368 bottlePendingCount：只数「收到回信、等我同意/拒绝」的信（我发布的红点口径）", (() => {
+  const me = "u-me";
+  const rows = [
+    { id: 1, user_id: me, reply_by: "p1", status: "answered", chat_decision: null },
+    { id: 2, user_id: me, reply_by: "p2", status: "answered", chat_decision: "accepted", conv_id: "c2" },
+    { id: 3, user_id: me, reply_by: null, status: "drifting", chat_decision: null },
+    { id: 4, user_id: "p3", reply_by: me, status: "answered", chat_decision: null },
+  ];
+  return bottlePendingCount(rows, me) === 1 && bottlePendingCount([], me) === 0;
+})());
+ok("轮368 私信漂流瓶：我发布的整批拉回 + choose 置顶 + 页签/行红点 + 分段条汇总",
+  has(read("src/components/BottleRecords.vue"),
+    "sortBottleMine(Array.isArray(page) ? page : [], userId.value)",
+    "mine: true, limit: ALL_LIMIT", "pendingCount", "bottle-need-dot", 'defineEmits(["open", "pending"])')
+  && has(read("src/components/BottleChatList.vue"),
+    "sortBottleMine(Array.isArray(got) ? got : [], userId.value)",
+    "mine: true, limit: ALL_LIMIT", "pendingCount", "bottle-need-dot", 'defineEmits(["select", "pending"])')
+  && has(read("src/views/MessagesView.vue"),
+    'ref="bottleList"', '@pending="onBottlePending"', "bottlePending", "bottleList.value?.reload?.()",
+    "badgeLocal({ bottle: v })", "refreshBottleBadge")
+  && has(read("src/stores/badgeStore.js"),
+    "bottle: 0", "refreshBottleBadge", "bottlePendingCount"));
+
+ok("轮374 记录缓存首屏也按 choose 置顶（弱网/旧缓存不再把待决定的信压到后面）",
+  has(read("src/components/BottleRecords.vue"),
+    "const all = sortBottleMine(d, userId.value)",
+    "mineAll.value = all", "rows.value = all.slice(0, PAGE)")
+  && has(read("src/components/BottleChatList.vue"),
+    "const all = sortBottleMine(d, userId.value)",
+    "mineAll.value = all", "rows.value = all.slice(0, PAGE)"));
+
+ok("轮374 深链信也不能挤掉待决定的信（choose → 深链 → 其余）",
+  has(read("src/components/BottleRecords.vue"),
+    'if (state(f) === "choose") return [f, ...rest]',
+    '...rest.filter((r) => state(r) === "choose")',
+    '...rest.filter((r) => state(r) !== "choose")'));
 
 /* 轮 150：漂流瓶并入全站玻璃拟态。
  * 它此前是全站唯一一套硬编码配色（紫/蓝渐变 + 虚线 + 1.5px 描边），
@@ -395,6 +463,55 @@ ok("轮242 捞到信弹窗不可关闭（遮罩/Esc/× 全绑 msg 模式才放�
   bottleView.includes(":mask-closable=\"fishPop.mode === 'msg'\"")
   && bottleView.includes(":esc=\"fishPop.mode === 'msg'\"")
   && bottleView.includes(":closable=\"fishPop.mode === 'msg'\""));
+
+/* ── 轮 361：回信超限/服务端拒收必须贴在当前输入框旁（旧版只写页面顶部 mailHint，
+ *    用户在托盘/记录卡/捞信弹窗里点「回信」看不到任何反应）── */
+{
+  const replyBody = bottleView.slice(bottleView.indexOf("async function doReply"), bottleView.indexOf("async function doRelease"));
+  const inlineCount = (bottleView.match(/v-if="replyErr\[/g) || []).length;
+  const inputHookCount = (bottleView.match(/@update:model-value="onReplyInput\(/g) || []).length;
+  ok("轮361 回信提示：托盘/记录卡/捞信弹窗三处都带行内错误 + 字数",
+    inlineCount === 3 && inputHookCount === 3
+      && (bottleView.match(/class="reply-count"/g) || []).length === 3
+      && bottleView.includes("const replyErr = ref({})"));
+  ok("轮361 回信超限：点击前按 trim 后长度本地拦截，不发请求；服务端拒收也落行内",
+    replyBody.includes("if (body.length > BOTTLE_BODY_MAX)")
+      && replyBody.indexOf("if (body.length > BOTTLE_BODY_MAX)") < replyBody.indexOf("await bottleReply")
+      && replyBody.includes("setReplyErr(l.id, replyTooLongText(body.length))")
+      && replyBody.includes("setReplyErr(l.id, k === \"bottle.errTooLong\" ? replyTooLongText(body.length) : t(k))")
+      && !replyBody.includes("mailHint.value = t(bottleErrKey(e))"));
+  ok("轮361 回信提示：中英文案齐，带当前字数占位 {n}",
+    messages.zh.bottle.replyTooLong.includes("{n}") && messages.zh.bottle.replyTooLong.includes("1000")
+      && messages.en.bottle.replyTooLong.includes("{n}") && messages.en.bottle.replyTooLong.includes("1000"));
+}
+
+/* ── 轮 398：漂流瓶记录标题改为「信文前缀」 ──
+ * 用户原话：标题只写「我投的信 / 来自海里的一封信」完全不知道是哪封；
+ * 旧版又把全文塞进标题导致正文重复。这里锁三件事：单行折空白、超长省略、源码接线。 */
+{
+  ok("轮398 摘要把换行/连续空白折成单空格",
+    bottleLetterExcerpt("  第一行\n第二行  ") === "第一行 第二行");
+  ok("轮398 超长按默认上限省略",
+    bottleLetterExcerpt("海".repeat(60)) === "海".repeat(BOTTLE_TITLE_MAX) + "…");
+  ok("轮398 按 Unicode 码点截断，emoji 不切半",
+    bottleLetterExcerpt("🐱🐶🐰🐻", 2) === "🐱🐶…");
+  const rec = read("src/components/BottleRecords.vue");
+  const summary = rec.slice(rec.indexOf("<summary"), rec.indexOf("</summary>") + 10);
+  ok("轮398 手机记录卡折叠标题取信文前缀，展开后退回类型标签",
+    summary.includes("letterTitle(row)") && summary.includes("bottle-record-title")
+      && summary.includes("bottle-record-open-label")
+      && rec.includes("details[open] .bottle-record-title"));
+  ok("轮398 空信文仍有类型兜底 + 标题单行省略",
+    rec.includes("const letterTitle = (row) => bottleLetterExcerpt(row.body)")
+      && rec.includes("bottle.myLetter") && rec.includes("text-overflow: ellipsis"));
+  const list = read("src/components/BottleChatList.vue");
+  ok("轮398 桌面左列摘要固定取原信正文，回信只作兜底",
+    list.includes("bottleLetterExcerpt(row.body, 52)")
+      && list.includes("bottleLetterExcerpt(row.reply, 52)"));
+  ok("轮399 桌面摘要独占一行，状态胶囊下移（长状态不再挤掉信文）",
+    list.includes('class="sub bcl-preview"') && list.includes('class="bcl-state"')
+      && css.includes(".bcl-state {") && css.includes("text-overflow: ellipsis"));
+}
 
 console.log(`bottle-test: ${pass} pass, ${fails.length} fail`);
 for (const f of fails) console.log("FAIL  " + f);

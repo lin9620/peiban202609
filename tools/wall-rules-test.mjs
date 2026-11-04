@@ -16,6 +16,7 @@ import {
   canPostToday, postsLeftToday, WALL_POST_DAILY_LIMIT, errorKind, fmtWhen,
   recommendPosts, RECOMMEND_DAYS, RECOMMEND_WIDE_DAYS, RECOMMEND_MIN_POOL, shuffleSeeded,
   extractTags, normTags, TAG_MAX, TAG_LEN,
+  normalizeSetReaction, isWallReactionKind, WALL_REACTION_KINDS,
 } from "../src/utils/wallRules.js";
 import { messages } from "../src/i18n.js";
 
@@ -693,6 +694,66 @@ t("#252 normTags：DB 回来的脏值按同一套口径洗（去空/小写/去�
   assert.deepEqual(normTags(["a", "b", "c", "d", "e", "f"]).length, TAG_MAX);
   assert.deepEqual(normTags("not-array"), []);
   assert.deepEqual(normTags(null), []);
+});
+
+/* ══════════ 轮 333 · 帖级回应的服务端原子写入 ══════════ */
+t("#333 isWallReactionKind：只认 hug/warm/relate（dislike 走另一条 RPC）", () => {
+  assert.equal(isWallReactionKind("hug"), true);
+  assert.equal(isWallReactionKind("warm"), true);
+  assert.equal(isWallReactionKind("relate"), true);
+  assert.equal(isWallReactionKind("dislike"), false);
+  assert.equal(isWallReactionKind(""), false);
+  assert.equal(isWallReactionKind(null), false);
+  assert.equal(isWallReactionKind(undefined), false);
+  assert.deepEqual(WALL_REACTION_KINDS, ["hug", "warm", "relate"]);
+});
+t("#333 normalizeSetReaction：正常返回 → 归一成扁平形状", () => {
+  const r = normalizeSetReaction({
+    ok: true, on: true,
+    counts: { hug: 3, warm: 0, relate: 1 },
+    mine: { hug: true, warm: false, relate: false },
+  });
+  assert.deepEqual(r, {
+    on: true,
+    counts: { hug: 3, warm: 0, relate: 1 },
+    mine: { hug: true, warm: false, relate: false },
+  });
+});
+t("#333 normalizeSetReaction：字符串数字也认（PostgREST 可能回字符串）", () => {
+  const r = normalizeSetReaction({
+    ok: true, on: false,
+    counts: { hug: "2", warm: "0", relate: "0" },
+    mine: { hug: false, warm: false, relate: false },
+  });
+  assert.equal(r.counts.hug, 2);
+  assert.equal(r.on, false);
+});
+t("#333 normalizeSetReaction：计数缺失/脏值 → 上抛（绝不补 0）", () => {
+  const bad = [
+    { ok: true, on: true, counts: { hug: 1 }, mine: {} },              /* 少 warm/relate */
+    { ok: true, on: true, counts: { hug: null, warm: 0, relate: 0 }, mine: {} }, /* null 计数 */
+    { ok: true, on: true, counts: { hug: "abc", warm: 0, relate: 0 }, mine: {} },/* 非数字 */
+    { ok: true, on: true, counts: { hug: -1, warm: 0, relate: 0 }, mine: {} },    /* 负数 */
+    { ok: true, on: true, counts: { hug: 1.5, warm: 0, relate: 0 }, mine: {} },  /* 小数 */
+    { ok: true, on: true, mine: {} },                                        /* 缺 counts */
+    { ok: true, on: true, counts: { hug: 1, warm: 0, relate: 0 } },           /* 缺 mine */
+    { ok: false, on: true, counts: { hug: 1, warm: 0, relate: 0 }, mine: {} }, /* ok≠true */
+    null, undefined, "x", 42,
+  ];
+  for (const b of bad) {
+    assert.throws(() => normalizeSetReaction(b), /invalid-set-reaction/,
+      "应该上抛：" + JSON.stringify(b));
+  }
+});
+t("#333 normalizeSetReaction：mine 只认 true（脏值不当已回应）", () => {
+  const r = normalizeSetReaction({
+    ok: true, on: true,
+    counts: { hug: 1, warm: 0, relate: 0 },
+    mine: { hug: 1, warm: "yes", relate: null },
+  });
+  assert.equal(r.mine.hug, false);
+  assert.equal(r.mine.warm, false);
+  assert.equal(r.mine.relate, false);
 });
 
 console.log(out.join("\n"));

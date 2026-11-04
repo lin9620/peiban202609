@@ -126,22 +126,41 @@ grant execute on function public.report_create(text, bigint, text, text) to auth
 -- 4) 管理端：举报/复核分页（pending / handled 两档）
 --    非管理员 → {admin:false}；items 带被举报内容正文/作者与「几人举报过」聚合
 -- ─────────────────────────────────────────────
-create or replace function public.admin_report_page(p_status text default 'pending', p_offset integer default 0, p_limit integer default 20)
+drop function if exists public.admin_report_page(text, integer, integer);
+
+create or replace function public.admin_report_page(
+  p_status text default 'pending',
+  p_offset integer default 0,
+  p_limit integer default 20,
+  p_target_type text default null
+)
 returns jsonb language plpgsql stable security definer set search_path = public as $$
 declare
   v_status text := lower(coalesce(p_status, 'pending'));
+  v_target text := lower(nullif(btrim(coalesce(p_target_type, '')), ''));
   v_total  bigint;
 begin
   if not exists (select 1 from public.admin_users where user_id = auth.uid()) then
     return jsonb_build_object('admin', false, 'total', 0, 'items', '[]'::jsonb);
   end if;
   if v_status not in ('pending','handled') then v_status := 'pending'; end if;
+  if v_target not in ('post','comment') then v_target := null; end if;
 
-  select count(*) into v_total from public.reports where status = v_status;
+  select count(*) into v_total
+    from public.reports
+   where status = v_status
+     and (v_target is null or target_type = v_target);
 
   return jsonb_build_object(
     'admin', true,
     'total', v_total,
+    /* 轮 368：分类页签的计数；不受当前筛选影响，一次返回四格。 */
+    'counts', jsonb_build_object(
+      'post_pending', (select count(*) from public.reports where status = 'pending' and target_type = 'post'),
+      'post_handled', (select count(*) from public.reports where status = 'handled' and target_type = 'post'),
+      'comment_pending', (select count(*) from public.reports where status = 'pending' and target_type = 'comment'),
+      'comment_handled', (select count(*) from public.reports where status = 'handled' and target_type = 'comment')
+    ),
     'items', coalesce((
       select jsonb_agg(jsonb_build_object(
                'id', r.id,
@@ -183,6 +202,7 @@ begin
         from (select *
                 from public.reports
                where status = v_status
+                 and (v_target is null or target_type = v_target)
                order by created_at desc, id desc
                limit least(greatest(coalesce(p_limit, 20), 1), 100)
               offset greatest(coalesce(p_offset, 0), 0)) r
@@ -191,8 +211,8 @@ begin
   );
 end $$;
 
-revoke all on function public.admin_report_page(text, integer, integer) from public, anon;
-grant execute on function public.admin_report_page(text, integer, integer) to authenticated;
+revoke all on function public.admin_report_page(text, integer, integer, text) from public, anon;
+grant execute on function public.admin_report_page(text, integer, integer, text) to authenticated;
 
 -- ─────────────────────────────────────────────
 -- 5) 管理端：处理一条举报/复核
