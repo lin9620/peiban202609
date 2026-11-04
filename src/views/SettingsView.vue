@@ -79,7 +79,7 @@ const open = ref({});
 function toggleRow(k) { open.value = { ...open.value, [k]: !open.value[k] }; }
 const isOpen = (k) => !!open.value[k];
 
-/* 轮405 · 已拉黑从消息列表移到设置「账号」下方。
+/* 轮406 · 已拉黑从消息列表移到设置「账号」下方。
  * 名单仍来自 dm_blocks；解除拉黑走 userBlocks 包装，暖心墙内容过滤缓存同步恢复。 */
 const blockedRows = ref([]);
 const blockedBusy = ref("");
@@ -378,7 +378,7 @@ onMounted(() => { loadPrefs(); });
         <span class="set-arrow on">&#8250;</span>
       </div>
 
-      <!-- 轮405：已拉黑名单从消息列表迁到「账号」下方，点行展开 -->
+      <!-- 轮406：已拉黑名单从消息列表迁到「账号」下方，点行展开 -->
       <template v-if="cloudSigned">
         <div class="set-row" :class="{ open: isOpen('blocked') }" @click="toggleBlocked">
           <span class="set-ico" aria-hidden="true">&#128683;</span>

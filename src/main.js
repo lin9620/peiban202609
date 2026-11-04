@@ -1,4 +1,4 @@
-import { createApp } from "vue";
+import { createApp, watch } from "vue";
 import Vant from "vant";
 import "vant/lib/index.css";
 import { Capacitor } from "@capacitor/core";
@@ -6,11 +6,14 @@ import App from "./App.vue";
 import UpdateDialog from "./components/UpdateDialog.vue";   /* 轮 297 */
 import { router } from "./router.js";
 import { initPet, tickPet, savePet, tickAdventure } from "./stores/petStore.js";
+import { isMobileNav } from "./stores/uiStore.js";
 import { initUserScope } from "./utils/userScope.js";
 import { installErrorBeacon } from "./utils/beacon.js";
 import { initKeyboardInset } from "./utils/keyboardInset.js";   /* 轮 322：键盘让位（App 壳） */
 import { isApp, checkForUpdate, takePromptOnce } from "./utils/appVersion.js";   /* 轮 297 */
 import "./style.css";
+/* 轮 406：皮肤样式表只作为「资源 URL」进来（?url），不进主 CSS 包 —— 是否下载由下面门控决定 */
+import glassSkinUrl from "./glass.css?url";
 
 /* 轮 38：启动页显示的权威判据。
  * index.html 的 head 脚本只能靠 UA / 注入对象猜（轮 30 就是只看 UA 里的 "capacitor"，
@@ -23,22 +26,24 @@ try {
   }
 } catch (e) { /* 非 Capacitor 环境忽略 */ }
 
-/* 轮 404 · 磨砂玻璃皮肤 —— **只在 App 壳里生效，网页端保持原样**（用户 08:03 纠正：
- * 「我只说 app 改样式」，此前做成全局引入，电脑上打开网页也被换了皮）。
+/* 轮 404/405/406 · 磨砂玻璃皮肤的作用域：**移动壳生效，桌面网页保持原样**。
  *
- * 门控用现成的 html.cap-app（index.html 内联脚本 + 上面这段，两处都只在原生壳加），
- * 命中才动态 import —— Vite 会把它拆成独立 chunk，**网页端根本不下载这 28KB CSS**，
- * 不是靠选择器藏着，是真的没有。
+ * 范围口径的演变，别再来回改：
+ *   轮 404 顶层静态 import  → 网页端也换皮（用户：「网页端我没让你改啊」）
+ *   轮 405 只认 html.cap-app → 手机浏览器打开网页还是旧的（用户：「手机浏览器也要新样式」）
+ *   轮 406 就是这个版本     → 跟**移动壳**同域：App 里生效，手机浏览器（<900px）也生效，
+ *                            桌面浏览器（≥900px）完全不变。
  *
- * 两个例外开关（都只在本地/预览时用，不影响线上）：
- *   ① 地址带 ?skin=glass  —— 在电脑或手机浏览器里单独预览这套皮肤
- *   ② localStorage['wp-skin'] = 'glass' —— 需要反复截图/对比时钉住，清掉即恢复
+ * 判定直接复用 uiStore 的 isMobileNav（= isApp || vw < 900），**不另写断点** ——
+ * 用户认的是「手机上该长这样」，不是「屏幕窄就换皮」，所以两者必须同一条线，否则迟早漂移。
  *
- * 要整体回退：删掉这一整段即可，glass.css 留着不碍事。 */
-const wantGlassSkin = (() => {
-  try {
-    if (document.documentElement.classList.contains("cap-app")) return true;
-  } catch (e) { /* ignore */ }
+ * 为什么用 <link media> 而不是 import()：import 一旦执行就粘住了，桌面端没法关回去；
+ * 而 media="not all" 的样式表浏览器根本不会去取，所以桌面端是「不下载」而非「下载了不用」。
+ * 窗口跨越 900px 时靠 watch 跟着切（手机浏览器横过来、桌面拖窄都算）。
+ *
+ * 本地预览开关（只影响自己这台机器，跟线上无关）：
+ *   ?skin=glass  或  localStorage['wp-skin']='glass'  → 桌面也能看到这套皮肤 */
+const forceGlassSkin = (() => {
   try {
     if (/[?&]skin=glass\b/.test(location.search)) return true;
   } catch (e) { /* ignore */ }
@@ -48,7 +53,27 @@ const wantGlassSkin = (() => {
     return false;
   }
 })();
-if (wantGlassSkin) import("./glass.css");
+
+let glassLink = null;
+function applyGlassSkin(on) {
+  try {
+    if (!on) {
+      if (glassLink) glassLink.media = "not all";   /* 关：解除生效，桌面回到原样式 */
+      return;
+    }
+    if (!glassLink) {
+      glassLink = document.createElement("link");
+      glassLink.id = "wp-glass";
+      glassLink.rel = "stylesheet";
+      glassLink.href = glassSkinUrl;
+      document.head.appendChild(glassLink);
+    } else if (glassLink.media !== "all") {
+      glassLink.media = "all";                      /* 重新打开（浏览器此时才去取） */
+    }
+  } catch (e) { /* 皮肤不在关键路径上，出错就当没这套皮肤 */ }
+}
+applyGlassSkin(forceGlassSkin || isMobileNav.value);
+watch(isMobileNav, (v) => applyGlassSkin(forceGlassSkin || v));
 
 /* 轮 322：键盘让位。窗口已不再随输入法缩放（adjustNothing + SystemBars 不吞输入法），
  * 输入法高度改由 CSS 变量 --kb-h 驱动 —— 否则键盘弹起那一瞬会露一条空区。

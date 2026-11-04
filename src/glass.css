@@ -24,9 +24,11 @@
   --g-blur: 20px;
   --g-bg: rgba(255, 255, 255, 0.62);
   --g-bg-soft: rgba(255, 255, 255, 0.46);
-  --g-bg-strong: rgba(255, 255, 255, 0.74);
+  --g-bg-strong: rgba(255, 255, 255, 0.82);
   --g-line: rgba(255, 255, 255, 0.72);
   --g-line-ink: rgba(90, 78, 68, 0.10);
+  /* 页面最底色的 RGB 分量（给底部渐隐遮罩用，rgba() 拆开写才能调 alpha） */
+  --g-fade: 246, 244, 241;
   --g-hi: inset 0 1px 0 rgba(255, 255, 255, 0.92);
   --g-shadow: 0 14px 34px rgba(58, 46, 42, 0.10), 0 2px 8px rgba(58, 46, 42, 0.05);
   --g-shadow-sm: 0 6px 18px rgba(58, 46, 42, 0.07);
@@ -202,6 +204,22 @@ html[data-theme="night"] .orb { opacity: .28; }
   padding-bottom: calc(94px + var(--sab, env(safe-area-inset-bottom, 0px))) !important;
 }
 .shell--mobile-nav.shell--chat .home-pane { padding-bottom: 0 !important; }
+
+/* 底部渐隐：悬浮胶囊不贴底，下面那 8px 缝隙里会有正文透出来（半行字，比全藏起来还难看）。
+ * 用一层「页面底色 → 透明」的固定遮罩把它吃掉 —— 比把胶囊改成贴底更接近参考图的悬浮感。
+ * 颜色走变量，夜间主题跟着换，不然夜里会横一条米白光带。 */
+body::after {
+  content: "";
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  height: calc(78px + var(--sab, env(safe-area-inset-bottom, 0px)));
+  pointer-events: none;
+  background: linear-gradient(to top,
+    rgba(var(--g-fade), 0.97) 0%,
+    rgba(var(--g-fade), 0.88) 42%,
+    rgba(var(--g-fade), 0) 100%);
+  z-index: 135; /* 低于胶囊(140)，高于正文 */
+}
 
 /* 胶囊里的弹层（＋ 号那三瓣） */
 .tabbar-sheet {
@@ -664,6 +682,7 @@ html[data-theme="night"] {
   --g-hi: inset 0 1px 0 rgba(255, 255, 255, 0.08);
   --g-shadow: 0 14px 34px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
   --g-shadow-sm: 0 6px 18px rgba(0, 0, 0, 0.35);
+  --g-fade: 25, 26, 34;                    /* 底部渐隐用深色，夜里不横一条米白光带 */
   --ink-62: rgba(255, 255, 255, 0.62);
   --ink-44: rgba(255, 255, 255, 0.42);
   --p-blue-a: rgba(96, 124, 186, 0.26);   --p-blue-ink: #AFC0E0;

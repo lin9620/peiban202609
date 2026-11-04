@@ -66,12 +66,21 @@
 - **5 套 UI 主题**（右上角 🎨 下拉切换，选择持久化）：奶油橘 / 樱花粉 / 薄荷森林 / 薰衣草紫 / 星夜蓝（深色，Naive UI darkTheme 联动）→ `src/data/themes.js`
 - **两侧玩法栏**（宽屏显示）：左侧宠物速养面板（摸头 / 投喂 / 呼吸放松练习），右侧小道具体验 → `src/components/SideRails.vue`
 - 设计系统：暖色奶油渐变背景 + 光斑装饰 + 毛玻璃卡片 + 多层阴影 + 页面切换过渡
-- **磨砂玻璃皮肤（轮 404，独立文件 `src/glass.css`）**：手机壳整体换成「磨砂玻璃 + 九色 pastel」——
+- **磨砂玻璃皮肤（轮 404 / 405 / 406，独立文件 `src/glass.css`）**：**跟「移动壳」同域** ——
+  App 内生效、手机浏览器（<900px）也生效，**桌面浏览器（≥900px）完全不变**。
   `backdrop-filter: blur(16~24px) saturate(1.5)`、23px 卡片圆角 + 半透明白描边、顶部 1px 高光、
   卡片按序取 pastel 底色（雾蓝/鹅黄/薄荷/蜜桃/樱粉/薰衣草/青瓷/雾灰/纯白）、说明文字统一 62% 不透明度、
-  装饰块 −1° 级微旋转、底部导航改成悬浮胶囊、Android 13 夜间主题全套深玻璃覆盖。
-  **它是一层覆盖，不改 `style.css` 一行** —— 想退回旧观感，删掉 `src/main.js` 里 `import "./glass.css";` 即可。
-  改版前的完整快照在 `_backup/ui-20261104-before-glass/`（含 `RESTORE.md` 回退命令）。
+  装饰块 −1° 级微旋转、底部导航改成悬浮胶囊 + 底部渐隐、夜间主题整套深玻璃覆盖。
+  - **门控复用 `uiStore` 的 `isMobileNav`**（= `isApp || vw < 900`），不另写断点 —— 皮肤必须和移动壳
+    同一条线，否则「手机上该长这样」和「屏幕窄就换皮」迟早对不上。跨 900px 时 `watch` 跟随切换。
+  - **桌面端不下载**：`glass.css` 以 `?url` 只取资源地址，运行时自建 `<link id="wp-glass">`，
+    关断用 `media="not all"`（这种样式表浏览器不会去取）。构建产物是独立 `glass-*.css`（~21KB），
+    `dist/index.html` 零引用。
+  - **预览开关**：地址加 `?skin=glass`，或 `localStorage.setItem('wp-skin','glass')` 后刷新，
+    桌面也能看到这套皮肤（不影响线上）。清掉即恢复。
+  - **回退**：删掉 `src/main.js` 里 `forceGlassSkin` / `applyGlassSkin` 那一整段即可，`glass.css` 留着不碍事。
+    改版前的完整快照在 `_backup/ui-20261104-before-glass/`（含 `RESTORE.md`）。
+  - 守护测试 `tools/skin-gate-test.mjs`（20 项）钉住「不许静态引入、不许首屏预载、门控必须跟 isMobileNav 同线」—— 这条边界已经错过两次（一次改到桌面、一次手机浏览器没跟上）。
 - UI 组件库 **Naive UI**，主题在 `src/theme.js` 定制（品牌橙 #FF9F5A、圆角胶囊按钮、毛玻璃输入框）
 - 四个页面全部重做为现代治愈风版式：首页（宠物主视觉 hero + 双栏语录/故事）、宠物乐园（舞台 + 侧栏）、暖心墙（杂志式动态流）、我的（头像卡 + 数据统计 + 心情热力格）
 - 字体：Quicksand（英文圆润）+ 霞鹜文楷（中文手写温度感）
@@ -89,7 +98,7 @@
 **一条命令跑全部离线测试（轮 402 起，推荐入口）**：
 
 ```bash
-npm test                    # = node tools/all.mjs，默认只跑 fast 层（82 个脚本，~35s）
+npm test                    # = node tools/all.mjs，默认只跑 fast 层（85 个脚本，~40s）
 npm run test:all            # fast + mount + prod（含 page-smoke 真挂载、线上只读探针）
 node tools/all.mjs --list   # 看清单与分层；新加测试忘了登记会在这里被告警
 node tools/all.mjs --only=dm,i18n    # 按文件名过滤
@@ -151,6 +160,7 @@ node tools/mood-test.mjs      # 心情打卡纯逻辑单测（12 项：连续天
 node tools/make-og.mjs        # 重新生成分享卡 og-image.png 到 public/（改了品牌色或文案后可跑）
 node tools/make-app-icon.mjs  # 重新生成全套图标：public/icons、favicon、apple-touch-icon、Android 全密度 mipmap + anydpi/单色（改图标只跑这个，跑完跑 icon-test）
 node tools/icon-test.mjs      # 图标守护（26 项：尺寸/底色/爪印占比/圆角 vs 满版/自适应安全区/monochrome/唯一生成器）
+node tools/skin-gate-test.mjs # 皮肤作用域守护（20 项：不许静态引入、门控必须跟 isMobileNav 同线、桌面端不下载、夜间渐隐有深色版）
 node tools/uifix-test.mjs     # 修复项回归（24 项：评论字数上限/立绘上传校验/大厅文案/状态同步提示/安全头/浏览眼睛摘除/我的页帖子/角色名额口径）
 node tools/app-shell-test.mjs # App 外壳与手机形态回归（64 项：T5 顶栏/TabBar/页脚让位 · T7 私信↔通知分栏与红点 · 聊天整屏(align-items:stretch) · 桌面提示隐藏 · 系统返回键逐级返回/根视图最小化 · 我的页钱包 · 睡着了送行弹窗 · 我的食谱回原版 · 二级评论就地回复框 · 发帖页整屏样式 · 桌面零变化 · 轮142 私信页两段一体与漂流瓶独立聊天 · 轮143 两列化+头部⋯菜单+瓶聊昵称进空间 · 轮144 ⋯点空白关+暖心墙页内刷新）
 node tools/story-test.mjs  # 故事栏单测（217 项：3 万字/标题/标签边界 · 四种排序 · period_key 月→周榜预留 · 轮廓渲染 i18n 中英成对 · 三通道端点形状 · MIGRATION_story.sql 结构 · 批2 评论/书架/精选/数据面板 SQL 结构 · 批3 幂等「设置」语义 + 详情页乐观更新 + 评论乐观上屏）
@@ -419,7 +429,7 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 | 体验 | App 图标被旧生成器覆盖回蓝爪 | 恢复 C「暖窝」，旧 v1/v2 生成器改名，v3 统一出 Android + PWA 图标 | `tools/make-app-icon.mjs` / `android/app/src/main/res` |
 | 体验 | 图标换成用户圈定的「实色陶红 + 白爪印」 | 轮 403：v5 #4 定稿；一张脚本出满 Web/PWA/iOS/Android（含 Android 13 单色），`make-og.mjs` 交出图标写权，`icon-test` 26 项钉住 | `tools/make-app-icon.mjs` / `tools/icon-test.mjs` |
 
-回归验证（全部本地可跑）：`wall-rules-test` 49 项 · `comment-test` 35 项 · `wall-test` 37 项 · `pet-home-test` 19 项 · `pet-visual-test` 163 项 · `food-painter-test` 20 项 · `uifix-test` 24 项 · `image-fit` 20 项 · `snack-test` 24 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 130 项 · `privacy-test` 34 项 · `arity-test` 8 项 · `seo-test` 50 项 · `icon-test` 26 项 · `dm-test` 336 项 · `notify-test` 149 项 · `status-test` 49 项 · `status-counts-test` 92 项 · `bottle-test` 87 项 · `bottle-chat-test` 94 项 · `api-contract-test` 87 项 · `gateway-contract-test` 80 项 · `worker-test` 327 项 · `cache-test` 16 项 · `home-panes-test` 9 项 · `app-shell-test` 67 项 · `react-queue-test` 12 项 · `back-stack-test` 9 项 · `post-detail-test` 17 项 · `splash-test` 21 项 · `app-version-test` 117 项 · `userScope-test` 8 项 · `report-test` 77 项 · `feed-perf-test` 27 项 · `feed-window-test` 19 项 · `feed-window-live` 10 项（需 dev 服务器）· `web-refresh-test` 6 项 · `story-test` 223 项 · `story-b3-e2e` 16 项（需线上库）· `rail-test` 31 项 · `rps-test` 14 项 · `page-smoke` 12 项 · `undef-check`（`--selftest` 10 项）· `tdz-check`。
+回归验证（全部本地可跑）：`wall-rules-test` 49 项 · `comment-test` 35 项 · `wall-test` 37 项 · `pet-home-test` 19 项 · `pet-visual-test` 163 项 · `food-painter-test` 20 项 · `uifix-test` 24 项 · `image-fit` 20 项 · `snack-test` 24 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 130 项 · `privacy-test` 34 项 · `arity-test` 8 项 · `seo-test` 50 项 · `icon-test` 26 项 · `skin-gate-test` 20 项 · `dm-test` 336 项 · `notify-test` 149 项 · `status-test` 49 项 · `status-counts-test` 92 项 · `bottle-test` 87 项 · `bottle-chat-test` 94 项 · `api-contract-test` 87 项 · `gateway-contract-test` 80 项 · `worker-test` 327 项 · `cache-test` 16 项 · `home-panes-test` 9 项 · `app-shell-test` 67 项 · `react-queue-test` 12 项 · `back-stack-test` 9 项 · `post-detail-test` 17 项 · `splash-test` 21 项 · `app-version-test` 117 项 · `userScope-test` 8 项 · `report-test` 77 项 · `feed-perf-test` 27 项 · `feed-window-test` 19 项 · `feed-window-live` 10 项（需 dev 服务器）· `web-refresh-test` 6 项 · `story-test` 223 项 · `story-b3-e2e` 16 项（需线上库）· `rail-test` 31 项 · `rps-test` 14 项 · `page-smoke` 12 项 · `undef-check`（`--selftest` 10 项）· `tdz-check`。
 
 ## 🗺️ 路线图
 

@@ -49,7 +49,7 @@ const MANIFEST = [
     "dm-send-jump-test", "dm-send-ux-test", "dm-tail-cache-test", "dm-test", "dm-vac-test",
     "emoji-panel-test", "feed-autoload-test", "feed-perf-test", "feed-window-test",
     "fold-text-test", "food-painter-test", "gateway-contract-test", "home-panes-test",
-    "i18n-test", "i18n-usage-test", "icon-test", "kb-math-test", "keyboard-policy-test", "messages-gap-test",
+    "i18n-test", "i18n-usage-test", "icon-test", "skin-gate-test", "kb-math-test", "keyboard-policy-test", "messages-gap-test",
     "migration-check-test", "mood-test", "notify-test", "pet-home-test", "pet-visual-test",
     "post-detail-test", "post-nav-test", "privacy-test", "proto-chat-test", "rail-test",
     "react-multikind-test", "react-queue-test", "report-test", "responsiveness-test", "rps-test",

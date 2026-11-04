@@ -293,7 +293,7 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 - **轮400（已部署，未提交）**：App 聊天输入区改成微信式「表情 ↔ 键盘」——键盘展开时点表情，面板贴底出现、输入条原地不动；此时表情键变成键盘键，再点会把面板收起、焦点还给输入框，系统键盘从原高度接上，不再「再点一下直接折叠」。`DmVacChat.vue` 注入双图标 + 宿主类切换，panel-open 时拦截表情键 click：先 `holdForKeyboard()` 钉住 footer 让位，组件收完面板后 `textarea.focus()`；`tools/emoji-panel-test.mjs` 新增 E10 锁。`emoji-panel-test` 10/0、`chat-look-test` 8/0、`dm-vac-test` 37/0、`bottle-vac-test` 28/0、`dm-test` 402/0、`app-shell-test` 70/0、`i18n-test` 19/0、`bottle-test` 98/0、undef/tdz 0、build 成功、page-smoke 14/14；393×852 真实 DOM 探针（mock `--kb-h=320`）输入条底边 532→532→532，收面板后焦点回到 textarea。已部署 Worker Version `de461eb4-c77e-4d32-9bdc-8b064fafae96`，线上 `MessagesView-GTObf30E.js` / `main-C7bcPXlx.js` / `main-CU2xrXeF.css` 均与本地逐字节一致。**已重打并安装** `apk/warm-paws-1.0.2-round400.apk`（5,887,423 bytes，SHA-256 `421FB5E9BDE58501048D4DC7257CD5DB35A9BAC890FF23DFA59B3077BC5A8FF9`，versionCode 3 / versionName 1.0.2），真机 `23054RA19C` 安装 `Success`，冷启动已进入消息页。
 - **轮401（已部署、已安装，未提交）**：暖心墙评论输入（`WpComposer.vue`，`CommunityView` / `PostDetailView` 共 8 处：一级评论、一级回复、二级回复、手机底部条）也改成微信式「表情 ↔ 键盘」——面板打开时表情键变键盘键；再点先 `holdForKeyboard()` 钉住 `.cmt-main-bar` 的让位，收面板后焦点回 textarea，系统键盘从原高度接上，不再整条掉回屏底。新增 `comment.keyboard` 中英文案；`wall-composer-test` 新增 P7。`wall-composer 24/0`、`emoji-panel 10/0`、`chat-look 8/0`、`dm-vac 37/0`、`dm-test 402/0`、`app-shell 70/0`、`i18n 19/0`、`bottle 98/0`、`bottle-vac 28/0`、undef/tdz 0、build 成功、page-smoke 14/14。393×852 真实 DOM 探针（mock `--kb-h=320`）底条底边 532→532→532，图标/标题 `表情→键盘→表情`，收面板后焦点回 textarea；截图 `C:\Users\lin\AppData\Local\Temp\opencode\wall-emoji-keyboard-401-open.png`。已部署 Worker Version `12a574a5-ab5e-412a-8ce3-b6485e827f69`；已重打并安装 `apk/warm-paws-1.0.2-round401.apk`（5,887,423 bytes，SHA-256 `CE4B01AED0EAA2AB82C491555081F59139BBE3E057479661FF162E62D4C9BD0F`），真机 `Success`，versionCode 3 / versionName 1.0.2 不变。
 - **轮402（工具链地基，未提交；零业务改动）**：`npm test` 统一入口（`tools/all.mjs`，82 个 fast 脚本 34s 跑完，分层 fast/mount/live/prod/net，新测试没登记会告警）+ `tools/backup.mjs` 数据库备份（pg_dump → pg_restore 校验 → SHA 台账 → 轮转；self-test 12/12，真 pg_dump 失败路径已实测）。**首跑暴露 4 条既存失败测试**（uifix T3 / keyboard-policy ×3 / app-download pill / responsiveness B4 —— 前三条疑似测试过期，B4 疑似真回归，尚未修）。**真实 dump 与恢复演练未做：本机无 pg_dump、无数据库密码**。详见文末轮402。
-- **轮405（已部署，未提交；App 包未重打）**：消息列表的「已拉黑」入口与名单移到设置「账号」卡片、修改密码下方；列表可展开/收起，展开时才请求 `dm_blocks`，解除拉黑仍走 `unblockUser()`（同步全站拉黑缓存与暖心墙过滤）。消息页旧状态/函数/模板/样式全删。`dm-vac 37/0`、`dm-test 402/0`、`app-shell 70/0`、`i18n 19/0`、undef/tdz 0、build 成功、page-smoke 14/14；1440×900 与 393×852 真实 DOM（glass 主题）确认入口在账号组内、展开显示 2 人、点解除变 1 人；截图 `settings-blocked-405-desktop.png` / `settings-blocked-405-mobile.png`。已部署 Worker Version `a03c84ba-e22a-45cb-885a-c18e707a77c3`，线上 `SettingsView-BMXTdy9x.js` / `MessagesView-Zq2y38kQ.js` 本地=线上。详见文末轮405。
+- **轮406（已提交、已部署、已打包；未安装）**：消息列表的「已拉黑」入口与名单移到设置「账号」卡片、修改密码下方；列表可展开/收起，展开时才请求 `dm_blocks`，解除拉黑仍走 `unblockUser()`（同步全站拉黑缓存与暖心墙过滤）。消息页旧状态/函数/模板/样式全删。`dm-vac 37/0`、`dm-test 402/0`、`app-shell 70/0`、`i18n 19/0`、`skin-gate 20/0`、undef/tdz 0、build 成功、page-smoke 14/14；1440×900 与 393×852 真实 DOM（glass 主题）确认入口在账号组内、展开显示 2 人、点解除变 1 人；截图 `settings-blocked-406-desktop.png` / `settings-blocked-406-mobile.png`。已提交 `f5e33be` + `d893115`，收尾测试/文档随本轮提交；glass.css 最终改为移动端按需加载（App + 手机网页 <900px，桌面不变）。部署 Worker Version `64a25574-0b65-4386-8c55-b03ecc57a9e1`；本机到 Cloudflare 的 fetch 复验超时，未完成线上逐字节比对。APK 已打包 `apk/warm-paws-1.0.2-round405.apk`，未安装。详见文末轮406。
 - **上一批（已提交已部署）**：轮 253~262 攒批：已提交 `663fe61` / 已部署 Version `0b375659`（入口 `index-Cp2C6aCf.js`，SHA16 `0d129290f4ee4701` 本地=线上，live-check 15/15）。明细：轮 253（知乎/Reddit 式渐进渲染补齐：图片淡入 + 触底续载迷你骨架）+ 轮 254（捞漂流瓶 6s 超时提示「没捞到」 + 修「切走再回来旧弹窗复活」：捞网会话代际 fishGen）+ 轮 255（英文文案全面精简：药丸溢出 ×7 + 占位去重 + 任务名 ×2 + 长描述 ×13 + .bcl-chip 防御 CSS）+ 轮 256（无声错误上报信标：beacon.js + Worker /api/client-log）+ 轮 257（4 条已知失败测试清零：seo T38/39/42 无尾斜杠口径 + uifix T23 现口径）+ 轮 258（新工具 i18n-usage-test 死键/漏键检查 + 清掉 79 个死键）+ 轮 259（根目录临时文件大扫除 + .gitignore 补 _scratch/_*.png）+ 轮 260（可用性监控就绪：/api/health 进 live-check + README 配置说明）+ 轮 261（装扮穿戴按身体部位锚定 pos/posBy：废弃舞台顶 dy、锚进 PetMotion 随宠跳动、兔/恐龙/水獭 posBy 覆盖；另修失败构建 closeBundle 踩坏全部预渲染的守卫 + zh 首页正文语言 + home.companions.hall 缺键恢复 + 挪正 FavoritesView 交叉嵌套结构）+ 轮 262（「不跟手」全局治理：红点即时递减 badgeLocal + refreshBadge({after}) 串行修竞态；收藏独立页 /favorites + 写穿缓存 favCacheInsert；评论发送/删除乐观化 pending 临时行）。App 端要重打包装机（随轮 250/251 待办）。
 - **上一批（已提交已部署）**：轮 239~252 攒批：已提交 `0113d6e`（+文档 `3899f5b`）/ 已部署 Version `51feda2f`（入口 `index-DzmDi8IU.js`，live-check 14/14，本地=线上）；`MIGRATION_wall_search.sql` 待用户 SQL Editor 整份执行（不跑也降级可用）。
 - **当前任务**：**轮 146（暖心墙示例帖全清 + 推荐档分级放宽 + 月档改滚动 30 天）待部署** —— 验收点：`/community` 停在「推荐」档应看到大量真实老帖（不再是示例帖），跨天均匀不霸屏；「本月」档 = 前 30 天。遗留待用户拍板：库里 9/24 有 47 条 `〔压测 #xxx〕` 灌水帖，是否清理（删数据需用户明确指示）。
@@ -7797,7 +7797,63 @@ compileSdk = 36，aapt 能认这个属性。
 - `og-image.png` 仍是旧风格，没跟换肤同步（分享卡不是应用内界面）。
 - 未提交、未 deploy —— 按项目规矩等发话。
 
-### 轮405 · 「已拉黑」从消息列表搬到设置账号下方（已部署、未提交；App 包未重打）
+### 轮405 · 纠正作用域：磨砂玻璃皮肤**只在 App 壳生效**（网页端恢复原样）
+
+> 用户当天就发现：「大哥，网页端我没让你改啊，我只说 app 改样式」。
+> 轮 404 把 `import "./glass.css"` 写成了**顶层静态引入** —— 这个项目的样式是全局作用的，
+> 静态引入等于「网页端也换皮」。这是本轮唯一要修的东西。
+
+**一、改法：从「全局引入」改成「按需动态引入」**
+
+```js
+const wantGlassSkin = (() => {
+  if (document.documentElement.classList.contains("cap-app")) return true;   // ① 原生壳
+  if (/[?&]skin=glass\b/.test(location.search)) return true;                 // ② 预览开关
+  return localStorage.getItem("wp-skin") === "glass";                        // ③ 自测钉住
+})();
+if (wantGlassSkin) import("./glass.css");
+```
+
+门控标记用现成的 `html.cap-app` —— index.html 内联脚本（按 UA 猜）与 main.js 的
+`Capacitor.isNativePlatform()` 两处都只在原生壳里加，`style.css` 里 8 处规则已经在依赖它，
+所以这个标记是**可信的既有约定**，不另造一个。
+
+改成动态 import 后 Vite 会拆成独立 chunk：实测 `dist/assets/glass-*.css` = **20.7KB 单独文件**，
+`dist/index.html` 里 `grep glass` = 0 处。网页端不是「靠选择器藏着」，是**根本没下载这份 CSS**。
+
+**二、三个开关的取舍**
+- `?skin=glass`：给自己在电脑/手机浏览器里验收用。线上留着无害（不写库、不加参数就没有）。
+- `localStorage['wp-skin']='glass'`：需要反复截图对比时钉住。
+- 没有做「按屏宽生效」（`@media max-width`）—— 那会让手机浏览器也被换皮，仍然算改了网页端。
+  **如果用户要的是「手机尺寸就生效」，这是另一种口径**，得他说一句再改。
+
+**三、加了一个守护测试 `tools/skin-gate-test.mjs`（15 项，已登记 fast 层）**
+这条边界是「静默 fail」：样式看着都对、测试全绿，只是网页端也变了，肉眼不翻代码看不出来。
+所以钉的是：`main.js` 不许出现静态 `import "./glass.css"` / 必须是 `import("./glass.css")` 且被门控 /
+门控要认 `cap-app`、`skin=glass`、`wp-skin` / `cap-app` 的添加必须在门控之前 / `index.html` 不许出现 glass /
+外加皮肤本身的令牌别被误删（`--r-card:23px`、`--ink-62`、八色 × 两变体、night 分支、backdrop-filter）。
+
+**四、验证（这回无头 Chrome 恢复了，逐项实测）**
+
+| 场景 | 结果 |
+|---|---|
+| 桌面 1280（网页） | 回到米色暖调原样，卡片无 blur、无 pastel ✅ |
+| 手机 390（网页，不带参数） | 仍是原样（右图前的对照）✅ |
+| 手机 390 + `?skin=glass` | 玻璃 + pastel 正常 ✅ |
+| 模拟原生壳（临时把 `cap-app` 写进 `<html>`，跑完即删） | `.card` 实测 `border-radius: 23px` + `backdrop-filter: blur(20px) saturate(1.6)` → 门控在 App 路径上确实命中 ✅ |
+| `dist` 产物 | `glass-*.css` 独立 20.7KB；`index.html` 无引用 ✅ |
+
+`npm test` = **85 脚本 / 1156 断言 / 41.6s**，通过 81 / 失败 4（仍是那 4 条既存红线）。
+
+**五、遗留**
+- APK 已随轮406重打（`apk/warm-paws-1.0.2-round405.apk`），**未安装**；装机前仍按老顺序
+  `npm run build` → `npx cap sync android` → `gradlew assembleDebug`。
+- 提交状态：`f5e33be`、`d893115` 已提交；`README.md`、`tools/all.mjs`、
+  `tools/skin-gate-test.mjs` 与本文档随轮406收尾提交。
+
+> 注：轮406 已把口径扩到「App + 手机网页 <900px」，桌面仍不变；本节只保留 405 的中间态。
+
+### 轮406 · 「已拉黑」从消息列表搬到设置账号下方（已提交、已部署、已打包；未安装）
 
 > 性质：**纯前端 UI 搬家 + 复用现有数据接口**。用户原话：「把消息那里的拉黑放到设置里面账号的下面。放在消息那里太丑了。」
 > 不动「拉黑」动作本身，不写真实拉黑/解除数据；下面的探针全部用 mock 名单。
@@ -7815,7 +7871,13 @@ compileSdk = 36，aapt 能认这个属性。
   - 复用 `dm.blockedTitle` / `blockedHint` / `blockedEmpty` / `blockedGo`，不新增重复文案。
 - `src/style.css`：删掉 `.dm-blocked-bar` / `.dm-blocked` / `.dm-blocked-row` 旧规则；
   新样式收在 Settings scoped 的 `.set-blocked-*`。
+- `src/main.js`：`glass.css` 不再静态进主 CSS 包，改为 `?url` + `<link media>` 按需加载；
+  门控跟 `uiStore.isMobileNav` 同一条线（App + 手机网页 <900px 生效，桌面 ≥900px 不下载），
+  `?skin=glass` / `localStorage['wp-skin']` 仍可本地预览。轮405 的「仅 App 壳」口径由本轮取代。
 - `tools/dm-vac-test.mjs`：V20 从「旧消息列表有入口」改为「设置页有入口/名单/数据/解除包装，消息页不再有」。
+- `tools/report-test.mjs`：消息页的拉黑/解除断言保留，另补设置页名单/解除包装断言。
+- `tools/skin-gate-test.mjs`：20 条断言钉住「不静态引入 / `?url` / `link media` / `isMobileNav` 同线 /
+  跨 900px watch / index.html 不预载」。
 
 **二、行为**
 - 「拉黑用户」动作仍在聊天/个人页菜单里，这次只是把名单集中到设置里查看与解除。
@@ -7824,20 +7886,77 @@ compileSdk = 36，aapt 能认这个属性。
 
 **三、验证**
 - `dm-vac-test` **37/0**、`dm-test` **402/0**、`app-shell-test` **70/0**、`i18n-test` **19/0**、
-  `auth-test` / `notify-test` / `tap-guard-test` 通过、`undef-check` 0、`tdz-check` 0。
+  `skin-gate-test` **20/0**、`auth-test` / `notify-test` / `tap-guard-test` 通过、`undef-check` 0、`tdz-check` 0。
+- `npm test` 85 项：81 通过 / 4 个既有失败（`app-download` pill、`keyboard-policy` 3 条），本轮未新增失败。
 - `npm run build` 成功；`page-smoke --serve=dist` **14/14**（含 `/settings`）。
 - 真实 DOM（临时 harness 挂真 `SettingsView` + `glass.css`，mock `dmApi.blocks` 返回小橘/阿眠，无真实数据）：
   - 1440×900：入口在账号组内，顺序为「修改密码 → 已拉黑」；展开后面板出现、计数 2、
-    两行头像/昵称/解除按钮；截图 `C:\Users\lin\AppData\Local\Temp\opencode\settings-blocked-405-desktop.png`。
-  - 393×852：同上，移动端不显示桌面 hint；截图 `C:\Users\lin\AppData\Local\Temp\opencode\settings-blocked-405-mobile.png`。
+    两行头像/昵称/解除按钮；截图 `C:\Users\lin\AppData\Local\Temp\opencode\settings-blocked-406-desktop.png`。
+  - 393×852：同上，移动端不显示桌面 hint；截图 `C:\Users\lin\AppData\Local\Temp\opencode\settings-blocked-406-mobile.png`。
   - 点第一行「解除」：名单 2→1、计数 2→1，`unblockUser()` 链路成功；没有写线上数据。
-- 线上资产（本地=线上）：
-  - Worker Version `a03c84ba-e22a-45cb-885a-c18e707a77c3`
-  - `SettingsView-BMXTdy9x.js` SHA-256 `75F99680126E35DE14F41A8A0F80DE952EBDFB53746E9EAC08E972AF854D20F5`
-  - `SettingsView-Ixn4tKYz.css` SHA-256 `04AA6170345BC100B98D1AFD5591776965C0D778564397C7A6772575B968C0D7`
-  - `MessagesView-Zq2y38kQ.js` SHA-256 `7D260128AF9607EC89A77AE70A933D4FCDC58ECD690B2282EC7F1E219CD0BA54`
-  - `userBlocks-C1yNw9Nc.js` SHA-256 `58AFA0B59E5528A192FFA14B46583BBB3C65B9D920358FF986B248B99D9ACCF3`
+- 线上资产（部署成功；本机到 Cloudflare 的 fetch 复验超时，未完成逐字节比对）：
+  - Worker Version `64a25574-0b65-4386-8c55-b03ecc57a9e1`
+  - `SettingsView-BUrne9_6.js` SHA-256 `2E0717FAC89AF1A9384D858D798E3090042B88DE668FE9F0274E7F9A13FBA50C`
+  - `SettingsView-CyoqBBuT.css` SHA-256 `43D742815BC29B1E46EA083F0E8BD36BD4BC7DD86F4734E714FD043845C56C53`
+  - `MessagesView-Bd486W4z.js` SHA-256 `ABFC59BCF9A65AF3B9577E5702E8BE640584AC24A69DCCDB43E435F2E8D36D17`
+  - `main-A_Ggmt4_.js` SHA-256 `CE86E20AB27702B82A53BD3CD640BD2E38CE27AB2FCA701838F9594F78F78054`
+  - `glass-lNmZbPZ9.css` SHA-256 `572A6054885E9DB4DDB261B4A50C5D6E7842971195919D14578069D5406BB487`
 
-**四、遗留**
-- **APK 未重打、未安装**：按约定等「装机」指令；当前真机仍是 round401 包，看不到这次设置页改动。
-- 未提交；需要时一起提交/推送。
+**四、打包**
+- `apk/warm-paws-1.0.2-round405.apk`：6,195,024 bytes，SHA-256
+  `3EEC88C529C16D2EEC7C13B07F2292A6702486F1985B3BBC36E260679E60FB50`。
+- 包内已核 `assets/public/assets/main-A_Ggmt4_.js`（767,289B）、
+  `SettingsView-BUrne9_6.js`（14,647B）、`glass-lNmZbPZ9.css`（21,037B）。
+- **未安装**：按约定只打包；当前真机仍是 round401 包。
+
+**五、遗留**
+- 线上 fetch 逐字节比对因网络超时未跑完；wrangler 部署本身成功。
+- 工作区收尾提交包含 `README.md`、`tools/all.mjs`、`tools/skin-gate-test.mjs` 与本文档。
+
+### 轮406 · 皮肤作用域定稿：跟「移动壳」同域（App + 手机浏览器生效，桌面不变）
+
+> 用户第二句纠正：「手机浏览器上打开网页也要新样式」。
+> 于是范围最终定为 **isMobileNav**（= `isApp || vw < 900`），而不是「只有原生壳」。
+
+**一、三版口径的演变（写在这里免得第四次来回）**
+
+| 轮次 | 门控 | 结果 |
+|---|---|---|
+| 404 | 顶层静态 `import "./glass.css"` | 桌面网页也被换皮 ❌ |
+| 405 | 只认 `html.cap-app` | 手机浏览器打开还是旧样子 ❌ |
+| **406** | **`uiStore` 的 `isMobileNav`** | App ✅ 手机浏览器 ✅ 桌面不变 ✅ |
+
+关键判断：**皮肤必须和「移动壳」同一条线**。用户认的是「手机上该长这样」，不是「屏幕窄就换皮」；
+两套断点各自维护迟早对不上（这次就是活例子）。所以直接 import `isMobileNav`，一行都不另写。
+
+**二、实现：`<link media>` 而不是 `import()`**
+`import()` 一旦执行就粘住了，桌面端没法关回去；`?url` 只取资源地址，运行时自建 `<link id="wp-glass">`，
+关断写 `media="not all"` —— 这种样式表浏览器**根本不会去取**，所以桌面端是「不下载」，不是「下载了不用」。
+跨 900px 时 `watch(isMobileNav)` 跟着切 `media`。
+
+**三、顺手修掉两个手机端的观感问题（都是原来就有的）**
+1. **底部透字**：悬浮胶囊的 `--g-bg-strong` 0.74 → 0.82，背后正文不再能读出字（弹层/气泡同用这条，一并变实）。
+2. **胶囊下面 8px 缝隙露半行正文**（「个世界…」那种）。加一层 `body::after` 固定渐隐遮罩：
+   `78px` 高、`rgba(--g-fade, .97) → 0`，`z-index 135`（压在正文上、胶囊下）。
+   颜色走 `--g-fade` 变量，夜间切到 `25,26,34` —— 否则夜里会横一条米白光带。
+
+**四、实测（dev + dist 各一遍）**
+
+| 视口 | `#wp-glass` | 卡片圆角 / 模糊 | 底部渐隐 |
+|---|---|---|---|
+| 390 | 有（`glass.css`） | 23px / `blur(20px) saturate(1.6)` | 有 |
+| 899 | 有 | 23px / 有 | 有 |
+| 901 | **null（元素都没建）** | 12px / none | 无 |
+| 1280 | **null** | 12px / none | 无 |
+
+`dist` 同口径：390 → `glass-lNmZbPZ9.css`（21,037B 独立文件）；1280 → 无 link；
+`dist/index.html` 里 `grep glass` = 0。
+
+**五、回归**
+`npm test` = **85 脚本 / 1161 断言 / 39.5s**，通过 81 / 失败 4（仍是那 4 条既存）。
+`tools/skin-gate-test.mjs` 从 15 项扩到 **20 项**：新增「不许用 `import()` 动态加载」（会粘住、关不掉）、
+「门控必须复用 isMobileNav，不许自己再写宽度断点」、「底部渐隐存在且夜间有深色版」。
+
+**六、遗留**
+- 桌面端加 `?skin=glass` 预览时，底部也会出现那条渐隐（桌面没有胶囊）。只影响自己验收，不影响线上。
+- 未重打 APK；`npm run build` 已过，`cap sync` 照例装机前跑一次。
