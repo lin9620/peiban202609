@@ -11,8 +11,6 @@ import { installErrorBeacon } from "./utils/beacon.js";
 import { initKeyboardInset } from "./utils/keyboardInset.js";   /* 轮 322：键盘让位（App 壳） */
 import { isApp, checkForUpdate, takePromptOnce } from "./utils/appVersion.js";   /* 轮 297 */
 import "./style.css";
-/* 轮 404 · 磨砂玻璃皮肤（整层可回退：删掉下面这行即回到米色平涂） */
-import "./glass.css";
 
 /* 轮 38：启动页显示的权威判据。
  * index.html 的 head 脚本只能靠 UA / 注入对象猜（轮 30 就是只看 UA 里的 "capacitor"，
@@ -24,6 +22,33 @@ try {
     document.documentElement.classList.add("cap-app");
   }
 } catch (e) { /* 非 Capacitor 环境忽略 */ }
+
+/* 轮 404 · 磨砂玻璃皮肤 —— **只在 App 壳里生效，网页端保持原样**（用户 08:03 纠正：
+ * 「我只说 app 改样式」，此前做成全局引入，电脑上打开网页也被换了皮）。
+ *
+ * 门控用现成的 html.cap-app（index.html 内联脚本 + 上面这段，两处都只在原生壳加），
+ * 命中才动态 import —— Vite 会把它拆成独立 chunk，**网页端根本不下载这 28KB CSS**，
+ * 不是靠选择器藏着，是真的没有。
+ *
+ * 两个例外开关（都只在本地/预览时用，不影响线上）：
+ *   ① 地址带 ?skin=glass  —— 在电脑或手机浏览器里单独预览这套皮肤
+ *   ② localStorage['wp-skin'] = 'glass' —— 需要反复截图/对比时钉住，清掉即恢复
+ *
+ * 要整体回退：删掉这一整段即可，glass.css 留着不碍事。 */
+const wantGlassSkin = (() => {
+  try {
+    if (document.documentElement.classList.contains("cap-app")) return true;
+  } catch (e) { /* ignore */ }
+  try {
+    if (/[?&]skin=glass\b/.test(location.search)) return true;
+  } catch (e) { /* ignore */ }
+  try {
+    return localStorage.getItem("wp-skin") === "glass";
+  } catch (e) {
+    return false;
+  }
+})();
+if (wantGlassSkin) import("./glass.css");
 
 /* 轮 322：键盘让位。窗口已不再随输入法缩放（adjustNothing + SystemBars 不吞输入法），
  * 输入法高度改由 CSS 变量 --kb-h 驱动 —— 否则键盘弹起那一瞬会露一条空区。
