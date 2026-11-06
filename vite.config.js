@@ -185,6 +185,19 @@ function seoRoutes() {
           desc: "All of your kindness-wall posts in one gentle list.",
         },
         {
+          /* 轮447补：/favorites 与 /following 一直漏在清单外 —— 线上实测深链/刷新都是真 404
+             （not_found_handling=404-page，没有静态文件就不回退 SPA 壳）。
+             客户端 router.push 进去看着正常，一刷新就掉，属于「自己发现不了」的那类缺陷。 */
+          dir: "favorites",
+          title: "Warm Paws · Saved Posts",
+          desc: "The posts you kept — your own quiet shelf of warmth.",
+        },
+        {
+          dir: "following",
+          title: "Warm Paws · Following",
+          desc: "The people you follow on the kindness wall, and their latest posts.",
+        },
+        {
           dir: "compose",
           title: "Warm Paws · Share a Post",
           desc: "Share a warm thought (and a picture) on the kindness wall.",
