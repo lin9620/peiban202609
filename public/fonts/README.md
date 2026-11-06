@@ -1,40 +1,42 @@
-# 字体文件（自托管）
+# 字体（轮 437b 定稿）
 
-轮 436 从外部 CDN 改为打包内置。改前的问题与取舍见 `src/style.css` 顶部注释。
-
-## 文件
+## 包内只有一个文件
 
 | 文件 | 字体 | 许可 | 体积 | 用途 |
 |---|---|---|---|---|
-| `plus-jakarta-sans.woff2` | Plus Jakarta Sans | SIL Open Font License 1.1 | 27KB | 西文 + 数字，`--font-body` / `--font-display` |
-| `wenkai-subset.woff2` | LXGW WenKai（霞鹜文楷） | SIL Open Font License 1.1 | 603KB | 内容文本（帖子正文 / 信件 / 故事），`--font-hand` |
+| `plus-jakarta-sans.woff2` | Plus Jakarta Sans 可变字体 | SIL OFL 1.1 | 27KB | 西文 + 数字，`--font-body` / `--font-display` 的首位 |
 
-两者均为 OFL 1.1，允许随产品分发与再分发，保留本说明即可。
+**中文（霞鹜文楷）不打进包**，和轮 406 之前一样由 `index.html` 从 jsdelivr 拉：
 
-## 两个文件为什么这么大差别
-
-- **Jakarta** 是可变字体（wght 200–800 单文件），只含 latin 子集，所以只有 27KB。
-  一个文件覆盖全部字重 —— 这正是「700/800 不再是伪粗体」的原因。
-- **楷体**原始文件 11.7MB。这里用 fontTools 按**项目实际用到的 2892 个字符**
-  （`src/`、`index.html` 里出现的全部汉字 + ASCII + 中文标点）做了子集，压到 603KB。
-  用户输入项目里没有的生僻字时会自然落到 `--font-cn` 的系统中文字体，不会出豆腐块。
-
-## 重新生成楷体子集
-
-改动界面文案后如果出现新的汉字，需要重跑一次（否则新字会用系统字体显示，观感不一致）：
-
-```bash
-# 1. 拿完整字体（11.7MB，走 jsdelivr 的 GitHub 镜像，直连 GitHub 在国内常超时）
-curl -sL -o /tmp/wk.ttf \
-  "https://cdn.jsdelivr.net/gh/lxgw/LxgwWenKai-Lite@v1.510/fonts/TTF/LXGWWenKaiLite-Regular.ttf"
-
-# 2. 装工具
-pip install fonttools brotli
-
-# 3. 提取字符集 → 子集化（脚本见下）
+```
+https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/lxgwwenkai-regular.css
+https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/lxgwwenkai-bold.css
 ```
 
-字符集提取覆盖 `src/**/*.vue`、`src/**/*.js`、`index.html` 里的全部 CJK 字符，
-外加 ASCII 可打印字符和中文标点。注意 `src/views/MessagesView.vue` 里有一批
-**编码损坏的注释**（UTF-8 被按 GBK 解释过的产物，约 470 个乱码字符），
-提取时要排除 —— 它们不是真实文案，混进字符集只会让子集体积无谓变大。
+只引 regular + bold 两套。原包的 `style.css` 会把 light / mono 一起 `@import`（多约 400KB 无用 CSS），
+项目里没有 `font-weight: 300` 的用法，去掉不影响任何页面。
+
+## 为什么中文不进包（轮 437b）
+
+轮 436 为了修英文，把楷体也做子集塞进了安装包（603KB → 后来 3.4MB），APK 从 6.8MB 涨到 9.7MB。
+用户直接问：「我让你回退，为什么字体能占用这么大的体积，字体以前就有啊」——
+以前它**不在**包里，是网页从 CDN 拉的，包内是零。现在回到那个做法。
+
+进包 vs 走 CDN 的取舍：走 CDN 弱网时会先显示系统黑体、字体到了再换（`font-display: swap`）；
+进包是零延迟但要背 3MB 体积。用户选前者。
+
+## 中文为什么不再分层
+
+轮 436 试过「UI 用系统黑体、正文用楷体」，用户否掉了（「还不如原来的」），已整体回滚：
+中文全站统一霞鹜文楷，不再有 `--font-hand` / `--font-cn`。`tools/font-test.mjs` 的 F3 盯死这一点。
+
+## 别再往这里塞楷体
+
+`tools/font-test.mjs` 的 F7 会检查本目录：**只准有 `plus-jakarta-sans.woff2` 一个字体文件**，
+且必须 < 60KB。塞回楷体测试会红。
+
+## 附：如果以后真要离线包里带楷体
+
+子集化脚本还留着：`tools/make-font-subset.py`（GB2312 全部 6763 字 + ASCII + 标点 + 源码字符）。
+原始字体走 jsdelivr 的 Lite 仓库（11.7MB），每档子集约 1.7MB。
+注意确认真下完整（曾有 3.1MB 半截文件导致 fontTools 报 `unexpected end of 'post' table data`）。

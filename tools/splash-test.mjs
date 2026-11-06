@@ -29,9 +29,14 @@ ok("index.html：启动页静态层（不依赖 Vue，#app 外的 DOM 层；logo
   has(html, 'id="app-splash"', "sp-paw", "sp-breathe", "温暖的爪印", "#faf9f5"));
 ok("index.html：淡出类 .out（App.vue 关页用）+ aria-hidden + prefers-reduced-motion 降动画",
   has(html, "#app-splash.out", 'aria-hidden="true"', "prefers-reduced-motion"));
-ok("index.html：看门狗触发先摘启动页（6 秒中文兜底提示不被启动页挡住）",
+ok("index.html：看门狗触发先摘启动页（中文兜底提示不被启动页挡住）",
   has(html, 'var sp = document.getElementById("app-splash");')
     && html.indexOf('document.getElementById("app-splash")') < html.indexOf("app.innerHTML"));
+ok("index.html：慢网络 12s 只提示、30s 才真兜底（不再 12s 清空页面）",
+  has(html, "SOFT_MS = 12000", "HARD_MS = 30000", "网络有点慢", "正在继续加载", "页面加载遇到了一点小麻烦")
+    && !html.includes("!window.__WP_MOUNTED__ && !bootErrs.length"));
+ok("index.html：首屏 /assets/ 资源失败会补一次自动重载，且只在挂载前",
+  has(html, "function reloadOnce()", 'window.addEventListener("vite:preloadError", reloadOnce);', "!window.__WP_MOUNTED__ && /\\/assets\\//.test(url)"));
 ok("App.vue：云端就绪 + 会话缓存预热后才关启动页（Promise.race 2.5s 兜底放行，云端挂了不挡人）",
   has(appVue, "removeSplash();", "Promise.race([boot, new Promise((r) => setTimeout(r, 2500))])"));
 ok("App.vue：预热会话列表与 MessagesView 同款（key dm:convs + dmApi.listConvs(200, 0)；未登录跳过）",

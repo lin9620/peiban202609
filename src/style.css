@@ -1,32 +1,21 @@
 /* ═══════════ Warm Paws · 现代治愈风设计系统 ═══════════ */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
-/* ══════════ 轮 436 · 字体自托管 ══════════
- * 改前：Inter + EB Garamond 走 Google Fonts，霞鹜文楷走 jsdelivr。
- *   ① Google Fonts 只加载 Inter 400/500/600，但代码里 700 用了 24 处、800 用了 4 处
- *      → 浏览器合成加粗（把 600 轮廓机械描粗），英文发胖、笔画黏连 —— 这是「英文字体丑」的主因。
- *      EB Garamond 同样只有 400/500，display 却写 600，衬线描粗后更糊。
- *   ② 霞鹜文楷每字重 97 个 unicode-range 分片，style.css 里 import 了 6 套（含 mono）
- *      → 光 CSS 就要 630KB 才让浏览器知道该下哪片，国内 jsdelivr 实测 4.5s 起，弱网直接失败，
- *      回落到系统自带的西文（Arial/宋体附字体）—— 那才是真正难看的那种。
- *
- * 现在：两个 woff2 全部打进包内（App 读本地文件，零网络；Web 首访后强缓存）。
- *   · Plus Jakarta Sans 可变字体 27KB，wght 200–800 一个文件覆盖全部字重 → 伪粗体消失。
- *   · 霞鹜文楷仍按项目字符集做子集，中文照旧全站楷体。
- * 轮 436b：曾试过「UI 黑体 / 内容楷体」分层，用户否掉（中文字体不如原来的），已整体回滚 ——
- *   中文一律走霞鹜文楷，不要再按用途拆字体层。
+/* ══════════ 字体层（轮 437b 定稿）══════════
+ * 西文：Plus Jakarta Sans 可变字体，27KB，打进包内（唯一进包的字体）。
+ *   · 来由：轮 436 之前用 Google Fonts 的 Inter 400/500/600，而代码里 700 有 24 处、800 有 4 处
+ *     → 浏览器把 600 轮廓机械描粗，英文发胖、笔画黏连，这就是「英文字体太丑」。
+ *     可变字体一个文件覆盖 wght 200–800，700/800 是真字形，伪粗体消失。
+ * 中文：霞鹜文楷，**走 CDN，不进包**，和轮 406 之前完全一样（引用见 index.html）。
+ *   · 轮 436 一度把它也塞进包（603KB→3.4MB），APK 从 6.8MB 涨到 9.7MB —— 用户直接质疑
+ *     「字体以前就有，为什么占这么大体积」。以前没有，是网页从 CDN 拉的，包内是零。
+ *   · 轮 436b 还试过「UI 黑体 / 内容楷体」的分层，也被否掉（不如原来的）。结论：
+ *     **中文全站统一霞鹜文楷，不拆层、不打进包。** 别再往 public/fonts 里塞楷体。
  * ══════════════════════════════════════════════════════════════════════════ */
 @font-face {
   font-family: "Plus Jakarta Sans";
   src: url("/fonts/plus-jakarta-sans.woff2") format("woff2");
   font-weight: 200 800;          /* 可变轴：一个文件顶五档，700/800 不再是伪粗体 */
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "LXGW WenKai";
-  src: url("/fonts/wenkai-subset.woff2") format("woff2");
-  font-weight: 400;
   font-style: normal;
   font-display: swap;
 }

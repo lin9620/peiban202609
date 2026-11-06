@@ -74,41 +74,79 @@
       }
     } catch (e) { /* 拿不到 UA 就当网页 */ }
     var FLAG = "wp-boot-reload";
-    try {
-      window.__bootErrs = window.__bootErrs || [];
-    window.addEventListener("error", function (e) {
-      window.__bootErrs.push((e.message || "") + " @" + (e.filename || "").split("/").pop() + ":" + (e.lineno || 0));
-    });
-    window.addEventListener("unhandledrejection", function (e) {
-      window.__bootErrs.push("REJ:" + String(e.reason).slice(0, 200));
-    });
-    window.__bootErrs = window.__bootErrs || [];
-    window.addEventListener("error", function (e) {
-      window.__bootErrs.push((e.message || "") + " @" + (e.filename || "").split("/").pop() + ":" + (e.lineno || 0));
-    });
-    window.addEventListener("vite:preloadError", function () {
+    var SOFT_MS = 12000;   /* 12s 只提示「还在加载」，不清空页面 */
+    var HARD_MS = 30000;   /* 30s 仍没挂载才认定为真故障 */
+    var bootErrs = (window.__bootErrs = window.__bootErrs || []);
+    var pushErr = function (s) {
+      s = String(s || "").slice(0, 300);
+      if (!s || bootErrs.indexOf(s) >= 0 || bootErrs.length >= 6) return;
+      bootErrs.push(s);
+    };
+    /* 资源加载失败（script/link/img）不会冒泡，必须用捕获阶段；
+     * 运行时报错则走 message/filename。两路都记下来，兜底页才有据可查。 */
+    function reloadOnce() {
+      try {
         if (sessionStorage.getItem(FLAG)) return;   /* 已重载过一次：不再循环 */
         sessionStorage.setItem(FLAG, "1");
-        location.reload();
-      });
-    } catch (e) { /* 隐私模式等拿不到 sessionStorage 就跳过自动重载 */ }
-    setTimeout(function () {
+      } catch (e) { /* 隐私模式等拿不到 sessionStorage 就直接重载 */ }
+      location.reload();
+    }
+    window.addEventListener("error", function (e) {
+      if (e && e.target && e.target !== window && e.target.tagName) {
+        var t = e.target;
+        var url = t.src || t.href || "";
+        pushErr("RES:" + t.tagName + " " + url);
+        /* 首屏主包/依赖包被弱网掐断时，原生模块不会走 vite:preloadError；
+         * 这里补一次自动重载（只限挂载前、只限 /assets/，避免聊天中误重载）。 */
+        if (!window.__WP_MOUNTED__ && /\/assets\//.test(url)) reloadOnce();
+      } else {
+        pushErr((e && e.message || "") + " @" + String((e && e.filename) || "").split("/").pop() + ":" + ((e && e.lineno) || 0));
+      }
+    }, true);
+    window.addEventListener("unhandledrejection", function (e) {
+      pushErr("REJ:" + String(e && e.reason).slice(0, 200));
+    });
+    window.addEventListener("vite:preloadError", reloadOnce);
+    function bootCard(title, msg, hard) {
       if (window.__WP_MOUNTED__) return;
       var app = document.getElementById("app");
-      /* 轮 24：看门狗触发时先摘掉启动页，否则中文提示会被启动页挡住 */
-      var sp = document.getElementById("app-splash");
-      if (sp && sp.parentNode) sp.parentNode.removeChild(sp);
-      /* 轮 18：不再要求「有英文占位才兜底」——App 里占位已被剥离（cap-strip-hero），
-       * JS 起不来时同样给出中文提示，而不是白屏/裸英文 */
       if (!app) return;
+      if (hard) {
+        /* 只有真故障才摘掉启动页，避免 12s 的「慢网络提示」挡住 App 启动页 */
+        var sp = document.getElementById("app-splash");
+        if (sp && sp.parentNode) sp.parentNode.removeChild(sp);
+      }
+      var detail = bootErrs.length
+        ? '<p style="font-size:12px;color:#9a8b7d;word-break:break-all;margin:10px 0 0">' + bootErrs.join("<br>").slice(0, 400) + "</p>"
+        : "";
       app.innerHTML =
-        '<section class="card seo-hero" style="text-align:center">' +
-        '<h2 class="seo-title">\u{1F43E} 温暖的爪印</h2>' +
-        "<p>页面加载遇到了一点小麻烦，内容没有起来。</p>" +
-        (window.__bootErrs && window.__bootErrs.length ? '<p style="font-size:12px;color:#999;word-break:break-all">' + window.__bootErrs.map(String).join("<br>").slice(0, 400) + "</p>" : "") +
-        '<p><a href="javascript:location.reload()" style="color:#e07a3f;font-weight:700">' +
+        '<section style="max-width:520px;margin:16vh auto 0;padding:24px 20px;text-align:center;' +
+        "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;" +
+        'color:#5b4636;background:#fffdf8;border:1px solid #eadbc8;border-radius:18px;' +
+        'box-shadow:0 8px 30px rgba(90,60,30,.08)">' +
+        '<h2 style="margin:0 0 10px;font-size:20px;font-weight:800">' + title + "</h2>" +
+        '<p style="margin:0;font-size:14px;line-height:1.7">' + msg + "</p>" +
+        detail +
+        '<p style="margin:14px 0 0"><a href="javascript:location.reload()" style="color:#e07a3f;font-weight:700;text-decoration:none">' +
         "\u70b9\u8fd9\u91cc\u91cd\u8bd5</a></p></section>";
-    }, 12000);   /* 轮 216：6s → 12s——慢网络下资源未拉完就被看门狗换掉 = 假故障页 */
+    }
+    setTimeout(function () {
+      /* 12s：没挂载 → 只提示「网络慢，还在加载」，保留启动页。
+       * 不按 bootErrs 判——楷体 CDN/图标 404 这类非关键资源失败也会进 bootErrs，
+       * 不能因此把「慢网络」误判成真故障。 */
+      if (!window.__WP_MOUNTED__) {
+        bootCard("\u{1F43E} 温暖的爪印", "网络有点慢，正在继续加载…", false);
+      }
+    }, SOFT_MS);
+    setTimeout(function () {
+      /* 30s：真故障或资源确实没到，才换掉整页并显示错误摘要 */
+      if (window.__WP_MOUNTED__) return;
+      bootCard(
+        "\u{1F43E} 温暖的爪印",
+        "页面加载遇到了一点小麻烦，内容没有起来。",
+        true
+      );
+    }, HARD_MS);
   })();
   </script>
 
@@ -150,17 +188,20 @@
     }
   </script>
 
-  <!-- 轮 436：字体全部改为自托管（public/fonts/，@font-face 见 style.css 顶部）。
-       改前这里引的是 Google Fonts（Inter 400/500/600 + EB Garamond 400/500）和
-       jsdelivr 上的霞鹜文楷（每字重 97 个 unicode-range 分片 × 6 套 ≈ 630KB CSS）。
-       两个后果都实测到了：① 只下到 600，代码里的 700/800 全靠浏览器合成加粗，英文发胖发糊；
-       ② 国内拉 jsdelivr 4.5s 起、弱网直接失败，回落到系统西文（Arial / 宋体附字体）—— 那才是真丑。
-       现在只有两个本地文件（Jakarta 27KB + 楷体子集 603KB），App 读包内文件零网络，
-       preload 让首帧就用对字体，不再有「先丑后跳」的闪烁。 -->
+  <!-- 轮 437b：中文字体回退到原来的加载方式 —— 走 CDN，**不进安装包**。
+       轮 436 把楷体也塞进了包（603KB → 后来 3.4MB），APK 从 6.8MB 涨到 9.7MB；
+       用户问「字体以前就有，为什么占这么大体积」—— 因为以前它是网页从 CDN 拉的，包内没有。
+       现在包内只留 27KB 的西文 Jakarta（这个是真优化：可变字重解决了英文合成加粗），
+       楷体回到 jsdelivr，和轮 406 之前完全一样。
+       只引 regular + bold 两套（原包 style.css 会把 light/mono 一起 import，多 400KB 无用 CSS；
+       项目里没有 300 字重的用法，去掉不影响任何一页的观感）。 -->
   <link rel="preload" href="/fonts/plus-jakarta-sans.woff2" as="font" type="font/woff2" crossorigin />
-  <!-- 楷体不 preload：子集 603KB，比主 JS 还大，首屏抢带宽会拖慢白屏。
-       它只服务内容文本（帖子正文 / 信件 / 故事），靠 font-display:swap 按需加载——
-       字体没到先用黑体，到了再换，不影响任何交互。 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/lxgwwenkai-regular.css" media="print" onload="this.media='all'" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/lxgwwenkai-bold.css" media="print" onload="this.media='all'" />
+  <noscript>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/lxgwwenkai-regular.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/lxgwwenkai-bold.css" />
+  </noscript>
 
 </head>
 <body>
@@ -186,6 +227,8 @@
       #app-splash { position: fixed; inset: 0; z-index: 9999; flex-direction: column;
         align-items: center; justify-content: center; gap: 10px; padding: 24px; text-align: center;
         overflow: hidden; transition: opacity .4s ease; color: #6b4a32;
+        /* 启动页不要触发楷体下载：603KB 的 CDN 字体会和主 JS 抢首屏带宽 */
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
         /* ① 暖奶油（默认）：米白 + 一束顶光，不是一块死板纯色 */
         background:
           radial-gradient(120% 78% at 50% -6%, #ffdcc7 0%, rgba(253,242,231,.92) 40%, rgba(250,249,245,0) 74%),
