@@ -307,64 +307,71 @@ const hotTags = computed(() => {
   return Object.entries(cnt).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([tg]) => tg);
 });
 
+/* ═══ 列表消费器（轮450：从 loadCloud 内部提到模块作用域）═══
+ * 原来 consume / consumeSoft 是 loadCloud 的局部 const，而 enterFollowFeed 是顶层函数，
+ * 根本拿不到 —— 一进关注流就 ReferenceError: consume is not defined，被 catch 兜成
+ * 「加载失败」。也就是说关注流从轮447 上线起 UI 上就没成功过一次
+ * （当时只验了接口层，没验页面）。
+ * 两者只依赖顶层 ref 与纯函数，提出来给 loadCloud / enterFollowFeed 共用，别再复制一份。 */
+const consume = (box) => {
+  /* 轮 33：全站拉黑 —— 我拉黑的人的帖子在渲染前剔除（对方不知情） */
+  cloudPosts.value = filterBlocked(box.rows);
+  /* 传响应式数组（cloudPosts.value）而不是 rows：浏览数要靠「写代理」才会即时刷新到界面，
+     直接改原始对象（raw）不会触发 Vue 的更新 */
+  countViews(cloudPosts.value);
+  if (box.counts) {
+    const next = { ...cloudCmtTotal.value };
+    for (const p of cloudPosts.value) {
+      if (p.dbId != null) next[cmtKey(p)] = box.counts[p.dbId] || 0;
+    }
+    cloudCmtTotal.value = next;
+  }
+  if (box.fromFetch) {
+    /* 本轮 fetch 的结果：游标=末条 dbId（id<游标 取下一页） */
+    feedCursor.value = box.rows.length ? box.rows[box.rows.length - 1].dbId : feedCursor.value;
+    /* 轮 230 修「往下拉几轮就到底了」：**这里绝不能判「服务器已到底」**。
+       首屏/刷新拉的是 REFRESH_PAGE(20) 条（轮 162 瘦身），而本行原来拿 FEED_PAGE(50)
+       去比 —— 20 < 50 恒成立，于是每次首屏/刷新都把 cloudDone 置 true，触底续载被
+       feedTick 的 `else if (!cloudDone.value)` 挡死，永远只有首屏那 20 条
+       （真机取证：滚到底后 /api/posts 请求数停在 2、再也不发，底部直接显示「就到这里啦」）。
+       「到底」只能由**分页请求**判定（loadMoreCloud 拿到空页 / 不满一页 FEED_PAGE 时才为真）。
+       这里保守置 false：万一真到底，触底会发一次分页请求拿回空页，随即自愈为 true。 */
+    cloudDone.value = false;
+    newestSeenTs.value = Math.max(newestSeenTs.value, ...box.rows.map((p) => p.ts || 0));
+  } else {
+    /* 旧/外来缓存盒：仅展示快照——游标清空、不算到底（loadMoreCloud 的去重+跳页会自愈错位） */
+    feedCursor.value = null;
+    cloudDone.value = false;
+  }
+};
+/* 轮 206：进入路径的静默刷新 = **软合并**——只把没见过的新帖钉顶，其余原顺序不动、
+ * 不再整表替换（随机批 reshuffle 只属于下拉/强制刷新那种「用户明确要换一批」的场景）。
+ * 旧路径进入也整表替换 = 用户实测「暖心墙帖子每次都要重新加载，非常卡」。 */
+const consumeSoft = (box) => {
+  if (!box || !Array.isArray(box.rows) || !box.rows.length) return;
+  const cur = cloudPosts.value;
+  if (!cur.length) { consume(box); return; }   /* 首次无内容：正常 consume */
+  const known = new Set(cur.map((p) => cmtKey(p)));
+  const additions = filterBlocked(box.rows)
+    .filter((p) => !known.has(cmtKey(p)))
+    .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  countViews(additions);
+  if (additions.length) cloudPosts.value = [...additions, ...cur];
+  if (box.counts) {
+    const next = { ...cloudCmtTotal.value };
+    for (const p of [...additions, ...cur]) {
+      if (p.dbId != null && box.counts[p.dbId] != null) next[p.dbId] = box.counts[p.dbId];
+    }
+    cloudCmtTotal.value = next;
+  }
+  newestSeenTs.value = Math.max(newestSeenTs.value, ...box.rows.map((p) => p.ts || 0));
+};
+
 async function loadCloud({ fresh = false, quiet = false } = {}) {
   loadingCloud.value = true;
   let freshOk = true;   /* 轮 165 修：必须声明在函数作用域——上一轮写进了 if(fresh) 块内，
                            而函数尾 return freshOk 在块外 → ReferenceError 直接把整页炸成错误卡 */
   /* 本地优先（SWR）：缓存「帖 + 每帖评论数」整包 → 二次进页不闪「载入中」，评论数也是真的 */
-  const consume = (box) => {
-    /* 轮 33：全站拉黑 —— 我拉黑的人的帖子在渲染前剔除（对方不知情） */
-    cloudPosts.value = filterBlocked(box.rows);
-    /* 传响应式数组（cloudPosts.value）而不是 rows：浏览数要靠「写代理」才会即时刷新到界面，
-       直接改原始对象（raw）不会触发 Vue 的更新 */
-    countViews(cloudPosts.value);
-    if (box.counts) {
-      const next = { ...cloudCmtTotal.value };
-      for (const p of cloudPosts.value) {
-        if (p.dbId != null) next[cmtKey(p)] = box.counts[p.dbId] || 0;
-      }
-      cloudCmtTotal.value = next;
-    }
-    if (box.fromFetch) {
-      /* 本轮 fetch 的结果：游标=末条 dbId（id<游标 取下一页） */
-      feedCursor.value = box.rows.length ? box.rows[box.rows.length - 1].dbId : feedCursor.value;
-      /* 轮 230 修「往下拉几轮就到底了」：**这里绝不能判「服务器已到底」**。
-         首屏/刷新拉的是 REFRESH_PAGE(20) 条（轮 162 瘦身），而本行原来拿 FEED_PAGE(50)
-         去比 —— 20 < 50 恒成立，于是每次首屏/刷新都把 cloudDone 置 true，触底续载被
-         feedTick 的 `else if (!cloudDone.value)` 挡死，永远只有首屏那 20 条
-         （真机取证：滚到底后 /api/posts 请求数停在 2、再也不发，底部直接显示「就到这里啦」）。
-         「到底」只能由**分页请求**判定（loadMoreCloud 拿到空页 / 不满一页 FEED_PAGE 时才为真）。
-         这里保守置 false：万一真到底，触底会发一次分页请求拿回空页，随即自愈为 true。 */
-      cloudDone.value = false;
-      newestSeenTs.value = Math.max(newestSeenTs.value, ...box.rows.map((p) => p.ts || 0));
-    } else {
-      /* 旧/外来缓存盒：仅展示快照——游标清空、不算到底（loadMoreCloud 的去重+跳页会自愈错位） */
-      feedCursor.value = null;
-      cloudDone.value = false;
-    }
-  };
-  /* 轮 206：进入路径的静默刷新 = **软合并**——只把没见过的新帖钉顶，其余原顺序不动、
-   * 不再整表替换（随机批 reshuffle 只属于下拉/强制刷新那种「用户明确要换一批」的场景）。
-   * 旧路径进入也整表替换 = 用户实测「暖心墙帖子每次都要重新加载，非常卡」。 */
-  const consumeSoft = (box) => {
-    if (!box || !Array.isArray(box.rows) || !box.rows.length) return;
-    const cur = cloudPosts.value;
-    if (!cur.length) { consume(box); return; }   /* 首次无内容：正常 consume */
-    const known = new Set(cur.map((p) => cmtKey(p)));
-    const additions = filterBlocked(box.rows)
-      .filter((p) => !known.has(cmtKey(p)))
-      .sort((a, b) => (b.ts || 0) - (a.ts || 0));
-    countViews(additions);
-    if (additions.length) cloudPosts.value = [...additions, ...cur];
-    if (box.counts) {
-      const next = { ...cloudCmtTotal.value };
-      for (const p of [...additions, ...cur]) {
-        if (p.dbId != null && box.counts[p.dbId] != null) next[p.dbId] = box.counts[p.dbId];
-      }
-      cloudCmtTotal.value = next;
-    }
-    newestSeenTs.value = Math.max(newestSeenTs.value, ...box.rows.map((p) => p.ts || 0));
-  };
   /* 轮 231 · 静默新鲜化（切回页签专用）：只把**没见过的新帖**软合并进顶部，
      不亮 loading、不碰游标/到底状态、更不整表替换 —— 所以滚动位置分毫不动。
      起因（用户反馈）：「点暖心墙，那个应该是刷新啊，现在怎么没反应」——
@@ -2715,47 +2722,49 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
     </transition>
 
     <!-- 轮 252 · 搜索栏：关键词实时搜（防抖）+ 热门标签 chip（点击筛选/增删）
-         轮447：关注流下隐藏 —— 搜索结果与关注流是两套数据源，同时开着用户会看到
-         「搜了但列表没变」，比不给搜更糟。 -->
-    <div v-if="!followOnly" class="wall-search">
-      <div class="wall-search-row">
-        <input v-model="searchQ" class="wall-search-input" type="search"
-          :placeholder="t('community.searchPh')" :aria-label="t('community.searchPh')" />
-        <button v-if="searchQ || searchTags.length" class="sort-btn" @click="clearSearch">✕</button>
-      </div>
-      <div v-if="hotTags.length" class="wall-tag-row">
-        <button v-for="tg in hotTags" :key="tg" class="tag-chip"
-          :class="{ on: searchTags.includes(tg) }"
-          @click="toggleSearchTag(tg)">#{{ tg }}#</button>
-      </div>
-      <p v-if="searchBusy" class="notice">{{ t("community.searching") }}</p>
-      <p v-else-if="searchTouched && searchActive && !searchRows.length" class="notice">
-        {{ t("community.searchEmpty") }}</p>
-    </div>
+         轮447：关注流下隐藏搜索 —— 搜索结果与关注流是两套数据源，同时开着用户会看到
+         「搜了但列表没变」，比不给搜更糟。
 
-    <!-- 轮449 · 顶部只留两层：范围（分段控件）→ 排序（chips）。
-         原来「我的关注」是一个独立 pill：只占半行、左贴边、上下各挨着一个不同尺寸的胶囊，
-         与搜索框、排序 chips 形成三层台阶，用户：「这个排版好丑啊」。
-         改成分段控件 —— 与搜索框同宽、两段互相对照，「全部 / 我的关注」是一个开关关系，
-         而不是又一个漂浮的按钮；排序 chips 退到下一层，层级变成「大控件 → 小 chip」。
-         口径不变：关注是**数据源切换**，选中时排序行/时间范围行/搜索栏整体隐藏。 -->
-    <div class="follow-seg" role="tablist">
-      <button role="tab" class="follow-seg-item" :class="{ on: !followOnly }"
-        :aria-selected="!followOnly" @click="exitFollowFeed">{{ t("follow.feedAll") }}</button>
-      <button role="tab" class="follow-seg-item" :class="{ on: followOnly }"
-        :aria-selected="followOnly" :disabled="followBusy" :aria-busy="followBusy"
-        :title="t('follow.feedBtnHint')" @click="enterFollowFeed">
-        <span class="follow-ico" aria-hidden="true">👥</span>
-        <span>{{ t("follow.feedBtn") }}</span>
-        <b v-if="followingCount" class="follow-n">{{ followingCount }}</b>
-      </button>
+         轮450 · 顶部从三行收到两行（搜索行 → 排序行）。
+         原来是：搜索框 / 「全部 | 我的关注」整宽分段 / 排序 chips，三行全是等宽胶囊，
+         与首页频道条、消息页三段撞成同一副面孔 —— 用户：「三个页面全是联排按钮，不能啊」。
+         真正的错在于**层级**：「我的关注」不是与「全部」并列的第二个频道，而是在全部里
+         再收窄的一个筛选。给它和页面级导航同样的体积，等于把筛选抬成了频道。
+         所以它降级成搜索行右侧的一个入口（带人数），不再独占一行；点它进关注流，
+         同一个位置变成状态句 + 退出。 -->
+    <div class="wall-search">
+      <div class="wall-search-row">
+        <template v-if="!followOnly">
+          <input v-model="searchQ" class="wall-search-input" type="search"
+            :placeholder="t('community.searchPh')" :aria-label="t('community.searchPh')" />
+          <button v-if="searchQ || searchTags.length" class="sort-btn" @click="clearSearch">✕</button>
+        </template>
+        <!-- 关注流下：左边一句状态（说清现在只看谁的内容），右边同一个按钮变成退出。
+             0 人时也照实说「只看 0 位博主」—— 这正是列表为空的原因，比说「我的关注」有用。 -->
+        <p v-else class="wall-follow-state">
+          {{ t("follow.feedNote", { n: followingCount }) }}
+        </p>
+        <button class="wall-follow-btn" :class="{ on: followOnly, busy: followBusy }"
+          :disabled="followBusy" :aria-busy="followBusy"
+          :title="followOnly ? t('follow.feedExit') : t('follow.feedBtnHint')"
+          :aria-label="followOnly ? t('follow.feedExit') : t('follow.feedBtn')"
+          @click="followOnly ? exitFollowFeed() : enterFollowFeed()">
+          <span class="wall-follow-ico" aria-hidden="true">👥</span>
+          <span>{{ t("follow.feedBtn") }}</span>
+          <b v-if="followingCount" class="wall-follow-n">{{ followingCount }}</b>
+        </button>
+      </div>
+      <template v-if="!followOnly">
+        <div v-if="hotTags.length" class="wall-tag-row">
+          <button v-for="tg in hotTags" :key="tg" class="tag-chip"
+            :class="{ on: searchTags.includes(tg) }"
+            @click="toggleSearchTag(tg)">#{{ tg }}#</button>
+        </div>
+        <p v-if="searchBusy" class="notice">{{ t("community.searching") }}</p>
+        <p v-else-if="searchTouched && searchActive && !searchRows.length" class="notice">
+          {{ t("community.searchEmpty") }}</p>
+      </template>
     </div>
-    <!-- 关注流下的一行弱说明（灰字，不是第三个胶囊）；✕ 是「全部」段之外的快捷退路 -->
-    <p v-if="followOnly && followingCount" class="follow-note">
-      <span>{{ t("follow.feedNote", { n: followingCount }) }}</span>
-      <button class="follow-exit" :title="t('follow.feedExit')"
-        :aria-label="t('follow.feedExit')" @click="exitFollowFeed">✕</button>
-    </p>
 
     <!-- 排序：默认最新；还有 同感最多 / 抱抱最多 / 暖暖最多 -->
     <div v-if="!followOnly" class="sort-row">

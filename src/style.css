@@ -2488,20 +2488,34 @@ html.cap-app .reply-bar {
      视觉与原来完全一致，但内容以下的空白都在 home3 手势面里，横滑不再有死区 */
   min-height: calc(100dvh - 96px - var(--sat, env(safe-area-inset-top, 0px)) - var(--sab, env(safe-area-inset-bottom, 0px)));
 }
+/* 轮450 · 频道条改成文字页签（原来是一排白底胶囊 + 选中实心橙块）。
+ * 用户：「首页、暖心墙、消息页，三个页面全是联排按钮，不能啊」——
+ * 问题不在单个按钮好不好看，而在**每个页面顶部都先铺一排有体积的控件**，
+ * 内容被挤到下面，且三页同一形态等于没有层级。频道切换是「导航」，
+ * 不是「动作」，不该长得像可按的实体按钮：去掉底色/描边/圆角，只留字重与一条短横。 */
 .home-chips {
   position: sticky; top: 0; z-index: 6;
-  display: flex; gap: 6px; justify-content: center; align-items: center;
-  padding: 10px 4px;
+  display: flex; gap: 22px; justify-content: center; align-items: center;
+  padding: 10px 4px 6px;
   background: var(--glass-strong);
   backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
 }
 .home-chip {
   appearance: none; cursor: pointer; font: inherit;
-  min-height: 40px; padding: 6px 18px; border-radius: 999px; font-size: 14px; font-weight: 500;
-  color: var(--ink-soft); background: transparent; border: 1.5px solid transparent;
-  transition: background-color .12s ease, color .12s ease, border-color .12s ease;
+  position: relative;
+  min-height: 38px; padding: 6px 2px 10px;
+  border: none; border-radius: 0; background: none;
+  font-size: 14.5px; font-weight: 500; letter-spacing: .01em;
+  color: var(--ink-faint);
+  transition: color .16s ease;
 }
-.home-chip.on { color: var(--accent-deep); background: var(--accent-soft); border-color: var(--accent); }
+.home-chip.on { color: var(--ink); font-weight: 700; background: none; }
+/* 选中标记：短横（16px）居中对齐文字，不用整条下边框 —— 那会变成 tab bar */
+.home-chip.on::after {
+  content: ""; position: absolute; left: 50%; bottom: 2px;
+  width: 16px; height: 2.5px; margin-left: -8px;
+  border-radius: 999px; background: var(--accent);
+}
 .home-track {
   display: flex; align-items: flex-start;   /* 轮 166b：回到内容高——stretch 会把联内的卡片区
     拉出一长条空白（用户实测「去打卡后今日页下面那么长的空白」）。手势面已上移 home3，
@@ -2514,16 +2528,33 @@ html.cap-app .reply-bar {
 .home-pane-foot { display: flex; gap: 8px; flex-wrap: wrap; padding: 14px 0 8px; }
 .home-pane-foot .st-btn { flex: 1; min-width: 120px; text-align: center; }
 
-/* ═══ T7 · 消息 Tab 内分栏（私信 | 通知，小红书同款；仅手机形态渲染分段条）═══ */
-.dm-seg { display: flex; gap: 6px; padding: 2px 0 10px; }
+/* ═══ T7 · 消息 Tab 内分栏（漂流瓶 | 私信 | 通知）═══
+ * 轮450：与首页频道条同一口径 —— 文字页签，不是一排填色胶囊。
+ * 这是「模块导航」，选中态只要「字变深 + 一条短横」就够，不需要体积。 */
+.dm-seg {
+  display: flex; gap: 16px;
+  padding: 2px 4px 0;
+  /* 文字页签没有容器体积了，需要一条细线把它和下面的搜索/列表分开，
+   * 否则三段字直接浮在白卡上，读起来像卡片标题而不是可切换的分栏。 */
+  border-bottom: 1px solid var(--hairline);
+  margin-bottom: 10px;
+}
 .dm-seg-btn {
   flex: 1; appearance: none; cursor: pointer; font: inherit;
-  min-height: 42px; border-radius: 999px; font-size: 14px; font-weight: 500;
-  color: var(--ink-soft); background: transparent; border: 1.5px solid transparent;
+  position: relative;
+  min-height: 38px; padding: 6px 2px 10px;
+  border: none; border-radius: 0; background: none;
+  font-size: 14px; font-weight: 500; letter-spacing: .01em;
+  color: var(--ink-faint);
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  transition: background-color .12s ease, color .12s ease, border-color .12s ease;
+  transition: color .16s ease;
 }
-.dm-seg-btn.on { color: var(--accent-deep); background: var(--accent-soft); border-color: var(--accent); }
+.dm-seg-btn.on { color: var(--ink); font-weight: 700; background: none; }
+.dm-seg-btn.on::after {
+  content: ""; position: absolute; left: 50%; bottom: 2px;
+  width: 16px; height: 2.5px; margin-left: -8px;
+  border-radius: 999px; background: var(--accent);
+}
 /* 嵌入消息页的通知段：藏「← 返回首页」（TabBar 可切，不需要）；标题卡收紧 */
 .shell--mobile-nav .dm-seg-notif .notif-back { display: none; }
 .shell--mobile-nav .dm-seg-notif .notif-head { padding: 14px 16px; }
@@ -3471,71 +3502,48 @@ html.cap-app .cmt-main-bar.wp-kb-swap,
 }
 html[data-theme="night"] .follow-chip { color: #dce4ff; border-color: rgba(120, 136, 200, .38); }
 
-/* —— 「全部 / 我的关注」分段控件（轮449） ——
- * 原来的独立 pill 只占半行、左贴边，与上方搜索框（40px 高、带边框）和下方排序 chips
- * （28px、无边框）凑成三层台阶，视觉上是「三个不同尺寸的胶囊堆在一起」。
- * 分段控件把这一层改成**整宽的一个控件**：外框与搜索框同宽同高感，选中段浮白，
- * 层级变成「大控件（范围）→ 小 chip（排序）」，不再互相争抢。
- * 尺寸取舍：font 12.5 / padding 8 → 与搜索框内文字（13/8）几乎同高，手机±1px 内看不出错位。 */
-.follow-seg {
-  display: flex; gap: 4px;
-  width: 100%; max-width: 100%; box-sizing: border-box;
-  margin: 10px 2px 0;
-  padding: 4px;
-  border-radius: 14px;
-  background: var(--wash-mid);
+/* —— 「我的关注」入口（轮450） ——
+ * 轮449 把它做成整宽分段控件「全部 | 我的关注」，理由是跟搜索框同宽更整齐；
+ * 但用户看到的是「首页、暖心墙、消息页全是联排按钮」—— 分段控件的体积本来就是
+ * **页级导航**的份量，而关注只是「在全部里再收窄一次」，不该独占一行、更不该和
+ * 排序 chips 叠成三层。现在并进搜索行右侧：图标 + 文字 + 人数，高度与搜索框齐。
+ * 关注流下同一个按钮变成「退出」，左边换成一句状态 —— 位置不变，不多占一行。 */
+.wall-follow-btn {
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 36px; padding: 0 12px;
   border: 1px solid var(--hairline);
-}
-.follow-seg-item {
-  flex: 1 1 0; min-width: 0; box-sizing: border-box;
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
-  border: none; background: transparent; font: inherit;
-  font-size: 12.5px; font-weight: 600; letter-spacing: .01em;
+  border-radius: 999px;
+  background: var(--wash-mid);
+  font: inherit; font-size: 12.5px; font-weight: 600; letter-spacing: .01em;
   color: var(--ink-soft);
-  padding: 8px 10px; border-radius: 11px;
   cursor: pointer;
-  transition: background .2s ease, color .2s ease, box-shadow .2s ease;
+  transition: background .18s ease, color .18s ease, border-color .18s ease;
 }
-.follow-seg-item:hover { color: var(--accent-deep); }
-/* 选中段浮白 + 两层极淡投影（一层贴边、一层扩散）——只加一层会显得像描边 */
-.follow-seg-item.on {
-  background: var(--card);
-  color: var(--accent-deep);
-  box-shadow: 0 1px 2px rgba(120, 80, 50, .10), 0 2px 8px rgba(120, 80, 50, .06);
-}
-.follow-seg-item:disabled { opacity: .6; cursor: wait; }
-/* 分段落 → 排序 chips 的间距比 .sort-row 默认(14) 收 4px：
- * 它们现在是「同一个控件组」的两层，先紧后松，节奏才不会散。 */
-.follow-seg + .sort-row { margin-top: 10px; }
-.follow-ico { font-size: 13px; line-height: 1; }
-/* 数字：未选中时浅棕底，选中后实心棕底白字（跟随所在段的状态） */
-.follow-n {
+.wall-follow-btn:hover { color: var(--accent-deep); border-color: var(--accent-soft); }
+.wall-follow-btn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.wall-follow-btn.on:hover { color: #fff; }
+.wall-follow-btn:disabled { opacity: .6; cursor: wait; }
+.wall-follow-ico { font-size: 12px; line-height: 1; }
+.wall-follow-n {
   font-size: 10.5px; font-weight: 700; line-height: 1;
-  padding: 3px 6px; border-radius: 999px;
+  padding: 2px 5px; border-radius: 999px;
   background: var(--accent-soft); color: var(--accent-deep);
 }
-.follow-seg-item.on .follow-n { background: var(--accent); color: #fff; }
-/* 关注流下的一行弱说明：灰字、无底色 —— 它不该被读成第三个胶囊 */
-.follow-note {
-  display: flex; align-items: center; gap: 8px;
-  margin: 8px 4px 0;
-  font-size: 11.5px; font-weight: 500; color: var(--ink-faint);
+.wall-follow-btn.on .wall-follow-n { background: rgba(255, 255, 255, .26); color: #fff; }
+/* 关注流下左侧的状态句：一行灰字，顶掉搜索框的位置（不新增行高） */
+.wall-follow-state {
+  flex: 1 1 auto; min-width: 0;
+  margin: 0; padding-left: 2px;
+  font-size: 12.5px; font-weight: 500; color: var(--ink-faint);
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
 }
-.follow-exit {
-  margin-left: auto;
-  border: none; background: none; cursor: pointer;
-  font-size: 12px; line-height: 1; color: var(--ink-faint);
-  padding: 2px 6px; border-radius: 999px;
-  transition: color .18s ease, background .18s ease;
+html[data-theme="night"] .wall-follow-btn {
+  background: rgba(255, 255, 255, .06);
+  border-color: rgba(255, 255, 255, .10);
+  color: rgba(214, 222, 245, .72);
 }
-.follow-exit:hover { color: var(--accent-deep); background: var(--accent-soft); }
-html[data-theme="night"] .follow-seg { background: rgba(255, 255, 255, .05); border-color: rgba(255, 255, 255, .09); }
-html[data-theme="night"] .follow-seg-item { color: rgba(214, 222, 245, .62); }
-html[data-theme="night"] .follow-seg-item.on {
-  background: rgba(255, 255, 255, .11); color: #dce4ff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, .35);
-}
+html[data-theme="night"] .wall-follow-btn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 
 /* —— 作者主页的关注主按钮（排在私信前面） —— */
 .waller-follow { font-weight: 600; }

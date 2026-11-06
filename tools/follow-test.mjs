@@ -156,15 +156,15 @@ ok("F3 自己 / 未登录 / 本地帖不给按钮",
   /if \(!id \|\| !myUid\.value \|\| String\(id\) === myUid\.value\) return false/.test(community));
 ok("F4 点完 600ms 内保留「✓ 已关注」过渡态（按钮瞬间消失会让人以为点空了）",
   /setTimeout\(\(\) => \{[\s\S]{0,120}?next\.delete\(id\)[\s\S]{0,40}?\}, 600\)/.test(community));
-ok("F5 「全部 / 我的关注」是同一行的分段控件，不混进排序行",
-  /class="follow-seg"/.test(community) && /class="follow-seg-item"/.test(community)
+ok("F5 「我的关注」并进搜索行右侧，不再独占一行（用户：三个页面全是联排按钮）",
+  /class="wall-follow-btn"/.test(community)
+    && !/class="follow-seg"/.test(community)
     && /v-if="!followOnly" class="sort-row"/.test(community));
-ok("F5a 分段两段各连 enter / exit（不再是一个 toggle 按钮）",
-  /@click="exitFollowFeed">\{\{ t\("follow\.feedAll"\) \}\}/.test(community)
-    && /@click="enterFollowFeed"/.test(community)
+ok("F5a 同一个入口两态切换（未选中 → enterFollowFeed，选中 → exitFollowFeed）",
+  /followOnly \? exitFollowFeed\(\) : enterFollowFeed\(\)/.test(community)
     && !/function toggleFollowFeed/.test(community));
-ok("F6 关注模式下隐藏搜索栏（两套数据源同时开着比不给搜更糟）",
-  /v-if="!followOnly" class="wall-search"/.test(community));
+ok("F6 关注模式下不渲染搜索框（两套数据源同时开着比不给搜更糟）",
+  /<template v-if="!followOnly">[\s\S]{0,160}?v-model="searchQ"/.test(community));
 ok("F7 关注模式不回退本机帖（否则 0 人关注时会出现陌生本地帖）",
   /if \(followOnly\.value\) return cloudPosts\.value/.test(community));
 ok("F8 关注流不排序、不筛天（服务端已按时间倒序）",
@@ -213,12 +213,24 @@ ok("G7 路由 /following 存在且不进 KeepAlive（每次进入重取）",
   /path: "\/following", name: "following"/.test(read("src/router.js"))
     && !/FollowingView/.test(read("src/App.vue")));
 
+/* 轮450：真机/浏览器实测发现进关注流必报 ReferenceError: consume is not defined ——
+ * consume / consumeSoft 当时是 loadCloud 的局部 const，顶层 enterFollowFeed 根本拿不到，
+ * 异常被 catch 兜成「加载失败」。也就是说关注流从 447 上线起 UI 上没成功过一次。
+ * 这条断言钉死作用域：两个消费者必须在模块顶层，且不能被塞回某个函数内部。 */
+ok("G8 consume / consumeSoft 定义在模块作用域（关注流要跨函数复用）",
+  /^const consume = \(box\) =>/m.test(community)
+    && /^const consumeSoft = \(box\) =>/m.test(community)
+    && !/^\s{2}const consume = \(box\) =>/m.test(community)
+    && !/^\s{2}const consumeSoft = \(box\) =>/m.test(community));
+ok("G9 关注流复用同一个 consume（不另写一套上屏逻辑）",
+  /const rows = await cloudFetchPosts\(REFRESH_PAGE, 0, \{ userIds: ids \}\)[\s\S]{0,400}?consume\(\{ rows, counts: null, fromFetch: true \}\)/.test(community));
+
 /* ══════════ ⑨ i18n：五语齐备 + 那句支点文案存在 ══════════ */
 
 const KEYS = [
   "follow", "following", "followHint", "followingBtn", "unfollow", "unfollowArm",
   "unfollowed", "busy", "self", "fail", "limit", "offline", "loading", "retry",
-  "feedBtn", "feedAll", "feedBtnHint", "feedNote", "feedExit", "feedEmpty", "feedEmptyHint",
+  "feedBtn", "feedBtnHint", "feedNote", "feedExit", "feedEmpty", "feedEmptyHint",
   "feedNeedLogin", "feedNeedLoginHint", "feedFail", "feedFailHint", "signInBtn",
   "browseBtn", "listTitle", "listNote", "listEmpty", "listEmptyHint",
   "postsCount", "lastPost", "neverPosted",

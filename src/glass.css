@@ -685,23 +685,28 @@ textarea.input,
  * 它会把联条往下顶 14px —— 那 14px 就成了「状态栏和吸顶条之间」漏出来的一条内容缝。
  * 归零后联条从 y=0 起，正好把整条状态栏盖住。 */
 .shell--mobile-nav main:has(.home-chips) .pet-notice-stack { margin-bottom: 0 !important; }
+/* 轮450：频道条不再是「白底胶囊排」。
+ * 原样式给未选中项铺 rgba(255,255,255,.42) 的白底 + 白描边、给选中项铺实心 accent ——
+ * 结果每条频道都是一个有体积的按钮，首页因此看起来像「一排开关」。
+ * 现在只保留字色 / 字重，体积归零；选中标记（16px 短横）由 style.css 的 ::after 提供，
+ * 这里千万不要再给 background/border，否则短横会被一块白底淹掉。 */
 .home-chip,
 .home-chips .home-chip {
-  border-radius: var(--r-pill) !important;
-  background: rgba(255, 255, 255, 0.42) !important;
-  border: 1px solid rgba(255, 255, 255, 0.6) !important;
+  border-radius: 0 !important;
+  background: none !important;
+  border: none !important;
   color: var(--ink-62) !important;
-  font-weight: 600 !important;
-  min-height: 36px !important;
-  padding: 4px 16px !important;
+  font-weight: 500 !important;
+  min-height: 38px !important;
+  padding: 6px 2px 10px !important;
 }
-/* 选中项：原来是 var(--ink) 的墨黑胶囊 —— 在浅玻璃上就是一块「黑底」，也不在九色 Pastel 里。
- * 换成主题色（暖奶油 → 陶红 #cc785c；换肤后跟着 --accent 走），白字 + 同色投影。 */
+/* 选中项：只把字压实（深色 + 加粗），不再是一块实心色块 */
 .home-chips .home-chip.on {
-  background: var(--accent) !important;
+  background: none !important;
   border-color: transparent !important;
-  color: #fff !important;
-  box-shadow: 0 8px 18px rgba(204, 120, 92, 0.26) !important;
+  color: var(--ink) !important;
+  box-shadow: none !important;
+  font-weight: 700 !important;
 }
 
 /* ═══════════════ ⑦ 暖心墙：玻璃帖卡 + 染色头像圈 ═══════════════ */
@@ -839,21 +844,25 @@ html[data-theme="night"] .dm-row.on {
     inset 0 0 0 1px rgba(255, 255, 255, 0.09),
     0 6px 16px rgba(0, 0, 0, 0.30) !important;
 }
+/* 轮450：消息页三段 / 桌面两段也是文字页签 —— 去掉外层白胶囊与选中实心块 */
 .dm-seg {
-  background: rgba(255, 255, 255, 0.45) !important;
-  border: 1px solid var(--g-line) !important;
-  border-radius: var(--r-pill) !important;
-  padding: 4px !important;
-  box-shadow: var(--g-hi) !important;
+  background: none !important;
+  border: none !important;
+  border-bottom: 1px solid var(--g-line) !important;
+  border-radius: 0 !important;
+  padding: 2px 4px 0 !important;
+  box-shadow: none !important;
+  margin-bottom: 10px !important;
 }
 .dm-seg-btn {
-  border-radius: var(--r-pill) !important;
-  font-weight: 600 !important;
+  border-radius: 0 !important;
+  font-weight: 500 !important;
 }
 .dm-seg-btn.on {
-  background: var(--accent) !important;
-  color: #fff !important;
-  box-shadow: 0 4px 10px rgba(204, 120, 92, 0.22) !important;
+  background: none !important;
+  color: var(--ink) !important;
+  box-shadow: none !important;
+  font-weight: 700 !important;
 }
 .notif-tab,
 .notif-act {
@@ -1162,8 +1171,10 @@ html[data-theme="night"] .admin-entry {
   background: rgba(255, 255, 255, 0.10) !important;
   border-color: rgba(255, 255, 255, 0.12) !important;
 }
-html[data-theme="night"] .home-chip { background: rgba(255, 255, 255, 0.10) !important; border-color: rgba(255, 255, 255, 0.12) !important; color: rgba(255,255,255,.72) !important; }
-html[data-theme="night"] .home-chips .home-chip.on { background: rgba(255, 255, 255, 0.9) !important; color: #1b1c24 !important; }
+/* 轮450：夜间同样不给底色，只调字色；选中靠字重 + style.css 里的短横 */
+html[data-theme="night"] .home-chip { background: none !important; border-color: transparent !important; color: rgba(255,255,255,.62) !important; }
+html[data-theme="night"] .home-chips .home-chip.on { background: none !important; color: #fff !important; }
+html[data-theme="night"] .dm-seg-btn.on { background: none !important; color: #fff !important; }
 html[data-theme="night"] .tabbar .tab-compose-x { background: rgba(255, 255, 255, 0.9) !important; color: #1b1c24 !important; border-radius: 10px !important; }
 /* 418：未选中页签的色是写死的深墨 50%，压在夜间 28,29,37 的底上等于隐形（实测对比度 <1.5）。
  * 这一条以前不存在 —— 因为以前有图标撑着，纯文字之后「看不见的字」才暴露出来。 */
