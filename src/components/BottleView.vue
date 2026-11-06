@@ -659,7 +659,6 @@ async function restoreLetter(l) {
         </n-button>
         <span class="m-count">{{ pickText(pickLeft) }} · {{ fishText(fishLeft) }}</span>
       </div>
-      <p class="notice">{{ t("bottle.rules", { w: BOTTLE_SEND_MAX, p: BOTTLE_PICK_MAX, f: BOTTLE_FISH_MAX }) }}</p>
 
       <!-- 捞到的信（可同时持有几封，逐封回信或放回；捞新信不需要先处理手里的） -->
       <p v-if="trayErr" class="notice">{{ t(trayErr) }}</p>

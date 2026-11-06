@@ -395,7 +395,7 @@ export default {
     "fish": "Pescar una",
     "leftPick": "Te quedan {n} recogidas en las últimas 24 h",
     "leftFish": "Te quedan {n} respuestas en las últimas 24 h",
-    "rules": "{w} cartas / 24 h · {p} recogidas / 24 h · {f} respuestas / 24 h. Devolverla es inmediato; la misma carta no volverá a ti en 7 días.",
+    /* 轮447：bottle.rules 下线（额度已由实时计数显示，规则那行重复） */
     "fromSea": "Una carta del mar",
     "otherLang": "Esta carta está escrita en {lang}",
     "replyPlaceholder": "Responde algo a quien la escribió…",

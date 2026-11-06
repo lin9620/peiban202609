@@ -396,7 +396,7 @@ export default {
     "fish": "En pêcher une",
     "leftPick": "{n} pêches restantes sur les dernières 24 h",
     "leftFish": "{n} réponses restantes sur les dernières 24 h",
-    "rules": "{w} lettres / 24 h · {p} pêches / 24 h · {f} réponses / 24 h. Relancer une lettre est instantané ; la même lettre ne te reviendra pas avant 7 jours.",
+    /* 轮447：bottle.rules 下线（额度已由实时计数显示，规则那行重复） */
     "fromSea": "Une lettre venue de la mer",
     "otherLang": "Cette lettre est écrite en {lang}",
     "replyPlaceholder": "Réponds quelque chose à l’auteur…",

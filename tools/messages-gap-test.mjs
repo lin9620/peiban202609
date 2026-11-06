@@ -20,6 +20,7 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const style = fs.readFileSync(path.join(root, "src/style.css"), "utf8");
 const records = fs.readFileSync(path.join(root, "src/components/BottleRecords.vue"), "utf8");
 const i18n = fs.readFileSync(path.join(root, "src/i18n.js"), "utf8");
+const bottleView = fs.readFileSync(path.join(root, "src/components/BottleView.vue"), "utf8");
 
 let pass = 0, fail = 0; const out = [];
 function t(name, fn) {
@@ -64,14 +65,14 @@ t("S5 漂流瓶记录提示保持短句（中文 recordsHint ≤ 30 字）", () 
   assert.ok(zh.length <= 30, `recordsHint 又变长了（${zh.length} 字）：${zh}`);
 });
 
-t("S6 漂流瓶规则保持短句（中文 rules ≤ 70 字）", () => {
-  /* 这句是瓶子页底部的一行说明，太长会挤成三行。文案后来改写并补上了「7 天内不会再发给你」
-     这条真实规则（原句只有「每天可投 / 可捞 / 可回」），字数上限随之从 50 放到 70 ——
-     仍能拦住「往这儿堆规则」的退化，但不再和产品文案打架。 */
+t("S6 漂流瓶规则行已整条下线（用户 2026-11-07 要求去掉；不留半句残文）", () => {
+  /* 原断言是「中文 rules ≤ 70 字」—— 防止那行说明堆成三行。用户后来直接把整行去掉了：
+     额度已经由 .m-count 实时显示（「还能投 N 封」），规则那行纯属重复。
+     所以断言改成「键与引用都必须清零」，避免以后有人只删模板、留下五语死键。 */
   const all = [...i18n.matchAll(/rules:\s*"([^"]+)"/g)].map((x) => x[1]);
   const zh = all.find((s) => /[\u4e00-\u9fa5]/.test(s) && /每(天| 24 小时)/.test(s));
-  assert.ok(zh, "找不到中文 bottle.rules");
-  assert.ok(zh.length <= 70, `rules 又变长了（${zh.length} 字）：${zh}`);
+  assert.ok(!zh, `bottle.rules 应已删除，但仍存在：${zh}`);
+  assert.ok(!bottleView.includes("bottle.rules"), "BottleView 仍引用 bottle.rules");
 });
 
 console.log(out.join("\n"));

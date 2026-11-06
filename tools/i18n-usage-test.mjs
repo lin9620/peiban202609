@@ -91,6 +91,7 @@ for (const f of files) {
 const KEEP = new Map([
   ["home.hello", "i18n-test 双语平衡探针键（测试专用占位，勿删）"],
   ["dm.sending", "轮 316：会话/瓶子聊天不再显示「发送中…」（用户明确不要这个提示，改行内「发送失败」）；键留给将来可能的静默重试提示，dm-test 也钉着 en/zh 对称"],
+  ["story.rankTitle", "轮446 并行改动：StoryRank 里那个重复的「排行榜」h2 已删（标题由 /story/rank 页头统一承担），键先留着 —— 该改动还在另一路进行中，删 i18n 可能与之冲突；等它落定再决定删键还是复用"],
 ]);
 const dead = [];
 const deadKept = [];

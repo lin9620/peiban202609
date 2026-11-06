@@ -345,7 +345,8 @@ export const messages = {
       fish: "Fish one out",
       leftPick: "{n} picks left in the last 24h",
       leftFish: "{n} replies left in the last 24h",
-      rules: "{w} letters / 24h · {p} picks / 24h · {f} replies / 24h. Throwing one back is instant; the same letter won't come back to you for 7 days.",
+      /* 轮447：bottle.rules 整条下线（用户要求去掉漂流瓶页那行规则说明）——
+         额度已经由 .m-count 实时显示（还能投几封/捞几瓶/回几封），规则那行纯属重复。 */
       fromSea: "A letter from the sea",
       otherLang: "This letter is written in {lang}",
       replyPlaceholder: "Say something back to the writer…",
@@ -1426,7 +1427,7 @@ export const messages = {
       fish: "捞一瓶",
       leftPick: "过去 24 小时还能捞 {n} 瓶",
       leftFish: "过去 24 小时还能回 {n} 封",
-      rules: "每 24 小时可投 {w} 封 · 可捞 {p} 瓶 · 可回 {f} 封。放回后可立刻再捞；同一封信 7 天内不会再发给你。",
+      /* 轮447：bottle.rules 整条下线（同 en 注释） */
       fromSea: "来自海里的一封信",
       otherLang: "这封信是 {lang} 写的",
       replyPlaceholder: "回一句话给这位写信的人……",

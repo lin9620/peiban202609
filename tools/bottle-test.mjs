@@ -74,15 +74,19 @@ ok("错误归类：每个错误码都有 i18n key，未知码落到通用提示"
 for (const lang of ["zh", "en"]) {
   const b = messages[lang] && messages[lang].bottle;
   const need = ["title", "sub", "placeholder", "leftSend", "leftPick", "send", "seaTitle", "fish", "leftFish",
-    "rules", "fromSea", "replyPlaceholder", "reply", "release", "report", "replyFrom", "pending",
+    "fromSea", "replyPlaceholder", "reply", "release", "report", "replyFrom", "pending",
     "signInHint", "errSendLimit", "errPickLimit", "errFishLimit", "errEmpty", "emptyCta", "needMore",
     "errEmptyBody", "errTooShort", "errDuplicate", "errBlocked", "errNotHolder", "errTooLong", "replyTooLong", "errGeneric"];
   const missing = need.filter((k) => !b || typeof b[k] !== "string" || !b[k].trim());
   ok(`${lang}: 漂流瓶文案齐备（${need.length} 键）`, missing.length === 0, missing.join(","));
-  ok(`${lang}: 次数文案带 {n}、规则文案带 {w}/{p}/{f}`,
-    !!b && b.leftSend.includes("{n}") && b.leftPick.includes("{n}") && b.leftFish.includes("{n}")
-      && b.rules.includes("{w}") && b.rules.includes("{p}") && b.rules.includes("{f}"));
+  ok(`${lang}: 次数文案带 {n}`,
+    !!b && b.leftSend.includes("{n}") && b.leftPick.includes("{n}") && b.leftFish.includes("{n}"));
 }
+/* 轮447：用户要求去掉漂流瓶那行「每 24 小时可投 5 封 · 可捞 30 瓶…」规则说明
+   —— 额度已经由 .m-count 实时显示，那行纯属重复。五语键与模板引用都必须清零。 */
+ok("规则说明整条下线（bottle.rules 五语均无、模板不再引用）",
+  ["zh", "en"].every((l) => !(messages[l].bottle || {}).rules)
+    && !bottleView.includes("bottle.rules"));
 ok("en/zh 的漂流瓶键集合对称",
   JSON.stringify(Object.keys(messages.en.bottle || {}).sort()) === JSON.stringify(Object.keys(messages.zh.bottle || {}).sort()));
 ok("每日一问已摘除（en/zh 都没有 dailyQ，首页也不再引用）",
