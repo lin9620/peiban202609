@@ -3471,43 +3471,71 @@ html.cap-app .cmt-main-bar.wp-kb-swap,
 }
 html[data-theme="night"] .follow-chip { color: #dce4ff; border-color: rgba(120, 136, 200, .38); }
 
-/* —— 「我的关注」pill（排序行上方独立一行） —— */
-.follow-row {
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  margin: 12px 2px 0;
+/* —— 「全部 / 我的关注」分段控件（轮449） ——
+ * 原来的独立 pill 只占半行、左贴边，与上方搜索框（40px 高、带边框）和下方排序 chips
+ * （28px、无边框）凑成三层台阶，视觉上是「三个不同尺寸的胶囊堆在一起」。
+ * 分段控件把这一层改成**整宽的一个控件**：外框与搜索框同宽同高感，选中段浮白，
+ * 层级变成「大控件（范围）→ 小 chip（排序）」，不再互相争抢。
+ * 尺寸取舍：font 12.5 / padding 8 → 与搜索框内文字（13/8）几乎同高，手机±1px 内看不出错位。 */
+.follow-seg {
+  display: flex; gap: 4px;
+  width: 100%; max-width: 100%; box-sizing: border-box;
+  margin: 10px 2px 0;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--wash-mid);
+  border: 1px solid var(--hairline);
 }
-.follow-pill {
-  display: inline-flex; align-items: center; gap: 6px;
-  border: 1px solid var(--accent-soft);
-  background: transparent;
-  font: inherit; font-size: 12.5px; font-weight: 600;
-  color: var(--accent-deep);
-  padding: 7px 14px; border-radius: 999px;
+.follow-seg-item {
+  flex: 1 1 0; min-width: 0; box-sizing: border-box;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  border: none; background: transparent; font: inherit;
+  font-size: 12.5px; font-weight: 600; letter-spacing: .01em;
+  color: var(--ink-soft);
+  padding: 8px 10px; border-radius: 11px;
   cursor: pointer;
-  transition: all .18s ease;
+  transition: background .2s ease, color .2s ease, box-shadow .2s ease;
 }
-.follow-pill:hover { background: var(--accent-soft); transform: translateY(-1px); }
-.follow-pill.on { background: var(--accent); border-color: var(--accent); color: #fff; }
-.follow-pill.on:hover { background: var(--accent); color: #fff; }
-.follow-pill:disabled { opacity: .6; cursor: wait; transform: none; }
+.follow-seg-item:hover { color: var(--accent-deep); }
+/* 选中段浮白 + 两层极淡投影（一层贴边、一层扩散）——只加一层会显得像描边 */
+.follow-seg-item.on {
+  background: var(--card);
+  color: var(--accent-deep);
+  box-shadow: 0 1px 2px rgba(120, 80, 50, .10), 0 2px 8px rgba(120, 80, 50, .06);
+}
+.follow-seg-item:disabled { opacity: .6; cursor: wait; }
+/* 分段落 → 排序 chips 的间距比 .sort-row 默认(14) 收 4px：
+ * 它们现在是「同一个控件组」的两层，先紧后松，节奏才不会散。 */
+.follow-seg + .sort-row { margin-top: 10px; }
 .follow-ico { font-size: 13px; line-height: 1; }
+/* 数字：未选中时浅棕底，选中后实心棕底白字（跟随所在段的状态） */
 .follow-n {
-  font-size: 11px; font-weight: 700;
-  padding: 1px 6px; border-radius: 999px;
-  background: rgba(255, 255, 255, .28);
+  font-size: 10.5px; font-weight: 700; line-height: 1;
+  padding: 3px 6px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent-deep);
 }
-.follow-pill:not(.on) .follow-n { background: var(--accent-soft); color: var(--accent-deep); }
-/* 选中后右侧的说明 + 退出：说明给「只看 N 位博主」的确认感，✕ 给一条明确的退路 */
-.follow-note { font-size: 11.5px; font-weight: 500; color: var(--ink-faint); }
+.follow-seg-item.on .follow-n { background: var(--accent); color: #fff; }
+/* 关注流下的一行弱说明：灰字、无底色 —— 它不该被读成第三个胶囊 */
+.follow-note {
+  display: flex; align-items: center; gap: 8px;
+  margin: 8px 4px 0;
+  font-size: 11.5px; font-weight: 500; color: var(--ink-faint);
+}
 .follow-exit {
   margin-left: auto;
   border: none; background: none; cursor: pointer;
-  font-size: 13px; line-height: 1; color: var(--ink-faint);
-  padding: 4px 8px; border-radius: 999px;
-  transition: all .18s ease;
+  font-size: 12px; line-height: 1; color: var(--ink-faint);
+  padding: 2px 6px; border-radius: 999px;
+  transition: color .18s ease, background .18s ease;
 }
 .follow-exit:hover { color: var(--accent-deep); background: var(--accent-soft); }
-html[data-theme="night"] .follow-pill { color: #dce4ff; border-color: rgba(120, 136, 200, .38); }
+html[data-theme="night"] .follow-seg { background: rgba(255, 255, 255, .05); border-color: rgba(255, 255, 255, .09); }
+html[data-theme="night"] .follow-seg-item { color: rgba(214, 222, 245, .62); }
+html[data-theme="night"] .follow-seg-item.on {
+  background: rgba(255, 255, 255, .11); color: #dce4ff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .35);
+}
 
 /* —— 作者主页的关注主按钮（排在私信前面） —— */
 .waller-follow { font-weight: 600; }

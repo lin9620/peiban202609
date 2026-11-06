@@ -327,6 +327,7 @@ export default {
     "loading": "Cargando…",
     "retry": "Reintentar",
     "feedBtn": "Mis seguidos",
+    "feedAll": "Todos",
     "feedBtnHint": "Solo publicaciones de gente que sigo",
     "feedNote": "Solo de las {n} personas que sigues",
     "feedExit": "Salir de Mis seguidos",

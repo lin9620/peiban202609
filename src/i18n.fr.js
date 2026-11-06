@@ -328,6 +328,7 @@ export default {
     "loading": "Chargement…",
     "retry": "Réessayer",
     "feedBtn": "Mes abonnements",
+    "feedAll": "Tout",
     "feedBtnHint": "Seulement les publications des personnes que je suis",
     "feedNote": "Seulement les {n} personnes que tu suis",
     "feedExit": "Quitter Mes abonnements",

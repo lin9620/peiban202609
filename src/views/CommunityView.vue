@@ -1920,11 +1920,8 @@ function exitFollowFeed() {
   /* 回到全部流：走常规 SWR（缓存先出、后台校准），游标/到底标志由 consume 自己重设 */
   loadCloud({ quiet: true }).catch(() => {});
 }
-function toggleFollowFeed() {
-  if (followBusy.value) return;
-  if (followOnly.value) exitFollowFeed();
-  else enterFollowFeed();
-}
+/* 轮449：分段控件把「全部 / 我的关注」拆成两个明确动作（enter / exit），
+ * 原来的 toggleFollowFeed 已无调用点 —— 留着就是一段永远不跑的代码。 */
 /* 关注流空状态里的「去登录」：登录后回暖心墙，关注流不自动重进（用户刚登录完要的是内容） */
 function goLogin() {
   router.push({ path: "/login", query: { next: "/community" } });
@@ -2736,23 +2733,29 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
         {{ t("community.searchEmpty") }}</p>
     </div>
 
-    <!-- 轮447 · 我的关注：**数据源切换**，不是排序。选中时排序行/时间范围行整体隐藏，
-         关注流固定按发布时间倒序（关注正是「我想看他全部内容」，任何本地重排/筛天都是负作用）。 -->
-    <div class="follow-row">
-      <button
-        class="follow-pill" :class="{ on: followOnly, busy: followBusy }"
-        :disabled="followBusy" :aria-busy="followBusy"
-        :title="t('follow.feedBtnHint')" @click="toggleFollowFeed">
+    <!-- 轮449 · 顶部只留两层：范围（分段控件）→ 排序（chips）。
+         原来「我的关注」是一个独立 pill：只占半行、左贴边、上下各挨着一个不同尺寸的胶囊，
+         与搜索框、排序 chips 形成三层台阶，用户：「这个排版好丑啊」。
+         改成分段控件 —— 与搜索框同宽、两段互相对照，「全部 / 我的关注」是一个开关关系，
+         而不是又一个漂浮的按钮；排序 chips 退到下一层，层级变成「大控件 → 小 chip」。
+         口径不变：关注是**数据源切换**，选中时排序行/时间范围行/搜索栏整体隐藏。 -->
+    <div class="follow-seg" role="tablist">
+      <button role="tab" class="follow-seg-item" :class="{ on: !followOnly }"
+        :aria-selected="!followOnly" @click="exitFollowFeed">{{ t("follow.feedAll") }}</button>
+      <button role="tab" class="follow-seg-item" :class="{ on: followOnly }"
+        :aria-selected="followOnly" :disabled="followBusy" :aria-busy="followBusy"
+        :title="t('follow.feedBtnHint')" @click="enterFollowFeed">
         <span class="follow-ico" aria-hidden="true">👥</span>
         <span>{{ t("follow.feedBtn") }}</span>
         <b v-if="followingCount" class="follow-n">{{ followingCount }}</b>
       </button>
-      <span v-if="followOnly && followingCount" class="follow-note">
-        {{ t("follow.feedNote", { n: followingCount }) }}
-      </span>
-      <button v-if="followOnly" class="follow-exit" :title="t('follow.feedExit')"
-        :aria-label="t('follow.feedExit')" @click="exitFollowFeed">✕</button>
     </div>
+    <!-- 关注流下的一行弱说明（灰字，不是第三个胶囊）；✕ 是「全部」段之外的快捷退路 -->
+    <p v-if="followOnly && followingCount" class="follow-note">
+      <span>{{ t("follow.feedNote", { n: followingCount }) }}</span>
+      <button class="follow-exit" :title="t('follow.feedExit')"
+        :aria-label="t('follow.feedExit')" @click="exitFollowFeed">✕</button>
+    </p>
 
     <!-- 排序：默认最新；还有 同感最多 / 抱抱最多 / 暖暖最多 -->
     <div v-if="!followOnly" class="sort-row">

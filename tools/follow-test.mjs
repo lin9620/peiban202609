@@ -156,8 +156,13 @@ ok("F3 自己 / 未登录 / 本地帖不给按钮",
   /if \(!id \|\| !myUid\.value \|\| String\(id\) === myUid\.value\) return false/.test(community));
 ok("F4 点完 600ms 内保留「✓ 已关注」过渡态（按钮瞬间消失会让人以为点空了）",
   /setTimeout\(\(\) => \{[\s\S]{0,120}?next\.delete\(id\)[\s\S]{0,40}?\}, 600\)/.test(community));
-ok("F5 「我的关注」是独立 pill，不混进排序行",
-  /class="follow-pill"/.test(community) && /v-if="!followOnly" class="sort-row"/.test(community));
+ok("F5 「全部 / 我的关注」是同一行的分段控件，不混进排序行",
+  /class="follow-seg"/.test(community) && /class="follow-seg-item"/.test(community)
+    && /v-if="!followOnly" class="sort-row"/.test(community));
+ok("F5a 分段两段各连 enter / exit（不再是一个 toggle 按钮）",
+  /@click="exitFollowFeed">\{\{ t\("follow\.feedAll"\) \}\}/.test(community)
+    && /@click="enterFollowFeed"/.test(community)
+    && !/function toggleFollowFeed/.test(community));
 ok("F6 关注模式下隐藏搜索栏（两套数据源同时开着比不给搜更糟）",
   /v-if="!followOnly" class="wall-search"/.test(community));
 ok("F7 关注模式不回退本机帖（否则 0 人关注时会出现陌生本地帖）",
@@ -213,7 +218,7 @@ ok("G7 路由 /following 存在且不进 KeepAlive（每次进入重取）",
 const KEYS = [
   "follow", "following", "followHint", "followingBtn", "unfollow", "unfollowArm",
   "unfollowed", "busy", "self", "fail", "limit", "offline", "loading", "retry",
-  "feedBtn", "feedBtnHint", "feedNote", "feedExit", "feedEmpty", "feedEmptyHint",
+  "feedBtn", "feedAll", "feedBtnHint", "feedNote", "feedExit", "feedEmpty", "feedEmptyHint",
   "feedNeedLogin", "feedNeedLoginHint", "feedFail", "feedFailHint", "signInBtn",
   "browseBtn", "listTitle", "listNote", "listEmpty", "listEmptyHint",
   "postsCount", "lastPost", "neverPosted",
