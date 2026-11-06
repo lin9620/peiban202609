@@ -828,7 +828,7 @@ export default {
     "noMore": "Isso é tudo",
     "unread": "Não lida",
     "prefs": "Ajustes de notificação",
-    "prefsHint": "Desligue um tipo e ele para — salvo na hora.",
+    "prefsHint": "Desligue um tipo e ele para — os não lidos que já estavam esperando também são marcados como lidos.",
     "dmNotHere": "As mensagens privadas não entram aqui: têm o próprio contador. Para silenciar uma conversa, abra-a e escolha Silenciar.",
     "prefComments": "Comentários e respostas",
     "prefReactions": "Abraços / aconchego / também",

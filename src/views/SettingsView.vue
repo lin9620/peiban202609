@@ -10,6 +10,7 @@ import { NICK_MAX, MIN_PASSWORD, passwordProblem } from "../utils/authRules.js";
 import * as notifyApi from "../utils/notify.js";
 import { normPrefs } from "../utils/notifyRules.js";
 import { createTapGuard } from "../utils/tapGuard.js";
+import { refreshBadge } from "../stores/badgeStore.js";
 import { avatarUrlFor } from "../utils/avatar.js";   /* 轮 238:萌宠头像池 */
 import {
   themeKey, themeOptions, applyTheme,
@@ -244,6 +245,10 @@ async function savePrefs(next) {
       writeCachedPrefs(uid, clean);
       prefsMsg.value = "notif.prefsSaved";
     }
+    /* 关掉某类时服务端会把该类未读标记已读（MIGRATION_notif_prefs_clear.sql），
+     * 这里立刻重拉角标 —— 否则用户点完开关，顶部铃铛红点要等 30s 轮询才肯掉，
+     * 看上去就是「关了没效果」。 */
+    refreshBadge();
   } catch (e) {
     if (seq === prefsSeq) {
       prefs.value = prev;

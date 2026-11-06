@@ -1492,9 +1492,17 @@ end $$;
 create or replace function public.notif_prefs_set(p_comments boolean default true, p_reactions boolean default true,
                                                   p_pets boolean default true, p_dms boolean default true)
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare me uuid := auth.uid();
+declare
+  me uuid := auth.uid();
+  v_old_comments  boolean;
+  v_old_reactions boolean;
+  v_old_pets      boolean;
 begin
   if me is null then raise exception 'auth-required'; end if;
+  /* 缺行 = 全开（与 notif_prefs_get、各通知触发器同口径） */
+  select p.comments, p.reactions, p.pets
+    into v_old_comments, v_old_reactions, v_old_pets
+    from public.notification_prefs p where p.user_id = me;
   insert into public.notification_prefs (user_id, comments, reactions, pets, dms, updated_at)
     values (me, coalesce(p_comments, true), coalesce(p_reactions, true),
             coalesce(p_pets, true), coalesce(p_dms, true), now())
@@ -1504,6 +1512,19 @@ begin
           pets       = excluded.pets,
           dms        = excluded.dms,
           updated_at = now();
+  /* 由开→关：该类未读立刻作废（红点当场消），历史行保留为已读态 */
+  if coalesce(v_old_comments, true) and not coalesce(p_comments, true) then
+    update public.notifications set read_at = now()
+     where user_id = me and read_at is null and kind in ('comment', 'reply');
+  end if;
+  if coalesce(v_old_reactions, true) and not coalesce(p_reactions, true) then
+    update public.notifications set read_at = now()
+     where user_id = me and read_at is null and kind = 'reaction';
+  end if;
+  if coalesce(v_old_pets, true) and not coalesce(p_pets, true) then
+    update public.notifications set read_at = now()
+     where user_id = me and read_at is null and kind = 'pet';
+  end if;
   return jsonb_build_object('ok', true);
 end $$;
 

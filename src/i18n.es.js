@@ -1034,7 +1034,7 @@ export default {
     "noMore": "Eso es todo",
     "unread": "No leída",
     "prefs": "Ajustes de notificaciones",
-    "prefsHint": "Apaga un tipo y se detiene — se guarda al instante.",
+    "prefsHint": "Apaga un tipo y se detiene — los no leídos que ya esperaban también se marcan como leídos.",
     "dmNotHere": "Los mensajes privados no dependen de esto: tienen su propio contador. Para silenciar un chat, ábrelo y elige Silenciar.",
     "prefComments": "Comentarios y respuestas",
     "prefReactions": "Abrazos / calidez / me pasa",

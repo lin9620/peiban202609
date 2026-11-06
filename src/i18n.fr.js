@@ -829,7 +829,7 @@ export default {
     "noMore": "C’est tout",
     "unread": "Non lue",
     "prefs": "Réglages des notifications",
-    "prefsHint": "Désactive un type et il s’arrête — enregistré aussitôt.",
+    "prefsHint": "Désactive un type et il s’arrête — les non-lus déjà en attente passent aussi en lus.",
     "dmNotHere": "Les messages privés ne dépendent pas de ce réglage : ils ont leur propre compteur. Pour mettre une discussion en sourdine, ouvrez-la et choisissez Mettre en sourdine.",
     "prefComments": "Commentaires et réponses",
     "prefReactions": "Câlins / chaleur / pareil",
