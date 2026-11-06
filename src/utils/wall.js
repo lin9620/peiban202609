@@ -455,6 +455,19 @@ export async function cloudDeleteComment(dbCommentId) {
   }
 }
 
+/** 删除自己的帖子（轮446 · 作者删除）
+ *  - 软删：服务端写 deleted_at 并置 removed = true（既有 removed 过滤面立刻生效）；
+ *  - 没跑迁移：适配层退回硬删（帖子彻底消失，评论靠 FK 级联一起没），同样算成功；
+ *  - 返回 false = 不是本人的 / 已经删过（幂等，视作「现在确实没有这条」也不算错）。
+ *  出错一律上抛，让调用方按 errorKind 分类（维护期不能落进「网络失败」）。
+ */
+export async function cloudDeletePost(dbPostId) {
+  if (!canUseWall()) return false;
+  if (!guardWrite()) throw new Error("maintenance-mode");
+  const r = await db.wallPostDelete(dbPostId);
+  return r !== false;
+}
+
 /** 重复键（23505）= 这条回应其实已经存在，属于「并发/重放」，按成功处理 */
 function isDuplicateRow(e) {
   const code = e && (e.code || e.status || "");

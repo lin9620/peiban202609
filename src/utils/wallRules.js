@@ -554,8 +554,19 @@ export function recommendPosts(list, opts = {}) {
   return picked.concat(samples);   // 示例帖追加在后（不占「真帖」的名额）
 }
 
-/* ══════════ 云操作失败原因 ══════════ */
+/**
+ * 轮446：这条帖子能不能被「我」删除 —— 作者本人 + 云端帖（有 dbId）。
+ * 与 canReportPost（要求「不是我」）天然互斥，所以菜单里不会同时出现举报和删除。
+ * 抽成纯函数放这里，是因为三个入口（暖心墙 / 详情页 / 我的帖子）共用同一判据，
+ * 组件里各写一份迟早会漂移。
+ * @param {Object} p 视图帖（router 映射后的形状）
+ * @param {string} myUid 当前登录用户 id（未登录传空）
+ */
+export function canDeletePost(p, myUid) {
+  return !!(p && p.cloud && p.dbId != null && p.userId && myUid && p.userId === myUid);
+}
 
+/* ══════════ 云操作失败原因 ══════════ */
 /**
  * 把云端错误信息归类，好给用户一句人话（而不是笼统的「失败」）。
  * 每日限额由数据库触发器抛出 'wall_daily_limit'。

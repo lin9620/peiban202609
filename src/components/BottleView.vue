@@ -5,17 +5,20 @@
 <script setup>
 import { ref, computed, watch, onMounted, onDeactivated, nextTick } from "vue";
 import { useRouter, useRoute } from "vue-router";
-import { NButton, NInput, NModal } from "naive-ui";
+import { NButton, NInput, NModal, useDialog } from "naive-ui";
 import ReportDialog from "./ReportDialog.vue";
 import { isMobileNav } from "../stores/uiStore.js";
 import { t } from "../i18n.js";
 import { langName, uiLang } from "../utils/contentLang.js";
+/* 轮446：作者撤回 / 隐藏自己投的信 —— 两个 can* 是纯函数判据（有单测）。
+   注意：大括号里不写注释，undef-check 的解析器会把注释和标识符粘在一起（既有踩坑）。 */
 import {
   BOTTLE_BODY_MIN, BOTTLE_BODY_MAX, BOTTLE_SEND_MAX, BOTTLE_PICK_MAX, BOTTLE_FISH_MAX,
   bottleBodyChars, bottleErrKey,
   bottleSend, bottleFish, bottleReply, bottleRelease, bottleHeld, bottleQuota,
   bottleRecords, bottleChatState, bottleChatDecide, purgeLegacyBottleLocals,
-  sortBottleMine, bottlePendingCount, bottlePageCount, bottlePageSlice,
+  sortBottleMine, bottlePendingCount, bottlePageCount, bottlePageSlice, clampBottlePage,
+  canWithdrawLetter, canHideLetter, bottleWithdraw, bottleHide, bottleUnhide, bottleHiddenLetters,
 } from "../utils/bottle.js";
 import { relativeTime } from "../utils/dmRules.js";
 /* 轮 319：记录卡长文本折叠（信文/回信各钳 4 行，真溢出才给「展开全文」） */
@@ -425,6 +428,8 @@ async function loadRecords() {
     if (recTab.value === "mine") recMineAll.value = rows;
     recPage.value = 0;
     recRows.value = bottlePageSlice(rows, 0, REC_PAGE);
+    /* 轮446：顺手拉「已隐藏」清单（列表底部的「已隐藏 N 封」要用）；失败不挡主流程 */
+    if (recTab.value === "mine") { hiddenRows.value = []; loadHidden(); }
   } catch (e) {
     if (gen !== recGen) return;
     recRows.value = [];
@@ -518,6 +523,106 @@ async function decideRec(l, accept) {
   } catch (e) {
     recErr.value = t(bottleErrKey(e));
   } finally { recBusy.value = ""; }
+}
+
+/* ═════════ 轮446 · 撤回 / 隐藏自己投的信 ═════════
+ * 规则写在 utils/bottle.js 的 canWithdrawLetter / canHideLetter（纯函数、有单测），
+ * 与数据库 bottle_letter_delete / _hide 的 where 条件**逐条对应** —— 两边口径必须一致，
+ * 否则会出现「按钮点了没反应」（RPC 返回 false，界面又没有错误可看）。
+ * 一句话：还在海里的能收回；已经进了别人手里的，只能自己眼不见为净。 */
+const dialog = useDialog();
+const recOpBusy = ref("");       /* 正在撤回/隐藏的那条 id（防连点） */
+const recHint = ref("");         /* 操作成功的一句轻提示 */
+let recHintTimer = 0;
+function flashRec(tk) {
+  recHint.value = t(tk);
+  if (recHintTimer) clearTimeout(recHintTimer);
+  recHintTimer = setTimeout(() => { recHint.value = ""; }, 3000);
+}
+
+/* 「已隐藏 N 封 · 查看」——最多 50 行，很轻，进页面 / 切到「我发布的」时顺带拉 */
+const hiddenRows = ref([]);
+const hiddenOpen = ref(false);
+async function loadHidden() {
+  if (!cloudSigned.value) return;
+  try {
+    const got = await bottleHiddenLetters();
+    hiddenRows.value = Array.isArray(got) ? got : [];
+  } catch (e) {
+    hiddenRows.value = [];   /* 没跑迁移 / 网络失败：不显示折叠区，别挡主流程 */
+  }
+}
+
+/* 从「我发布的」本地列表摘掉一条，并把分页钳回合法页（当前页可能就空了） */
+function dropRecRow(id) {
+  const keep = (x) => String(x.id) !== String(id);
+  recAll.value = recAll.value.filter(keep);
+  recMineAll.value = recMineAll.value.filter(keep);
+  const p = clampBottlePage(recPage.value, recAll.value.length, REC_PAGE);
+  recPage.value = p;
+  recRows.value = bottlePageSlice(recAll.value, p, REC_PAGE);
+}
+
+function askConfirm(title, desc) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (v) => { if (!settled) { settled = true; resolve(v); } };
+    dialog.warning({
+      title, content: desc,
+      positiveText: t("common.confirm"),
+      negativeText: t("common.cancel"),
+      onPositiveClick: () => done(true),
+      onNegativeClick: () => done(false),
+      onClose: () => done(false),
+    });
+  });
+}
+
+async function withdrawLetter(l) {
+  if (!l || recOpBusy.value || !canWithdrawLetter(l)) return;
+  if (!(await askConfirm(t("bottle.withdrawTitle"), t("bottle.withdrawDesc")))) return;
+  recOpBusy.value = l.id;
+  recErr.value = "";
+  try {
+    const ok = await bottleWithdraw(l.id);
+    if (!ok) throw new Error("bottle-not-owner");
+    dropRecRow(l.id);
+    flashRec("bottle.withdrawn");
+  } catch (e) {
+    recErr.value = t(bottleErrKey(e));
+    /* 并发：点撤回的同一瞬间被人捞走 → 就地改状态，按钮换成「隐藏」，别让用户反复点 */
+    if (/bottle-already-picked/.test(String((e && e.message) || ""))) l.status = "held";
+  } finally { recOpBusy.value = ""; }
+}
+
+async function hideLetter(l) {
+  if (!l || recOpBusy.value || !canHideLetter(l, myId.value)) return;
+  if (!(await askConfirm(t("bottle.hideTitle"), t("bottle.hideDesc")))) return;
+  recOpBusy.value = l.id;
+  recErr.value = "";
+  try {
+    const ok = await bottleHide(l.id);
+    if (!ok) throw new Error("bottle-not-owner");
+    dropRecRow(l.id);
+    await loadHidden();          /* 「已隐藏 N 封」的数字要跟上 */
+    flashRec("bottle.hidden");
+  } catch (e) {
+    recErr.value = t(bottleErrKey(e));
+  } finally { recOpBusy.value = ""; }
+}
+
+async function restoreLetter(l) {
+  if (!l || recOpBusy.value) return;
+  recOpBusy.value = l.id;
+  recErr.value = "";
+  try {
+    await bottleUnhide(l.id);
+    hiddenRows.value = hiddenRows.value.filter((x) => String(x.id) !== String(l.id));
+    await loadRecords();         /* 回到「我发布的」列表 */
+    flashRec("bottle.unhidden");
+  } catch (e) {
+    recErr.value = t(bottleErrKey(e));
+  } finally { recOpBusy.value = ""; }
 }
 </script>
 
@@ -625,6 +730,14 @@ async function decideRec(l, accept) {
               {{ t(recState(l)) }}
             </span>
           </div>
+          <!-- 轮446：作者操作 —— 还在海里 → 撤回；已进别人手里 → 只有隐藏。
+               显示条件与数据库 where 条件一一对应（utils/bottle.js 的两个 can* 纯函数）。 -->
+          <div v-if="recTab === 'mine' && (canWithdrawLetter(l) || canHideLetter(l, myId))" class="mail-send bottle-owner-ops" @click.stop>
+            <button v-if="canWithdrawLetter(l)" type="button" class="bottle-op bottle-op-danger"
+              :disabled="recOpBusy === l.id" @click="withdrawLetter(l)">{{ t("bottle.withdraw") }}</button>
+            <button v-else type="button" class="bottle-op"
+              :disabled="recOpBusy === l.id" @click="hideLetter(l)">{{ t("bottle.hide") }}</button>
+          </div>
           <!-- 轮 24c：押在手里的信，操作按钮直接放在记录卡上（此前只在顶部托盘/弹窗里，用户找不到） -->
           <div v-if="recTab === 'held' && l.status === 'held'" class="mail-send" @click.stop>
             <n-button type="primary" size="small" round
@@ -682,6 +795,7 @@ async function decideRec(l, accept) {
           <span v-if="canChat(l)" class="bottle-chat">{{ t("bottle.openChat") }} →</span>
         </div>
         <p v-if="recErr" class="notice">{{ t(recErr) }}</p>
+        <p v-if="recHint" class="notice bottle-hint">{{ recHint }}</p>
         <div class="bottle-pager">
           <n-button size="tiny" round :disabled="recPage <= 0 || recLoading" @click="setRecPage(0)">
             « {{ t("bottle.pageFirst") }}
@@ -707,6 +821,24 @@ async function decideRec(l, accept) {
               {{ t("bottle.pageGo") }}
             </n-button>
           </span>
+        </div>
+
+        <!-- 轮446：已隐藏的信。隐藏 = 从我的列表消失，**不是删除** ——
+             不给恢复入口的话，用户会以为隐藏等于删除，然后来问信去哪了。 -->
+        <div v-if="recTab === 'mine' && hiddenRows.length" class="bottle-hidden">
+          <button type="button" class="bottle-hidden-toggle" @click="hiddenOpen = !hiddenOpen">
+            {{ hiddenOpen ? t("bottle.hideCollapse") : t("bottle.hiddenN", { n: hiddenRows.length }) }}
+          </button>
+          <div v-if="hiddenOpen" class="bottle-hidden-list">
+            <div v-for="h in hiddenRows" :key="h.id" class="mail-item bottle-hidden-item">
+              <div class="m-q">{{ h.body }}</div>
+              <div class="m-meta">
+                <span class="m-when">{{ whenRec(h.created_at) }}</span>
+                <button type="button" class="bottle-op"
+                  :disabled="recOpBusy === h.id" @click.stop="restoreLetter(h)">{{ t("bottle.unhide") }}</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </template>

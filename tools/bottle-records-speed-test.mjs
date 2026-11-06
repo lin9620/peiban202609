@@ -47,9 +47,16 @@ t("R1 读接口统一 15s 超时，写接口不套", () => {
   has(BOTTLE, /singleFlight\("quota"[\s\S]{0,80}READ_TIMEOUT/, "bottleQuota 没套超时");
   has(BOTTLE, /singleFlight\(key[\s\S]{0,120}READ_TIMEOUT/, "bottleRecords 没套超时");
   /* 写操作必须保持「没有超时」：超时 ≠ 没落库，不能给用户「失败」的错觉。
-   * 全文只允许 4 处 return withTimeout( —— mine / held / quota / records，全是只读。 */
+   * 全文只允许 5 处 return withTimeout( —— mine / held / quota / records /
+   * bottleHiddenLetters（轮446 加的只读接口：已隐藏清单），全是只读。 */
   const wrapped = (BOTTLE.match(/return withTimeout\(/g) || []).length;
-  assert.equal(wrapped, 4, `withTimeout 包了 ${wrapped} 处，应只包 4 个只读接口`);
+  assert.equal(wrapped, 5, `withTimeout 包了 ${wrapped} 处，应只包 5 个只读接口`);
+  /* 轮446：撤回 / 隐藏 / 恢复显示都是写操作，绝不能套超时 */
+  ["bottleWithdraw", "bottleHide", "bottleUnhide"].forEach((fn) => {
+    const block = BOTTLE.slice(BOTTLE.indexOf(`export async function ${fn}`));
+    const body = block.slice(0, block.indexOf("\n}"));
+    assert.ok(!/withTimeout/.test(body), `${fn} 是写操作，不该套超时`);
+  });
 });
 
 t("R2 超时要丢飞行（不然重试拿回同一个卡住的 Promise）", () => {

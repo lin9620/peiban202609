@@ -14,14 +14,14 @@ let wallScrollTop = 0;   /* 轮 219：容器离场时的滚动位置（重插时
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick, onActivated, onDeactivated } from "vue";
 import { useRouter, useRoute, onBeforeRouteLeave } from "vue-router";
-import { NButton, NInput, NAvatar, NTag } from "naive-ui";
+import { NButton, NInput, NAvatar, NTag, useDialog } from "naive-ui";
 import { t, i18n } from "../i18n.js";
 import { sortByLang, langBadge, contentPref } from "../utils/contentLang.js";
 import { getItem, setItem, removeItem } from "../utils/storage.js";
 import { restoreScroll } from "../utils/scrollMem.js";
 /* 轮 32：个人数据键按账号分域（游客账/各登录账号互不串），读写走 scopeGet/scopeSet */
 import { scopeGet, scopeSet, scopeGetRaw, scopeSetRaw } from "../utils/userScope.js";
-import { cacheKey, cacheSet, cacheGet, swr } from "../utils/cache.js";
+import { cacheKey, cacheSet, cacheGet, swr, cacheDrop, cachePatch } from "../utils/cache.js";
 import { onPostReaction, applyPostReactionPatch } from "../utils/postReactionSync.js";
 /* 轮 84：墙内前 3 条 / 查看更多 / 评论回应 / 拷贝文本。
    注意：import 大括号内不要写注释 —— undef-check 的导入解析器会把注释与下一个名字粘连（踩过）。 */
@@ -47,7 +47,7 @@ import { createTapGuard } from "../utils/tapGuard.js";
 /* 轮 84：评论回应（mine 拉取 + 切换）—— 大括号内不写注释，同上 */
 import {
   cloudFetchPosts, cloudFetchPostsSample, cloudFetchWallRefresh, cloudInsertPost, cloudFetchComments, cloudInsertComment,
-  cloudDeleteComment, cloudSetReaction, cloudFetchCommentCounts, canUseWall, canReadWall,
+  cloudDeleteComment, cloudDeletePost, cloudSetReaction, cloudFetchCommentCounts, canUseWall, canReadWall,
   cloudAddViews, cloudToggleDislike,
   cloudFetchMyCommentReactions, cloudToggleCommentReaction,
   cloudFavIds, cloudFavAdd, cloudFavRemove, cloudSearchPosts, favCacheInsert, favCacheRemove,
@@ -58,6 +58,8 @@ import {
   SORTS, sortPosts, collectViews, visibleOnly, utcDay, ratioPct,
   canPostToday, postsLeftToday, dayCountFromStorage, WALL_POST_DAILY_LIMIT,
   errorKind, VIEW_KEY, ANON_KEY, POST_DAY_KEY, POSTS_KEY, REACTS_KEY,
+  /* 轮446：作者删除的判据（纯函数，三处入口共用；与 canReportPost 互斥） */
+  canDeletePost as canDeletePostRule,
   RANGES, inRange, usesRange, rangeFor, widerRange, fmtWhen, memoWhen,
   recommendPosts, RECOMMEND_DAYS, RECOMMEND_WIDE_DAYS,
   hasNewPosts, applyReactionAuthoritative,
@@ -796,6 +798,58 @@ async function moreCopy() {
   closeMore();
   const ok = await copyText(t0 ? t0.copy : "");
   showWallMsg(ok ? "common.copied" : "common.copyFail");
+}
+
+/* ═════════ 轮446 · 作者删除自己的帖子 ═════════
+ * 用户口径：「暖心墙帖子，自己发布的怎么没有删除功能」。数据库本来就有一条
+ * "posts delete own" 策略，只是一直没有入口。现在走 wall_post_delete（软删 + 置 removed）：
+ * 不连带删掉别人写的评论，也不用改任何一处列表查询（removed 过滤面早就铺好了）。
+ * 与举报互斥：canReportPost 要求「不是我」，canDeletePost 要求「是我」。 */
+const dialog = useDialog();
+const postLeaving = ref(new Set());     /* 正在塌陷退场的 dbId（乐观删除动画） */
+const canDeletePost = (p) => canDeletePostRule(p, myUid.value);
+
+async function deletePost(p) {
+  const id = p && p.dbId;
+  if (id == null) return;
+  closeMore();
+  /* 二次确认：破坏性操作，且「评论也会一起消失」必须提前说清楚 */
+  const ok = await new Promise((resolve) => {
+    let settled = false;
+    const done = (v) => { if (!settled) { settled = true; resolve(v); } };
+    dialog.warning({
+      title: t("post.deleteTitle"),
+      content: t("post.deleteDesc"),
+      positiveText: t("post.delete"),
+      negativeText: t("common.cancel"),
+      onPositiveClick: () => done(true),
+      onNegativeClick: () => done(false),
+      onClose: () => done(false),
+    });
+  });
+  if (!ok) return;
+
+  /* 乐观删除：先让卡片塌陷，再发请求。
+     反过来（先等请求）在跨境网络下就是 1~2 秒的「点了没反应」，用户会连点。 */
+  postLeaving.value = new Set([...postLeaving.value, String(id)]);
+  await new Promise((r) => setTimeout(r, 220));
+  const prev = cloudPosts.value;
+  cloudPosts.value = prev.filter((x) => x && String(x.dbId) !== String(id));
+  try {
+    const doneDel = await cloudDeletePost(id);
+    if (!doneDel) throw new Error("post-delete-false");   /* 一行没改到 = 不是本人的 / 已删过 */
+    /* 缓存：详情快照直接扔掉（否则回详情页时 SWR 把已删的帖闪回来），列表快照里也剔掉这一条 */
+    cacheDrop(cacheKey("wall:post", id));
+    cachePatch(
+      cacheKey("wall:posts", (cloud.user && cloud.user.id) || ""),
+      (list) => list.filter((x) => x && String(x.dbId) !== String(id)),
+    );
+    showWallMsg("post.deleted");
+  } catch (e) {
+    cloudPosts.value = prev;   /* 回滚：把卡片放回去 */
+    postLeaving.value = new Set([...postLeaving.value].filter((x) => x !== String(id)));
+    showWallMsg(errKeyFor("post.deleteFail"));
+  }
 }
 
 /* ═════════ 轮 84 · 评论回应（❤️ / 💔） ═════════
@@ -2618,7 +2672,7 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
     <!-- 动态流（默认 10 条，滑到底自动续 10 条；只挂视口附近十几条，其余用占位块撑高） -->
     <article v-for="p in pageItems" :key="p.id" :ref="bindCard(p)" class="post-card card"
       :id="p.dbId != null ? 'post-' + p.dbId : undefined"
-      :class="{ 'post-focus': focusId && String(p.dbId) === focusId }"
+      :class="{ 'post-focus': focusId && String(p.dbId) === focusId, 'post-leaving': postLeaving.has(String(p.dbId)) }"
       @click="onCardTap(p, $event)">
       <div class="post-head">
         <n-avatar round :size="42" class="post-avatar"
@@ -2644,6 +2698,8 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
             {{ moreTarget.faved ? t("fav.remove") : t("fav.add") }}
           </button>
           <button class="more-item" @click="moreCopy">{{ t("common.copy") }}</button>
+          <!-- 轮446：作者本人才能看到（canReportPost 要求「不是我」，两者天然互斥） -->
+          <button v-if="canDeletePost(p)" class="more-item more-danger" @click="deletePost(p)">{{ t("post.delete") }}</button>
         </div>
       </div>
 

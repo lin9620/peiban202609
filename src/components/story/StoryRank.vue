@@ -20,7 +20,14 @@ const offset = ref(0);
 const rows = ref([]);
 const tagCloud = ref([]);
 const activeTag = ref("");
+const tagQuery = ref("");
 const tagRows = ref([]);
+/* 标签多起来后不再铺成一大片 pill：搜索 + 限高滚动列表，版面高度只跟 max-height 走 */
+const visibleTags = computed(() => {
+  const q = tagQuery.value.trim().toLowerCase();
+  if (!q) return tagCloud.value;
+  return tagCloud.value.filter((r) => String(r.title || "").toLowerCase().includes(q));
+});
 const loading = ref(false);
 const err = ref("");
 /* 轮 443：翻到底不再本地重排，而是弹一句「没有新内容了」，2.6 秒后自己消失 */
@@ -89,6 +96,7 @@ async function shuffle() {
 watch(mode, () => {
   offset.value = 0;
   activeTag.value = "";
+  tagQuery.value = "";
   tagRows.value = [];
   noMore.value = false;
   load();
@@ -126,15 +134,33 @@ load();
       </button>
     </div>
 
-    <!-- 标签模式：先出标签云 -->
-    <div v-if="mode === 'tag'" class="st-cloud">
-      <button
-        v-for="r in tagCloud" :key="r.title" class="st-cloud-tag"
-        :class="{ on: activeTag === r.title }" type="button" :aria-pressed="activeTag === r.title"
-        @click="pickTag(r.title)">
-        #{{ r.title }} <em>{{ r.view_count }}</em>
-      </button>
-      <p v-if="!tagCloud.length && !loading" class="st-hint">{{ t("story.rankEmpty") }}</p>
+    <!-- 标签模式：搜索 + 限高滚动列表（标签再多也不撑高版面） -->
+    <div v-if="mode === 'tag'" class="st-tag-panel">
+      <div class="st-tag-head">
+        <label class="st-tag-search">
+          <svg class="st-tag-search-ico" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.6" />
+            <path d="m16 16 4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+          </svg>
+          <input
+            v-model.trim="tagQuery" type="search" class="st-tag-search-in"
+            :placeholder="t('story.tagSearch')" :aria-label="t('story.tagSearch')"
+          />
+        </label>
+        <span class="st-tag-total">{{ t("story.tagTotal", { n: visibleTags.length }) }}</span>
+      </div>
+
+      <div v-if="tagCloud.length" class="st-tag-list">
+        <button
+          v-for="r in visibleTags" :key="r.title" class="st-tag-row"
+          :class="{ on: activeTag === r.title }" type="button"
+          :aria-pressed="activeTag === r.title" @click="pickTag(r.title)">
+          <span class="st-tag-name">#{{ r.title }}</span>
+          <em>{{ r.view_count }}</em>
+        </button>
+        <p v-if="!visibleTags.length" class="st-hint st-tag-empty">{{ t("story.tagNone") }}</p>
+      </div>
+      <p v-else-if="!loading" class="st-hint">{{ t("story.rankEmpty") }}</p>
     </div>
 
     <ol v-if="mode !== 'tag'" class="st-rank-list">

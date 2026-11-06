@@ -135,6 +135,7 @@ ok("429 → errRate", storyErrKey(new Error("HTTP 429")) === "story.errRate");
   ok("story.* 词条够用（≥35 条）", Object.keys(en).length >= 35, String(Object.keys(en).length));
   ok("侧栏 nav.story 中英成对", !!messages.en.nav.story && !!messages.zh.nav.story);
   ok("四榜页签词条齐", ["rankRandom", "rankLatest", "rankMonthly", "rankTag"].every((k) => en[k] && zh[k]));
+  ok("标签搜索/计数/空态词条齐", ["tagSearch", "tagTotal", "tagNone"].every((k) => en[k] && zh[k]));
   /* 占位符成对：{n}/{max}/{min}/{name}/{likes}/{views}/{t} 两边都得在，否则中文缺参渲染成原文 */
   const phMissing = [];
   for (const k of Object.keys(en)) {
@@ -211,6 +212,10 @@ ok("榜标签下钻走 latest 档（非 monthly，避免无赞即空）",
   && !rankVue.includes('mode: "monthly", tag: activeTag.value'));
 ok("标签云显示篇数而非赞数（view_count 装的是 count(*)）",
   rankVue.includes("<em>{{ r.view_count }}</em>") && !rankVue.includes("<em>{{ r.like_count }}</em>"));
+ok("标签页改为可搜索、限高滚动的列表（标签再多也不撑爆版面）",
+  has(rankVue, "tagQuery", "visibleTags", "st-tag-panel", "st-tag-search", "st-tag-list")
+  && has(css, ".st-tag-list", "max-height", "overflow-y: auto")
+  && !css.includes(".st-cloud { display: flex; flex-wrap: wrap;"));
 ok("我的页签：草稿/已发布 + 数据面板", has(mineVue, 'storyMine("draft")', 'storyMine("published")', "storyMyStats")
   && mineVue.includes("total_likes") && mineVue.includes("bookmark_count"));
 ok("发现页签：搜索 + 载入更多", has(feedVue, "story.searchPh", "loadMore"));

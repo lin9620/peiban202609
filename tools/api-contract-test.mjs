@@ -464,8 +464,10 @@ const rows = [{ id: 1 }, { id: 2 }];
 }
 {
   const { fake } = await run([{ data: null }], () => db.adminSetPostRemoved("p1", false));
-  ok("adminSetPostRemoved 恢复（removed=false）",
-    fake.calls[0] === 'from:wall_posts|update:{"removed":false}|eq:id:"p1"', fake.calls[0]);
+  /* 轮446：恢复时一并清 deleted_at —— 作者自删的帖子两个标记都非空，
+     只改 removed 读策略仍不通过，列表看不到（管理员会以为「恢复失败」） */
+  ok("adminSetPostRemoved 恢复（removed=false 且清 deleted_at）",
+    fake.calls[0] === 'from:wall_posts|update:{"removed":false,"deleted_at":null}|eq:id:"p1"', fake.calls[0]);
 }
 {
   const { fake } = await run([{ data: null }], () => db.adminDeletePost("p1"));

@@ -3,11 +3,11 @@
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { NButton, NAvatar } from "naive-ui";
+import { NButton, NAvatar, useDialog } from "naive-ui";
 import { t, i18n } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
-import { cloudFetchUserPosts } from "../utils/wall.js";
-import { cacheKey, cachePatch, cacheSet, swr } from "../utils/cache.js";
+import { cloudFetchUserPosts, cloudDeletePost } from "../utils/wall.js";
+import { cacheKey, cachePatch, cacheSet, cacheDrop, swr } from "../utils/cache.js";
 import { avatarUrlFor } from "../utils/avatar.js";   /* 轮 238:萌宠头像池 */
 import { setPostNav } from "../utils/postNav.js";    /* 轮 279:进详情前存列表快照,左右滑用 */
 import { onPostReaction, patchPostList } from "../utils/postReactionSync.js";
@@ -145,6 +145,55 @@ function openWall(p) {
   cacheSet(cacheKey("wall:post", p.dbId), p);   /* 轮 372：详情 0ms 先渲染正确回应数 */
   router.push({ path: `/post/${p.dbId}` });
 }
+
+/* ═════════ 轮446 · 在这页直接删自己的帖子 ═════════
+ * 这一页**全是自己的帖子**，不需要「⋯ → 删除」两级菜单，直接给一颗删除按钮。
+ * 与暖心墙 / 详情页同一个后端动作（软删 + 置 removed），确认文案也一致。 */
+const dialog = useDialog();
+const removing = ref(new Set());          /* 正在删的 dbId（按钮 loading / 防连点） */
+const delErr = ref("");
+function flashDelFail() {
+  /* 没有 toast 组件，用一次性的行内提示最省事：把失败塞进墙消息位（本次页面内可见） */
+  delErr.value = t("post.deleteFail");
+  setTimeout(() => { delErr.value = ""; }, 3200);
+}
+
+async function delPost(p) {
+  const id = p && p.dbId;
+  if (id == null || removing.value.has(id)) return;
+  const ok = await new Promise((resolve) => {
+    let settled = false;
+    const done = (v) => { if (!settled) { settled = true; resolve(v); } };
+    dialog.warning({
+      title: t("post.deleteTitle"),
+      content: t("post.deleteDesc"),
+      positiveText: t("post.delete"),
+      negativeText: t("common.cancel"),
+      onPositiveClick: () => done(true),
+      onNegativeClick: () => done(false),
+      onClose: () => done(false),
+    });
+  });
+  if (!ok) return;
+
+  removing.value = new Set([...removing.value, id]);
+  const prev = rows.value;
+  rows.value = prev.filter((x) => String(x.dbId) !== String(id));   /* 乐观移除 */
+  try {
+    const doneDel = await cloudDeletePost(id);
+    if (!doneDel) throw new Error("post-delete-false");
+    /* 缓存同步：本页快照 + 详情快照（否则返回列表或再进详情会把已删的帖闪回来） */
+    cachePatch(cacheKey("myposts", uid.value), (list) => list.filter((x) => String(x.dbId) !== String(id)));
+    cacheDrop(cacheKey("wall:post", id));
+  } catch (e) {
+    rows.value = prev;    /* 回滚 */
+    flashDelFail();
+  } finally {
+    const n = new Set(removing.value);
+    n.delete(id);
+    removing.value = n;
+  }
+}
 </script>
 
 <template>
@@ -169,6 +218,7 @@ function openWall(p) {
 
       <p v-if="loading && !rows.length" class="card sub">…</p>
       <p v-else-if="!rows.length" class="card sub">{{ t("profile.myPostsEmpty") }}</p>
+      <p v-if="delErr" class="notice" style="color: var(--low); font-weight: 600">{{ delErr }}</p>
 
       <!-- 轮 18：与暖心墙完全同款的帖子卡（头像/署名/时间/全文/配图/回应数/浏览数） -->
       <article
@@ -191,8 +241,12 @@ function openWall(p) {
             {{ t(r.tk) }} · {{ (p.reacts && p.reacts[r.key]) || 0 }}
           </n-button>
         </div>
-        <div v-if="p.stats" class="post-foot">
-          <span class="post-views">{{ t("community.views", { n: p.views || 0 }) }}</span>
+        <!-- 轮446：浏览数 + 删除（这一页全是自己的帖子，直接给按钮，不再套 ⋯ 菜单） -->
+        <div class="mypage-foot">
+          <span v-if="p.stats" class="post-views">{{ t("community.views", { n: p.views || 0 }) }}</span>
+          <button class="mypage-del" :disabled="removing.has(p.dbId)" @click.stop="delPost(p)">
+            {{ removing.has(p.dbId) ? "…" : t("post.delete") }}
+          </button>
         </div>
       </article>
 
@@ -222,4 +276,13 @@ function openWall(p) {
 .mypage-post { cursor: pointer; }
 .mypage-go { font-size: 12px; font-weight: 500; color: var(--ink-faint); white-space: nowrap; }
 .mypage-sentinel { height: 4px; }
+/* 轮446：卡片底部「浏览数 + 删除」 */
+.mypage-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
+.mypage-del {
+  appearance: none; font: inherit; cursor: pointer;
+  border: none; background: none; padding: 4px 6px; border-radius: 8px;
+  font-size: 12.5px; font-weight: 500; color: var(--low);
+}
+.mypage-del:hover { background: var(--accent-soft); }
+.mypage-del:disabled { opacity: .5; cursor: default; }
 </style>

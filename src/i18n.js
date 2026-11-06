@@ -71,6 +71,17 @@ export const messages = {
       /* 轮 311：Turnstile 人机验证提示 */
       turnstileFirst: "Please complete the human check first.",
       turnstileFail: "Human check failed — please try again.",
+      /* 轮446：破坏性操作的二次确认（取消复用 cancel） */
+      confirm: "OK",
+    },
+
+    post: {
+      /* 轮446：作者删除自己的帖子 */
+      delete: "Delete",
+      deleteTitle: "Delete this post?",
+      deleteDesc: "It can't be undone, and the comments under it will disappear too.",
+      deleted: "Deleted",
+      deleteFail: "Couldn't delete — please try again",
     },
 
     home: {
@@ -304,6 +315,20 @@ export const messages = {
       replySend: "Send reply",
       release: "Throw back",
       report: "Report this letter",
+      /* 轮446：作者撤回 / 隐藏自己投的信 —— 还在海里的能收回，进了别人手里的只能隐藏 */
+      withdraw: "Withdraw",
+      withdrawTitle: "Withdraw this letter?",
+      withdrawDesc: "It will vanish from the sea and no one can pick it up. Today's send count is not refunded.",
+      withdrawn: "Withdrawn",
+      alreadyPicked: "Someone just picked it up — you can only hide it now",
+      hide: "Hide",
+      hideTitle: "Hide it from your list?",
+      hideDesc: "The other person won't notice a thing — replies and chats stay put. You can restore it under “hidden” below.",
+      hidden: "Hidden",
+      hiddenN: "{n} hidden · view",
+      hideCollapse: "Hide the hidden list",
+      unhide: "Show again",
+      unhidden: "Shown again",
       gotTitle: "You fished up a letter!",
       popNotice: "Notice",
       fishing: "Casting the net…",
@@ -380,6 +405,9 @@ export const messages = {
       tagsPh: "Add a tag, then press Enter",
       tagHint: "1–3 tags, up to 20 characters each",
       tagLabel: "Tags",
+      tagSearch: "Search tags",
+      tagTotal: "{n} tags",
+      tagNone: "No matching tags",
       needLogin: "Sign in first",
       needTitle: "Add a title",
       needBody: "Write something first",
@@ -1087,6 +1115,17 @@ export const messages = {
       /* 轮 311：Turnstile 人机验证提示 */
       turnstileFirst: "请先完成人机验证。",
       turnstileFail: "人机验证没通过——请再试一次。",
+      /* 轮446：破坏性操作的二次确认（取消复用 cancel） */
+      confirm: "确定",
+    },
+
+    post: {
+      /* 轮446：作者删除自己的帖子 */
+      delete: "删除",
+      deleteTitle: "删除这条帖子？",
+      deleteDesc: "删除后无法恢复，这条帖子下的评论也会一起消失。",
+      deleted: "已删除",
+      deleteFail: "删除失败，请重试",
     },
 
     home: {
@@ -1320,6 +1359,20 @@ export const messages = {
       replySend: "发送回信",
       release: "放回海里",
       report: "举报这封信",
+      /* 轮446：作者撤回 / 隐藏自己投的信 */
+      withdraw: "撤回",
+      withdrawTitle: "撤回这封信？",
+      withdrawDesc: "撤回后它会从海里消失，不会再被捞到。今日投信次数不退还。",
+      withdrawn: "已撤回",
+      alreadyPicked: "这封信刚被捞走了，只能隐藏",
+      hide: "隐藏",
+      hideTitle: "从列表隐藏？",
+      hideDesc: "不影响对方，回信和聊天都还在。可在下面的「已隐藏」里恢复。",
+      hidden: "已隐藏",
+      hiddenN: "已隐藏 {n} 封 · 查看",
+      hideCollapse: "收起已隐藏",
+      unhide: "恢复显示",
+      unhidden: "已恢复",
       gotTitle: "捞到了一封信！",
       popNotice: "提示",
       fishing: "撒网打捞中……",
@@ -1396,6 +1449,9 @@ export const messages = {
       tagsPh: "输入标签后回车",
       tagHint: "1~3 个标签，每个不超过 20 字",
       tagLabel: "标签",
+      tagSearch: "搜索标签",
+      tagTotal: "共 {n} 个标签",
+      tagNone: "没有匹配的标签",
       needLogin: "请先登录",
       needTitle: "请填写标题",
       needBody: "正文还是空的",

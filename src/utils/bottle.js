@@ -109,6 +109,8 @@ export function bottleErrKey(e) {
   if (msg.includes("bottle-limit-pick")) return "bottle.errPickLimit";
   if (msg.includes("bottle-limit-fish")) return "bottle.errFishLimit";
   if (msg.includes("bottle-empty-sea")) return "bottle.errEmpty";
+  /* 轮446：撤回时发现信已经被捞走（只能是「想撤回的同一瞬间被人捞走」，并发窗口极小） */
+  if (msg.includes("bottle-already-picked")) return "bottle.alreadyPicked";
   if (msg.includes("bottle-not-holder")) return "bottle.errNotHolder";
   if (msg.includes("bottle-blocked")) return "bottle.errBlocked";
   if (msg.includes("bottle-too-short")) return "bottle.errTooShort";
@@ -198,6 +200,62 @@ export function bottleRecords(id = null, offset = 0, { mine = null, limit = 0 } 
 export function bottleChatDecide(id, accept) {
   if (typeof accept !== "boolean") throw new Error("bottle-bad-decision");
   return db.bottleChatDecide(id, accept);
+}
+
+/* ══════════ 轮446 · 作者撤回 / 隐藏自己投的信 ══════════
+ * 规则一句话：「还在海里的能收回；已经进了别人手里的，只能自己眼不见为净。」
+ * 而任何「还有事等你做」或「还能点进去」的状态一律不许隐藏 —— 不给用户制造「东西不见了」。
+ * 下面两个纯函数是**按钮显示的唯一判据**，SQL 里 bottle_letter_hide 的条件必须与它们逐条对应，
+ * 否则会出现「按钮点了没反应」（RPC 返回 false 但界面没有错误可看）。 */
+
+/** 能不能撤回：只有还在海里（status='sea'）且没删过。 */
+export function canWithdrawLetter(l) {
+  return !!(l && l.status === "sea" && !l.deleted_at);
+}
+
+/**
+ * 能不能隐藏。与 public.bottle_letter_hide 的 where 条件逐字对应：
+ *   deleted_at 为空 / hidden_at 为空 / status <> 'sea' /
+ *   chat_decision <> 'accepted' /
+ *   not (status='answered' and chat_decision='pending')
+ */
+export function canHideLetter(l, userId) {
+  if (!l || !userId || l.user_id !== userId) return false;
+  if (l.deleted_at || l.hidden_at) return false;
+  if (l.status === "sea") return false;                       /* 海里的用「撤回」 */
+  /* chat_decision 是 not null default 'pending'，但老数据/半截行可能是 undefined ——
+     按 'pending' 兜底，与 SQL 的默认值口径一致（宁可保守：待决定的信不给藏） */
+  const dec = l.chat_decision || "pending";
+  if (dec === "accepted") return false;                       /* 已有会话 = 聊天入口 */
+  if (l.status === "answered" && dec === "pending") return false;  /* 待我决定 */
+  return true;
+}
+
+/** 撤回还在海里的信。已被捞走 → 服务端 raise 'bottle-already-picked'。
+ *  注意：撤回**不退还**今日投信次数 —— 投递是动作成本，退还等于可以无限试写。 */
+export async function bottleWithdraw(id) {
+  if (!guardWrite()) throw new Error("maintenance-mode");
+  if (!id) throw new Error("bottle-empty-body");
+  return db.bottleLetterDelete(id);
+}
+
+/** 从「我发布的」隐藏（服务端会拒绝待决定 / 已有会话的信，返回 false） */
+export async function bottleHide(id) {
+  if (!guardWrite()) throw new Error("maintenance-mode");
+  if (!id) throw new Error("bottle-empty-body");
+  return db.bottleLetterHide(id);
+}
+
+/** 恢复显示 */
+export async function bottleUnhide(id) {
+  if (!guardWrite()) throw new Error("maintenance-mode");
+  if (!id) throw new Error("bottle-empty-body");
+  return db.bottleLetterUnhide(id);
+}
+
+/** 已隐藏的信（最多 50 封）；「已隐藏 N 封 · 查看」用 */
+export function bottleHiddenLetters() {
+  return withTimeout(db.bottleLetterHidden(), READ_TIMEOUT);
 }
 
 /** 仅作者能决定，双方都能进入已建立的会话；最终权限由数据库裁定。

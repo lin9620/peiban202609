@@ -1196,6 +1196,32 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
   text-align: center;
 }
 .bottle-page-input:focus { outline: 2px solid var(--accent-soft); outline-offset: 1px; }
+
+/* ═══ 轮446 · 撤回 / 隐藏（作者对自己投的信） ═══
+ * 文字按钮、低频、破坏性 —— 不该跟「回信 / 放回」抢视觉权重。 */
+.bottle-owner-ops { justify-content: flex-end; margin-top: 6px; }
+.bottle-op {
+  appearance: none; font: inherit; cursor: pointer;
+  border: none; background: none; padding: 4px 8px; border-radius: 8px;
+  font-size: 12.5px; font-weight: 500; color: var(--ink-faint);
+  transition: color .15s ease, background .15s ease;
+}
+.bottle-op:hover { background: var(--accent-soft); color: var(--accent-deep); }
+.bottle-op-danger { color: var(--low); }
+.bottle-op-danger:hover { background: var(--low); color: #fff; }
+.bottle-op:disabled { opacity: .45; cursor: default; }
+.bottle-hint { color: var(--accent-deep); font-weight: 600; }
+.bottle-hidden { margin-top: 14px; border-top: 1px dashed var(--hairline); padding-top: 10px; }
+.bottle-hidden-toggle {
+  appearance: none; font: inherit; cursor: pointer;
+  border: none; background: none; padding: 4px 2px;
+  font-size: 12.5px; font-weight: 500; color: var(--ink-faint);
+}
+.bottle-hidden-toggle:hover { color: var(--accent-deep); }
+.bottle-hidden-list { display: grid; gap: 8px; margin-top: 8px; }
+/* 已隐藏的信整条压暗：一眼看出"这条现在不显示在正常列表里" */
+.bottle-hidden-item { opacity: .72; }
+.bottle-hidden-item:hover { opacity: 1; }
 /* 待我点「愿意，开始聊天」的信：列表行 / 页签共用的红点 */
 .bottle-need-dot {
   display: inline-block; width: 8px; height: 8px; margin-right: 6px;
@@ -1364,6 +1390,19 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
   padding: 7px 10px; border-radius: 8px; transition: all .15s ease;
 }
 .more-item:hover { color: var(--accent-deep); background: var(--accent-soft); }
+/* 轮446：菜单里的破坏性项（删除）。危险色，与「收藏/拷贝」拉开层级 */
+.more-item.more-danger { color: var(--low); }
+.more-item.more-danger:hover { color: #fff; background: var(--low); }
+
+/* 轮446：作者删帖的离场动画 —— 先淡出再发请求，避免「点了没反应」。
+   不做高度塌陷：max-height 从 auto 到 0 无法过渡（会瞬跳），
+   淡出 + 轻微缩小后再从数组移除，重排反而更自然。 */
+.post-card.post-leaving {
+  opacity: 0;
+  transform: scale(.985);
+  transition: opacity .18s ease, transform .18s ease;
+  pointer-events: none;
+}
 
 /* 透明遮罩：点空白处收起 …菜单（盖全屏，无视觉） */
 .more-mask { position: fixed; inset: 0; z-index: 39; background: transparent; }
@@ -3082,10 +3121,32 @@ html.cap-app .reply-bar {
 .st-rank-name { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .st-rank-meta { font-size: 11px; color: var(--ink-faint); }
 .st-rank-like { font-size: 12px; color: var(--accent-deep); font-variant-numeric: tabular-nums; }
-.st-cloud { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
-.st-cloud-tag { background: var(--wash); border: 1px solid var(--hairline); border-radius: 999px; padding: 3px 10px; font-size: 12px; cursor: pointer; transition: background-color .18s ease, color .18s ease; }
-.st-cloud-tag.on { background: var(--accent); border-color: var(--accent); color: #fff; }
-.st-cloud-tag em { font-style: normal; opacity: .7; font-size: 11px; }
+/* 标签页（轮 445）：搜索 + 限高滚动列表；标签再多也不把版面撑成一片 pill 海 */
+.st-tag-panel { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; padding: 10px; border: 1px solid var(--hairline); border-radius: 14px; background: var(--wash); }
+.st-tag-head { display: flex; align-items: center; gap: 8px; }
+.st-tag-search { position: relative; display: flex; align-items: center; flex: 1; min-width: 0; }
+.st-tag-search-ico { position: absolute; left: 10px; width: 14px; height: 14px; color: var(--ink-faint); pointer-events: none; }
+.st-tag-search-in { width: 100%; height: 32px; padding: 0 10px 0 30px; border: 1px solid var(--hairline); border-radius: 10px; background: var(--card, #fffdf9); color: var(--ink); font: inherit; font-size: 13px; outline: none; transition: border-color .18s ease, box-shadow .18s ease; }
+.st-tag-search-in::placeholder { color: var(--ink-faint); }
+.st-tag-search-in:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.st-tag-total { flex: none; font-size: 11px; color: var(--ink-faint); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.st-tag-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 6px; max-height: 224px; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; scrollbar-width: thin; scrollbar-color: var(--hairline) transparent; }
+.st-tag-list::-webkit-scrollbar { width: 6px; }
+.st-tag-list::-webkit-scrollbar-thumb { background: var(--hairline); border-radius: 6px; }
+.st-tag-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; padding: 6px 8px; border: 1px solid transparent; border-radius: 8px; background: var(--wash-mid); color: var(--ink-soft); font-size: 12px; line-height: 16px; text-align: left; cursor: pointer; transition: background-color .18s ease, color .18s ease, border-color .18s ease; }
+.st-tag-row:hover { background: var(--card, #fffdf9); border-color: var(--hairline); color: var(--ink); }
+.st-tag-row.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.st-tag-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-tag-row em { flex: none; font-style: normal; font-size: 11px; opacity: .65; font-variant-numeric: tabular-nums; }
+.st-tag-row.on em { opacity: .85; }
+.st-tag-empty { grid-column: 1 / -1; margin: 2px 0; }
+@media (max-width: 900px) {
+  .st-tag-list { grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 240px; }
+}
+@media (max-width: 560px) {
+  .st-tag-panel { padding: 8px; }
+  .st-tag-list { grid-template-columns: 1fr; max-height: 38vh; }
+}
 .st-shuffle { margin-top: 10px; width: 100%; }
 /* 轮 443：换一批翻到底的提示（原来是把同一批内容本地打乱冒充新的，现在直说没内容了） */
 .st-no-more { margin-top: 8px; text-align: center; animation: st-fade-in 0.18s ease-out; }
@@ -3107,7 +3168,7 @@ html.cap-app .reply-bar {
 .st-read-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--hairline); }
 .st-related { margin-top: 18px; }
 @media (prefers-reduced-motion: reduce) {
-  .st-btn, .st-card, .st-tab, .st-mode, .st-rank-tab, .st-mine-row, .st-cloud-tag, .st-rank-row { transition: none !important; }
+  .st-btn, .st-card, .st-tab, .st-mode, .st-rank-tab, .st-mine-row, .st-tag-row, .st-rank-row { transition: none !important; }
 }
 /* ══ 故事栏 · 批 2：评论区 / 书架 / 每日精选卡（沿用批 1 的 st-* 卡片语言） ══ */
 .st-cmt-form { margin: 16px 0 10px; }

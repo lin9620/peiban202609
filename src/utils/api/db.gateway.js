@@ -204,6 +204,18 @@ export const db = {
     return call("/posts", { method: "POST", body: row });
   },
 
+  /** 作者删自己的帖子（轮446）：POST /api/posts/delete → Worker 调 RPC wall_post_delete
+   *  网关没这个端点（404）或上游没这个函数（PGRST202/42883）→ 退回 DELETE /posts/:id，
+   *  与直连实现的降级口径一致（硬删）。生产走直连，这条路只在 VITE_API_GATEWAY=1 时启用。 */
+  async wallPostDelete(id) {
+    try {
+      return await call("/posts/delete", { method: "POST", body: { id } });
+    } catch (e) {
+      if (!isMissingFnError(e && e.message) && !(e && e.status === 404)) throw e;
+      return call(`/posts/${enc(id)}`, { method: "DELETE" });
+    }
+  },
+
   /* ══════════ 轮 252 ══════════ */
 
   /** wall_posts 有哪些列（发帖时决定带不带 tags/img_w/img_h；失败一律给空数组=保守走旧载荷）。 */
@@ -437,6 +449,26 @@ export const db = {
     return call("/bottle/quota", { timeout: 15000 });
   },
 
+  /* ══════════ 轮446 · 作者撤回 / 隐藏自己投的信（语义见 db.supabase.js 同名方法） ══════════
+     注意：Worker 侧尚未实现这四个端点（worker/api.js 里没有 /bottle/letter/*）——
+     网关模式下会 404，由上层按「功能未开通」提示；生产走直连，不受影响。 */
+
+  bottleLetterDelete(id) {
+    return call("/bottle/letter/delete", { method: "POST", body: { id } });
+  },
+
+  bottleLetterHide(id) {
+    return call("/bottle/letter/hide", { method: "POST", body: { id } });
+  },
+
+  bottleLetterUnhide(id) {
+    return call("/bottle/letter/unhide", { method: "POST", body: { id } });
+  },
+
+  bottleLetterHidden() {
+    return call("/bottle/letter/hidden", { timeout: 15000 });
+  },
+
   /* ══════════ 故事栏（轮 145：Worker 收口 /api/story/*，同名 RPC 在 DB 里） ══════════ */
 
   /** 存草稿（宽容：标题可空） */
@@ -595,8 +627,11 @@ export const db = {
   },
 
   /** 下架 / 恢复帖子 */
+  /** 轮446：恢复时一并清 deleted_at（作者自删的帖子 removed 与 deleted_at 都非空，
+   *  只改 removed 列表依旧看不到）。网关没这个字段时上游会忽略多余键，不会报错。 */
   adminSetPostRemoved(id, removed) {
-    return call(`/admin/posts/${enc(id)}`, { method: "PATCH", body: { removed } });
+    const body = removed ? { removed } : { removed, deleted_at: null };
+    return call(`/admin/posts/${enc(id)}`, { method: "PATCH", body });
   },
 
   /** 删除帖子（子行由 FK 级联清掉） */

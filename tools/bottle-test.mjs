@@ -339,7 +339,9 @@ ok("ProfileView：goSignIn 显式传参（修「退出→登录→直落忘记�
 
 /* ───────── 轮 22：捞信结果一律居中弹窗（不再让人猜捞没捞到） ───────── */
 ok("BottleView：捞信结果走居中弹窗（NModal；捞到=got 模式，空捞/限额=msg 模式说清原因）",
-  has(bottleView, 'import { NButton, NInput, NModal } from "naive-ui"')
+  /* 轮446：import 里多了 useDialog（删除确认弹窗），所以不再断言整行字符串，
+     只要求 naive-ui 那一行里同时有 NButton / NInput / NModal */
+  /import \{[^}]*NButton[^}]*NInput[^}]*NModal[^}]*\} from "naive-ui"/.test(bottleView)
     && has(bottleView, "const fishPop = ref(")
     && has(bottleView, 'v-model:show="fishPop.show"')
     && has(bottleView, 'fishPop.value = { show: true, mode: "got", letter: l, msg: "" }')

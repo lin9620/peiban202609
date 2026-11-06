@@ -5,13 +5,13 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { NAvatar, NButton, NInput } from "naive-ui";
+import { NAvatar, NButton, NInput, useDialog } from "naive-ui";
 import { t, i18n } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
 /* 轮 84：评论回应（mine 拉取 + 切换）—— import 大括号内不写注释（undef-check 解析器会粘连） */
 import {
   cloudFetchPost, cloudFetchProfile, cloudFetchComments, cloudInsertComment,
-  cloudDeleteComment, cloudSetReaction, cloudAddView, cloudToggleDislike,
+  cloudDeleteComment, cloudDeletePost, cloudSetReaction, cloudAddView, cloudToggleDislike,
   cloudFetchMyCommentReactions, cloudToggleCommentReaction,
   cloudFavIds, cloudFavAdd, cloudFavRemove, favCacheInsert, favCacheRemove,
   cmtCacheKey, cmtCacheSet,
@@ -25,8 +25,8 @@ import {
   renderTops, renderReplies, liveComments, markDeleted, replyBlocked,
   applyCommentReactionResult, REPLY_PAGE, pageReplies,
 } from "../utils/comments.js";
-import { fmtWhen } from "../utils/wallRules.js";
-import { cacheKey, swr, cacheSet, cacheGet, cachePatch } from "../utils/cache.js";   /* 轮 158：帖子主体 SWR */
+import { fmtWhen, canDeletePost as canDeletePostRule } from "../utils/wallRules.js";   /* 轮446：删除判据与暖心墙共用 */
+import { cacheKey, swr, cacheSet, cacheGet, cachePatch, cacheDrop } from "../utils/cache.js";   /* 轮 158：帖子主体 SWR */
 import { isApp, isMobileNav, tabbarSuppressed } from "../stores/uiStore.js";
 /* 轮 279：左右滑看上一条/下一条 —— 方向判定复用 panes 的 swipeDir（已有单测），上下文来自 postNav */
 import { swipeDir } from "../utils/panes.js";
@@ -523,6 +523,43 @@ async function moreCopy() {
   const ok = await copyText(t0 ? t0.copy : "");
   hint.value = ok ? t("common.copied") : t("common.copyFail");
   setTimeout(() => { hint.value = ""; }, 2500);
+}
+
+/* ═════════ 轮446 · 作者删除这条帖子 ═════════
+ * 与暖心墙同一套（软删 + 置 removed），确认弹窗文案也一致。
+ * 删完直接退回上一页 —— 留在一条已经不存在的帖子上没有任何意义。 */
+const dialog = useDialog();
+const canDeletePost = () => canDeletePostRule(post.value, myId.value);
+async function deleteCurrentPost() {
+  const id0 = post.value && post.value.dbId;
+  if (id0 == null) return;
+  closeMore();
+  const ok = await new Promise((resolve) => {
+    let settled = false;
+    const done = (v) => { if (!settled) { settled = true; resolve(v); } };
+    dialog.warning({
+      title: t("post.deleteTitle"),
+      content: t("post.deleteDesc"),
+      positiveText: t("post.delete"),
+      negativeText: t("common.cancel"),
+      onPositiveClick: () => done(true),
+      onNegativeClick: () => done(false),
+      onClose: () => done(false),
+    });
+  });
+  if (!ok) return;
+  try {
+    const doneDel = await cloudDeletePost(id0);
+    if (!doneDel) throw new Error("post-delete-false");
+    /* 缓存直接扔掉：否则返回列表/再次进入时 SWR 会把已删的帖闪回来 */
+    cacheDrop(cacheKey("wall:post", id0));
+    gone.value = true;                      /* 先置已下架，退场动画期间不再渲染正文 */
+    if (typeof window !== "undefined" && window.history.length > 1) router.back();
+    else router.push({ name: "community" });
+  } catch (e) {
+    hint.value = t("post.deleteFail");
+    setTimeout(() => { hint.value = ""; }, 3000);
+  }
 }
 
 /* 轮 108 续5：手机端回复统一走底部输入条（轮 98 的 reply-bar 退役）——与暖心墙同款：
@@ -1070,6 +1107,8 @@ onUnmounted(() => {
               {{ moreTarget.faved ? t("fav.remove") : t("fav.add") }}
             </button>
             <button class="more-item" @click="moreCopy">{{ t("common.copy") }}</button>
+            <!-- 轮446：作者本人才能看到（canReportPost 要求「不是我」，两者天然互斥） -->
+            <button v-if="canDeletePost()" class="more-item more-danger" @click="deleteCurrentPost">{{ t("post.delete") }}</button>
           </div>
         </div>
 

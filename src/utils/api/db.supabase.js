@@ -207,6 +207,22 @@ export const db = {
     return unwrap(sb().from(T.posts).insert(row).select("*").single());
   },
 
+  /** 作者删自己的帖子（轮446）
+   *  软删：security definer RPC 写 deleted_at **并置 removed = true** ——
+   *  既有 6 处查询 / wall_feed_page / wall_search_posts / 网关全都在过滤 removed = false，
+   *  借用这条过滤面，列表与 RPC 一行都不用改就立刻看不到。
+   *  返回值语义：true = 改到了行；false = 不是本人的 / 已经删过（幂等）。
+   *  老库没跑 MIGRATION_owner_delete.sql（PGRST202/42883）→ 退回硬删：帖子彻底消失、
+   *  评论靠 FK 级联一起没。与本仓库「不跑迁移也能用」口径一致，用户预期也是删干净。 */
+  async wallPostDelete(id) {
+    try {
+      return await unwrap(sb().rpc("wall_post_delete", { p_id: id }));
+    } catch (e) {
+      if (!isMissingFnError(e && e.message, e && e.code)) throw e;
+      return unwrap(sb().from(T.posts).delete().eq("id", id));
+    }
+  },
+
   /* ══════════ 轮 252 ══════════ */
 
   /** wall_posts 有哪些列（发帖前探一次；失败给空数组=保守走旧载荷）。 */
@@ -559,6 +575,31 @@ export const db = {
     return unwrap(sb().rpc("bottle_quota"));
   },
 
+  /* ══════════ 轮446 · 作者撤回 / 隐藏自己投的信 ══════════
+     撤回只对 status='sea'（还在海里）开放；被捞走、已回信的只能隐藏。
+     两者都是软删/软隐藏，行永远留着 —— bottle_fishes.letter_id 是 on delete cascade，
+     物理删会让「同一封 7 天内不再发给你」与捞瓶额度记账一起回退。 */
+
+  /** 撤回（仅 sea，其余服务端 raise 'bottle-already-picked'） */
+  bottleLetterDelete(id) {
+    return unwrap(sb().rpc("bottle_letter_delete", { p_id: id }));
+  },
+
+  /** 从「我发布的」隐藏（待决定 / 已有会话的信服务端会拒绝，返回 false） */
+  bottleLetterHide(id) {
+    return unwrap(sb().rpc("bottle_letter_hide", { p_id: id }));
+  },
+
+  /** 恢复显示 */
+  bottleLetterUnhide(id) {
+    return unwrap(sb().rpc("bottle_letter_unhide", { p_id: id }));
+  },
+
+  /** 已隐藏的信（最多 50 封；「已隐藏 N 封 · 查看」用） */
+  bottleLetterHidden() {
+    return unwrap(sb().rpc("bottle_letter_hidden"));
+  },
+
   /* ══════════ 故事栏（轮 145：投稿 / 故事流 / 四榜 / 点赞）══════════
      全部走 story_* RPC（服务端权威：校验、限额、计数、随机榜种子都在 DB 里）。 */
 
@@ -766,9 +807,19 @@ export const db = {
     );
   },
 
-  /** 下架 / 恢复帖子（更新 removed；RLS 管理员 update 策略兜底） */
-  adminSetPostRemoved(id, removed) {
-    return unwrap(sb().from(T.posts).update({ removed }).eq("id", id));
+  /** 下架 / 恢复帖子（更新 removed；RLS 管理员 update 策略兜底）
+   *  轮446：**恢复时必须一并清 deleted_at** —— 作者自删的帖子 removed 与 deleted_at 都是非空，
+   *  只把 removed 改回 false，列表依旧看不到（因为读策略要两个条件都成立），管理员会以为「恢复失败」。
+   *  老库没有这一列 → PGRST204/42703 → 退回只改 removed。 */
+  async adminSetPostRemoved(id, removed) {
+    const patch = removed ? { removed } : { removed, deleted_at: null };
+    try {
+      return await unwrap(sb().from(T.posts).update(patch).eq("id", id));
+    } catch (e) {
+      const msg = String((e && e.message) || "");
+      if (removed || !(isMissingFnError(msg, e && e.code) || /PGRST204/i.test(msg))) throw e;
+      return unwrap(sb().from(T.posts).update({ removed }).eq("id", id));
+    }
   },
 
   /** 删除帖子（FK 级联清评论/回应；RLS 管理员 delete 策略兜底） */
