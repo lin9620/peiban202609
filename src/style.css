@@ -1,11 +1,16 @@
 /* ═══════════ Warm Paws · 现代治愈风设计系统 ═══════════ */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
-/* ══════════ 字体层（轮 437b 定稿）══════════
- * 西文：Plus Jakarta Sans 可变字体，27KB，打进包内（唯一进包的字体）。
+/* ══════════ 字体层（轮 456 定稿）══════════
+ * 西文：Reddit Sans 可变字体，41KB，打进包内（唯一进包的字体）。
+ *   · 轮 456（用户：「英文字体确定了，用 reddit 的同款字体」）：Reddit 2023 换牌
+ *     与 Pentagram 合作定制的自有字体，SIL OFL 1.1 开源（GitHub: reddit/redditsans，
+ *     Google Fonts: Reddit Sans）。取 Google Fonts 的 latin 分片（41.8KB，wght 200–900
+ *     可变），覆盖英/西/葡/法四种语言的全部字符（含 ñ ã ç œ ¿ ¡ 与弯引号）。
+ *     latin-ext 不需要（那 34KB 是越南语/东欧语，项目没有这些语言）。
  *   · 来由：轮 436 之前用 Google Fonts 的 Inter 400/500/600，而代码里 700 有 24 处、800 有 4 处
- *     → 浏览器把 600 轮廓机械描粗，英文发胖、笔画黏连，这就是「英文字体太丑」。
- *     可变字体一个文件覆盖 wght 200–800，700/800 是真字形，伪粗体消失。
+ *     → 浏览器把 600 轮廓机械描粗，英文发胖、笔画黏连，这才是「英文字体太丑」的真因。
+ *     可变字体一个文件覆盖 wght 200–900，700/800 是真字形，伪粗体消失。
  * 中文：霞鹜文楷，**走 CDN，不进包**，和轮 406 之前完全一样（引用见 index.html）。
  *   · 轮 436 一度把它也塞进包（603KB→3.4MB），APK 从 6.8MB 涨到 9.7MB —— 用户直接质疑
  *     「字体以前就有，为什么占这么大体积」。以前没有，是网页从 CDN 拉的，包内是零。
@@ -13,9 +18,9 @@
  *     **中文全站统一霞鹜文楷，不拆层、不打进包。** 别再往 public/fonts 里塞楷体。
  * ══════════════════════════════════════════════════════════════════════════ */
 @font-face {
-  font-family: "Plus Jakarta Sans";
-  src: url("/fonts/plus-jakarta-sans.woff2") format("woff2");
-  font-weight: 200 800;          /* 可变轴：一个文件顶五档，700/800 不再是伪粗体 */
+  font-family: "Reddit Sans";
+  src: url("/fonts/reddit-sans.woff2") format("woff2");
+  font-weight: 200 900;          /* 可变轴：一个文件顶七档，700/800 不再是伪粗体 */
   font-style: normal;
   font-display: swap;
 }
@@ -52,9 +57,9 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
   --r-lg: 12px;
   --r-md: 8px;
   --good: #5db872; --warn: #d4a017; --low: #c64545;
-  /* 轮 436 · 字体层：西文 Plus Jakarta Sans（可变，单文件 200–800），中文全站霞鹜文楷。
+  /* 轮 456 · 字体层：西文 Reddit Sans（可变，单文件 200–900），中文全站霞鹜文楷。
      轮 436b：中文字体分层已回滚（用户：不如原来的）—— 界面与正文都用楷体，不再拆 --font-hand。 */
-  --font-latin: "Plus Jakarta Sans";
+  --font-latin: "Reddit Sans";
   --font-body: var(--font-latin), "LXGW WenKai", "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-display: var(--font-latin), "LXGW WenKai", "PingFang SC", serif;
 }

@@ -132,11 +132,17 @@ ok("轮 38 ⑥ 启动页 CSS 真在 <style> 里 + 标签配对（裸文本回归
 ok("轮 38 ⑦ 显示规则优先级正确（默认 display:none 在前，html.cap-app 恢复显示在后）",
   styleBlocks.indexOf("#app-splash { display: none; }") < styleBlocks.indexOf("html.cap-app #app-splash { display: flex; }"));
 
-ok("轮 74 启动页语言跟随（用户:英文语言还是中文启动页）：内联判语言脚本在位（wp-lang 存档优先→系统语言），英文替换文案齐备",
+ok("轮 74 启动页语言跟随（用户:英文语言还是中文启动页）：内联判语言脚本在位（wp-lang 存档优先→默认英文），英文替换文案齐备",
   html.includes('localStorage.getItem("wp-lang")')
     && html.includes('"Warm Paws"')
     && html.includes("Care for a little pet")
     && html.includes("Meet gentle people on the Wall"));
+
+/* 轮 456（用户：「用户第一次进入的时候默认为英文」）：启动页是首帧第一眼，
+   不能再按系统语言判 —— 无存档时必须英文，只有存过 zh 才留中文。 */
+ok("轮 456 启动页首启默认英文（不再跟随 navigator.language）",
+  /var lang = saved \|\| "en";/.test(html)
+    && !/navigator\.language/.test(html));
 
 /* ─── 轮 312：个人域缓存不能在「认证还没就绪」的启动间隙被清 ───────────────────
  * 原报障：「会话列表本来有记录，去今日/宠物页点了点返回会话，一片空白、记录都没了，等很久才恢复」。

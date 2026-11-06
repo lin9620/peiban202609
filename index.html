@@ -191,11 +191,11 @@
   <!-- 轮 437b：中文字体回退到原来的加载方式 —— 走 CDN，**不进安装包**。
        轮 436 把楷体也塞进了包（603KB → 后来 3.4MB），APK 从 6.8MB 涨到 9.7MB；
        用户问「字体以前就有，为什么占这么大体积」—— 因为以前它是网页从 CDN 拉的，包内没有。
-       现在包内只留 27KB 的西文 Jakarta（这个是真优化：可变字重解决了英文合成加粗），
+       现在包内只留 41KB 的西文 Reddit Sans（这个是真优化：可变字重解决了英文合成加粗），
        楷体回到 jsdelivr，和轮 406 之前完全一样。
        只引 regular + bold 两套（原包 style.css 会把 light/mono 一起 import，多 400KB 无用 CSS；
        项目里没有 300 字重的用法，去掉不影响任何一页的观感）。 -->
-  <link rel="preload" href="/fonts/plus-jakarta-sans.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/fonts/reddit-sans.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/lxgwwenkai-regular.css" media="print" onload="this.media='all'" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/lxgwwenkai-bold.css" media="print" onload="this.media='all'" />
   <noscript>
@@ -386,13 +386,14 @@
 
   <script>
     /* 轮 74：启动页语言跟随——静态层在 i18n 之外，渲染时直接判：
-     * 手动选过语言（wp-lang 存档）优先，否则系统语言 zh→中文、其余→英文。
+     * 手动选过语言（wp-lang 存档）优先，否则一律英文（轮 456：首启默认英文，不再跟随系统语言，
+     * 与 src/i18n.js 的 locale 初值同一口径）。
      * 放在启动页标记之后：解析器同步执行，首帧前完成替换，不会闪中文。 */
     (function () {
       try {
         var saved = null;
         try { saved = localStorage.getItem("wp-lang"); } catch (e) {}
-        var lang = saved || ((navigator.language || "").toLowerCase().indexOf("zh") === 0 ? "zh" : "en");
+        var lang = saved || "en";
         if (lang !== "en") return;
         var set = function (sel, text) { var el = document.querySelector("#app-splash " + sel); if (el) el.textContent = text; };
         set(".sp-name", "Warm Paws");

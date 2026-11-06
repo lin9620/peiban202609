@@ -2203,14 +2203,15 @@ messages.pt = ptMessages;
 messages.fr = frMessages;
 
 export const i18n = reactive({
-  /* 轮 18（#3 闪英文最后一环）：首次使用（无存档）跟随系统语言——
-     中文手机/中文系统首启 App 直接是中文，不再先闪英文；
-     存档优先：用户在设置页手动选过语言就永远尊重那个选择。
+  /* 轮 456（用户：「用户第一次进入的时候默认为英文」）：无存档时**一律英文**，
+     不再跟随 navigator.language —— 中文手机首启也是英文。
+     存档优先：设置页手动选过的语言永远尊重；系统语言只在用户从没选过时才算参考，
+     现在这个参考也去掉了。
      轮 86：/zh/* 中文预渲染着陆页强制中文 —— 只影响本次视图，不写入 wp-lang 存档
      （用户手动选过的语言偏好不被 URL 覆盖）；Node（vite.config 读词条）没有 location，跳过。 */
   locale: (typeof location !== "undefined" && /^\/zh(\/|$)/.test(location.pathname))
     ? "zh"
-    : getItem("wp-lang") || normLocale((typeof navigator !== "undefined" && navigator.language) || ""),
+    : getItem("wp-lang") || "en",
 });
 
 export function normLocale(l) {

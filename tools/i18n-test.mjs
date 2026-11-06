@@ -145,6 +145,16 @@ for (const l of LANGS.filter((x) => x !== "en")) {
 }
 i18n.locale = "en";
 
+/* ─── ⓪ 轮 456：首启语言默认值 ───
+ * 用户：「用户第一次进入的时候默认为英文」。此前无存档时跟随 navigator.language，
+ * 中文手机首启直接中文。现在一律 en；只有存过 wp-lang 才走存档（设置页手动选的）。
+ * 用源码断言而不是读 i18n.locale —— 测试进程里前面的用例已经改过运行时 locale。 */
+{
+  const src = fs.readFileSync(path.join(root, "src/i18n.js"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  ok("T25 无存档时默认 en，不再跟随 navigator.language",
+    /getItem\("wp-lang"\)\s*\|\|\s*"en"/.test(src) && !/navigator\.language/.test(src));
+}
+
 /* ─── ⑦ 构建产物（若已构建）：修复过的文案要真的进包 ─── */
 const assetsDir = path.join(root, "dist", "assets");
 if (fs.existsSync(assetsDir)) {
