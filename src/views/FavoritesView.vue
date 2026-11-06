@@ -157,15 +157,9 @@ function refresh() {
 </template>
 
 <style scoped>
-.favpage-head { display: flex; align-items: center; gap: 10px; margin: 2px 0 12px; }
-.favpage-head h1 { font-size: 20px; margin: 0; flex: 1; }
-.favpage-back, .favpage-refresh {
-  appearance: none; font: inherit; cursor: pointer;
-  min-width: 40px; min-height: 40px; border-radius: 999px;
-  border: 1px solid rgba(160, 110, 60, .2); background: rgba(255, 255, 255, .7);
-  font-weight: 500; font-size: 16px;
-}
-.favpage-signin { text-align: center; display: grid; gap: 10px; justify-items: center; padding: 18px 14px; }
+/* 页头（.favpage-head / -back / -refresh / -signin）与夜间覆盖已提到 src/style.css ——
+   轮447：FollowingView 复用同款页头，scoped 样式跨组件拿不到，共用样式必须放全局。
+   这里只留收藏页专用的部分。 */
 .favpage-card { cursor: pointer; }
 .favpage-foot { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
 .favpage-msg { font-size: 12px; font-weight: 600; color: var(--good); }
@@ -178,7 +172,4 @@ function refresh() {
   transition: all .18s ease;
 }
 .favpage-unfav:hover { color: var(--low); border-color: var(--low); }
-html[data-theme="night"] .favpage-back, html[data-theme="night"] .favpage-refresh {
-  background: rgba(30, 35, 64, .6); border-color: rgba(255, 255, 255, .14);
-}
 </style>

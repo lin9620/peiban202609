@@ -193,7 +193,9 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="bcl" role="list">
-    <div class="br-tabs bcl-tabs" role="tablist">
+    <!-- 轮447：原来这里的 br-tabs 是无效类 —— 它只定义在 BottleRecords 的 scoped 里，
+         本组件拿不到；真正的样式由全局 .bcl-tabs 提供（display/gap 与它等价）。 -->
+    <div class="bcl-tabs" role="tablist">
       <button class="dm-seg-btn bcl-tab" :class="{ on: mine }" role="tab" :aria-selected="mine" @click="setMine(true)">
         {{ t("bottle.mineTab") }}
         <span v-if="pendingCount" class="notif-count">{{ pendingCount > 99 ? "99+" : pendingCount }}</span>

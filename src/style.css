@@ -3505,6 +3505,23 @@ html[data-theme="night"] .follow-pill { color: #dce4ff; border-color: rgba(120, 
 html[data-theme="night"] .waller-follow.on { color: #c9cdd8; background: rgba(120, 136, 200, .18); }
 html[data-theme="night"] .waller-follow.armed { color: #f0a9a2; background: rgba(196, 74, 64, .2); }
 
+/* —— 子页页头（我的收藏 / 我的关注共用）——
+   轮447修：这几条原来写在 FavoritesView 的 <style scoped> 里，FollowingView 复用了同名类，
+   结果一条样式都没拿到 —— 「←」「标题」「↻」退化成块级堆叠，标题下面孤零零挂个刷新钮。
+   scoped 带 data-v-* 属性选择器，跨组件必失效，共用就必须放全局。 */
+.favpage-head { display: flex; align-items: center; gap: 10px; margin: 2px 0 12px; }
+.favpage-head h1 { font-size: 20px; margin: 0; flex: 1; }
+.favpage-back, .favpage-refresh {
+  appearance: none; font: inherit; cursor: pointer;
+  min-width: 40px; min-height: 40px; border-radius: 999px;
+  border: 1px solid rgba(160, 110, 60, .2); background: rgba(255, 255, 255, .7);
+  font-weight: 500; font-size: 16px;
+}
+.favpage-signin { text-align: center; display: grid; gap: 10px; justify-items: center; padding: 18px 14px; }
+html[data-theme="night"] .favpage-back, html[data-theme="night"] .favpage-refresh {
+  background: rgba(30, 35, 64, .6); border-color: rgba(255, 255, 255, .14);
+}
+
 /* —— 我的关注（/following） —— */
 .follow-note-card {
   margin: 10px 2px 12px;
