@@ -1718,29 +1718,96 @@ create table if not exists public.bottle_letters (
   created_at  timestamptz not null default now(),
   conv_id     bigint references public.dm_conversations (id) on delete set null,
   chat_decision text not null default 'pending'
-    check (chat_decision in ('pending', 'accepted', 'declined'))
+    check (chat_decision in ('pending', 'accepted', 'declined')),
+  pickup_count   integer not null default 0,
+  last_picked_at timestamptz,
+  random_bucket  smallint not null default floor(random() * 256)::smallint,
+  body_hash      text,
+  hidden_at      timestamptz
 );
 -- 老库补列（幂等）：漂流瓶续聊（#6；详见 MIGRATION_bottle_chat.sql）
 alter table public.bottle_letters add column if not exists conv_id bigint
   references public.dm_conversations (id) on delete set null;
 alter table public.bottle_letters add column if not exists chat_decision text
   not null default 'pending' check (chat_decision in ('pending', 'accepted', 'declined'));
+-- 轮 411：公平捞取 + 内容质量（详见 MIGRATION_bottle_fair_quota.sql）
+alter table public.bottle_letters add column if not exists pickup_count integer not null default 0;
+alter table public.bottle_letters add column if not exists last_picked_at timestamptz;
+alter table public.bottle_letters add column if not exists random_bucket smallint;
+alter table public.bottle_letters add column if not exists body_hash text;
+alter table public.bottle_letters add column if not exists hidden_at timestamptz;
+update public.bottle_letters
+   set random_bucket = floor(random() * 256)::smallint
+ where random_bucket is null;
+update public.bottle_letters
+   set body_hash = md5(lower(btrim(body)))
+ where body_hash is null;
+alter table public.bottle_letters
+  alter column random_bucket set default floor(random() * 256)::smallint;
+alter table public.bottle_letters
+  alter column random_bucket set not null;
 create index if not exists bottle_letters_sea_idx
   on public.bottle_letters (created_at desc) where status = 'sea';
 create index if not exists bottle_letters_owner_idx
   on public.bottle_letters (user_id, created_at desc);
+create index if not exists bottle_letters_sea_fair_idx
+  on public.bottle_letters (pickup_count, last_picked_at)
+  where status = 'sea';
+create index if not exists bottle_letters_sea_bucket_idx
+  on public.bottle_letters (random_bucket, pickup_count, last_picked_at)
+  where status = 'sea';
+create index if not exists bottle_letters_user_hash_idx
+  on public.bottle_letters (user_id, body_hash, created_at desc);
+create index if not exists bottle_letters_held_idx
+  on public.bottle_letters (held_at)
+  where status = 'held';
+create index if not exists bottle_letters_holder_held_idx
+  on public.bottle_letters (holder, held_at desc)
+  where status = 'held';
 
 create table if not exists public.bottle_fishes (
   user_id   uuid not null references auth.users (id) on delete cascade,
   day       date not null default (now() at time zone 'utc')::date,
   letter_id uuid not null references public.bottle_letters (id) on delete cascade,
+  picked_at timestamptz not null default now(),
   primary key (user_id, day, letter_id)
 );
 
-/* 轮 21：次数口径改为「捞到且回信才扣 1 次」——捞信日志上加回信时刻/回信日。
-   replied_day 才是 bottle_quota() 数的列；replied_at is null = 捞起后从未回信，不计次。 */
+/* 轮 21：回信才计次；轮 411：picked_at 记捞取额度（放回不返还），replied_at 记回信额度。
+   两者都按滚动 24 小时计数，不再按 UTC 自然日。 */
 alter table public.bottle_fishes add column if not exists replied_at  timestamptz;
 alter table public.bottle_fishes add column if not exists replied_day date;
+alter table public.bottle_fishes add column if not exists picked_at timestamptz;
+update public.bottle_fishes
+   set picked_at = (day::timestamp at time zone 'utc')
+ where picked_at is null;
+update public.bottle_fishes
+   set replied_at = (replied_day::timestamp at time zone 'utc')
+ where replied_at is null and replied_day is not null;
+alter table public.bottle_fishes alter column picked_at set default now();
+alter table public.bottle_fishes alter column picked_at set not null;
+create index if not exists bottle_fishes_user_pick_idx
+  on public.bottle_fishes (user_id, picked_at desc);
+create index if not exists bottle_fishes_user_letter_pick_idx
+  on public.bottle_fishes (user_id, letter_id, picked_at desc);
+create index if not exists bottle_fishes_user_reply_idx
+  on public.bottle_fishes (user_id, replied_at desc);
+
+-- 轮 411：举报 / 隐藏。同一用户举报过的信不再发给他；3 个不同用户举报 → 全局隐藏
+create table if not exists public.bottle_reports (
+  id          bigserial primary key,
+  reporter_id uuid not null references auth.users (id) on delete cascade,
+  letter_id   uuid not null references public.bottle_letters (id) on delete cascade,
+  reason      text not null default 'other',
+  detail      text not null default '',
+  created_at  timestamptz not null default now(),
+  unique (reporter_id, letter_id)
+);
+alter table public.bottle_reports enable row level security;
+create index if not exists bottle_reports_letter_idx
+  on public.bottle_reports (letter_id);
+create index if not exists bottle_reports_reporter_idx
+  on public.bottle_reports (reporter_id, created_at desc);
 
 
 alter table public.bottle_letters enable row level security;
@@ -1749,39 +1816,63 @@ drop policy if exists "bottle readable by owner or replier" on public.bottle_let
 create policy "bottle readable by owner or replier" on public.bottle_letters
   for select using (user_id = auth.uid() or reply_by = auth.uid());
 
--- 写路径收口在 RPC（每日 3 封 / 7 瓶、48h 自动回海、不能捞自己的信）
+-- 写路径收口在 RPC（滚动 24h：5 封 / 30 瓶 / 7 回；48h 自动回海、不能捞自己的信）
 create or replace function public.bottle_send(p_body text)
 returns public.bottle_letters
 language plpgsql security definer set search_path = public as $$
 declare
   v_count int;
+  v_hash  text;
   v_row   public.bottle_letters;
 begin
   if auth.uid() is null then raise exception 'bottle-auth'; end if;
+  /* 同一用户的额度检查串行化：并发双击/多端同时投捞也不会把 30 瓶刷成 31 瓶 */
+  perform pg_advisory_xact_lock(411, hashtext(auth.uid()::text));
+
   p_body := btrim(coalesce(p_body, ''));
-  if p_body = '' or char_length(p_body) > 1000 then raise exception 'bottle-too-long'; end if;
-  select count(*) into v_count from public.bottle_letters
-    where user_id = auth.uid() and created_day = (now() at time zone 'utc')::date;
-  if v_count >= 5 then raise exception 'bottle-limit-send'; end if;   -- 轮 305：每日可写信 3 → 5（与 MIGRATION_bottle_send_5.sql 同源）
-  insert into public.bottle_letters (user_id, nickname, body)
+  if char_length(p_body) < 10 then raise exception 'bottle-too-short'; end if;
+  if char_length(p_body) > 1000 then raise exception 'bottle-too-long'; end if;
+
+  v_hash := md5(lower(p_body));
+  if exists (
+    select 1 from public.bottle_letters
+     where user_id = auth.uid()
+       and body_hash = v_hash
+       and created_at > now() - interval '24 hours'
+  ) then
+    raise exception 'bottle-duplicate';
+  end if;
+
+  select count(*) into v_count
+    from public.bottle_letters
+   where user_id = auth.uid()
+     and created_at > now() - interval '24 hours';
+  if v_count >= 5 then raise exception 'bottle-limit-send'; end if;
+
+  insert into public.bottle_letters (user_id, nickname, body, body_hash)
     values (auth.uid(),
             coalesce((select nickname from public.profiles where id = auth.uid()), ''),
-            p_body)
+            p_body,
+            v_hash)
     returning * into v_row;
   return v_row;
 end $$;
 
--- 漂流瓶次数探针（轮 18；轮 21 口径：sent=今天已写信数，fished=今天**已回信**数，捞信本身不计次）
+-- 漂流瓶次数探针：滚动 24h
+-- sent = 已投，picked = 已捞（含放回），fished = 已回信（回信才计）
 create or replace function public.bottle_quota()
 returns jsonb
 language sql stable security definer set search_path = public as $$
   select jsonb_build_object(
     'sent',   (select count(*) from public.bottle_letters
                 where user_id = auth.uid()
-                  and created_day = (now() at time zone 'utc')::date),
+                  and created_at > now() - interval '24 hours'),
+    'picked', (select count(*) from public.bottle_fishes
+                where user_id = auth.uid()
+                  and picked_at > now() - interval '24 hours'),
     'fished', (select count(*) from public.bottle_fishes
                 where user_id = auth.uid()
-                  and replied_day = (now() at time zone 'utc')::date)
+                  and replied_at > now() - interval '24 hours')
   )
 $$;
 revoke all on function public.bottle_quota() from public, anon;
@@ -1792,71 +1883,260 @@ returns public.bottle_letters
 language plpgsql security definer set search_path = public as $$
 declare
   v_replied int;
+  v_picked  int;
   v_held    int;
+  v_min     int;
+  v_bucket  smallint;
   v_row     public.bottle_letters;
+  v_found   boolean := false;
   i         int;
 begin
   if auth.uid() is null then raise exception 'bottle-auth'; end if;
-  /* 捞起超 48h 未处理的信先放回海里（不让信卡死在谁手里） */
-  update public.bottle_letters set status = 'sea', holder = null, held_at = null
-    where status = 'held' and held_at < now() - interval '48 hours';
-  /* 今日已回信数达到 7 → 今天不能再捞（捞了也回不了） */
-  select count(*) into v_replied from public.bottle_fishes
-    where user_id = auth.uid() and replied_day = (now() at time zone 'utc')::date;
+  /* 同一用户的额度检查串行化：并发双击/多端同时投捞也不会把 30 瓶刷成 31 瓶 */
+  perform pg_advisory_xact_lock(411, hashtext(auth.uid()::text));
+
+  update public.bottle_letters
+     set status = 'sea', holder = null, held_at = null
+   where status = 'held'
+     and held_at < now() - interval '48 hours';
+
+  /* 回信额度：滚动 24h 最多 7 封；额度用完就别再捞 */
+  select count(*) into v_replied
+    from public.bottle_fishes
+   where user_id = auth.uid()
+     and replied_at > now() - interval '24 hours';
   if v_replied >= 7 then raise exception 'bottle-limit-fish'; end if;
-  /* 手里还压着 ≥7 封没处理 → 先回信或放回，别囤信（防无限捞） */
-  select count(*) into v_held from public.bottle_letters
-    where holder = auth.uid() and status = 'held';
+
+  /* 捞取额度：滚动 24h 最多 30 瓶；放回不返还 */
+  select count(*) into v_picked
+    from public.bottle_fishes
+   where user_id = auth.uid()
+     and picked_at > now() - interval '24 hours';
+  if v_picked >= 30 then raise exception 'bottle-limit-pick'; end if;
+
+  select count(*) into v_held
+    from public.bottle_letters
+   where holder = auth.uid() and status = 'held';
   if v_held >= 7 then raise exception 'bottle-limit-hold'; end if;
-  /* 随机挑一封 → 条件更新抢占（只在仍是 sea 时成立）。别人同一瞬间捞走
-     同一封 → 命中 0 行 → 换一封重试；重试 3 次仍落空或海里已空 →
-     明确抛 bottle-empty-sea（绝不返回 null：客户端只在拿到信时才计数） */
-  for i in 1..3 loop
-    select * into v_row from public.bottle_letters
-      where status = 'sea' and user_id <> auth.uid()
-      order by random() limit 1;
-    if not found then raise exception 'bottle-empty-sea'; end if;
-    update public.bottle_letters set status = 'held', holder = auth.uid(), held_at = now()
-      where id = v_row.id and status = 'sea'
-      returning * into v_row;
-    if found then
-      /* 捞信日志（供「我捞到的」记录）：同一封当天放回再捞不重复、不报错。
-         这里不写 replied_*，所以捞信本身不计次（轮 21 口径）。 */
-      insert into public.bottle_fishes (user_id, day, letter_id)
-        values (auth.uid(), (now() at time zone 'utc')::date, v_row.id)
-        on conflict (user_id, day, letter_id) do nothing;
-      return v_row;
-    end if;
-  end loop;
-  raise exception 'bottle-empty-sea';
+
+  /* 先找可捞信里最小的 pickup_count：没被捞过的信优先 */
+  select min(l.pickup_count) into v_min
+    from public.bottle_letters l
+   where l.status = 'sea'
+     and l.user_id <> auth.uid()
+     and l.hidden_at is null
+     and not exists (
+       select 1 from public.bottle_reports r
+        where r.reporter_id = auth.uid() and r.letter_id = l.id
+     )
+     and not public.dm_is_blocked(auth.uid(), l.user_id)
+     and not public.dm_is_blocked(l.user_id, auth.uid())
+     and not exists (
+       select 1 from public.bottle_fishes f
+        where f.user_id = auth.uid()
+          and f.letter_id = l.id
+          and f.picked_at > now() - interval '7 days'
+     );
+
+  /* 在最小 pickup_count 组里先随机挑 3 个桶，桶空再全量兜底 */
+  if v_min is not null then
+    for i in 1..3 loop
+      v_bucket := floor(random() * 256)::smallint;
+      select l.* into v_row
+        from public.bottle_letters l
+       where l.status = 'sea'
+         and l.user_id <> auth.uid()
+         and l.hidden_at is null
+         and not exists (
+           select 1 from public.bottle_reports r
+            where r.reporter_id = auth.uid() and r.letter_id = l.id
+         )
+         and l.pickup_count = v_min
+         and l.random_bucket = v_bucket
+         and not public.dm_is_blocked(auth.uid(), l.user_id)
+         and not public.dm_is_blocked(l.user_id, auth.uid())
+         and not exists (
+           select 1 from public.bottle_fishes f
+            where f.user_id = auth.uid()
+              and f.letter_id = l.id
+              and f.picked_at > now() - interval '7 days'
+         )
+       order by
+         (exists (
+           select 1
+             from public.bottle_fishes f2
+             join public.bottle_letters l2 on l2.id = f2.letter_id
+            where f2.user_id = auth.uid()
+              and l2.user_id = l.user_id
+              and f2.picked_at > now() - interval '7 days'
+         )) asc,
+         l.last_picked_at asc nulls first,
+         random()
+       limit 1
+       for update of l skip locked;
+      v_found := found;
+      if v_found then exit; end if;
+    end loop;
+  end if;
+
+  if not v_found then
+    select l.* into v_row
+      from public.bottle_letters l
+     where l.status = 'sea'
+       and l.user_id <> auth.uid()
+       and l.hidden_at is null
+       and not exists (
+         select 1 from public.bottle_reports r
+          where r.reporter_id = auth.uid() and r.letter_id = l.id
+       )
+       and not public.dm_is_blocked(auth.uid(), l.user_id)
+       and not public.dm_is_blocked(l.user_id, auth.uid())
+       and not exists (
+         select 1 from public.bottle_fishes f
+          where f.user_id = auth.uid()
+            and f.letter_id = l.id
+            and f.picked_at > now() - interval '7 days'
+       )
+     order by
+       (exists (
+         select 1
+           from public.bottle_fishes f2
+           join public.bottle_letters l2 on l2.id = f2.letter_id
+          where f2.user_id = auth.uid()
+            and l2.user_id = l.user_id
+            and f2.picked_at > now() - interval '7 days'
+       )) asc,
+       l.pickup_count asc,
+       l.last_picked_at asc nulls first,
+       random()
+     limit 1
+     for update of l skip locked;
+    v_found := found;
+  end if;
+
+  if not v_found then raise exception 'bottle-empty-sea'; end if;
+
+  update public.bottle_letters
+     set status = 'held',
+         holder = auth.uid(),
+         held_at = now(),
+         pickup_count = pickup_count + 1,
+         last_picked_at = now()
+   where id = v_row.id and status = 'sea'
+   returning * into v_row;
+
+  if not found then raise exception 'bottle-empty-sea'; end if;
+
+  insert into public.bottle_fishes (user_id, day, letter_id, picked_at)
+    values (auth.uid(), (now() at time zone 'utc')::date, v_row.id, now())
+    on conflict (user_id, day, letter_id) do update
+      set picked_at = excluded.picked_at;
+
+  return v_row;
 end $$;
 
 create or replace function public.bottle_reply(p_id uuid, p_reply text)
 returns public.bottle_letters
 language plpgsql security definer set search_path = public as $$
 declare
-  v_row public.bottle_letters;
+  v_row     public.bottle_letters;
+  v_replied int;
 begin
   if auth.uid() is null then raise exception 'bottle-auth'; end if;
+  /* 同一用户的额度检查串行化：并发双击/多端同时投捞也不会把 30 瓶刷成 31 瓶 */
+  perform pg_advisory_xact_lock(411, hashtext(auth.uid()::text));
+
   p_reply := btrim(coalesce(p_reply, ''));
-  if p_reply = '' or char_length(p_reply) > 1000 then raise exception 'bottle-too-long'; end if;
+  if p_reply = '' then raise exception 'bottle-empty-body'; end if;
+  if char_length(p_reply) > 1000 then raise exception 'bottle-too-long'; end if;
+
+  select * into v_row
+    from public.bottle_letters
+   where id = p_id and status = 'held' and holder = auth.uid() and hidden_at is null
+   for update;
+  if v_row.id is null then raise exception 'bottle-not-holder'; end if;
+
+  if public.dm_is_blocked(auth.uid(), v_row.user_id)
+     or public.dm_is_blocked(v_row.user_id, auth.uid()) then
+    raise exception 'bottle-blocked';
+  end if;
+
+  select count(*) into v_replied
+    from public.bottle_fishes
+   where user_id = auth.uid()
+     and replied_at > now() - interval '24 hours';
+  if v_replied >= 7 then raise exception 'bottle-limit-fish'; end if;
+
   update public.bottle_letters
-    set status = 'answered', reply = p_reply, reply_by = auth.uid(), reply_at = now()
-    where id = p_id and status = 'held' and holder = auth.uid()
-    returning * into v_row;
-  if v_row is null then raise exception 'bottle-not-holder'; end if;
-  /* 轮 21：记次时机 = 回信成功这一刻。只给这封信**最新一条**捞信日志盖章：
-     同一封信「捞起→放回→跨天再捞」会有多行日志（主键含 day），全量更新会把
-     N 行都盖成今天 → 一次回信扣 N 次；取 day 最大的一行即幂等一次。 */
+     set status = 'answered',
+         reply = p_reply,
+         reply_by = auth.uid(),
+         reply_at = now()
+   where id = p_id and status = 'held' and holder = auth.uid() and hidden_at is null
+   returning * into v_row;
+  if v_row.id is null then raise exception 'bottle-not-holder'; end if;
+
   update public.bottle_fishes f
-    set replied_at = now(), replied_day = (now() at time zone 'utc')::date
+     set replied_at = now(),
+         replied_day = (now() at time zone 'utc')::date
     from (
-      select user_id, day, letter_id from public.bottle_fishes
-        where user_id = auth.uid() and letter_id = p_id and replied_at is null
-        order by day desc limit 1
+      select user_id, day, letter_id
+        from public.bottle_fishes
+       where user_id = auth.uid()
+         and letter_id = p_id
+         and replied_at is null
+       order by picked_at desc nulls last, day desc
+       limit 1
     ) t
-    where f.user_id = t.user_id and f.day = t.day and f.letter_id = t.letter_id;
+   where f.user_id = t.user_id
+     and f.day = t.day
+     and f.letter_id = t.letter_id;
+
   return v_row;
+end $$;
+
+-- 轮 411：举报 / 隐藏。同一用户举报后不再发给他；3 个不同用户举报 → 全局隐藏
+create or replace function public.bottle_report(p_id uuid, p_reason text default 'other', p_detail text default '')
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_uid    uuid := auth.uid();
+  v_reason text := lower(coalesce(p_reason, 'other'));
+  v_detail text := left(btrim(coalesce(p_detail, '')), 200);
+  v_count  int;
+  v_row    public.bottle_letters;
+begin
+  if v_uid is null then raise exception 'auth-required'; end if;
+  perform pg_advisory_xact_lock(411, hashtext(v_uid::text));
+  if p_id is null then raise exception 'bad-target'; end if;
+  if v_reason not in ('spam','abuse','porn','illegal','false','other') then
+    v_reason := 'other';
+  end if;
+
+  select * into v_row from public.bottle_letters where id = p_id for update;
+  if v_row.id is null then raise exception 'target-gone'; end if;
+  if v_row.user_id = v_uid then raise exception 'bad-target'; end if;
+
+  select count(*) into v_count
+    from public.bottle_reports
+   where reporter_id = v_uid
+     and created_at > now() - interval '24 hours';
+  if v_count >= 10 then raise exception 'bottle-report-limit'; end if;
+
+  insert into public.bottle_reports (reporter_id, letter_id, reason, detail)
+    values (v_uid, p_id, v_reason, v_detail)
+    on conflict (reporter_id, letter_id) do nothing;
+
+  select count(*) into v_count
+    from public.bottle_reports
+   where letter_id = p_id;
+  if v_count >= 3 then
+    update public.bottle_letters
+       set hidden_at = coalesce(hidden_at, now())
+     where id = p_id;
+  end if;
+
+  return jsonb_build_object('ok', true);
 end $$;
 
 create or replace function public.bottle_release(p_id uuid)
@@ -1866,6 +2146,8 @@ declare
   v_row public.bottle_letters;
 begin
   if auth.uid() is null then raise exception 'bottle-auth'; end if;
+  /* 同一用户的额度检查串行化：并发双击/多端同时投捞也不会把 30 瓶刷成 31 瓶 */
+  perform pg_advisory_xact_lock(411, hashtext(auth.uid()::text));
   update public.bottle_letters
     set status = 'sea', holder = null, held_at = null
     where id = p_id and status = 'held' and holder = auth.uid()
@@ -1993,8 +2275,16 @@ grant execute on all functions in schema public to anon, authenticated;
 revoke all on function public.bottle_notify_reply() from public, anon, authenticated;
 revoke all on function public.bottle_chat_decide(uuid, boolean) from public, anon;
 revoke all on function public.bottle_records(uuid, integer, boolean, integer) from public, anon;
+revoke all on function public.bottle_send(text) from public, anon;
+revoke all on function public.bottle_fish() from public, anon;
+revoke all on function public.bottle_reply(uuid, text) from public, anon;
+revoke all on function public.bottle_report(uuid, text, text) from public, anon;
 grant execute on function public.bottle_chat_decide(uuid, boolean) to authenticated;
 grant execute on function public.bottle_records(uuid, integer, boolean, integer) to authenticated;
+grant execute on function public.bottle_send(text) to authenticated;
+grant execute on function public.bottle_fish() to authenticated;
+grant execute on function public.bottle_reply(uuid, text) to authenticated;
+grant execute on function public.bottle_report(uuid, text, text) to authenticated;
 
 -- ══════════════════ 改昵称同步旧内容署名（轮 9 · 昵称修改） ══════════════════
 -- 详情见 MIGRATION_nickname_sync.sql。墙上的帖子/评论把作者名冗余存成 author_name，

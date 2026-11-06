@@ -122,7 +122,6 @@ defineExpose({ load, loadFeatured });
         {{ t("story.tabMine") }}
       </button>
     </nav>
-    <p class="st-sub st-feed-sub">{{ t("story.feedSub") }}</p>
 
     <header class="st-feed-head">
       <p class="st-sub">{{ t("story.discoverSub") }}</p>

@@ -152,9 +152,17 @@ ok("T29 共有6 我的食谱回原版卡片（菜格 + ♥用心度 + 可删）+
   && read("src/views/ProfileView.vue").includes('@click="removeDish(d.id)"')
   && !read("src/views/ProfileView.vue").includes('class="card book-card"')
   && pet.includes('["care", "adv", "paint", "book"].includes(qTab)'));
-ok("T30 手机端9 Tab 纯文字（无图标）+ 选中放大（小红书式）",
-  !read("src/components/TabBar.vue").includes("tab-ico")
-  && css.includes(".tab-item.active .tab-label { transform: scale(1.18); }"));
+/* 轮 417：用户「只要文字，不要图标」。
+ * 上一版（416）试过补图标，被否掉；真正的病灶是「五项里只有中间那颗圆是实的」——
+ * 所以解法改成给字本身加权：选中项垫 11% 陶土橘柔底胶囊 + 主题色文字，圆钮 46 → 38。
+ * 这条断言钉住「纯文字 + 柔底胶囊」这个口径，别再让图标偷偷回潮。 */
+ok("T30 手机端9 Tab 纯文字（不加图标）+ 一枚圆角印章 + 选中项字下短横",
+  !tb.includes('class="tab-ico"')
+  && read("src/glass.css").includes(".tabbar .van-tabbar-item__text {")
+  && read("src/glass.css").includes("width: 46px !important;")
+  && read("src/glass.css").includes("border-radius: 10px !important;")
+  && read("src/glass.css").includes("height: 3px;")
+  && read("src/glass.css").includes("color: var(--accent-deep) !important;"));
 ok("T31 手机端5 今日联去宠物卡 + 毛玻璃退场 + 轨道高度跟当前联（下拉无空白）",
   read("src/components/TodayPane.vue").includes('<section v-if="!isMobileNav" class="hero">')
   && css.includes(".shell--mobile-nav .card,")
@@ -170,7 +178,7 @@ ok("T32 手机端4 捞到的瓶子居中弹出（轮238 teleport 到 body；轮2
 ok("T33 长词断行护栏（乱码长词不再撑爆 grid 轨道：minmax(0,1fr)+min-width:0+anywhere+shell clip）",
   css.includes(".dm-wrap { grid-template-columns: minmax(0, 1fr); }")
   && css.includes(".dm-wrap > * { min-width: 0; max-width: 100%; }")
-  && css.includes(".bottle-record-text { overflow-wrap: anywhere; }")
+  && /\.bottle-record-text \{[^}]*overflow-wrap: anywhere/.test(css)
   && /\.shell \{[^}]*overflow-x: clip/.test(css)
   && /\.dm-text \{[^}]*overflow-wrap: anywhere/.test(css)
   && /\.notif-quote \{[\s\S]*?overflow-wrap: anywhere/.test(css));
@@ -288,6 +296,7 @@ ok("T50 轮139：设置页死规则已清（.settings-page / .settings-title / .
 const PAGE_FILL = [
   [".bottle-page", "src/views/BottlePageView.vue"],
   [".set-page", "src/views/SettingsView.vue"],
+  [".blocked-page", "src/views/BlockedView.vue"],
   [".compose-page", "src/views/ComposeView.vue"],
   [".pd", "src/views/PostDetailView.vue"],
   /* .login-page 轮 167 起豁免：登录页改为居中窄列（正常 App 登录形态，用户定调），不再铺满 */
@@ -295,7 +304,7 @@ const PAGE_FILL = [
 ];
 const missingFill = PAGE_FILL.filter(([c, f]) =>
   !(f === "src/style.css" ? css : read(f)).includes("@media (min-width: 900px) { " + c + " { max-width: none; } }"));
-ok("T51 轮139：五处页面容器桌面（≥900）一律铺满（轮137 四处 + 政策页；登录页轮167豁免改居中）",
+ok("T51 轮139：六处页面容器桌面（≥900）一律铺满（轮137 四处 + 政策页 + 拉黑独立页；登录页轮167豁免改居中）",
   missingFill.length === 0, missingFill.map((x) => x[0]).join(","));
 
 /* ─── 轮 140 · 左导航默认展开 + 展开态透明 + 漂流瓶上移 + 首页去漂流瓶 ─── */

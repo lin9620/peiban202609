@@ -157,3 +157,19 @@ export function revealTarget(index, pageSize) {
   const page = Number.isFinite(pRaw) && pRaw >= 1 ? Math.floor(pRaw) : 1;
   return Math.ceil((i + 1) / page) * page;
 }
+
+/**
+ * 列表规模 → 该不该开窗口（轮 434）。
+ * 短列表一律不开（渲染结果与「虚拟窗口退役」那版逐字节一致），既是零风险路径，
+ * 也是出问题时的紧急回退阀：把 WINDOW_ON_THRESHOLD 调到很大即可整体退回全量渲染。
+ * @returns {{on:boolean,start:number,end:number,padTop:number,padBottom:number}}
+ */
+export function resolveWindow(opts = {}) {
+  const nRaw = Number(opts.n);
+  const n = Number.isFinite(nRaw) && nRaw > 0 ? Math.floor(nRaw) : 0;
+  const thRaw = Number(opts.threshold);
+  const threshold = Number.isFinite(thRaw) && thRaw > 0 ? Math.floor(thRaw) : WINDOW_ON_THRESHOLD;
+  if (n <= threshold) return { on: false, start: 0, end: n, padTop: 0, padBottom: 0 };
+  const r = windowRange(opts);
+  return { on: true, start: r.start, end: r.end, padTop: r.padTop, padBottom: r.padBottom };
+}

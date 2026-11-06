@@ -1,6 +1,37 @@
 /* ═══════════ Warm Paws · 现代治愈风设计系统 ═══════════ */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+/* ══════════ 轮 436 · 字体自托管（西文换 Plus Jakarta Sans，中文按用途分层）══════════
+ * 改前：Inter + EB Garamond 走 Google Fonts，霞鹜文楷走 jsdelivr。
+ *   ① Google Fonts 只加载 Inter 400/500/600，但代码里 700 用了 24 处、800 用了 4 处
+ *      → 浏览器合成加粗（把 600 轮廓机械描粗），英文发胖、笔画黏连 —— 这是「英文字体丑」的主因。
+ *      EB Garamond 同样只有 400/500，display 却写 600，衬线描粗后更糊。
+ *   ② 霞鹜文楷每字重 97 个 unicode-range 分片，style.css 里 import 了 6 套（含 mono）
+ *      → 光 CSS 就要 630KB 才让浏览器知道该下哪片，国内 jsdelivr 实测 4.5s 起，弱网直接失败，
+ *      回落到系统自带的西文（Arial/宋体附字体）—— 那才是真正难看的那种。
+ *
+ * 现在：两个 woff2 全部打进包内（App 读本地文件，零网络；Web 首访后强缓存）。
+ *   · Plus Jakarta Sans 可变字体 27KB，wght 200–800 一个文件覆盖全部字重 → 伪粗体消失。
+ *     选它而不是 Inter：字腔更开阔、笔画末端略圆、字距天然紧凑，对得上奶油＋陶珊瑚的暖调；
+ *     Inter 是给界面做「隐形字体」的，放在一个强调温度的产品里偏冷淡。
+ *   · 霞鹜文楷只留 regular，且按项目实际用到的 2892 个字符做了子集（11.7MB → 603KB）。
+ *     缺席字符（用户输入的生僻字）会自然落到 --font-cn 的黑体，不会出豆腐块。
+ * ══════════════════════════════════════════════════════════════════════════ */
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  src: url("/fonts/plus-jakarta-sans.woff2") format("woff2");
+  font-weight: 200 800;          /* 可变轴：一个文件顶五档，700/800 不再是伪粗体 */
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "LXGW WenKai";
+  src: url("/fonts/wenkai-subset.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
 /* 轮 27：WebView 滚动条在页面右缘留一条深色竖条（用户当成「黑边」）。
    App 不需要可见滚动条：隐藏 html/body 滚动条（内容照常滚动）。 */
@@ -33,9 +64,17 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
   --r-lg: 12px;
   --r-md: 8px;
   --good: #5db872; --warn: #d4a017; --low: #c64545;
-  /* 轮 121 · 字体层：衬线展示（EB Garamond/霞鹜文楷）+ 人文正文（Inter/霞鹜文楷） */
-  --font-display: "EB Garamond", "LXGW WenKai", "PingFang SC", serif;
-  --font-body: "Inter", "LXGW WenKai", "PingFang SC", "Microsoft YaHei", sans-serif;
+  /* 轮 436 · 字体层：西文 Plus Jakarta Sans（可变，单文件 200–800）+ 中文按用途分层
+     · --font-body / --font-display → UI 文本：西文 Jakarta，中文走系统黑体
+     · --font-hand → 内容文本（信件 / 故事 / 帖子正文）：霞鹜文楷，手写温度只留在这里
+     改前中英混排割裂的根因：中文全站是楷体（笔画细软、有笔锋），英文是无衬线（笔画匀粗），
+     同一行里英文灰度明显重于中文，两种语言像来自两本书。分层后 UI 部分两者灰度对齐。
+     中文 fallback：苹方（iOS/macOS）→ HarmonyOS（华为）→ 微软雅黑（Windows）→ Noto/思源（Android） */
+  --font-latin: "Plus Jakarta Sans";
+  --font-cn: "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", "Noto Sans SC", "Source Han Sans SC", sans-serif;
+  --font-body: var(--font-latin), var(--font-cn);
+  --font-display: var(--font-latin), var(--font-cn);
+  --font-hand: "LXGW WenKai", var(--font-cn);
 }
 
 /* 轮 24：html 兜底底色——body 渐变之外任何渲染间隙/缝隙露底时，露米色而不是 WebView 黑底
@@ -89,7 +128,7 @@ button, input, textarea { font-family: inherit; }
 .wb-label { font-size: 12px; font-weight: 500; letter-spacing: 1.5px; text-transform: uppercase; color: var(--ink-faint); }
 .wb-name {
   font-family: var(--font-display); font-size: 30px; font-weight: 500;
-  letter-spacing: -.5px; line-height: 1.15; color: var(--ink);
+  letter-spacing: -.6px; line-height: 1.15; color: var(--ink);
 }
 .wb-coins { font-size: 15px; font-weight: 500; color: var(--ink); background: var(--card); border: 1px solid var(--hairline); border-radius: 999px; padding: 7px 14px; }
 .wb-right { display: flex; align-items: center; gap: 10px; }
@@ -353,7 +392,7 @@ button.m-share-pill { border: none; font-family: inherit; font-size: 13px; curso
 
 /* 今日内容 */
 .story-title { font-size: 15.5px; font-weight: 500; margin-bottom: 10px; }
-.story-body { font-size: 13.5px; white-space: pre-line; color: #6f5a49; }
+.story-body { font-family: var(--font-hand); font-size: 14px; white-space: pre-line; color: #6f5a49; line-height: 1.8; }
 .quote-box { font-size: 15.5px; font-weight: 500; text-align: center; padding: 10px 6px 2px; line-height: 1.9; }
 .quote-mark { font-size: 30px; color: var(--accent); line-height: 0; vertical-align: -8px; margin-right: 4px; }
 
@@ -707,7 +746,7 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 .hero-copy { position: relative; z-index: 2; }
 .hero-title {
   font-family: var(--font-display);
-  font-size: 34px; line-height: 1.2; font-weight: 500; letter-spacing: -.5px; margin: 6px 0 10px;
+  font-size: 34px; line-height: 1.2; font-weight: 500; letter-spacing: -.9px; margin: 6px 0 10px;
   color: var(--ink);
 }
 .hero-sub { font-size: 14.5px; color: var(--ink-soft); font-weight: 500; margin-bottom: 18px; }
@@ -784,7 +823,7 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
   background: linear-gradient(150deg, var(--wash-strong), var(--wash-mid));
   display: flex; flex-direction: column; justify-content: center;
 }
-.quote-hero { font-size: 16px; font-weight: 500; line-height: 1.75; letter-spacing: .2px; }
+.quote-hero { font-family: var(--font-hand); font-size: 16px; font-weight: 400; line-height: 1.85; letter-spacing: .2px; }
 .story-card { max-height: 340px; overflow: auto; }
 
 /* ═══ 每日一问 ═══ */
@@ -835,7 +874,7 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 .post-meta { flex: 1; min-width: 0; }
 .post-name { font-size: 14.5px; font-weight: 500; }
 .post-time { font-size: 11.5px; color: var(--ink-faint); font-weight: 500; }
-.post-text { font-size: 14.5px; line-height: 1.8; font-weight: 500; }
+.post-text { font-family: var(--font-hand); font-size: 15px; line-height: 1.85; font-weight: 400; }
 /* 轮 81 · 动态流性能：图未解码完之前给一层极淡底色（原来完全透明），
    减少「白闪 → 图片弹出」的观感跳动；有图卡在懒加载期间也有稳定视觉轮廓。 */
 .pic {
@@ -1086,7 +1125,7 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 .mail-card .n-button { font-weight: 500; }
 /* 轮 150：标题与内容之间加分隔，跟故事栏 / 我的页面一致（原为紧贴的一行 h2+p） */
 .bt-head { padding-bottom: 12px; margin-bottom: 4px; border-bottom: 1px solid var(--hairline); }
-.bt-title { font-family: var(--font-display); font-size: 24px; font-weight: 600; margin: 0; }
+.bt-title { font-family: var(--font-display); font-size: 24px; font-weight: 600; letter-spacing: -.5px; margin: 0; }
 .mail-card { border: 1px solid var(--hairline); background: var(--wash); }
 .mail-send { display: flex; justify-content: flex-end; margin-top: 10px; }
 .mail-list { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--hairline); }
@@ -1471,6 +1510,15 @@ html.cap-app .wall-refresh { display: none; }
 /* 轮 82 · B1 档虚拟窗口占位块：高度由脚本按「实测高度表」写成行内 style（精确到像素，
    所以回收卡片时页面总高不变、滚动位置不动）；这里只保证它是纯占位、不参与任何绘制。 */
 .feed-pad { margin: 0; padding: 0; border: 0; }
+
+/* 轮 434 · 底部「会跟着内容跑」的元素一律不参与滚动锚定。
+ * 病根（无头实测）：占位块 / 哨兵 / 到底提示都挂在「最后一张已挂载卡片」后面。
+ * 窗口一扩、下一页一到，它们就被推下去几千像素，而滚动锚定会忠实跟着它们往下滚 ——
+ * 用户正看着卡，画面突然被拽走几屏（实测 y 从 5966 一步跳到 24011，
+ * 差值正好等于新增内容的总高；关掉锚定后 9 项判据全绿）。
+ * 让它们不可锚定，锚点就落回卡片；新卡是**追加在后面**的，最后一张挂载卡原地不动 → 位置不动。
+ * 注意只禁这几个 —— 卡片本身必须保留锚定（图片/字体把上方内容顶开时要靠它补位）。 */
+.feed-pad, .feed-sentinel, .wall-scroller > .notice { overflow-anchor: none; }
 
 /* ═══════════ 主题套件（data-theme 切换） ═══════════ */
 html[data-theme="sakura"] {
@@ -2159,7 +2207,7 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 /* ═══ T9 · 长词断行护栏（真机截图实证：无空格乱码把 grid 轨道撑爆、整页横向溢出）═══
    overflow-wrap: anywhere 参与 min-content 计算（break-word 不参与）→ 结构层 minmax(0,1fr)
    + min-width:0 之外，再让正文容器可断任意长词。 */
-.bottle-record-text { overflow-wrap: anywhere; }
+.bottle-record-text { font-family: var(--font-hand); font-size: 14.5px; line-height: 1.8; overflow-wrap: anywhere; }
 .sub, .notice { overflow-wrap: anywhere; }
 .post .text { overflow-wrap: anywhere; }
 
@@ -2266,13 +2314,18 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 .tab-compose.open .tab-compose-x:active { transform: scale(.9); }
 
 /* ＋ 弹层：遮罩 + 两瓣创作入口 */
-.tabbar-mask { position: fixed; inset: 0; z-index: 130; background: rgba(38, 30, 22, .38); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+/* 轮 415：遮罩不再是 38% 墨黑 + 4px 模糊（一层黑壳扣在浅色界面上，用户读作「黑」）。
+   换 14% 暖灰、不模糊；底边停在胶囊上沿，打开弹层时底部导航保持完整可见。
+   真实生效值在 glass.css（同一选择器，!important）；这里是不加载皮肤时的兜底。 */
+.tabbar-mask { position: fixed; inset: 0; z-index: 130; background: rgba(30, 24, 20, .28); }
 /* 轮 48：弹层宽度回到原样（全宽双卡）——轮 46 把两瓣入口改成了紧凑菜单卡，
    用户不买账（「谁让你改投漂流瓶跟发帖的宽度了，改回原来的宽度」）；
    当初真正要修的是 ＋ 钮本身的位置，见下面 .tab-compose-x 的轮 48 注释。 */
 .tabbar-sheet {
-  position: fixed; left: 0; right: 0; bottom: calc(64px + var(--sab, env(safe-area-inset-bottom, 0px))); z-index: 135;
-  display: flex; flex-direction: column; gap: 10px; padding: 0 18px;
+  /* 轮 415：从「胶囊上面那一条」改成贴底的整块面板（对齐小红书），圆角只在顶上 */
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 135;
+  display: flex; flex-direction: column; gap: 0; padding: 8px 0 calc(8px + var(--sab, env(safe-area-inset-bottom, 0px)));
+  background: #fff; border-radius: 24px 24px 0 0; box-shadow: 0 -6px 24px rgba(58, 46, 42, .10);
   animation: tabbar-up .22s cubic-bezier(.34, 1.4, .64, 1);
 }
 .tabbar-opt {
@@ -2707,7 +2760,7 @@ html.cap-app .reply-bar {
 .today-hi { padding: 14px 16px; }
 .today-hi-row { display: flex; align-items: center; gap: 12px; }
 .today-hi-txt { min-width: 0; flex: 1; }
-.today-hi-title { font-family: var(--font-display); font-size: 20px; font-weight: 600; line-height: 1.35; }
+.today-hi-title { font-family: var(--font-display); font-size: 20px; font-weight: 600; letter-spacing: -.4px; line-height: 1.35; }
 .today-hi-sub { margin: 3px 0 0; font-size: 12px; color: var(--ink-faint); }
 .today-hi-heart {
   flex: none; width: 34px; height: 34px; display: grid; place-items: center;
@@ -2762,7 +2815,7 @@ html.cap-app .reply-bar {
    布局照私信页轮 142 的一体化惯例：桌面单卡 + 内部分隔线，窄屏上下堆叠。 */
 .story-page { max-width: 900px; margin: 0 auto; }
 .story-head { padding: 2px 2px 12px; }
-.story-title { font-family: var(--font-display); font-size: 26px; font-weight: 600; }
+.story-title { font-family: var(--font-display); font-size: 26px; font-weight: 600; letter-spacing: -.5px; }
 .st-sub { color: var(--ink-soft); font-size: 13px; }
 .st-hint { color: var(--ink-faint); font-size: 12px; }
 /* 轮 277：故事流骨架退役（st-skel 系只在 StoryFeed 首访骨架里用过），规则删除 */
@@ -2916,7 +2969,7 @@ html.cap-app .reply-bar {
 .st-body-in--full { min-height: 56vh; }
 .st-preview { min-height: 300px; border: 1px dashed var(--hairline); border-radius: 12px; padding: 12px 14px; font-size: 15px; line-height: 1.8; }
 .st-preview--full { min-height: 56vh; }
-.st-preview h2 { font-family: var(--font-display); font-size: 19px; margin: 14px 0 6px; }
+.st-preview h2 { font-family: var(--font-display); font-size: 19px; letter-spacing: -.3px; margin: 14px 0 6px; }
 .st-preview blockquote { border-left: 3px solid var(--accent-soft); padding-left: 10px; color: var(--ink-soft); margin: 8px 0; }
 .st-preview hr { border: 0; border-top: 1px solid var(--hairline); margin: 14px 0; }
 .st-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; border: 1px dashed var(--hairline); border-radius: 12px; padding: 6px 8px; }
@@ -2980,17 +3033,16 @@ html.cap-app .reply-bar {
 }
 .st-feed-navbtn:hover { background: var(--wash-strong); }
 .st-feed-navbtn:active { background: var(--accent-soft); }
-.st-feed-sub { margin: 0 0 10px; }
 .st-search { flex: 1; min-width: 160px; border: 1px solid var(--hairline); border-radius: 999px; background: var(--wash); padding: 6px 12px; font-size: 13px; outline: none; }
 .st-card { border: 1px solid var(--hairline); border-radius: 14px; background: var(--wash); padding: 12px 14px; margin-bottom: 8px; cursor: pointer; transition: transform .18s ease, border-color .18s ease; }
 .st-card:hover { transform: translateY(-1px); border-color: var(--accent); }
-.st-card-title { font-family: var(--font-display); font-size: 17px; font-weight: 600; }
+.st-card-title { font-family: var(--font-display); font-size: 17px; font-weight: 600; letter-spacing: -.25px; }
 .st-card-meta, .st-card-stats { font-size: 12px; color: var(--ink-faint); }
 .st-card-tags { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0; }
 .st-tag-sm { font-size: 11px; color: var(--accent-deep); background: var(--accent-soft); border-radius: 999px; padding: 1px 8px; }
 .st-stats { display: flex; gap: 16px; margin-bottom: 10px; }
 .st-stat { font-size: 12px; color: var(--ink-soft); display: flex; flex-direction: column; }
-.st-stat b { font-family: var(--font-display); font-size: 20px; color: var(--ink); }
+.st-stat b { font-family: var(--font-display); font-size: 20px; letter-spacing: -.4px; color: var(--ink); }
 .st-mine-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
 .st-mine-row { display: flex; align-items: center; gap: 10px; border: 1px solid var(--hairline); border-radius: 12px; padding: 8px 10px; cursor: pointer; transition: border-color .18s ease; }
 .st-mine-row:hover { border-color: var(--accent); }
@@ -3000,7 +3052,7 @@ html.cap-app .reply-bar {
 .st-mine-del { color: var(--low); }
 
 /* ── 右栏榜单 ── */
-.st-rank-title { font-family: var(--font-display); font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+.st-rank-title { font-family: var(--font-display); font-size: 18px; font-weight: 600; letter-spacing: -.3px; margin-bottom: 8px; }
 .st-rank-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 10px; }
 .st-rank-tab { background: none; border: 1px solid var(--hairline); border-radius: 999px; padding: 3px 10px; font-size: 12px; color: var(--ink-soft); cursor: pointer; transition: background-color .18s ease, color .18s ease; }
 .st-rank-tab.on { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -3023,12 +3075,12 @@ html.cap-app .reply-bar {
 .story-write-head { padding-bottom: 10px; }
 .story-read { max-width: 760px; margin: 0 auto; }
 .st-read-card { background: var(--card); border: 1px solid var(--hairline); border-radius: 20px; padding: 20px 22px; margin-top: 10px; }
-.st-read-title { font-family: var(--font-display); font-size: 28px; font-weight: 600; line-height: 1.3; }
+.st-read-title { font-family: var(--font-display); font-size: 28px; font-weight: 600; letter-spacing: -.6px; line-height: 1.3; }
 .st-read-meta { font-size: 12px; color: var(--ink-faint); margin: 6px 0; }
-.st-read-body { margin-top: 14px; font-size: 16px; line-height: 1.9; }
+.st-read-body { font-family: var(--font-hand); margin-top: 14px; font-size: 16px; line-height: 1.95; }
 .st-read-body > p { text-align: justify; }
 .st-read-body > p[data-indent="1"] { text-indent: 2em; }
-.st-read-body h2 { font-family: var(--font-display); font-size: 21px; margin: 18px 0 6px; }
+.st-read-body h2 { font-family: var(--font-display); font-size: 21px; letter-spacing: -.4px; margin: 18px 0 6px; }
 .st-read-body blockquote { border-left: 3px solid var(--accent-soft); padding-left: 12px; color: var(--ink-soft); margin: 10px 0; }
 .st-read-body hr { border: 0; border-top: 1px solid var(--hairline); margin: 18px 0; }
 .st-read-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--hairline); }

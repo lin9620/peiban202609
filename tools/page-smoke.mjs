@@ -20,7 +20,9 @@ const PAGES = ["/", "/admin", "/community", "/login", "/profile", "/messages", "
   /* 轮 261 · 收藏独立页（FavoritesView 结构挪正后纳入冒烟，防回归白屏） */
   "/favorites",
   /* 轮385 · 设置页（通知开关写库载荷修复后纳入冒烟，防设置页白屏/运行时崩溃） */
-  "/settings"];
+  "/settings",
+  /* 轮409 · 已拉黑独立页（从设置行点进来，防懒加载 chunk / 路由白屏） */
+  "/settings/blocked"];
 
 const expr = path.join(root, "tools", "_page-smoke-expr.js");
 writeFileSync(expr, `(async () => {

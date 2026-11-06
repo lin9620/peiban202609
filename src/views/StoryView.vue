@@ -19,13 +19,13 @@ const router = useRouter();
 <template>
   <StoryShell active="story">
     <div class="story-page story-page--read">
-      <header class="story-head">
+      <!-- 手机端整块页头不渲染：顶部四联频道条里「故事」已经高亮，
+           标题、写故事/排行榜/我的、副标题都会和联内重复。
+           手机端只留 StoryFeed 里 discoverSub 一行；桌面端保留完整页头。 -->
+      <header v-if="!isMobileNav" class="story-head">
         <div class="story-head-row">
-          <!-- 手机端不显示「故事栏」大标题：顶部四联频道条里「故事」已经高亮，
-               再来一个 26px 标题是重复信息（用户要求去掉）。桌面端保留。 -->
-          <h1 v-if="!isMobileNav" class="story-title">{{ t("story.title") }}</h1>
-          <!-- 轮 151：页头按钮对仅桌面——手机端 StoryFeed 联内自带这对（双份是用户截图抓到的重复） -->
-          <nav v-if="!isMobileNav" class="story-acts">
+          <h1 class="story-title">{{ t("story.title") }}</h1>
+          <nav class="story-acts">
             <button class="st-btn st-btn--mark" type="button"
               @click="router.push('/story/write')">{{ t("story.writeStory") }}</button>
             <button class="st-btn st-btn--ghost st-btn--mark" type="button"

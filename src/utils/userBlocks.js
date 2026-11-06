@@ -14,13 +14,47 @@ import * as dmApi from "./dm.js";
 import { onScopeSwitch, registerScopeBases, scopeGet, scopeSet } from "./userScope.js";
 
 const SNAP_BASE = "warm-paws-user-blocks-v1";
-registerScopeBases([SNAP_BASE]);
+/* 轮408：名单行也落本地快照。拉黑后设置页先渲染这行，不再干等 dm_blocks 网络回来。 */
+const ROWS_BASE = "warm-paws-user-block-rows-v1";
+registerScopeBases([SNAP_BASE, ROWS_BASE]);
+
+function cachedRows() {
+  const rows = scopeGet(ROWS_BASE, []);
+  return Array.isArray(rows) ? rows.filter((r) => r && r.user_id) : [];
+}
 
 export const blockState = reactive({
   ids: scopeGet(SNAP_BASE, []) || [],   // 启动先用快照（登录用户的快照在登录域，恢复会话后 refresh 校准）
+  rows: cachedRows(),                    // [{ user_id, nickname, created_at }] 本地快照，设置页秒开
   loaded: false,
   loading: false,
+  error: false,
 });
+
+/* 拉黑/解除刚落地时，服务端列表可能还没提交；短时间内把本地操作合并进 refresh 结果，
+ * 防止「拉黑完立刻进设置」被一次早于提交的 dm_blocks 响应把新人刷掉。 */
+const RECENT_MS = 60000;
+const recentOps = new Map();   // user_id -> { kind: "block"|"unblock", at, row }
+function markRecent(id, kind, row = null) {
+  recentOps.set(id, { kind, at: Date.now(), row: row || null });
+}
+function clearRecent(id) { recentOps.delete(id); }
+function recentKind(id) {
+  const op = recentOps.get(id);
+  if (!op) return "";
+  if (Date.now() - op.at > RECENT_MS) { recentOps.delete(id); return ""; }
+  return op.kind;
+}
+
+/* 同一个人连续点两次（先拉后解 / 先解后拉）时，迟到的失败不能回滚掉后一次操作。 */
+let opSeq = 0;
+const opTokens = new Map();    // user_id -> 最近一次操作的 token
+function beginOp(id) {
+  const token = ++opSeq;
+  opTokens.set(id, token);
+  return token;
+}
+function isOpCurrent(id, token) { return opTokens.get(id) === token; }
 
 /** 某用户是否被我拉黑 */
 export function isBlocked(userId) {
@@ -38,28 +72,91 @@ export async function refreshBlocks() {
   if (blockState.loading) return blockState.ids;
   if (!(cloud.ready && cloud.user)) return blockState.ids;
   blockState.loading = true;
+  blockState.error = false;
+  let timer = 0;
   try {
-    const rows = await dmApi.blocks();
-    blockState.ids = (Array.isArray(rows) ? rows : []).map((r) => r && r.user_id).filter(Boolean);
+    const rows = await Promise.race([
+      dmApi.blocks(),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error("blocks-timeout")), 8000);
+      }),
+    ]);
+    const fresh = (Array.isArray(rows) ? rows : [])
+      .filter((r) => r && r.user_id)
+      .map((r) => ({
+        user_id: String(r.user_id),
+        nickname: String(r.nickname || ""),
+        created_at: r.created_at || "",
+      }));
+
+    /* 本地刚拉黑、但服务端响应还没带上的人：先保住，避免设置页刚点开又消失。 */
+    const freshIds = new Set(fresh.map((r) => r.user_id));
+    const add = [];
+    for (const [id, op] of recentOps) {
+      const kind = recentKind(id);
+      if (kind === "block" && !freshIds.has(id)) {
+        add.push(op.row || blockState.rows.find((r) => r.user_id === id)
+          || { user_id: id, nickname: "", created_at: new Date(op.at).toISOString() });
+      }
+    }
+    /* 本地刚解除、但服务端响应仍是旧名单的人：先藏掉。 */
+    const merged = add.concat(fresh.filter((r) => recentKind(r.user_id) !== "unblock"));
+
+    blockState.rows = merged;
+    blockState.ids = merged.map((r) => r.user_id);
     blockState.loaded = true;
     scopeSet(SNAP_BASE, blockState.ids);
-  } catch (e) { /* 网络问题用快照撑着，不阻塞渲染 */ }
-  blockState.loading = false;
+    scopeSet(ROWS_BASE, blockState.rows);
+  } catch (e) {
+    blockState.error = true;   /* 网络问题用快照撑着，不阻塞渲染 */
+  } finally {
+    if (timer) clearTimeout(timer);
+    blockState.loading = false;
+  }
   return blockState.ids;
 }
 
 /** 拉黑（dm RPC 拦私信 + 本地名单即时更新，UI 立刻生效）
  * 轮 238：名单更新改为**乐观先行**（先动 blockState 再发请求，失败回滚）——
  * 消息列表按 isBlocked 过滤，这里不先动名单，列表就要等 RPC 回来才消失 = 不跟手。 */
-export async function blockUser(userId) {
+export async function blockUser(userId, nickname = "") {
   if (!userId) return false;
-  if (!blockState.ids.includes(userId)) blockState.ids.unshift(userId);
+  const id = String(userId);
+  const existed = blockState.ids.includes(id);
+  const prevIdx = blockState.rows.findIndex((r) => r && r.user_id === id);
+  const prevRow = prevIdx >= 0 ? blockState.rows[prevIdx] : null;
+  const token = beginOp(id);
+  const nick = String(nickname || "").trim();
+  const row = { user_id: id, nickname: nick, created_at: new Date().toISOString() };
+
+  if (!existed) blockState.ids.unshift(id);
+  if (prevIdx >= 0) {
+    blockState.rows = blockState.rows.map((r, i) => (
+      i === prevIdx && nick ? { ...r, nickname: nick } : r
+    ));
+  } else {
+    blockState.rows = [row].concat(blockState.rows);
+  }
   scopeSet(SNAP_BASE, blockState.ids);
+  scopeSet(ROWS_BASE, blockState.rows);
+  markRecent(id, "block", blockState.rows.find((r) => r.user_id === id) || row);
+
   try {
-    await dmApi.block(userId);
+    await dmApi.block(id);
   } catch (e) {
-    blockState.ids = blockState.ids.filter((id) => id !== userId);
-    scopeSet(SNAP_BASE, blockState.ids);
+    if (isOpCurrent(id, token)) {
+      if (!existed) blockState.ids = blockState.ids.filter((x) => x !== id);
+      if (prevRow) {
+        const rest = blockState.rows.filter((r) => r.user_id !== id);
+        rest.splice(Math.min(prevIdx, rest.length), 0, prevRow);
+        blockState.rows = rest;
+      } else {
+        blockState.rows = blockState.rows.filter((r) => r.user_id !== id);
+      }
+      scopeSet(SNAP_BASE, blockState.ids);
+      scopeSet(ROWS_BASE, blockState.rows);
+      clearRecent(id);
+    }
     throw e;
   }
   return true;
@@ -68,14 +165,35 @@ export async function blockUser(userId) {
 /** 取消拉黑（同上：名单先行，失败回滚恢复名单） */
 export async function unblockUser(userId) {
   if (!userId) return false;
-  const snapshot = blockState.ids.slice();
-  blockState.ids = blockState.ids.filter((id) => id !== userId);
+  const id = String(userId);
+  const existed = blockState.ids.includes(id);
+  const prevIdIdx = blockState.ids.indexOf(id);
+  const prevIdx = blockState.rows.findIndex((r) => r && r.user_id === id);
+  const prevRow = prevIdx >= 0 ? blockState.rows[prevIdx] : null;
+  const token = beginOp(id);
+  blockState.ids = blockState.ids.filter((x) => x !== id);
+  blockState.rows = blockState.rows.filter((r) => r && r.user_id !== id);
   scopeSet(SNAP_BASE, blockState.ids);
+  scopeSet(ROWS_BASE, blockState.rows);
+  markRecent(id, "unblock");
   try {
-    await dmApi.unblock(userId);
+    await dmApi.unblock(id);
   } catch (e) {
-    blockState.ids = snapshot;
-    scopeSet(SNAP_BASE, blockState.ids);
+    if (isOpCurrent(id, token)) {
+      if (existed && !blockState.ids.includes(id)) {
+        const ids = blockState.ids.slice();
+        ids.splice(Math.min(prevIdIdx, ids.length), 0, id);
+        blockState.ids = ids;
+      }
+      if (prevRow) {
+        const rest = blockState.rows.filter((r) => r.user_id !== id);
+        rest.splice(Math.min(prevIdx, rest.length), 0, prevRow);
+        blockState.rows = rest;
+      }
+      scopeSet(SNAP_BASE, blockState.ids);
+      scopeSet(ROWS_BASE, blockState.rows);
+      clearRecent(id);
+    }
     throw e;
   }
   return true;
@@ -85,7 +203,11 @@ export async function unblockUser(userId) {
 onScopeSwitch({
   reload() {
     blockState.ids = scopeGet(SNAP_BASE, []) || [];
+    blockState.rows = cachedRows();
     blockState.loaded = false;
     blockState.loading = false;
+    blockState.error = false;
+    recentOps.clear();
+    opTokens.clear();
   },
 });

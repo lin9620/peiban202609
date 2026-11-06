@@ -1,10 +1,10 @@
 /* 温暖漂流瓶（#6）规则层单测（纯函数 + i18n 键 + 前后端契约 + 迁移覆盖）
  * ------------------------------------------------------------
  * 重点：
- *  1. 每日 5 封 / 7 瓶（轮 305：用户要求写信 3 → 5）、48h 自动回海、1000 字上限 —— 这些数字在「前端常量 /
+ *  1. 滚动 24h：投 5 封 / 捞 30 瓶 / 回 7 封、48h 自动回海、1000 字上限 —— 这些数字在「前端常量 /
  *     SQL RPC / Worker 体检」三处出现，漂一处用户就会被挡或被放水；
  *  2. 错误码 → i18n 的映射必须与 MIGRATION 里 raise exception 的字符串一一对上
- *     （含 Worker 的 bottle-too-long），否则只会看到「海浪大了一点」；
+ *     （含 Worker 的 bottle-too-long / bottle-too-short），否则只会看到「海浪大了一点」；
  *  3. 回信可见性：只允许「写信人 + 写过回信的人」读（RLS），捞信一律走 RPC —— 直接 select 海里
  *     的信必须被默认拒绝（无 insert/update/delete 策略）；
  *  4. 旧的「宠物回信信箱」必须清干净（petStore/HomeView/i18n 三处），不能留半套；
@@ -15,7 +15,8 @@
 import fs from "node:fs";
 import { messages } from "../src/i18n.js";
 import {
-  BOTTLE_SEND_MAX, BOTTLE_FISH_MAX, BOTTLE_BODY_MAX, BOTTLE_HOLD_TTL_MS,
+  BOTTLE_SEND_MAX, BOTTLE_PICK_MAX, BOTTLE_FISH_MAX, BOTTLE_BODY_MIN, BOTTLE_BODY_MAX,
+  BOTTLE_HOLD_TTL_MS, bottleBodyChars,
   bottleErrKey, purgeLegacyBottleLocals, sortBottleMine,
   bottlePendingCount, bottlePageCount, clampBottlePage, bottlePageSlice,
   bottleLetterExcerpt, BOTTLE_TITLE_MAX,
@@ -35,6 +36,7 @@ const migration = read("MIGRATION_bottle.sql");
 const migrationSend5 = read("MIGRATION_bottle_send_5.sql");   /* 轮 305：写信 3 → 5（增量迁移，原文件不动） */
 const migrationFish = read("MIGRATION_bottle_quota_fishfix.sql");
 const migrationReply = read("MIGRATION_bottle_reply_quota.sql");   /* 轮 21：回信才计次 */
+const migrationFair = read("MIGRATION_bottle_fair_quota.sql");     /* 轮 411：公平 + 24h 滚动额度 */
 const setupSql = read("SUPABASE_SETUP.sql");
 const worker = read("worker/api.js");
 const sbAdapter = read("src/utils/api/db.supabase.js");
@@ -43,33 +45,43 @@ const bottleJs = read("src/utils/bottle.js");
 const bottleRecords = read("src/components/BottleRecords.vue");
 const home = read("src/views/HomeView.vue");
 const bottleView = read("src/components/BottleView.vue");   /* T6 抽件：漂流瓶逻辑在这里 */
+const reportDialog = read("src/components/ReportDialog.vue");
 const css = read("src/style.css");
 const petStore = read("src/stores/petStore.js");
 
 /* ───────── 常量 ───────── */
-ok("每日最多投 5 封（轮 305：用户要求 3 → 5）", BOTTLE_SEND_MAX === 5);
-ok("每日最多捞 7 瓶", BOTTLE_FISH_MAX === 7);
+ok("滚动 24h 最多投 5 封（轮 305：3 → 5）", BOTTLE_SEND_MAX === 5);
+ok("滚动 24h 最多捞 30 瓶（放回也照记，防免费换一批）", BOTTLE_PICK_MAX === 30);
+ok("滚动 24h 最多回 7 封（回信才占这个额度）", BOTTLE_FISH_MAX === 7);
+ok("内容质量：一封信至少 10 个字符", BOTTLE_BODY_MIN === 10);
 ok("字数放宽到 1000", BOTTLE_BODY_MAX === 1000);
 ok("捞起 48h 不处理自动回海", BOTTLE_HOLD_TTL_MS === 48 * 3600 * 1000);
+ok("Unicode 计数：emoji 只算 1 个字符（与 PG char_length 同口径）", bottleBodyChars("🐱🐶") === 2);
 ok("错误归类：每个错误码都有 i18n key，未知码落到通用提示",
   bottleErrKey({ message: "bottle-limit-send" }) === "bottle.errSendLimit"
+    && bottleErrKey({ message: "bottle-limit-pick" }) === "bottle.errPickLimit"
     && bottleErrKey({ message: "bottle-limit-fish" }) === "bottle.errFishLimit"
     && bottleErrKey({ message: "bottle-empty-sea" }) === "bottle.errEmpty"
     && bottleErrKey({ message: "bottle-not-holder" }) === "bottle.errNotHolder"
+    && bottleErrKey({ message: "bottle-blocked" }) === "bottle.errBlocked"
+    && bottleErrKey({ message: "bottle-too-short" }) === "bottle.errTooShort"
+    && bottleErrKey({ message: "bottle-duplicate" }) === "bottle.errDuplicate"
+    && bottleErrKey({ message: "bottle-empty-body" }) === "bottle.errEmptyBody"
     && bottleErrKey({ message: "bottle-too-long" }) === "bottle.errTooLong"
     && bottleErrKey({ message: "随便什么" }) === "bottle.errGeneric");
 
 /* ───────── i18n：键齐备 + 双语对称 + 占位符 ───────── */
 for (const lang of ["zh", "en"]) {
   const b = messages[lang] && messages[lang].bottle;
-  const need = ["title", "sub", "placeholder", "leftSend", "send", "seaTitle", "fish", "leftFish",
-    "rules", "fromSea", "replyPlaceholder", "reply", "release", "replyFrom", "pending",
-    "signInHint", "errSendLimit", "errFishLimit", "errEmpty", "errNotHolder", "errTooLong", "replyTooLong", "errGeneric"];
+  const need = ["title", "sub", "placeholder", "leftSend", "leftPick", "send", "seaTitle", "fish", "leftFish",
+    "rules", "fromSea", "replyPlaceholder", "reply", "release", "report", "replyFrom", "pending",
+    "signInHint", "errSendLimit", "errPickLimit", "errFishLimit", "errEmpty", "emptyCta", "needMore",
+    "errEmptyBody", "errTooShort", "errDuplicate", "errBlocked", "errNotHolder", "errTooLong", "replyTooLong", "errGeneric"];
   const missing = need.filter((k) => !b || typeof b[k] !== "string" || !b[k].trim());
   ok(`${lang}: 漂流瓶文案齐备（${need.length} 键）`, missing.length === 0, missing.join(","));
-  ok(`${lang}: 次数文案带 {n}、规则文案带 {w}/{f}`,
-    !!b && b.leftSend.includes("{n}") && b.leftFish.includes("{n}")
-      && b.rules.includes("{w}") && b.rules.includes("{f}"));
+  ok(`${lang}: 次数文案带 {n}、规则文案带 {w}/{p}/{f}`,
+    !!b && b.leftSend.includes("{n}") && b.leftPick.includes("{n}") && b.leftFish.includes("{n}")
+      && b.rules.includes("{w}") && b.rules.includes("{p}") && b.rules.includes("{f}"));
 }
 ok("en/zh 的漂流瓶键集合对称",
   JSON.stringify(Object.keys(messages.en.bottle || {}).sort()) === JSON.stringify(Object.keys(messages.zh.bottle || {}).sort()));
@@ -90,17 +102,21 @@ ok("每日一问已摘除（en/zh 都没有 dailyQ，首页也不再引用）",
 /* ───────── 前端 ↔ Worker ↔ SQL 契约（限额数字 / 错误码 / 路由） ───────── */
 /* SQL 与 Worker 里的限额数字必须与前端常量一致 */
 {
-  const migNums = has(migrationSend5, "if v_count >= 5 then raise exception 'bottle-limit-send'")
-    && has(migration, "if v_count >= 7 then raise exception 'bottle-limit-fish'");
-  ok("SQL：每日 5 封 / 7 瓶在 RPC 里把关（轮 305：写信 3 → 5，增量迁移与原文件一致性由同源断言锁）", migNums);
-  ok("SQL 同源：SUPABASE_SETUP 的 bottle_send 与增量迁移同为 >= 5（新装库不错位）",
-    setupSql.includes("if v_count >= 5 then raise exception 'bottle-limit-send'"));
-  ok("SQL：字数 ≤1000（信与回信同限）", (migration.match(/char_length\(p_\w+\) > 1000/g) || []).length === 2);
-  ok("SQL：捞起 48h 自动回海", migration.includes("interval '48 hours'"));
-  ok("SQL：不能捞自己的信（user_id <> auth.uid()）", migration.includes("user_id <> auth.uid()"));
+  const migNums = has(migrationFair, "if v_count >= 5 then raise exception 'bottle-limit-send'")
+    && has(migrationFair, "if v_picked >= 30 then raise exception 'bottle-limit-pick'")
+    && has(migrationFair, "if v_replied >= 7 then raise exception 'bottle-limit-fish'");
+  ok("SQL：滚动 24h 的 5 封 / 30 瓶 / 7 回都在 RPC 里把关", migNums);
+  ok("SQL 同源：SUPABASE_SETUP 与增量迁移的 5/30/7 限额一致",
+    setupSql.includes("if v_count >= 5 then raise exception 'bottle-limit-send'")
+      && setupSql.includes("if v_picked >= 30 then raise exception 'bottle-limit-pick'")
+      && setupSql.includes("if v_replied >= 7 then raise exception 'bottle-limit-fish'"));
+  ok("SQL：字数 10~1000（信）与回信 ≤1000",
+    has(migrationFair, "char_length(p_body) < 10", "char_length(p_body) > 1000", "char_length(p_reply) > 1000"));
+  ok("SQL：捞起 48h 自动回海", migrationFair.includes("interval '48 hours'"));
+  ok("SQL：不能捞自己的信（user_id <> auth.uid()）", migrationFair.includes("user_id <> auth.uid()"));
   ok("SQL：回信只有当前持有者能写（status=held and holder=auth.uid()）",
-    has(migration, "status = 'held' and holder = auth.uid()"));
-  ok("SQL：六个 RPC 齐备（send/fish/reply/release/mine/held）",
+    has(migrationFair, "status = 'held' and holder = auth.uid()"));
+  ok("SQL：六个基础 RPC 齐备（send/fish/reply/release/mine/held）",
     ["bottle_send", "bottle_fish", "bottle_reply", "bottle_release", "bottle_mine", "bottle_held"]
       .every((f) => migration.includes(`function public.${f}`)));
   ok("SQL：两张表 + RLS + 只读策略（捞信不开放直接 select 海）",
@@ -111,25 +127,59 @@ ok("每日一问已摘除（en/zh 都没有 dailyQ，首页也不再引用）",
   ok("SETUP：建库脚本同步了漂流瓶（表 + RPC，新装库不用另跑迁移）",
     setupSql.includes("public.bottle_letters") && setupSql.includes("function public.bottle_fish")
       && setupSql.includes("function public.bottle_held"));
-  ok("轮 18：SETUP 同步了次数探针与抢占式捞信（quota + 重试循环，与迁移同源）",
-    setupSql.includes("function public.bottle_quota()")
-      && setupSql.includes("for i in 1..3 loop")
-      && setupSql.includes("if found then"));
-  ok("轮 18 迁移：bottle_quota 探针（UTC 日计数，服务端权威）",
-    migrationFish.includes("function public.bottle_quota()")
-      && migrationFish.includes("created_day = (now() at time zone 'utc')::date")
-      && migrationFish.includes("day = (now() at time zone 'utc')::date"));
-  ok("轮 18 迁移：捞信先抢占再记账、绝不返回 null（空捞不扣次数的根基）",
-    migrationFish.includes("for i in 1..3 loop")
-      && migrationFish.includes("where id = v_row.id and status = 'sea'")
-      && migrationFish.indexOf("if found then") < migrationFish.indexOf("insert into public.bottle_fishes")
-      && migrationFish.includes("raise exception 'bottle-empty-sea'"));
+  ok("轮 411：额度按滚动 24h（created_at / picked_at / replied_at）",
+    has(migrationFair,
+      "created_at > now() - interval '24 hours'",
+      "picked_at > now() - interval '24 hours'",
+      "replied_at > now() - interval '24 hours'")
+      && has(setupSql,
+        "created_at > now() - interval '24 hours'",
+        "picked_at > now() - interval '24 hours'",
+        "replied_at > now() - interval '24 hours'"));
+  ok("轮 411：公平捞取（pickup_count + last_picked_at + 未捞优先）",
+    has(migrationFair, "min(l.pickup_count)", "pickup_count = v_min", "l.pickup_count asc", "l.last_picked_at asc nulls first"));
+  ok("轮 411：随机桶 + FOR UPDATE SKIP LOCKED（规模优化，不每次全海 random）",
+    has(migrationFair, "random_bucket", "for update of l skip locked",
+      "bottle_letters_held_idx", "bottle_letters_holder_held_idx")
+      && has(setupSql, "random_bucket", "for update of l skip locked",
+        "bottle_letters_held_idx", "bottle_letters_holder_held_idx"));
+  ok("轮 411：7 天内同一封信不再发 + 同作者软降权",
+    has(migrationFair, "f.picked_at > now() - interval '7 days'", "f2.picked_at > now() - interval '7 days'")
+      && has(migrationFair, "l2.user_id = l.user_id"));
+  ok("轮 411：双向拉黑过滤（捞信 + 回信）",
+    has(migrationFair,
+      "not public.dm_is_blocked(auth.uid(), l.user_id)",
+      "not public.dm_is_blocked(l.user_id, auth.uid())",
+      "raise exception 'bottle-blocked'"));
+  ok("轮 411：内容质量（最短 10 字 + md5 内容指纹 24h 去重）",
+    has(migrationFair, "char_length(p_body) < 10", "md5(lower(p_body))", "raise exception 'bottle-duplicate'"));
+  ok("轮 411：同一用户额度检查串行化（并发双击不会刷穿 30 瓶）",
+    has(migrationFair, "pg_advisory_xact_lock(411", "hashtext(auth.uid()::text)")
+      && has(setupSql, "pg_advisory_xact_lock(411", "hashtext(auth.uid()::text)"));
+  ok("轮 411：举报 / 隐藏（同用户不再捞到；3 人举报全局隐藏）",
+    has(migrationFair,
+      "create table if not exists public.bottle_reports",
+      "hidden_at",
+      "function public.bottle_report",
+      "if v_count >= 3 then",
+      "set hidden_at = coalesce(hidden_at, now())")
+      && has(setupSql, "create table if not exists public.bottle_reports", "function public.bottle_report"));
+  ok("轮 411：捞信同时排除已举报 / 已隐藏的信",
+    has(migrationFair, "l.hidden_at is null", "r.reporter_id = auth.uid()", "r.letter_id = l.id"));
+  ok("BottleView：举报入口 + ReportDialog（漂流瓶独立 RPC）",
+    has(bottleView, 'import ReportDialog', 'type: "bottle"', 'openReport(fishPop.letter)', "<report-dialog")
+      && has(reportDialog, 'props.target.type === "bottle"', "db.bottleReport"));
 }
 {
-  /* 错误码闭环：migration 里 raise 的每个业务码，bottleErrKey 都要接得住
+  /* 错误码闭环：迁移里 raise 的每个业务码，bottleErrKey 都要接得住
      （bottle-auth 属「未登录」兜底，走 errGeneric，不单列） */
-  const raised = [...migration.matchAll(/raise exception '(bottle-[a-z-]+)'/g)].map((m) => m[1]);
-  const mapped = ["bottle-limit-send", "bottle-limit-fish", "bottle-empty-sea", "bottle-not-holder", "bottle-too-long"];
+  const raised = [...migrationFair.matchAll(/raise exception '(bottle-[a-z-]+)'/g)].map((m) => m[1]);
+  const mapped = [
+    "bottle-limit-send", "bottle-limit-pick", "bottle-limit-fish", "bottle-limit-hold",
+    "bottle-empty-sea", "bottle-not-holder", "bottle-blocked",
+    "bottle-empty-body", "bottle-too-short", "bottle-too-long", "bottle-duplicate",
+    "bottle-report-limit",
+  ];
   const uncovered = raised.filter((c) => !mapped.includes(c) && c !== "bottle-auth");
   ok("错误码闭环：SQL raise 的每个业务码都有归类（" + raised.length + " 个 raise）", raised.length >= 5 && uncovered.length === 0,
     uncovered.join(","));
@@ -142,9 +192,10 @@ ok("Worker：/bottle/* 六条路由收口到同名 RPC",
     && has(worker, 'rpc(env, request, "bottle_release", { p_id: id })')
     && has(worker, 'rpc(env, request, "bottle_mine", {})')
     && has(worker, 'rpc(env, request, "bottle_held", {})'));
-ok("Worker：入参体检（空信拒收 / 超 1000 拒收 / id 必须是 UUID）",
+ok("Worker：入参体检（空信拒收 / 少于 10 字拒收 / 超 1000 拒收 / id 必须是 UUID）",
   has(worker, "if (!body) return fail(400, \"empty-body\")")
-    && has(worker, 'body.length > 1000) return fail(400, "bottle-too-long")')
+    && has(worker, 'if ([...body].length < 10) return fail(400, "bottle-too-short")')
+    && has(worker, 'if ([...body].length > 1000) return fail(400, "bottle-too-long")')
     && has(worker, "if (!UUID_RE.test(id)) return fail(400, \"bad-id\")"));
 ok("轮 18：Worker 开放 GET /bottle/quota（次数探针与发信/捞信同一收口）",
   has(worker, 'seg[1] === "quota" && seg.length === 2 && m === "GET"')
@@ -165,10 +216,11 @@ ok("gateway 适配器：六个方法走 /bottle/*（body 字段名与 Worker 对
     && has(gwAdapter, 'call("/bottle/release", { method: "POST", body: { id } })')
     && has(gwAdapter, 'call("/bottle/mine", { timeout: 15000 })')
     && has(gwAdapter, 'call("/bottle/held", { timeout: 15000 })'));
-ok("bottle.js：登录才可用（cloud.ready + cloud.user），发信/回信先在本层拦空与超长",
+ok("bottle.js：登录才可用（cloud.ready + cloud.user），发信先拦空/过短/超长，回信拦空/超长",
   has(bottleJs, "!!(cloud.ready && cloud.user)")
     && has(bottleJs, "if (!text) throw new Error(\"bottle-empty-body\")")
-    && has(bottleJs, 'if (text.length > BOTTLE_BODY_MAX) throw new Error("bottle-too-long")'));
+    && has(bottleJs, "if (chars < BOTTLE_BODY_MIN) throw new Error(\"bottle-too-short\")")
+    && has(bottleJs, 'if (chars > BOTTLE_BODY_MAX) throw new Error("bottle-too-long")'));
 
 /* ───────── BottleView 接线（T6 抽件：逻辑在组件里，HomeView 只负责挂载） ───────── */
 ok("BottleView：导入漂流瓶工具并接上四个动作（投/捞/回/放回）",
@@ -178,7 +230,16 @@ ok("BottleView：导入漂流瓶工具并接上四个动作（投/捞/回/放回
 ok("BottleView：字数上限用 BOTTLE_BODY_MAX；次数只由服务端值算（MAX − 已用）",
   has(bottleView, ':maxlength="BOTTLE_BODY_MAX"')
     && has(bottleView, "Math.max(0, BOTTLE_SEND_MAX - quota.value.sent)")
+    && has(bottleView, "Math.max(0, BOTTLE_PICK_MAX - quota.value.picked)")
     && has(bottleView, "Math.max(0, BOTTLE_FISH_MAX - quota.value.fished)"));
+ok("BottleView：捞信同时看捞取额度与回信额度（任一用完就禁用，不靠服务端才报错）",
+  has(bottleView, "const pickLeft = computed", "const fishLeft = computed", "const canFish = computed")
+    && has(bottleView, "return pickLeft.value > 0 && fishLeft.value > 0")
+    && has(bottleView, ':disabled="canFish === false"'));
+ok("BottleView：空海弹窗给「先投一封」落点，不是只丢一句提示",
+  has(bottleView, 'mode: "empty"', '"bottle.emptyCta"', "function focusComposer()", 'ref="mailField"'));
+ok("BottleView：字数不足本地提示（至少 10 字）",
+  has(bottleView, "mailChars < BOTTLE_BODY_MIN", 't("bottle.needMore"', "bottleBodyChars(mailDraft.value.trim())"));
 ok("BottleView：待处理信箱多封并存（pending 合并 fished+held；捞新信不被手里那封锁死；轮 238 起托盘一次弹一封）",
   has(bottleView, "const pending = ref([])")
     && has(bottleView, "function mergePending()")
@@ -187,7 +248,7 @@ ok("BottleView：待处理信箱多封并存（pending 合并 fished+held；捞�
 ok("BottleView：次数服务端权威（bottle_quota 同步；拉不到只提示、不拦操作）",
   has(bottleView, "async function syncQuota()") && has(bottleView, "await bottleQuota()")
     && has(bottleView, 'quotaErr.value = "bottle.quotaUnavailable"')
-    && has(bottleView, ":disabled=\"fishLeft === 0\""));
+    && has(bottleView, ':disabled="canFish === false"'));
 ok("BottleView 全线上（轮 37）：本机不许再有次数账本 / SWR 快照 / localStorage 读写",
   !has(bottleView, "warm-paws-bottle-quota", "bumpQuota", "quotaRemote", "loadQuota", "freshQuota")
     && !has(bottleView, "todayKey", "swr(", "cacheKey(")
@@ -238,24 +299,34 @@ ok("BottleView：被捞走/在我手里两态文案不再一律「漂流中」�
   has(bottleView, '"bottle.stPicked"') && has(bottleView, '"bottle.stInHand"')
     && has(bottleView, '"bottle.stReleased"'));
 
-/* ───────── 轮 21：次数口径 = 捞到且回信了才扣 1 次（服务端权威） ───────── */
-ok("迁移 reply_quota：捞信日志加 replied_at/replied_day 两列（捞到未回 = null 不计次）",
-  has(migrationReply, "add column if not exists replied_at")
+/* ───────── 轮 21 / 411：回信才计次；额度按滚动 24h；防囤信 ───────── */
+ok("迁移 fair_quota：捞信日志加 picked_at（捞取额度）且保留 replied_at/replied_day（回信额度）",
+  has(migrationFair, "add column if not exists picked_at")
+    && has(migrationReply, "add column if not exists replied_at")
     && has(migrationReply, "add column if not exists replied_day"));
-ok("迁移 reply_quota：bottle_quota 只数 replied_day = 今日（回信才计次的服务端权威）",
-  has(migrationReply, "and replied_day = (now() at time zone 'utc')::date"));
-ok("迁移 reply_quota：捞信本身不写 replied_*（不记次），当天重捞幂等（on conflict do nothing）",
-  has(migrationReply, "insert into public.bottle_fishes (user_id, day, letter_id)")
-    && has(migrationReply, "on conflict (user_id, day, letter_id) do nothing"));
-ok("迁移 reply_quota：回信盖章只盖最新一行（order by day desc limit 1，防跨天多行全量盖章一次扣 N 次）",
-  has(migrationReply, "set replied_at = now(), replied_day = (now() at time zone 'utc')::date")
-    && has(migrationReply, "order by day desc limit 1"));
-ok("迁移 reply_quota：防囤信拦截（手里 ≥7 封未回 → bottle-limit-hold，捞了也回不了就先别捞）",
-  has(migrationReply, "if v_held >= 7 then raise exception 'bottle-limit-hold'; end if;"));
+ok("迁移 fair_quota：bottle_quota 同时数 picked_at / replied_at 的滚动 24h",
+  has(migrationFair,
+    "'picked', (select count(*) from public.bottle_fishes",
+    "picked_at > now() - interval '24 hours'",
+    "'fished', (select count(*) from public.bottle_fishes",
+    "replied_at > now() - interval '24 hours'"));
+ok("迁移 fair_quota：放回不返还额度（捞信日志只插入/更新时间，不删除）",
+  has(migrationFair,
+    "insert into public.bottle_fishes (user_id, day, letter_id, picked_at)",
+    "on conflict (user_id, day, letter_id) do update",
+    "set picked_at = excluded.picked_at"));
+ok("迁移 fair_quota：回信盖章只盖最新一行（order by picked_at desc，防一次回信扣 N 次）",
+  has(migrationFair,
+    "set replied_at = now()",
+    "order by picked_at desc nulls last, day desc",
+    "limit 1"));
+ok("迁移 fair_quota：防囤信拦截（手里 ≥7 封未回 → bottle-limit-hold）",
+  has(migrationFair, "if v_held >= 7 then raise exception 'bottle-limit-hold'; end if;"));
 ok("SETUP：quota/fish/reply 三函数已同步新口径（新装库免跑迁移）",
-  has(setupSql, "and replied_day = (now() at time zone 'utc')::date")
+  has(setupSql, "picked_at > now() - interval '24 hours'")
+    && has(setupSql, "replied_at > now() - interval '24 hours'")
     && has(setupSql, "raise exception 'bottle-limit-hold'")
-    && has(setupSql, "order by day desc limit 1"));
+    && has(setupSql, "order by picked_at desc nulls last, day desc"));
 ok("bottle.js：bottle-limit-hold 有专属归类（不再落「海浪大了一点」的通用提示）",
   has(bottleJs, '"bottle-limit-hold"') && has(bottleJs, "errHoldLimit"));
 ok("i18n：errHoldLimit 中英文案齐",
@@ -311,7 +382,7 @@ ok("BottleView：会话作废后——超时/出错提示一律丢弃（!alive �
 
 ok("BottleView：失败按 bottleErrKey 归类展示（不吞错误）",
   has(bottleView, "t(bottleErrKey(e))"));
-ok("BottleView：不再用本机日键记账（跨天归零由服务端 UTC 日负责，轮 37 全线上）",
+ok("BottleView：不再用本机日键记账（额度由服务端滚动 24h 负责，轮 37 全线上）",
   !has(bottleView, "todayKey", "warm-paws-bottle-quota", "day: todayKey()"));
 ok("BottleView：未登录给登录提示（不再有本地宠物回信）",
   has(bottleView, 't("bottle.signInHint")') && !bottleView.includes("sendLetter"));
@@ -459,10 +530,10 @@ ok("轮241 捞信双弹层接力：托盘让位 fishPop + 乐观放回重算 pen
   bottleView.includes('v-show="trayOn && !fishPop.show"') && doRel.includes("mergePending();")
   && doRel.includes("String(fished.value.id)") && doRel.includes("String(x.id) !== String(l.id)")
   && /map\.set\(String\(/.test(bottleView));
-ok("轮242 捞到信弹窗不可关闭（遮罩/Esc/× 全绑 msg 模式才放行；got/fishing 必须当场回信或放回）",
-  bottleView.includes(":mask-closable=\"fishPop.mode === 'msg'\"")
-  && bottleView.includes(":esc=\"fishPop.mode === 'msg'\"")
-  && bottleView.includes(":closable=\"fishPop.mode === 'msg'\""));
+ok("轮242 捞到信弹窗不可关闭（遮罩/Esc/× 只对 msg/empty 放行；got/fishing 必须当场回信或放回）",
+  bottleView.includes("fishPop.mode === 'msg' || fishPop.mode === 'empty'")
+  && !bottleView.includes("fishPop.mode !== 'got'")
+  && bottleView.includes("fishPop.mode === 'fishing'"));
 
 /* ── 轮 361：回信超限/服务端拒收必须贴在当前输入框旁（旧版只写页面顶部 mailHint，
  *    用户在托盘/记录卡/捞信弹窗里点「回信」看不到任何反应）── */
@@ -475,10 +546,10 @@ ok("轮242 捞到信弹窗不可关闭（遮罩/Esc/× 全绑 msg 模式才放�
       && (bottleView.match(/class="reply-count"/g) || []).length === 3
       && bottleView.includes("const replyErr = ref({})"));
   ok("轮361 回信超限：点击前按 trim 后长度本地拦截，不发请求；服务端拒收也落行内",
-    replyBody.includes("if (body.length > BOTTLE_BODY_MAX)")
-      && replyBody.indexOf("if (body.length > BOTTLE_BODY_MAX)") < replyBody.indexOf("await bottleReply")
-      && replyBody.includes("setReplyErr(l.id, replyTooLongText(body.length))")
-      && replyBody.includes("setReplyErr(l.id, k === \"bottle.errTooLong\" ? replyTooLongText(body.length) : t(k))")
+    replyBody.includes("if (bottleBodyChars(body) > BOTTLE_BODY_MAX)")
+      && replyBody.indexOf("if (bottleBodyChars(body) > BOTTLE_BODY_MAX)") < replyBody.indexOf("await bottleReply")
+      && replyBody.includes("setReplyErr(l.id, replyTooLongText(bottleBodyChars(body)))")
+      && replyBody.includes("setReplyErr(l.id, k === \"bottle.errTooLong\" ? replyTooLongText(bottleBodyChars(body)) : t(k))")
       && !replyBody.includes("mailHint.value = t(bottleErrKey(e))"));
   ok("轮361 回信提示：中英文案齐，带当前字数占位 {n}",
     messages.zh.bottle.replyTooLong.includes("{n}") && messages.zh.bottle.replyTooLong.includes("1000")

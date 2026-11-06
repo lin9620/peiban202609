@@ -2,9 +2,8 @@
      手机与网页共用同一布局（窄屏单列，桌面 640px 居中）；
      功能与旧版一一对应：皮肤 / 语言 / 昵称 / 改密码 / 通知偏好 / 删号 / 隐私政策。 -->
 <script setup>
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, computed, nextTick, onMounted, watch } from "vue";
 import { useRouter } from "vue-router";
-import { NInput, NAvatar } from "naive-ui";
 import { t, i18n } from "../i18n.js";
 import { cloud, cloudUpdateNickname, cloudChangePassword, cloudDeleteAccount } from "../utils/supabase.js";
 import { NICK_MAX, MIN_PASSWORD, passwordProblem } from "../utils/authRules.js";
@@ -16,9 +15,8 @@ import {
   themeKey, themeOptions, applyTheme,
   langOptions, onLangPick, isMobileNav, isApp,
 } from "../stores/uiStore.js";
-import { getItem } from "../utils/storage.js";
-import * as dmApi from "../utils/dm.js";
-import { unblockUser } from "../utils/userBlocks.js";
+import { getItem, setItem } from "../utils/storage.js";
+import { blockState, refreshBlocks } from "../utils/userBlocks.js";
 /* 轮 297 · 版本与检查更新 */
 import { currentVersion, checkForUpdate } from "../utils/appVersion.js";
 import UpdateDialog from "../components/UpdateDialog.vue";
@@ -80,33 +78,9 @@ function toggleRow(k) { open.value = { ...open.value, [k]: !open.value[k] }; }
 const isOpen = (k) => !!open.value[k];
 
 /* 轮406 · 已拉黑从消息列表移到设置「账号」下方。
- * 名单仍来自 dm_blocks；解除拉黑走 userBlocks 包装，暖心墙内容过滤缓存同步恢复。 */
-const blockedRows = ref([]);
-const blockedBusy = ref("");
-const blockedLoading = ref(false);
-async function loadBlocked() {
-  if (blockedLoading.value) return;
-  blockedLoading.value = true;
-  try { blockedRows.value = (await dmApi.blocks()) || []; }
-  catch (e) { blockedRows.value = []; }
-  finally { blockedLoading.value = false; }
-}
-async function unblockOne(b) {
-  blockedBusy.value = b.user_id;
-  const idx = blockedRows.value.findIndex((x) => x.user_id === b.user_id);
-  const removed = idx >= 0 ? blockedRows.value.splice(idx, 1)[0] : null;
-  try {
-    await unblockUser(b.user_id);
-  } catch (e) {
-    if (removed) blockedRows.value.splice(Math.min(idx, blockedRows.value.length), 0, removed);
-  } finally {
-    blockedBusy.value = "";
-  }
-}
-function toggleBlocked() {
-  toggleRow("blocked");
-  if (isOpen("blocked")) loadBlocked();
-}
+ * 轮409 · 不再在设置页内展开，整行跳到独立页 /settings/blocked。
+ * 这里只用快照里的数量做行尾提示，不在设置页发名单请求。 */
+const blockedCount = computed(() => (blockState.ids || []).length);
 
 /* 当前选中值（行右侧展示） */
 const themeName = computed(() => {
@@ -196,48 +170,87 @@ const PREFS = [
   { key: "pets", tk: "notif.prefPets" },
 ];
 
-const prefs = ref({ comments: true, reactions: true, pets: true, dms: true });
+const PREFS_DEFAULT = { comments: true, reactions: true, pets: true, dms: true };
+/* 本机快照只用来让首帧直接落在用户上次看到的位置；服务器回包仍会校准。
+   键按用户区分，换账号不会把上一个人的开关带过来。 */
+const PREFS_CACHE = "warm-paws-notif-prefs-v1:";
+const prefs = ref({ ...PREFS_DEFAULT });
 const prefsBusy = ref(false);
 const prefsMsg = ref("");
+const prefsReady = ref(false);
 /* 用户拍板 A：通知偏好也是开关型，同一颗 350ms 内第二下直接丢弃（不重复写库）。 */
 const tapGuard = createTapGuard(350);
 const masterOn = computed(() => PREFS.some((x) => prefs.value[x.key]));
 let prefsSeq = 0;
 
+function readCachedPrefs(uid) {
+  if (!uid) return null;
+  try {
+    const raw = getItem(PREFS_CACHE + uid);
+    return raw ? normPrefs(JSON.parse(raw)) : null;
+  } catch (e) { return null; }
+}
+function writeCachedPrefs(uid, p) {
+  if (!uid) return;
+  try { setItem(PREFS_CACHE + uid, JSON.stringify(normPrefs(p))); } catch (e) { /* 忽略 */ }
+}
+async function markPrefsReady() {
+  if (prefsReady.value) return;
+  /* 先让校准后的状态真正落到 DOM，再恢复过渡；否则首帧从默认全开切到关，
+     仍会重播一次关闭动画。用宏任务而不是 rAF：后台标签页 rAF 会被暂停，
+     会一直停在 no-anim。 */
+  await nextTick();
+  setTimeout(() => { prefsReady.value = true; }, 0);
+}
+
 async function loadPrefs() {
-  if (!cloudSigned.value) return;
+  const uid = (cloud.user && cloud.user.id) || "";
+  if (!uid) return;
+  const seq = prefsSeq;
+  const cached = readCachedPrefs(uid);
+  if (cached) prefs.value = cached;
   /* 首屏拉取可能比用户手速慢：如果这次请求发出后用户已经点了开关
      （prefsSeq 变了），旧回包不能再把新状态盖回去，否则开关会「自己跳回来」。 */
-  const seq = prefsSeq;
   try {
     const loaded = await notifyApi.prefsGet();
     if (seq === prefsSeq) prefs.value = normPrefs(loaded);
+    if (seq === prefsSeq) writeCachedPrefs(uid, prefs.value);
   } catch (e) { /* 缺行 = 全开，normPrefs 已兜底 */ }
+  finally {
+    if (seq === prefsSeq) markPrefsReady();
+  }
 }
 
 async function savePrefs(next) {
   /* 先乐观翻开关，再写库：App 弱网下点一下要等一次 RPC 才动，会被当成「开关坏了」。
    * 失败回滚到最后一次已接受的状态；用序号防止连续点两个开关时旧请求
    * 失败/晚到把新状态盖回去。 */
+  const uid = (cloud.user && cloud.user.id) || "";
   const seq = ++prefsSeq;
-  const prev = prefs.value;
+  const prev = { ...prefs.value };
   const clean = normPrefs(next);
   prefs.value = clean;
+  writeCachedPrefs(uid, clean);
   prefsBusy.value = true;
   prefsMsg.value = "";
   try {
     await notifyApi.prefsSet(clean);
     if (seq === prefsSeq) {
       prefs.value = clean;
+      writeCachedPrefs(uid, clean);
       prefsMsg.value = "notif.prefsSaved";
     }
   } catch (e) {
     if (seq === prefsSeq) {
       prefs.value = prev;
+      writeCachedPrefs(uid, prev);
       prefsMsg.value = "notif.loadFail";
     }
   } finally {
-    if (seq === prefsSeq) prefsBusy.value = false;
+    if (seq === prefsSeq) {
+      prefsBusy.value = false;
+      markPrefsReady();
+    }
   }
 }
 
@@ -256,7 +269,29 @@ function togglePref(key) {
   savePrefs(next);
 }
 
-onMounted(() => { loadPrefs(); });
+/* 用户恢复/切换后重新取偏好；首帧先用本机快照，避免每次进设置都重播一遍开关动画。 */
+watch(() => (cloud.user && cloud.user.id) || "", (uid) => {
+  prefsSeq++;
+  prefsReady.value = false;
+  prefsMsg.value = "";
+  if (!uid) {
+    prefs.value = { ...PREFS_DEFAULT };
+    return;
+  }
+  const cached = readCachedPrefs(uid);
+  prefs.value = cached || { ...PREFS_DEFAULT };
+  /* 有本机快照时首帧已经是对的，不必等网络；服务器若真改了值，再做一次校准动画。 */
+  if (cached) markPrefsReady();
+  loadPrefs();
+}, { immediate: true });
+
+onMounted(() => {
+  /* 轮409：进设置顺手校准一次数量；点进「已拉黑」独立页时已有快照，直接出人。 */
+  if (cloudSigned.value && !blockState.loaded) refreshBlocks();
+});
+watch(cloudSigned, (v) => {
+  if (v && !blockState.loaded) refreshBlocks();
+});
 </script>
 
 <template>
@@ -378,30 +413,14 @@ onMounted(() => { loadPrefs(); });
         <span class="set-arrow on">&#8250;</span>
       </div>
 
-      <!-- 轮406：已拉黑名单从消息列表迁到「账号」下方，点行展开 -->
-      <template v-if="cloudSigned">
-        <div class="set-row" :class="{ open: isOpen('blocked') }" @click="toggleBlocked">
-          <span class="set-ico" aria-hidden="true">&#128683;</span>
-          <span class="set-label">{{ t("dm.blockedTitle") }}</span>
-          <span class="set-val set-mini">{{ blockedRows.length || "" }}</span>
-          <span class="set-arrow" :class="{ on: isOpen('blocked') }">&#9662;</span>
-        </div>
-        <div v-if="isOpen('blocked')" class="set-panel set-blocked-panel">
-          <p v-if="!isMobileNav" class="sub">{{ t("dm.blockedHint") }}</p>
-          <p v-if="blockedLoading" class="sub">…</p>
-          <p v-else-if="!blockedRows.length" class="sub">{{ t("dm.blockedEmpty") }}</p>
-          <div v-for="b in blockedRows" :key="b.user_id" class="set-blocked-row">
-            <n-avatar round :size="30" :src="avatarUrlFor(b.user_id) || undefined">
-              <template v-if="!avatarUrlFor(b.user_id)" #default>{{ (b.nickname || "?").slice(0, 1).toUpperCase() }}</template>
-              <template v-else #fallback>{{ (b.nickname || "?").slice(0, 1).toUpperCase() }}</template>
-            </n-avatar>
-            <b class="set-blocked-name">{{ b.nickname || t("dm.someone") }}</b>
-            <button class="set-opt" :disabled="blockedBusy === b.user_id" @click.stop="unblockOne(b)">
-              {{ t("dm.blockedGo") }}
-            </button>
-          </div>
-        </div>
-      </template>
+      <!-- 轮406：已拉黑名单从消息列表迁到「账号」下方。
+           轮409：点整行进入独立页，不在设置页内展开。 -->
+      <router-link v-if="cloudSigned" class="set-row link" to="/settings/blocked">
+        <span class="set-ico" aria-hidden="true">&#128683;</span>
+        <span class="set-label">{{ t("dm.blockedTitle") }}</span>
+        <span class="set-val set-mini">{{ blockedCount || "" }}</span>
+        <span class="set-arrow on">&#8250;</span>
+      </router-link>
     </section>
 
     <!-- 通知：总开关 + 三类偏好（#23 私信已退出通知中心，无开关） -->
@@ -412,7 +431,7 @@ onMounted(() => { loadPrefs(); });
           <span class="set-ico" aria-hidden="true">&#128276;</span>
           <span class="set-label">{{ t("notif.prefs") }}</span>
           <span class="set-val set-mini">{{ masterOn ? t("settings.on") : t("settings.off") }}</span>
-          <span class="set-switch" :class="{ on: masterOn }" aria-hidden="true">
+          <span class="set-switch" :class="{ on: masterOn, 'no-anim': !prefsReady }" aria-hidden="true">
             <span class="knob"></span>
           </span>
         </div>
@@ -422,7 +441,7 @@ onMounted(() => { loadPrefs(); });
           @click.stop="masterOn && togglePref(x.key)">
           <span class="set-label">{{ t(x.tk) }}</span>
           <span class="set-val set-mini">{{ prefs[x.key] ? t("settings.on") : t("settings.off") }}</span>
-          <span class="set-switch sm" :class="{ on: prefs[x.key] && masterOn }" aria-hidden="true">
+          <span class="set-switch sm" :class="{ on: prefs[x.key] && masterOn, 'no-anim': !prefsReady }" aria-hidden="true">
             <span class="knob"></span>
           </span>
         </div>
@@ -559,13 +578,6 @@ onMounted(() => { loadPrefs(); });
 /* 展开面板 */
 .set-panel { padding: 2px 16px 12px 56px; display: flex; flex-direction: column; gap: 8px; }
 .set-panel .set-opts { margin-top: 0; }
-.set-blocked-panel .sub { margin-bottom: 0; }
-.set-blocked-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.set-blocked-name {
-  flex: 1; min-width: 0; font-size: 13.5px; font-weight: 500;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.set-blocked-row .set-opt { flex: none; }
 .set-hint { padding: 0 16px 4px 56px; }
 
 /* 开关 */
@@ -575,6 +587,8 @@ onMounted(() => { loadPrefs(); });
   transition: background .18s ease;
 }
 .set-switch.sm { width: 36px; height: 20px; }
+/* 首屏校准期间不动画：否则每次重进设置都会看到关闭动画重播一次 */
+.set-switch.no-anim, .set-switch.no-anim .knob { transition: none; }
 .set-switch .knob {
   position: absolute; top: 2px; left: 2px; width: 18px; height: 18px;
   border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .2);

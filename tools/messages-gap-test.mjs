@@ -64,11 +64,14 @@ t("S5 漂流瓶记录提示保持短句（中文 recordsHint ≤ 30 字）", () 
   assert.ok(zh.length <= 30, `recordsHint 又变长了（${zh.length} 字）：${zh}`);
 });
 
-t("S6 漂流瓶规则保持短句（中文 rules ≤ 50 字）", () => {
+t("S6 漂流瓶规则保持短句（中文 rules ≤ 70 字）", () => {
+  /* 这句是瓶子页底部的一行说明，太长会挤成三行。文案后来改写并补上了「7 天内不会再发给你」
+     这条真实规则（原句只有「每天可投 / 可捞 / 可回」），字数上限随之从 50 放到 70 ——
+     仍能拦住「往这儿堆规则」的退化，但不再和产品文案打架。 */
   const all = [...i18n.matchAll(/rules:\s*"([^"]+)"/g)].map((x) => x[1]);
-  const zh = all.find((s) => /[\u4e00-\u9fa5]/.test(s) && /每天/.test(s));
+  const zh = all.find((s) => /[\u4e00-\u9fa5]/.test(s) && /每(天| 24 小时)/.test(s));
   assert.ok(zh, "找不到中文 bottle.rules");
-  assert.ok(zh.length <= 50, `rules 又变长了（${zh.length} 字）：${zh}`);
+  assert.ok(zh.length <= 70, `rules 又变长了（${zh.length} 字）：${zh}`);
 });
 
 console.log(out.join("\n"));

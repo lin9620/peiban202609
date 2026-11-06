@@ -385,12 +385,12 @@ export const db = {
 
   /* ══════════ 温暖漂流瓶（#6：Worker 收口 /api/bottle/*，同名 RPC 在 DB 里） ══════════ */
 
-  /** 投一封信进海里（每日 5 封由服务端把关；轮 305：用户要求 3 → 5） */
+  /** 投一封信进海里（滚动 24h 5 封由服务端把关；轮 305：3 → 5） */
   bottleSend(body) {
     return call("/bottle/send", { method: "POST", body: { body } });
   },
 
-  /** 随机捞一封（不是自己的；捞起即独占） */
+  /** 公平捞一封（不是自己的；捞起即独占；24h 最多 30 瓶） */
   bottleFish() {
     return call("/bottle/fish", { method: "POST", body: {} });
   },
@@ -403,6 +403,11 @@ export const db = {
   /** 不想回，放回海里 */
   bottleRelease(id) {
     return call("/bottle/release", { method: "POST", body: { id } });
+  },
+
+  /** 举报一封信：同一用户不再捞到；3 人举报后全局隐藏（轮 411） */
+  bottleReport(id, reason = "other", detail = "") {
+    return call("/bottle/report", { method: "POST", body: { id, reason, detail } });
   },
 
   bottleRecords(id = null, offset = 0, { mine = null, limit = 0 } = {}) {
@@ -427,7 +432,7 @@ export const db = {
     return call("/bottle/held", { timeout: 15000 });
   },
 
-  /** 今日已用次数（服务端权威，UTC 日）：{ sent, fished }（轮 18：跨端不再打架） */
+  /** 过去 24 小时已用次数（服务端权威）：{ sent, picked, fished } */
   bottleQuota() {
     return call("/bottle/quota", { timeout: 15000 });
   },

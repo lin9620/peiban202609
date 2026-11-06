@@ -54,7 +54,7 @@ function onNavClick(it, e) {
     </router-link>
     <span class="sn-spring"></span>
     <router-link
-      to="/settings" class="sn-item" :class="{ on: route.path === '/settings' }"
+      to="/settings" class="sn-item" :class="{ on: isActive('/settings') }"
       :title="t('settings.entry')">
       <span class="sn-ico">⚙️</span>
       <span class="sn-label">{{ t("settings.entry") }}</span>

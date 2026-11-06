@@ -190,15 +190,16 @@ t("T8 memoWhen：返回的是函数，可安全在每次渲染里调用", () => 
  */
 const B1 = read("src/views/CommunityView.vue");
 
-t("T20 虚拟窗口退役：全量真实渲染（pageItems = shownPage），位置由真实 DOM 保持", () => {
-  /* 轮 223：几十条帖子的规模下窗口是自残 —— pads 重算会把滚动位置钳回 0，
-     「位置保持」全废（用户实测「切页签回页顶」「从帖子详情返回不保持原样」）。
-     退役后全量真实渲染，位置由真实 DOM 天然保持。
-     真到几百条再上虚拟列表时，必须连滚动容器一起换（window → 内部容器）。 */
-  assert.ok(/const pageItems = computed\(\(\) => shownPage\.value\)/.test(B1),
-    "pageItems 不是全量（退役不彻底，还留着窗口切片）");
+t("T20 虚拟窗口（轮 434 重新上线）：pageItems 按窗口切片，短列表回退全量", () => {
+  /* 轮 223 曾因「pads 重算把 scrollTop 钳回 0」而退役；真根因是**容器被 KeepAlive 藏起来时照样重算**
+     （那一刻几何全是 0）。轮 434 带着 feedHidden() 守卫回来，并保留短列表全量渲染作为回退阀。 */
+  assert.ok(/const pageItems = computed\(\(\) => \{/.test(B1), "pageItems 不是窗口切片（虚拟窗口没接上）");
+  assert.ok(/if \(!winOn\.value\) return list;/.test(B1), "短列表没回退全量渲染（回退阀丢了）");
+  assert.ok(/return list\.slice\(s, e\);/.test(B1), "pageItems 没按窗口下标切片");
+  /* 列表被换掉/变短时下标可能越界 —— 越界必须从头挂起，返回空白会闪一帧空列表 */
+  assert.ok(/winStart\.value >= 0 && winStart\.value < n \? winStart\.value : 0/.test(B1),
+    "窗口下标越界时没回落到 0（会闪一帧空列表）");
   assert.ok(/v-for="p in pageItems"/.test(B1), "模板没走 pageItems");
-  assert.ok(!/winStart\.value, winEnd\.value\)/.test(B1), "还在按窗口下标切片");
 });
 
 t("T21 上下占位块存在，且高度绑的是算出来的 padTop / padBottom", () => {
@@ -214,13 +215,16 @@ t("T22 卡片挂了函数 ref（高度表与锚点补偿的数据来源）", () 
   assert.ok(/cardRO\s*=\s*new ResizeObserver/.test(B1), "没建 ResizeObserver → 卡片自身变高（展开评论）后高度表不更新");
 });
 
-t("T23 虚拟窗口退役：占位恒 0，不再用估高表撑滚动高度", () => {
-  /* 轮 223 退役：pads 恒 0，滚动高度由真实 DOM 决定，估高表不再参与布局。
-     （下面几条仍锁住兜底常量与 CSS 的口径一致 —— 将来真要重新引入占位块时，这仍是对的约束。） */
-  assert.ok(/padTop\.value = 0;/.test(B1) && /padBottom\.value = 0;/.test(B1),
-    "pads 没有恒置 0（占位块还在撑高度 → 滚动位置会被钳回 0）");
-  assert.ok(!/buildOffsets\(list, heights, \{ gap: feedGap\(\), est: FEED_EST \}\)/.test(B1),
-    "还在用估高表算占位（退役不彻底）");
+t("T23 占位块高度 = 被回收卡片的真实高度（布局不变量）", () => {
+  /* 轮 434：占位块重新上岗，但**不许是常量**，必须是前缀高度表算出来的
+     「窗口起点之前所有条目（实测高 / 缺的用估高）之和 + 间距」。
+     这条不变量成立时，换窗口 = 上方总高不变 → 视觉不跳、scrollTop 不被浏览器夹。 */
+  assert.ok(/const \{ offsets, total \} = feedOffsets\(list, feedGap\(\)\);/.test(B1),
+    "没按前缀高度表算占位（占位块成了常量 → 换窗口时位置会跳）");
+  assert.ok(/applyWindow\(r\.on, r\.start, r\.end, r\.padTop, r\.padBottom\)/.test(B1),
+    "算出来的 pads 没落到窗口上");
+  assert.ok(!/padTop\.value = 0;\s*\n\s*padBottom\.value = 0;/.test(B1),
+    "pads 仍被写死 0（那就没有虚拟窗口，只是白挂了一层）");
   /* 真机取证：同一份 style.css 里 .card 桌面 18px、.shell--mobile-nav .card 手机 12px ——
      写死任一个，几百条之后就是上千像素的累计串位，所以必须从卡片 computed style 现读。 */
   assert.ok(/function feedGap\(\)/.test(B1), "缺 feedGap");
@@ -243,9 +247,34 @@ t("T23 虚拟窗口退役：占位恒 0，不再用估高表撑滚动高度", ()
   assert.ok(/const FEED_EST = DEFAULT_EST;/.test(B1), "FEED_EST 没复用 DEFAULT_EST（又写死了一个数）");
 });
 
-t("T24 虚拟窗口退役：窗口恒为全量（winStart=0 / winEnd=已亮条数）", () => {
-  assert.ok(/winStart\.value = 0;/.test(B1), "winStart 没恒置 0");
-  assert.ok(/winEnd\.value = shownPage\.value\.length;/.test(B1), "winEnd 没恒为全量（窗口还在截断列表）");
+t("T24 容器被藏起来时一个字节都不动（轮 223 退役的真根因）", () => {
+  /* KeepAlive 的 display:none 期间，rect / scrollTop / clientHeight 全是 0。
+     旧版照算 → 窗口被拍回顶部、pads 塌成 0 → 用户回到页签就落在页顶。
+     守卫必须在「算窗口」之前、且在写 ref 之前返回，否则已经把 winStart 改成 0 了。 */
+  const from = B1.indexOf("function syncFeedWindow(");
+  const to = B1.indexOf("/** 触底判定", from);
+  assert.ok(from > 0 && to > from, "取不到 syncFeedWindow 段（锚点字符串改了？）");
+  const seg = noComment(B1.slice(from, to));
+  assert.ok(/if \(feedHidden\(\)\) return null;/.test(seg), "缺「容器不可见就别动」守卫");
+  const iHidden = seg.indexOf("if (feedHidden()) return null;");
+  /* 短列表那条 applyWindow 在前（窗口本就关着、pads 恒 0，安全）；
+     要守的是**真正算窗口的那次**写入必须排在隐藏守卫之后。 */
+  const iApply = seg.indexOf("applyWindow(r.on");
+  assert.ok(iHidden > 0 && iApply > iHidden, "隐藏守卫没排在真实窗口写入之前（等于没守）");
+  assert.ok(/const vh = feedViewportH\(\);\s*\n\s*if \(!vh\) return null;/.test(seg),
+    "视口高为 0 时也要停手（同样的几何全 0 场景）");
+  /* 短列表 → 关窗口、全量：既是零风险路径也是回退阀 */
+  assert.ok(/if \(n <= WINDOW_ON_THRESHOLD\) \{ applyWindow\(false, 0, n, 0, 0\); return null; \}/.test(seg),
+    "短列表没关窗口（回退阀丢了）");
+  /* 深链钉住：pin >= 0 时窗口跟着目标走，不被滚动位置带偏 */
+  assert.ok(/pinnedIdx/.test(B1) && /pinIndex: pin/.test(seg), "深链钉窗口口径丢了");
+  /* 每帧顺序：先量卡、再算窗口 —— 反了就是用上一轮高度表摆这一轮的占位块 */
+  const ft = B1.indexOf("function feedTick()");
+  const ftEnd = B1.indexOf("function scheduleFeedIdle", ft);
+  const tick = noComment(B1.slice(ft, ftEnd));
+  const iMeasure = tick.indexOf("measureCards(");
+  const iSync = tick.indexOf("syncFeedWindow(");
+  assert.ok(iMeasure > 0 && iSync > iMeasure, "feedTick 里没先 measureCards 再 syncFeedWindow（越滚越跳）");
 });
 
 t("T25 触底续载读真实滚动容器（手机端墙自滚，window.scrollY 恒 0）", () => {
@@ -263,12 +292,12 @@ t("T25 触底续载读真实滚动容器（手机端墙自滚，window.scrollY �
   /* 轮 231：续载从「先亮完再拉下一页」的串行改成并行 —— 已亮的快到已拉取尾部时就提前要下一页。
      少这条，用户每滚到底都得先把剩余条目熬完才等到一次网络往返（实测「一顿一顿、拉不动」）。 */
   assert.ok(/const notShown = shown\.value\.length - reveal\.value;/.test(B1)
-    && /if \(!cloudDone\.value && notShown < REVEAL_STEP \/ 2\) loadMoreCloud\(\);/.test(B1),
+    && /if \(!cloudDone\.value && (?:!\w+ && )?notShown < REVEAL_STEP \/ 2\) loadMoreCloud\(\);/.test(B1),
     "预加载丢了（轮 231：不等亮完就提前拉下一页）");
   /* 轮 231：切回页签的静默新鲜化 —— KeepAlive 保活让切回时一个请求都不发（用户：点暖心墙没反应） */
   assert.ok(/loadCloud\(\{ quiet: true \}\)/.test(B1) && /if \(quiet\) \{/.test(B1),
     "切回暖心墙的静默新鲜化丢了");
-  assert.ok(/if \(!cloudDone\.value && notShown < REVEAL_STEP \/ 2\) loadMoreCloud\(\);/.test(B1), "向服务器取下一页丢了（轮 231：改预加载，不再挂在 else 分支上）");
+  assert.ok(/if \(!cloudDone\.value && (?:!\w+ && )?notShown < REVEAL_STEP \/ 2\) loadMoreCloud\(\);/.test(B1), "向服务器取下一页丢了（轮 231：改预加载，不再挂在 else 分支上）");
   /* 本轮真事故的防复发锁：feedTick / onUserMove 的定义曾随退役一起被误删，而
      onMounted / onActivated / onDeactivated / onUnmounted 仍在引用它们 →
      rAF 求值处抛 ReferenceError 把整个钩子打断，「回位」那段代码根本没机会执行
@@ -310,9 +339,36 @@ t("T27 深链跳帖：先把 reveal 撑到目标条，再把窗口钉到它身�
 
 t("T28 虚拟窗口模块被正确引入（路径与用到的导出）", () => {
   assert.ok(/from "\.\.\/utils\/feedWindow\.js"/.test(B1), "没引入 feedWindow.js");
-  for (const f of ["buildOffsets", "windowRange", "nearEnd", "revealTarget", "idOf"]) {
+  /* 轮 434：windowRange 收进 resolveWindow（短列表判据一并搬进去），组件只认 resolveWindow */
+  for (const f of ["buildOffsets", "resolveWindow", "revealTarget", "idOf", "DEFAULT_OVERSCAN", "WINDOW_ON_THRESHOLD"]) {
     assert.ok(new RegExp(`\\b${f}\\b`).test(B1), `没用上 ${f}`);
   }
+});
+
+t("T28b 底部「会跟着内容跑」的元素不参与滚动锚定（轮 434 实证的跳位根因）", () => {
+  /* 无头实测：占位块 / 哨兵 / 到底提示都挂在「最后一张已挂载卡」后面，窗口一扩或下一页一到
+     就被推下去几千像素，滚动锚定忠实跟着它们往下滚 —— y 从 5966 一步跳到 24011，
+     差值正好等于新增内容的总高（用户视角：正看着卡，画面被拽走几屏）。
+     让它们不可锚定，锚点落回卡片（新卡追加在后面，最后一张挂载卡原地不动）→ 位置不动。
+     关掉锚定前后各跑一遍：关 → 9/9 全绿；只禁这三个 → 也全绿。 */
+  const css = read("src/style.css");
+  const rule = css.match(/\.feed-pad,\s*\.feed-sentinel,\s*\.wall-scroller\s*>\s*\.notice\s*\{[^}]*\}/);
+  assert.ok(rule, "缺「占位块/哨兵/到底提示 不参与锚定」这条规则");
+  assert.ok(/overflow-anchor:\s*none/.test(rule[0]), "规则里没写 overflow-anchor: none");
+  /* 绝不能扩大到卡片或整页：图片/字体把上方内容顶开时，用户滚动态靠锚定补位 */
+  assert.ok(!/\*\s*\{[^}]*overflow-anchor/.test(css), "别全局关锚定（卡片自身要靠它补位）");
+  assert.ok(!/\.post-card[^{]*\{[^}]*overflow-anchor/.test(css), "卡片不许关锚定");
+});
+
+t("T28c 窗口调试记账必须挂在开关上（生产环境零成本）", () => {
+  /* syncFeedWindow 末尾会记每次窗口计算的输入/输出，供 tools/feed-virtual-live.mjs 定位
+     「窗口落后于滚动位置」。这段必须在 window.__wpWantWin 守卫之内 ——
+     否则每帧 push 一个对象进数组，正好是虚拟滚动想省掉的那种浪费。 */
+  const seg = B1.slice(B1.indexOf("function syncFeedWindow("), B1.indexOf("/** 触底判定"));
+  assert.ok(/window\.__wpWantWin/.test(seg), "缺窗口记账钩子（feed-virtual-live 没法定位滞后）");
+  const guard = seg.slice(seg.indexOf("window.__wpWantWin"));
+  assert.ok(/w\.push\(/.test(guard), "记账没写在守卫里");
+  assert.ok(/w\.length > \d+\) w\.shift\(\)/.test(guard), "记账数组没封顶（长跑会一直涨）");
 });
 
 t("T29 滚动锚定「按需借用」：只在程序式跳转期间关，跳完 / 离场都还回去", () => {

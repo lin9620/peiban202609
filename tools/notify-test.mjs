@@ -142,7 +142,17 @@ ok("偏好写库把对象交给 db 适配层（不能再拆四个布尔）",
   /db\.notifPrefsSet\(prefsPayload\(p\)\)/.test(notifySrc), notifySrc.slice(0, 0));
 const settingsSrc = readFileSync("src/views/SettingsView.vue", "utf8");
 ok("设置页首屏拉取不覆盖用户刚点的开关（防旧回包把开关弹回去）",
-  /const seq = prefsSeq;[\s\S]{0,260}if \(seq === prefsSeq\) prefs\.value = normPrefs\(loaded\)/.test(settingsSrc),
+  /const seq = prefsSeq;[\s\S]{0,520}if \(seq === prefsSeq\) prefs\.value = normPrefs\(loaded\)/.test(settingsSrc),
+  settingsSrc.slice(0, 0));
+/* 轮410 回归：prefs 原来每次进设置都从默认全开重新建 ref，服务器回包 false 时
+ * 开关会在首屏播一次「开 → 关」。现在先读按用户隔离的本机快照，并在校准完成前
+ * 用 no-anim 关掉 transition，重进设置不再重播关闭动画。 */
+ok("设置页通知开关：首帧读本机快照，校准期间禁用过渡（重进不重播关闭动画）",
+  settingsSrc.includes("PREFS_CACHE")
+  && settingsSrc.includes("readCachedPrefs")
+  && settingsSrc.includes("writeCachedPrefs")
+  && (settingsSrc.match(/'no-anim': !prefsReady/g) || []).length === 2
+  && /\.set-switch\.no-anim[^{]*\{[^}]*transition:\s*none/.test(settingsSrc),
   settingsSrc.slice(0, 0));
 
 /* ──────── i18n：通知文案键 en/zh 对称 + 插值占位符在位 ───────── */

@@ -66,11 +66,17 @@
 - **5 套 UI 主题**（右上角 🎨 下拉切换，选择持久化）：奶油橘 / 樱花粉 / 薄荷森林 / 薰衣草紫 / 星夜蓝（深色，Naive UI darkTheme 联动）→ `src/data/themes.js`
 - **两侧玩法栏**（宽屏显示）：左侧宠物速养面板（摸头 / 投喂 / 呼吸放松练习），右侧小道具体验 → `src/components/SideRails.vue`
 - 设计系统：暖色奶油渐变背景 + 光斑装饰 + 毛玻璃卡片 + 多层阴影 + 页面切换过渡
-- **磨砂玻璃皮肤（轮 404 / 405 / 406，独立文件 `src/glass.css`）**：**跟「移动壳」同域** ——
+- **磨砂玻璃皮肤（轮 404~407，独立文件 `src/glass.css`）**：**跟「移动壳」同域** ——
   App 内生效、手机浏览器（<900px）也生效，**桌面浏览器（≥900px）完全不变**。
-  `backdrop-filter: blur(16~24px) saturate(1.5)`、23px 卡片圆角 + 半透明白描边、顶部 1px 高光、
-  卡片按序取 pastel 底色（雾蓝/鹅黄/薄荷/蜜桃/樱粉/薰衣草/青瓷/雾灰/纯白）、说明文字统一 62% 不透明度、
+  23px 卡片圆角 + 半透明白描边 + 顶部 1px 高光、卡片按序取 pastel 底色
+  （雾蓝/鹅黄/薄荷/蜜桃/樱粉/薰衣草/青瓷/雾灰/纯白）、说明文字统一 62% 不透明度、
   装饰块 −1° 级微旋转、底部导航改成悬浮胶囊 + 底部渐隐、夜间主题整套深玻璃覆盖。
+  - **真模糊（`backdrop-filter`）只留在固定层和浮层**：顶部栏、底部胶囊、弹出面板、对话框。
+    **跟着列表滚动的内容（`.card` / `.post-card` / `.status-card` / `.dm-list` / `.story-main`）一律不挂模糊**，
+    改用 0.86 不透明白自己挡住背后 —— 轮 407 就是这么修「装上 App 后每个页面都卡」的：
+    之前首页一屏挂着 12 层模糊、合计 558,750 px²（≈1.7 个视口），滚动时每帧都要重抓背景再筛两遍。
+  - **背景光斑用 `html::before` 固定层 + 径向渐变**，不用 `background-attachment: fixed`
+    （手机会每帧重绘整屏背景），也不用 `filter: blur(64px)`（三团 197,600 px² 的滤镜每帧重算）。
   - **门控复用 `uiStore` 的 `isMobileNav`**（= `isApp || vw < 900`），不另写断点 —— 皮肤必须和移动壳
     同一条线，否则「手机上该长这样」和「屏幕窄就换皮」迟早对不上。跨 900px 时 `watch` 跟随切换。
   - **桌面端不下载**：`glass.css` 以 `?url` 只取资源地址，运行时自建 `<link id="wp-glass">`，
@@ -80,7 +86,9 @@
     桌面也能看到这套皮肤（不影响线上）。清掉即恢复。
   - **回退**：删掉 `src/main.js` 里 `forceGlassSkin` / `applyGlassSkin` 那一整段即可，`glass.css` 留着不碍事。
     改版前的完整快照在 `_backup/ui-20261104-before-glass/`（含 `RESTORE.md`）。
-  - 守护测试 `tools/skin-gate-test.mjs`（20 项）钉住「不许静态引入、不许首屏预载、门控必须跟 isMobileNav 同线」—— 这条边界已经错过两次（一次改到桌面、一次手机浏览器没跟上）。
+  - 守护测试 `tools/skin-gate-test.mjs`（29 项）钉住三件事：作用域（不许静态引入、不许首屏预载、门控必须跟 isMobileNav 同线）、
+    **性能预算（滚动内容不许挂 backdrop-filter、不许 `filter: blur()`、不许 `background-attachment: fixed`）**、
+    令牌别被删空。前两条边界都已经错过一次（一次改到桌面、一次手机浏览器没跟上、一次把 App 卡死）。
 - UI 组件库 **Naive UI**，主题在 `src/theme.js` 定制（品牌橙 #FF9F5A、圆角胶囊按钮、毛玻璃输入框）
 - 四个页面全部重做为现代治愈风版式：首页（宠物主视觉 hero + 双栏语录/故事）、宠物乐园（舞台 + 侧栏）、暖心墙（杂志式动态流）、我的（头像卡 + 数据统计 + 心情热力格）
 - 字体：Quicksand（英文圆润）+ 霞鹜文楷（中文手写温度感）
@@ -160,7 +168,7 @@ node tools/mood-test.mjs      # 心情打卡纯逻辑单测（12 项：连续天
 node tools/make-og.mjs        # 重新生成分享卡 og-image.png 到 public/（改了品牌色或文案后可跑）
 node tools/make-app-icon.mjs  # 重新生成全套图标：public/icons、favicon、apple-touch-icon、Android 全密度 mipmap + anydpi/单色（改图标只跑这个，跑完跑 icon-test）
 node tools/icon-test.mjs      # 图标守护（26 项：尺寸/底色/爪印占比/圆角 vs 满版/自适应安全区/monochrome/唯一生成器）
-node tools/skin-gate-test.mjs # 皮肤作用域守护（20 项：不许静态引入、门控必须跟 isMobileNav 同线、桌面端不下载、夜间渐隐有深色版）
+node tools/skin-gate-test.mjs # 皮肤守护（29 项：作用域 / 性能预算 / 令牌；桌面端不下载、滚动内容不许挂 blur）
 node tools/uifix-test.mjs     # 修复项回归（24 项：评论字数上限/立绘上传校验/大厅文案/状态同步提示/安全头/浏览眼睛摘除/我的页帖子/角色名额口径）
 node tools/app-shell-test.mjs # App 外壳与手机形态回归（64 项：T5 顶栏/TabBar/页脚让位 · T7 私信↔通知分栏与红点 · 聊天整屏(align-items:stretch) · 桌面提示隐藏 · 系统返回键逐级返回/根视图最小化 · 我的页钱包 · 睡着了送行弹窗 · 我的食谱回原版 · 二级评论就地回复框 · 发帖页整屏样式 · 桌面零变化 · 轮142 私信页两段一体与漂流瓶独立聊天 · 轮143 两列化+头部⋯菜单+瓶聊昵称进空间 · 轮144 ⋯点空白关+暖心墙页内刷新）
 node tools/story-test.mjs  # 故事栏单测（217 项：3 万字/标题/标签边界 · 四种排序 · period_key 月→周榜预留 · 轮廓渲染 i18n 中英成对 · 三通道端点形状 · MIGRATION_story.sql 结构 · 批2 评论/书架/精选/数据面板 SQL 结构 · 批3 幂等「设置」语义 + 详情页乐观更新 + 评论乐观上屏）
@@ -206,12 +214,14 @@ node tools/restart-dev.cmd    # 重启 dev 服务器（改了 .env 后用：Vite
 > 3. `MIGRATION_admin.sql` —— **管理中心**：`admin_users` 管理员白名单表 + `is_admin()` / `admin_overview()` 函数 + 管理员治理策略（读已下架帖 / 下架恢复 / 删帖删评；顺带把 `wall_posts` 的匿名读策略收紧为「未下架」）。跑完后执行文件末尾注释里的 `insert into admin_users ...`（换成你的注册邮箱）把自己设为管理员，然后访问 `/admin`（「我的」页会出现管理中心入口，仅管理员可见）；仓库里的 `MIGRATION_add_admin.sql` 就是这一步的现成示例（按昵称 / 按邮箱两种写法，复制即跑）。
 > 4. `MIGRATION_dm_notifications.sql` —— **私信 + 通知中心**：六张新表（`dm_blocks` 拉黑 / `dm_conversations` 会话 / `dm_messages` 消息 / `dm_states` 已读水位与免打扰 / `notifications` 通知 / `notification_prefs` 偏好），写路径全部收口在 security definer RPC（建会话 / 发消息 / 撤回 / 已读 / 免打扰 / 管理员公告），评论·回应·宠物互动的通知由 AFTER INSERT 触发器生成。没跑它时：私信页提示「功能未开启」，其余功能照旧。
 > 5. `MIGRATION_profile_status.sql` —— **陪你大厅状态上云**：`profiles` 加 `status` / `status_at` 两列 + 按时间倒序索引；写路径沿用现有 `profiles self update` RLS（`auth.uid() = id`），不需要新 RPC。没跑它时：状态照旧只存本机（点状态会提示「云端状态还没开启」），大厅「此刻大厅里」区块不显示 —— 不报错、不白屏。跑完后可 `node tools/status-e2e.mjs` 实测（写状态 → 状态流读回 → 24h 过期隐去 → 清除）。
-> 6. `MIGRATION_bottle.sql` —— **温暖漂流瓶**：两张表（`bottle_letters` 信件 / `bottle_fishes` 捞信日志）+ 六个 security definer RPC（投信 / 捞信 / 回信 / 放回 / 我的信 / 我捞到的）；每日最多投 3 封、捞 7 瓶（按 UTC 日计数），捞起 48h 不处理自动回海，不能捞自己的信，回信只有写信人可见（RLS 只放行「写信人 + 写过回信的人」直接读）。没跑它时：漂流瓶卡片会提示「海浪大了一点」（礼貌降级），其余功能照旧。跑完后可 `node tools/bottle-e2e.mjs` 实测（双账号投信 → 捞 → 回信 / 放回 → 限额 → 清理）。
+> 6. `MIGRATION_bottle.sql` —— **温暖漂流瓶**：两张表（`bottle_letters` 信件 / `bottle_fishes` 捞信日志）+ 六个 security definer RPC（投信 / 捞信 / 回信 / 放回 / 我的信 / 我捞到的）；基础迁移按 UTC 日计数（**最新口径以 `MIGRATION_bottle_fair_quota.sql` 为准：滚动 24 小时，投 5 封 / 捞 30 瓶 / 回 7 封**），捞起 48h 不处理自动回海，不能捞自己的信，回信只有写信人可见（RLS 只放行「写信人 + 写过回信的人」直接读）。没跑它时：漂流瓶卡片会提示「海浪大了一点」（礼貌降级），其余功能照旧。跑完后可 `node tools/bottle-e2e.mjs` 实测（双账号投信 → 捞 → 回信 / 放回 → 限额 → 清理）。
 >
 
 > 7. `MIGRATION_bottle_chat.sql` —— **漂流瓶续聊**：先完成私信与漂流瓶迁移，再执行此文件（**老库升级用**；新装库直接跑 `SUPABASE_SETUP.sql` 即可，其中已含本扩展，无需再执行此文件）。B 回信后通知 A；会话页保留双方的漂流瓶记录，只有 A 可以同意或拒绝续聊。同意后复用双方私信会话并导入原信、回信；记录中保留聊天入口。历史回信可在记录中处理，但不补发通知；通知沿用私信偏好，关闭私信通知时不推送。拒绝后保留信件，不建立聊天。
 >
 > 8. `MIGRATION_bottle_records.sql` —— **漂流瓶记录分类与分页**（#17，老库升级用；新装库无需单独跑）：`bottle_records` 换成新签名（`p_mine` 只看我发布的 / 我捞到的 —— 我捞到的含「放回海里」的，`p_limit` 每页条数），排序统一按发布时间新→旧。没跑它时：首页记录区请求会因函数签名不符而拿不到数据（其余投/捞/回不受影响），跑完即恢复。
+>
+> 8b. `MIGRATION_bottle_fair_quota.sql` —— **漂流瓶公平 + 24h 滚动额度 + 内容质量/举报**（轮 411，老库升级用；新装库直接跑 `SUPABASE_SETUP.sql` 已含）：新增 `pickup_count` / `last_picked_at` / `random_bucket` / `body_hash` / `hidden_at` 与 `bottle_reports`；投信改为滚动 24h 5 封、至少 10 字、24h 同内容去重；捞信改为滚动 24h 30 瓶（放回也计、不返还）、未捞优先 + 7 天内同信不再发 + 同作者软降权 + 双向拉黑过滤；回信滚动 24h 7 封；3 人举报全局隐藏。**必须跑**，否则前端会显示 30 瓶额度但服务端仍是旧口径。
 >
 > 离线回归：`node tools/bottle-chat-test.mjs`（规则、通知文案与跳转、双适配器及 Worker 转发、SQL 静态检查；不执行数据库迁移）。这不代表双账号端到端已验收。请在隔离环境验证 B 回信 → A 通知 → 打开记录 → A 同意 → 双方续聊及原信导入；另验证拒绝、重复同意及旧记录。不要用会随机捞取信件的线上脚本测试真实用户的漂流瓶。
 
@@ -428,8 +438,12 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 | 体验 | 「在线陪伴数」是本地随机数，易误导 | 去掉虚构人数，改如实文案（路线图保留"等有真实统计再接"） | `views/HomeView.vue` / `i18n.js` |
 | 体验 | App 图标被旧生成器覆盖回蓝爪 | 恢复 C「暖窝」，旧 v1/v2 生成器改名，v3 统一出 Android + PWA 图标 | `tools/make-app-icon.mjs` / `android/app/src/main/res` |
 | 体验 | 图标换成用户圈定的「实色陶红 + 白爪印」 | 轮 403：v5 #4 定稿；一张脚本出满 Web/PWA/iOS/Android（含 Android 13 单色），`make-og.mjs` 交出图标写权，`icon-test` 26 项钉住 | `tools/make-app-icon.mjs` / `tools/icon-test.mjs` |
+| 体验 | 磨砂玻璃皮肤下会话页输入条被米白雾蒙住、下方多一条 86px 空带 | 轮 408：会话态（`.shell--chat`）关掉底部渐隐层，并把胶囊的 86px 让位归零；`skin-gate-test` +2 项钉住 | `src/glass.css` / `tools/skin-gate-test.mjs` |
+| 体验 | 所有页面底部都有一条发白的空白带 | 轮 409：手机壳 `.shell` 的 48px 让位归零、让位统一 74+sab、底部渐隐从 78px 收到 16px（它只需盖住胶囊下那 8px 缝隙）；顺手补 `tools/sync-assets.mjs` 绕过 `cap sync` 静默失败 | `src/glass.css` / `tools/sync-assets.mjs` |
+| 体验 | 首页四联（宠物/今日/漂流瓶/故事）底部仍有一条空白带 | 轮 410：`.home-pane` 与 `.pet-page` 的「自带滚动容器」是假前提（CDP 扫遍子树无滚动层），双层让位 → 各自归零，只留 main 那一层；宠物页 148px → 40px | `src/glass.css` |
+| 体验 | 今日页顶部一块「黑底」（联条选中项墨黑胶囊压在状态栏上） | 轮 411：选中色改用主题色 `--accent`（陶红）；联条自己吃 `--sat` + 实底 + 下沿伪元素柔化，滚到底不再与状态栏叠字 | `src/glass.css` |
 
-回归验证（全部本地可跑）：`wall-rules-test` 49 项 · `comment-test` 35 项 · `wall-test` 37 项 · `pet-home-test` 19 项 · `pet-visual-test` 163 项 · `food-painter-test` 20 项 · `uifix-test` 24 项 · `image-fit` 20 项 · `snack-test` 24 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 130 项 · `privacy-test` 34 项 · `arity-test` 8 项 · `seo-test` 50 项 · `icon-test` 26 项 · `skin-gate-test` 20 项 · `dm-test` 336 项 · `notify-test` 149 项 · `status-test` 49 项 · `status-counts-test` 92 项 · `bottle-test` 87 项 · `bottle-chat-test` 94 项 · `api-contract-test` 87 项 · `gateway-contract-test` 80 项 · `worker-test` 327 项 · `cache-test` 16 项 · `home-panes-test` 9 项 · `app-shell-test` 67 项 · `react-queue-test` 12 项 · `back-stack-test` 9 项 · `post-detail-test` 17 项 · `splash-test` 21 项 · `app-version-test` 117 项 · `userScope-test` 8 项 · `report-test` 77 项 · `feed-perf-test` 27 项 · `feed-window-test` 19 项 · `feed-window-live` 10 项（需 dev 服务器）· `web-refresh-test` 6 项 · `story-test` 223 项 · `story-b3-e2e` 16 项（需线上库）· `rail-test` 31 项 · `rps-test` 14 项 · `page-smoke` 12 项 · `undef-check`（`--selftest` 10 项）· `tdz-check`。
+回归验证（全部本地可跑）：`wall-rules-test` 49 项 · `comment-test` 35 项 · `wall-test` 37 项 · `pet-home-test` 19 项 · `pet-visual-test` 163 项 · `food-painter-test` 20 项 · `uifix-test` 24 项 · `image-fit` 20 项 · `snack-test` 24 项 · `mood-test` 12 项 · `i18n-test` 19 项 · `admin-test` 39 项 · `auth-test` 130 项 · `privacy-test` 34 项 · `arity-test` 8 项 · `seo-test` 50 项 · `icon-test` 26 项 · `skin-gate-test` 43 项 · `dm-test` 336 项 · `notify-test` 149 项 · `status-test` 49 项 · `status-counts-test` 92 项 · `bottle-test` 87 项 · `bottle-chat-test` 94 项 · `api-contract-test` 87 项 · `gateway-contract-test` 80 项 · `worker-test` 327 项 · `cache-test` 16 项 · `home-panes-test` 9 项 · `app-shell-test` 67 项 · `react-queue-test` 12 项 · `back-stack-test` 9 项 · `post-detail-test` 17 项 · `splash-test` 21 项 · `app-version-test` 117 项 · `userScope-test` 8 项 · `report-test` 77 项 · `feed-perf-test` 27 项 · `feed-window-test` 19 项 · `feed-window-live` 10 项（需 dev 服务器）· `web-refresh-test` 6 项 · `story-test` 223 项 · `story-b3-e2e` 16 项（需线上库）· `rail-test` 31 项 · `rps-test` 14 项 · `page-smoke` 12 项 · `undef-check`（`--selftest` 10 项）· `tdz-check`。
 
 ## 🗺️ 路线图
 
@@ -450,3 +464,8 @@ public/                robots.txt · sitemap.xml · og-image.png · favicon.png 
 - ✅ **已完成**：登录方式扩展——**Google 一键登录**（`signInWithOAuth`，昵称按 `full_name / name → 邮箱前缀` 兜底）+ **忘记密码**（邮件重置链接回到 `/profile` 直接设置新密码，link 失效有专门识别与重发入口）；两者都有本地前置校验与失败人话提示 → `utils/authRules.js` / `utils/supabase.js` / `views/ProfileView.vue`
 - ✅ **已完成**：隐私政策页 `/privacy`（页脚入口 + 预渲染独立页面 + **正文写进静态 HTML** + sitemap）—— 同时用作 Google OAuth 发布审核的 Privacy policy URL，含 Limited Use 承诺
 - 云端宠物存档多设备同步
+- ✅ **已完成**：皮肤背景去「脏」——卡片缝隙原来露出的是薰衣草紫/雾蓝两团冷光斑（实测 237,233,244，B-G=+11），在暖白卡片之间就是一条灰带；现在底色提到 `#FBFAF7`、五团光斑全换暖色（蜜桃/鹅黄/米杏），缝隙变成 248,247,244，跟页面底色同一口气（`glass.css` ①）。配套：`--g-fade` 同步 251,250,247、`--g-bg-card` 提到 0.90、故事卡描边改 7.5% 暖墨发丝线
+- ✅ **已完成**：皮肤「去黑」——34px/10% 的卡片大投影收成 1px 接触影、故事卡投影归零、7 处 `var(--ink)` 墨黑选中态（顶部 nav / 中间＋ / chip / 排序条 / 分段控件 / 通知页签）全改主题色，卡片改靠 6% 暖墨发丝线分界；缝隙最暗点从 237 抬到 244（`glass.css`）
+- ✅ **已完成**：皮肤「去黑」——34px/10% 的卡片大投影收成 1px 接触影、故事卡投影归零、7 处 `var(--ink)` 墨黑选中态（顶部 nav / 中间＋ / chip / 排序条 / 分段控件 / 通知页签）全改主题色，卡片改靠 6% 暖墨发丝线分界；缝隙最暗点从 237 抬到 244（`glass.css`）
+- ✅ **已完成**：底部 ＋ 弹层按小红书重做 —— 遮罩/弹层原来被胶囊的 `backdrop-filter` 困在包含块里（实测遮罩只有 372×54，点外面关不掉还穿透点到卡片），改 `Teleport` 到 body 后遮罩铺满全屏；形态从三张漂浮小卡改成贴底大圆角面板，三行入口用发丝线分隔，`translateY(100%)` 升起；返回键/路由变化/点页签三处都补了关闭
+- ✅ **已完成**：底部导航纯文字方案定稿 —— 选中项垫 11% 陶土橘柔底胶囊 + 主题色文字、字号 12.5→13.5、圆钮 46→38、胶囊底色独立成 `--g-tabbar` 0.90 并加 7.5% 暖墨发丝线；同时把弹层面板改成实色 `#FFFDFB`（0.98 白会让正文大字透上来）、底部渐隐 16→72px 盖住胶囊下的缝；夜间补 `--accent-deep: #E8A184`（`glass.css`）

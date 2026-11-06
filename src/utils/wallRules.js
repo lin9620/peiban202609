@@ -355,6 +355,19 @@ export function usesRange(sort) {
 }
 
 /**
+ * 更宽一档的时间范围：2d → 7d → month → ""（已是最宽，没有下一档）。
+ * 用途（轮 428）：筛选把内容全挡空时，空状态要给一个「放宽一点」的出口 ——
+ * 到底放到哪一档由 RANGES 的顺序决定，只此一处，UI 不自己写死 next。
+ * @param {string} range 当前档位（脏值 → 回落到最窄档）
+ * @returns {string} 更宽档的 key；已最宽返回空串
+ */
+export function widerRange(range) {
+  const i = RANGE_KEYS.indexOf(range);
+  if (i < 0) return RANGE_KEYS[0];
+  return RANGE_KEYS[i + 1] || "";
+}
+
+/**
  * 该排序方式实际生效的时间范围。
  * 单一入口：显示那排按钮的地方与筛帖子的地方都从这里取值，
  * 避免「按钮藏了但筛选还在偷偷生效」这种最难排查的错。

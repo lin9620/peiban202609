@@ -18,7 +18,7 @@ const tsGate = ref(null);
 
 const props = defineProps({
   show: Boolean,
-  /* { type: 'post'|'comment', id: 目标数字 id, label: 内容摘录（弹窗里回显给用户看） } */
+  /* { type: 'post'|'comment'|'bottle', id: 目标 id（帖子/评论为数字，漂流瓶为 uuid）, label: 内容摘录 } */
   target: { type: Object, default: null },
 });
 const emit = defineEmits(["update:show", "done"]);
@@ -49,6 +49,7 @@ function errKey(e) {
   const c = String((e && e.code) || "");
   if (c === "PGRST202" || m.includes("Could not find the function")) return "report.errNotOpen";
   if (m.includes("report-limit")) return "report.errLimit";
+  if (m.includes("bottle-report-limit")) return "report.errLimit";
   if (m.includes("auth-required")) return "report.signIn";
   if (m.includes("target-gone")) return "report.errGone";
   return "report.errFail";
@@ -57,12 +58,16 @@ function errKey(e) {
 async function submit() {
   if (busy.value || !props.target) return;
   if (!(cloud.ready && cloud.user)) { msg.value = t("report.signIn"); return; }
-  /* 轮 311 · P2：配了 sitekey 而 token 还没拿到 → 拦一次（widget 多数人无感，秒过） */
-  if (TS_SITEKEY && !tsToken.value) { msg.value = t("common.turnstileFirst"); return; }
+  /* 轮 311 · P2：配了 sitekey 而 token 还没拿到 → 拦一次（漂流瓶举报走独立 RPC，不强制） */
+  if (TS_SITEKEY && !tsToken.value && props.target.type !== "bottle") { msg.value = t("common.turnstileFirst"); return; }
   busy.value = true;
   msg.value = "";
   try {
-    await db.reportCreate(props.target.type, props.target.id, reason.value, detail.value.trim(), tsToken.value);
+    if (props.target.type === "bottle") {
+      await db.bottleReport(props.target.id, reason.value, detail.value.trim());
+    } else {
+      await db.reportCreate(props.target.type, props.target.id, reason.value, detail.value.trim(), tsToken.value);
+    }
     emit("done");
     /* 先让用户看到「已收到」再收起弹窗（立刻关掉像没反应） */
     msg.value = t("report.done");
@@ -92,8 +97,8 @@ async function submit() {
       v-model="detail" type="textarea" :rows="2" :maxlength="200"
       :placeholder="t('report.detailPh')" style="margin-top: 12px" />
 
-    <!-- 轮 311 · P2：人机验证（sitekey 未配置时不渲染） -->
-    <turnstile-gate ref="tsGate" v-model="tsToken" :sitekey="TS_SITEKEY" />
+    <!-- 轮 311 · P2：人机验证（sitekey 未配置时不渲染；漂流瓶举报走独立 RPC，不强制） -->
+    <turnstile-gate v-if="!target || target.type !== 'bottle'" ref="tsGate" v-model="tsToken" :sitekey="TS_SITEKEY" />
 
     <p v-if="msg" class="report-msg">{{ msg }}</p>
 

@@ -104,6 +104,65 @@ t("T8 定时器统一登记（laterFeedTick 必须入账，否则离场后还会
   assert.ok(/feedTimers = feedTimers\.filter\(/.test(fn), "触发后没从册里摘掉（长会话会越攒越多）");
 });
 
+/* ══════════ 轮 431 · 「到底之后没有事件了」这一整类 ══════════
+ * 用户：「暖心墙往下拉到一个位置就无法往下拉了」。
+ * 真机取证：滚到底后浏览器不再派发 scroll（位置没变）；若此刻首屏 swr 还在飞
+ * （真机 /sb 单请求 8~12s），loadMoreCloud 被 `loadingCloud` 卫语句挡掉直接 return，
+ * 等它复位时用户已贴在底部 —— 再也没有 scroll 事件，续载永久停住
+ * （复现：20 张卡、12 次上滑纹丝不动、网络日志里一次 wall_posts 都没有）。 */
+const tickSeg = view.slice(view.indexOf("function feedTick"), view.indexOf("function scheduleFeedIdle"));
+
+t("T10 到底自愈：feedTick 必须自己排下一拍（滚到底后没有 scroll 事件也能续）", () => {
+  assert.ok(/if \(hasMore\.value \|\| !cloudDone\.value\)/.test(tickSeg),
+    "缺少「还有没亮完 / 没拉完」的兜底条件 —— 只有 scroll 才续载会永久卡在底部");
+  assert.ok(/scheduleFeedIdle\(\)/.test(tickSeg), "feedTick 没排下一拍，到底后不会自愈");
+  assert.ok(/reveal\.value \+ "\|" \+ cloudPosts\.value\.length/.test(tickSeg),
+    "没有进展指纹 —— 无法判断这一拍有没有真的推进");
+});
+
+t("T11 自愈必须有上限（断网时不许每 320ms 空转发请求）", () => {
+  assert.ok(/FEED_IDLE_MAX/.test(tickSeg), "自愈没有次数上限");
+  assert.ok(/feedIdleTries < FEED_IDLE_MAX/.test(tickSeg), "上限没参与判断");
+  assert.ok(/if \(mark !== feedIdleMark\) \{ feedIdleMark = mark; feedIdleTries = 0; \}/.test(tickSeg),
+    "有进展时没重置计数 —— 正常续载几步就会被上限掐断");
+});
+
+t("T12 loadCloud 收尾必须补排一次 tick（被挡掉的那次立刻接上）", () => {
+  const at = view.indexOf("async function loadCloud");
+  const lc = view.slice(at, view.indexOf("触底续载（轮 62 自愈版）", at));
+  const finallyAt = lc.lastIndexOf("} finally {");
+  assert.ok(finallyAt > 0, "找不到 finally 块");
+  const fin = lc.slice(finallyAt, finallyAt + 400);
+  assert.ok(/loadingCloud\.value = false;/.test(fin), "finally 没复位 loadingCloud");
+  assert.ok(/scheduleFeedTick\(\)/.test(fin),
+    "复位的同一步没补排 tick —— 首屏慢时用户已经到底了，复位也不会再判一次");
+});
+
+t("T13 首屏取数必须有总预算（否则 swr 的 await 永不返回 → loadingCloud 永久 true → 续载全被挡）", () => {
+  const at = view.indexOf("const fetcher = async () => {");
+  const fetcher = view.slice(at, view.indexOf("if (fresh) {", at));
+  assert.ok(/LOAD_TIMEOUT_MS/.test(fetcher), "首屏取数没套总预算");
+  assert.ok(/withTimeout\(cloudFetchWallRefresh/.test(fetcher), "合并包取数没超时");
+  assert.ok(/withTimeout\(cloudFetchPosts/.test(fetcher), "兜底取数没超时");
+  assert.ok(!/await cloudFetchWallRefresh\(REFRESH_PAGE\)\.catch/.test(fetcher),
+    "又变回裸 await —— 弱网挂一次就把首屏锁死");
+  assert.ok(/const left = \(\) => Math\.max\(1200, LOAD_TIMEOUT_MS - \(Date\.now\(\) - t0\)\)/.test(fetcher),
+    "预算没按时长递减 —— 串行几段会叠加成十几秒");
+});
+
+t("T14 用户再滚动要重置自愈计数（停手之后仍有下一次机会）", () => {
+  const onScroll = view.slice(view.indexOf("function onScroll(e)"), view.indexOf("function onViewport"));
+  assert.ok(/feedIdleTries = 0;/.test(onScroll), "onScroll 没重置计数");
+  assert.ok(/feedIdleMark = "";/.test(onScroll), "onScroll 没清指纹");
+});
+
+t("T15 离场必须一起清掉自愈定时器（否则复活后 scheduleFeedIdle 被永久挡掉）", () => {
+  const um = view.slice(view.indexOf("onUnmounted(() => {", view.indexOf("savedFeedPos")),
+    view.indexOf("cardEls.clear()"));
+  assert.ok(/feedIdle = 0;/.test(um), "离场没清 feedIdle id");
+  assert.ok(/feedIdleTries = 0;/.test(um), "离场没清计数");
+});
+
 /* ══════════ 自检（跟 feed-perf-test T16 同款：exit 之后不许再有用例） ══════════ */
 
 t("T9 本文件所有用例都注册在 process.exit 之前（防新增用例被静默跳过）", () => {

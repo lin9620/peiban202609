@@ -28,6 +28,7 @@ const VAC = read("src/components/DmVacChat.vue");
 const FLAG = read("src/utils/dmUiFlag.js");
 const MAP = read("src/utils/dmMap.js");
 const SV = read("src/views/SettingsView.vue");
+const BV = read("src/views/BlockedView.vue");
 
 /* ───────── 开关与分支 ───────── */
 t("V1 组件占满聊天那一列（头 / 消息流 / 输入区都是组件画的），旧版只在 v-else 兜底", () => {
@@ -294,10 +295,14 @@ t("V20 组件按旧版设计上色（头部 / 气泡 / 时间 / 日期 / 头像 
   has(VAC, /\.vac-message-wrapper \.vac-text-timestamp \{[\s\S]{0,220}position: absolute/, "时间要挪到气泡下面");
   has(VAC, /vac-card-info\.vac-card-date[\s\S]{0,240}border-radius: 999px/, "日期胶囊不是旧 .dm-day 那个");
   has(VAC, /\.vac-avatar \{[^}]*width: 30px/, "消息头像不是旧版 30px");
-  has(SV, /class="set-blocked-row"/, "已拉黑名单没迁到设置页");
+  has(SV, /to="\/settings\/blocked"/, "设置页没有跳到「已拉黑」独立页");
   has(SV, /t\("dm\.blockedTitle"\)/, "设置页没有「已拉黑」入口");
-  has(SV, /dmApi\.blocks\(\)/, "设置页没接拉黑名单数据");
-  has(SV, /await unblockUser\(b\.user_id\)/, "设置页解除拉黑没走全站缓存包装");
+  hasNot(SV, /class="set-blocked-panel"/, "设置页还在内联展开拉黑名单");
+  has(BV, /class="blocked-row"/, "独立页没有拉黑名单行");
+  has(BV, /t\("dm\.blockedTitle"\)/, "独立页没有「已拉黑」标题");
+  has(BV, /blockState\.rows/, "独立页没接本地拉黑名单快照");
+  has(BV, /refreshBlocks\(\)/, "独立页没接拉黑名单后台校准");
+  has(BV, /await unblockUser\(b\.user_id\)/, "独立页解除拉黑没走全站缓存包装");
   hasNot(MV, /class="dm-blocked-bar"/, "消息列表还留着已拉黑入口");
   hasNot(MV, /dmApi\.blocks\(\)/, "消息页还留着拉黑名单请求");
 });

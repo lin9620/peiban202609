@@ -454,5 +454,7 @@ out.push("");
 out.push("TOTAL " + (pass + fail) + "  PASS " + pass + "  FAIL " + fail);
 
 const fs = await import("node:fs");
-fs.writeFileSync("comment-test.txt", out.join("\n"), "utf8");
+/* 报告写 _scratch/，别再落在项目根目录 */
+fs.mkdirSync("_scratch", { recursive: true });
+fs.writeFileSync("_scratch/comment-test.txt", out.join("\n"), "utf8");
 console.log(out.join("\n"));

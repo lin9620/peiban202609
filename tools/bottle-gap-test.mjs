@@ -48,5 +48,19 @@ t("G3 记录卡片本身的 12px 间距不受影响", () => {
   assert.equal(px(b, "margin-top"), 12, "记录卡片间距被误改");
 });
 
+/* 轮 429：用户「进入漂流瓶聊天那个按钮跟上面靠的太近了」。
+ * 全局 `* { margin: 0 }` 清掉 details 里最后一段的段间距，按钮又是 inline-block → 0px 贴合。 */
+t("G4 内容区 → 动作区之间有呼吸位（details 下边距 ≥ 10px）", () => {
+  const b = block(RECS, ".bottle-record > details");
+  assert.ok(b, "找不到 .bottle-record > details 规则（按钮会重新贴住正文最后一行）");
+  const mb = px(b, "margin-bottom");
+  assert.ok(mb !== null && mb >= 10, `details 下边距是 ${mb}px，按钮又贴上去了`);
+});
+
+t("G5 没有后续动作的记录不留尾巴（details:last-child 下边距归零）", () => {
+  assert.ok(/\.bottle-record > details:last-child\s*\{[^}]*margin-bottom:\s*0/.test(RECS),
+    "缺少 :last-child 归零 —— 没有按钮的记录卡片底部会多出一截空白");
+});
+
 console.log(`bottle-gap-test: ${pass} pass, ${fails.length} fail`);
 if (fails.length) { for (const f of fails) console.log("  FAIL " + f); process.exit(1); }

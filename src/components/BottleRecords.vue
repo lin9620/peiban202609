@@ -260,6 +260,13 @@ onBeforeUnmount(() => {
 /* 轮 358/363：与上方分段条之间只留 .dm-list 的 6px 间距，不再叠 margin/padding。 */
 .bottle-records { margin-top: 0; padding-top: 0; }
 .bottle-record { margin-top: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; }
+/* 轮 429：用户「进入漂流瓶聊天那个按钮跟上面靠的太近了」。
+   全局 `* { margin: 0 }` 把 details 里最后一行正文/回复的段间距清了，按钮又是 inline-block，
+   于是「正文 → 进入漂流瓶聊天」之间是 0px，字脚几乎贴着按钮上沿。
+   分界线加在 details 上（内容区 → 动作区的分界），不是给按钮加 margin ——
+   waiting / choose 那几档跟在后面的说明文字也一起被托起来，不用逐状态补。 */
+.bottle-record > details { margin-bottom: 12px; }
+.bottle-record > details:last-child { margin-bottom: 0; }
 .bottle-record.focused { outline: 2px solid currentColor; }
 .bottle-record.needs { border-color: rgba(242, 96, 63, .55); }
 .bottle-record summary { cursor: pointer; overflow-wrap: anywhere; }

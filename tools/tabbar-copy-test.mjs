@@ -17,7 +17,11 @@ const t = (name, fn) => { try { fn(); pass++; } catch (e) { fails.push(name + " 
 const noLimit = (s) => !/3\s*万|30000|30,000|30k|30,000/i.test(String(s || ""));
 
 t("C1 ＋ 弹层三个入口都用 SVG，不再用 emoji", () => {
-  const sheet = TAB.slice(TAB.indexOf('class="tabbar-sheet"'), TAB.indexOf("</van-tabbar>"));
+  /* 轮 415：弹层从 <van-tabbar> 里搬到了 <Teleport to="body">（胶囊的 backdrop-filter
+   * 会把 fixed 后代困在胶囊内框里当包含块），所以区间终点不能再找 </van-tabbar>。 */
+  const start = TAB.indexOf('class="tabbar-sheet"');
+  const end = TAB.indexOf("</Teleport>", start);
+  const sheet = TAB.slice(start, end > start ? end : TAB.length);
   const icons = [...sheet.matchAll(/<span class="tabbar-opt-ico"[\s\S]*?<\/span>/g)].map((m) => m[0]);
   assert.equal(icons.length, 3, `只找到 ${icons.length} 个入口图标`);
   for (const ico of icons) {
@@ -40,7 +44,7 @@ t("C3 写故事副标题不再写 3 万字上限", () => {
 t("C4 故事栏介绍也不提前写上限", () => {
   for (const lang of ["en", "zh"]) {
     assert.ok(noLimit(messages[lang].story.sub), `${lang} story.sub 还带着上限`);
-    assert.ok(noLimit(messages[lang].story.feedSub), `${lang} story.feedSub 还带着上限`);
+    assert.ok(noLimit(messages[lang].story.discoverSub), `${lang} story.discoverSub 还带着上限`);
   }
 });
 

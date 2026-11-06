@@ -33,10 +33,12 @@ import {
 } from "../utils/comments.js";
 /* 动态流虚拟窗口（纯逻辑，Node 单测覆盖：tools/feed-window-test.mjs）—— 轮 82 · B1 档 */
 import {
-  buildOffsets, windowRange, nearEnd, revealTarget, idOf,
+  buildOffsets, resolveWindow, revealTarget, idOf,
   DEFAULT_EST, DEFAULT_OVERSCAN, WINDOW_ON_THRESHOLD, NEAR_END_PX,
 } from "../utils/feedWindow.js";
 import { cloud } from "../utils/supabase.js";
+/* 离场存档的落盘体（轮 433：只存窗口 + 预算阶梯，纯逻辑单测 tools/feed-archive-test.mjs） */
+import { buildFeedArchive } from "../utils/feedArchive.js";
 /* 回应写入收敛器（纯逻辑，Node 单测覆盖）：连点串行落库 + 过期响应不回写 */
 import { createWriteQueue } from "../utils/reactQueue.js";
 /* 连点闸门（纯逻辑，Node 单测覆盖）：同一颗按钮 350ms 内的第二下直接丢弃 */
@@ -55,7 +57,7 @@ import {
   SORTS, sortPosts, collectViews, visibleOnly, utcDay, ratioPct,
   canPostToday, postsLeftToday, dayCountFromStorage, WALL_POST_DAILY_LIMIT,
   errorKind, VIEW_KEY, ANON_KEY, POST_DAY_KEY, POSTS_KEY, REACTS_KEY,
-  RANGES, inRange, usesRange, rangeFor, fmtWhen, memoWhen,
+  RANGES, inRange, usesRange, rangeFor, widerRange, fmtWhen, memoWhen,
   recommendPosts, RECOMMEND_DAYS, RECOMMEND_WIDE_DAYS,
   hasNewPosts, applyReactionAuthoritative,
 } from "../utils/wallRules.js";
@@ -170,6 +172,13 @@ watch(() => cloud.user && cloud.user.id, (uid) => {
    （offset 归 0、done=false、freshLanded=false），游标只认**本轮 fetch 的结果**
    （box.fromFetch）；快照亮完而 fresh 未落地前不翻页（防与第 1 页重复）。 */
 const FEED_PAGE = 50;
+/* 轮 431 · 首屏/刷新取数的**总预算**。真机取证：弱网下 /sb 的 wall_feed_page 挂到 12s+ 不返回，
+   而 swr 里 `await fetcher()` 没有任何超时 → loadCloud 永不返回 → loadingCloud 永久 true →
+   loadMoreCloud 的 `loadingCloud` 卫语句永远早退 → 列表停在首屏 20 条，触底一个请求都不发
+   （用户原话：「往下拉到一个位置就无法往下拉了」）。
+   超时只放弃「等」，不丢弃数据：底层请求继续走，下一次进入/刷新照常拿到；
+   这里给的是整段预算（取数 + 兜底取数 + 评论数），不是每次请求各给一遍，免得串行叠加成 20 秒。 */
+const LOAD_TIMEOUT_MS = 9000;
 const REFRESH_PAGE = 20;   /* 轮 162：刷新/首屏批瘦身——视口只露 16 张，拉 50 条+两轮富化纯浪费；触底续载仍 50 */
 const feedCursor = ref(null);   /* 轮 62：游标 = 已加载最后一条的 dbId（id 单调=发布序），取代 offset */
 const cloudDone = ref(false);
@@ -367,14 +376,20 @@ async function loadCloud({ fresh = false, quiet = false } = {}) {
      随机批不回写缓存 + 挂载永远拉最新页 → 重开/刷新总回到同一批）。 */
   const fetcher = async () => {
     /* 轮 169：首屏也走合并包（一个请求：最新+随机+回应+评论数），弱网少 4 个来回；
-       失败退回旧两段式（最新页）兜底。触底续载照旧按游标拉更早的。 */
-    const pack = await cloudFetchWallRefresh(REFRESH_PAGE).catch(() => null);
+       失败退回旧两段式（最新页）兜底。触底续载照旧按游标拉更早的。
+       轮 431：整段套总预算（见 LOAD_TIMEOUT_MS）——没有它，弱网一次挂死就把
+       loadingCloud 钉在 true，触底续载再也发不出去。 */
+    const t0 = Date.now();
+    const left = () => Math.max(1200, LOAD_TIMEOUT_MS - (Date.now() - t0));
+    const pack = await withTimeout(cloudFetchWallRefresh(REFRESH_PAGE), left()).catch(() => null);
     if (pack && Array.isArray(pack.rows) && pack.rows.length) {
       return { rows: pack.rows, counts: pack.counts || {}, fromFetch: true };
     }
-    const rows = await cloudFetchPosts(REFRESH_PAGE, 0).catch(() => null);
+    const rows = await withTimeout(cloudFetchPosts(REFRESH_PAGE, 0), left()).catch(() => null);
     if (!rows) return null;   /* 拉取失败 → 不覆盖、不回写缓存 */
-    const counts = await cloudFetchCommentCounts(rows.map((r) => r.dbId)).catch(() => null);
+    const counts = await withTimeout(
+      cloudFetchCommentCounts(rows.map((r) => r.dbId)), left()
+    ).catch(() => null);
     return { rows, counts: counts || {}, fromFetch: true };
   };
   if (fresh) {
@@ -440,6 +455,10 @@ async function loadCloud({ fresh = false, quiet = false } = {}) {
     }
   } finally {
     loadingCloud.value = false;
+    /* 轮 431：首屏/刷新一结束就补排一次 —— 用户若在这几秒里已经滑到底，
+       那次 tick 是被 loadingCloud 挡掉的（loadMoreCloud 的卫语句直接 return），
+       而到底之后不会再有任何 scroll 事件，不补这一记就永远不续载。 */
+    scheduleFeedTick();
   }
   return freshOk;
 }
@@ -688,15 +707,33 @@ const moreTarget = ref(null);   /* { type, reportable, dbId, label, copy } */
 function postMoreKey(p) { return "post:" + (p.dbId != null ? p.dbId : p.id); }
 function cmtMoreKey(cm) { return "cmt:" + cm.id; }
 /* 轮 128 · 收藏（#13）：⋯菜单收藏/取消；favSet 随信息流批次与登录态刷新 */
+/* 轮 433 · 增量查询：旧写法每次追加一页就把**全部已加载 id** 重发一次
+   （`wallFavCheck` 的 in(...)）。536 条时 URL 已经很长，几千条会撑爆/变慢；
+   而追加其实只新增 50 个 id，其余早就问过了。改成「只问没问过的」。
+   favKnown = 问过服务端的 dbId（无论收藏与否）；favSet 只放「已收藏」。
+   服务端只回**收藏了的** → 结果一律并集写入，晚到的旧批次不会把刚点的收藏抹掉。 */
+const FAV_BATCH = 200;   /* 单次 in(...) 的 id 上限：200 × 8 位 ≈ 1.6KB，稳在 URL 长度内 */
 const favSet = ref(new Set());
-async function refreshFav() {
-  if (!signedIn.value) { favSet.value = new Set(); return; }
-  const ids = [...new Set(cloudPosts.value.map((x) => x.dbId).filter((x) => x != null))];
-  if (!ids.length) return;
-  favSet.value = new Set(await cloudFavIds(ids));
+const favKnown = new Set();
+async function refreshFav(reset = false) {
+  if (!signedIn.value) { favSet.value = new Set(); favKnown.clear(); return; }
+  /* 换人（登录/登出）才清账 —— 收藏是「按人」的；列表刷新/换排序不影响某帖收没收藏，
+     那些 id 问过就可以一直复用，不必重问。 */
+  if (reset) { favKnown.clear(); favSet.value = new Set(); }
+  const all = [...new Set(cloudPosts.value.map((x) => x.dbId).filter((x) => x != null))];
+  const fresh = all.filter((id) => !favKnown.has(id));
+  if (!fresh.length) return;
+  for (const id of fresh) favKnown.add(id);   /* 先记账：并发多次触发不会重复问同一批 */
+  for (let i = 0; i < fresh.length; i += FAV_BATCH) {
+    const got = await cloudFavIds(fresh.slice(i, i + FAV_BATCH));
+    if (!got.length) continue;
+    const next = new Set(favSet.value);
+    for (const id of got) next.add(id);
+    favSet.value = next;
+  }
 }
 watch(() => cloudPosts.value, () => { refreshFav(); });
-watch(signedIn, () => { refreshFav(); });
+watch(signedIn, () => { refreshFav(true); });
 function moreFav() {
   const t0 = moreTarget.value;
   closeMore();
@@ -1723,6 +1760,18 @@ const reveal = ref(PAGE_SIZE);
 watch([sortMode, rangeMode], () => { reveal.value = PAGE_SIZE; recDays.value = REC_LEVELS[0]; });
 const shownPage = computed(() => shown.value.slice(0, reveal.value));
 const hasMore = computed(() => shown.value.length > reveal.value);
+/* 轮 432 · 「就到这里啦」只许在**真的没得放**时出现。
+ * 病根（用户截图）：线上近 30 天只有 11 条，推荐窗还卡在 30 天没放宽（见 feedTick 轮 432 注释），
+ * 11 条亮完 → `!hasMore && cloudDone` 成立 → 底部报「就到这里啦」，可库里还有 503 条没放宽出来。
+ * 所以再加一条：推荐流必须已经放宽到**最后一档（全部）**，才有资格说「到底」。
+ * 反过来说，只要还能放宽，就不许报到底 —— 下一拍 feedTick 会把窗口开大。
+ * 顺带修掉搜索态：搜索结果的「到底」由搜索自己管（searchDone），不该借用信息流的 cloudDone。 */
+const recMaxed = computed(
+  () => sortMode.value !== "recommend" || recDays.value === REC_LEVELS[REC_LEVELS.length - 1]
+);
+const feedEnd = computed(
+  () => !searchActive.value && shownPage.value.length > 0 && !hasMore.value && cloudDone.value && recMaxed.value
+);
 const sentEl = ref(null);
 
 /* ══════════ 轮 82 · B1 档：动态流虚拟窗口（只挂视口附近的卡片）══════════
@@ -1746,18 +1795,76 @@ const POST_GAP = 18;                 /* 卡片间距 = .card 的 margin-bottom�
 const FEED_EST = DEFAULT_EST;
 const winStart = ref(0);
 const winEnd = ref(PAGE_SIZE + 2);   /* 首屏先挂一小把，onMounted 立刻按真实视口算准 */
-const padTop = ref(0);    /* 轮 223：虚拟窗口退役，占位块恒 0（保留 ref 兼容模板/锚点） */
+const winOn = ref(false);            /* 窗口是否启用（短列表 = 关，渲染与旧版逐字节一致） */
+const padTop = ref(0);    /* 上占位块高度 = 窗口起点之前所有条目的（实测/估值 + 间距）之和 */
 const padBottom = ref(0);
 const padTopEl = ref(null);
 const cardEls = new Map();           /* id → 卡片元素（量高 / 锚点补偿用） */
-const seenCards = new Set();         /* 至少在视口里露过面的卡片 id（只有它们的屏外高度可信） */
 const heights = {};                  /* id → 实测高度 px（键用 idOf 归一） */
-/* 轮 223：虚拟窗口退役——几十条帖子的规模下纯自残（pads 重算把滚动钳回 0，
- * 位置保持全废，用户实测「切页签回页顶」）。全量真实渲染：位置由真实 DOM 天然保持。
- * 真到几百条再上虚拟列表时，必须连滚动容器一起换（window → 内部容器）。 */
-const pageItems = computed(() => shownPage.value);
+/* ══════════ 轮 434 · 虚拟窗口上线（只挂视口附近 ±DEFAULT_OVERSCAN 张）══════════
+ * 轮 223 曾把它退役：pads 重算会把 scrollTop 钳回 0，「切页签回页顶」「从详情返回不保持原样」。
+ * 真根因不是「有占位块」本身，而是**在容器被 KeepAlive 藏起来（display:none）时照样重算**：
+ * 那一刻 rect / scrollTop 全是 0，窗口被拍回顶部、pads 跟着塌，位置就没了。
+ * 所以本轮的三道保险：
+ *   ① 容器不可见（getClientRects 为空 / clientHeight 0）→ **一个字节都不动**，等它显形再算；
+ *   ② 布局不变量：占位块高度 == 被回收卡片的真实高度。靠「估高常量 == contain-intrinsic-size」
+ *      + 「挂着的卡每帧量一次实测高」共同保证 → 换窗口时上方总高不变，视觉不跳、scrollTop 不被夹；
+ *   ③ 短列表（≤ WINDOW_ON_THRESHOLD 条）窗口关闭、全量真实渲染 = 完整回退阀。
+ * 收益：滚 536 条和滚 50 条一样，DOM 里恒定 ~30 张卡（原来是 O(n) 张，且每帧要量 n 张卡）。 */
+const pageItems = computed(() => {
+  const list = shownPage.value;
+  if (!winOn.value) return list;
+  const n = list.length;
+  if (!n) return list;
+  /* 列表被换掉/变短时窗口下标可能越界：越界就从头挂起，绝不返回空白（否则会闪一帧空列表） */
+  const s = winStart.value >= 0 && winStart.value < n ? winStart.value : 0;
+  const e = Math.min(Math.max(winEnd.value, s), n);
+  return list.slice(s, e);
+});
+
+/* ═════════ 轮 428 · 空状态分两类（原来只有「一条都拉不到」才提示） ═════════
+ * 病根（用户原话）：「点击同感最多，近两天，当没有内容直接空白了，连个提示都没有」。
+ * 旧空状态的条件是 `cloudPosts.length === 0` —— 只看云端**拉没拉到**，
+ * 完全不看**筛完还剩几条**。于是「同感最多 + 近两天」（滚动 2 天窗）在墙冷清时筛出 0 条：
+ * cloudPosts 有货 → 空状态不画；pageItems 空 → 一张卡不画，页面只剩上面两排按钮，
+ * 下面纯空白。用户分不清是「真没内容」还是「页面坏了」。
+ *
+ * 两类分开，不要混：
+ *   ① feedEmpty   墙真的空 → 发帖引导（原有那种）
+ *   ② filterEmpty 有内容、只是被当前「排序 + 时间范围」全挡掉 → 给「放宽 / 回推荐」出口
+ * 搜索态不走这里（搜索无结果在搜索栏底下已有「没有找到」）。 */
+const feedEmpty = computed(() => !searchActive.value && !loadingCloud.value && !all.value.length);
+const filterEmpty = computed(
+  () => !searchActive.value && !loadingCloud.value && !!all.value.length && !shown.value.length
+);
+/* 空状态里要告诉用户「现在筛的是哪一档」；推荐没有范围按钮，就只报排序名 */
+const emptyScope = computed(() => {
+  const s = SORTS.find((x) => x.key === sortMode.value);
+  const name = s ? t(s.tk) : "";
+  if (!usesRange(sortMode.value)) return name;
+  const r = RANGES.find((x) => x.key === rangeMode.value);
+  return r ? `${name} · ${t(r.tk)}` : name;
+});
+/* 出口三级降级：还能放宽范围 → 放宽；已到最宽 → 回推荐；已在推荐 → 刷新。
+   绝不渲染一个点了没反应的按钮。 */
+const emptyAction = computed(() => {
+  const wr = usesRange(sortMode.value) ? widerRange(rangeMode.value) : "";
+  if (wr) {
+    const r = RANGES.find((x) => x.key === wr);
+    return { kind: "range", key: wr, tk: r ? r.tk : "" };
+  }
+  return { kind: sortMode.value === "recommend" ? "refresh" : "sort", key: "", tk: "" };
+});
 
 let feedRaf = 0;
+/* 轮 431 · 到底自愈的三个小状态：定时器 id / 连续没进展的次数 / 上次进展指纹 */
+const FEED_IDLE_MS = 320;
+/* 上限 ≈ 4.5 秒空转（320 × 14）。首屏 /sb 慢到 10 秒的情况不靠空转硬等 ——
+   由 loadCloud 结束时的补排接上（见 loadCloud 的 finally）。 */
+const FEED_IDLE_MAX = 14;
+let feedIdle = 0;
+let feedIdleTries = 0;
+let feedIdleMark = "";
 let cardRO = null;
 let pinnedIdx = -1;                  /* 深链钉住的条号；用户自己滚一下就解除 */
 let userMoved = false;
@@ -1830,33 +1937,92 @@ function listScrollTop() {
 }
 
 /** 量卡片的真实高度：只信「确实渲染过」的。
- *  content-visibility:auto 下，没渲染过的卡片（屏外且从没露过面）量到的只是
- *  contain-intrinsic-size 的占位值 —— 拿它当实测没意义（估高已经等于这个值），
- *  而一旦卡片露过面，它的屏外高度就是可信的（浏览器会记住上次渲染的真实尺寸）。
- *  所以：进过视口 ±120px 的卡片，之后无论滚到哪都照量。 */
-function measureCards(vh) {
+ *  content-visibility:auto 下，没渲染过的卡片量到的就是 contain-intrinsic-size 的占位值
+ *  —— 那个值**恰好等于** DEFAULT_EST（T23 把 CSS ↔ 常量锁成相等），所以照存也不会错。
+ *  轮 434 改成**所有挂着的卡都量**（原来只量视口 ±120px）：虚拟窗口里挂着的卡都在
+ *  overscan 带内，一旦被回收就必须用它自己的真实高度当占位块，否则一条差 80px，
+ *  几百条下来就是「越滚越跳」。挂着的卡最多三十几张，量一遍不构成负担。 */
+function measureCards() {
   for (const [k, el] of cardEls) {
     if (!el || typeof el.getBoundingClientRect !== "function") continue;
     const r = el.getBoundingClientRect();
-    const inBand = r.bottom > -120 && r.top < vh + 120;
-    if (inBand) seenCards.add(k);
-    if (!inBand && !seenCards.has(k)) continue;
+    if (r.height <= 0) continue;          /* 还没被渲染出来的卡（height 0）不记 */
     const h = Math.round(r.height);
-    if (h > 0 && Math.abs((heights[k] || 0) - h) > 0.5) heights[k] = h;
+    if (h > 0 && Math.abs((heights[k] || 0) - h) > 0.5) { heights[k] = h; heightsVer++; }
   }
 }
 
-/** 算出并应用窗口（轮 223 退役版：pads 恒 0；pin 参数保留仅为兼容深链调用点） */
-function syncFeedWindow(pin = -1) {
-  /* 全量真实渲染：窗口 = 全部已亮条目，占位块高度恒 0（滚动位置由真实 DOM 天然保持）。
-     ⚠ 触底判定不在这里算 —— 见下面的 scrollerNearEnd()（它直接读真实滚动容器）。
-     窗口重算曾把 pads 改来改去，而 pads 一变浏览器就把 scrollTop 钳回 0 —— 这正是
-     「切页签/返回后回到页顶」的老根因，退役就是为了根治它。 */
-  winStart.value = 0;
-  winEnd.value = shownPage.value.length;
-  padTop.value = 0;
-  padBottom.value = 0;
-  return { offsets: null, total: 0 };
+/** 视口高度：手机端墙自滚（容器），桌面端随整页滚（window） */
+function feedViewportH() {
+  const el = wallScrollerEl.value;
+  if (el && el.clientHeight > 0) return el.clientHeight;
+  return window.innerHeight || document.documentElement.clientHeight || 0;
+}
+
+/** 容器是否被藏起来了（KeepAlive 的 display:none / 恢复期隐藏）—— 藏起来时几何全是 0 */
+function feedHidden() {
+  const el = wallScrollerEl.value;
+  if (!el) return false;
+  return el.getClientRects().length === 0 || el.clientHeight === 0;
+}
+
+/** 应用窗口（只在值真变了时才写 ref：每写一次都可能引起一次重排） */
+function applyWindow(on, s, e, pt, pb) {
+  const top = Math.round(pt);
+  const bottom = Math.round(pb);
+  if (winOn.value !== on) winOn.value = on;
+  if (winStart.value !== s) winStart.value = s;
+  if (winEnd.value !== e) winEnd.value = e;
+  if (padTop.value !== top) padTop.value = top;
+  if (padBottom.value !== bottom) padBottom.value = bottom;
+}
+
+/** 高度表版本号：measureCards 每量到一条新的实测高就 ++，用来让前缀高度表缓存失效 */
+let heightsVer = 0;
+let offsetsCache = { list: null, gap: 0, ver: -1, offsets: null, total: 0 };
+/** 前缀高度表（带缓存）：每帧重算 536 条加起来也不慢，但省下来的都是滚动帧的预算 */
+function feedOffsets(list, gap) {
+  const c = offsetsCache;
+  if (c.list === list && c.gap === gap && c.ver === heightsVer) return c;
+  const { offsets, total } = buildOffsets(list, heights, { est: FEED_EST, gap });
+  offsetsCache = { list, gap, ver: heightsVer, offsets, total };
+  return offsetsCache;
+}
+
+/** 算出并应用窗口（轮 434 重新上线；轮 223 的退役说明见 pageItems 上方）
+ *  @param {number} pin 深链钉住的条号（>=0 时窗口钉在它身上，忽略滚动位置）
+ *  @param {number|null} topOverride 用给定位置代替真实滚动位置（恢复存档时先铺好占位块再滚） */
+function syncFeedWindow(pin = -1, topOverride = null) {
+  const list = shownPage.value;
+  const n = list.length;
+  if (!n) { applyWindow(false, 0, 0, 0, 0); return null; }
+  /* ① 短列表：窗口关闭，全量真实渲染（与退役版逐字节一致，也是紧急回退阀） */
+  if (n <= WINDOW_ON_THRESHOLD) { applyWindow(false, 0, n, 0, 0); return null; }
+  /* ② 容器被藏起来 → 不动（这是轮 223 退役的真根因：此刻几何全是 0，照算会把位置拍回顶部） */
+  if (feedHidden()) return null;
+  const vh = feedViewportH();
+  if (!vh) return null;
+  const { offsets, total } = feedOffsets(list, feedGap());
+  const top = topOverride != null ? topOverride : listScrollTop();
+  const r = resolveWindow({
+    n, offsets, total, scrollTop: top, viewportH: vh,
+    overscan: DEFAULT_OVERSCAN, pinIndex: pin, threshold: WINDOW_ON_THRESHOLD,
+  });
+  applyWindow(r.on, r.start, r.end, r.padTop, r.padBottom);
+  /* 调试记账（轮 434）：只有页面自己先设了 window.__wpWantWin 才记，生产环境一次属性读即返回。
+     tools/feed-virtual-live.mjs 靠它回答「窗口是不是落后于滚动位置」——光看 DOM 分不清
+     「算错了」和「根本没算」。 */
+  if (typeof window !== "undefined" && window.__wpWantWin) {
+    const w = window.__wpWin || (window.__wpWin = []);
+    const last = w[w.length - 1];
+    /* 只在结果真的变了才记（每帧都记会把早期记录挤掉，恰恰丢掉要看的那一段） */
+    if (!last || last.s !== r.start || last.e !== r.end || last.pt !== Math.round(r.padTop) ||
+        last.n !== n || Math.abs(last.top - Math.round(top)) > 4) {
+      w.push({ t: Math.round(performance.now()), top: Math.round(top), vh, n, s: r.start, e: r.end, pt: Math.round(r.padTop), pb: Math.round(r.padBottom) });
+      if (w.length > 400) w.shift();
+    }
+  }
+  return { offsets, total };
 }
 
 /** 触底判定（轮 223）：虚拟窗口退役后不再靠占位块高度推算，直接读**真实滚动容器**。
@@ -1884,7 +2050,11 @@ function onUserMove() { userMoved = true; }
  *  删它们之前必须先把引用一并删干净。 */
 function feedTick() {
   feedRaf = 0;
+  if (feedIdle) { clearTimeout(feedIdle); feedIdle = 0; }
   if (userMoved) { userMoved = false; pinnedIdx = -1; }
+  /* 轮 434：**先量挂着的卡，再算窗口** —— 顺序反了就等于用上一轮的高度表去摆这一轮的占位块，
+     被回收的卡与替它的占位块差几像素，几百条下来就是「越滚越跳」。 */
+  measureCards();
   syncFeedWindow(pinnedIdx);
   if (!scrollerNearEnd()) return;
   /* 轮 231：把「先亮完、再拉下一页」的串行改成并行 ——
@@ -1892,12 +2062,46 @@ function feedTick() {
      ② 拉：只要已亮的快到「已拉取」的尾部（余量不足半屏），就**提前**向服务器要下一页（预加载）。
      串行版本里，用户每次滚到底都得先把剩下的 10 条熬完，才等到一次网络往返 —— 卡顿感就来自这里。 */
   if (hasMore.value) reveal.value = Math.min(shown.value.length, reveal.value + REVEAL_STEP);
-  /* 轮 293：推荐流触底逐级放宽 —— 当前档位已亮完（!hasMore）、服务端还有货（!cloudDone）→ 升一档。
+  /* 轮 293：推荐流触底逐级放宽 —— 当前档位已亮完（!hasMore）→ 升一档。
      必须放在 reveal 补齐之后：等「这一档真的亮完了」才升档，否则一进页就一路升到「全部」。
-     升档后 shown 变长（更早的天整体排在后面），下面的 notShown 随之变大 → 不会误触发分页。 */
-  if (sortMode.value === "recommend" && !hasMore.value && !cloudDone.value) widenRec();
+     升档后 shown 变长（更早的天整体排在后面），下面的 notShown 随之变大 → 不会误触发分页。
+     ─────────────────────────────────────────────────────────────
+     轮 432 · **去掉 !cloudDone 这道闸门**（用户实测：点了几下「同感最多 / 抱抱最多」，回「推荐」
+     往下一滑就到底、再也滑不动，截图里底部是「就到这里啦」）。
+     放宽是**纯本地动作**——数据早就在内存里，跟服务端还有没有下一页毫无关系；原来的闸门让它
+     恰好反着来：**全库都拉进内存（cloudDone=true）反而成了放宽的拦路虎**。
+     线上实测（2026-11-06，536 条可见帖）：近 7 天 0 条 → 近 30 天 11 条（10-22 的 1 条 +
+     10-12 的 10 条）→ 剩下 503 条全在 09-24。cloudDone=true 时 widenRec 永远不执行，
+     推荐窗死钉在「近 30 天」，11 条亮完就报「就到这里啦」，那 503 条永远放宽不出来。
+     `!hasMore` 已经保证不会一进页就升档（shown 比 reveal 长时走不到这里），闸门是多设的。 */
+  if (sortMode.value === "recommend" && !hasMore.value) widenRec();
   const notShown = shown.value.length - reveal.value;
-  if (!cloudDone.value && notShown < REVEAL_STEP / 2) loadMoreCloud();
+  /* 轮 432 · 时间档把内容全挡空时，别再往服务端翻页：更早的页只会更旧，永远进不了这个窗口。
+     旧行为是在「同感最多 + 近两天」这种空筛选下一直往后翻到全库末尾（实测连发十几次请求、
+     把 500 多条全拉进内存，白烧 Workers 额度），也正是上面那个 cloudDone=true 的来源。 */
+  const rangeStarved = usesRange(sortMode.value) && !shown.value.length && !!all.value.length;
+  if (!cloudDone.value && !rangeStarved && notShown < REVEAL_STEP / 2) loadMoreCloud();
+  /* 轮 431 · 到底自愈（用户：「暖心墙往下拉到一个位置就无法往下拉了」）
+   * ─────────────────────────────────────────────────────────────
+   * 真因不是滚动坏了，是**没有事件**：滚到底后浏览器不再派发 scroll（位置没变），
+   * 而 feedTick 只由 scroll / 数据变更 / RO 触发。小屏上两次滑动就到底，
+   * 那一刻首屏 swr 还在飞（loadingCloud=true，真机 /sb 单请求 8~10s）→
+   * loadMoreCloud 被卫语句挡住直接 return；等 loadingCloud 复位，用户已经贴着底部不动了，
+   * 再也没有 scroll 事件 —— 续载永久停住（真机复现：20 张卡、12 次上滑纹丝不动、
+   * 网络日志里一次 wall_posts 都没有）。同一处还会卡住 reveal：已拉到但没亮完的也停。
+   * 只要「还站在底部 且 还有没亮完 / 没拉完的」，就自己再排一次；
+   * 有进展就重置计数，连续多轮没进展就停手（防断网时每 320ms 空转发请求）。 */
+  if (hasMore.value || !cloudDone.value) {
+    const mark = reveal.value + "|" + cloudPosts.value.length + "|" + (cloudDone.value ? 1 : 0);
+    if (mark !== feedIdleMark) { feedIdleMark = mark; feedIdleTries = 0; }
+    if (feedIdleTries < FEED_IDLE_MAX) { feedIdleTries++; scheduleFeedIdle(); }
+  }
+}
+
+/** 到底自愈的下一拍（与 scheduleFeedTick 分开：rAF 只在本帧，这个是「等一会儿再看」） */
+function scheduleFeedIdle() {
+  if (feedIdle) return;
+  feedIdle = laterFeedTick(FEED_IDLE_MS, () => { feedIdle = 0; feedTick(); });
 }
 
 function scheduleFeedTick() {
@@ -1910,6 +2114,9 @@ function scheduleFeedTick() {
    于是那条「还在滚别动手」的守卫永远为假 = 形同虚设，补偿有概率掐断平滑滚动）。 */
 function onScroll(e) {
   lastScrollAt = performance.now();
+  /* 轮 431：用户又滚了 → 到底自愈重新计数（停手之后仍有下一次机会） */
+  feedIdleTries = 0;
+  feedIdleMark = "";
   /* 轮 224：滚的正是墙的容器时，顺手把位置记下来。
      必须**在滚动期记账** —— 离开时（onDeactivated）DOM 已被 KeepAlive 移进
      display:none 的隐藏容器，scrollTop 被浏览器归零，那时读什么都晚了。 */
@@ -1956,23 +2163,34 @@ function restoreFeed() {
   newestSeenTs.value = Math.max(newestSeenTs.value, s.newestTs || 0);
   reveal.value = s.reveal;
   restoreTick = true;
+  /* 轮 434：恢复也走虚拟窗口 —— 首帧别把整份存档一次性挂进 DOM（536 条 = 536 张卡）。
+     winOn 先打开，pageItems 就只挂首屏那一小把。 */
+  if (s.rows.length > WINDOW_ON_THRESHOLD) winOn.value = true;
   nextTick(() => {
-    holdAnchor();
-    window.scrollTo(0, s.y);                     /* 桌面端：整页滚动的回位 */
-    /* 轮 223：手机端位置在容器上（window.scrollY 恒 0）——存档里的 pane 才是真位置 */
-    if (s.pane && wallScrollerEl.value) wallScrollerEl.value.scrollTop = s.pane;
+    /* ① 首屏卡已挂上 → 卡距能读准了（手机 12px / 桌面 18px，写到 pads 里差 6px × 几百条） */
+    syncFeedWindow(-1, s.pane || s.y || 0);
     nextTick(() => {
-      if (s.pane && wallScrollerEl.value) wallScrollerEl.value.scrollTop = s.pane;   /* 布局落定后再钉一次 */
-      releaseAnchor();
-      restoreTick = false;
-      savedFeedPos = null;
-      feedRestoring.value = false;   /* 轮 217：已钉在原位置，揭示 */
-      try { removeItem(FEED_ARCHIVE_KEY); } catch (e) { /* 忽略 */ }
-      scheduleFeedTick();
+      /* ② pads 已落地 → 现在内容总高才是「全部条目之和」，滚过去不会被浏览器夹住 */
+      holdAnchor();
+      window.scrollTo(0, s.y);                     /* 桌面端：整页滚动的回位 */
+      /* 轮 223：手机端位置在容器上（window.scrollY 恒 0）——存档里的 pane 才是真位置 */
+      if (s.pane && wallScrollerEl.value) wallScrollerEl.value.scrollTop = s.pane;
+      nextTick(() => {
+        if (s.pane && wallScrollerEl.value) wallScrollerEl.value.scrollTop = s.pane;   /* 布局落定后再钉一次 */
+        releaseAnchor();
+        restoreTick = false;
+        savedFeedPos = null;
+        feedRestoring.value = false;   /* 轮 217：已钉在原位置，揭示 */
+        try { removeItem(FEED_ARCHIVE_KEY); } catch (e) { /* 忽略 */ }
+        scheduleFeedTick();
+      });
     });
   });
 }
 
+/* 轮 433 · 离场存档改成「只存窗口 + 预算阶梯」，纯函数在 utils/feedArchive.js
+ * （tools/feed-archive-test.mjs 覆盖：整份 / 去高度表 / 截窗口 / 放不下四档）。
+ * 旧写法全量 stringify、超 1.5MB 整份放弃 —— 帖量一大存档就静默失效。 */
 onUnmounted(() => {
   /* 轮 95：离场存位（含实测高度表），返回时整份恢复 */
   if (cloudPosts.value.length) {
@@ -1987,10 +2205,10 @@ onUnmounted(() => {
       heights: { ...heights },
       cmtTotal: { ...cloudCmtTotal.value },   /* 轮 127：评论数跟帖子一起存（否则返回全变 0，用户实测） */
     };
-    /* 轮 215：落盘——App 重启/页面刷新后也能回到原位置（体积超 1.5MB 放弃，防撑爆 localStorage） */
+    /* 轮 215：落盘——App 重启/页面刷新后也能回到原位置 */
     try {
-      const blob = JSON.stringify(savedFeedPos);
-      if (blob.length < 1500000) setItem(FEED_ARCHIVE_KEY, blob);
+      const blob = buildFeedArchive(savedFeedPos);
+      if (blob) setItem(FEED_ARCHIVE_KEY, blob);
     } catch (e) { /* 忽略 */ }
   }
   /* 轮 306：取消后必须归零 —— 留着非零 id，scheduleFeedTick 的 `if (feedRaf) return`
@@ -1998,11 +2216,15 @@ onUnmounted(() => {
   if (feedRaf) { cancelAnimationFrame(feedRaf); feedRaf = 0; }
   for (const t of feedTimers) clearTimeout(t);
   feedTimers = [];
+  /* 轮 431：到底自愈的定时器也在这里一起作废（它在 feedTimers 里已 clear，
+     但 id 不清零的话，复活后 scheduleFeedIdle 会被 `if (feedIdle) return` 永久挡掉） */
+  feedIdle = 0;
+  feedIdleTries = 0;
+  feedIdleMark = "";
   if (cardRO) cardRO.disconnect();
   releaseAnchor();                   /* 中途离场（跳转动画还没跑完）也要把锚定还回去 */
   cardEls.clear();
   cardRefs.clear();
-  seenCards.clear();
   gapCache = 0;
   window.removeEventListener("scroll", onScroll);
   window.removeEventListener("resize", onViewport);
@@ -2028,6 +2250,46 @@ function goDetail(p) {
   cachePostView(p);   /* 详情页 SWR 先读这份：从墙点进去 0ms 有内容，弱网不空等 */
   setPostNav(shown.value);   /* 轮 279：把「当前这张列表」存下来,详情页据此算上一条/下一条 */
   router.push({ name: "postDetail", params: { id: p.dbId } });
+}
+
+/* 轮 427 · 整卡可点（用户：「暖心墙帖子有时候第一次点击无法进入详细页面，需要第二次或者多次点击」）
+ * ──────────────────────────────────────────────────────────────
+ * 真机网格扫描（.probe11/scan.js，393×895 视口、12px 步长、1798 个采样点）：
+ *   卡片区域内 **86.3% 的落点按下毫无反应**——只有 6.7% 压在正文那一行（25px 高）或图上能进详情，
+ *   另有 7% 落在头像/名字上进的是主页。卡片高 304px，正文只占 25px，剩下全是内边距与文字间的空白。
+ *   用户随手一点多半落在空白处（按下只有一层按压反馈、页面不动），再点一次碰巧压到文字才进去
+ *   —— 体感就是「第一次点不进去，要点两次甚至多次」。
+ *
+ * 修法：卡片本体兜底跳详情（小红书 / 微博同款：整张卡就是入口）。
+ *   内部自己管自己的区域一律让路，不抢它们的点击——
+ *   尤其是 .go-detail（正文/图自己已经绑了 goDetail，不排除会跳两次）。
+ *
+ * 为什么不用 `e.defaultPrevented` / `stopPropagation` 判：卡片里那些子元素绝大多数没有 .stop，
+ * 事件照样冒泡上来，只能按「点到了谁」来分工。
+ * 为什么 .post-head 不整块排除：头像/名字/⋯ 各自已在清单里精确排除，
+ * 头部剩下的时间与空白点下去也该进详情（它占了卡片 23% 的面积）。
+ *
+ * 为什么 .react-row / .post-foot 不排除（轮 427 真机第二版）：
+ *   第一版把它们整块排除，真机甩动后立刻点击连测三次——
+ *   ① 落在 .post-foot（浏览数那行，51px 高、大部分是空白）→ 毫无反应；
+ *   ② 落在 .cmt-entry（评论占位条）→ 弹输入条；
+ *   ③ 落在正文 → 才进详情。
+ *   也就是用户嘴里的「要点两三次」。反应按钮与厌恶按钮本身是 <button>，
+ *   靠 button 这一条就够拦了，整行排除只会把按钮之间的空白也判成死区。 */
+const CARD_OWN = [
+  "button", "a[href]", "input", "textarea", "select", "label",
+  ".clickable",                 /* 头像 / 作者名 → 对方主页 */
+  ".more-btn", ".more-item", ".more-pop",
+  ".go-detail",                 /* 正文 / 图：自己有 goDetail，别跳两次 */
+  ".tag-chip",
+  ".cmt-entry", ".cmt-toggle", ".cmt-box", ".cmt-input",
+  ".wp-composer", ".wp-composer-picker",
+].join(",");
+
+function onCardTap(p, e) {
+  const t = e && e.target;
+  if (t && t.closest && t.closest(CARD_OWN)) return;
+  goDetail(p);
 }
 
 /* 轮 89：墙内回复超过可见数 → 跳详情页（带 cid 参数），详情页自动展开该线程的二级回复 */
@@ -2301,8 +2563,8 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
 
     <!-- 轮 277（用户拍板）：手机端首屏骨架退役（与底部轮 272/276 同口径）——数据不变。 -->
 
-    <!-- 轮 333 · 空状态：暖心墙第一次打开或没有内容时，展示温和引导（非搜索态、非加载中、无云端帖） -->
-    <div v-if="!searchActive && !loadingCloud && cloudPosts.length === 0" class="wall-empty">
+    <!-- 轮 333 · 空状态 ①：墙真的空（非搜索态、非加载中、一条都没有）→ 发帖引导 -->
+    <div v-if="feedEmpty" class="wall-empty">
       <div class="wall-empty-ic" aria-hidden="true">💛</div>
       <h3 class="wall-empty-title">{{ t("community.emptyTitle") }}</h3>
       <p class="wall-empty-desc">{{ t("community.emptyDesc") }}</p>
@@ -2311,13 +2573,39 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
       </n-button>
     </div>
 
+    <!-- 轮 428 · 空状态 ②：有内容，但被「排序 + 时间范围」全挡掉（原来这里是一片空白） -->
+    <div v-else-if="filterEmpty" class="wall-empty wall-empty--filter">
+      <div class="wall-empty-ic" aria-hidden="true">🌱</div>
+      <h3 class="wall-empty-title">{{ t("community.filterEmptyTitle") }}</h3>
+      <p class="wall-empty-desc">{{ t("community.filterEmptyDesc", { scope: emptyScope }) }}</p>
+      <div class="wall-empty-acts">
+        <n-button v-if="emptyAction.kind === 'range'" type="primary" size="medium" round
+          class="wall-empty-btn" @click="pickRange(emptyAction.key)">
+          {{ t("community.filterEmptyWiden", { range: t(emptyAction.tk) }) }}
+        </n-button>
+        <n-button v-else-if="emptyAction.kind === 'sort'" type="primary" size="medium" round
+          class="wall-empty-btn" @click="pickSort('recommend')">
+          {{ t("community.filterEmptyRec") }}
+        </n-button>
+        <n-button v-else type="primary" size="medium" round
+          class="wall-empty-btn" :loading="loadingCloud" @click="manualRefresh({ pin: true })">
+          {{ t("community.filterEmptyRefresh") }}
+        </n-button>
+        <button v-if="emptyAction.kind === 'range'" type="button" class="wall-empty-link"
+          @click="pickSort('recommend')">
+          {{ t("community.filterEmptyRec") }}
+        </button>
+      </div>
+    </div>
+
     <!-- 轮 82 · B1 档：虚拟窗口占位块（高度由脚本按实测高度表写行内 style，撑住滚动高度） -->
     <div ref="padTopEl" class="feed-pad" :style="{ height: padTop + 'px' }" aria-hidden="true"></div>
 
     <!-- 动态流（默认 10 条，滑到底自动续 10 条；只挂视口附近十几条，其余用占位块撑高） -->
     <article v-for="p in pageItems" :key="p.id" :ref="bindCard(p)" class="post-card card"
       :id="p.dbId != null ? 'post-' + p.dbId : undefined"
-      :class="{ 'post-focus': focusId && String(p.dbId) === focusId }">
+      :class="{ 'post-focus': focusId && String(p.dbId) === focusId }"
+      @click="onCardTap(p, $event)">
       <div class="post-head">
         <n-avatar round :size="42" class="post-avatar"
           :class="{ clickable: canOpen(p) }"
@@ -2559,7 +2847,7 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
     <!-- 触底续载哨兵（轮 82 起：续载判断改由 feedWindow.nearEnd 计算——有占位块后哨兵
          会被推到几万像素外，永远不触发；此元素保留作底部锚点与既有测试选择器） -->
     <div ref="sentEl" class="feed-sentinel" aria-hidden="true"></div>
-    <p v-if="shownPage.length && !hasMore && cloudDone" class="notice" style="text-align: center">
+    <p v-if="feedEnd" class="notice" style="text-align: center">
       {{ t("community.noMore") }}
     </p>
     <!-- 轮 272（用户拍板）：触底续载的底部文字 + 骨架屏整体退役——
@@ -2614,6 +2902,29 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
 .wall-empty-btn {
   font-size: 14px;
 }
+/* 轮 428：筛选空态的两个出口（主按钮 + 次级文字按钮，竖排居中） */
+.wall-empty-acts {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.wall-empty-link {
+  background: none;
+  border: 0;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--ink-soft);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  border-radius: 999px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.wall-empty-link:active { opacity: 0.62; }
+.wall-empty--filter .wall-empty-ic { font-size: 48px; margin-bottom: 12px; }
 .wall-pull { display: flex; align-items: center; justify-content: center; overflow: hidden; color: var(--ink-soft); transition: height .15s ease; }
 .wp-ic { width: 22px; height: 22px; flex: none;
   fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round;

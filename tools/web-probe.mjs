@@ -1,6 +1,8 @@
 /* 网页版实测工装（独立于真机）：无头 Edge + CDP 精确设备模拟 + 真实站点/构建产物
  *   用法：node tools/web-probe.mjs --file=./tools/_expr_x.js [--url=https://warmpaws.de5.net/]
  *                                    [--w=393] [--h=852] [--wait=1500] [--dpr=2.75] [--shot=out.png]
+ *                                    [--proxy=/sb=https://warmpaws.de5.net/sb]（可重复，需配 --serve）
+ *                                    [--timeout=30000]（页面内求值的超时；长时间滚动的脚本要给大）
  *   行为：起无头 Edge（远程调试）→ Emulation.setDeviceMetricsOverride 精确模拟手机视口
  *         → 导航 → 等 load + wait ms → 在页面里求值 --file（awaitPromise/returnByValue）→ 打印 JSON
  *         → 传了 --shot 再截一张 PNG（肉眼验收排版，省得靠猜）
@@ -26,6 +28,7 @@ const trace = arg("trace", "0") === "1";
 const PORT = Number(arg("port", "9333"));
 const serve = arg("serve", "");          /* 传目录（如 dist）→ 起本地静态服务器 + SPA 回退，--url 可写相对路径 */
 const servePort = Number(arg("servePort", "0")); /* 0 = 系统分配（避免并发/残留占用 8791） */
+const evalTimeout = Number(arg("timeout", "30000"));   /* 页面内脚本要跑几十秒时调大 */
 const shot = arg("shot", "");            /* 传路径 → 求值后再截一张 PNG（肉眼验收排版） */
 let child = null;                        /* 提到模块作用域：退出时才能真正杀掉无头 Edge */
 
@@ -44,9 +47,49 @@ const MIME = {
   ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp",
   ".ico": "image/x-icon", ".woff2": "font/woff2", ".woff": "font/woff", ".map": "application/json",
 };
+/* ── 同源反代（--proxy=/sb=https://warmpaws.de5.net/sb）─────────────────────
+ * 为什么需要：dist 里的云请求走 sbFetch 拼成 `${API_BASE}/sb/*`。给 App 用的构建把
+ * API_BASE 写死成绝对地址，浏览器从 127.0.0.1 打开时就成了跨源 → 网关没开 CORS，
+ * 整条数据链取不到（页面只剩空壳，看上去像「组件坏了」）。
+ * 反过来把 API_BASE 留空（同源 /sb），再由本地服务器反代到网关 —— 与线上托管完全同构。
+ * 支持多个 --proxy，写成 a=b 重复给即可。 */
+const proxies = process.argv
+  .filter((a) => a.startsWith("--proxy="))
+  .map((a) => a.slice(8))
+  .map((s) => { const i = s.indexOf("="); return i > 0 ? { from: s.slice(0, i), to: s.slice(i + 1) } : null; })
+  .filter(Boolean);
+
+async function forward(req, res, rule) {
+  const chunks = [];
+  for await (const c of req) chunks.push(c);
+  const body = chunks.length ? Buffer.concat(chunks) : undefined;
+  const dest = rule.to.replace(/\/$/, "") + (req.url || "").slice(rule.from.length);
+  const headers = {};
+  for (const [k, v] of Object.entries(req.headers)) {
+    if (/^(host|connection|accept-encoding|content-length)$/i.test(k)) continue;
+    headers[k] = v;
+  }
+  try {
+    const r = await fetch(dest, { method: req.method, headers, body });
+    const buf = Buffer.from(await r.arrayBuffer());
+    const h = {};
+    r.headers.forEach((v, k) => {
+      if (/^(content-encoding|content-length|transfer-encoding|connection)$/i.test(k)) return;
+      h[k] = v;
+    });
+    res.writeHead(r.status, h);
+    res.end(buf);
+  } catch (e) {
+    res.writeHead(502, { "content-type": "application/json" });
+    res.end(JSON.stringify({ message: "proxy-failed: " + (e && e.message) }));
+  }
+}
+
 /* 本地静态服务器 + SPA 回退（线上托管也有同款回退；缺文件→index.html） */
 function startServer(dir) {
   const srv = http.createServer((req, res) => {
+    const hitRule = proxies.find((p) => (req.url || "").startsWith(p.from));
+    if (hitRule) { forward(req, res, hitRule); return; }
     const url = decodeURIComponent((req.url || "/").split("?")[0]);
     let file = path.join(dir, url);
     if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(dir, "index.html");
@@ -114,7 +157,7 @@ async function main() {
 
   const expr = file ? fs.readFileSync(file, "utf8") : "location.href";
   const r = await send("Runtime.evaluate", {
-    expression: expr, awaitPromise: true, returnByValue: true, timeout: 30000,
+    expression: expr, awaitPromise: true, returnByValue: true, timeout: evalTimeout,
   });
   console.log(JSON.stringify(r.result && r.result.value !== undefined ? r.result.value : r, null, 1));
   if (trace && logs.length) console.log("--- console ---\n" + logs.slice(-25).join("\n"));

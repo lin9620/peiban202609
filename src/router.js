@@ -54,6 +54,8 @@ export const router = createRouter({
     /* 通知中心 */
     { path: "/notifications", name: "notifications", component: () => import("./views/NotificationsView.vue") },
 { path: "/settings", name: "settings", component: () => import("./views/SettingsView.vue") },
+    /* 轮409：已拉黑名单不再在设置页内展开，单独一页。 */
+    { path: "/settings/blocked", name: "blockedUsers", component: () => import("./views/BlockedView.vue") },
     { path: "/admin", name: "admin", component: () => import("./views/AdminView.vue") },
     /* 隐私政策：Google OAuth 发布需要可公开访问的政策链接（外部审核会来抓这页） */
     { path: "/privacy", alias: "/zh/privacy", name: "privacy", component: () => import("./views/PrivacyView.vue") },

@@ -477,12 +477,12 @@ export const db = {
 
   /* ══════════ 温暖漂流瓶（#6：写/捞/回/放回/我的信/我捞到的） ══════════ */
 
-  /** 投一封信进海里（每日 5 封由 RPC 里数 created_day 把关；轮 305：用户要求 3 → 5） */
+  /** 投一封信进海里（滚动 24h 5 封由 RPC 把关；轮 305：3 → 5） */
   bottleSend(body) {
     return unwrap(sb().rpc("bottle_send", { p_body: body }));
   },
 
-  /** 随机捞一封（不是自己的；捞起即独占，48h 不处理自动回海） */
+  /** 公平捞一封（不是自己的；捞起即独占；24h 最多 30 瓶） */
   bottleFish() {
     return unwrap(sb().rpc("bottle_fish"));
   },
@@ -495,6 +495,11 @@ export const db = {
   /** 不想回，放回海里 */
   bottleRelease(id) {
     return unwrap(sb().rpc("bottle_release", { p_id: id }));
+  },
+
+  /** 举报一封信：同一用户不再捞到；3 人举报后全局隐藏（轮 411） */
+  bottleReport(id, reason = "other", detail = "") {
+    return unwrap(sb().rpc("bottle_report", { p_id: id, p_reason: reason, p_detail: detail }));
   },
 
   bottleRecords(id = null, offset = 0, { mine = null, limit = 0 } = {}) {
@@ -517,7 +522,7 @@ export const db = {
     return unwrap(sb().rpc("bottle_held"));
   },
 
-  /** 今日已用次数（服务端权威，UTC 日）：{ sent, fished }（轮 18：跨端不再打架） */
+  /** 过去 24 小时已用次数（服务端权威）：{ sent, picked, fished } */
   bottleQuota() {
     return unwrap(sb().rpc("bottle_quota"));
   },

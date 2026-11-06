@@ -90,7 +90,7 @@ async function toggleBlock() {
   blockArm.value = false;
   try {
     if (isBlockedHere.value) await unblockUser(uid);
-    else await blockUser(uid);
+    else await blockUser(uid, name.value);
   } catch (e) { dmMsg.value = t("dm.errNetwork"); }
   blockBusy.value = false;
 }
@@ -271,7 +271,7 @@ onMounted(async () => {
 
     <!-- TA 的帖子（只读展示；下架的不显示） -->
     <template v-if="!failed">
-      <article v-for="p in posts" :key="p.id" class="post-card card">
+      <article v-for="p in posts" :key="p.id" class="post-card card" @click="goDetail(p)">
         <div class="post-head">
           <n-avatar round :size="40" class="post-avatar" :src="avatarUrlFor(uid) || undefined"><template v-if="!avatarUrlFor(uid)" #default>{{ initial }}</template><template v-else #fallback>{{ initial }}</template></n-avatar>
           <div class="post-meta">

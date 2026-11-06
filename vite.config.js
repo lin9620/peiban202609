@@ -165,6 +165,11 @@ function seoRoutes() {
           desc: "Skin, language and notifications — all in one gentle place.",
         },
         {
+          dir: "settings/blocked",
+          title: "Warm Paws · Blocked Users",
+          desc: "Review the people you have blocked and unblock them when you are ready.",
+        },
+        {
           dir: "messages",
           title: "Warm Paws · Messages",
           desc: "Gentle direct messages, kind notes and drift-bottle replies.",

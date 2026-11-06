@@ -11,6 +11,7 @@ import SideRails from "./components/SideRails.vue";
 import SideNav from "./components/SideNav.vue";
 import TabBar from "./components/TabBar.vue";
 import { isApp, isMobileNav, runBack, tabbarSuppressed, navOpen, dlOpenSeq } from "./stores/uiStore.js";
+import { installTapFeedback } from "./utils/tapFeedback.js";
 import {
   wallet, moodStreak, petNotices, dismissPetNotice,
 } from "./stores/petStore.js";
@@ -104,6 +105,7 @@ watch(dlOpen, (v) => {
 const ROOT_VIEWS = ["home", "community", "messagesList", "profile"];
 let backHandle = null;
 let authUrlHandle = null;   /* 轮 31：谷歌登录回跳监听（App 端） */
+let unTapFeedback = null;  /* 轮 424：全局按压反馈（见 utils/tapFeedback.js） */
 
 /* —— 启动页预热（轮 24）：与 MessagesView.loadConvs 同款 key + fetcher ——
  * 启动页期间把会话列表缓存刷新好，用户点进消息 Tab 时 cached 直接命中（秒开最新列表）。 */
@@ -144,6 +146,9 @@ function removeSplash() {
 }
 
 onMounted(async () => {
+  /* 轮 424：全局「按下就有反应」。装得越早越好 —— 启动页上也应该能点出反馈，
+   * 不能等 initCloud 那 2.5 秒。失败不影响主流程。 */
+  try { unTapFeedback = installTapFeedback(); } catch (e) { /* 忽略 */ }
   /* 轮 24：启动页（index.html 静态层）在「云端会话就绪 + 会话缓存预热」后淡出；
    * 最多等 2.5 秒兜底放行——云端挂了也不能把用户挡在启动页里。 */
   const boot = initCloud()
@@ -196,6 +201,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   if (backHandle) backHandle.remove();
   if (authUrlHandle) authUrlHandle.remove();
+  if (unTapFeedback) { unTapFeedback(); unTapFeedback = null; }
 });
 
 /* 登录态变化 → 起停角标轮询（未登录不轮询，省流量）；

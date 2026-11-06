@@ -98,7 +98,7 @@ if (exists("dist/index.html")) {
 
 /* ─── ⑦ history 路由产物（若已构建） ─── */
 if (exists("dist/pet/index.html")) {
-  const routeDirs = ["pet", "community", "profile", "privacy"];
+  const routeDirs = ["pet", "community", "profile", "privacy", "settings/blocked"];
   const missingH = routeDirs.filter((d) => !exists(`dist/${d}/index.html`));
   ok("T27 每路由静态 HTML 已生成", missingH.length === 0, missingH.join(","));
   const petHtml = read("dist/pet/index.html");

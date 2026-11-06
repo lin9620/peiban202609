@@ -44,10 +44,10 @@ const MANIFEST = [
     "app-version-test", "arity-test", "auth-test", "avatar-test", "back-stack-test",
     "bottle-autosize-test", "bottle-chat-test", "bottle-gap-test", "bottle-records-speed-test",
     "bottle-test", "bottle-vac-test", "cache-test", "chat-look-test", "cmt-style-test",
-    "comment-test", "community-safe-area-test", "dm-entry-fail-test", "dm-first-open-test",
+    "card-tap-test", "comment-test", "community-safe-area-test", "dm-entry-fail-test", "dm-first-open-test",
     "dm-map-test", "dm-race-test", "dm-recall-menu-test", "dm-scroll-test", "dm-search-test",
     "dm-send-jump-test", "dm-send-ux-test", "dm-tail-cache-test", "dm-test", "dm-vac-test",
-    "emoji-panel-test", "feed-autoload-test", "feed-perf-test", "feed-window-test",
+    "emoji-panel-test", "feed-archive-test", "feed-autoload-test", "feed-perf-test", "feed-window-test", "font-test",
     "fold-text-test", "food-painter-test", "gateway-contract-test", "home-panes-test",
     "i18n-test", "i18n-usage-test", "icon-test", "skin-gate-test", "kb-math-test", "keyboard-policy-test", "messages-gap-test",
     "migration-check-test", "mood-test", "notify-test", "pet-home-test", "pet-visual-test",
@@ -56,12 +56,15 @@ const MANIFEST = [
     "seo-test", "snack-test", "splash-test", "status-counts-test", "status-test", "story-test",
     "tabbar-copy-test", "tap-guard-test", "teleport-test", "uifix-test", "undef-check",
     "userScope-test", "wall-addviews-test", "wall-composer-test", "wall-reaction-test",
-    "wall-refresh-test", "wall-rules-test", "wall-test", "web-refresh-test", "worker-test",
+    "wall-refresh-test", "wall-empty-test", "wall-end-test", "wall-rules-test", "wall-test", "web-refresh-test", "worker-test",
     "tdz-check",
   ].map((n) => ({ file: `${n}.mjs`, tier: "fast" })),
 
   /* ── mount：dist/ + 无头浏览器真实挂载 ───────────────────── */
   { file: "page-smoke.mjs", tier: "mount", note: "需 dist/（先 npm run build）" },
+  /* 轮 434：虚拟滚动的真实浏览器实测（滚到底 + 原路回顶 + 进详情再回来）。
+     需要**同源构建**的产物（VITE_API_BASE= npx vite build）与网络：它会真的去读生产数据。 */
+  { file: "feed-virtual-live.mjs", tier: "mount", note: "需同源 dist/ + 无头浏览器 + 网络" },
 
   /* 备份脚本的自检（--self-test 不连库、不碰网络，纯逻辑：脱敏/占位符/轮转/还原清单解析） */
   { file: "backup.mjs", tier: "fast", args: ["--self-test"], note: "备份脚本自检" },
@@ -73,6 +76,10 @@ const MANIFEST = [
   { file: "dm-compose-test.mjs", tier: "live", note: "需 CDP 9222" },
   { file: "wall-keep-test.mjs", tier: "live", note: "需 CDP 9222" },
   { file: "env-probe.mjs", tier: "live", note: "环境探针（只读）" },
+  /* 轮 422/423 的按压玻璃真机验收（走 CDP 真触摸 + 取色），需要 9222 已转发 */
+  { file: "press-verify.mjs", tier: "live", note: "需 CDP 9222（按压帧取色）" },
+  { file: "row-glass-verify.mjs", tier: "live", note: "需 CDP 9222（会话行玻璃）" },
+  { file: "row2-verify.mjs", tier: "live", note: "需 CDP 9222（高亮搬家）" },
 
   /* ── prod：线上只读探针 ─────────────────────────────────── */
   { file: "live-check.mjs", tier: "prod", note: "部署后跑，读线上" },

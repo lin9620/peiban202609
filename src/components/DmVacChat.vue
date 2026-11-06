@@ -364,14 +364,22 @@ const STYLES = {
     colorRoomInfo: "var(--ink-faint, #8e8b82)",
   },
   footer: {
-    background: "var(--page-bg, #faf9f5)",
+    /* 轮 419：透明 —— 让皮肤那层玻璃画布透上来。
+     * 原来是 var(--page-bg)（不透明米色），把 .dm-thread 的 0.9 白玻璃整块盖死。
+     * 输入框自己有 backgroundInput（--wash-strong）实底，透明不影响可读性。 */
+    background: "transparent",
     borderStyleInput: "1px solid var(--hairline, #e6dfd8)",
     borderInputSelected: "var(--accent, #cc785c)",
     backgroundReply: "var(--accent-soft, #f5f0e8)",
     backgroundTag: "var(--accent-soft, #f5f0e8)",
     backgroundTagActive: "var(--card, #efe9de)",
   },
-  content: { background: "var(--page-bg, #faf9f5)" },
+  /* 轮 419：消息区也是透明。
+   * 病根就在这一行：`.vac-container-scroll` 拿它当 background，等于在玻璃卡上又刷了一层
+   * 不透明米色。表现是「第一次进会话有玻璃、后面没有」——
+   * 因为首次进来消息还在加载，渲染的是加载态（.vac-box-empty，本身无底色）→ 看得到玻璃；
+   * 消息一到/第二次有缓存 → 米色铺满 → 玻璃再也看不见。 */
+  content: { background: "transparent" },
   sidemenu: {
     background: "var(--page-bg, #faf9f5)",
     backgroundHover: "var(--accent-soft, #f5f0e8)",

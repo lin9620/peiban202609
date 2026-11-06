@@ -216,6 +216,16 @@ ok("发现页签：搜索 + 载入更多", has(feedVue, "story.searchPh", "loadM
 // 轮 148 追加：/story 已废除页签壳，改成纯阅读发现页；投稿/我的/排行榜 拆成独立路由。
 ok("发现页：纯阅读，无页签壳", viewVue.includes("StoryFeed")
   && !viewVue.includes("st-tabs") && !viewVue.includes("onlyMobile") && !viewVue.includes("story-wrap"));
+/* 轮410：页头 story.sub 与联内 feedSub 曾是同一句，桌面和 App 都会出现两行一模一样的介绍。
+   现在删掉 feedSub：桌面保留页头 story.sub + 联内 discoverSub；手机/App 隐藏整块页头，只留 discoverSub 一行。 */
+const storySubRefs = (viewVue.match(/story\.sub/g) || []).length
+  + (feedVue.match(/story\.sub/g) || []).length;
+ok("发现页只保留一处 story.sub，联内仍有 discoverSub（桌面两行不同文案）",
+  storySubRefs === 1 && feedVue.includes('t("story.discoverSub")')
+  && !feedVue.includes("story.feedSub") && !i18nSrc.includes("feedSub"));
+ok("手机端故事页隐藏整块页头，只留联内 discoverSub 一行",
+  /<header v-if="!isMobileNav" class="story-head">/.test(viewVue)
+  && feedVue.includes('t("story.discoverSub")'));
 // 轮 148：发布条件从「只报第一条」改为「清单全报」+ 达标确认。
 ok("发布条件列出全部未满足项（blockers 清单）",
   editor.includes("const blockers = computed") && editor.includes("list.push")
@@ -392,11 +402,14 @@ ok("story.js 中转层转出 BODY_MIN（漏了只有 vite build 才炸：Rollup 
   && /export\s*\{[^}]*BODY_MIN[^}]*\}/.test(storyJs));
 ok("storyPublish 把 too-short 映射成 story-too-short（漏映射会误报 story-bad-tags）",
   storyJs.includes('v === "too-short" ? "story-too-short"'));
-ok("i18n：needMore/errShort/minbar 中英成对",
-  i18nSrc.includes("needMore:") && i18nSrc.includes("errShort:") && i18nSrc.includes("minbar:")
-  && (i18nSrc.match(/needMore:/g) || []).length === 2
-  && (i18nSrc.match(/errShort:/g) || []).length === 2
-  && (i18nSrc.match(/minbar:/g) || []).length === 2);
+/* 「中英成对」= 每个键的出现次数是偶数且至少一对。
+   曾经写死 === 2：漂流瓶那套文案后来也加了 needMore（「再写 {n} 个字就能投出」），
+   计数变成 4 → 这条误报。判偶数才真正对上「成对」这个口径，也不会拦住别的模块复用同名键。 */
+{
+  const cnt = (k) => (i18nSrc.match(new RegExp(k + ":", "g")) || []).length;
+  ok("i18n：needMore/errShort/minbar 中英成对",
+    ["needMore", "errShort", "minbar"].every((k) => cnt(k) >= 2 && cnt(k) % 2 === 0));
+}
 
 /* ───────── 轮 313：故事详情秒开（点卡片带种子 + SWR 整篇缓存） ───────── */
 /* 痛点：点一篇故事 → 详情页要等 story_get 回来才有 DOM，跨境弱网里整页空白 0.5~3s（用户体感「打开很慢」）。

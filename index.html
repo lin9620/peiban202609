@@ -18,6 +18,24 @@
     /* 轮 83：首帧前给 <html> 打 js 标记（内联执行，早于任何绘制）。 */
     document.documentElement.classList.add("js");
   </script>
+  <script>
+    /* 轮 430：首帧前就把主题挂上 <html>，否则启动页只能落到默认奶油色 ——
+       Vue 起来后 uiStore 才补 data-theme，深色/彩色主题的用户先看到一片米白再跳色。
+       与 stores/uiStore.js 的 THEME_KEY 同源（wp-theme）；脏值一律回 cream。 */
+    (function () {
+      var KEYS = ["cream", "sakura", "mint", "lavender", "night"];
+      var BG = { cream: "#faf9f5", sakura: "#fdf1f6", mint: "#eefaf4", lavender: "#f5f1fc", night: "#171a33" };
+      var th = "cream";
+      try {
+        var saved = localStorage.getItem("wp-theme");
+        if (saved && KEYS.indexOf(saved) >= 0) th = saved;
+      } catch (e) { /* 隐私模式读不到就用默认 */ }
+      document.documentElement.dataset.theme = th;
+      /* 地址栏/状态栏配色跟着主题走（网页端；App 里由原生控制） */
+      var mc = document.querySelector('meta[name="theme-color"]');
+      if (mc) mc.setAttribute("content", BG[th]);
+    })();
+  </script>
   <style>
     /* 轮 83：修「打开网页先看到一段英文占位/裸链接，才进正常页面」——构建期写进
      * #app 的 SEO 静态正文（.seo-static，见 vite.config 注入处）本来要裸露到 Vue
@@ -132,18 +150,18 @@
     }
   </script>
 
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <!-- 轮 84：字体 CSS 改非阻塞（media=print 加载完再切回 all）。
-       实测：jsdelivr/googleapis 慢或挂时，阻塞样式会挡住后面 module 脚本的执行——
-       Vue 迟迟不挂载，页面一直停在 SEO 静态占位（网页端「先看到英文占位页」的根源之一，
-       page-smoke 也因此偶发全红）。noscript 兜底：无 JS 环境仍以阻塞方式加载字体。 -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=EB+Garamond:wght@400;500&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css" media="print" onload="this.media='all'" />
-  <noscript>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=EB+Garamond:wght@400;500&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css" />
-  </noscript>
+  <!-- 轮 436：字体全部改为自托管（public/fonts/，@font-face 见 style.css 顶部）。
+       改前这里引的是 Google Fonts（Inter 400/500/600 + EB Garamond 400/500）和
+       jsdelivr 上的霞鹜文楷（每字重 97 个 unicode-range 分片 × 6 套 ≈ 630KB CSS）。
+       两个后果都实测到了：① 只下到 600，代码里的 700/800 全靠浏览器合成加粗，英文发胖发糊；
+       ② 国内拉 jsdelivr 4.5s 起、弱网直接失败，回落到系统西文（Arial / 宋体附字体）—— 那才是真丑。
+       现在只有两个本地文件（Jakarta 27KB + 楷体子集 603KB），App 读包内文件零网络，
+       preload 让首帧就用对字体，不再有「先丑后跳」的闪烁。 -->
+  <link rel="preload" href="/fonts/plus-jakarta-sans.woff2" as="font" type="font/woff2" crossorigin />
+  <!-- 楷体不 preload：子集 603KB，比主 JS 还大，首屏抢带宽会拖慢白屏。
+       它只服务内容文本（帖子正文 / 信件 / 故事），靠 font-display:swap 按需加载——
+       字体没到先用黑体，到了再换，不影响任何交互。 -->
+
 </head>
 <body>
   <div id="app"></div>
@@ -161,24 +179,53 @@
        *   ① 布局（这里不写 display）→ ② 默认隐藏（网页端不闪）→ ③ App 壳恢复显示（优先级更高）
        * 注意：注释里**不能出现**字面的 style 结束标签——HTML 解析器在 style 元素里见到它就
        * 立刻结束元素（注释也不豁免），splash-test ⑥/⑦ 就是守这个的。 */
+      /* 轮 430：启动页随主题（五套）——奶油 / 樱花 / 薄荷 / 薰衣草 / 星夜。
+         每套 = 背景渐变 + 柔光斑 + 粒子（花瓣 / 气泡 / 星点 / 暖尘）+ 专属图标与文字色；
+         DOM 与下面的 i18n 文本替换脚本一行不动，全靠 html[data-theme] 覆盖。
+         data-theme 由 <head> 里的内联脚本在首帧前写好（否则永远只画默认奶油色）。 */
       #app-splash { position: fixed; inset: 0; z-index: 9999; flex-direction: column;
-        align-items: center; justify-content: center; gap: 10px; background: #faf9f5;
-        transition: opacity .4s ease; padding: 24px; text-align: center; }
+        align-items: center; justify-content: center; gap: 10px; padding: 24px; text-align: center;
+        overflow: hidden; transition: opacity .4s ease; color: #6b4a32;
+        /* ① 暖奶油（默认）：米白 + 一束顶光，不是一块死板纯色 */
+        background:
+          radial-gradient(120% 78% at 50% -6%, #ffdcc7 0%, rgba(253,242,231,.92) 40%, rgba(250,249,245,0) 74%),
+          #faf9f5; }
       #app-splash { display: none; }
       /* html.cap-app 由 index.html 内联脚本 + src/main.js 的 Capacitor.isNativePlatform() 加上 */
       html.cap-app #app-splash { display: flex; }
       #app-splash.out { opacity: 0; pointer-events: none; }
-      #app-splash .sp-paw { font-size: 56px; animation: sp-breathe 1.6s ease-in-out infinite; }
-      #app-splash .sp-name { font-size: 22px; font-weight: 800; color: #6b4a32; }
-      #app-splash .sp-sub { font-size: 12px; color: #a98d74; letter-spacing: 2px; }
-      #app-splash .sp-tag { font-size: 13px; color: #8a6a4f; }
-      #app-splash .sp-feats { display: grid; gap: 7px; margin-top: 12px; }
-      #app-splash .sp-feat { font-size: 13px; color: #7d5f45; background: rgba(255,255,255,.55);
+
+      /* —— 视觉层：柔光斑 + 粒子（五套共用骨架，主题只换形状 / 颜色 / 动画） —— */
+      #app-splash .sp-glow, #app-splash .sp-deco { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+      #app-splash .sp-glow b { position: absolute; display: block; border-radius: 50%; filter: blur(48px); }
+      #app-splash .sp-glow b:nth-child(1) { width: 220px; height: 220px; top: -64px; left: -66px; background: rgba(233,152,112,.5); }
+      #app-splash .sp-glow b:nth-child(2) { width: 190px; height: 190px; bottom: -58px; right: -54px; background: rgba(240,178,142,.44); }
+      #app-splash .sp-glow b:nth-child(3) { width: 150px; height: 150px; top: 44%; right: -74px; background: rgba(255,214,190,.5); }
+      /* 位置表：五套共用，摊在四周，避开中间文字 */
+      #app-splash .sp-deco i { position: absolute; display: block; width: 6px; height: 6px; border-radius: 50%;
+        background: rgba(204,120,92,.5); opacity: .6; animation: sp-twinkle 4.4s ease-in-out infinite; }
+      #app-splash .sp-deco i:nth-child(1) { top: 14%; left: 12%; animation-delay: -.3s; }
+      #app-splash .sp-deco i:nth-child(2) { top: 23%; right: 13%; animation-delay: -1.2s; }
+      #app-splash .sp-deco i:nth-child(3) { top: 37%; left: 7%; animation-delay: -2.1s; }
+      #app-splash .sp-deco i:nth-child(4) { top: 54%; right: 9%; animation-delay: -.7s; }
+      #app-splash .sp-deco i:nth-child(5) { bottom: 26%; left: 15%; animation-delay: -1.7s; }
+      #app-splash .sp-deco i:nth-child(6) { bottom: 15%; right: 17%; animation-delay: -2.8s; }
+      #app-splash .sp-deco i:nth-child(7) { top: 8%; left: 46%; animation-delay: -3.5s; }
+      #app-splash .sp-deco i:nth-child(8) { bottom: 8%; left: 41%; animation-delay: -1.5s; }
+
+      /* —— 文字层（默认 cream 配色；主题在下面覆盖） —— */
+      #app-splash .sp-paw { position: relative; font-size: 56px; line-height: 1.1;
+        animation: sp-breathe 1.6s ease-in-out infinite; }
+      #app-splash .sp-name { position: relative; font-size: 22px; font-weight: 800; color: #6b4a32; }
+      #app-splash .sp-sub { position: relative; font-size: 12px; color: #a98d74; letter-spacing: 2px; }
+      #app-splash .sp-tag { position: relative; font-size: 13px; color: #8a6a4f; }
+      #app-splash .sp-feats { position: relative; display: grid; gap: 7px; margin-top: 12px; }
+      #app-splash .sp-feat { font-size: 13px; color: #7d5f45; background: rgba(255,255,255,.58);
         border: 1px solid #eadbc8; border-radius: 999px; padding: 6px 16px; }
       #app-splash .sp-feats .sp-feat:nth-child(2) { animation-delay: .12s; }
       #app-splash .sp-feats .sp-feat:nth-child(3) { animation-delay: .24s; }
-      #app-splash .sp-quote { font-size: 12px; color: #a98d74; font-style: italic; margin-top: 10px; }
-      #app-splash .sp-dots { display: flex; gap: 6px; margin-top: 8px; }
+      #app-splash .sp-quote { position: relative; font-size: 12px; color: #a98d74; font-style: italic; margin-top: 10px; }
+      #app-splash .sp-dots { position: relative; display: flex; gap: 6px; margin-top: 8px; }
       #app-splash .sp-dots i { width: 7px; height: 7px; border-radius: 50%; background: #e0a274;
         animation: sp-dot 1.2s ease-in-out infinite; }
       #app-splash .sp-dots i:nth-child(2) { animation-delay: .15s; }
@@ -188,10 +235,99 @@
       @keyframes sp-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.12); } }
       @keyframes sp-dot { 0%, 100% { opacity: .25; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-4px); } }
       @keyframes sp-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+      @keyframes sp-twinkle { 0%, 100% { opacity: .25; transform: scale(.7); } 50% { opacity: 1; transform: scale(1.15); } }
+      @keyframes sp-drift { 0%, 100% { transform: translate3d(0,0,0) rotate(0deg); } 50% { transform: translate3d(12px,-18px,0) rotate(24deg); } }
+      @keyframes sp-rise { 0% { transform: translateY(16px) scale(.82); opacity: 0; } 35% { opacity: .95; } 100% { transform: translateY(-48px) scale(1.16); opacity: 0; } }
+
+      /* ═══ ② 樱花粉：飘落花瓣 + 粉调文字 ═══ */
+      html[data-theme="sakura"] #app-splash {
+        background: linear-gradient(168deg, #fff0f5 0%, #ffe4ee 36%, #fdf0ff 72%, #eef4ff 100%); color: #5a3a46; }
+      html[data-theme="sakura"] #app-splash .sp-glow b:nth-child(1) { background: rgba(255,166,199,.55); }
+      html[data-theme="sakura"] #app-splash .sp-glow b:nth-child(2) { background: rgba(214,178,255,.4); }
+      html[data-theme="sakura"] #app-splash .sp-glow b:nth-child(3) { background: rgba(255,211,226,.55); }
+      html[data-theme="sakura"] #app-splash .sp-deco i { width: 12px; height: 12px; opacity: .95;
+        border-radius: 62% 38% 55% 45% / 58% 60% 40% 42%; background: #ffa8c8;
+        box-shadow: 0 0 6px rgba(247,143,179,.45);
+        animation: sp-drift 6.6s ease-in-out infinite; }
+      html[data-theme="sakura"] #app-splash .sp-paw { font-size: 0; }
+      html[data-theme="sakura"] #app-splash .sp-paw::before { content: "🌸"; display: block; font-size: 54px; line-height: 1.1; }
+      html[data-theme="sakura"] #app-splash .sp-name { color: #8e4763; }
+      html[data-theme="sakura"] #app-splash .sp-sub { color: #b57e93; }
+      html[data-theme="sakura"] #app-splash .sp-tag { color: #7d5560; }
+      html[data-theme="sakura"] #app-splash .sp-feat { background: rgba(255,255,255,.62); border-color: #f5cfdd; color: #7d5560; }
+      html[data-theme="sakura"] #app-splash .sp-quote { color: #b57e93; }
+      html[data-theme="sakura"] #app-splash .sp-dots i { background: #f78fb3; }
+
+      /* ═══ ③ 薄荷森林：上浮气泡 + 青绿文字 ═══ */
+      html[data-theme="mint"] #app-splash {
+        background: linear-gradient(168deg, #f2fdf8 0%, #e0f4ea 38%, #ecf7ff 74%, #f4fbf0 100%); color: #2f4a42; }
+      html[data-theme="mint"] #app-splash .sp-glow b:nth-child(1) { background: rgba(120,214,184,.5); }
+      html[data-theme="mint"] #app-splash .sp-glow b:nth-child(2) { background: rgba(150,214,240,.42); }
+      html[data-theme="mint"] #app-splash .sp-glow b:nth-child(3) { background: rgba(196,232,168,.45); }
+      html[data-theme="mint"] #app-splash .sp-deco i { width: 14px; height: 14px; opacity: .9;
+        border-radius: 50%; background: radial-gradient(circle at 34% 30%, #ffffff 0%, #ffffff 62%, rgba(214,244,235,.9) 100%);
+        border: 1px solid rgba(95,191,165,.6); box-shadow: 0 2px 6px rgba(70,168,142,.18);
+        animation: sp-rise 5.6s ease-in-out infinite; }
+      html[data-theme="mint"] #app-splash .sp-paw { font-size: 0; }
+      html[data-theme="mint"] #app-splash .sp-paw::before { content: "🌿"; display: block; font-size: 54px; line-height: 1.1; }
+      html[data-theme="mint"] #app-splash .sp-name { color: #2b5c50; }
+      html[data-theme="mint"] #app-splash .sp-sub { color: #7ba99d; }
+      html[data-theme="mint"] #app-splash .sp-tag { color: #4d7a70; }
+      html[data-theme="mint"] #app-splash .sp-feat { background: rgba(255,255,255,.66); border-color: #d4e7da; color: #4d7a70; }
+      html[data-theme="mint"] #app-splash .sp-quote { color: #7ba99d; }
+      html[data-theme="mint"] #app-splash .sp-dots i { background: #5fbfa5; }
+
+      /* ═══ ④ 薰衣草：闪烁星点 + 紫调文字 ═══ */
+      html[data-theme="lavender"] #app-splash {
+        background: linear-gradient(168deg, #f8f4ff 0%, #ece4ff 38%, #fdeef8 74%, #eef4ff 100%); color: #443a5c; }
+      html[data-theme="lavender"] #app-splash .sp-glow b:nth-child(1) { background: rgba(183,154,235,.5); }
+      html[data-theme="lavender"] #app-splash .sp-glow b:nth-child(2) { background: rgba(255,176,222,.4); }
+      html[data-theme="lavender"] #app-splash .sp-glow b:nth-child(3) { background: rgba(176,196,255,.45); }
+      html[data-theme="lavender"] #app-splash .sp-deco i { width: 9px; height: 9px; opacity: .95;
+        border-radius: 50%; background: #a98ce6; box-shadow: 0 0 10px rgba(167,139,219,.95), 0 0 3px #fff inset;
+        animation: sp-twinkle 3.4s ease-in-out infinite; }
+      html[data-theme="lavender"] #app-splash .sp-paw { font-size: 0; }
+      html[data-theme="lavender"] #app-splash .sp-paw::before { content: "✨"; display: block; font-size: 52px; line-height: 1.1; }
+      html[data-theme="lavender"] #app-splash .sp-name { color: #584a7a; }
+      html[data-theme="lavender"] #app-splash .sp-sub { color: #8e83ad; }
+      html[data-theme="lavender"] #app-splash .sp-tag { color: #665a85; }
+      html[data-theme="lavender"] #app-splash .sp-feat { background: rgba(255,255,255,.64); border-color: #e0d8ec; color: #665a85; }
+      html[data-theme="lavender"] #app-splash .sp-quote { color: #8e83ad; }
+      html[data-theme="lavender"] #app-splash .sp-dots i { background: #a78bdb; }
+
+      /* ═══ ⑤ 星夜：月亮 + 满天星，深底浅字 ═══ */
+      html[data-theme="night"] #app-splash {
+        background: linear-gradient(168deg, #12152c 0%, #1d2350 40%, #232a5c 72%, #10132a 100%); color: #e8eaf6; }
+      html[data-theme="night"] #app-splash .sp-glow b:nth-child(1) { background: rgba(94,120,220,.42); }
+      html[data-theme="night"] #app-splash .sp-glow b:nth-child(2) { background: rgba(120,90,200,.32); }
+      /* 第三团不是光晕而是一枚月亮：小、清晰、带柔光边（留出 22% 右距，别被屏幕边缘裁掉） */
+      html[data-theme="night"] #app-splash .sp-glow b:nth-child(3) { width: 64px; height: 64px; top: 10%; right: 22%;
+        filter: blur(1px); opacity: .95; box-shadow: 0 0 46px rgba(190,205,255,.5);
+        background: radial-gradient(circle at 34% 32%, #f6f8ff 0%, #dfe6ff 54%, #c3cdf5 100%); }
+      html[data-theme="night"] #app-splash .sp-deco i { width: 5px; height: 5px; opacity: .95;
+        border-radius: 50%; background: #f2f6ff; box-shadow: 0 0 8px rgba(210,222,255,.95);
+        animation: sp-twinkle 3.8s ease-in-out infinite; }
+      html[data-theme="night"] #app-splash .sp-deco i:nth-child(2),
+      html[data-theme="night"] #app-splash .sp-deco i:nth-child(5) { width: 7px; height: 7px; }
+      html[data-theme="night"] #app-splash .sp-paw { font-size: 0; }
+      html[data-theme="night"] #app-splash .sp-paw::before { content: "🌙"; display: block; font-size: 52px; line-height: 1.1; }
+      html[data-theme="night"] #app-splash .sp-name { color: #f0f2ff; letter-spacing: .5px; }
+      html[data-theme="night"] #app-splash .sp-sub { color: #98a2d4; }
+      html[data-theme="night"] #app-splash .sp-tag { color: #b9c1e6; }
+      html[data-theme="night"] #app-splash .sp-feat { background: rgba(139,156,232,.14); border-color: rgba(139,156,232,.3); color: #cfd6f5; }
+      html[data-theme="night"] #app-splash .sp-quote { color: #98a2d4; }
+      html[data-theme="night"] #app-splash .sp-dots i { background: #8b9ce8; }
+
       @media (prefers-reduced-motion: reduce) {
-        #app-splash .sp-paw, #app-splash .sp-dots i, #app-splash .sp-in { animation: none; }
+        /* !important 是必需的：主题规则（html[data-theme="…"] #app-splash .sp-deco i）特异性更高，
+           不带它会被主题里的 animation 反压 —— 开了「减少动画」的用户照样看花瓣飘、气泡升。 */
+        #app-splash .sp-paw, #app-splash .sp-dots i, #app-splash .sp-in,
+        #app-splash .sp-deco i { animation: none !important; }
       }
     </style>
+    <!-- 轮 430：主题视觉层（纯装饰，aria-hidden；五套主题共用这组节点，靠 CSS 换形状与动画） -->
+    <div class="sp-glow" aria-hidden="true"><b></b><b></b><b></b></div>
+    <div class="sp-deco" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
     <div class="sp-paw">🐾</div>
     <div class="sp-name sp-in">温暖的爪印</div>
     <div class="sp-sub sp-in">Warm Paws</div>

@@ -42,10 +42,10 @@ try {
  * 窗口跨越 900px 时靠 watch 跟着切（手机浏览器横过来、桌面拖窄都算）。
  *
  * 本地预览开关（只影响自己这台机器，跟线上无关）：
- *   ?skin=glass  或  localStorage['wp-skin']='glass'  → 桌面也能看到这套皮肤 */
+ *   ?skin 参数设为 glass，或把 localStorage['wp-skin'] 设成 glass → 桌面也能看到这套皮肤 */
 const forceGlassSkin = (() => {
   try {
-    if (/[?&]skin=glass\b/.test(location.search)) return true;
+    if (new RegExp("[?&]skin=glass\\b").test(location.search)) return true;
   } catch (e) { /* ignore */ }
   try {
     return localStorage.getItem("wp-skin") === "glass";

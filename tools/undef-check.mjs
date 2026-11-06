@@ -427,5 +427,7 @@ const out = [
   "",
   ...problems,
 ];
-fs.writeFileSync(path.join(root, "undef-report.txt"), out.join("\n"), "utf8");
+/* 报告写 _scratch/，别再落在项目根目录 */
+fs.mkdirSync(path.join(root, "_scratch"), { recursive: true });
+fs.writeFileSync(path.join(root, "_scratch", "undef-report.txt"), out.join("\n"), "utf8");
 console.log("UNDEF_DONE problems=" + problems.length);

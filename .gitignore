@@ -55,3 +55,9 @@ apk/
 Thumbs.db
 .vscode/
 .idea/
+
+# 装机同步时挪出来的过期静态资源（tools/sync-assets.mjs）
+.stale-assets/
+
+# 验收对比图（历史留档，体积大，不入库；只在本机留证据）
+docs/shots/

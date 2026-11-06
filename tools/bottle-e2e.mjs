@@ -76,7 +76,7 @@ if (notMigrated) {
   process.exit(2);
 }
 
-/* A 注册：连投 5 封（每日限额；轮 305：用户要求 3 → 5），第 6 封被挡 */
+/* A 注册：连投 5 封（滚动 24h 限额；轮 305：3 → 5），第 6 封被挡 */
 const A = await signUp("wp-bottle-a-", "投瓶的小橘");
 ok("T2 A 注册成功", !!A.id && !!A.token, A.email);
 {
@@ -86,9 +86,9 @@ ok("T2 A 注册成功", !!A.id && !!A.token, A.email);
     last = r;
     if (r.status !== 200 || !r.data || r.data.status !== "sea") allOk = false;
   }
-  ok("T3 连投 5 封成功（status=sea、落款昵称、UTC 日为今天）", allOk, "last=" + last.status);
-  const over = await api("/bottle/send", { method: "POST", token: A.token, body: { body: "第6封应该被挡" } });
-  ok("T4 第 6 封被每日限额挡下（bottle-limit-send）", over.status === 400 && over.text.includes("bottle-limit-send"), "http=" + over.status);
+  ok("T3 连投 5 封成功（status=sea、落款昵称、24h 滚动额度）", allOk, "last=" + last.status);
+  const over = await api("/bottle/send", { method: "POST", token: A.token, body: { body: "第 6 封应该被 24 小时滚动额度挡下" } });
+  ok("T4 第 6 封被滚动 24h 限额挡下（bottle-limit-send）", over.status === 400 && over.text.includes("bottle-limit-send"), "http=" + over.status);
   const mine = await api("/bottle/mine", { token: A.token });
   ok("T5 A 的信箱列出 5 封（新→旧）", mine.status === 200 && Array.isArray(mine.data) && mine.data.length === 5, "rows=" + (mine.data || []).length);
 }
@@ -145,7 +145,7 @@ let replyLetterId = "", releaseLetterId = "";
      老断言把后者当失败 —— 库里信一多（真实用户活跃）必然假红，本轮实测就在这里假红。 */
   ok("T12 A 捞不到自己的信（连捞成功或撞空海/限额都合规）",
     !sawOwn
-      && (rounds > 10 || lastErr.includes("bottle-empty-sea") || lastErr.includes("bottle-limit-fish") || lastErr.includes("23505")),
+      && (rounds > 10 || lastErr.includes("bottle-empty-sea") || lastErr.includes("bottle-limit-fish") || lastErr.includes("bottle-limit-pick") || lastErr.includes("23505")),
     "rounds=" + rounds + " last=" + (lastErr || "(连捞 10 次都成功：海里别人的信足够多)"));
 }
 

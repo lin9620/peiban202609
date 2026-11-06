@@ -183,6 +183,9 @@ ok("filterBlocked 剔除被拉黑作者的行，空名单放行",
   && (() => { const keep = ub.blockState.ids; ub.blockState.ids = []; const r = ub.filterBlocked([{ userId: "u-blocked-1" }]).length; ub.blockState.ids = keep; return r === 1; })());
 ok("userBlocks 注册了换域 reload（换号不把 A 的名单带到 B）",
   userBlocks.includes("onScopeSwitch") && userBlocks.includes("blockState.loaded = false"));
+ok("userBlocks 缓存名单行（拉黑后设置页秒显，不干等 dm_blocks）",
+  userBlocks.includes("ROWS_BASE") && userBlocks.includes("blockState.rows")
+  && userBlocks.includes("nickname"));
 
 /* ───────── 8) 前端接线（三个视图 + 管理端） ───────── */
 ok("CommunityView：举报入口（帖/评）+ 弹窗挂载 + 拉黑过滤",
@@ -194,7 +197,7 @@ ok("举报入口对游客可见（canReport 不依赖 signedIn；登录要求收
 ok("PostDetailView：帖子/评论举报 + 作者被拉黑隐藏正文",
   has(postDetail, "openReportPost", "canReportCmt(cm)", "authorBlocked", "<ReportDialog", "filterBlocked(rows)"));
 ok("WallerView：拉黑两步确认 + 撤销 + 名单刷新",
-  has(waller, "blockArm", "toggleBlock", "blockUser(uid)", "unblockUser(uid)", "refreshBlocks()"));
+  has(waller, "blockArm", "toggleBlock", "blockUser(uid, name.value)", "unblockUser(uid)", "refreshBlocks()"));
 ok("AdminView：举报页签（待处理/已处理）+ 红点 + 处理动作",
   has(admin, "'overview', 'posts', 'comments', 'reports'", "switchRepTab('pending')", "switchRepTab('handled')",
     "admin-tab-dot", "handleReport(r, 'remove_post')", "handleReport(r, 'unhide_comment')", "pendingReports > 0"));
@@ -208,12 +211,17 @@ ok("管理端待处理计数来自 admin_overview 的 reports_pending",
 /* ───────── 8b) 消息页拉黑管理走 userBlocks（轮 34：名单与内容过滤同一份缓存） ───────── */
 const messages = read("src/views/MessagesView.vue");
 const settings = read("src/views/SettingsView.vue");
+const blockedView = read("src/views/BlockedView.vue");
 ok("MessagesView：拉黑/解除走 userBlocks 包装（不再直调 dmApi.block/unblock）",
-  has(messages, "blockUser(c.other_id)", "unblockUser(c.other_id)", "unblockUser(uid)")
+  has(messages, "blockUser(c.other_id, c.nickname)", "unblockUser(c.other_id)", "unblockUser(uid)")
   && !/dmApi\.(block|unblock)\(/.test(messages));
-ok("SettingsView：已拉黑名单/解除走 userBlocks 包装（不再直调 dmApi.block/unblock）",
-  has(settings, "dmApi.blocks()", "unblockUser(b.user_id)")
+ok("SettingsView：已拉黑改为独立页入口（不在设置内展开）",
+  has(settings, 'to="/settings/blocked"', 't("dm.blockedTitle")')
+  && !settings.includes("set-blocked-panel")
   && !/dmApi\.(block|unblock)\(/.test(settings));
+ok("BlockedView：独立页读本地快照 + 后台校准 + 解除走 userBlocks",
+  has(blockedView, "blockState.rows", "refreshBlocks()", "unblockUser(b.user_id)")
+  && !/dmApi\.(block|unblock)\(/.test(blockedView));
 ok("MessagesView：进页同步拉黑名单 + 拉黑提示升级为全站口径（文案在 i18n）",
   has(messages, "refreshBlocks()")
   && i18n.includes("TA 在暖心墙的帖子/评论也会对你隐藏")

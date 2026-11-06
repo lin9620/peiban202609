@@ -25,13 +25,23 @@
   --g-bg: rgba(255, 255, 255, 0.62);
   --g-bg-soft: rgba(255, 255, 255, 0.46);
   --g-bg-strong: rgba(255, 255, 255, 0.82);
+  /* 轮 407：滚动内容（不做模糊的那一档）用的底色 —— 没有 blur 就只能靠自身不透明度挡住背后，
+   * 0.86 与「0.62 + blur(20px)」在白底上的观感几乎一致。 */
+  --g-bg-card: rgba(255, 255, 255, 0.90);
+  /* 轮 416：底部胶囊单独一档。0.82 的强玻璃叠在同样近白的页面上，
+   * 胶囊边界几乎读不出来（截图里那块像「一团雾」而不是一条导航）。0.90 才立得住。 */
+  --g-tabbar: rgba(255, 255, 255, 0.90);
   --g-line: rgba(255, 255, 255, 0.72);
   --g-line-ink: rgba(90, 78, 68, 0.10);
   /* 页面最底色的 RGB 分量（给底部渐隐遮罩用，rgba() 拆开写才能调 alpha） */
-  --g-fade: 246, 244, 241;
+  --g-fade: 251, 250, 247;
   --g-hi: inset 0 1px 0 rgba(255, 255, 255, 0.92);
-  --g-shadow: 0 14px 34px rgba(58, 46, 42, 0.10), 0 2px 8px rgba(58, 46, 42, 0.05);
-  --g-shadow-sm: 0 6px 18px rgba(58, 46, 42, 0.07);
+  /* 轮 414：投影全部收成「一层接触影」。
+   * 原来是 `0 14px 34px / 10%` + `0 2px 8px / 5%` —— 34px 的扩散在浅底上就是一团灰雾，
+   * 卡片四周、卡片与卡片之间的那圈「黑」全是它染出来的（用户连着四轮在圈这个）。
+   * 现在只留 1~2px 的接触影（4.5%），卡片靠发丝线立住，不再靠暗。 */
+  --g-shadow: 0 1px 2px rgba(58, 46, 42, 0.045);
+  --g-shadow-sm: 0 1px 2px rgba(58, 46, 42, 0.035);
   --r-card: 23px;
   --r-inner: 16px;
   --r-pill: 999px;
@@ -66,25 +76,42 @@
   --shadow-sm: 0 4px 12px rgba(58, 46, 42, 0.06);
 }
 
-/* ═══════════════ ① 画布：奶油底 + 九色柔光斑 ═══════════════
+/* ═══════════════ ① 画布：奶油底 + 暖色柔光斑 ═══════════════
  * 参考图的背景是「灰调玻璃 + 几团糊开的彩光」，不是纯色。
  * 用 fixed 的多层 radial-gradient 做，零额外 DOM、不参与滚动重绘。
  * 主题切换（sakura/mint/lavender/night）仍按 --page-bg 走，
- * 这里只在最外层叠光斑，深浅主题都不会被吃掉。 */
+ * 这里只在最外层叠光斑，深浅主题都不会被吃掉。
+ *
+ * ⚠️ 轮 413：光斑由「九色」收成「暖色」。
+ * 用户这轮的原话是「我不想要背景里面那些黑色」——他圈的是卡片之间的缝。
+ * 实测缝里露出的是 237,233,244（B-G=+11，紫灰），卡片是 254,253,253。
+ * 紫灰 = 薰衣草紫那团光斑（225,216,251 @46%）+ 雾蓝那团（217,228,250 @66%）
+ * 落在 246,244,241 的奶油底上：亮度只差 2 级，色相却差了 11 级，
+ * 在暖白卡片之间就是一条「脏灰带」。冷色在暖底上永远显脏，所以这里只留暖色，
+ * 亮度也压到跟卡片 6~10 级以内（暖米色，不是灰）。 */
 html {
-  background: #F5F3F0;
+  background: #FBFAF7;
 }
-body {
+/* 光斑底画在**固定层**上（html::before），不用 `background-attachment: fixed`。
+ * 两者视觉等价，但后者会让手机每一帧滚动都重绘整屏背景（5 层径向渐变 × DPR 3），
+ * 是肤子里除 backdrop-filter 之外最贵的一笔。固定层只栅格化一次，滚动时零重绘。
+ * body 必须让位（透明），否则 body 自身背景会盖在 ::before 上面（绘制顺序在负 z-index 之后）。 */
+html::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
   background:
-    radial-gradient(58% 40% at 10% 2%, rgba(251, 214, 226, 0.62) 0%, rgba(251, 214, 226, 0) 62%),
-    radial-gradient(54% 38% at 94% 4%, rgba(217, 228, 250, 0.66) 0%, rgba(217, 228, 250, 0) 60%),
-    radial-gradient(48% 34% at 82% 46%, rgba(225, 216, 251, 0.46) 0%, rgba(225, 216, 251, 0) 62%),
-    radial-gradient(62% 42% at 14% 74%, rgba(211, 239, 219, 0.48) 0%, rgba(211, 239, 219, 0) 64%),
-    radial-gradient(52% 36% at 92% 94%, rgba(250, 240, 197, 0.52) 0%, rgba(250, 240, 197, 0) 62%),
-    #F6F4F1;
-  background-attachment: fixed;
+    radial-gradient(58% 40% at 10% 2%, rgba(254, 236, 229, 0.50) 0%, rgba(254, 236, 229, 0) 62%),
+    radial-gradient(54% 38% at 94% 4%, rgba(254, 246, 219, 0.46) 0%, rgba(254, 246, 219, 0) 60%),
+    radial-gradient(48% 34% at 82% 46%, rgba(253, 241, 231, 0.40) 0%, rgba(253, 241, 231, 0) 62%),
+    radial-gradient(62% 42% at 14% 74%, rgba(252, 244, 226, 0.42) 0%, rgba(252, 244, 226, 0) 64%),
+    radial-gradient(52% 36% at 92% 94%, rgba(254, 238, 228, 0.44) 0%, rgba(254, 238, 228, 0) 62%),
+    #FBFAF7;
 }
-html[data-theme="night"] body {
+body { background: transparent !important; }
+html[data-theme="night"]::before {
   background:
     radial-gradient(58% 40% at 10% 2%, rgba(120, 90, 140, 0.34) 0%, rgba(120, 90, 140, 0) 62%),
     radial-gradient(54% 38% at 94% 4%, rgba(70, 96, 150, 0.34) 0%, rgba(70, 96, 150, 0) 60%),
@@ -92,23 +119,49 @@ html[data-theme="night"] body {
     #191A22;
 }
 
-/* 原来 display:none 的三颗光斑重新启用，做成大而糊的彩团（比渐变更「玻璃」） */
+/* 原来 display:none 的三颗光斑重新启用，做成大而糊的彩团（比渐变更「玻璃」）
+ * ⚠️ 轮 407：这里原来是 `filter: blur(64px)`。固定层上的 64px 高斯模糊
+ * 三团合计 197,600 px²，WebView 每次重绘都要在 GPU 上重跑一遍，是滚动掉帧的来源之一。
+ * 现在改成「边缘透明的径向渐变」——盖住同样的面积、同样的柔度，成本归零（不产生滤镜）。 */
 .orb {
   display: block !important;
   position: fixed; border-radius: 50%;
-  filter: blur(64px); opacity: .55;
   pointer-events: none; z-index: 0;
 }
-.orb-1 { width: 300px; height: 300px; top: -90px; right: -70px; background: #F7C9DA; }
-.orb-2 { width: 260px; height: 260px; bottom: -80px; left: -80px; background: #CFD9F7; }
-.orb-3 { width: 200px; height: 200px; top: 46%; left: 8%; background: #D6CBF6; }
-html[data-theme="night"] .orb { opacity: .28; }
+/* 轮 413：三团光斑同步收暖。原来 orb-2 是雾蓝(207,217,247)、orb-3 是薰衣草(214,203,246)，
+ * 都是 95% 不透明的冷色核心，压在滚动区里就是「背景里的一块暗」。换成蜜桃/鹅黄，
+ * 亮度整体上抬一档，色彩只负责氛围、不再负责明暗。 */
+.orb-1 {
+  width: 360px; height: 360px; top: -120px; right: -100px; opacity: .42;
+  background: radial-gradient(closest-side, rgba(254, 226, 234, 0.90) 0%, rgba(254, 226, 234, 0.44) 52%, rgba(254, 226, 234, 0) 100%);
+}
+.orb-2 {
+  width: 320px; height: 320px; bottom: -110px; left: -110px; opacity: .40;
+  background: radial-gradient(closest-side, rgba(253, 230, 212, 0.90) 0%, rgba(253, 230, 212, 0.42) 52%, rgba(253, 230, 212, 0) 100%);
+}
+.orb-3 {
+  width: 250px; height: 250px; top: 46%; left: 6%; opacity: .34;
+  background: radial-gradient(closest-side, rgba(253, 245, 216, 0.90) 0%, rgba(253, 245, 216, 0.40) 52%, rgba(253, 245, 216, 0) 100%);
+}
+html[data-theme="night"] .orb { opacity: .3; }
 
-/* ═══════════════ ② 卡片：玻璃主体 ═══════════════
- * 白 56% + 20px 模糊 + 白色描边 + 顶部一道内高光 + 双层柔和投影。
- * 列表里的 .card 很多，模糊交给合成层，Chromium/WebView 走 GPU，长列表实测无掉帧。 */
+/* ═══════════════ ② 卡片：磨砂主体（分两档，轮 407 性能修正）═══════════════
+ * 原来所有卡片都挂 backdrop-filter: blur(20px) saturate(1.6)。首页实测 12 层、
+ * 合计 558,750 px²（≈1.7 个视口）——每滚一帧都要把背后重抓一遍再做两遍可分离模糊，
+ * 而且它们背后还压着三团 filter: blur(64px) 的光斑。Android WebView 上必卡。
+ *
+ * 现在：
+ *   A 档「跟着列表滚的」 = 不做 blur，靠 --g-bg-card(0.86 白) 自己挡住背后。
+ *      卡片背后本来只有米色柔光底，没有高对比内容可糊，所以观感几乎没变。
+ *   B 档「浮在上面的」   = 保留真 blur（弹窗/对话框，数量少、下面是静态内容、打开时不滚动）。 */
 .card,
-.glass,
+.glass {
+  background: var(--g-bg-card) !important;
+  /* 轮 414：投影收掉之后白描边在浅底上等于没有，卡片会「化」进背景 —— 换一圈 6% 暖墨发丝线。 */
+  border: 1px solid rgba(120, 102, 88, 0.06) !important;
+  border-radius: var(--r-card) !important;
+  box-shadow: var(--g-shadow), var(--g-hi) !important;
+}
 .dl-modal,
 .n-card {
   background: var(--g-bg) !important;
@@ -153,83 +206,292 @@ html[data-theme="night"] .orb { opacity: .28; }
 /* ═══════════════ ④ 顶部栏 / 底部 Tab：固定玻璃层（永不透明） ═══════════════ */
 .topbar {
   background: var(--g-bg-strong) !important;
-  -webkit-backdrop-filter: blur(22px) saturate(1.7) !important;
-  backdrop-filter: blur(22px) saturate(1.7) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(1.6) !important;
+  backdrop-filter: blur(16px) saturate(1.6) !important;
   border: 1px solid var(--g-line) !important;
   box-shadow: var(--g-shadow-sm), var(--g-hi) !important;
 }
 .topbar .nav a.active {
-  background: var(--ink) !important;
+  background: var(--accent) !important;
   color: #fff !important;
 }
 
 /* 底部导航：改成「悬浮胶囊」（参考图里的 tabbar 是浮起来的一块玻璃，不贴边） */
 .tabbar.van-tabbar,
 .tabbar {
-  left: 10px !important; right: 10px !important;
+  /* 418：10px → 18px。全站卡片（.card / .today-hi / .quote-card）左右边距都是 18px，
+   * 唯独底部胶囊是 10px —— 实测卡片 x=18 宽 357，胶囊 x=10 宽 373，
+   * 比上方每一张卡片都各宽出 8px，竖边缘一条都对不上。
+   * 「不协调」的体感有一大半来自这里：它是全页唯一不落在 18px 网格上的元件。 */
+  left: 18px !important; right: 18px !important;
   /* 必须 width:auto —— Vant 给的是 width:100%，配上 left/right 会以宽度优先，
    * 结果右缘越过视口 10px（实测 390 视口里 tabbar 右缘 400），整页横向溢出。 */
   width: auto !important;
   box-sizing: border-box !important;
-  bottom: calc(8px + var(--sab, env(safe-area-inset-bottom, 0px))) !important;
+  /* 418：24px → 20px。原来那 24px 的浮空缝比栏本身的 4px 内边距还宽，
+   * 栏看着是「飘在屏幕中间」而不是「压在底上」；收到 20px（= 4 + 手势区 16）后
+   * 与系统手势条的间距才和栏内上下留白接近。 */
+  bottom: calc(4px + var(--sab, env(safe-area-inset-bottom, 0px))) !important;
   max-width: 620px !important;
-  border: 1px solid var(--g-line) !important;
-  border-top: 1px solid var(--g-line) !important;
+  /* 轮 416：白描边（--g-line 72% 白）在近白底上等于隐形，胶囊边界会糊掉。
+   * 换 7.5% 暖墨发丝线 —— 和全站卡片同一口径，不靠暗、靠一根线立住。 */
+  border: 1px solid rgba(120, 102, 88, 0.075) !important;
+  border-top: 1px solid rgba(120, 102, 88, 0.075) !important;
   border-radius: 24px !important;
-  background: var(--g-bg-strong) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(1.8) !important;
-  backdrop-filter: blur(24px) saturate(1.8) !important;
-  box-shadow: 0 12px 30px rgba(58, 46, 42, 0.14), var(--g-hi) !important;
+  background: var(--g-tabbar) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(1.6) !important;
+  backdrop-filter: blur(18px) saturate(1.6) !important;
+  box-shadow: 0 2px 10px rgba(58, 46, 42, 0.06), var(--g-hi) !important;
   padding: 4px 10px !important;
   overflow: visible !important;
 }
-.tabbar .tab-label { font-size: 12.5px !important; font-weight: 600 !important; letter-spacing: 0.2px; }
-.tabbar .van-tabbar-item--active .tab-label { color: var(--ink) !important; }
-/* 中间 ＋：容器保持透明，圆才是那个墨色圆钮（第一版把墨底刷在容器上 → 出来一个黑方块） */
+
+/* ═══ 轮 418 · 底部的病根是「两个实心面 + 一颗凸起的球」 ═══
+ * 417 给选中项垫了 11% 柔底胶囊、把圆钮收到 38，用户回「一点没变」。回看截图才明白：
+ * 问题不在尺寸，在**元件的形状语汇**——
+ *   ① 中间 38px 圆球，直径是字高（13.5）的近三倍，全栏唯一的「球」，读起来像外挂上去的；
+ *   ② 选中项 49×30 的色块也是实心面，一条 373px 的栏里并排两个实心面，
+ *      横着看就是「两个按钮 + 三个字」，怎么调颜色都不齐。
+ * 改法是把两者换成**两种不同层级的记号**：
+ *   · 主操作 = 一枚 46×30 的圆角印章（宽>高、与一行字同高，进「一行里的一个色块」这一档）；
+ *   · 选中 = 字变了色 + 字下一条 12×3 的短横（是线，不是面）。
+ * 面积差拉开之后，视线先读到印章、再读到短横，最后才是四个词——这才是一条栏。 */
+.tabbar .van-tabbar-item {
+  padding: 0 !important;
+  min-height: 44px !important;
+  color: rgba(20, 20, 19, 0.50) !important;
+  transition: color 0.18s ease !important;
+}
+.tabbar .van-tabbar-item__text {
+  position: relative !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: 30px !important;
+  padding: 0 8px !important;
+  background: none !important;
+}
+.tabbar .tab-label {
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.2px;
+  line-height: 1 !important;
+}
+/* 选中态：文字转陶土橘 + 字下一条 12×3 的短横。
+ * 418 撤掉了 417 的「11% 柔底胶囊」：那枚 49×30 的色块和中间的印章一样是「实心面」，
+ * 一条 373px 的栏里出现两个实心面，横向读起来是「两个按钮 + 三个字」——
+ * 这正是用户说的「不协调」。短横是线，印章是面，两者不抢同一档视觉权重。 */
+.tabbar .van-tabbar-item--active,
+.tabbar .van-tabbar-item.active { color: var(--accent-deep) !important; }
+.tabbar .van-tabbar-item--active .van-tabbar-item__text::after,
+.tabbar .van-tabbar-item.active .van-tabbar-item__text::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  /* 16px：与「两字标签」的 27px 字宽成 0.6 的比，读作指示条；
+   * 12px 会被读成「首页」这一个字的下划线。bottom:0 把间距拉开到 5px，别贴着字底。 */
+  bottom: 0;
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
+  /* currentColor 而不是 var(--accent)：五套主题里 --accent 和玻璃皮肤后段覆盖的
+   * --accent-deep 不是同一个色（夜间 --accent 是星夜蓝 #8b9ce8，--accent-deep 被
+   * 皮肤改成浅陶土 #E8A184），写死 --accent 会出现「字是陶土、短横是蓝」的错位。 */
+  background: currentColor;
+  transform: translateX(-50%);
+}
+.tabbar .van-tabbar-item--active .tab-label,
+.tabbar .van-tabbar-item.active .tab-label {
+  color: var(--accent-deep) !important;
+  font-weight: 700 !important;
+}
+/* 中间 ＋：容器保持透明，圆才是那个橘色圆钮（第一版把墨底刷在容器上 → 出来一个黑方块） */
 .tabbar .tab-compose { background: transparent !important; }
 .tabbar .tab-compose-x {
-  background: var(--ink) !important;
+  /* 418：38px 圆球 → 46×30 圆角 10 的「印章」。
+   * 上两版一直没解决的是**形状**：一颗圆球立在一排 13.5px 的字里，直径 38 比字高 13.5 大
+   * 近三倍，它必然是整条栏里唯一的「凸起物」，读起来像贴上去的第三类元件。
+   * 小红书那颗 ＋ 之所以不突兀，因为它是**横向的圆角矩形**（宽 > 高），高度正好等于一行字，
+   * 所以它读作「一行里的一个色块」，而不是「一个球」。46×30 正是这个比例。 */
+  width: 46px !important;
+  height: 30px !important;
+  border-radius: 10px !important;
+  background: var(--accent) !important;
   color: #fff !important;
-  border: 3px solid rgba(255, 255, 255, 0.9) !important;
-  box-shadow: 0 8px 20px rgba(20, 20, 19, 0.28) !important;
+  border: 0 !important;
+  /* 实测：页签文字盒在 44px 行里偏下 2px（y=835.5 而非 833.5，Vant 内容层自带内边距），
+   * 印章是 flex 居中的（y=833.5）。不补这 2px，加号会明显比四个词「高半个头」。 */
+  margin-top: 2px !important;
+  box-shadow: 0 2px 7px rgba(204, 120, 92, 0.24) !important;
 }
-/* 悬浮条多出 8px，主内容底部让位同步加 8 */
-.shell--mobile-nav main { padding-bottom: calc(86px + var(--sab, env(safe-area-inset-bottom, 0px))) !important; }
-/* 首页四联是横向分页容器，每页自己的滚动区不吃 main 的 padding，单独补 */
-.home-pane { padding-bottom: calc(88px + var(--sab, env(safe-area-inset-bottom, 0px))) !important; }
+.tabbar .tab-compose-x svg { width: 20px !important; height: 20px !important; }
+/* ⚠️ 轮 409：底部让位不要再「两处相加」。
+ * 原来 `.shell` 自带 `padding: 0 18px 48px`（旧版贴底 tabbar 的让位），手机上没人归零，
+ * 于是手机端的总让位 = shell 48 + main(86+sab) = 134+sab，而悬浮胶囊只占 8+sab+56。
+ * 多出来的 50~60px 就是用户说的「每个页面下面都有一条空白带」—— 米色平涂时看不出来
+ * （颜色一样），换成玻璃底之后那块露出来的是彩色柔光，一眼就是一条带子。 */
+.shell--mobile-nav { padding-bottom: 0 !important; }
+/* 让位只留一层，数值按实测胶囊算：底部 8 + 胶囊 56 + 顶部呼吸 10 ≈ 74（sab 另加，
+ * 因为胶囊的 bottom 已经自带 sab，这里只补内容侧的那一份）。 */
+.shell--mobile-nav main { padding-bottom: calc(74px + var(--sab, env(safe-area-inset-bottom, 0px))) !important; }
+/* ⚠️ 聊天态没有胶囊，不需要这 86px 让位。
+ * style.css 里那条 `.shell--mobile-nav.shell--chat main { padding-bottom: 0 }` 是普通声明，
+ * 被上面这行的 !important 直接压掉 → 用户截图里输入条下方多出的一整块米白空白就是它
+ * （会话区高度已由 .dm-page 的 100dvh 定死，多出来的 padding 只能变成页尾的一条空带）。 */
+.shell--mobile-nav.shell--chat main { padding-bottom: 0 !important; }
+/* 首页四联：四个 pane 都是普通内容流（没有各自的滚动容器），main 的让位对它们有效，
+ * 所以这里必须归零。轮 410 实测：pane 自己再加一份 74+sab 之后，
+ * HomeView 的 trackH 用的是 pane.offsetHeight（含 padding），
+ * 于是「pane 底部 90px + main 底部 90px」双层叠加，滚到底时正文离胶囊 130px —— 用户看到的那条空白带。 */
+.home-pane { padding-bottom: 0 !important; }
 /* 暖心墙自己是一个 position:fixed 的滚动层（.wall-scroller），main 的 padding 传不进来：
  * 它的底部留白写在行内 style 里（70px），而悬浮条占 66px + 8px 抬升 = 74px，
  * 于是最后一张卡的下沿会从胶囊底下钻出来。行内样式只能用 !important 压。 */
 .shell--mobile-nav .wall-scroller {
-  padding-bottom: calc(94px + var(--sab, env(safe-area-inset-bottom, 0px))) !important;
+  padding-bottom: calc(82px + var(--sab, env(safe-area-inset-bottom, 0px))) !important;
 }
 .shell--mobile-nav.shell--chat .home-pane { padding-bottom: 0 !important; }
 
 /* 底部渐隐：悬浮胶囊不贴底，下面那 8px 缝隙里会有正文透出来（半行字，比全藏起来还难看）。
  * 用一层「页面底色 → 透明」的固定遮罩把它吃掉 —— 比把胶囊改成贴底更接近参考图的悬浮感。
- * 颜色走变量，夜间主题跟着换，不然夜里会横一条米白光带。 */
+ * 颜色走变量，夜间主题跟着换，不然夜里会横一条米白光带。
+ * ⚠️ 轮 409：原来高度是 78px+sab，等于把整条胶囊连同它上面一大段都刷成米白 ——
+ * 在米色平涂上看不出来，换成玻璃底（底下是彩色柔光）之后就是用户说的
+ * 「每个页面下面都有一条发白的空白带」。它只需要盖住「胶囊底下那 8px 缝隙」，
+ * 所以高度收到 16px+sab：8px 缝隙 + 8px 柔化过渡。 */
 body::after {
   content: "";
   position: fixed;
   left: 0; right: 0; bottom: 0;
-  height: calc(78px + var(--sab, env(safe-area-inset-bottom, 0px)));
+  /* 轮 416：16px → 72px。
+   * 胶囊是浮起来的（底距 8 + safe-area），它下面那条 24px 的缝里能直接看见
+   * 被切断的卡片和系统手势条 —— 读起来像「底部没做完」。
+   * 渐隐层加高到能整段盖住缝隙，再往上把滚过来的内容慢慢淡出。 */
+  height: calc(72px + var(--sab, env(safe-area-inset-bottom, 0px)));
   pointer-events: none;
   background: linear-gradient(to top,
-    rgba(var(--g-fade), 0.97) 0%,
-    rgba(var(--g-fade), 0.88) 42%,
+    rgba(var(--g-fade), 1) 0%,
+    rgba(var(--g-fade), 1) 40%,
+    rgba(var(--g-fade), 0.82) 62%,
+    rgba(var(--g-fade), 0.38) 84%,
     rgba(var(--g-fade), 0) 100%);
   z-index: 135; /* 低于胶囊(140)，高于正文 */
 }
+/* ⚠️ 会话页（shell--chat）整层关掉：这一页不渲染悬浮胶囊（TabBar 的 v-if 带 !inChat），
+ * 这层渐隐没有任何缝隙要补，位置却正好压在输入条上 —— App 里整条底栏被米白雾蒙住、
+ * 输入框和纸飞机看着像「灰掉了」，就是它。用户报的「底部都模糊」即此。
+ * :has() 与 DmVacChat 里既有的 :has(.vac-emoji-picker) 同一档兼容要求（Chrome 105+ / iOS 15.4+）。 */
+body:has(.shell--chat)::after { display: none; }
 
-/* 胶囊里的弹层（＋ 号那三瓣） */
-.tabbar-sheet {
-  background: var(--g-bg-strong) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(1.7) !important;
-  backdrop-filter: blur(24px) saturate(1.7) !important;
-  border: 1px solid var(--g-line) !important;
-  border-radius: 26px !important;
-  box-shadow: var(--g-shadow) !important;
+/* ═══ 轮 426 · 会话页回到「整页铺满」（421 那套浮卡 + 18px 画布边作废）═══
+ * 用户：「会话详细页，要想以前一样的铺满啊，现在改成什么鬼样子」。
+ * 420/421 我把这一页做成了「浮在暖色画布上的一张 23px 圆角玻璃卡」，留了 18px 左右的边，
+ * 理由当时是解释「第一次点有玻璃」——那条已经被 423 的时序结论推翻（真因是列表行按压态），
+ * 于是这套改动就只剩副作用：聊天页左右多了两条画布边，看着不像原来那页。
+ *
+ * 现在的口径：**铺满整屏**，跟 style.css 的「微信同款整屏」一致。
+ * 但 `.card` 在玻璃皮肤里是用 !important 写死的（见上方 .card 规则），
+ * 所以必须在这里显式取消，光删规则不够。
+ * 内边距一律不写：sat/sab 与键盘让位（含 wp-emoji-open 的 padding-bottom:0）
+ * 全在 style.css 里，这里再写一次 !important 会把表情面板贴底和键盘过渡一起顶掉。 */
+.shell--mobile-nav.shell--chat .dm-thread.card {
+  background: var(--page-bg) !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
+
+/* ═══ 轮 415 · ＋ 弹层：改成小红书式的「整块底部面板」═══
+ * 旧版病灶（真机实测，别再退回）：
+ * ① 遮罩/弹层原本写在 <van-tabbar> 内部，而胶囊自己挂着 `backdrop-filter`。
+ *    按 CSS 规范，带 filter/backdrop-filter 的元素会成为 position:fixed 后代的包含块 ——
+ *    于是 `inset: 0` 的遮罩被解析成「胶囊内框那么大」（实测 372×54，正好胶囊尺寸）。
+ *    后果：点弹层以外任何地方都关不掉（直接穿透点到下面卡片），胶囊自己被 38% 黑蒙住。
+ * ② 弹层的 left/right/bottom 同样相对胶囊算，贴不住屏幕底、宽度也跟着胶囊走。
+ * ③ 容器刷了白玻璃底，里面三张 76% 白的卡只隔 10px —— 三瓣粘成一整块白板。
+ * 现在的形态（对齐小红书）：一张贴底的大圆角面板，三行入口用发丝线分隔，
+ * 面板从底部整块升起（translateY 100% → 0），遮罩覆盖全屏（连胶囊一起），
+ * 关面板只能点面板外面 —— 和主流 App 的手感一致。 */
+.tabbar-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  /* 不能再是 38% 墨黑（浅色界面上一顶黑壳），但也别淡到看不出层级：
+   * 28% 暖黑 + 不模糊，够压住背景、又不把画面读成「黑了」 */
+  background: rgba(30, 24, 20, 0.28) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  animation: tabbar-fade 0.2s ease both;
+}
+.tabbar-sheet {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 910;
+  width: 100% !important;
+  max-width: 520px !important;
+  margin: 0 auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0 !important;
+  /* 顶部留 8px 给把手，底部 10px + 手势区：最后一行别贴着系统手势条 */
+  padding: 8px 0 calc(10px + var(--sab, env(safe-area-inset-bottom, 0px))) !important;
+  /* 轮 416：必须**完全不透**。0.98 只透 2%，但对正文那种 28px 的粗字来说
+   * 2% 就是「能看见字的影子」——面板里三层入口的字和下面的帖子标题叠在一起，
+   * 整块读起来是脏的。遮罩已经把背景压下去了，面板不需要再靠半透做层级。 */
+  background: #FFFDFB !important;
+  border: 0 !important;
+  border-radius: 24px 24px 0 0 !important;
+  box-shadow: 0 -6px 24px rgba(58, 46, 42, 0.10) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  animation: tabbar-sheet-up 0.28s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+/* 顶部拖动把手（小红书/微信面板同款）：一根 36×4 的浅条，纯装饰 */
+.tabbar-sheet::before {
+  content: "";
+  display: block;
+  width: 36px;
+  height: 4px;
+  margin: 0 auto 6px;
+  border-radius: 999px;
+  background: rgba(120, 102, 88, 0.18);
+}
+.tabbar-sheet .tabbar-opt {
+  /* 行，不是卡：去掉白底/圆角/投影，改由发丝线分隔 */
+  background: none !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 14px 22px !important;
+  gap: 14px !important;
+}
+.tabbar-sheet .tabbar-opt + .tabbar-opt {
+  border-top: 1px solid rgba(120, 102, 88, 0.075) !important;
+}
+.tabbar-sheet .tabbar-opt:active { background: rgba(120, 102, 88, 0.05) !important; transform: none; }
+.tabbar-sheet .tabbar-opt-ico {
+  width: 40px !important;
+  height: 40px !important;
+  flex: 0 0 40px !important;
+  border-radius: 13px !important;
+}
+.tabbar-sheet .tabbar-opt-txt { gap: 3px !important; }
+.tabbar-sheet .tabbar-opt-txt b { font-size: 15.5px !important; font-weight: 600 !important; }
+.tabbar-sheet .tabbar-opt-txt small { font-size: 12.5px !important; color: var(--ink-soft) !important; }
+/* 夜间：面板跟着深，别在深色界面里横一张白纸 */
+html[data-theme="night"] .tabbar-sheet {
+  background: #1B1C22 !important;
+  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.34) !important;
+}
+html[data-theme="night"] .tabbar-mask { background: rgba(0, 0, 0, 0.46) !important; }
+html[data-theme="night"] .tabbar-sheet::before { background: rgba(255, 255, 255, 0.16); }
+html[data-theme="night"] .tabbar-sheet .tabbar-opt + .tabbar-opt {
+  border-top-color: rgba(255, 255, 255, 0.09) !important;
+}
+@keyframes tabbar-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes tabbar-sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
 
 /* ═══════════════ ⑤ 按钮 / 胶囊 / 输入 ═══════════════ */
 .btn {
@@ -249,12 +511,11 @@ textarea.input,
 .wall-search-input,
 .q-input input,
 .q-input textarea {
-  background: rgba(255, 255, 255, 0.62) !important;
+  background: rgba(255, 255, 255, 0.80) !important;
   border: 1px solid var(--g-line) !important;
   border-radius: var(--r-inner) !important;
   box-shadow: inset 0 1px 2px rgba(58, 46, 42, 0.05) !important;
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
+  /* 轮 407：输入框不挂 blur —— 打字时每敲一个字都会重算一次背景滤镜，输入法跟手感明显变差 */
 }
 .input:focus,
 .wall-search-input:focus {
@@ -274,10 +535,10 @@ textarea.input,
 }
 .chip.on,
 .chip.on:hover {
-  background: var(--ink) !important;
+  background: var(--accent) !important;
   border-color: transparent !important;
   color: #fff !important;
-  box-shadow: 0 8px 20px rgba(20, 20, 19, 0.24) !important;
+  box-shadow: 0 6px 14px rgba(204, 120, 92, 0.26) !important;
 }
 .soft-tag {
   background: rgba(255, 255, 255, 0.66) !important;
@@ -311,12 +572,11 @@ textarea.input,
 /* 四张状态卡：四种 pastel（不做旋转——网格里一旋就出现参差的缝，参考图的旋转是给
  * 「自由摆放的便签堆」用的，不是给等高网格用的） */
 .status-card {
-  background: var(--g-bg) !important;
+  background: var(--g-bg-card) !important;
   border: 1px solid var(--g-line) !important;
   border-radius: 20px !important;
   box-shadow: var(--g-shadow-sm), var(--g-hi) !important;
-  -webkit-backdrop-filter: blur(16px) saturate(1.5) !important;
-  backdrop-filter: blur(16px) saturate(1.5) !important;
+  /* 轮 407：四张卡在网格里，且带 transform（hover 抬升）—— 旋转+模糊是 WebView 最贵的组合，去掉模糊 */
   transition: transform .22s cubic-bezier(.22, 1, .36, 1), box-shadow .22s ease !important;
 }
 .status-card:nth-child(4n + 1) {
@@ -390,13 +650,41 @@ textarea.input,
 }
 .task-row .t-ico { border-radius: 12px !important; }
 
-/* 首页四联的分段（宠物/今日/漂流瓶/故事）：条本身透明，只有选中项是墨色胶囊 */
+/* 首页四联的分段（宠物/今日/漂流瓶/故事）：
+ * 轮 411 —— 它是 sticky，吸在 top:0；但 App 壳是全屏（main 顶部已经让了 --sat），
+ * 一滚动它就滑到状态栏底下，跟「3:11 / 网速 / 信号」叠字，用户把这团黑叫「黑底」。
+ * 改法：① 条自己吞下状态栏高度（padding-top: --sat），main 不再让（见下一条），
+ *        吸顶时按钮正好落在状态栏下方 8px，跟未滚动时位置一致，不跳动；
+ *       ② 补一层「顶部实色 → 下缘透明」的自身底：玻璃化时这里被设成 transparent，
+ *        滚过去的内容会直接透上来（上一版只改成 top:sat 时，状态栏那 36px 里内容照样乱穿）。 */
 .home-chips {
-  background: transparent !important;
+  top: 0 !important;
+  padding: calc(8px + var(--sat, env(safe-area-inset-top, 0px))) 4px 10px !important;
+  /* 整块近实底：渐变到透明会让卡片文字从按钮底下穿上来（实测截图里「有人陪你一起…」
+   * 就浮在按钮下面），看着像蒙了层雾。硬边用下面那条 ::after 的 12px 渐变收掉。 */
+  background: rgba(var(--g-fade), 0.96) !important;
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
-  padding: 8px 4px 10px !important;
 }
+/* 吸顶条下沿的柔化：12px 从底色渐隐到透明，免得出现一条生硬的横切边 */
+.home-chips::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 12px;
+  pointer-events: none;
+  background: linear-gradient(to bottom,
+    rgba(var(--g-fade), 0.96) 0%,
+    rgba(var(--g-fade), 0) 100%);
+}
+/* 状态栏高度已经由上面那条吃掉了，main 再让一份就会在顶部多出一条空白 */
+.shell--mobile-nav main:has(.home-chips) { padding-top: 0 !important; }
+/* 首页第一个 in-flow 元素是 .pet-notice-stack（sticky、高 0、margin-bottom 14），
+ * 它会把联条往下顶 14px —— 那 14px 就成了「状态栏和吸顶条之间」漏出来的一条内容缝。
+ * 归零后联条从 y=0 起，正好把整条状态栏盖住。 */
+.shell--mobile-nav main:has(.home-chips) .pet-notice-stack { margin-bottom: 0 !important; }
 .home-chip,
 .home-chips .home-chip {
   border-radius: var(--r-pill) !important;
@@ -407,27 +695,28 @@ textarea.input,
   min-height: 36px !important;
   padding: 4px 16px !important;
 }
+/* 选中项：原来是 var(--ink) 的墨黑胶囊 —— 在浅玻璃上就是一块「黑底」，也不在九色 Pastel 里。
+ * 换成主题色（暖奶油 → 陶红 #cc785c；换肤后跟着 --accent 走），白字 + 同色投影。 */
 .home-chips .home-chip.on {
-  background: var(--ink) !important;
+  background: var(--accent) !important;
   border-color: transparent !important;
   color: #fff !important;
-  box-shadow: 0 8px 18px rgba(20, 20, 19, 0.22) !important;
+  box-shadow: 0 8px 18px rgba(204, 120, 92, 0.26) !important;
 }
 
 /* ═══════════════ ⑦ 暖心墙：玻璃帖卡 + 染色头像圈 ═══════════════ */
 .post-card {
-  background: var(--g-bg) !important;
-  border: 1px solid var(--g-line) !important;
+  background: var(--g-bg-card) !important;
+  border: 1px solid rgba(120, 102, 88, 0.06) !important;
   border-radius: var(--r-card) !important;
   box-shadow: var(--g-shadow-sm), var(--g-hi) !important;
-  -webkit-backdrop-filter: blur(20px) saturate(1.5) !important;
-  backdrop-filter: blur(20px) saturate(1.5) !important;
+  /* 轮 407：暖心墙是长列表，帖卡是最不该挂 backdrop-filter 的地方（条数不设上限） */
 }
 /* 每条帖子按序换一层极淡的 pastel 顶光，列表不再是一片白 */
-.post-card:nth-child(4n + 1) { background: linear-gradient(180deg, rgba(251, 214, 226, 0.42), var(--g-bg) 42%) !important; }
-.post-card:nth-child(4n + 2) { background: linear-gradient(180deg, rgba(217, 228, 250, 0.42), var(--g-bg) 42%) !important; }
-.post-card:nth-child(4n + 3) { background: linear-gradient(180deg, rgba(211, 239, 219, 0.40), var(--g-bg) 42%) !important; }
-.post-card:nth-child(4n + 4) { background: linear-gradient(180deg, rgba(250, 240, 197, 0.40), var(--g-bg) 42%) !important; }
+.post-card:nth-child(4n + 1) { background: linear-gradient(180deg, rgba(251, 214, 226, 0.42), var(--g-bg-card) 42%) !important; }
+.post-card:nth-child(4n + 2) { background: linear-gradient(180deg, rgba(217, 228, 250, 0.42), var(--g-bg-card) 42%) !important; }
+.post-card:nth-child(4n + 3) { background: linear-gradient(180deg, rgba(211, 239, 219, 0.40), var(--g-bg-card) 42%) !important; }
+.post-card:nth-child(4n + 4) { background: linear-gradient(180deg, rgba(250, 240, 197, 0.40), var(--g-bg-card) 42%) !important; }
 .post-avatar { box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9) !important; }
 .post-name { font-weight: 600 !important; }
 .post-text { font-size: 14.5px !important; line-height: 1.72 !important; }
@@ -440,7 +729,7 @@ textarea.input,
 /* 排序条：选中的那颗换成墨色胶囊（参考图的筛选项就是黑选中态） */
 .wall-sort .sort-btn.on,
 .sort-btn.on {
-  background: var(--ink) !important;
+  background: var(--accent) !important;
   color: #fff !important;
   border-color: transparent !important;
 }
@@ -481,18 +770,75 @@ textarea.input,
 
 /* ═══════════════ ⑨ 消息 / 通知：玻璃列表 + 分段控件 ═══════════════ */
 .dm-list {
-  background: var(--g-bg) !important;
+  background: var(--g-bg-card) !important;
   border: 1px solid var(--g-line) !important;
   border-radius: var(--r-card) !important;
   box-shadow: var(--g-shadow-sm), var(--g-hi) !important;
-  -webkit-backdrop-filter: blur(20px) saturate(1.5) !important;
-  backdrop-filter: blur(20px) saturate(1.5) !important;
+  /* 轮 407：会话列表是整块大容器（可长到几千 px），模糊面积和视口同量级，去掉 */
 }
+/* 轮 422 · 会话行：**按下去那一层玻璃**（不是常驻选中）
+ * 前一轮把选中态做成常驻，用户回：「我说的是点击的时候有，谁让你改成点击之后、返回有这个」。
+ * 真正的病灶：旧版唯一那层粉色只挂在 .on 上，而 .on 是 click 之后才加、紧接着路由就把整个列表
+ * display:none —— 首次进入要等会话数据，慢，所以看得见；后面快了就一闪而过。
+ * 玻璃必须挂在 :active 上：touchstart 就亮，与路由快慢无关，每一次点都一样。
+ * 另外触摸端 :hover 会一直粘在最后点的元素上，旧规则 .dm-row:hover{白 .5 !important}
+ * 会在按下期间把按压态盖成一层看不出来的白 —— hover 只留给真有指针的设备。
+ * 边界一律 inset 阴影画，不用 border（加 border 行高会跳 2px）。 */
 .dm-row {
   border-radius: var(--r-inner) !important;
-  transition: background .16s ease !important;
+  transition: background .16s ease, box-shadow .16s ease !important;
+  /* 轮 423：真机实测「按下 → click」之间有 ~400ms（就是老的 300ms 点击延迟）。
+   * 肉眼看是「点了半秒才动」，也让按压玻璃的时长被拖长、每次还不一样。
+   * manipulation = 只禁双击缩放、保留滚动，click 立刻发。 */
+  touch-action: manipulation !important;
 }
-.dm-row:hover { background: rgba(255, 255, 255, 0.5) !important; }
+@media (hover: hover) and (pointer: fine) {
+  .dm-row:hover { background: rgba(255, 255, 255, 0.42) !important; }
+}
+/* 按压 = 玻璃。过渡 0.06s：用 .16s 会在列表被隐藏之前还没亮起来。
+ * 轮 423：除 :active 外还认 .press —— 由 JS 在 touchstart 当场加（见 MessagesView onRowPress），
+ * 因为 :active 什么时候挂上、列表什么时候隐藏，浏览器自己说了算；.press + PRESS_MS 才把这一帧钉死。 */
+.dm-row:active,
+.dm-row.press,
+.dm-row.on:active {
+  background:
+    linear-gradient(180deg,
+      rgba(255, 255, 255, 0.66) 0%,
+      rgba(255, 255, 255, 0.26) 42%,
+      rgba(255, 255, 255, 0.34) 100%),
+    rgba(251, 214, 226, 0.44) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.96),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.52),
+    0 1px 2px rgba(169, 88, 62, 0.10),
+    0 6px 16px rgba(169, 88, 62, 0.12) !important;
+  transition: background .06s ease, box-shadow .06s ease !important;
+}
+/* 停在会话里（列表已隐藏）时保持同款，不另立一套 */
+.dm-row.on {
+  background:
+    linear-gradient(180deg,
+      rgba(255, 255, 255, 0.66) 0%,
+      rgba(255, 255, 255, 0.26) 42%,
+      rgba(255, 255, 255, 0.34) 100%),
+    rgba(251, 214, 226, 0.44) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.96),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.52),
+    0 1px 2px rgba(169, 88, 62, 0.10),
+    0 6px 16px rgba(169, 88, 62, 0.12) !important;
+}
+html[data-theme="night"] .dm-row:active,
+html[data-theme="night"] .dm-row.press,
+html[data-theme="night"] .dm-row.on:active,
+html[data-theme="night"] .dm-row.on {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.06) 100%) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.20),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.09),
+    0 6px 16px rgba(0, 0, 0, 0.30) !important;
+}
 .dm-seg {
   background: rgba(255, 255, 255, 0.45) !important;
   border: 1px solid var(--g-line) !important;
@@ -505,9 +851,9 @@ textarea.input,
   font-weight: 600 !important;
 }
 .dm-seg-btn.on {
-  background: var(--ink) !important;
+  background: var(--accent) !important;
   color: #fff !important;
-  box-shadow: 0 6px 14px rgba(20, 20, 19, 0.2) !important;
+  box-shadow: 0 4px 10px rgba(204, 120, 92, 0.22) !important;
 }
 .notif-tab,
 .notif-act {
@@ -516,7 +862,7 @@ textarea.input,
   border: 1px solid var(--g-line) !important;
 }
 .notif-tab.on,
-.notif-act.on { background: var(--ink) !important; color: #fff !important; }
+.notif-act.on { background: var(--accent) !important; color: #fff !important; }
 
 /* ═══════════════ ⑩ 弹层：玻璃 + 23px ═══════════════ */
 .n-modal,
@@ -531,7 +877,7 @@ textarea.input,
   backdrop-filter: blur(26px) saturate(1.7) !important;
   border: 1px solid var(--g-line) !important;
   border-radius: var(--r-card) !important;
-  box-shadow: 0 24px 60px rgba(45, 36, 32, 0.18), var(--g-hi) !important;
+  box-shadow: 0 10px 30px rgba(45, 36, 32, 0.10), var(--g-hi) !important;
 }
 .n-modal-mask,
 .van-overlay,
@@ -553,27 +899,122 @@ textarea.input,
 }
 
 /* ═══════════════ ⑫ 故事 / 漂流瓶 / 宠物：补齐大块容器 ═══════════════ */
-/* 故事页正文是整块 var(--card)（改成半透明白后成了玻璃底），这里补一层轻模糊与描边，
- * 只在桌面/手机都生效；1715px 高的元素不做 20px 模糊（大面模糊很贵），用 12px。 */
+/* 故事页正文是整块 var(--card)（改成半透明白后成了玻璃底），这里补描边与内高光。
+ * 轮 407：这层原来还有 blur(12px)，但它是 1715px 高的整块容器（≈5 个视口），
+ * 是「单层面积最大」的一处，去掉后故事页滚动明显顺了。 */
 .story-main {
-  background: var(--g-bg) !important;
+  background: var(--g-bg-card) !important;
   border: 1px solid var(--g-line) !important;
   border-radius: var(--r-card) !important;
   box-shadow: var(--g-shadow-sm), var(--g-hi) !important;
-  -webkit-backdrop-filter: blur(12px) saturate(1.4);
-  backdrop-filter: blur(12px) saturate(1.4);
 }
 .story-head .st-btn,
 .st-btn {
   border-radius: var(--r-pill) !important;
 }
-.st-btn--mark { background: rgba(255, 255, 255, 0.6) !important; border: 1px solid var(--g-line) !important; }
+/* 轮 425 · 用户报「故事页点收藏，收藏直接隐藏了，看不到了」。
+ * 病根就在这一行：`.st-btn--mark` 的白芯片底带 !important，把选中态 `.st-btn--on` 的
+ * `background: var(--accent-deep)` 压掉了；而 `--on` 只把字改成 `color:#fff`
+ * → 白字落在 60% 白芯片上（实测 color rgb(255,255,255) / bg rgba(255,255,255,.6)），
+ * 整颗按钮等于凭空消失（内容是「★ 已收藏」）。
+ * 改法：白芯片只给「未选中」，选中态单独一条把底、边、字一起写死，不再互相打架。
+ * 同时只限定 ghost（`.st-btn--mark` 也用在「写下你的故事」这种实心主按钮上，
+ * 那是 accent 底 + 白字，不能给它套白芯片）。 */
+.st-btn--ghost.st-btn--mark:not(.st-btn--on) {
+  background: rgba(255, 255, 255, 0.6) !important;
+  border: 1px solid var(--g-line) !important;
+}
+.st-btn--ghost.st-btn--mark.st-btn--on {
+  background: var(--accent-deep) !important;
+  border: 1px solid var(--accent-deep) !important;
+  color: #fff !important;
+}
+/* 夜间 --accent-deep 是淡蓝 #a3b2f0，白字压不住（对比 1.9:1）→ 选中态翻深字；
+ * 未选中的白芯片也要换成一圈浅白，否则深底上是一块更亮的白斑。 */
+html[data-theme="night"] .st-btn--ghost.st-btn--mark:not(.st-btn--on) {
+  background: rgba(255, 255, 255, 0.07) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  color: var(--accent-deep) !important;
+}
+html[data-theme="night"] .st-btn--ghost.st-btn--mark.st-btn--on {
+  background: var(--accent-deep) !important;
+  border-color: var(--accent-deep) !important;
+  color: #1b1c24 !important;
+}
+/* 点赞按钮不吃 --mark，但夜间同样是「淡蓝底 + 白字」——一并翻深字 */
+html[data-theme="night"] .st-btn--on {
+  background: var(--accent-deep);
+  border-color: var(--accent-deep);
+  color: #1b1c24;
+}
+html[data-theme="night"] .st-btn--on:hover {
+  background: var(--accent-deep);
+  color: #1b1c24;
+}
 
-/* 宠物页：底部让位（该页自带滚动容器，不吃 main 的 padding）+ 场景框玻璃化 */
+/* 故事流的卡片（.st-card）：轮 411 用户报「故事页左边有黑边」—— 两处都在这里。
+ * ① `.st-card--featured` 带一条 `border-left: 3px solid #d9a441`，暗金色竖边压在浅玻璃上，
+ *    第一张「精选」卡左侧就是那条黑边；② `.st-card` 底色只有 42% 白（--wash），
+ *    左边透出的柔光比右边深，整张卡看着「左半边发暗」，10% 棕描边（--hairline）又补了一刀。
+ * 改法：底色提到跟全站卡片同档的 86% 白、描边换白色玻璃线，精选卡改用鹅黄 Pastel 渐变，竖边删掉。 */
+.st-card,
+.st-card--featured {
+  background: var(--g-bg-card) !important;
+  /* 轮 413：底色整体提亮后（缝从 237,233,244 → 250,248,245），卡片跟缝只差 4 级，
+   * 白描边（--g-line 是 72% 白）在浅底上等于隐形，卡片会「化」进背景。
+   * 改成一圈 7.5% 的暖墨发丝线——够画清边界，又不会像之前 10% 那样发黑。 */
+  border: 1px solid rgba(120, 102, 88, 0.075) !important;
+  border-left: 1px solid rgba(120, 102, 88, 0.075) !important;
+  border-radius: 20px !important;
+  /* 投影只在卡脚留 2px 接触感，扩散收到 12px/4%：缝里不会再被染出一条灰带。
+   * （轮 412 那条 18px 的投影就是这么被用户圈出来的，别再放回去。） */
+  box-shadow: none !important;
+  padding: 14px 16px !important;
+  /* 8px 的缝配 20px 圆角，左缘会挤成一道「腰」，看着像一条白柱上被切了四个口子。
+   * 缝放宽到 12px，两张卡才读得出是两张卡。 */
+  margin-bottom: 12px !important;
+}
+.st-card--featured {
+  border-color: rgba(217, 164, 65, 0.30) !important;
+  background: linear-gradient(180deg, var(--p-yellow-a) 0%, var(--g-bg-card) 52%) !important;
+}
+.st-card:hover { border-color: var(--accent) !important; }
+
+/* 故事流顶上那两枚大钮（排行榜 / 我的）：原样式是 `background: var(--wash)` = 42% 白，
+ * 压在玻璃上等于没有底，只剩一圈 accent 描边 —— 看上去就是两个「空壳药丸」，
+ * 用户第一张图顶上的红框圈的就是它们。给回实底 + 白玻璃线 + 同色投影。 */
+.st-feed-nav {
+  gap: 12px !important;
+  margin-bottom: 12px !important;
+}
+.st-feed-navbtn,
+.st-feed-nav .st-feed-navbtn {
+  background: var(--g-bg-card) !important;
+  border: 1px solid var(--g-line) !important;
+  border-radius: var(--r-pill) !important;
+  color: var(--accent-deep) !important;
+  font-weight: 600 !important;
+  min-height: 44px !important;
+  box-shadow: 0 2px 8px rgba(58, 46, 42, 0.05), var(--g-hi) !important;
+}
+.st-feed-navbtn:active { background: var(--accent-soft) !important; }
+
+/* 同一条病：搜索框底色也是 --wash，压在玻璃上看着像一条「白条」。 */
+.st-search {
+  background: var(--g-bg-card) !important;
+  border: 1px solid var(--g-line) !important;
+  color: var(--ink) !important;
+  min-height: 40px !important;
+}
+.st-search::placeholder { color: var(--ink-44) !important; }
+
+/* 宠物页：这条 92px 是照抄来的一句谎话 —— 「该页自带滚动容器，不吃 main 的 padding」
+ * 实测 PetsView 根节点 .pet-page 就是普通内容流（没有 overflow:auto 的子滚动层），
+ * main 的让位对它完全有效。轮 410 归零：原来它让宠物页滚到底时正文离胶囊 148px。 */
 .pet-page,
 .pet-wrap,
 .pet-main {
-  padding-bottom: calc(92px + var(--sab, env(safe-area-inset-bottom, 0px))) !important;
+  padding-bottom: 0 !important;
 }
 .pet-stage,
 .pet-scene,
@@ -584,20 +1025,13 @@ textarea.input,
 .pet-stage,
 .pet-scene,
 .scene-box {
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.72), 0 18px 40px rgba(58, 46, 42, 0.12) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.72), 0 6px 18px rgba(58, 46, 42, 0.06) !important;
 }
 
-/* ═══════════════ ⑬ 底部导航的文字层级 ═══════════════ */
-.tabbar .van-tabbar-item {
-  color: var(--ink-44) !important;
-}
-.tabbar .van-tabbar-item--active {
-  color: var(--ink) !important;
-}
-.tabbar .van-tabbar-item--active .tab-label {
-  font-weight: 700 !important;
-  letter-spacing: 0 !important;
-}
+/* ═══════════════ ⑬ 底部导航的文字层级 ═══════════════
+ * 轮 417：这一段原来写死了「选中项 → var(--ink) 纯黑」
+ * —— 就是「选中项变纯黑」的源头，而且在文件靠后、同特异性同 !important，会盖掉前面
+ * 的主题色规则。已整体移交到 ②区 的轮 417 段（选中 = 陶土橘 + 11% 柔底胶囊）。 */
 
 /* ═══════════════ ⑭ 收尾：字重 / 微旋转 / 标签配色 ═══════════════ */
 /* 参考图的 section 标题一律 700，字阶靠「大标题 vs 62% 小字」拉开，不靠多层字号 */
@@ -623,10 +1057,11 @@ textarea.input,
   transform: rotate(-0.8deg);
   transform-origin: 50% 60%;
 }
-.tabbar-sheet .tabbar-opt:nth-child(1) { transform: rotate(-1.1deg); }
-.tabbar-sheet .tabbar-opt:nth-child(2) { transform: rotate(0.9deg); }
-.tabbar-sheet .tabbar-opt:nth-child(3) { transform: rotate(-0.6deg); }
-.tabbar-sheet .tabbar-opt:active { transform: rotate(0deg) scale(0.98); }
+/* 轮 415：三瓣入口不再做 −1°/1° 的微旋转。
+ * 它们是一列等宽齐边的按钮（不是自由排布的装饰块）——转 1° 之后左右边缘对不齐、
+ * 两条缝一宽一窄，读起来是「没对齐」而不是「手写感」。 */
+.tabbar-sheet .tabbar-opt { transform: none; }
+.tabbar-sheet .tabbar-opt:active { transform: scale(0.98); }
 
 /* 标签 chip 按序换 pastel，别一律灰白 */
 .post-tags .tag:nth-child(5n + 1),
@@ -678,6 +1113,11 @@ html[data-theme="night"] {
   --g-bg: rgba(34, 35, 44, 0.66);
   --g-bg-soft: rgba(34, 35, 44, 0.5);
   --g-bg-strong: rgba(28, 29, 37, 0.86);
+  --g-bg-card: rgba(36, 37, 46, 0.92);
+  --g-tabbar: rgba(28, 29, 37, 0.90);
+  /* 轮 416：夜间的选中色必须是浅陶土。全局 --accent-deep 是 #a9583e，
+   * 压在深底上等于隐形 —— 页签选中态会变成「深褐糊在黑里」，一眼看不出选中。 */
+  --accent-deep: #E8A184;
   --g-line: rgba(255, 255, 255, 0.10);
   --g-hi: inset 0 1px 0 rgba(255, 255, 255, 0.08);
   --g-shadow: 0 14px 34px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
@@ -704,10 +1144,10 @@ html[data-theme="night"] .quote-box,
 html[data-theme="night"] .quote-card {
   background: linear-gradient(150deg, rgba(170, 120, 92, 0.3), rgba(160, 96, 120, 0.26)) !important;
 }
-html[data-theme="night"] .post-card:nth-child(4n + 1) { background: linear-gradient(180deg, rgba(186, 110, 138, 0.22), var(--g-bg) 42%) !important; }
-html[data-theme="night"] .post-card:nth-child(4n + 2) { background: linear-gradient(180deg, rgba(96, 124, 186, 0.22), var(--g-bg) 42%) !important; }
-html[data-theme="night"] .post-card:nth-child(4n + 3) { background: linear-gradient(180deg, rgba(96, 168, 122, 0.20), var(--g-bg) 42%) !important; }
-html[data-theme="night"] .post-card:nth-child(4n + 4) { background: linear-gradient(180deg, rgba(186, 168, 96, 0.20), var(--g-bg) 42%) !important; }
+html[data-theme="night"] .post-card:nth-child(4n + 1) { background: linear-gradient(180deg, rgba(186, 110, 138, 0.22), var(--g-bg-card) 42%) !important; }
+html[data-theme="night"] .post-card:nth-child(4n + 2) { background: linear-gradient(180deg, rgba(96, 124, 186, 0.22), var(--g-bg-card) 42%) !important; }
+html[data-theme="night"] .post-card:nth-child(4n + 3) { background: linear-gradient(180deg, rgba(96, 168, 122, 0.20), var(--g-bg-card) 42%) !important; }
+html[data-theme="night"] .post-card:nth-child(4n + 4) { background: linear-gradient(180deg, rgba(186, 168, 96, 0.20), var(--g-bg-card) 42%) !important; }
 html[data-theme="night"] .status-card:nth-child(4n + 1) { background: linear-gradient(150deg, var(--p-blue-a), rgba(40, 42, 52, 0.7)) !important; }
 html[data-theme="night"] .status-card:nth-child(4n + 2) { background: linear-gradient(150deg, var(--p-yellow-a), rgba(40, 42, 52, 0.7)) !important; }
 html[data-theme="night"] .status-card:nth-child(4n + 3) { background: linear-gradient(150deg, var(--p-mint-a), rgba(40, 42, 52, 0.7)) !important; }
@@ -724,4 +1164,62 @@ html[data-theme="night"] .admin-entry {
 }
 html[data-theme="night"] .home-chip { background: rgba(255, 255, 255, 0.10) !important; border-color: rgba(255, 255, 255, 0.12) !important; color: rgba(255,255,255,.72) !important; }
 html[data-theme="night"] .home-chips .home-chip.on { background: rgba(255, 255, 255, 0.9) !important; color: #1b1c24 !important; }
-html[data-theme="night"] .tabbar .tab-compose-x { background: rgba(255, 255, 255, 0.9) !important; color: #1b1c24 !important; border-color: rgba(30, 31, 40, 0.9) !important; }
+html[data-theme="night"] .tabbar .tab-compose-x { background: rgba(255, 255, 255, 0.9) !important; color: #1b1c24 !important; border-radius: 10px !important; }
+/* 418：未选中页签的色是写死的深墨 50%，压在夜间 28,29,37 的底上等于隐形（实测对比度 <1.5）。
+ * 这一条以前不存在 —— 因为以前有图标撑着，纯文字之后「看不见的字」才暴露出来。 */
+html[data-theme="night"] .tabbar .van-tabbar-item { color: rgba(255, 255, 255, 0.56) !important; }
+html[data-theme="night"] .tabbar .van-tabbar-item.active,
+html[data-theme="night"] .tabbar .van-tabbar-item--active { color: var(--accent-deep) !important; }
+html[data-theme="night"] .tabbar { border-color: rgba(255, 255, 255, 0.10) !important; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * ㉑ 轮 424 · 全局按压反馈（「一点就有反应」）
+ * 用户：「app 里面大多数的点击都没有效果，改成小红书那样，点击有轻微的反馈」。
+ * 小红书拆开是三件事：按下就变（不等 click）、幅度极小（透明度/0.97 缩放，60~120ms）、
+ * 关掉系统灰色高亮块。类由 utils/tapFeedback.js 委托加，这里只负责画。
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/* ① 系统灰块必须关掉：安卓 WebView 的 tap-highlight 是一整块灰，最先出现、也最丑 */
+.shell,
+.shell * {
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+/* ② 只给真正可点的元素去掉 300ms 点击延迟。
+ * 不能写成 `.shell *` —— 会把 share-canvas 的 touch-action:none、宠物联手的 pan-y 一起顶掉。 */
+a[href],
+button,
+[role="button"],
+label,
+.clickable,
+.van-tabbar-item,
+.van-button,
+.van-cell,
+.van-switch,
+.dm-row {
+  touch-action: manipulation !important;
+}
+
+/* ③ 过渡只挂在按压期间（wp-live 抬手后 200ms 自动摘掉），不长期占用元素自己的 transition */
+.wp-live {
+  transition: opacity 0.12s ease-out, transform 0.12s ease-out !important;
+}
+/* 透明度这一档对所有元素都生效：最轻、零副作用，和红书点图标/文字的反应一致 */
+.wp-press {
+  opacity: 0.66 !important;
+}
+/* 缩放只给「本来没有 transform」的元素（JS 里判断），否则会把人家自己的位移/旋转顶掉 */
+.wp-press.wp-scale {
+  transform: scale(0.978) !important;
+}
+/* 夜间那点透明度变化在深底上几乎看不出来，稍微再压一点 */
+html[data-theme="night"] .wp-press {
+  opacity: 0.58 !important;
+}
+/* 大块头（帖子卡、整块面板）压到 0.66 会整片发灰、正文发虚 —— 单独轻一档（JS 按面积判断） */
+.wp-press.wp-big {
+  opacity: 0.88 !important;
+}
+html[data-theme="night"] .wp-press.wp-big {
+  opacity: 0.8 !important;
+}

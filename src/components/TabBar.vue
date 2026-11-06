@@ -2,24 +2,29 @@
 /* ═══ App 轨道 T5：底部 Tab Bar（5 位，中间 ＋）═══
  * 仅 isApp / 窄屏渲染（App.vue 里 v-if="isMobileNav"）；桌面 ≥900px 永远看不到。
  * 红点口径与桌面顶栏一致：消息 = 私信未读 + 好友申请 + 漂流瓶待决定（badgeStore 30s 轮询）。 */
-import { ref, computed } from "vue";
+import { ref, computed, watch, onBeforeUnmount } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { Tabbar as VanTabbar, TabbarItem as VanTabbarItem } from "vant";
 import "vant/es/tabbar/style/index";
 import { t } from "../i18n.js";
 import { badge } from "../stores/badgeStore.js";
-import { retapTab } from "../stores/uiStore.js";
+import { retapTab, pushBack, popBack } from "../stores/uiStore.js";
 
 const route = useRoute();
 const router = useRouter();
 
 const dmBadge = computed(() => badge.dm + badge.requests + badge.bottle);
 
+/* 轮 417：用户要「只要文字，不要图标」。
+ * 纯文字的问题不是「没图标所以空」，而是**五项里只有中间一个是实心色块**，
+ * 视线全被那颗大圆球吸走，两侧的字轻到像没画完。
+ * 解法不是加图标，而是给文字本身加重：选中项垫一枚柔色胶囊、字号提到 13.5，',
+ * 再把圆钮从 46 收到 38 —— 让「选中的字」和「主操作圆」落在同一个重量带上。 */
 const TABS = [
-  { path: "/", icon: "🏠", key: "tab.home", exact: true },
-  { path: "/community", icon: "🧱", key: "tab.community" },
-  { path: "/messages", icon: "💬", key: "tab.messages", badge: true },
-  { path: "/profile", icon: "👤", key: "tab.profile" },
+  { path: "/", key: "tab.home", exact: true },
+  { path: "/community", key: "tab.community" },
+  { path: "/messages", key: "tab.messages", badge: true },
+  { path: "/profile", key: "tab.profile" },
 ];
 
 function isActive(item) {
@@ -38,14 +43,30 @@ const activeIdx = computed(() => {
  * 实际效果是**点了完全没反应**（用户实测反馈）。改成发 retapTab 信号，由页面自己接：
  * 暖心墙接了「滚回顶部 + 取新一批」（见 CommunityView）。 */
 function goItem(item) {
+  close(); /* 弹层开着时点页签：先收起弹层（点当前页签不会改路由，watch 兜不住这一支） */
   if (isActive(item)) { retapTab(item.path); return; }
   router.push(item.path).catch(() => {});
 }
 
-/* —— 中间 ＋ 钮：上弹两瓣（投漂流瓶 / 发暖心墙帖）—— */
+/* —— 中间 ＋ 钮：上弹三瓣（投漂流瓶 / 发暖心墙帖 / 写故事）—— */
 const open = ref(false);
 function toggle() { open.value = !open.value; }
 function close() { open.value = false; }
+
+/* ═══ 轮 415 · 弹层的三处收口 ═══
+ * ① 系统返回键先关弹层，而不是把页面退回上一页 —— 走 uiStore 的拦截栈，
+ *    App.vue 的 backButton 监听会先问栈顶（返回 true = 已处理）。
+ * ② 路由一变就关：弹层开着点底部页签跳转，旧版会带着一层遮罩跟到新页面。
+ * ③ 组件卸载时把拦截器摘掉，别在栈里留一个永远不弹的闭包。 */
+const backFn = () => {
+  if (!open.value) return false;
+  open.value = false;
+  return true;
+};
+watch(open, (v) => { if (v) pushBack(backFn); else popBack(backFn); });
+watch(() => route.fullPath, () => { if (open.value) open.value = false; });
+onBeforeUnmount(() => popBack(backFn));
+
 function composeBottle() {
   close();
   /* T6 三联容器消费 tab=bottle 切到漂流瓶联；在 T6 落地前先回首页（漂流瓶区块在首页内） */
@@ -89,10 +110,16 @@ function composeStory() {
       @click="goItem(item)">
       <span class="tab-label">{{ t(item.key) }}</span>
     </van-tabbar-item>
+  </van-tabbar>
 
-    <!-- ＋ 弹层：遮罩点击关闭，两瓣创作入口 -->
+  <!-- ＋ 弹层：遮罩点击关闭，三瓣创作入口
+       ⚠️ 轮 415：必须 Teleport 到 body。
+       胶囊自己有 `backdrop-filter`，按 CSS 规范它会给 position:fixed 的后代当包含块，
+       于是 `inset: 0` 的遮罩被解析成「胶囊那么大」（实测 372×54），
+       `left/right: 0` 的弹层宽度也跟着胶囊算 —— 点外面关不掉、胶囊自己被蒙黑、位置贴不住底。 -->
+  <Teleport to="body">
     <div v-if="open" class="tabbar-mask" @click="close"></div>
-    <div v-if="open" class="tabbar-sheet">
+    <div v-if="open" class="tabbar-sheet" role="dialog" aria-modal="true" aria-label="创作">
       <button class="tabbar-opt" @click="composeBottle">
         <span class="tabbar-opt-ico" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false">
@@ -133,7 +160,7 @@ function composeStory() {
         </span>
       </button>
     </div>
-  </van-tabbar>
+  </Teleport>
 </template>
 
 <style scoped>

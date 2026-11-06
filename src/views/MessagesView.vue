@@ -63,7 +63,29 @@ const convsLoaded = ref(false);   /* 杞?266锛氭湇鍔＄**鏄庣‘搴旂�
 const failed = ref(false);
 const signedIn = computed(() => !!(cloud.ready && cloud.user));
 
-const activeId = ref(String(route.params.id || "")); // 褰撳墠浼氳瘽锛堢┖涓?= 鍙湅鍒楄〃锛?
+const activeId = ref(String(route.params.id || ""));
+
+/* 轮 423 · 按压玻璃：**必须保证这一帧被画出来**，不能靠浏览器 :active 自己抢时间。
+ * 真机逐帧采样（tools/screencast-tap.mjs + .probe7/sampler.js）：
+ *   第一次点：行在 t=164ms 变粉，列表一直到 590ms 才隐藏 → 粉色在屏上活了 426ms（用户看得见）
+ *   第二次点：t=578ms 行变粉，**同一帧** list 就 display:none  → 活了 0ms（等于没有）
+ * 差别不在 CSS，在于首次要现场挂载聊天组件（几百 ms），列表多停了半秒；
+ * 组件就绪后列表瞬间消失，按压态还没被绘制就被撤掉了。
+ * 所以：手指落下立刻加 press 类（JS 上色，不等 :active），
+ * openConv 里再保证「按下 → 列表隐藏」之间至少过去 PRESS_MS，让这一帧真的合成出来。 */
+const PRESS_MS = 140;
+const pressedId = ref("");
+let pressAt = 0;
+let pressTimer = 0;
+function onRowPress(id) {
+  pressedId.value = String(id);
+  pressAt = performance.now();
+  clearTimeout(pressTimer);
+  /* 抬手/取消后清掉，免得粘成第二个「常亮选中态」。
+   * 900ms 是兜底：万一 click 没来（滑走了、超时），也不会留下一直发亮的行。 */
+  pressTimer = setTimeout(() => { pressedId.value = ""; }, 900);
+}
+
 /* 杞?351 路 鑱婂ぉ闈㈡澘绛夎矾鐢辨彁浜ゅ啀鐢?鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
  * 鐢ㄦ埛瀹炴祴銆屼細璇濇秷鎭緢闀跨殑璁板綍锛岀涓€娆¤繘鍘讳細璺抽棯銆嶃€傜湡鏈洪€愬抚锛堝喎鍚姩棣栨杩?linyi 57 鏉★級锛?
  *   t=544ms 鑱婂ぉ宸茬粡娓叉煋锛屼絾璺敱杩樻病鎻愪氦 鈫?shell 娌℃湁 shell--chat锛圓pp.vue 鐨?inChat 璁よ矾鐢憋級锛?
@@ -1145,7 +1167,16 @@ async function openConv(id) {
   menuFor.value = "";
   headMenu.value = false;
   const same = String(activeId.value) === String(id);
+  /* 轮 423：先把按压玻璃留在屏上至少 PRESS_MS 再切页。
+   * 从按下（touchstart/mousedown）算起，长按已经够久就不补；点太快（<140ms）才补差值。
+   * 这一步就是「第二次点也能看见玻璃」的全部原因 —— 第一次是挂载慢，天然给了 426ms。 */
+  if (pressAt) {
+    const held = performance.now() - pressAt;
+    if (held < PRESS_MS) await new Promise((r) => setTimeout(r, PRESS_MS - held));
+  }
   activeId.value = String(id);
+  /* 按压态收工：此刻行已换成 .on（同一层玻璃），视觉不断，但不会跟着回到列表 */
+  pressedId.value = "";
   /* 杞?376锛氳璇佽繕娌″氨缁椂鍙浣?activeId锛屽叿浣撳姞杞戒氦缁?boot 鐨?firstOpen锛?
    * 鍚﹀垯浼氭嬁绌鸿处鍙峰幓璇诲簱/鍙?markRead銆?*/
   if (!owner) return;
@@ -1634,7 +1665,7 @@ async function toggleBlock(c) {
   try {
     /* 杞?34锛氭媺榛?鍏ㄧ珯鐢熸晥锛堢淇?+ 鏆栧績澧欏唴瀹硅繃婊わ級锛岀紦瀛樺悓姝ヨ蛋 userBlocks */
     if (wasBlocked) await unblockUser(c.other_id);
-    else await blockUser(c.other_id);
+    else await blockUser(c.other_id, c.nickname);
   } catch (e) {   /* 闈欓粯鍥炴粴 */
     if (row) row.blocked = wasBlocked;
   }
@@ -1712,7 +1743,7 @@ async function blockPeer() {
   bottleMeta.value = { ...(bottleMeta.value || {}), blocked: !blocked };
   try {
     if (blocked) await unblockUser(uid);
-    else await blockUser(uid);
+    else await blockUser(uid, curPeer.value.nickname);
     refreshBadge();       /* 杞?254锛氭尓鍒拌惤搴撲箣鍚庯紙鏃у啓娉曞湪鍐欎箣鍓嶅苟鍙戝彂锛屾媺鍥炴棫鍊硷級 */
   } catch (e) {   /* 闈欓粯鍥炴粴 */
     bottleMeta.value = { ...(bottleMeta.value || {}), blocked };
@@ -2246,7 +2277,9 @@ function goSignIn() {
            * 锛堟墦寮€ / 鍏嶆墦鎵?/ 闅愯棌浼氳瘽 / 鎷夐粦锛屾湰鏉ュ氨鍦ㄩ噷闈級锛屾仮澶嶄互鍓嶇殑绾鏍峰紡 -->
           <div
             v-for="c in normal" :key="c.conv_id"
-            class="dm-row" :class="{ on: String(c.conv_id) === String(activeId) }"
+            class="dm-row" :class="{ on: String(c.conv_id) === String(activeId), press: String(c.conv_id) === String(pressedId) }"
+            @touchstart.passive="onRowPress(c.conv_id)"
+            @mousedown="onRowPress(c.conv_id)"
             @click="openConv(c.conv_id)">
             <n-avatar round :size="38" class="post-avatar clickable" :title="t('dm.viewHome')" :src="avatarUrlFor(c.other_id) || undefined" @click.stop="goUser(c.other_id)"><template v-if="!avatarUrlFor(c.other_id)" #default>{{ (c.nickname || "?").slice(0, 1).toUpperCase() }}</template><template v-else #fallback>{{ (c.nickname || "?").slice(0, 1).toUpperCase() }}</template></n-avatar>
             <div class="dm-row-body">

@@ -1512,8 +1512,8 @@ async function handleApi(request, env, ctx) {
       }
 
       /* —— 温暖漂流瓶（#6）：全部收口到 DB 里的 bottle_* RPC ——
-         每日写 3 / 捞 7、不能捞自己的信、只有持有者能回 —— 权限与限额都在 RPC 里把关；
-         Worker 只做入参体检（长度 / UUID 形状），错误信息原样透传给前端归类。 —— */
+         滚动 24h：写 5 / 捞 30 / 回 7；不能捞自己的信；只有持有者能回；权限、额度、
+         拉黑、公平轮转、内容去重都在 RPC 里把关；Worker 只做入参体检（长度 / UUID）。 —— */
       if (seg[0] === "bottle") {
         const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         if (seg[1] === "send" && seg.length === 2 && m === "POST") {
@@ -1521,7 +1521,8 @@ async function handleApi(request, env, ctx) {
           if (b.err) return b.err;
           const body = typeof b.body.body === "string" ? b.body.body.trim() : "";
           if (!body) return fail(400, "empty-body");
-          if (body.length > 1000) return fail(400, "bottle-too-long");
+          if ([...body].length < 10) return fail(400, "bottle-too-short");
+          if ([...body].length > 1000) return fail(400, "bottle-too-long");
           return rpc(env, request, "bottle_send", { p_body: body });
         }
         if (seg[1] === "fish" && seg.length === 2 && m === "POST") {
@@ -1535,8 +1536,17 @@ async function handleApi(request, env, ctx) {
           if (seg[1] === "release") return rpc(env, request, "bottle_release", { p_id: id });
           const reply = typeof b.body.reply === "string" ? b.body.reply.trim() : "";
           if (!reply) return fail(400, "empty-body");
-          if (reply.length > 1000) return fail(400, "bottle-too-long");
+          if ([...reply].length > 1000) return fail(400, "bottle-too-long");
           return rpc(env, request, "bottle_reply", { p_id: id, p_reply: reply });
+        }
+        if (seg[1] === "report" && seg.length === 2 && m === "POST") {
+          const b = await readJson(request);
+          if (b.err) return b.err;
+          const id = typeof b.body.id === "string" ? b.body.id : "";
+          if (!UUID_RE.test(id)) return fail(400, "bad-id");
+          const reason = typeof b.body.reason === "string" ? b.body.reason : "other";
+          const detail = typeof b.body.detail === "string" ? b.body.detail.trim() : "";
+          return rpc(env, request, "bottle_report", { p_id: id, p_reason: reason, p_detail: detail });
         }
         if (seg[1] === "records" && seg.length === 2 && m === "GET") {
           const id = q.get("id") || null;
@@ -1558,7 +1568,7 @@ async function handleApi(request, env, ctx) {
         }
         if (seg[1] === "mine" && seg.length === 2 && m === "GET") return rpc(env, request, "bottle_mine", {});
         if (seg[1] === "held" && seg.length === 2 && m === "GET") return rpc(env, request, "bottle_held", {});
-        /* 轮 18：今日次数探针（服务端权威）——前端「还能捞 N 瓶」以它为准，跨端一致 */
+        /* 轮 411：滚动 24h 次数探针（服务端权威）——前端「还能捞 N 瓶」以它为准，跨端一致 */
         if (seg[1] === "quota" && seg.length === 2 && m === "GET") return rpc(env, request, "bottle_quota", {});
       }
 

@@ -623,8 +623,10 @@ t("T37 轮293 · 放宽只往后追加：7天 ⊂ 30天 ⊂ 全部（前缀关�
     "放宽档位常量缺失/被改");
   assert.ok(/days: recDays\.value, salt: REC_SALT/.test(src),
     "shown 没读 recDays —— 推荐窗仍是写死的 7 天（用户实测「往下拉就到底」的原始病根）");
-  assert.ok(/!hasMore\.value && !cloudDone\.value\) widenRec\(\)/.test(src),
-    "触底没接放宽（必须等「这一档亮完 + 服务端还有货」才升档）");
+  /* 轮 432：放宽是纯本地动作，**不许**再用 cloudDone 当闸门（否则全库拉完 = 放宽被永久挡死，
+     线上实测推荐窗死钉在「近 30 天」11 条、滚到底就报「就到这里啦」） */
+  assert.ok(/if \(sortMode\.value === "recommend" && !hasMore\.value\) widenRec\(\)/.test(src),
+    "触底没接放宽（轮 432：只等「这一档亮完」就升档，cloudDone 不该参与）");
   assert.ok(/recDays\.value = REC_LEVELS\[0\]/.test(src),
     "换排序/时间档没把推荐窗复位回 7 天（切回来会一直挂在「全部」）");
 });

@@ -344,6 +344,8 @@ t("T3d 自我保护：真缺陷抓得到，注释与方法调用不误报", () =
 
 out.push("");
 out.push("TOTAL " + (pass + fail) + "  PASS " + pass + "  FAIL " + fail);
-fs.writeFileSync("arity-test.txt", out.join("\n"), "utf8");
+/* 报告写 _scratch/，别再落在项目根目录（根目录曾被这类默认路径堆满） */
+fs.mkdirSync("_scratch", { recursive: true });
+fs.writeFileSync("_scratch/arity-test.txt", out.join("\n"), "utf8");
 console.log(out.join("\n"));
 process.exit(fail ? 1 : 0);
