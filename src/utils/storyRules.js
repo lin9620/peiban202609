@@ -166,6 +166,26 @@ export function shuffleStep({ loaded = 0, page = 12, offset = 0 } = {}) {
   return { offset: off + p, exhausted: false };
 }
 
+/* ── 翻页合并：新一页只在**页内**排序，整页接在已有列表末尾 ──
+ *
+ * 轮 458（用户：「故事页面，加载更多，排序出现问题了，不是直接出现在最下面」）：
+ * 原来把「本语言优先」的排序放在 computed 里对**累加后的整表**重排，于是每点一次
+ * 「加载更多」，新一页里属于本语言的那几条就被提到前面几页的异语言内容之上 ——
+ * 用户看到的是新内容「插进中间」，而不是接在最下面。
+ *
+ * 口径改成：排序只发生在「这一页进来的时候」，页与页之间只追加、不回流。
+ * 代价是本语言优先只保证页内优先（跨页会交错），换来的是翻页顺序稳定 ——
+ * 列表里已经看过的位置永远不动，这正是翻页该有的手感。
+ *
+ * 抽成纯函数是为了能直测：把 12 + 2 的混合语言分页喂进来，断言旧位置逐条不变。
+ */
+export function appendPage(prev, page, sortFn) {
+  const list = Array.isArray(page) ? page.slice() : [];
+  const ordered = typeof sortFn === "function" ? sortFn(list) : list;
+  const base = Array.isArray(prev) ? prev : [];
+  return base.concat(ordered);
+}
+
 /* ── 服务端错误归类：RPC/HTTP 报文 → i18n key（story.err* 家族） ── */
 export function storyErrKey(e) {
   const raw = String(e?.message ?? e ?? "");

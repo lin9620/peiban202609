@@ -6,6 +6,8 @@ dist/
 .env
 .env.local
 .env.*.local
+# 轮 458：本地探针环境（API_BASE 置空 + /sb 反代线上 Supabase），验完即删，别进提交
+.env.probe
 supabase.json
 .dev.vars
 

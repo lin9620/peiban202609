@@ -11,6 +11,7 @@ import {
   contentPref, setPrefMode, preferredLang, uiLang,
   langRank, sortByLang, langBadge, langName, detectContentLang,
 } from "../src/utils/contentLang.js";
+import { appendPage } from "../src/utils/storyRules.js";
 
 let pass = 0, fail = 0;
 const ok = (n, c, extra = "") => {
@@ -111,6 +112,51 @@ setLocale("es");
 ok("L4 es 下 langName(fr) 用西语名", langName("fr") === "francés", langName("fr"));
 ok("L5 词典里没有的语言退回大写代码", langName("is") === "IS", langName("is"));
 ok("L6 und 与空值返回空串（不显示提示）", langName("und") === "" && langName("") === "");
+
+/* ── ⑪ 翻页合并：页内排序、页与页之间只追加（轮 458 用户实测回归） ──
+ * 现场：库里 14 篇 = 首页 12 条（6 英 6 中）+ 第二页 2 条中文。
+ * 旧写法在 computed 里对**累加后的整表**重排 → 第二页那 2 篇中文被提到首页 6 篇英文之上，
+ * 用户看到的就是「加载更多不是出现在最下面」。这里钉死新口径。 */
+setLocale("zh");
+setPrefMode("prefer");
+{
+  const byLang = (list) => sortByLang(list, (x) => x.lang);
+  const page1 = [
+    ...Array.from({ length: 6 }, (_, i) => ({ id: i + 1, lang: "en" })),      /* 服务端 latest：新的在前 */
+    ...Array.from({ length: 6 }, (_, i) => ({ id: i + 7, lang: "zh" })),
+  ];
+  const page2 = [{ id: 13, lang: "zh" }, { id: 14, lang: "zh" }];
+
+  const after1 = appendPage([], page1, byLang);
+  const after2 = appendPage(after1, page2, byLang);
+
+  ok("M1 第一页内部：本语言（zh）排在前面",
+    after1.slice(0, 6).every((x) => x.lang === "zh") && after1.slice(6).every((x) => x.lang === "en"),
+    after1.map((x) => x.id).join(","));
+  ok("M2 加载更多不动已有 12 条的位置（下标逐条相同）",
+    after1.every((x, i) => after2[i] && after2[i].id === x.id),
+    after2.map((x) => x.id).join(","));
+  ok("M3 第二页整页接在最下面（13、14 是最后两条）",
+    after2.slice(-2).map((x) => x.id).join(",") === "13,14",
+    after2.map((x) => x.id).join(","));
+  ok("M4 翻页不丢不重（14 条、id 唯一）",
+    after2.length === 14 && new Set(after2.map((x) => x.id)).size === 14);
+  /* 反例守卫：整表重排会把 13/14 插到 6 篇英文前面 —— 这条就是那个 bug 的形状 */
+  const wholeTableSorted = byLang(after2).map((x) => x.id).join(",");
+  ok("M5 回归形状自检：整表重排确实会把新页提到中间（说明 M3 不是永远成立的空断言）",
+    wholeTableSorted !== after2.map((x) => x.id).join(",") && wholeTableSorted.indexOf("13,14") < wholeTableSorted.indexOf("1,2"),
+    wholeTableSorted);
+
+  setPrefMode("all");
+  ok("M6 关掉开关后不排序，页序原样拼接",
+    appendPage([], page1, byLang).map((x) => x.id).join(",") === page1.map((x) => x.id).join(","));
+  setPrefMode("prefer");
+  ok("M7 脏参数不炸（null / 非数组 / 无 sortFn）",
+    appendPage(null, null, null).length === 0
+    && appendPage([{ id: 1, lang: "zh" }], "oops", byLang).length === 1);
+  ok("M8 不改入参数组（纯函数，不就地 sort 调用方的页数据）",
+    page1[0].id === 1 && page1[0].lang === "en" && page2[0].id === 13);
+}
 
 /* ── 收尾：把模式恢复成默认，免得后续跑别的测试时被这份状态影响 ── */
 setPrefMode("all");

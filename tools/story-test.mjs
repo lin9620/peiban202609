@@ -481,8 +481,10 @@ ok("storyPublish 把 too-short 映射成 story-too-short（漏映射会误报 st
     feedVue.includes("const hasMore = ref(true)")
     && feedVue.includes("const more = computed(() => rows.value.length > 0 && hasMore.value)")
     && !feedVue.includes("rows.value.length >= offset.value + PAGE")
-    && feedVue.includes("offset.value += list.length")
-    && feedVue.includes("hasMore.value = list.length >= PAGE")
+    /* 轮 458：推进写法从「+= list.length」改成按原始条数（page.length）算 ——
+       翻页顺序改由 appendPage 决定后，这里不能再依赖排序后的 list 变量名 */
+    && feedVue.includes("offset.value = first ? page.length : offset.value + page.length")
+    && feedVue.includes("hasMore.value = page.length >= PAGE")
     && feedVue.includes("if (loading.value || !hasMore.value) return;")
     && feedVue.includes("load({ append: true })")
     && feedVue.includes("withTimeout")
@@ -704,6 +706,23 @@ ok("storyPublish 把 too-short 映射成 story-too-short（漏映射会误报 st
     /st-shuffle[\s\S]{0,160}:disabled="loading"/.test(rankVue));
   ok("StoryRank 服务端返回空也算到底（阶梯补位在 SQL 里做，前端不再兜底重排）",
     /step\.offset > 0 && n === 0/.test(rankVue) && /n === 0\) showNoMore\(\)/.test(rankVue));
+}
+
+/* ── 轮 458：加载更多必须追加在末尾，不许被「本语言优先」重排打回中间 ──
+ * 用户实测：「故事页面，加载更多，排序出现问题了，不是直接出现在最下面」。
+ * 根因是排序写在了 computed 里（对累加后的整表重排）—— 新一页里属于本语言的那几条
+ * 会跳到前几页的异语言内容之上。现在排序只在「一页入列表」时做（appendPage）。 */
+{
+  ok("轮458 发现页翻页走 appendPage（页内排、页间只追加）",
+    feedVue.includes("appendPage(") && has(feedVue, "appendPage(first ? [] : rows.value, page, byLang)"));
+  ok("轮458 发现页不再对整表重排（computed 里不许出现 sortByLang(rows.value…)）",
+    !/sortByLang\(\s*rows\.value/.test(feedVue) && !/sortByLang\(\s*shown/.test(feedVue));
+  ok("轮458 排序落在每页入口（cached 也走 appendPage，缓存读出顺序与网络一致）",
+    /cached:[\s\S]{0,160}appendPage\(\[\], data, byLang\)/.test(feedVue));
+  ok("轮458 offset 仍按原始条数推进（排序不改变长度，翻页不会跳条）",
+    /offset\.value = first \? page\.length : offset\.value \+ page\.length/.test(feedVue));
+  ok("轮458 appendPage 是纯函数并已导出（单测在 content-lang-test ⑪）",
+    /export function appendPage\(prev, page, sortFn\)/.test(rules));
 }
 
 if (fails.length) {

@@ -6,7 +6,7 @@ import { useRouter } from "vue-router";
 import { t } from "../../i18n.js";
 import { sortByLang, langBadge } from "../../utils/contentLang.js";
 import { isMobileNav } from "../../stores/uiStore.js";
-import { storyErrKey } from "../../utils/storyRules.js";
+import { storyErrKey, appendPage } from "../../utils/storyRules.js";
 import { storyRank, storyFeatured } from "../../utils/story.js";
 import { swr, cacheKey } from "../../utils/cache.js";
 import { setStorySeed } from "../../utils/storySeed.js";
@@ -21,11 +21,20 @@ const err = ref("");
 const kw = ref("");
 const featured = ref(null);
 
+/* 轮 439：「本语言优先」是排序不是过滤（库里 99% 是中文，硬过滤会白屏）。
+   轮 458（用户：「加载更多，排序出现问题了，不是直接出现在最下面」）：
+   **排序只在每一页内部做，不能对累加后的整表重排。**
+   旧写法把 sortByLang 放在 shown 里对 rows 全表重排 —— 点「加载更多」拿到第二页
+   （库里实测 14 篇：首页 12 条里 6 中 6 英，第二页 2 条中文），整表一重排，
+   这 2 篇新内容就被提到首页 6 篇英文上面去了，看起来像「插进中间」。
+   现在按页排：第一页内部本语言在前，第二页整页接在它下面，翻页永远追加在末尾。 */
+const byLang = (list) => sortByLang(list, (r) => r.lang);
+
 const shown = computed(() => {
   const q = kw.value.trim().toLowerCase();
-  /* 轮 439：搜索态不按语言重排（找东西时要全部）；浏览态才「本语言优先」。
-     story_rank 有四种模式 + 分页，服务端不好按语言筛，客户端排一下最省事。 */
-  if (!q) return sortByLang(rows.value, (r) => r.lang);
+  /* 搜索态不重排也不过滤语言（找东西时要全部、要原始顺序）；
+     浏览态直接给 rows —— 顺序已经在入列表时按「每页内本语言优先」定好了。 */
+  if (!q) return rows.value;
   return rows.value.filter((r) =>
     String(r.title || "").toLowerCase().includes(q)
     || (Array.isArray(r.tags) ? r.tags : []).some((x) => String(x).toLowerCase().includes(q)));
@@ -61,22 +70,18 @@ async function load({ append = false } = {}) {
     first ? cacheKey("story:feed:latest") : null,
     {
       cached: (data) => {
-        const list = data || [];
-        rows.value = list;
-        offset.value = list.length;
-        hasMore.value = list.length >= PAGE;
+        rows.value = appendPage([], data, byLang);
+        offset.value = rows.value.length;
+        hasMore.value = rows.value.length >= PAGE;
         err.value = "";
       },
       fresh: (data) => {
-        const list = data || [];
-        if (first) {
-          rows.value = list;
-          offset.value = list.length;
-        } else {
-          rows.value = rows.value.concat(list);
-          offset.value += list.length;
-        }
-        hasMore.value = list.length >= PAGE;
+        /* 轮 458：排序落在「这一页入列表」这一步（页内排），页与页之间只追加 ——
+           拼尾不动已有顺序，见 storyRules.appendPage 的头注释。 */
+        const page = Array.isArray(data) ? data : [];
+        rows.value = appendPage(first ? [] : rows.value, page, byLang);
+        offset.value = first ? page.length : offset.value + page.length;
+        hasMore.value = page.length >= PAGE;
         err.value = "";
       },
       onError: (e) => { err.value = t(storyErrKey(e || new Error("network"))); },
