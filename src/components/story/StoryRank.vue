@@ -125,7 +125,7 @@ load();
 
 <template>
   <section class="st-rank">
-    <h2 class="st-rank-title">{{ t("story.rankTitle") }}</h2>
+    <!-- 标题已由 /story/rank 页头统一承担，这里不再重复「排行榜」 -->
     <div class="st-rank-tabs" role="tablist">
       <button
         v-for="x in tabs" :key="x.mode" class="st-rank-tab" :class="{ on: mode === x.mode }"
