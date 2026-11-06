@@ -2919,27 +2919,30 @@ html.cap-app .reply-bar {
   grid-row: 1 / span 2; width: 30px; height: 30px; display: grid; place-items: center;
   border-radius: 50%; background: var(--accent-soft); font-size: 15px; line-height: 1;
 }
-.status-name { font-size: 14px; font-weight: 600; align-self: end; }
+/* 轮 457：名字 + 人数同一行（人数跟在名字后面），名字过长省略、数字永远不被挤掉 */
+.status-head {
+  grid-column: 2; grid-row: 1; display: flex; align-items: baseline; gap: 6px;
+  min-width: 0; align-self: end;
+}
+.status-name {
+  font-size: 14px; font-weight: 600; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.status-num {
+  flex: none; font-size: 12px; font-weight: 700; line-height: 1;
+  font-variant-numeric: tabular-nums; color: var(--ink-faint);
+}
 .status-sub {
+  grid-column: 2; grid-row: 2;
   font-size: 11px; color: var(--ink-faint); line-height: 1.35;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; align-self: start;
 }
 .status-card:hover:not(:disabled) { background: var(--wash-strong); }
 .status-card.is-on { border-color: var(--accent); background: var(--accent-soft); }
 .status-card.is-on .status-name { color: var(--accent-deep); }
+.status-card.is-on .status-num { color: var(--accent-deep); }
 .status-card.is-on .status-sub { color: var(--accent-deep); opacity: .8; }
 
-/* 大厅此刻：四格纯统计（数字在上、标签在下），我选中的状态联动点亮 */
-.hall-now { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--hairline); }
-.hall-now-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
-.hall-now-cell {
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
-  padding: 8px 4px; border-radius: 12px; background: var(--wash);
-}
-.hall-now-cell b { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.hall-now-cell span { font-size: 11px; color: var(--ink-faint); white-space: nowrap; }
-.hall-now-cell.on { background: var(--accent-soft); }
-.hall-now-cell.on b, .hall-now-cell.on span { color: var(--accent-deep); }
 /* ══════════ 故事栏（轮 145+） ══════════
    单一来源：故事样式全在这段（组件内不再写 style 标签，避免同权重双源互相压制）。
    布局照私信页轮 142 的一体化惯例：桌面单卡 + 内部分隔线，窄屏上下堆叠。 */
@@ -3008,9 +3011,8 @@ html.cap-app .reply-bar {
 .home3 .status-card.is-on { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
 .home3 .status-ico { font-size: 29px; }
 .home3 .status-name { font-size: 14.5px; font-weight: 700; }
+.home3 .status-num { font-size: 12.5px; }
 .home3 .status-sub { font-size: 11.5px; }
-.home3 .hall-now-cell { background: var(--wash); border: none; border-radius: 16px; }
-.home3 .hall-now-cell.on { background: var(--accent-soft); }
 
 .home3 .mood-face .mood-svg { width: 44px; height: 44px; }
 .home3 .mood-face-txt { font-size: 12.5px; font-weight: 600; }

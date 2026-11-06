@@ -133,8 +133,6 @@ export default {
         "chilling": "Aucun programme"
       },
       "pickHint": "Choisis ton état",
-      "nowTitle": "Dans la salle maintenant",
-      "nowSub": "Tout le monde est là",
       "anon": "Quelqu’un",
       "loginHint": "Connecte-toi pour laisser ton état ici.",
       "syncFail": "La synchro cloud n’est pas passée — ton état reste sur cet appareil.",

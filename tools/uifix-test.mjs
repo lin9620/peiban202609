@@ -130,15 +130,19 @@ t("T18 首页不再计算/展示在线人数（HomeView + TodayPane）", () => {
  * （用户原话「不要太多文字了」）。这里保留本条断言的**本意**——大厅不谎报在线人数：
  * 视图里既不许出现旧的 online 文案，也不许出现「此刻大厅里」胶囊行（那是逐状态的人数真数据，
  * 由 status-test 单独验口径），改成只出 statusCounts 的四格统计。 */
-t("T19 大厅不谎报在线人数（无 online 文案 / 只出四格真人数）", () => {
+t("T19 大厅不谎报在线人数（无 online 文案 / 只出真实人数）", () => {
   const i18n = read("src/i18n.js");
   assert.ok(!i18n.includes('online: "{n} kind souls'), "残留 online 文案（en）");
   assert.ok(!i18n.includes('online: "此刻有 {n} 位温柔的人陪着你"'), "残留 online 文案（zh）");
-  assert.ok(todayPane.includes('v-if="statusCounts && statusCounts.length"')
-    && todayPane.includes("{{ row.count }}")
+  /* 轮 457（用户：大厅此刻那块没必要，数字直接在后面显示）：底部四宫格撤掉，
+     人数改成状态名右侧的一个数字。口径不变 —— 只出 statusCounts 里的真实人数，
+     没有快照时 hasCounts 为 false、干脆不出数字，绝不编一个假在线数。 */
+  assert.ok(todayPane.includes('v-if="hasCounts"')
+    && todayPane.includes("{{ countMap[k] || 0 }}")
+    && todayPane.includes("const hasCounts = computed(")
     && !todayPane.includes("home.companions.hall")
     && !todayPane.includes("home.companions.tag"),
-    "大厅只应渲染四格真实人数（tag/hall 文案已按用户要求撤掉）");
+    "大厅只应渲染真实人数（tag/hall 文案已按用户要求撤掉）");
 });
 
 /* ══════════ ⑤ 陪你大厅状态上云：未跑迁移时给一句人话 ══════════ */

@@ -63,10 +63,15 @@ let statusAppliedSeq = 0;
 let statusCountsLastFetchAt = 0;
 const isMember = computed(() => !!(cloud.user && cloud.user.id));
 
-/* 状态 key → 当前语言文案（云端只存 key；非常规 key 原样显示） */
-function statusLabel(k) {
-  return STATUS_KEYS.includes(k) ? t("home.companions." + k) : (k || "");
-}
+/* 轮 457：人数直接挂在四张状态卡上（原来的「大厅此刻」四宫格撤掉）。
+ * countMap[k] 按状态 key 取当前人数；没有快照（未登录/云端不可用/首帧还没回来）时
+ * hasCounts 为 false，卡片上就不出数字 —— 宁可不显示，也不编一个 0 出来。 */
+const countMap = computed(() => {
+  const m = Object.create(null);
+  for (const r of statusCounts.value || []) m[r.status] = r.count;
+  return m;
+});
+const hasCounts = computed(() => !!(statusCounts.value && statusCounts.value.length));
 
 async function refreshStatusCounts() {
   /* 轮 238：在途不叠请求。
@@ -261,7 +266,10 @@ const seasonName = computed(() => season.name[i18n.locale] || season.name.en);
 
     <!-- ═══ 此刻状态 ═══
          轮 150（截图定稿）：四个状态从「一排小胶囊」改成 2×2 大卡（圆形图标 + 名称 + 一行短说明），
-         选中态整卡染色 + 暖橘描边。短说明补上了原先缺的「我这会儿在干什么」。 -->
+         选中态整卡染色 + 暖橘描边。短说明补上了原先缺的「我这会儿在干什么」。
+         轮 457（用户：「大厅此刻那块 app 上完全没必要，数字直接在后面显示不就好了」）：
+         底部那排「大厅此刻」四宫格撤掉，人数直接跟在自己状态名的右边 —— 同一个数字看一遍就够，
+         不需要在页面上出现两次（卡片上一份、四宫格里一份）。没有计数快照时不显示数字。 -->
     <section class="card hall">
       <div class="row-between">
         <h2 class="hall-title">{{ t("home.companions.title") }}</h2>
@@ -274,7 +282,10 @@ const seasonName = computed(() => season.name[i18n.locale] || season.name.en);
           :class="{ 'is-on': myStatus === k }"
           @click="setStatus(k)">
           <span class="status-ico">{{ t("home.companions.ico." + k) }}</span>
-          <span class="status-name">{{ t("home.companions.name." + k) }}</span>
+          <span class="status-head">
+            <span class="status-name">{{ t("home.companions.name." + k) }}</span>
+            <b v-if="hasCounts" class="status-num">{{ countMap[k] || 0 }}</b>
+          </span>
           <span class="status-sub">{{ t("home.companions.sub." + k) }}</span>
         </button>
       </div>
@@ -285,22 +296,6 @@ const seasonName = computed(() => season.name[i18n.locale] || season.name.en);
         {{ t("home.companions.syncFail") }}
       </p>
       <p v-else-if="!isMember" class="streak-note">{{ t("home.companions.loginHint") }}</p>
-
-      <!-- 大厅此刻 = 纯统计（各状态当前人数），不可点；我选中的状态在这排联动点亮。 -->
-      <div v-if="statusCounts && statusCounts.length" class="hall-now">
-        <div class="row-between">
-          <span class="sec-label">{{ t("home.companions.nowTitle") }}</span>
-          <span class="sec-label">{{ t("home.companions.nowSub") }}</span>
-        </div>
-        <div class="hall-now-row">
-          <div
-            v-for="row in statusCounts" :key="row.status"
-            class="hall-now-cell" :class="{ on: myStatus === row.status }">
-            <b>{{ row.count }}</b>
-            <span>{{ statusLabel(row.status) }}</span>
-          </div>
-        </div>
-      </div>
     </section>
 
     <!-- ═══ 心情打卡 ═══

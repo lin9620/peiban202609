@@ -27,6 +27,8 @@ const read = (p) => fs.readFileSync(p, "utf8");
 const has = (src, ...parts) => parts.every((p) => src.includes(p));
 const home = read("src/views/HomeView.vue");
 const todayPane = read("src/components/TodayPane.vue");   /* T6 抽件：大厅/打卡/主视觉在这里 */
+const style = read("src/style.css");                      /* 轮 457：状态卡人数样式在这 */
+const glass = read("src/glass.css");                      /* 轮 457：玻璃主题也要一并清掉四宫格 */
 const wallerView = read("src/views/WallerView.vue");
 const wall = read("src/utils/wall.js");
 const api = read("worker/api.js");
@@ -86,11 +88,16 @@ for (const lang of ["zh", "en"]) {
   ok(`${lang}: 四条文案互不相同（防复制粘贴错文案）`,
     !!c && new Set(STATUS_KEYS.map((k) => c[k])).size === STATUS_KEYS.length);
   /* 轮 150：choose / youSet / othersTitle 已随顶部问候 + 四格统计重做而下线（清死键），
-     换成 pickHint / nowTitle / nowSub 三个新文案。 */
-  const keys = ["title", "pickHint", "nowTitle", "nowSub", "anon", "loginHint", "syncFail", "syncNeedSetup", "agoMin", "agoHour"];
-  ok(`${lang}: 大厅区块文案齐备（标题/选状态提示/大厅此刻+副标/匿名/登录提示/两条错误/相对时间）`,
+     换成 pickHint 提示文案。
+     轮 457：nowTitle / nowSub 随「大厅此刻」四宫格一起下线 —— 人数直接挂在状态卡上，
+     页面上不再出现第二份人数统计，那两个标题也就没有落点了。 */
+  const keys = ["title", "pickHint", "anon", "loginHint", "syncFail", "syncNeedSetup", "agoMin", "agoHour"];
+  ok(`${lang}: 大厅区块文案齐备（标题/选状态提示/匿名/登录提示/两条错误/相对时间）`,
     !!c && keys.every((k) => typeof c[k] === "string" && c[k].trim()),
     (c ? keys.filter((k) => typeof c[k] !== "string") : keys).join(","));
+  /* 死键检查：四宫格撤掉后，这两条文案不该再留在词典里（避免以后有人以为还有那块 UI） */
+  ok(`${lang}: nowTitle / nowSub 已随四宫格清理，不留死键`,
+    !!c && c.nowTitle === undefined && c.nowSub === undefined);
   ok(`${lang}: 未跑迁移的提示与同步失败是两句话（不能混用一句）`,
     !!c && c.syncNeedSetup !== c.syncFail);
 }
@@ -102,9 +109,10 @@ for (const lang of ["zh", "en"]) {
   const bad = [...new Set(used)].filter((k) =>
     typeof at(messages.zh, k) !== "string" || typeof at(messages.en, k) !== "string");
   /* 阈值随结构调整：轮 150 把四个状态从 companions.<k> 字面改成 ico./name./sub. 拼接键后，
-   * 剩下的字面引用是 title/pickHint/nowTitle/nowSub/loginHint/syncFail/syncNeedSetup 这 7 处。
+   * 剩下的字面引用是 title/pickHint/loginHint/syncFail/syncNeedSetup 这 5 处
+   * （轮 457 nowTitle/nowSub 随四宫格下线）。
    * 拼接键由上面三张子表逐项验，所以这里只要「一处不多一处不少」即可。 */
-  ok("两个视图引用的 home.companions.* 字面 key 全部存在（zh+en）", used.length >= 7 && bad.length === 0,
+  ok("两个视图引用的 home.companions.* 字面 key 全部存在（zh+en）", used.length >= 5 && bad.length === 0,
     bad.join(",") || `${used.length} 处引用全命中`);
   /* 轮 150：状态 2×2 大卡用 `t("home.companions.ico." + k)` 这种**拼接** key（k 来自 STATUS_KEYS），
    * 上一条正则只认字面量、抓不到，所以单独把三个子表按 STATUS_KEYS 逐项验一遍 —— 漏一项就是模板上显示原始 key。 */
@@ -124,13 +132,21 @@ for (const lang of ["zh", "en"]) {
 /* ───────── 模板：不再重复 emoji，按钮/卡片直接用文案（T6 抽件后扫 TodayPane）
  * 轮 150 更新：状态按钮从胶囊改成 2×2 大卡，模板里的 key 从 companions.<k> 拆成
  * companions.ico.<k>（圆形图标）/ companions.name.<k>（卡片标题）/ companions.sub.<k>（一行短说明），
- * 「此刻大厅里」胶囊行换成「大厅此刻」四格统计（数字在上、标签在下，仍只出人数不出个人）。 */
+ * 「此刻大厅里」胶囊行换成「大厅此刻」四格统计（数字在上、标签在下，仍只出人数不出个人）。
+ * 轮 457（用户：大厅此刻那块 app 上没必要，数字直接在后面显示）：四格统计整块撤掉，
+ * 人数改成状态名右侧的一个数字（countMap[k]），仍只出人数、不出个人。 */
 ok("TodayPane 模板不再引用 emoji 映射/硬拼 emoji，图标走 i18n.ico",
   !todayPane.includes("STATUS_EMOJI")
     && has(todayPane, "home.companions.ico.\" + k", "home.companions.name.\" + k", "home.companions.sub.\" + k"));
 ok("大厅只渲染状态人数，不渲染个人昵称或个人列表",
-  has(todayPane, "{{ row.count }}", "{{ statusLabel(row.status) }}")
+  has(todayPane, 'v-if="hasCounts"', "countMap[k]")
     && !todayPane.includes("o.nickname") && !todayPane.includes("cloudFetchStatuses"));
+ok("轮 457：四宫格「大厅此刻」已撤（模板与样式里都不再出现 hall-now）",
+  !todayPane.includes("hall-now") && !style.includes("hall-now") && !glass.includes("hall-now"));
+ok("轮 457：人数跟在状态名后面（status-head 里 name + num 同一行，名字过长省略、数字不挤掉）",
+  has(todayPane, 'class="status-head"', 'class="status-num"')
+    && /\.status-head\s*\{[^}]*display:\s*flex/s.test(style)
+    && /\.status-num\s*\{[^}]*flex:\s*none/s.test(style));
 ok("主页徽章同样只输出 statusLabel",
   has(wallerView, "{{ statusLabel(profStatus) }}") && !wallerView.includes("STATUS_EMOJI"));
 
@@ -207,7 +223,7 @@ ok("TodayPane：单独读取自己的档案；状态更新只本地 ±1，不立
   && !todayPane.includes("return refreshStatusCounts();")
   && has(todayPane, "bumpCounts(prev, next);", "onActivated("));
 ok("TodayPane：云端不可用时不伪造人数，也不覆盖本机状态",
-  has(todayPane, 'v-if="statusCounts && statusCounts.length"', "if (!profile ||", "if (!uid || !cloud.ready) return;"));
+  has(todayPane, 'v-if="hasCounts"', "if (!profile ||", "if (!uid || !cloud.ready) return;"));
 ok("HomeView：抽件接线（桌面拼回 + 手机三联都挂同一 TodayPane）",
   (home.match(/<TodayPane/g) || []).length === 2);
 ok("WallerView：徽章只在 24h 内新鲜时显示（与大厅同一规则）",

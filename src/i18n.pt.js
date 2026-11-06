@@ -132,8 +132,6 @@ export default {
         "chilling": "Sem plano nenhum"
       },
       "pickHint": "Escolha seu estado",
-      "nowTitle": "Na sala agora",
-      "nowSub": "Todo mundo aqui",
       "anon": "Alguém",
       "loginHint": "Entre para deixar seu estado aqui.",
       "syncFail": "A sincronização com a nuvem não passou — seu estado fica neste aparelho.",

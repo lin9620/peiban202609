@@ -606,17 +606,8 @@ textarea.input,
 }
 .status-name { font-weight: 600 !important; font-size: 13.5px !important; }
 
-/* 大厅此刻四格：pastel 顶色小砖 */
-.hall-now-cell {
-  background: rgba(255, 255, 255, 0.56) !important;
-  border: 1px solid var(--g-line) !important;
-  border-radius: 18px !important;
-  box-shadow: var(--g-hi) !important;
-}
-.hall-now-cell:nth-child(4n + 1) { background: linear-gradient(160deg, var(--p-celadon-a), rgba(255, 255, 255, 0.6)) !important; }
-.hall-now-cell:nth-child(4n + 2) { background: linear-gradient(160deg, var(--p-yellow-a), rgba(255, 255, 255, 0.6)) !important; }
-.hall-now-cell:nth-child(4n + 3) { background: linear-gradient(160deg, var(--p-lilac-a), rgba(255, 255, 255, 0.6)) !important; }
-.hall-now-cell:nth-child(4n + 4) { background: linear-gradient(160deg, var(--p-peach-a), rgba(255, 255, 255, 0.6)) !important; }
+/* 轮 457：「大厅此刻」四格撤掉（用户：app 上没必要，数字直接跟状态名走），
+   这里的 pastel 小砖样式一并下线；人数现在是 .status-num，跟名字同一行。 */
 
 /* 心情五连：玻璃卡 + 选中放大 */
 .mood-chip {
@@ -1049,9 +1040,7 @@ html[data-theme="night"] .st-btn--on:hover {
   font-weight: 700 !important;
   letter-spacing: -0.4px !important;
 }
-.stat .stat-num,
-.hall-now-cell .n,
-.hall-now-cell strong {
+.stat .stat-num {
   font-weight: 700 !important;
   letter-spacing: -0.5px !important;
 }
@@ -1159,7 +1148,6 @@ html[data-theme="night"] .status-card:nth-child(4n + 1) { background: linear-gra
 html[data-theme="night"] .status-card:nth-child(4n + 2) { background: linear-gradient(150deg, var(--p-yellow-a), rgba(40, 42, 52, 0.7)) !important; }
 html[data-theme="night"] .status-card:nth-child(4n + 3) { background: linear-gradient(150deg, var(--p-mint-a), rgba(40, 42, 52, 0.7)) !important; }
 html[data-theme="night"] .status-card:nth-child(4n + 4) { background: linear-gradient(150deg, var(--p-pink-a), rgba(40, 42, 52, 0.7)) !important; }
-html[data-theme="night"] .hall-now-cell { background: rgba(42, 44, 54, 0.6) !important; }
 html[data-theme="night"] .stat { background: rgba(42, 44, 54, 0.6) !important; }
 html[data-theme="night"] .mood-face { --mf-ink: rgba(255, 255, 255, 0.74) !important; }
 html[data-theme="night"] .status-ico,
