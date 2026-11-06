@@ -163,6 +163,10 @@ ok("F5 「我的关注」并进搜索行右侧，不再独占一行（用户：�
 ok("F5a 同一个入口两态切换（未选中 → enterFollowFeed，选中 → exitFollowFeed）",
   /followOnly \? exitFollowFeed\(\) : enterFollowFeed\(\)/.test(community)
     && !/function toggleFollowFeed/.test(community));
+ok("F5b 进了关注流按钮要改名（用户：这里应该改名啊），人数不再重复显示",
+  /followOnly \? t\("follow\.feedExit"\) : t\("follow\.feedBtn"\)/.test(community)
+    && /v-if="!followOnly && followingCount"/.test(community)
+    && !/<span>\{\{ t\("follow\.feedBtn"\) \}\}<\/span>/.test(community));
 ok("F6 关注模式下不渲染搜索框（两套数据源同时开着比不给搜更糟）",
   /<template v-if="!followOnly">[\s\S]{0,160}?v-model="searchQ"/.test(community));
 ok("F7 关注模式不回退本机帖（否则 0 人关注时会出现陌生本地帖）",

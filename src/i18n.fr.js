@@ -330,7 +330,7 @@ export default {
     "feedBtn": "Mes abonnements",
     "feedBtnHint": "Seulement les publications des personnes que je suis",
     "feedNote": "Seulement les {n} personnes que tu suis",
-    "feedExit": "Quitter Mes abonnements",
+    "feedExit": "Voir tout",
     "feedEmpty": "Les personnes que tu suis n’ont rien publié",
     "feedEmptyHint": "Elles sont peut-être nouvelles, ou en pause.",
     "feedNeedLogin": "Connecte-toi pour suivre les personnes qui te plaisent",

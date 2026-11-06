@@ -2488,34 +2488,24 @@ html.cap-app .reply-bar {
      视觉与原来完全一致，但内容以下的空白都在 home3 手势面里，横滑不再有死区 */
   min-height: calc(100dvh - 96px - var(--sat, env(safe-area-inset-top, 0px)) - var(--sab, env(safe-area-inset-bottom, 0px)));
 }
-/* 轮450 · 频道条改成文字页签（原来是一排白底胶囊 + 选中实心橙块）。
- * 用户：「首页、暖心墙、消息页，三个页面全是联排按钮，不能啊」——
- * 问题不在单个按钮好不好看，而在**每个页面顶部都先铺一排有体积的控件**，
- * 内容被挤到下面，且三页同一形态等于没有层级。频道切换是「导航」，
- * 不是「动作」，不该长得像可按的实体按钮：去掉底色/描边/圆角，只留字重与一条短横。 */
+/* 轮451 · 首页频道条恢复原样（胶囊排 + 选中实心橙）。
+ * 轮450 我把它一并改成文字页签了，但用户只点名了暖心墙那一页 ——
+ * 「我没让你改首页跟消息那里啊」。这里按他的要求退回改动前形态，
+ * 消息页的分栏保持轮450 的文字页签不动。 */
 .home-chips {
   position: sticky; top: 0; z-index: 6;
-  display: flex; gap: 22px; justify-content: center; align-items: center;
-  padding: 10px 4px 6px;
+  display: flex; gap: 6px; justify-content: center; align-items: center;
+  padding: 10px 4px;
   background: var(--glass-strong);
   backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
 }
 .home-chip {
   appearance: none; cursor: pointer; font: inherit;
-  position: relative;
-  min-height: 38px; padding: 6px 2px 10px;
-  border: none; border-radius: 0; background: none;
-  font-size: 14.5px; font-weight: 500; letter-spacing: .01em;
-  color: var(--ink-faint);
-  transition: color .16s ease;
+  min-height: 40px; padding: 6px 18px; border-radius: 999px; font-size: 14px; font-weight: 500;
+  color: var(--ink-soft); background: transparent; border: 1.5px solid transparent;
+  transition: background-color .12s ease, color .12s ease, border-color .12s ease;
 }
-.home-chip.on { color: var(--ink); font-weight: 700; background: none; }
-/* 选中标记：短横（16px）居中对齐文字，不用整条下边框 —— 那会变成 tab bar */
-.home-chip.on::after {
-  content: ""; position: absolute; left: 50%; bottom: 2px;
-  width: 16px; height: 2.5px; margin-left: -8px;
-  border-radius: 999px; background: var(--accent);
-}
+.home-chip.on { color: var(--accent-deep); background: var(--accent-soft); border-color: var(--accent); }
 .home-track {
   display: flex; align-items: flex-start;   /* 轮 166b：回到内容高——stretch 会把联内的卡片区
     拉出一长条空白（用户实测「去打卡后今日页下面那么长的空白」）。手势面已上移 home3，
@@ -3521,8 +3511,17 @@ html[data-theme="night"] .follow-chip { color: #dce4ff; border-color: rgba(120, 
   transition: background .18s ease, color .18s ease, border-color .18s ease;
 }
 .wall-follow-btn:hover { color: var(--accent-deep); border-color: var(--accent-soft); }
-.wall-follow-btn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
-.wall-follow-btn.on:hover { color: #fff; }
+/* 轮451 · 关注流下这颗按钮是「退出」，不是「当前选中」。
+ * 原来它铺实心 accent —— 实心色块在这个位置会被读成强调态（点进去），
+ * 可它此刻执行的是离开动作，而且文字还写着「我的关注」（用户：「这里应该改名啊」）。
+ * 名字已在模板里换成「退出关注流」+ ← 图标，视觉也一并退回中性描边：
+ * 位置不动，让状态句站前面，按钮作为一条明确的退路。 */
+.wall-follow-btn.on {
+  background: var(--wash-mid);
+  border-color: var(--hairline);
+  color: var(--ink);
+}
+.wall-follow-btn.on:hover { color: var(--accent-deep); border-color: var(--accent-soft); }
 .wall-follow-btn:disabled { opacity: .6; cursor: wait; }
 .wall-follow-ico { font-size: 12px; line-height: 1; }
 .wall-follow-n {
@@ -3530,7 +3529,6 @@ html[data-theme="night"] .follow-chip { color: #dce4ff; border-color: rgba(120, 
   padding: 2px 5px; border-radius: 999px;
   background: var(--accent-soft); color: var(--accent-deep);
 }
-.wall-follow-btn.on .wall-follow-n { background: rgba(255, 255, 255, .26); color: #fff; }
 /* 关注流下左侧的状态句：一行灰字，顶掉搜索框的位置（不新增行高） */
 .wall-follow-state {
   flex: 1 1 auto; min-width: 0;
@@ -3543,7 +3541,12 @@ html[data-theme="night"] .wall-follow-btn {
   border-color: rgba(255, 255, 255, .10);
   color: rgba(214, 222, 245, .72);
 }
-html[data-theme="night"] .wall-follow-btn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* 夜间「退出关注流」：同底色，只把字提亮一档 —— 不再是一条白色实心块 */
+html[data-theme="night"] .wall-follow-btn.on {
+  background: rgba(255, 255, 255, .08);
+  border-color: rgba(255, 255, 255, .14);
+  color: rgba(238, 242, 255, .92);
+}
 
 /* —— 作者主页的关注主按钮（排在私信前面） —— */
 .waller-follow { font-weight: 600; }

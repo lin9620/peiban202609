@@ -277,7 +277,7 @@ export const messages = {
       feedBtn: "My follows",
       feedBtnHint: "Only posts from people I follow",
       feedNote: "Only from the {n} people you follow",
-      feedExit: "Leave follow feed",
+      feedExit: "Show all",
       feedEmpty: "The people you follow haven't posted yet",
       feedEmptyHint: "They may be new here, or taking a break.",
       feedNeedLogin: "Sign in to follow people you like",

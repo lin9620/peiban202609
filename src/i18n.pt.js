@@ -329,7 +329,7 @@ export default {
     "feedBtn": "Meus seguidos",
     "feedBtnHint": "Só publicações de quem eu sigo",
     "feedNote": "Só das {n} pessoas que você segue",
-    "feedExit": "Sair de Meus seguidos",
+    "feedExit": "Ver tudo",
     "feedEmpty": "Quem você segue ainda não publicou",
     "feedEmptyHint": "Talvez sejam novos por aqui, ou estejam descansando.",
     "feedNeedLogin": "Entre para seguir quem você gosta",

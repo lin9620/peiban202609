@@ -2740,7 +2740,12 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
           <button v-if="searchQ || searchTags.length" class="sort-btn" @click="clearSearch">✕</button>
         </template>
         <!-- 关注流下：左边一句状态（说清现在只看谁的内容），右边同一个按钮变成退出。
-             0 人时也照实说「只看 0 位博主」—— 这正是列表为空的原因，比说「我的关注」有用。 -->
+             0 人时也照实说「只看 0 位博主」—— 这正是列表为空的原因，比说「我的关注」有用。
+
+             轮451 · 按钮要改名。原来这颗按钮在关注流下仍写「我的关注」，只是变成实心橙 ——
+             用户进到关注流一看：「这里应该改名啊」。名字讲的是**点下去会去哪**，所以：
+             未进入时「我的关注」（进去），进入后「退出关注流」（出来），图标也跟着从 👥 换 ←。
+             人数挪掉：左边那句已经写明「只看 N 位博主」，按钮里再挂一个数字纯属重复。 -->
         <p v-else class="wall-follow-state">
           {{ t("follow.feedNote", { n: followingCount }) }}
         </p>
@@ -2749,9 +2754,9 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
           :title="followOnly ? t('follow.feedExit') : t('follow.feedBtnHint')"
           :aria-label="followOnly ? t('follow.feedExit') : t('follow.feedBtn')"
           @click="followOnly ? exitFollowFeed() : enterFollowFeed()">
-          <span class="wall-follow-ico" aria-hidden="true">👥</span>
-          <span>{{ t("follow.feedBtn") }}</span>
-          <b v-if="followingCount" class="wall-follow-n">{{ followingCount }}</b>
+          <span class="wall-follow-ico" aria-hidden="true">{{ followOnly ? "←" : "👥" }}</span>
+          <span>{{ followOnly ? t("follow.feedExit") : t("follow.feedBtn") }}</span>
+          <b v-if="!followOnly && followingCount" class="wall-follow-n">{{ followingCount }}</b>
         </button>
       </div>
       <template v-if="!followOnly">
