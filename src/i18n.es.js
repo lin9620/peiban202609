@@ -706,7 +706,8 @@ export default {
     "petFail": "No pasó — inténtalo más tarde 🙏",
     "pats": "{n} mimos",
     "feeds": "{n} comidas",
-    "kitchen": "Cocina dibujada a mano"
+    "kitchen": "Cocina dibujada a mano",
+    "dishNoImg": "Este dibujo no cargó"
   },
   "comment": {
     "count": "{n} comentarios",

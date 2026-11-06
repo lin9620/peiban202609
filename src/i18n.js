@@ -616,6 +616,7 @@ export const messages = {
       petFail: "That didn't go through — try again later 🙏",
       pats: "{n} pats", feeds: "{n} feeds",
       kitchen: "Hand-drawn kitchen",
+      dishNoImg: "This drawing didn't load",
     },
 
     comment: {
@@ -1701,6 +1702,7 @@ export const messages = {
       petFail: "没成功——稍后再试试 🙏",
       pats: "{n} 次摸头", feeds: "{n} 次投喂",
       kitchen: "手绘厨房",
+      dishNoImg: "这幅画没加载出来",
     },
 
     comment: {

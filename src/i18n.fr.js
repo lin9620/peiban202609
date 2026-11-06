@@ -707,7 +707,8 @@ export default {
     "petFail": "Ça n’est pas passé — réessaie plus tard 🙏",
     "pats": "{n} caresses",
     "feeds": "{n} repas",
-    "kitchen": "Cuisine dessinée à la main"
+    "kitchen": "Cuisine dessinée à la main",
+    "dishNoImg": "Ce dessin n'a pas chargé"
   },
   "comment": {
     "count": "{n} commentaires",

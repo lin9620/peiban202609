@@ -1748,33 +1748,51 @@ html[data-theme="night"] .waller .pic { border-color: rgba(38, 44, 78, .9); }
 .waller-interact-msg { text-align: center; color: var(--accent-deep); font-weight: 500; margin: 4px 0 0; }
 html[data-theme="night"] .waller-act { color: #dce4ff; background: rgba(120, 136, 200, .22); }
 
-/* —— 手绘厨房（点菜 = 投喂） —— */
+/* —— 手绘厨房（点菜 = 投喂） ——
+ * 轮454：用户截图圈了「只有一道菜」的样子 —— 卡片孤零零挂在左边、右边空掉半屏，
+ * 卡片里那颗通栏的粉块按钮又比别处重得多。三个改动：
+ * ① auto-fill → auto-fit：空轨道折叠，一道菜时不会留一条空列（菜多时行为不变）；
+ * ② 卡片限宽 200px + 居中：单列时图不会被拉到整卡宽（4:3 会变成一张巨图）；
+ * ③ 投喂按钮从「撑满整卡」改成小胶囊居中 —— 它是卡片内的次动作，
+ *    不该比顶部「摸摸头 / 投喂」还重。 */
 .dish-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 12px; margin-top: 10px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  gap: 12px; margin-top: 10px; justify-items: center;
 }
 .dish-card {
-  margin: 0; background: var(--wash-mid); border-radius: 14px; padding: 8px;
+  margin: 0; width: 100%; max-width: 200px;
+  background: var(--wash-mid); border-radius: 14px; padding: 8px;
   display: flex; flex-direction: column; gap: 6px; align-items: stretch;
 }
 html[data-theme="night"] .dish-card { background: rgba(38, 44, 78, .55); }
-.dish-card img {
-  width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 10px;
+.dish-card img,
+.dish-noimg {
+  width: 100%; aspect-ratio: 4 / 3; border-radius: 10px;
   user-select: none; -webkit-user-drag: none;
 }
+.dish-card img { object-fit: cover; }
+/* 菜图丢了（Storage 对象不在 / 脏引用）→ 画一块虚线留白，别让浏览器报破图。
+   不隐藏整张卡：名字和「投喂」还在，用户仍知道自己画过什么。 */
+.dish-noimg {
+  display: grid; place-items: center; font-size: 24px; line-height: 1;
+  color: var(--ink-faint); background: rgba(255, 255, 255, .45);
+  border: 1px dashed rgba(160, 110, 60, .28);
+}
+html[data-theme="night"] .dish-noimg { background: rgba(255, 255, 255, .04); border-color: rgba(255, 255, 255, .14); }
 .dish-card figcaption {
   font-size: 12px; font-weight: 500; text-align: center;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .dish-feed {
   font: inherit; font-size: 12px; font-weight: 500; cursor: pointer;
+  align-self: center; padding: 5px 16px;
   color: var(--accent-deep); background: var(--accent-soft);
-  border: none; border-radius: 10px; padding: 6px 0;
+  border: none; border-radius: 999px;
   transition: transform .15s ease;
 }
 .dish-feed:hover:not(:disabled) { transform: translateY(-1px); }
 .dish-feed:disabled { opacity: .55; cursor: wait; }
 html[data-theme="night"] .dish-feed { color: #dce4ff; background: rgba(120, 136, 200, .22); }
-@media (max-width: 560px) { .dish-grid { grid-template-columns: repeat(2, 1fr); } }
 
 /* ═══════════ 管理中心（/admin）—— 看板 + 内容治理 ═══════════ */
 .admin-msg { text-align: center; font-weight: 500; color: var(--ink-soft); padding: 38px 20px; }

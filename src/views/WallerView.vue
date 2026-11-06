@@ -1,6 +1,6 @@
 <!-- 墙上的主页：/u/:id —— 点暖心墙的头像/昵称进来，看 TA 的帖子、宠物与手绘厨房（访客可互动） -->
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { ref, reactive, computed, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { NAvatar } from "naive-ui";
 import { t, i18n } from "../i18n.js";
@@ -147,6 +147,10 @@ const loading = ref(true);
 const failed = ref(false);     // 档案与帖子都拿不到才算真失败
 
 const petHome = ref(null);     // 云端宠物主页：{ pet, dishes, counts }；null = 云端不可用（未迁移等）
+/* 轮454：菜图加载失败（Storage 对象被删、网络断、脏 dataURL 漏网）→ 记 id，改画占位。
+ * 不这样做，浏览器会直接画破图标 + alt 文字，一屏看着像页面坏了。 */
+const dishBroken = reactive({});
+function markDishBroken(id) { dishBroken[id] = true; }
 const interactBusy = ref(false);
 const interactMsg = ref("");
 
@@ -320,7 +324,9 @@ onMounted(async () => {
       <span class="sec-label">{{ t("waller.kitchen") }}</span>
       <div class="dish-grid">
         <figure v-for="d in petHome.dishes" :key="d.id" class="dish-card">
-          <img :src="d.img" :alt="d.name" loading="lazy" draggable="false" />
+          <img v-if="d.img && !dishBroken[d.id]" :src="d.img" :alt="d.name" loading="lazy" draggable="false"
+            @error="markDishBroken(d.id)" />
+          <span v-else class="dish-noimg" :title="t('waller.dishNoImg')" aria-hidden="true">&#128396;</span>
           <figcaption>{{ d.name }}</figcaption>
           <button class="dish-feed" :disabled="interactBusy" @click="interact('feed', d.name)">
             {{ t("waller.feed") }}

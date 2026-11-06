@@ -4,9 +4,12 @@
  *       图片引用外置（dataURL / Storage 路径）与行体积安全阀、防抖队列的安全性
  */
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   cleanDishes, petHomeSnapshot, petCounts, isImageRef, imgRefHash, parseImageDataUrl,
-  resolvePetImg, shrinkPetPayload, PET_HOME_DISH_LIMIT, PET_IMG_PATH_MAX, queuePetHomeSync,
+  resolvePetImg, dishImgRef, shrinkPetPayload, PET_HOME_DISH_LIMIT, PET_IMG_PATH_MAX, queuePetHomeSync,
 } from "../src/utils/wall.js";
 
 const out = [];
@@ -205,6 +208,42 @@ t("T19 cleanDishes 接受已外置的 Storage 路径（惰性迁移后的形态�
     { id: "b", name: "坏菜", img: "http://nope" },
   ]);
   assert.deepEqual(r.map((d) => d.id), ["a"]);
+});
+
+t("T20 dishImgRef：脏引用不进 <img>（轮454 破图根因）", () => {
+  const toUrl = (p) => "https://cdn/" + p;
+  /* 当年 e2e 直接写库留下的 `data:image/jpeg;base64,e2e`：长度只有 3 字节，
+     不过 isUsableDataUrl 的 128 门槛，但以前 petHomeFromData 原样透传给 <img> → 破图 */
+  assert.equal(dishImgRef("data:image/jpeg;base64,e2e"), "", "假 dataURL 给空串");
+  assert.equal(dishImgRef("data:,x"), "");
+  assert.equal(dishImgRef("javascript:alert(1)"), "", "伪协议不放行");
+  assert.equal(dishImgRef("u1/../etc/passwd"), "", "路径穿越不放行");
+  /* 合法形态照常：dataURL 原样、Storage 路径转公开 URL、老数据的完整 URL 原样 */
+  assert.equal(dishImgRef(PNG, toUrl), PNG);
+  assert.equal(dishImgRef("u1/pet-abc12345.jpg", toUrl), "https://cdn/u1/pet-abc12345.jpg");
+  assert.equal(dishImgRef("https://cdn.example.com/a.jpg", toUrl), "https://cdn.example.com/a.jpg");
+  assert.equal(dishImgRef(null, toUrl), "");
+  assert.equal(dishImgRef(undefined, toUrl), "");
+});
+
+/* 组件层：图坏了要画占位，而不是让浏览器报破图标（用户截图里的那块） */
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const readSrc = (p) => fs.readFileSync(path.join(ROOT, p), "utf8");
+
+t("T21 主页菜图有加载失败兜底（@error → 占位块）", () => {
+  const vue = readSrc("src/views/WallerView.vue");
+  assert.match(vue, /@error="markDishBroken\(d\.id\)"/, "img 必须挂 @error");
+  assert.match(vue, /v-if="d\.img && !dishBroken\[d\.id\]"/, "坏图不再渲染 img");
+  assert.match(vue, /class="dish-noimg"/, "要有占位元素");
+  assert.match(vue, /const dishBroken = reactive\(\{\}\)/, "状态用 reactive（不用 ref 包对象）");
+});
+
+t("T22 厨房栅格 auto-fit + 卡片限宽 + 投喂按钮不再通栏", () => {
+  const css = readSrc("src/style.css");
+  assert.match(css, /\.dish-grid \{[^}]*repeat\(auto-fit, minmax\(128px, 1fr\)\)/, "用 auto-fit 折叠空列");
+  assert.match(css, /\.dish-card \{[^}]*max-width: 200px/, "卡片限宽，避免单列时图被拉成巨图");
+  assert.match(css, /\.dish-feed \{[^}]*align-self: center/, "投喂按钮居中，不再撑满整卡");
+  assert.match(css, /\.dish-noimg \{/, "占位块有样式");
 });
 
 t("T13 非函数参数被忽略（不抛错）", () => {

@@ -973,6 +973,22 @@ export function resolvePetImg(ref, toUrl) {
 }
 
 /**
+ * 菜品图的最终形态（纯函数）：合法引用才转 URL，其余一律给空串。
+ * 轮454：用户主页上出现了一张破图 —— 库里的 img 是 `data:image/jpeg;base64,e2e`
+ * （早年 e2e 探针直接写库留下的假 dataURL，只有 3 字节 base64）。这类值
+ * 长度不过 isUsableDataUrl 的 128，却因为 petHomeFromData 原样透传而进了 <img>，
+ * 浏览器就画出破图标 + alt 文字。这里先判合法性：不合法 → 空串，
+ * 由组件渲染「画丢了」占位，而不是让浏览器报错。
+ * 合法形态：dataURL / Storage 相对路径（<uid>/pet-<hash>.jpg）/ 完整 http(s) URL（老数据）。
+ */
+export function dishImgRef(ref, toUrl) {
+  if (typeof ref !== "string" || !ref) return "";
+  const fullUrl = /^https?:\/\//i.test(ref);
+  if (!fullUrl && !isImageRef(ref)) return "";
+  return resolvePetImg(ref, toUrl);
+}
+
+/**
  * 行体积安全阀（纯函数）：图片外置后 data 里只有短路径，正常永不触发。
  * 万一降级保留了超大 dataURL，按「先丢尾部菜图、再丢立绘」裁到预算内 —— 宁丢图，不丢整行
  * （行写不进去等于这个用户的宠物主页全丢）。
@@ -1074,14 +1090,15 @@ function petHomeFromData(row) {
   const d = row && row.data && typeof row.data === "object" ? row.data : {};
   const pet = d.pet && typeof d.pet === "object" ? { ...d.pet } : null;
   if (pet) {
-    const img = pet.custom && typeof pet.custom === "object" ? resolvePetImg(pet.custom.img, publicUrl) : "";
+    const img = pet.custom && typeof pet.custom === "object" ? dishImgRef(pet.custom.img, publicUrl) : "";
     pet.custom = img ? { img } : null;
   }
   return {
     pet,
     dishes: (Array.isArray(d.dishes) ? d.dishes : []).map((x) => ({
       ...x,
-      img: resolvePetImg(x && x.img, publicUrl),
+      /* 轮454：不再原样透传 —— 脏引用给空串，组件画占位（见 dishImgRef 注释） */
+      img: dishImgRef(x && x.img, publicUrl),
     })),
     counts: petCounts(row),
     updated: Number(d.updated) || 0,
