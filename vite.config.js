@@ -458,6 +458,9 @@ export default defineConfig({
   },
   build: {
     chunkSizeWarningLimit: 900,
+    /* 本机只有 ~16GB 内存，默认的 gzip 体积统计会在渲染完成后再次遍历全部大 chunk，
+       偶发 OOM 直接让构建失败（产物其实已渲染完）。只关统计，不影响产物与压缩。 */
+    reportCompressedSize: false,
     rollupOptions: {
       /* 轮 326：多一个独立入口 proto-chat.html（会话组件原型）。
        * 它是评估用的试验页，不参与 App 路由；定案后会连同 src/proto/ 一起删。 */
