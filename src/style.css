@@ -1199,7 +1199,8 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 
 /* ═══ 轮446 · 撤回 / 隐藏（作者对自己投的信） ═══
  * 文字按钮、低频、破坏性 —— 不该跟「回信 / 放回」抢视觉权重。 */
-.bottle-owner-ops { justify-content: flex-end; margin-top: 6px; }
+/* 轮448：单独用在没有 .mail-send 包裹的卡片里（手机端漂流瓶记录卡）——自己成一行靠右 */
+.bottle-owner-ops { display: flex; align-items: center; gap: 6px; justify-content: flex-end; margin-top: 6px; }
 .bottle-op {
   appearance: none; font: inherit; cursor: pointer;
   border: none; background: none; padding: 4px 8px; border-radius: 8px;
@@ -2066,6 +2067,10 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
   color: var(--ink-soft); background: var(--wash-mid); border: 1px solid var(--hairline);
 }
 .bcl-chip.wait { color: var(--accent-deep); background: var(--accent-soft); border-color: rgba(204, 120, 92, .35); }
+/* 轮448：状态胶囊右侧的撤回/隐藏 —— 靠右、低频、不抢行选中态的视觉权重 */
+.bcl-ops { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; }
+.bcl-ops .bottle-op { font-size: 12px; padding: 2px 7px; }
+.bcl-flash { margin: 0 0 4px; color: var(--accent-deep); font-weight: 500; }
 .bcl-more { margin-top: 6px; }
 
 /* 中列：独立漂流瓶聊天框（复用 .dm-* 气泡样式，容器/状态自成一套） */

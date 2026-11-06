@@ -26,8 +26,10 @@ import {
   applyCommentReactionResult, REPLY_PAGE, pageReplies,
 } from "../utils/comments.js";
 import { fmtWhen, canDeletePost as canDeletePostRule } from "../utils/wallRules.js";   /* 轮446：删除判据与暖心墙共用 */
-/* 轮447：详情页 ⋯ 菜单只放「取消关注」（关注动作在暖心墙卡片和作者主页，菜单里放正向动作很别扭） */
-import { isFollowing, unfollowUser, refreshFollows, followErrKey } from "../utils/follows.js";
+/* 轮447：详情页 ⋯ 菜单只放「取消关注」（破坏性动作不适合放在作者名旁边）
+ * 轮448：作者名旁的「+ 关注」补上 —— 用户多半是从卡片/通知/收藏直接进详情，
+ *        到了详情页反而没有关注入口，只能退回列表再点一次。 */
+import { isFollowing, followUser, unfollowUser, refreshFollows, followErrKey } from "../utils/follows.js";
 import { cacheKey, swr, cacheSet, cacheGet, cachePatch, cacheDrop } from "../utils/cache.js";   /* 轮 158：帖子主体 SWR */
 import { isApp, isMobileNav, tabbarSuppressed } from "../stores/uiStore.js";
 /* 轮 279：左右滑看上一条/下一条 —— 方向判定复用 panes 的 swipeDir（已有单测），上下文来自 postNav */
@@ -121,6 +123,34 @@ watch([myId, () => post.value && post.value.dbId], async ([uid, dbId]) => {
   const ids = await cloudFavIds([dbId]);
   favOn.value = ids.includes(dbId);
 }, { immediate: true });
+/* 轮448 · 详情页作者名的「+ 关注」
+ * 条件与暖心墙卡片的 showFollowChip **完全一致**：已登录、不是本人、还没关注。
+ * 点完保留 600ms「✓ 已关注」过渡态（否则按钮瞬间消失，用户以为没点上）；
+ * 成功后 isFollowing 变 true，⋯ 菜单里的「取消关注」随之出现 —— 两处状态同源。
+ * 未登录 → 不显示（与卡片一致）：游客看到的是一篇帖子的作者，不是一个可关注的关系。 */
+const followFlash = ref(false);
+const canFollowHere = computed(() => {
+  const p = post.value;
+  if (!p || !p.userId || !myId.value) return false;
+  if (String(p.userId) === String(myId.value)) return false;
+  if (followFlash.value) return true;
+  return !isFollowing(p.userId);
+});
+async function followHere() {
+  const p0 = post.value;
+  if (!p0 || !p0.userId) return;
+  if (followFlash.value || isFollowing(p0.userId)) return;
+  followFlash.value = true;
+  try {
+    await followUser(p0.userId, p0.name);
+    setTimeout(() => { followFlash.value = false; }, 600);
+  } catch (e) {
+    followFlash.value = false;          /* 失败立刻退回「+ 关注」，配合下方提示 */
+    const k = followErrKey(e);
+    if (k) hint.value = t(k);
+  }
+}
+
 /* 轮447 · 详情页 ⋯ 菜单里的「取消关注」
  * 只出现在「我关注了这条帖子的作者」时 —— 关注本身在暖心墙卡片和作者主页做，
  * 菜单是「更多操作」，放一个正向的「关注 TA」在这里既别扭又容易被忽略。 */
@@ -1124,6 +1154,14 @@ onUnmounted(() => {
             <div class="post-name clickable" :title="t('dm.viewHome')" @click="goUser">{{ post.name }}</div>
             <div class="post-time">{{ when(post.ts) }}</div>
           </div>
+          <!-- 轮448：作者名旁的关注按钮，与暖心墙卡片同款（同样式、同条件、同 600ms 过渡） -->
+          <button
+            v-if="canFollowHere" class="follow-chip"
+            :class="{ done: followFlash }"
+            :title="t('follow.followHint')" :aria-label="t('follow.follow')"
+            @click.stop="followHere">
+            {{ followFlash ? "✓ " + t("follow.following") : "+ " + t("follow.follow") }}
+          </button>
           <!-- 轮 84：帖子右上角 … 菜单（举报迁入 + 拷贝正文）；post-foot 里原举报按钮移除 -->
           <button class="more-btn" :title="t('comment.more')" :aria-label="t('comment.more')"
             @click.stop="togglePostMore">⋯</button>

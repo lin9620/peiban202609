@@ -3,7 +3,11 @@ import { computed, ref, watch, onMounted, onBeforeUnmount, nextTick } from "vue"
 import { useRoute } from "vue-router";
 import { t } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
-import { bottleRecords, bottleChatDecide, bottleChatState, bottleErrKey, sortBottleMine, bottlePendingCount, bottleLetterExcerpt } from "../utils/bottle.js";
+import { bottleRecords, bottleChatDecide, bottleChatState, bottleErrKey, sortBottleMine, bottlePendingCount, bottleLetterExcerpt,
+  /* 轮448：手机端「消息 → 漂流瓶」也能撤回/隐藏自己投的信 */
+  canWithdrawLetter, canHideLetter,
+} from "../utils/bottle.js";
+import { useLetterOps } from "../utils/letterOps.js";
 /* 轮 338：记录 SWR —— 上次的列表先画，网络回来再覆盖（key 不占用 `bottle:` 前缀） */
 import { cacheKey, cachePeek, cacheSet } from "../utils/cache.js";
 /* 轮 319：记录卡长文本折叠（与 BottleView 同款口径） */
@@ -141,6 +145,29 @@ async function decide(row, accept) {
     if (owner === userId.value && run === generation) error.value = bottleErrKey(e);
   } finally { if (run === generation) busy.value = ""; }
 }
+/* ═════════ 轮448 · 作者撤回 / 隐藏自己投的信（手机端「消息 → 漂流瓶」） ═════════
+ * 用户报障：这里看不到撤回按钮 —— 轮446 只做了 /bottle 独立页的记录卡，
+ * 而从底部导航「消息 → 漂流瓶」进来的其实是本组件。
+ * 判据与 SQL 的 where 逐条对应（utils/bottle.js 的两个 can*），动作层在 utils/letterOps.js：
+ *   还在海里 → 撤回；已经进了别人手里 → 只能隐藏（不影响对方，回信和聊天都还在）。
+ * 撤回**不退还**今日投信次数。
+ */
+const canOp = (row) => !!mine.value && (canWithdrawLetter(row) || canHideLetter(row, userId.value));
+function dropRow(id) {
+  const keep = (x) => String(x.id) !== String(id);
+  mineAll.value = mineAll.value.filter(keep);
+  rows.value = rows.value.filter(keep);
+  if (focused.value && String(focused.value.id) === String(id)) focused.value = null;
+  offset = Math.max(0, offset - 1);
+  more.value = mineAll.value.length > offset;
+}
+const {
+  flash: opFlash, busyFor: opBusyFor, withdraw: withdrawRow, hide: hideRow,
+} = useLetterOps({
+  onDone: (id) => { dropRow(id); refreshBadge(); },
+  onError: (k) => { error.value = k; },
+});
+
 function reset() {
   generation++;
   busy.value = "";
@@ -217,6 +244,7 @@ onBeforeUnmount(() => {
       </button>
       <button class="br-tab" :class="{ on: !mine }" role="tab" :aria-selected="!mine" @click="setMine(false)">{{ t("bottle.heldTab") }}</button>
     </div>
+    <p v-if="opFlash" class="sub bottle-hint" role="status">{{ opFlash }}</p>
     <p v-if="error" role="alert" class="notice">{{ t(error) }}</p>
     <p v-if="loading" class="sub" role="status">{{ t("bottle.recordsLoading") }}</p>
     <p v-else-if="!displayed.length && !error" class="sub">{{ t(mine ? "bottle.mineEmpty" : "bottle.heldEmpty") }}</p>
@@ -251,6 +279,14 @@ onBeforeUnmount(() => {
       </template>
       <button v-else-if="state(row) === 'accepted'" class="dm-act primary" @click="emit('open', row.conv_id)">{{ t("bottle.chatOpen") }}</button>
       <p v-else class="sub">{{ t(stateTk(row)) }}</p>
+      <!-- 轮448：自己投的信用 —— 还在海里 → 撤回；已进别人手里 → 只有隐藏。
+           低频、破坏性，所以是右对齐的文字按钮，不跟「进入聊天」抢位置。 -->
+      <div v-if="canOp(row)" class="bottle-owner-ops">
+        <button v-if="canWithdrawLetter(row)" type="button" class="bottle-op bottle-op-danger"
+          :disabled="opBusyFor(row)" @click="withdrawRow(row)">{{ t("bottle.withdraw") }}</button>
+        <button v-else type="button" class="bottle-op"
+          :disabled="opBusyFor(row)" @click="hideRow(row)">{{ t("bottle.hide") }}</button>
+      </div>
     </article>
     <button v-if="more" class="dm-act" :disabled="loading" @click="load(true)">{{ t("bottle.recordsMore") }}</button>
   </section>

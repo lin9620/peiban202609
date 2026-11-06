@@ -131,6 +131,27 @@ ok("C10 删帖写入口接了维护守卫", /guardWrite\(\)/.test(wallJs) && /ma
 ok("C11 撤回/隐藏也接了维护守卫",
   (bottleJs.match(/guardWrite\(\)/g) || []).length >= 3);
 
+/* 轮448：用户报障「消息 → 漂流瓶」没有撤回按钮 —— 轮446 只做了 /bottle 页，
+ * 而手机端消息页的漂流瓶段是 BottleRecords、桌面左列是 BottleChatList。 */
+const bottleRecords = read("src/components/BottleRecords.vue");
+const bottleChatList = read("src/components/BottleChatList.vue");
+const letterOps = read("src/utils/letterOps.js");
+ok("C12 手机端「消息→漂流瓶」记录卡也有撤回 / 隐藏",
+  /withdrawRow\(row\)/.test(bottleRecords) && /hideRow\(row\)/.test(bottleRecords));
+ok("C13 桌面端「消息→漂流瓶」左列也有撤回 / 隐藏",
+  /withdrawRow\(row\)/.test(bottleChatList) && /hideRow\(row\)/.test(bottleChatList));
+ok("C14 三处列表共用同一动作层（确认框/错误口径只此一份）",
+  [bottleRecords, bottleChatList].every((s) => /useLetterOps\(/.test(s))
+    && /bottleWithdraw/.test(letterOps) && /bottleHide/.test(letterOps));
+ok("C15 列表里的撤回/隐藏仍走纯函数判据（不自己写一套 if）",
+  [bottleRecords, bottleChatList].every((s) =>
+    /canWithdrawLetter\(row\)/.test(s) && /canHideLetter\(row, userId\.value\)/.test(s)));
+ok("C16 桌面左列撤回当前选中的信 → 通知父级清选中（中列不能停在已删的信上）",
+  /emit\("removed"/.test(bottleChatList)
+    && /@removed="onBottleRemoved"/.test(read("src/views/MessagesView.vue")));
+ok("C17 左列的行点击区不会吞掉按钮（撤回/隐藏必须 @click.stop）",
+  /class="bottle-op bottle-op-danger"[\s\S]{0,200}?@click\.stop="withdrawRow\(row\)"/.test(bottleChatList));
+
 /* ══════════ ⑦ 迁移脚本自检（不连库，只钉关键语句）══════════ */
 
 const sql = read("MIGRATION_owner_delete.sql");

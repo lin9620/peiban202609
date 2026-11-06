@@ -11,7 +11,12 @@ import { computed, ref, watch, onMounted, onBeforeUnmount } from "vue";
 import { NAvatar } from "naive-ui";
 import { t } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
-import { bottleRecords, bottleChatState, bottleErrKey, sortBottleMine, bottlePendingCount, bottleLetterExcerpt } from "../utils/bottle.js";
+import {
+  bottleRecords, bottleChatState, bottleErrKey, sortBottleMine, bottlePendingCount, bottleLetterExcerpt,
+  /* 轮448：左列也能撤回/隐藏 —— 判据与 /bottle 记录卡共用同一对纯函数（与 SQL where 逐条对应） */
+  canWithdrawLetter, canHideLetter,
+} from "../utils/bottle.js";
+import { useLetterOps } from "../utils/letterOps.js";
 import { cacheKey, cachePeek, cacheSet } from "../utils/cache.js";
 import { cloudFetchProfile } from "../utils/wall.js";
 import { relativeTime } from "../utils/dmRules.js";
@@ -22,7 +27,7 @@ const props = defineProps({
   /* 父级当前选中的信（受控）：用于行选中态；切换页签/刷新后由父级对齐 */
   selectedId: { type: [Number, String], default: null },
 });
-const emit = defineEmits(["select", "pending"]);   /* (row, nickname) */
+const emit = defineEmits(["select", "pending", "removed"]);   /* (row, nickname) / (count) / (letterId) */
 
 const userId = computed(() => (cloud.user && cloud.user.id) || "");
 const PAGE = 30;
@@ -164,6 +169,34 @@ function setMine(v) {
   mine.value = v;
   reset();
 }
+/* ═════════ 轮448 · 作者撤回 / 隐藏自己投的信（桌面左列） ═════════
+ * 用户报障：「消息 - 漂流瓶」里看不到撤回按钮 —— 轮446 只做到了 /bottle 页的记录卡，
+ * 桌面端这份行式列表漏了。判据仍是 utils/bottle.js 的两个 can* 纯函数
+ * （与 bottle_letter_delete/_hide 的 where 逐条对应），动作层统一在 utils/letterOps.js：
+ *   还在海里 → 撤回（从海里消失，不会再被捞到）；已进别人手里 → 只能隐藏。
+ * 撤回**不退还**今日投信次数 —— 投递是动作成本，退还等于可以无限试写。
+ */
+const canOp = (row) => !!mine.value && (canWithdrawLetter(row) || canHideLetter(row, userId.value));
+
+/* 从两处列表里摘掉同一条：mineAll 是全量、rows 是屏上切片。
+ * 摘完重新切一刀补齐行数，避免「撤回一条，列表整块往上跳一格」。
+ * 正好撤回的是中列正在看的那封 → 通知父级清掉选中，中列回到「点一封信看看」空态。 */
+function dropRow(id) {
+  const keep = (x) => String(x.id) !== String(id);
+  mineAll.value = mineAll.value.filter(keep);
+  rows.value = mineAll.value.slice(0, Math.max(PAGE, rows.value.length));
+  offset = rows.value.length;
+  more.value = mineAll.value.length > offset;
+  if (String(props.selectedId) === String(id)) emit("removed", id);
+}
+
+const {
+  flash: opFlash, busyFor: opBusyFor, withdraw: withdrawRow, hide: hideRow,
+} = useLetterOps({
+  onDone: (id) => { dropRow(id); refreshBadge(); },
+  onError: (k) => { error.value = k; },
+});
+
 /* 桌面端「同意/拒绝」发生在中列 BottleChat；决定后让左列重拉，红点/置顶立即消失。 */
 defineExpose({ reload: () => load() });
 function pick(row) {
@@ -205,6 +238,7 @@ onBeforeUnmount(() => {
       </button>
     </div>
 
+    <p v-if="opFlash" class="sub bcl-flash" role="status">{{ opFlash }}</p>
     <p v-if="error" role="alert" class="notice">{{ t(error) }}</p>
     <p v-if="loading && !rows.length" class="sub" role="status">{{ t("bottle.recordsLoading") }}</p>
     <p v-else-if="!rows.length && !error" class="sub dm-empty">
@@ -227,6 +261,14 @@ onBeforeUnmount(() => {
         <p class="sub bcl-preview" :title="row.body">{{ preview(row) }}</p>
         <div class="bcl-state">
           <span class="bcl-chip" :class="{ wait: state(row) === 'choose' }">{{ t(stateTk(row)) }}</span>
+          <!-- 轮448：作者操作 —— 还在海里 → 撤回；已进别人手里 → 只有隐藏。
+               必须 @click.stop：整行是选中态的点击区，否则点撤回顺带把信选中了。 -->
+          <span v-if="canOp(row)" class="bcl-ops">
+            <button v-if="canWithdrawLetter(row)" type="button" class="bottle-op bottle-op-danger"
+              :disabled="opBusyFor(row)" @click.stop="withdrawRow(row)">{{ t("bottle.withdraw") }}</button>
+            <button v-else type="button" class="bottle-op"
+              :disabled="opBusyFor(row)" @click.stop="hideRow(row)">{{ t("bottle.hide") }}</button>
+          </span>
         </div>
       </div>
     </div>

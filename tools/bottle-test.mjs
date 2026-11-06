@@ -484,7 +484,7 @@ ok("轮368 私信漂流瓶：我发布的整批拉回 + choose 置顶 + 页签/�
     "mine: true, limit: ALL_LIMIT", "pendingCount", "bottle-need-dot", 'defineEmits(["open", "pending"])')
   && has(read("src/components/BottleChatList.vue"),
     "sortBottleMine(Array.isArray(got) ? got : [], userId.value)",
-    "mine: true, limit: ALL_LIMIT", "pendingCount", "bottle-need-dot", 'defineEmits(["select", "pending"])')
+    "mine: true, limit: ALL_LIMIT", "pendingCount", "bottle-need-dot", 'defineEmits(["select", "pending", "removed"])')
   && has(read("src/views/MessagesView.vue"),
     'ref="bottleList"', '@pending="onBottlePending"', "bottlePending", "bottleList.value?.reload?.()",
     "badgeLocal({ bottle: v })", "refreshBottleBadge")

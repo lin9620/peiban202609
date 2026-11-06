@@ -1693,6 +1693,17 @@ function pickBottle(row, name) {
   headMenu.value = false;
 }
 
+/* 轮448：左列把「当前正在看的那封信」撤回/隐藏掉了 → 清掉选中，中列回到
+ * 「点一封信看看」的空态（BottleChat 已有 !letter 占位，不会停在已删的信上）。
+ * 撤的是别的信则不动选中。 */
+function onBottleRemoved(id) {
+  if (bottleRow.value && String(bottleRow.value.id) === String(id)) {
+    bottleRow.value = null;
+    bottleName.value = "";
+    bottleMeta.value = {};
+  }
+}
+
 /* 瀛愬垪鎶娿€屽緟鎴戝喅瀹氥€嶇殑鏁伴噺鎶ヤ笂鏉ワ細鎵嬫満鍒嗘鏉?/ 妗岄潰鍒嗘鏉?/ 搴曢儴娑堟伅 Tab 鍏辩敤杩欎竴棰楃孩鐐广€?
  * 杞?371锛氬悓姝ュ啓 badgeStore 鈥斺€?搴曢儴 TabBar 涓庢闈㈤《鏍忚鐨勬槸鍚屼竴涓?badge.bottle銆?*/
 function onBottlePending(n) {
@@ -2328,7 +2339,8 @@ function goSignIn() {
         <!-- 杞?142 路 婕傛祦鐡舵锛氭闈?= 琛屽紡鍒楄〃锛堥€変腑浜ょ粰涓垪 BottleChat锛夛紱鎵嬫満 = 鍘熷崱鐗囧紡 BottleRecords锛堥浂鏀瑰姩锛?-->
         <BottleChatList
           v-else-if="seg === 'bottle' && !isMobileNav" ref="bottleList"
-          :selected-id="bottleRow && bottleRow.id" @select="pickBottle" @pending="onBottlePending" />
+          :selected-id="bottleRow && bottleRow.id" @select="pickBottle" @pending="onBottlePending"
+          @removed="onBottleRemoved" />
         <BottleRecords v-else-if="seg === 'bottle'" @open="openBottleChat" @pending="onBottlePending" />
         <NotificationsView v-else-if="seg === 'notif'" class="dm-seg-notif" />
       </aside>

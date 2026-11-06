@@ -186,12 +186,20 @@ ok("G2 自己的主页 / 已拉黑的人不给关注按钮",
   /const canFollow = computed\(\(\) => !!uid && !isSelf\.value && !isBlockedHere\.value\)/.test(waller));
 ok("G3 取关要两步确认（关注可以反悔，取关后人就没了）",
   /if \(isFollowingHere\.value && !followArm\.value\)/.test(waller));
-/* 用户明确要求：详情页菜单只放「取消关注」，关注动作在卡片/主页做 */
+/* 用户明确要求：详情页菜单只放「取消关注」（正向的「关注」放在作者名旁，不进菜单） */
 ok("G4 详情页 ⋯ 菜单只有「取消关注」，没有「关注 TA」",
   /canUnfollowHere" class="more-item" @click="unfollowHere"/.test(detail)
     && !/more-item[^>]*>\{\{ t\("follow\.follow"\) \}\}/.test(detail));
 ok("G5 详情页只在「我关注了作者」时才出现该项",
   /return isFollowing\(p\.userId\)/.test(detail));
+/* 轮448：用户报障「暖心墙帖子详细页面没有关注的按钮」—— 从卡片/通知/收藏直接进详情的人
+ * 到了详情页反而没有关注入口，只能退回列表。作者名旁补上，条件与卡片完全一致。 */
+ok("G5a 详情页作者名旁有关注按钮（同 class、同 600ms 过渡、必须 stop 冒泡）",
+  /class="follow-chip"[\s\S]{0,300}?@click\.stop="followHere"/.test(detail)
+    && /setTimeout\(\(\) => \{ followFlash\.value = false; \}, 600\)/.test(detail));
+ok("G5b 详情页关注按钮条件与卡片一致（已登录 / 非本人 / 未关注 / 过渡态仍显示）",
+  /if \(!p \|\| !p\.userId \|\| !myId\.value\) return false;[\s\S]{0,220}?return !isFollowing\(p\.userId\)/.test(detail)
+    && /if \(followFlash\.value\) return true;/.test(detail));
 ok("G6 我的页面有 /following 入口，且只显示关注数（**没有粉丝**）",
   /router\.push\('\/following'\)/.test(profile)
     && /t\("follow\.followingBtn", \{ n: followingCount \}\)/.test(profile)
