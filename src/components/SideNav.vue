@@ -3,7 +3,7 @@
 <script setup>
 import { useRoute, useRouter } from "vue-router";
 import { t } from "../i18n.js";
-import { badge } from "../stores/badgeStore.js";
+import { msgBadge } from "../stores/badgeStore.js";
 import { navOpen, toggleNav, retapTab } from "../stores/uiStore.js";
 
 const route = useRoute();
@@ -15,7 +15,7 @@ const items = [
   { to: "/community", ico: "💬", key: "nav.community" },
   /* 轮 145（用户要求）：故事栏 —— 投稿 / 发现 / 我的（左栏三页签）+ 右栏排行榜 */
   { to: "/story", ico: "📖", key: "nav.story" },
-  { to: "/messages", ico: "✉️", key: "dm.title", badge: () => badge.dm + badge.requests },
+  { to: "/messages", ico: "✉️", key: "dm.title", badge: () => msgBadge.value },
 ];
 const isActive = (to) => (to === "/" ? route.path === "/" : route.path === to || route.path.startsWith(to + "/"));
 const router = useRouter();

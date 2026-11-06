@@ -7,7 +7,7 @@
  *   - store 只存数字，去重 / 兜底在 notifyRules.normUnread 与 dm 侧 RPC。
  * 视图层（App.vue 角标、MessagesView、NotificationsView）都读这一个 store。
  */
-import { reactive } from "vue";
+import { computed, reactive } from "vue";
 import { getItem, setItem, removeItem } from "../utils/storage.js";
 import { cloud } from "../utils/supabase.js";
 import { unreadTotalSafe } from "../utils/dm.js";
@@ -27,6 +27,17 @@ export const badge = reactive({
   system: 0,
   loading: false,
 });
+
+/* ── 轮452 · 「消息」入口的统一角标 ──
+ * 口径 = 点进去**能看到的全部未读**：私信 + 待处理请求 + 漂流瓶待决定 + 未读通知。
+ *
+ * 以前各处各写各的（TabBar / 桌面顶栏 = dm + requests + bottle，不含通知），于是出现
+ * 用户实测的那一幕：页内三段写 漂流瓶 1 / 会话中心 2 / 通知 4，底部「消息」却只有 3。
+ * 三个数字挨着放，人一定会去加；底栏只加其中两样，等于告诉人「没那么多事」。
+ *
+ * ⚠ 别和 MessagesView 里的 dmBadge 混用 —— 那个是「会话中心」这一格的数字
+ *   （只含私信 + 请求），它不该把通知算进来。 */
+export const msgBadge = computed(() => badge.dm + badge.requests + badge.bottle + badge.notif);
 
 /* 角标本地缓存（修「通知那里太慢了」）：上次拉到的未读数先上屏，
  * 网络回来再校正 —— 打开 App 那一刻就有正确的角标，不用等第一轮 RPC。

@@ -27,7 +27,7 @@ import { APP_RELEASE_URL } from "./utils/api/db.js";   /* 轮 238:App 安装包�
 import { getItem } from "./utils/storage.js";
 import * as dmApi from "./utils/dm.js";
 import { bottleQuota, bottleHeld } from "./utils/bottle.js";
-import { badge, startBadge, stopBadge } from "./stores/badgeStore.js";
+import { badge, msgBadge, startBadge, stopBadge } from "./stores/badgeStore.js";
 import { startDmRealtime, stopDmRealtime } from "./utils/dmRealtime.js";   /* 轮 269：前台实时秒达 */
 /* 皮肤/语言：状态在 uiStore（与「设置」页共用）；App 只消费主题 */
 import { naiveTheme, naiveOverrides } from "./stores/uiStore.js";
@@ -49,8 +49,10 @@ const inChat = computed(() => isMobileNav.value
 
 /* 私信 / 通知角标：登录后由 badgeStore 每 30s 智能轮询（后台暂停）。
  * #14：红点只挂在聊天入口（💬）——🔔 不再显示红点，通知进页面看。
- * 轮 371：漂流瓶「待我同意/拒绝」也算消息未处理，桌面顶栏与底栏同一口径。 */
-const dmBadge = computed(() => badge.dm + badge.requests + badge.bottle);
+ * 轮 371：漂流瓶「待我同意/拒绝」也算消息未处理，桌面顶栏与底栏同一口径。
+ * 轮452：口径统一收到 badgeStore 的 msgBadge（含未读通知）—— 以前这里各自手拼，
+ * 顶部数字和消息页三段之和对不上，用户对着截图问「这数字怎么统计的」。 */
+const dmBadge = msgBadge;
 
 const streak = computed(() => moodStreak());
 /* 轮 132 · 桌面 welcome 横幅（参考图 1）：显示名 = 云昵称 > 本地昵称 > 访客 */

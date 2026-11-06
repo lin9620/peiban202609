@@ -17,7 +17,8 @@ const tb = read("src/components/TabBar.vue");
 ok("T1 TabBar 存在且含 4 Tab 路由",
   ['path: "/"', '"/community"', '"/messages"', '"/profile"'].every((s) => tb.includes(s)));
 ok("T2 TabBar 含 ＋ 弹层与两瓣入口", tb.includes("tabbar-sheet") && tb.includes("composeBottle") && tb.includes("composePost"));
-ok("T3 消息红点接 badgeStore（dm+requests+bottle）", tb.includes("badge.dm + badge.requests + badge.bottle"));
+ok("T3 消息红点接 badgeStore（改用统一 msgBadge，不再手拼）",
+  tb.includes("import { msgBadge }") && !/badge\.dm \+ badge\.requests/.test(tb));
 ok("T4 投瓶走 /?tab=bottle（T6 三联消费）", tb.includes('query: { tab: "bottle" }'));
 
 /* ─── ② App.vue 双形态接线（桌面零变化锚点） ─── */
@@ -25,8 +26,8 @@ const app = read("src/App.vue");
 ok("T5 TabBar 仅 isMobileNav 渲染（聊天页让位）", app.includes('<TabBar v-if="isMobileNav'));
 ok("T6 SideRails 桌面专属（isMobileNav 时隐藏）", app.includes('<SideRails v-if="!isMobileNav"'));
 ok("T7 桌面顶栏 NAV 数组原样保留（零变化锚点）", app.includes("const NAV = [") && app.includes('exact-active-class="active"'));
-ok("T7b 桌面顶栏消息角标含漂流瓶待决定（与底栏同口径）",
-  app.includes("badge.dm + badge.requests + badge.bottle"));
+ok("T7b 桌面顶栏消息角标与底栏同源（const dmBadge = msgBadge）",
+  app.includes("const dmBadge = msgBadge;") && !/badge\.dm \+ badge\.requests/.test(app));
 const bs = read("src/stores/badgeStore.js");
 ok("T7c badgeStore 持久化/恢复/登出都带 bottle（冷启动红点不丢、换账号不串）",
   bs.includes("bottle: 0") && bs.includes("bottle: badge.bottle")
@@ -34,6 +35,10 @@ ok("T7c badgeStore 持久化/恢复/登出都带 bottle（冷启动红点不丢�
   && bs.includes("badge.dm = 0; badge.requests = 0; badge.bottle = 0")
   && bs.includes("export async function refreshBottleBadge")
   && bs.includes("bottlePendingCount"));
+ok("T7d 消息角标口径只在 store 里定义一次，且含未读通知（底栏不再比页内三段少）",
+  bs.includes("export const msgBadge = computed(() => badge.dm + badge.requests + badge.bottle + badge.notif)")
+  && read("src/components/SideNav.vue").includes("msgBadge.value"));
+
 ok("T8 shell 挂 mobile-nav 形态类", app.includes("shell--mobile-nav"));
 
 /* ─── ③ i18n：tab 组键成对 + 运行时渲染 ─── */

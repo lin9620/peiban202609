@@ -1,19 +1,18 @@
 <script setup>
 /* ═══ App 轨道 T5：底部 Tab Bar（5 位，中间 ＋）═══
  * 仅 isApp / 窄屏渲染（App.vue 里 v-if="isMobileNav"）；桌面 ≥900px 永远看不到。
- * 红点口径与桌面顶栏一致：消息 = 私信未读 + 好友申请 + 漂流瓶待决定（badgeStore 30s 轮询）。 */
+ * 红点口径与桌面顶栏一致：消息 = 私信未读 + 好友申请 + 漂流瓶待决定 + 未读通知
+ * （轮452 起含通知；store 里那个 msgBadge 是唯一来源，别再在这儿手拼）。 */
 import { ref, computed, watch, onBeforeUnmount } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { Tabbar as VanTabbar, TabbarItem as VanTabbarItem } from "vant";
 import "vant/es/tabbar/style/index";
 import { t } from "../i18n.js";
-import { badge } from "../stores/badgeStore.js";
+import { msgBadge } from "../stores/badgeStore.js";
 import { retapTab, pushBack, popBack } from "../stores/uiStore.js";
 
 const route = useRoute();
 const router = useRouter();
-
-const dmBadge = computed(() => badge.dm + badge.requests + badge.bottle);
 
 /* 轮 417：用户要「只要文字，不要图标」。
  * 纯文字的问题不是「没图标所以空」，而是**五项里只有中间一个是实心色块**，
@@ -106,7 +105,7 @@ function composeStory() {
     <van-tabbar-item
       v-for="item in TABS.slice(2)" :key="item.path"
       :class="{ active: isActive(item) }"
-      :badge="item.badge && dmBadge ? (dmBadge > 99 ? '99+' : String(dmBadge)) : ''"
+      :badge="item.badge && msgBadge ? (msgBadge > 99 ? '99+' : String(msgBadge)) : ''"
       @click="goItem(item)">
       <span class="tab-label">{{ t(item.key) }}</span>
     </van-tabbar-item>
