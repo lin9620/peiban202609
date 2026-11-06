@@ -25,6 +25,8 @@ import { cacheKey, cachePeek, cacheSet, cachePatch, swr } from "../utils/cache.j
 import { avatarUrlFor } from "../utils/avatar.js";   /* 轮 238:萌宠头像池 */
 import { setPostNav } from "../utils/postNav.js";    /* 轮 279:进详情前存列表快照,左右滑用 */
 import { onPostReaction, patchPostList } from "../utils/postReactionSync.js";
+/* 轮447：关注数（「关注 N」入口的角标）。只读 ids.length，进页面校准一次。 */
+import { followingCount, refreshFollows } from "../utils/follows.js";
 
 /* 轮 288:与 WallerView / PostDetailView 同名同口径的时间文案（到分） */
 const when = (ts) => fmtWhen(ts, i18n.locale);
@@ -148,6 +150,8 @@ function syncProfileReaction(id, patch) {
 }
 let stopPostReactionSync = null;
 onMounted(() => { stopPostReactionSync = onPostReaction(syncProfileReaction); });
+/* 轮447：进「我的」页校准一次关注数（本地快照先出，云端再校正） */
+onMounted(() => { refreshFollows(); });
 onBeforeUnmount(() => {
   if (stopPostReactionSync) stopPostReactionSync();
   stopPostReactionSync = null;
@@ -374,6 +378,12 @@ const brightRatio = computed(() => {
           <!-- 轮 254：收藏改独立页（用户拍板「不要在我的页面下面显示」）→ 跳 /favorites -->
           <n-button quaternary round @click="router.push('/favorites')">
             {{ t("fav.title") }}
+          </n-button>
+          <!-- 轮447：关注（独立页 /following）。只显示关注数，**不显示粉丝** ——
+               详见 docs/PLAN-wall-follow.md：粉丝数一旦出现就必须能点进去看「谁」，
+               那会把「谁关注了我」变成公开看板，与拉黑/漂流瓶的隐私口径全线冲突。 -->
+          <n-button quaternary round @click="router.push('/following')">
+            {{ t("follow.followingBtn", { n: followingCount }) }}
           </n-button>
           <n-tag v-if="streak > 0" round :bordered="false" class="soft-tag">
             {{ t("home.mood.streak", { n: streak }) }}

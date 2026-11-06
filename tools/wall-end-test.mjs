@@ -55,10 +55,12 @@ ok("T4 窗口开到「全部」= 536 条（那 503 条压测帖必须能放宽�
 ok("T5 默认档（7 天，池子不够自动降级到 30 天）也是 11 条 —— 与线上表现一致", at(7) === 11);
 
 /* ══════════ ② 放宽不许再看 cloudDone ══════════ */
-ok("T6 feedTick 的放宽条件只剩「推荐 + 已亮完」",
-  /if \(sortMode\.value === "recommend" && !hasMore\.value\) widenRec\(\);/.test(tick));
+/* 轮447：关注流没有推荐窗，放宽前面多了 !followOnly 守卫 —— 断言允许这个前缀，
+   但「推荐 + 已亮完」这个核心条件一个都不能少（少一个就退回轮 432 的老病）。 */
+const REC_GUARD = /if \((?:!followOnly\.value && )?sortMode\.value === "recommend" && !hasMore\.value\) widenRec\(\);/;
+ok("T6 feedTick 的放宽条件只剩「推荐 + 已亮完」", REC_GUARD.test(tick));
 ok("T7 放宽条件里没有 cloudDone 闸门（有它就是「全库拉完反而放宽不了」的老病）",
-  !/widenRec\(\);/.test(tick.replace(/if \(sortMode\.value === "recommend" && !hasMore\.value\) widenRec\(\);/, "")));
+  !/widenRec\(\);/.test(tick.replace(REC_GUARD, "")));
 ok("T8 放宽仍必须排在 reveal 补齐之后（否则一进页就一路升到全部）",
   tick.indexOf("if (hasMore.value) reveal.value") < tick.indexOf("widenRec();"));
 
@@ -75,7 +77,7 @@ ok("T13 搜索态不借用信息流的「到底」（搜索有自己的 searchDo
 
 /* ══════════ ④ 空筛选不再狂翻页 ══════════ */
 ok("T14 有时间档全挡空时的翻页闸门 rangeStarved",
-  /const rangeStarved = usesRange\(sortMode\.value\) && !shown\.value\.length && !!all\.value\.length/.test(community));
+  /const rangeStarved = (?:!followOnly\.value && )?usesRange\(sortMode\.value\) && !shown\.value\.length && !!all\.value\.length/.test(community));
 ok("T15 rangeStarved 真的挡住了 loadMoreCloud",
   /if \(!cloudDone\.value && !rangeStarved && notShown < REVEAL_STEP \/ 2\) loadMoreCloud\(\);/.test(tick));
 

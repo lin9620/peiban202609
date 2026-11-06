@@ -41,7 +41,7 @@ assert.ok(lmStart > 0, "找不到 appendFeedRows —— 收尾口径被改名/�
 /* ══════════ 取数：句柄必须先落地 ══════════ */
 
 t("T1 续载请求先存成变量再等（不许再直接 await withTimeout(cloudFetchPosts(...))：那种写法超时=丢页）", () => {
-  assert.ok(/const req = cloudFetchPosts\(FEED_PAGE, cursor\)/.test(lm),
+  assert.ok(/const req = cloudFetchPosts\(FEED_PAGE, cursor(?:, followFeedOpts\(\))?\)/.test(lm),
     "loadMoreCloud 没有把请求句柄存成 req（超时就再也拿不到那一页了）");
   assert.ok(!/await withTimeout\(cloudFetchPosts\(/.test(lm),
     "又出现「await withTimeout(cloudFetchPosts(...))」——超时会连同数据一起丢掉（轮 306 的病根）");

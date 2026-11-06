@@ -14,6 +14,10 @@ import { setPostNav } from "../utils/postNav.js";    /* 轮 279:进详情前存�
 import { scopeGetRaw } from "../utils/userScope.js";
 /* 轮 33：全站拉黑（复用 dm_blocks；拉黑后 TA 的内容在我这边隐藏） */
 import { blockUser, unblockUser, isBlocked, refreshBlocks } from "../utils/userBlocks.js";
+/* 轮447：关注（单向、静默）。拉黑时连带取关，避免「关注列表里有个已拉黑的人」。 */
+import {
+  isFollowing, followUser, unfollowUser, refreshFollows, followErrKey, dropFollowQuietly,
+} from "../utils/follows.js";
 import { cloud } from "../utils/supabase.js";
 import { openConv } from "../utils/dm.js";
 import { sendErrKey } from "../utils/dmRules.js";
@@ -90,9 +94,51 @@ async function toggleBlock() {
   blockArm.value = false;
   try {
     if (isBlockedHere.value) await unblockUser(uid);
-    else await blockUser(uid, name.value);
+    else {
+      await blockUser(uid, name.value);
+      /* 轮447：拉黑 = 不想再看到这个人 → 连带取关（失败忽略，渲染层还有 filterBlocked 兜底）。
+         不这样做，/following 里会留一个点进去显示「已拉黑」的幽灵。 */
+      dropFollowQuietly(uid);
+    }
   } catch (e) { dmMsg.value = t("dm.errNetwork"); }
   blockBusy.value = false;
+}
+
+/* ── 轮447 · 关注 ──
+ * 单向、静默：对方永远不知道，也不会收到通知 —— 所以这里刻意不给任何
+ * 「TA 会看到」的暗示，按钮文案就是「关注 / 已关注」。
+ * 取关要两步确认（关注可以随时反悔，取关后这个人就从我的列表里消失了，手滑代价不对称）。 */
+const followBusy = ref(false);
+const followArm = ref(false);
+const followMsg = ref("");
+const isFollowingHere = computed(() => isFollowing(uid));
+/* 已拉黑的人不给关注按钮（拉黑语义就是「不想再看到」）；自己的主页也不给 */
+const canFollow = computed(() => !!uid && !isSelf.value && !isBlockedHere.value);
+async function toggleFollow() {
+  if (followBusy.value || !canFollow.value) return;
+  if (!(cloud.ready && cloud.user)) {              /* 未登录：先去登录，回来还能点 */
+    router.push({ path: "/login", query: { next: route.fullPath } });
+    return;
+  }
+  if (isFollowingHere.value && !followArm.value) {
+    followArm.value = true;
+    setTimeout(() => { followArm.value = false; }, 4000);
+    return;
+  }
+  followBusy.value = true;
+  followArm.value = false;
+  followMsg.value = "";
+  try {
+    if (isFollowingHere.value) await unfollowUser(uid);
+    else await followUser(uid, name.value);
+  } catch (e) {
+    const k = followErrKey(e);
+    if (k) {
+      followMsg.value = t(k);
+      setTimeout(() => { followMsg.value = ""; }, 3200);
+    }
+  }
+  followBusy.value = false;
 }
 
 const prof = ref(null);        // profiles 行：{ nickname, created_at, status, status_at }
@@ -160,6 +206,7 @@ async function interact(kind, dishName = "") {
 onMounted(async () => {
   if (!uid) { failed.value = true; loading.value = false; return; }
   refreshBlocks();   /* 轮 33：名单就绪（拉黑按钮的「已拉黑」态靠它） */
+  refreshFollows();  /* 轮447：关注状态（按钮「已关注」态靠它；有本地快照，不闪） */
   /* 轮 158：资料+帖子+宠物家园三路聚合整体走 SWR——二次进页本地直出，
    * 不再干等三个 RPC 排队；拉黑名单刷新后 fresh 会把过滤后的帖子纠正回来 */
   let applied = false;
@@ -206,17 +253,30 @@ onMounted(async () => {
         <span v-if="profStatus" class="waller-status">
           {{ statusLabel(profStatus) }}
         </span>
-        <!-- 发私信：登录且非本人主页才有；失败原因按 dmRules.sendErrKey 映射 -->
-        <div v-if="!failed && !loading && canDm" class="waller-dm">
-          <button class="waller-act" :disabled="dmBusy" :aria-busy="dmBusy" @click="startDm">
+        <!-- 轮447 · 关注（排在最前 = 主按钮）：单向静默，对方不知情，所以不加任何「TA 会看到」的暗示 -->
+        <div v-if="!failed && !loading && !isSelf" class="waller-dm">
+          <button
+            v-if="canFollow" class="waller-act waller-follow"
+            :class="{ on: isFollowingHere, armed: followArm }"
+            :disabled="followBusy" :aria-busy="followBusy"
+            :title="isFollowingHere ? t('follow.unfollowArm') : t('follow.followHint')"
+            @click="toggleFollow">
+            {{ followBusy ? t("follow.busy")
+              : followArm ? t("follow.unfollowArm")
+              : isFollowingHere ? "✓ " + t("follow.following") : "+ " + t("follow.follow") }}
+          </button>
+          <!-- 发私信：登录且非本人主页才有；失败原因按 dmRules.sendErrKey 映射 -->
+          <button v-if="canDm" class="waller-act" :disabled="dmBusy" :aria-busy="dmBusy" @click="startDm">
             {{ dmBusy ? t("dm.opening") : "✉️ " + t("dm.sendTo") }}
           </button>
           <button
+            v-if="canDm"
             class="waller-act waller-block" :class="{ armed: blockArm, blocked: isBlockedHere }"
             :disabled="blockBusy" @click="toggleBlock">
             {{ isBlockedHere ? t("wall.unblock") : (blockArm ? t("wall.blockConfirm") : t("wall.block")) }}
           </button>
-          <span v-if="dmMsg" class="sub" style="margin: 6px 0 0">{{ dmMsg }}</span>
+          <span v-if="followMsg" class="sub" style="margin: 6px 0 0">{{ followMsg }}</span>
+          <span v-else-if="dmMsg" class="sub" style="margin: 6px 0 0">{{ dmMsg }}</span>
           <span v-else-if="dmBusy && dmSlow" class="sub" style="margin: 6px 0 0">{{ t("dm.openingSlow") }}</span>
           <span v-else-if="isBlockedHere" class="sub" style="margin: 6px 0 0">{{ t("wall.blockedTip") }}</span>
         </div>

@@ -180,7 +180,11 @@ export const db = {
   async listPosts(limit, opts = {}) {
     const off = Number(opts.offset) > 0 ? Number(opts.offset) : 0;
     const bid = Number(opts.beforeId) > 0 ? Number(opts.beforeId) : 0;
-    return call(`/posts?limit=${enc(limit)}${off ? `&offset=${enc(off)}` : ""}${bid ? `&before_id=${enc(bid)}` : ""}`);
+    /* 轮 447：关注流。网关以 users= 传作者白名单（逗号分隔）；
+       **空数组不发这个参数** —— 否则服务端把空列表当「不过滤」，会返回全站内容。 */
+    const uids = Array.isArray(opts.userIds) ? opts.userIds.filter(Boolean).map(String) : [];
+    const us = uids.length ? `&users=${enc(uids.join(","))}` : "";
+    return call(`/posts?limit=${enc(limit)}${off ? `&offset=${enc(off)}` : ""}${bid ? `&before_id=${enc(bid)}` : ""}${us}`);
   },
 
   /** 轮 64：随机换一批（7 天池；Worker 数总量→随机起点，深池也不怕） */
@@ -879,5 +883,22 @@ export const db = {
   /** 取消收藏 */
   async wallFavRemove(postId) {
     return call(`/fav?post_id=${enc(postId)}`, { method: "DELETE" });
+  },
+
+  /* ══════════ 关注（轮447） ══════════
+   * ⚠ Worker（worker/api.js）目前**没有** /follow 端点 —— 这些调用会 404。
+   *   生产走 supabase 直连（VITE_API_BASE 为空），不受影响；网关模式下列表页会
+   *   显示「加载失败」而不是假装「你还没关注任何人」—— 宁可报错也不骗人。 */
+  async followInsert(userId) {
+    return call("/follow", { method: "POST", body: { followee_id: userId } });
+  },
+
+  async followDelete(userId) {
+    return call(`/follow?followee_id=${enc(userId)}`, { method: "DELETE" });
+  },
+
+  async following() {
+    const r = await call("/follow/list");
+    return Array.isArray(r) ? r : (r && Array.isArray(r.rows) ? r.rows : []);
   },
 };

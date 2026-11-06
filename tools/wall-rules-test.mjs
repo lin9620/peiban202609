@@ -625,7 +625,7 @@ t("T37 轮293 · 放宽只往后追加：7天 ⊂ 30天 ⊂ 全部（前缀关�
     "shown 没读 recDays —— 推荐窗仍是写死的 7 天（用户实测「往下拉就到底」的原始病根）");
   /* 轮 432：放宽是纯本地动作，**不许**再用 cloudDone 当闸门（否则全库拉完 = 放宽被永久挡死，
      线上实测推荐窗死钉在「近 30 天」11 条、滚到底就报「就到这里啦」） */
-  assert.ok(/if \(sortMode\.value === "recommend" && !hasMore\.value\) widenRec\(\)/.test(src),
+  assert.ok(/if \((?:!followOnly\.value && )?sortMode\.value === "recommend" && !hasMore\.value\) widenRec\(\)/.test(src),
     "触底没接放宽（轮 432：只等「这一档亮完」就升档，cloudDone 不该参与）");
   assert.ok(/recDays\.value = REC_LEVELS\[0\]/.test(src),
     "换排序/时间档没把推荐窗复位回 7 天（切回来会一直挂在「全部」）");
@@ -657,8 +657,8 @@ t("T38 轮294 · 刷新先归位再换内容（顺序是本轮的关键）+ 刷�
 t("T32 页面接线：范围行由 usesRange 显隐，筛选走 rangeFor 单一入口", () => {
   const src = read("src/views/CommunityView.vue");
   assert.ok(src.includes("usesRange, rangeFor"), "未从 wallRules.js 导入这两个规则");
-  assert.ok(src.includes('v-if="usesRange(sortMode)"'), "范围行未按排序方式显隐");
-  assert.ok(/v-if="!usesRange\(sortMode\)"|v-if="usesRange\(sortMode\)"/.test(src), "缺少范围行的条件");
+  assert.ok(/v-if="(?:(?:!followOnly && )?)usesRange\(sortMode\)"/.test(src), "范围行未按排序方式显隐");
+  assert.ok(/v-if="(?:!followOnly && )?!?usesRange\(sortMode\)"/.test(src), "缺少范围行的条件");
   assert.ok(src.includes("inRange(p, rangeFor(sortMode.value, rangeMode.value))"),
     "筛选未走 rangeFor（会出现「按钮藏了但筛选还在偷偷生效」）");
   assert.ok(!src.includes("inRange(p, rangeMode.value)"), "仍在直接用未加工的档位筛选");

@@ -3428,3 +3428,123 @@ html.cap-app .cmt-main-bar.wp-kb-swap,
   cursor: pointer;
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   轮447 · 关注（只关联暖心墙）
+   口径决定样式：关注是「我的阅读列表」，不是社交关系 →
+   · 卡片上的按钮要**轻**（半透明描边，不用实心品牌色），否则信息流看起来像在推销关注；
+   · 已关注的人不显示按钮，所以样式只需要照顾「未关注」这一种常态；
+   · 列表页的取关按钮用中性色 + 待确认态才变红，避免误触。
+   ═══════════════════════════════════════════════════════════════ */
+
+/* —— 暖心墙卡片作者名旁的「+ 关注」 —— */
+.follow-chip {
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 11.5px; font-weight: 600; line-height: 1;
+  padding: 5px 10px; border-radius: 999px;
+  color: var(--accent-deep);
+  background: transparent;
+  border: 1px solid var(--accent-soft);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .18s ease, color .18s ease, border-color .18s ease, opacity .3s ease;
+}
+.follow-chip:hover { background: var(--accent-soft); }
+.follow-chip:active { transform: scale(.96); }
+/* 刚点完的 600ms：变成「✓ 已关注」，随 canFollow 变 false 一起消失 */
+.follow-chip.done {
+  color: var(--ink-faint);
+  border-color: var(--hairline);
+  background: var(--wash-mid);
+  cursor: default;
+}
+html[data-theme="night"] .follow-chip { color: #dce4ff; border-color: rgba(120, 136, 200, .38); }
+
+/* —— 「我的关注」pill（排序行上方独立一行） —— */
+.follow-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 12px 2px 0;
+}
+.follow-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--accent-soft);
+  background: transparent;
+  font: inherit; font-size: 12.5px; font-weight: 600;
+  color: var(--accent-deep);
+  padding: 7px 14px; border-radius: 999px;
+  cursor: pointer;
+  transition: all .18s ease;
+}
+.follow-pill:hover { background: var(--accent-soft); transform: translateY(-1px); }
+.follow-pill.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.follow-pill.on:hover { background: var(--accent); color: #fff; }
+.follow-pill:disabled { opacity: .6; cursor: wait; transform: none; }
+.follow-ico { font-size: 13px; line-height: 1; }
+.follow-n {
+  font-size: 11px; font-weight: 700;
+  padding: 1px 6px; border-radius: 999px;
+  background: rgba(255, 255, 255, .28);
+}
+.follow-pill:not(.on) .follow-n { background: var(--accent-soft); color: var(--accent-deep); }
+/* 选中后右侧的说明 + 退出：说明给「只看 N 位博主」的确认感，✕ 给一条明确的退路 */
+.follow-note { font-size: 11.5px; font-weight: 500; color: var(--ink-faint); }
+.follow-exit {
+  margin-left: auto;
+  border: none; background: none; cursor: pointer;
+  font-size: 13px; line-height: 1; color: var(--ink-faint);
+  padding: 4px 8px; border-radius: 999px;
+  transition: all .18s ease;
+}
+.follow-exit:hover { color: var(--accent-deep); background: var(--accent-soft); }
+html[data-theme="night"] .follow-pill { color: #dce4ff; border-color: rgba(120, 136, 200, .38); }
+
+/* —— 作者主页的关注主按钮（排在私信前面） —— */
+.waller-follow { font-weight: 600; }
+.waller-follow.on { color: var(--ink-soft); background: var(--wash-mid); }
+.waller-follow.armed { color: #b4453c; background: rgba(196, 74, 64, .12); }
+html[data-theme="night"] .waller-follow.on { color: #c9cdd8; background: rgba(120, 136, 200, .18); }
+html[data-theme="night"] .waller-follow.armed { color: #f0a9a2; background: rgba(196, 74, 64, .2); }
+
+/* —— 我的关注（/following） —— */
+.follow-note-card {
+  margin: 10px 2px 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 12px; line-height: 1.6;
+  color: var(--ink-soft);
+  background: var(--wash-mid);
+}
+.follow-card {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.follow-card:hover { transform: translateY(-1px); box-shadow: var(--shadow); }
+.follow-id { flex: 1; min-width: 0; }
+.follow-name {
+  font-size: 14.5px; font-weight: 500;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.follow-sub { font-size: 11.5px; font-weight: 500; color: var(--ink-faint); margin-top: 3px; }
+.follow-un {
+  flex: 0 0 auto;
+  font: inherit; font-size: 12px; font-weight: 600;
+  padding: 6px 12px; border-radius: 999px;
+  color: var(--ink-soft); background: var(--wash-mid);
+  border: 1px solid transparent; cursor: pointer;
+  white-space: nowrap;
+  transition: all .18s ease;
+}
+.follow-un:hover { color: var(--accent-deep); background: var(--accent-soft); }
+.follow-un.armed {
+  color: #b4453c; background: rgba(196, 74, 64, .12);
+  border-color: rgba(196, 74, 64, .35);
+}
+.follow-flash {
+  margin: 0 2px 10px;
+  font-size: 12.5px; font-weight: 500;
+  color: var(--accent-deep);
+}
+

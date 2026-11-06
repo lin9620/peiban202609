@@ -162,13 +162,16 @@ export const SORT_WINDOW = 200;
  *   - 按发布时间倒序取最近 limit 条
  *   - 已跑迁移：由数据库排除「假删除」（下架）的帖子；未跑迁移：退回客户端过滤
  * @param {number} [limit] 默认 SORT_WINDOW（排序用的大窗口）
+ * @param {number} [beforeId] 游标（id < beforeId），0 = 第一页
+ * @param {{userIds?: string[]}} [opts] 轮447：关注流 —— userIds 非空时只取这些作者的帖子
+ *   （空数组由 db 层挡掉，不会退化成「不过滤 = 全站」）
  */
-export async function cloudFetchPosts(limit = SORT_WINDOW, beforeId = 0) {
+export async function cloudFetchPosts(limit = SORT_WINDOW, beforeId = 0, opts = {}) {
   if (!canReadWall()) return null;
   try {
     const n = Number(limit) > 0 ? Number(limit) : SORT_WINDOW;
     const bid = Number(beforeId) > 0 ? Number(beforeId) : 0;
-    const posts = await db.listPosts(n, { beforeId: bid });
+    const posts = await db.listPosts(n, { beforeId: bid, ...opts });
     let reactions = {};
     try {
       /* 只查当前窗口内这些帖的回应；全表 limit(2000) 会随用户增长漏算（P1 修复） */

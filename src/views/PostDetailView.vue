@@ -26,6 +26,8 @@ import {
   applyCommentReactionResult, REPLY_PAGE, pageReplies,
 } from "../utils/comments.js";
 import { fmtWhen, canDeletePost as canDeletePostRule } from "../utils/wallRules.js";   /* 轮446：删除判据与暖心墙共用 */
+/* 轮447：详情页 ⋯ 菜单只放「取消关注」（关注动作在暖心墙卡片和作者主页，菜单里放正向动作很别扭） */
+import { isFollowing, unfollowUser, refreshFollows, followErrKey } from "../utils/follows.js";
 import { cacheKey, swr, cacheSet, cacheGet, cachePatch, cacheDrop } from "../utils/cache.js";   /* 轮 158：帖子主体 SWR */
 import { isApp, isMobileNav, tabbarSuppressed } from "../stores/uiStore.js";
 /* 轮 279：左右滑看上一条/下一条 —— 方向判定复用 panes 的 swipeDir（已有单测），上下文来自 postNav */
@@ -119,6 +121,28 @@ watch([myId, () => post.value && post.value.dbId], async ([uid, dbId]) => {
   const ids = await cloudFavIds([dbId]);
   favOn.value = ids.includes(dbId);
 }, { immediate: true });
+/* 轮447 · 详情页 ⋯ 菜单里的「取消关注」
+ * 只出现在「我关注了这条帖子的作者」时 —— 关注本身在暖心墙卡片和作者主页做，
+ * 菜单是「更多操作」，放一个正向的「关注 TA」在这里既别扭又容易被忽略。 */
+const canUnfollowHere = computed(() => {
+  const p = post.value;
+  if (!p || !p.userId || !myId.value) return false;
+  if (String(p.userId) === String(myId.value)) return false;
+  return isFollowing(p.userId);
+});
+async function unfollowHere() {
+  const p0 = post.value;
+  if (!p0 || !p0.userId) return;
+  closeMore();
+  try {
+    await unfollowUser(p0.userId);
+    hint.value = t("follow.unfollowed");
+  } catch (e) {
+    const k = followErrKey(e);
+    if (k) hint.value = t(k);
+  }
+}
+
 async function moreFav() {
   const p0 = post.value;
   if (!p0 || p0.dbId == null) return;
@@ -603,6 +627,8 @@ function onWallScroll() {
   }
 }
 onMounted(() => window.addEventListener("scroll", onWallScroll, { passive: true }));
+/* 轮447：关注名单（⋯ 菜单里「取消关注」的判据靠它；有本地快照，不闪） */
+onMounted(() => { refreshFollows(); });
 /* 轮 126 · tabs-sliding：排序胶囊指示条（量 active 按钮 → 平移+定宽） */
 const sortWrap = ref(null);
 const sortBtns = {};
@@ -1107,6 +1133,8 @@ onUnmounted(() => {
               {{ moreTarget.faved ? t("fav.remove") : t("fav.add") }}
             </button>
             <button class="more-item" @click="moreCopy">{{ t("common.copy") }}</button>
+            <!-- 轮447：已关注这位作者时才出现（关注动作不在这里做） -->
+            <button v-if="canUnfollowHere" class="more-item" @click="unfollowHere">{{ t("follow.unfollow") }}</button>
             <!-- 轮446：作者本人才能看到（canReportPost 要求「不是我」，两者天然互斥） -->
             <button v-if="canDeletePost()" class="more-item more-danger" @click="deleteCurrentPost">{{ t("post.delete") }}</button>
           </div>

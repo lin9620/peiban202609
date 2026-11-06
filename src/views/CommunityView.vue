@@ -69,6 +69,10 @@ import { isApp, isMobileNav, tabbarSuppressed, retapSeq, retapPath } from "../st
 import ReportDialog from "../components/ReportDialog.vue";
 import WpComposer from "../components/WpComposer.vue";
 import { filterBlocked, refreshBlocks } from "../utils/userBlocks.js";
+/* 轮447：关注（只关联暖心墙）。关注流是**数据源切换**，不是排序 —— 见 enterFollowFeed 注释。 */
+import {
+  followState, isFollowing, followUser, refreshFollows, followErrKey, followingCount,
+} from "../utils/follows.js";
 /* 轮 84：…菜单的「拷贝」（WebView 里 navigator.clipboard 缺失时 execCommand 兜底） */
 import { copyText } from "../utils/clipboard.js";
 import { avatarUrlFor } from "../utils/avatar.js";   /* 轮 238:萌宠头像池 */
@@ -153,6 +157,7 @@ onMounted(() => {
     else if (cloud.ready) loadCloud();
   }
   refreshBlocks();   /* 轮 33：拉黑名单就绪（快照先撑着，云端校准） */
+  refreshFollows();  /* 轮447：关注名单就绪（卡片的「+ 关注」判据靠它；有本地快照，不闪） */
 });
 /* 云端就绪晚于挂载（异步探测）→ 就绪后补拉一次；未登录也拉（RLS 匿名只读） */
 watch(() => cloud.ready, (v) => {
@@ -163,6 +168,7 @@ watch(() => cloud.ready, (v) => {
 watch(() => cloud.user && cloud.user.id, (uid) => {
   if (cloud.ready && uid && !restoreTick) {
     refreshBlocks();   /* 轮 33：登录后同步我的拉黑名单（过滤靠它） */
+    refreshFollows();  /* 轮447：登录后同步我的关注名单（换号 = 换域，快照已重置） */
     if (cloudPosts.value.length) loadCloud();
   }
 });
@@ -533,6 +539,9 @@ async function loadMoreCloud() {
     return;
   }
   if (cloudDone.value || pageBusy.value || loadingCloud.value) return;
+  /* 轮447：关注流下没有关注对象 → 没有下一页可言。**绝不能带着空 ids 去请求** ——
+     服务端会把「空作者白名单」当成「不过滤」，直接返回全站内容（坑 8）。 */
+  if (followOnly.value && !followState.ids.length) { cloudDone.value = true; return; }
   pageBusy.value = true;
   /* 轮 306：超时时 pageBusy 交接给**在飞的请求**自己收尾（finally 不碰），
      否则超时一放行，下一次触底会跟还在路上的那个请求重复发同一页（去重不会重复上屏，
@@ -541,7 +550,7 @@ async function loadMoreCloud() {
   try {
     let cursor = feedCursor.value;
     for (let hop = 0; hop < 3; hop++) {
-      const req = cloudFetchPosts(FEED_PAGE, cursor);
+      const req = cloudFetchPosts(FEED_PAGE, cursor, followFeedOpts());
       let rows = null;
       try {
         rows = await withTimeout(req, PAGE_BUSY_MS);
@@ -1791,13 +1800,30 @@ async function delCmt(p, cm) {
   }
 }
 
+/* ═════════ 轮447 · 我的关注（数据源切换，不是排序） ═════════
+ * 为什么独立于 sortMode：排序换的是「同样这批内容的排法」，关注换的是「内容本身」。
+ * 塞进排序行，用户会以为「关注」是一种排序 —— 点了发现内容整个变了才反应过来，认知错位。
+ * 所以它单独一行 pill，选中时排序行/时间范围行整体隐藏（关注流固定按发布时间倒序）。 */
+const followOnly = ref(false);
+const followBusy = ref(false);
+const followErr = ref("");        /* i18n 键；空 = 没错误 */
+
 /* 动态流：云端就绪且拉到帖子 → 真实帖子；否则回退本机帖子（不再凭空消失）。
-   轮 146：示例帖已下线（原 SAMPLES 常量），动态流只由真实帖组成。 */
-const all = computed(() => [
-  ...(cloud.ready && cloudPosts.value.length ? cloudPosts.value : posts.value),
-]);
+   轮 146：示例帖已下线（原 SAMPLES 常量），动态流只由真实帖组成。
+   轮447：关注流**绝不回退本机帖** —— 否则「关注 0 人」时会显示自己没上传的草稿帖，
+   看起来像「关注流里出现了不认识的内容」。 */
+const all = computed(() => {
+  if (followOnly.value) return cloudPosts.value;
+  return [
+    ...(cloud.ready && cloudPosts.value.length ? cloudPosts.value : posts.value),
+  ];
+});
 /* 展示用：推荐 = 最近 7 天按天随机（默认）；其余 = 按时间范围筛 + 排序 */
 const shown = computed(() => {
+  /* 轮447：关注流 = 服务端已按发布时间倒序返回，本地**不再排序、不筛天**
+     （关注正是「我想看他全部内容」，任何窗口/重排都是负作用）。
+     放在 searchActive 之前：进入关注流会先退出搜索，两者不会同时为真。 */
+  if (followOnly.value) return visibleOnly(all.value);
   /* 轮 252：搜索激活 → 直接展示搜索结果（正常流的游标/缓存不动，清空搜索即原样回来）
      轮 439：搜索结果**不按语言重排** —— 用户搜东西时要的是全部，不是「我这种语言的全部」。 */
   if (searchActive.value) return searchRows.value;
@@ -1826,6 +1852,114 @@ const REVEAL_STEP = 30;
 const reveal = ref(PAGE_SIZE);
 /* 换排序/换时间档 → 从头开始：亮出条数归位；推荐窗也退回 7 天（轮 293，否则切回来还挂在「全部」上） */
 watch([sortMode, rangeMode], () => { reveal.value = PAGE_SIZE; recDays.value = REC_LEVELS[0]; });
+
+/* ═════════ 轮447 · 关注流的进出与取数 ═════════
+ * 五个必须做对的点（写在这里，免得以后改崩）：
+ *  ① 空关注**绝不请求** —— 服务端会把「空作者白名单」当成「不过滤」，直接返回全站（坑 8）；
+ *  ② 不复用缓存的 wall:posts 盒 —— 那是全站内容，写进去会污染全部流，所以关注流自己取自己用；
+ *  ③ 游标/cloudDone/reveal 全部归零 —— 否则会带着全部流的游标去查关注流，第一页直接空（坑 6）；
+ *  ④ 不回退本机帖 —— 见 all 的注释；
+ *  ⑤ 排序行隐藏、固定按发布时间倒序 —— 关注就是「想看他全部内容」。
+ */
+function followFeedOpts() {
+  return followOnly.value && followState.ids.length ? { userIds: followState.ids } : {};
+}
+function stopFeedTimers() {
+  feedTimers.forEach((x) => clearTimeout(x));
+  feedTimers = [];
+}
+async function enterFollowFeed() {
+  followOnly.value = true;
+  followErr.value = "";
+  followBusy.value = true;
+  stopFeedTimers();
+  cloudPosts.value = [];
+  feedCursor.value = null;
+  cloudDone.value = false;
+  reveal.value = PAGE_SIZE;
+
+  /* 未登录 / 云端不可用：不发请求，直接由模板的空状态引导登录 */
+  if (!(cloud.ready && cloud.user)) { followBusy.value = false; return; }
+
+  try {
+    /* 强制刷新一次：换了设备、或刚在别处关注/取关，本地快照可能是旧的 */
+    await refreshFollows(true);
+    if (followState.error) { followErr.value = "follow.feedFail"; return; }
+    const ids = followState.ids;
+    if (!ids.length) { cloudDone.value = true; return; }
+
+    const rows = await cloudFetchPosts(REFRESH_PAGE, 0, { userIds: ids });
+    if (!rows) { followErr.value = "follow.feedFail"; return; }
+    /* counts 传 null 而不是 {} —— 传空对象会把每帖评论数先刷成 0 再被后台补拉覆盖，
+       用户看到的是「评论数全部归零又跳回来」 */
+    consume({ rows, counts: null, fromFetch: true });
+    /* 评论数后台补（不阻塞上屏 —— 与首屏同口径） */
+    cloudFetchCommentCounts(rows.map((r) => r.dbId)).then((counts) => {
+      if (!counts) return;
+      const next = { ...cloudCmtTotal.value };
+      for (const p of cloudPosts.value) {
+        if (p.dbId != null) next[cmtKey(p)] = counts[p.dbId] || 0;
+      }
+      cloudCmtTotal.value = next;
+    }).catch(() => {});
+    scheduleFeedTick();
+  } catch (e) {
+    followErr.value = "follow.feedFail";
+  } finally {
+    followBusy.value = false;
+  }
+}
+function exitFollowFeed() {
+  followOnly.value = false;
+  followErr.value = "";
+  stopFeedTimers();
+  cloudPosts.value = [];
+  feedCursor.value = null;
+  cloudDone.value = false;
+  reveal.value = PAGE_SIZE;
+  /* 回到全部流：走常规 SWR（缓存先出、后台校准），游标/到底标志由 consume 自己重设 */
+  loadCloud({ quiet: true }).catch(() => {});
+}
+function toggleFollowFeed() {
+  if (followBusy.value) return;
+  if (followOnly.value) exitFollowFeed();
+  else enterFollowFeed();
+}
+/* 关注流空状态里的「去登录」：登录后回暖心墙，关注流不自动重进（用户刚登录完要的是内容） */
+function goLogin() {
+  router.push({ path: "/login", query: { next: "/community" } });
+}
+
+/* 卡片上的「+ 关注」：已关注的人**不显示按钮** —— 满屏「已关注」是纯噪音，
+ * 按钮存在的意义就是「一次可做的动作」，关注完这个动作就没了（要取关去主页或详情页菜单）。
+ * 刚点完的 600ms 内保留一个「✓ 已关注」过渡态，否则按钮瞬间消失会让人以为点空了。 */
+const followFlash = ref(new Set());   /* uid：刚点完、正在展示「已关注」的 */
+function showFollowChip(p) {
+  const id = p && p.userId;
+  if (!id || !myUid.value || String(id) === myUid.value) return false;
+  if (followFlash.value.has(String(id))) return true;
+  return !isFollowing(id);
+}
+async function followFromCard(p) {
+  const id = String((p && p.userId) || "");
+  if (!id || followFlash.value.has(id)) return;
+  if (!(cloud.ready && cloud.user)) return;
+  followFlash.value = new Set(followFlash.value).add(id);
+  try {
+    await followUser(id, p.name);
+    setTimeout(() => {
+      const next = new Set(followFlash.value);
+      next.delete(id);
+      followFlash.value = next;
+    }, 600);
+  } catch (e) {
+    const next = new Set(followFlash.value);
+    next.delete(id);
+    followFlash.value = next;
+    const k = followErrKey(e);
+    if (k) showWallMsg(k);
+  }
+}
 const shownPage = computed(() => shown.value.slice(0, reveal.value));
 const hasMore = computed(() => shown.value.length > reveal.value);
 /* 轮 432 · 「就到这里啦」只许在**真的没得放**时出现。
@@ -1835,7 +1969,9 @@ const hasMore = computed(() => shown.value.length > reveal.value);
  * 反过来说，只要还能放宽，就不许报到底 —— 下一拍 feedTick 会把窗口开大。
  * 顺带修掉搜索态：搜索结果的「到底」由搜索自己管（searchDone），不该借用信息流的 cloudDone。 */
 const recMaxed = computed(
-  () => sortMode.value !== "recommend" || recDays.value === REC_LEVELS[REC_LEVELS.length - 1]
+  () => followOnly.value
+    || sortMode.value !== "recommend"
+    || recDays.value === REC_LEVELS[REC_LEVELS.length - 1]
 );
 const feedEnd = computed(
   () => !searchActive.value && shownPage.value.length > 0 && !hasMore.value && cloudDone.value && recMaxed.value
@@ -1901,9 +2037,13 @@ const pageItems = computed(() => {
  *   ① feedEmpty   墙真的空 → 发帖引导（原有那种）
  *   ② filterEmpty 有内容、只是被当前「排序 + 时间范围」全挡掉 → 给「放宽 / 回推荐」出口
  * 搜索态不走这里（搜索无结果在搜索栏底下已有「没有找到」）。 */
-const feedEmpty = computed(() => !searchActive.value && !loadingCloud.value && !all.value.length);
+/* 轮447：关注流有自己的空状态（三种口径分开，见模板）—— 通用空状态必须让位，否则
+   「关注 0 人」会显示成「墙上还没有内容，来写第一条吧」，诱导用户在错误的地方发帖。 */
+const feedEmpty = computed(
+  () => !followOnly.value && !searchActive.value && !loadingCloud.value && !all.value.length
+);
 const filterEmpty = computed(
-  () => !searchActive.value && !loadingCloud.value && !!all.value.length && !shown.value.length
+  () => !followOnly.value && !searchActive.value && !loadingCloud.value && !!all.value.length && !shown.value.length
 );
 /* 空状态里要告诉用户「现在筛的是哪一档」；推荐没有范围按钮，就只报排序名 */
 const emptyScope = computed(() => {
@@ -2142,12 +2282,13 @@ function feedTick() {
      10-12 的 10 条）→ 剩下 503 条全在 09-24。cloudDone=true 时 widenRec 永远不执行，
      推荐窗死钉在「近 30 天」，11 条亮完就报「就到这里啦」，那 503 条永远放宽不出来。
      `!hasMore` 已经保证不会一进页就升档（shown 比 reveal 长时走不到这里），闸门是多设的。 */
-  if (sortMode.value === "recommend" && !hasMore.value) widenRec();
+  if (!followOnly.value && sortMode.value === "recommend" && !hasMore.value) widenRec();
   const notShown = shown.value.length - reveal.value;
   /* 轮 432 · 时间档把内容全挡空时，别再往服务端翻页：更早的页只会更旧，永远进不了这个窗口。
      旧行为是在「同感最多 + 近两天」这种空筛选下一直往后翻到全库末尾（实测连发十几次请求、
-     把 500 多条全拉进内存，白烧 Workers 额度），也正是上面那个 cloudDone=true 的来源。 */
-  const rangeStarved = usesRange(sortMode.value) && !shown.value.length && !!all.value.length;
+     把 500 多条全拉进内存，白烧 Workers 额度），也正是上面那个 cloudDone=true 的来源。
+     轮447：关注流没有时间窗口，这条守卫不适用（它一旦成立就会停止翻页）。 */
+  const rangeStarved = !followOnly.value && usesRange(sortMode.value) && !shown.value.length && !!all.value.length;
   if (!cloudDone.value && !rangeStarved && notShown < REVEAL_STEP / 2) loadMoreCloud();
   /* 轮 431 · 到底自愈（用户：「暖心墙往下拉到一个位置就无法往下拉了」）
    * ─────────────────────────────────────────────────────────────
@@ -2576,8 +2717,10 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
       </div>
     </transition>
 
-    <!-- 轮 252 · 搜索栏：关键词实时搜（防抖）+ 热门标签 chip（点击筛选/增删） -->
-    <div class="wall-search">
+    <!-- 轮 252 · 搜索栏：关键词实时搜（防抖）+ 热门标签 chip（点击筛选/增删）
+         轮447：关注流下隐藏 —— 搜索结果与关注流是两套数据源，同时开着用户会看到
+         「搜了但列表没变」，比不给搜更糟。 -->
+    <div v-if="!followOnly" class="wall-search">
       <div class="wall-search-row">
         <input v-model="searchQ" class="wall-search-input" type="search"
           :placeholder="t('community.searchPh')" :aria-label="t('community.searchPh')" />
@@ -2593,8 +2736,26 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
         {{ t("community.searchEmpty") }}</p>
     </div>
 
+    <!-- 轮447 · 我的关注：**数据源切换**，不是排序。选中时排序行/时间范围行整体隐藏，
+         关注流固定按发布时间倒序（关注正是「我想看他全部内容」，任何本地重排/筛天都是负作用）。 -->
+    <div class="follow-row">
+      <button
+        class="follow-pill" :class="{ on: followOnly, busy: followBusy }"
+        :disabled="followBusy" :aria-busy="followBusy"
+        :title="t('follow.feedBtnHint')" @click="toggleFollowFeed">
+        <span class="follow-ico" aria-hidden="true">👥</span>
+        <span>{{ t("follow.feedBtn") }}</span>
+        <b v-if="followingCount" class="follow-n">{{ followingCount }}</b>
+      </button>
+      <span v-if="followOnly && followingCount" class="follow-note">
+        {{ t("follow.feedNote", { n: followingCount }) }}
+      </span>
+      <button v-if="followOnly" class="follow-exit" :title="t('follow.feedExit')"
+        :aria-label="t('follow.feedExit')" @click="exitFollowFeed">✕</button>
+    </div>
+
     <!-- 排序：默认最新；还有 同感最多 / 抱抱最多 / 暖暖最多 -->
-    <div class="sort-row">
+    <div v-if="!followOnly" class="sort-row">
       <span class="sort-label">{{ t("community.sortLabel") }}</span>
       <button
         v-for="s in SORT_BTNS" :key="s.key"
@@ -2619,7 +2780,7 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
     </div>
 
     <!-- 时间范围：只在「最新」之外的排序下出现（「最新」= 看全部最新内容，没有时间窗口） -->
-    <div v-if="usesRange(sortMode)" class="sort-row range-row">
+    <div v-if="!followOnly && usesRange(sortMode)" class="sort-row range-row">
       <span class="sort-label">{{ t("community.rangeLabel") }}</span>
       <button
         v-for="r in RANGES" :key="r.key"
@@ -2630,6 +2791,48 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
     </div>
 
     <!-- 轮 277（用户拍板）：手机端首屏骨架退役（与底部轮 272/276 同口径）——数据不变。 -->
+
+    <!-- 轮447 · 关注流空状态：三种口径必须分开。
+         混成一句「还没有内容」，用户不知道该干什么：
+         未登录该去登录、0 人关注该去关注人、关注了没内容只能等。 -->
+    <div v-if="followOnly && !cloudPosts.length" class="wall-empty">
+      <template v-if="followBusy">
+        <div class="wall-empty-ic" aria-hidden="true">👥</div>
+        <h3 class="wall-empty-title">{{ t("follow.loading") }}</h3>
+      </template>
+      <template v-else-if="followErr">
+        <div class="wall-empty-ic" aria-hidden="true">⚠️</div>
+        <h3 class="wall-empty-title">{{ t("follow.feedFail") }}</h3>
+        <p class="wall-empty-desc">{{ t("follow.feedFailHint") }}</p>
+        <n-button type="primary" size="medium" round class="wall-empty-btn" @click="enterFollowFeed">
+          {{ t("follow.retry") }}
+        </n-button>
+      </template>
+      <template v-else-if="!myUid">
+        <div class="wall-empty-ic" aria-hidden="true">🔑</div>
+        <h3 class="wall-empty-title">{{ t("follow.feedNeedLogin") }}</h3>
+        <p class="wall-empty-desc">{{ t("follow.feedNeedLoginHint") }}</p>
+        <n-button type="primary" size="medium" round class="wall-empty-btn" @click="goLogin">
+          {{ t("follow.signInBtn") }}
+        </n-button>
+      </template>
+      <template v-else-if="!followingCount">
+        <div class="wall-empty-ic" aria-hidden="true">👥</div>
+        <h3 class="wall-empty-title">{{ t("follow.listEmpty") }}</h3>
+        <p class="wall-empty-desc">{{ t("follow.listEmptyHint") }}</p>
+        <n-button type="primary" size="medium" round class="wall-empty-btn" @click="exitFollowFeed">
+          {{ t("follow.browseBtn") }}
+        </n-button>
+      </template>
+      <template v-else>
+        <div class="wall-empty-ic" aria-hidden="true">💛</div>
+        <h3 class="wall-empty-title">{{ t("follow.feedEmpty") }}</h3>
+        <p class="wall-empty-desc">{{ t("follow.feedEmptyHint", { n: followingCount }) }}</p>
+        <n-button type="primary" size="medium" round class="wall-empty-btn" @click="exitFollowFeed">
+          {{ t("follow.browseBtn") }}
+        </n-button>
+      </template>
+    </div>
 
     <!-- 轮 333 · 空状态 ①：墙真的空（非搜索态、非加载中、一条都没有）→ 发帖引导 -->
     <div v-if="feedEmpty" class="wall-empty">
@@ -2688,6 +2891,16 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
             @click="goProfile(p)">{{ p.name }}</div>
           <div class="post-time">{{ when(p.ts) }}<span v-if="langBadge(p.lang)" class="lang-tag">{{ langBadge(p.lang) }}</span></div>
         </div>
+        <!-- 轮447：作者名旁的关注按钮。只对「能关注 + 还没关注」的人出现 ——
+             满屏「已关注」是纯噪音；点完 600ms 内保留「✓ 已关注」过渡态，避免按钮瞬间消失。
+             @click.stop 必须有：否则会冒泡到卡片，点关注顺带打开详情页。 -->
+        <button
+          v-if="showFollowChip(p)" class="follow-chip"
+          :class="{ done: followFlash.has(String(p.userId)) }"
+          :title="t('follow.followHint')" :aria-label="t('follow.follow')"
+          @click.stop="followFromCard(p)">
+          {{ followFlash.has(String(p.userId)) ? "✓ " + t("follow.following") : "+ " + t("follow.follow") }}
+        </button>
         <!-- 轮 146：示例帖下线，原「示例」角标（v-if="p.sample"）随之移除 -->
         <!-- 轮 84：帖子右上角 … 菜单（举报迁入 + 拷贝正文）；post-foot 里原举报按钮移除 -->
         <button class="more-btn" :title="t('comment.more')" :aria-label="t('comment.more')"

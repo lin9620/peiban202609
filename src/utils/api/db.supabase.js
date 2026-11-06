@@ -138,6 +138,11 @@ export const db = {
        removed 兼容回退同款。链序与旧实现一致（from→select→eq→[lt]→order→limit/range）——api-contract 钉形状 */
     const off = Number(opts.offset) > 0 ? Number(opts.offset) : 0;
     const bid = Number(opts.beforeId) > 0 ? Number(opts.beforeId) : 0;
+    /* 轮 447：关注流 = 只看这些作者。**空数组必须提前挡掉** ——
+       PostgREST 的 in.() 传空数组在部分版本会返回全表而不是空集（坑 8）。
+       不传时不加这一段，链式调用与旧实现逐字一致，api-contract 断言不受影响。 */
+    const uids = Array.isArray(opts.userIds) ? opts.userIds.filter(Boolean).map(String) : null;
+    const hasUids = !!(uids && uids.length);
     /* 轮 439：多试一档 —— lang 是后加的列。当前线上库「有 removed、没 lang」是最常见的
        中间态，所以先丢 lang 再丢 removed，逐档降级；每档只多一次往返，且只在真报错时发生。 */
     const q = (withRemoved, withLang) => {
@@ -146,6 +151,7 @@ export const db = {
         "id,user_id,author_name,body,image_path,created_at,views,dislikes,removed" + (withLang ? ",lang" : ""),
       );
       if (withRemoved) base = base.eq("removed", false);
+      if (hasUids) base = base.in("user_id", uids);
       if (bid) base = base.lt("id", bid);
       base = base.order("created_at", { ascending: false });
       return off > 0 && !bid ? base.range(off, off + Number(limit) - 1) : base.limit(limit);
@@ -1094,5 +1100,28 @@ export const db = {
   /** 取消收藏 */
   async wallFavRemove(postId) {
     return unwrap(sb().from("wall_favorites").delete().eq("post_id", postId));
+  },
+
+  /* ══════════ 关注（轮447：只关联暖心墙；单向、静默、无通知） ══════════ */
+
+  /** 关注某人。幂等：复合主键冲突（23505）视为已关注，不报错。
+   *  follower_id 由数据库 default auth.uid() 盖章 —— 客户端不传身份。
+   *  200 人上限在服务端 BEFORE INSERT 触发器里拦（报 wall-follow-limit）。 */
+  async followInsert(userId) {
+    const r = await sb().from("wall_follows").insert({ followee_id: userId });
+    if (r.error && r.error.code !== "23505") throw r.error;
+    return true;
+  },
+
+  /** 取关（RLS 限定只能删自己的行；按 followee_id 定位） */
+  async followDelete(userId) {
+    return unwrap(sb().from("wall_follows").delete().eq("followee_id", userId));
+  },
+
+  /** 我的关注清单：[{ user_id, nickname, followed_at, post_count, last_post_at }]
+   *  按「最近发帖」倒序 —— security definer，函数内硬过滤 auth.uid()。 */
+  async following() {
+    const data = await unwrap(sb().rpc("wall_following"));
+    return Array.isArray(data) ? data : [];
   },
 };
