@@ -1359,6 +1359,7 @@ begin
        where m.sender <> me and m.deleted_at is null
          and m.id > coalesce(s.last_read_id, 0)
          and coalesce(s.hidden_until, '-infinity'::timestamptz) <= now()
+         and not coalesce(s.muted, false)   -- 免打扰：这条会话的未读不进角标
          and not public.dm_is_blocked(me, case when c.user_a = me then c.user_b else c.user_a end)
        group by m.conv_id
     ) t;
@@ -1369,6 +1370,7 @@ begin
         join public.dm_conversations c on c.id = s.conv_id
        where s.user_id = me and coalesce(s.accepted, true) = false
          and coalesce(s.hidden_until, '-infinity'::timestamptz) <= now()
+         and not coalesce(s.muted, false)   -- 免打扰：待处理的请求也不再催
          and not public.dm_is_blocked(me, case when c.user_a = me then c.user_b else c.user_a end)
     ), 0),
     'convs', v_rows

@@ -813,6 +813,8 @@ export const messages = {
       open: "Open chat",
       mute: "Mute",
       unmute: "Unmute",
+      /* 免打扰会话里的未读：只有灰点、不报数（不进角标） */
+      mutedPending: "Muted — {n} unread waiting",
       hide: "Delete chat",   /* #19 用户语言：从我的列表删掉（底层 = 隐藏，对方不受影响） */
       block: "Block",
       unblock: "Unblock",
@@ -877,6 +879,7 @@ export const messages = {
       unread: "Unread",
       prefs: "Notification settings",
       prefsHint: "Turn a kind off and it stops — saved instantly.",
+      dmNotHere: "Direct messages aren't covered here — they have their own unread badge. To quiet one chat, open it and choose Mute.",
       prefComments: "Comments & replies",
       prefReactions: "Hugs / warmth / me too",
       prefPets: "Pats & treats for your pet",
@@ -1893,6 +1896,8 @@ export const messages = {
       open: "打开会话",
       mute: "免打扰",
       unmute: "取消免打扰",
+      /* 免打扰会话里的未读：只有灰点、不报数（不进角标） */
+      mutedPending: "免打扰中 · {n} 条未读",
       hide: "删除会话",   /* #19 用户语言：从我的列表删掉（底层 = 隐藏，对方不受影响） */
       block: "拉黑",
       unblock: "解除拉黑",
@@ -1956,6 +1961,7 @@ export const messages = {
       unread: "未读",
       prefs: "通知偏好",
       prefsHint: "关掉某类后不再收到那类通知；改动即时保存。",
+      dmNotHere: "私信不在此列 —— 它有自己的未读角标；只想让某个会话安静，进会话点「免打扰」，静音后不再亮红数字，消息仍然在。",
       prefComments: "评论与回复",
       prefReactions: "抱抱 / 暖暖 / 同感",
       prefPets: "宠物的摸摸头 / 投喂",

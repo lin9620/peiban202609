@@ -52,6 +52,28 @@ export function unreadOf(messages, lastReadId, meId) {
   ).length;
 }
 
+/** 会话行要亮的红数字：静音会话一律 0（无数字灰点由模板用 row.unread 画）
+ *  ------------------------------------------------------------
+ * 与 dm_unread_total 的 SQL 口径必须一致（MIGRATION_dm_mute_silence.sql）：
+ * 免打扰 = 不进导航角标、不报数字，但消息还在，点进去照样能读。
+ * 两路来源取 max：列表行值（dm_list_convs 的 unread，事实值）+ badge 行级映射。 */
+export function convUnread(row, map) {
+  if (!row || row.muted) return 0;
+  const a = Number(row.unread) || 0;
+  const b = Number((map || {})[String(row.conv_id)]) || 0;
+  return Math.max(a, b);
+}
+
+/** 进会话时要从导航角标里减掉多少
+ *  静音会话的未读从没进过角标（服务端已排除），只能减掉映射里的历史残留；
+ *  不区分的话会把别的会话的未读数一起减掉（用户会看到「红点莫名少了几条」）。 */
+export function unreadToClear(row, map) {
+  if (!row) return 0;
+  const fromMap = Number((map || {})[String(row.conv_id)]) || 0;
+  if (row.muted) return fromMap;
+  return Math.max(Number(row.unread) || 0, fromMap);
+}
+
 /** 会话排序：最近动静新→旧（last_message_at 缺失时用 created_at） */
 export function sortConvs(convs) {
   if (!Array.isArray(convs)) return [];

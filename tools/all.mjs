@@ -46,7 +46,7 @@ const MANIFEST = [
     "bottle-test", "bottle-vac-test", "cache-test", "chat-look-test", "cmt-style-test",
     "card-tap-test", "comment-test", "community-safe-area-test", "dm-entry-fail-test", "dm-first-open-test",
     "dm-map-test", "dm-race-test", "dm-recall-menu-test", "dm-scroll-test", "dm-search-test",
-    "dm-send-jump-test", "dm-send-ux-test", "dm-tail-cache-test", "dm-test", "dm-vac-test",
+    "dm-send-jump-test", "dm-send-ux-test", "dm-tail-cache-test", "dm-test", "dm-vac-test", "dm-mute-test",
     "emoji-panel-test", "feed-archive-test", "feed-autoload-test", "feed-perf-test", "feed-window-test", "font-test",
     "fold-text-test", "food-painter-test", "gateway-contract-test", "home-panes-test",
     "i18n-test", "i18n-usage-test", "icon-test", "skin-gate-test", "kb-math-test", "keyboard-policy-test", "lang-detect-test", "content-lang-test", "template-scope-test", "messages-gap-test",
@@ -93,6 +93,7 @@ const MANIFEST = [
   /* ── net：线上端到端，会写真实数据 ─────────────────────── */
   { file: "cloud-e2e.mjs", tier: "net", note: "会注册 wp-* 账号" },
   { file: "dm-e2e.mjs", tier: "net", note: "会发真实私信" },
+  { file: "dm-mute-e2e.mjs", tier: "net", note: "免打扰静音口径，会发真实私信" },
   { file: "bottle-e2e.mjs", tier: "net", note: "会投/捞漂流瓶" },
   { file: "status-e2e.mjs", tier: "net", note: "会写状态" },
   { file: "nick-e2e.mjs", tier: "net", note: "会改昵称" },

@@ -25,6 +25,7 @@ import {
   validateSend, sendErrKey, canRecall, relativeTime, rowView, mergeTail, nextMsgKey, sortMsgRows,
   findSentEcho, dropEchoedDrafts, claimPendingEcho, dropEchoedPending, maxPositiveId, RECALLED_PLACEHOLDER,
   firstLimitLocked,
+  convUnread, unreadToClear,
 } from "../utils/dmRules.js";
 import { badge, refreshBadge, refreshBottleBadge, badgeLocal, badgeDmConvPatch } from "../stores/badgeStore.js";
 import { createTapGuard } from "../utils/tapGuard.js";
@@ -378,9 +379,10 @@ watch(q, (val) => {
  * 绉掑嚭锛夋瘮浼氳瘽鍒楄〃蹇紝鏄犲皠鍏堝埌灏卞厛浜孩鐐癸紙淇€岄《/搴曠孩鐐归兘鍦紝涓棿琛岀孩鐐圭瓑濂藉嚑绉掓墠鍑虹幇銆嶏級銆?
  * 涓よ竟閮芥潵鑷湇鍔＄鏉冨▉鏃跺埢锛沷penConv/杞娓呰鏃朵袱鑰呭悓姝ユ竻锛宮ax 涓嶄細璁╃孩鐐瑰娲汇€?*/
 function rowUnread(c) {
-  const a = Number(c.unread) || 0;
-  const b = Number((badge.dmConvs || {})[String(c.conv_id)]) || 0;
-  return Math.max(a, b);
+  /* 免打扰（dm_states.muted）= 不打扰：不亮红数字、不进导航角标
+   *（服务端 dm_unread_total 已把静音会话排除，见 MIGRATION_dm_mute_silence.sql）。
+   * 消息本身还在：模板里 muted 用 c.unread 画一个无数字灰点，点进去照常能读。 */
+  return convUnread(c, badge.dmConvs);
 }
 
 /* 甯︽棩鏈熷垎闅旂殑娑堟伅娴?*/
@@ -1189,9 +1191,9 @@ async function openConv(id) {
    * 鐪肩潧鐪嬪埌鐨勬湭璇汇€嶁€斺€斿彧鎸夎鍊煎噺浼氭紡鎺夈€屽揩鐓ф棫銆佹槧灏勬柊銆嶇殑鍦烘櫙锛涙槧灏勪竴骞舵竻鎺夐槻澶嶆椿銆?*/
   {
     const row = convs.value.find((c) => String(c.conv_id) === String(id));
-    const fromRow = row && Number(row.unread) > 0 ? Number(row.unread) : 0;
-    const fromMap = Number((badge.dmConvs || {})[String(id)]) || 0;
-    const lost = Math.max(fromRow, fromMap);
+    /* 静音会话的未读没算进 badge.dm（服务端已排除），这里不能拿它去减导航角标，
+     * 否则会把别的会话的未读数减掉。行内清零点照旧。口径收在 dmRules.unreadToClear。 */
+    const lost = unreadToClear(row, badge.dmConvs);
     if (row && lost) row.unread = 0;
     if (lost) badgeLocal({ dm: Math.max(0, badge.dm - lost) });
     badgeDmConvPatch(id, 0);
@@ -1623,8 +1625,16 @@ async function toggleMute(c) {
    * 缁撴灉寮辩綉鐐瑰畬娌″姩闈欍€佸浘鏍囪绛変笅杞垪琛ㄥ埛鏂版墠鍑虹幇锛堢敤鎴峰疄娴嬨€屼笉璺熸墜銆嶏級銆?*/
   const row = convs.value.find((x) => String(x.conv_id) === String(c.conv_id));
   if (row) row.muted = on;
-  try { await dmApi.mute(c.conv_id, on); }
-  catch (e) { if (row) row.muted = !on; }
+  /* 静音那一刻立刻把这一行的未读从导航角标里摘掉（服务端 dm_unread_total 已排除静音
+   * 会话，见 MIGRATION_dm_mute_silence.sql）；取消静音交给 refreshBadge 用权威值补回。
+   * 不这么做的话，用户点完「免打扰」角标还要等 30s 轮询才肯掉。 */
+  const pending = Number(row && row.unread) || 0;
+  if (on && pending) badgeLocal({ dm: Math.max(0, badge.dm - pending) });
+  try { await dmApi.mute(c.conv_id, on); refreshBadge(); }
+  catch (e) {
+    if (row) row.muted = !on;
+    if (on && pending) refreshBadge();   /* 回滚：把刚才乐观减掉的补回来 */
+  }
 }
 
 async function hideConv(c) {
@@ -1728,7 +1738,7 @@ async function mutePeer() {
   const on = !curPeer.value.muted;
   /* 杞?238 路 涔愯鏇存柊锛氬ご閮ㄨ彍鍗曟€佸厛缈伙紱澶辫触鍥炴粴 */
   bottleMeta.value = { ...(bottleMeta.value || {}), muted: on };
-  try { await dmApi.mute(id, on); }
+  try { await dmApi.mute(id, on); refreshBadge(); }
   catch (e) { bottleMeta.value = { ...(bottleMeta.value || {}), muted: !on }; }
 }
 
@@ -1780,10 +1790,7 @@ function markConversationRead(cid) {
   const id = String(cid || "");
   if (!id || seg.value !== "dm" || !signedIn.value) return;
   const crow = convs.value.find((x) => String(x.conv_id) === id);
-  const clost = Math.max(
-    crow && Number(crow.unread) > 0 ? Number(crow.unread) : 0,
-    Number((badge.dmConvs || {})[id]) || 0,
-  );
+  const clost = unreadToClear(crow, badge.dmConvs);   /* 静音会话不重复从角标里扣 */
   if (crow && clost) crow.unread = 0;
   if (clost) badgeLocal({ dm: Math.max(0, badge.dm - clost) });
   badgeDmConvPatch(id, 0);
@@ -2301,6 +2308,8 @@ function goSignIn() {
             </p>
             </div>
             <span v-if="rowUnread(c)" class="dm-badge">{{ rowUnread(c) > 99 ? "99+" : rowUnread(c) }}</span>
+            <!-- 免打扰会话：不亮数字，只留一个无数字灰点（有未读但不催你） -->
+            <i v-else-if="c.muted && Number(c.unread) > 0" class="dm-quiet-dot" :title="t('dm.mutedPending', { n: c.unread })"></i>
             <button class="dm-more" :title="t('dm.more')" @click.stop="menuFor = (menuFor === String(c.conv_id) ? '' : String(c.conv_id))">⋯</button>
             <div v-if="menuFor === String(c.conv_id)" class="dm-menu">
               <button class="dm-menu-item" @click.stop="openConv(c.conv_id); menuFor = ''">{{ t("dm.open") }}</button>

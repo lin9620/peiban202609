@@ -460,6 +460,9 @@ watch(cloudSigned, (v) => {
           </span>
         </div>
         <p class="sub set-hint">{{ t("notif.prefsHint") }}</p>
+        <!-- 用户问过「这里关掉通知，私信是不是也静了」：答案是不是 —— 私信自 #23 起
+             就不在通知中心（它有自己的角标），静音单个会话要去会话里点「免打扰」。 -->
+        <p class="sub set-hint set-hint-soft">{{ t("notif.dmNotHere") }}</p>
         <p v-if="prefsMsg" class="streak-note">{{ t(prefsMsg) }}</p>
       </template>
       <p v-else class="notice">{{ t("notif.needSignIn") }}</p>
@@ -593,6 +596,8 @@ watch(cloudSigned, (v) => {
 .set-panel { padding: 2px 16px 12px 56px; display: flex; flex-direction: column; gap: 8px; }
 .set-panel .set-opts { margin-top: 0; }
 .set-hint { padding: 0 16px 4px 56px; }
+/* 补充说明（比上一条更弱）：一字不落地解释清楚边界，但不跟主提示抢视觉 */
+.set-hint-soft { font-size: 11px; opacity: .78; padding-bottom: 6px; }
 
 /* 开关 */
 .set-switch {
