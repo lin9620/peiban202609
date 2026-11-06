@@ -6,6 +6,8 @@
  */
 import { cloud } from "./supabase.js";
 import { db } from "./api/db.js";
+import { detectContentLang } from "./contentLang.js";
+import { guardWrite } from "./maintenance.js";
 import { keys, removeItem, getItem, setItem } from "./storage.js";
 import {
   validatePublish, normalizeTags, storyErrKey,
@@ -41,6 +43,8 @@ export function clearLocalDraft() {
 
 /** 存草稿（宽容：标题可空；服务端同一张表 status=draft）；返回整行 */
 export async function storySaveDraft({ id = null, title = "", body = "", tags = [] } = {}) {
+  /* 轮 444：维护期一律拦（草稿也是往 stories 表写） */
+  if (!guardWrite()) throw new Error("maintenance-mode");
   const b = String(body ?? "");
   if (countChars(b) > BODY_MAX) throw new Error("story-too-long");   /* 前端先挡，不白跑一趟 */
   return db.storySaveDraft(id, String(title ?? "").trim(), b, normalizeTags(tags));
@@ -48,6 +52,7 @@ export async function storySaveDraft({ id = null, title = "", body = "", tags = 
 
 /** 发布（校验标题/正文/标签 → 通过返回整行；新稿 insert、旧稿 rev+1） */
 export async function storyPublish({ id = null, title = "", body = "", tags = [] } = {}) {
+  if (!guardWrite()) throw new Error("maintenance-mode");
   const v = validatePublish({ title, body, tags });
   if (v) {
     /* validate 短码 → 服务端错误码对齐，让 storyErrKey 归类同一套 i18n key */
@@ -56,7 +61,10 @@ export async function storyPublish({ id = null, title = "", body = "", tags = []
       : v === "too-short" ? "story-too-short"
       : v === "too-long" ? "story-too-long" : "story-bad-tags");
   }
-  return db.storyPublish(id, String(title).trim(), String(body), normalizeTags(tags));
+  /* 轮 439：语言看标题 + 正文。故事 ≥100 字，检测基本不会失手。 */
+  const t = String(title).trim();
+  const b = String(body);
+  return db.storyPublish(id, t, b, normalizeTags(tags), detectContentLang(t + " " + b));
 }
 
 /** 赞/取消赞：服务端权威（唯一约束防重），返回 true=已赞 false=取消 */
@@ -147,6 +155,7 @@ async function setBookmarkFallback(id, on) {
  * @returns {Promise<{ok:boolean,count:number|null}>} count = 服务端权威赞数（拿不到 null）
  */
 export async function storySetLike(id, on) {
+  if (!guardWrite()) throw new Error("maintenance-mode");
   try {
     return await db.storySetLike(id, on);
   } catch (e) {
@@ -160,6 +169,7 @@ export async function storySetLike(id, on) {
  * @returns {Promise<{ok:boolean,count:number|null}>} count = 服务端权威收藏数
  */
 export async function storySetBookmark(id, on) {
+  if (!guardWrite()) throw new Error("maintenance-mode");
   try {
     return await db.storySetBookmark(id, on);
   } catch (e) {

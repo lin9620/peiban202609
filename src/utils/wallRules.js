@@ -566,6 +566,10 @@ export function errorKind(message, code) {
   if (c === "PGRST202" || c === "42883" || c === "42703" || c === "42P01") return "not-migrated";
   const m = String(message || "").toLowerCase();
   if (m.includes("wall_daily_limit")) return "daily-limit";
+  /* 轮 444：维护期触发器抛的 'maintenance-mode'（errcode PT503）。
+   * 必须给单独一类 —— 否则会掉进下面的通用分支，用户看到「发布失败」，
+   * 以为是网坏了，其实只是我们在升级。 */
+  if (m.includes("maintenance-mode") || m.includes("pt503")) return "maintenance";
   /* 42703 = 列不存在；PGRST202 = 找不到 RPC（都是「还没跑迁移」的典型信号）。
      注意：真实响应里码在 error.code，消息是「Could not find the function … in the schema cache」，
      所以既认码也认这句真实话术（只写 "PGRST202" 当消息测会假通过）。 */

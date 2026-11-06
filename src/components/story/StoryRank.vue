@@ -1,12 +1,14 @@
 <!-- 轮 145 · 故事榜（故事栏右栏）：推荐 / 最新 / 月赞 / 标签 四页签
- *   推荐 = 服务端窗口内质量加权洗牌（5 分钟一换种子）；「换一批」= 在洗牌序里翻页（offset 递增），
- *   不需要改 RPC；翻到底自动回第一批。
+ *   推荐 = 服务端「新鲜度阶梯 + 质量加权」洗牌（5 分钟一换种子）：
+ *   30 天内的永远排在前面，不够时自动放宽到 90 天 / 一年 / 更早，所以池子里永远有内容。
+ *   「换一批」= 在洗牌序里翻页（offset 递增）；翻到底就提示「没有新内容了」，
+ *   **不再把同一批内容本地打乱冒充新的**（轮 443 用户明确要求）。
  *   标签 = 热门标签云（当期赞数 + 篇数）；点某个标签 → 下面出该标签的月赞排行。 -->
 <script setup>
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { t } from "../../i18n.js";
-import { RANK_TABS, periodKey, storyErrKey } from "../../utils/storyRules.js";
+import { RANK_TABS, periodKey, storyErrKey, shuffleStep } from "../../utils/storyRules.js";
 import { storyRank } from "../../utils/story.js";
 import { setStorySeed } from "../../utils/storySeed.js";
 
@@ -21,6 +23,15 @@ const activeTag = ref("");
 const tagRows = ref([]);
 const loading = ref(false);
 const err = ref("");
+/* 轮 443：翻到底不再本地重排，而是弹一句「没有新内容了」，2.6 秒后自己消失 */
+const noMore = ref(false);
+let noMoreTimer = 0;
+function showNoMore() {
+  noMore.value = true;
+  clearTimeout(noMoreTimer);
+  noMoreTimer = setTimeout(() => { noMore.value = false; }, 2600);
+}
+onBeforeUnmount(() => clearTimeout(noMoreTimer));
 
 const tabs = computed(() => RANK_TABS.map((x) => ({ mode: x.mode, label: t(x.tk) })));
 const medal = (i) => (i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : String(i + 1));
@@ -30,11 +41,14 @@ function pick(data) {
   if (mode.value === "tag") { tagCloud.value = list; return; }
   rows.value = list;
 }
-async function load() {
+/** 返回本次拿到的行数，供 shuffle 判断是否翻到了空页。
+ *  keepOnEmpty：翻页探测专用 —— 返回空时不要把当前列表清掉，
+ *  否则「换一批」会先闪一下「榜单还空着」再回填（几十毫秒也看得见）。 */
+async function load({ keepOnEmpty = false } = {}) {
   loading.value = true;
   err.value = "";
   try {
-    pick(await storyRank({
+    const data = await storyRank({
       mode: mode.value,
       /* 四榜主列表一律不按标签过滤；标签过滤只发生在 pickTag 的下钻请求里。
          原来这里写的是 `mode === "monthly" && activeTag.value`，但切到 monthly 时
@@ -43,20 +57,42 @@ async function load() {
       period: periodKey(),
       limit: PAGE,
       offset: mode.value === "tag" ? 0 : offset.value,
-    }));
+    });
+    const n = Array.isArray(data) ? data.length : 0;
+    if (!(keepOnEmpty && n === 0)) pick(data);
+    return n;
   } catch (e) {
     err.value = t(storyErrKey(e));
     if (mode.value === "tag") tagCloud.value = []; else rows.value = [];
+    return 0;
   } finally {
     loading.value = false;
   }
 }
-/* 换一批（推荐页签专用）：在洗牌序里往后翻一整页；不足一页说明翻到底了 → 回第一批 */
-function shuffle() {
-  offset.value = rows.value.length < PAGE ? 0 : offset.value + PAGE;
-  load();
+/* 换一批（推荐页签专用）
+ * 轮 442 修过「点了没反应」：原实现只有一句 offset += PAGE，池子恰好等于一页时
+ * （当时线上 12 条 / PAGE 12）会翻到空页，榜单当场变「还空着」。
+ * 轮 443 把口径改干净了：
+ *   · 服务端 random 模式改成「30 天优先 + 90 天 / 一年 / 更早逐级补位」，
+ *     所以池子不再是硬 30 天，内容不够会自己往后放宽 —— 这是「换一批」真正能出东西的前提；
+ *   · 前端**不再本地重排**：把同一批内容打乱冒充「新的一批」是骗用户，点开还是那几篇；
+ *   · 翻到底就明确提示「没有新内容了」，列表和 offset 都不动。 */
+async function shuffle() {
+  if (loading.value) return;
+  const step = shuffleStep({ loaded: rows.value.length, page: PAGE, offset: offset.value });
+  if (step.exhausted) { showNoMore(); return; }
+  offset.value = step.offset;
+  const n = await load({ keepOnEmpty: true });
+  /* 服务端返回空 = 整库都翻完了（阶梯补位在 SQL 里已经做到底，不是 30 天卡住） */
+  if (step.offset > 0 && n === 0) showNoMore();
 }
-watch(mode, () => { offset.value = 0; activeTag.value = ""; tagRows.value = []; load(); });
+watch(mode, () => {
+  offset.value = 0;
+  activeTag.value = "";
+  tagRows.value = [];
+  noMore.value = false;
+  load();
+});
 
 async function pickTag(tag) {
   activeTag.value = activeTag.value === tag ? "" : tag;
@@ -125,9 +161,12 @@ load();
       <li v-if="!tagRows.length" class="st-hint">{{ t("story.rankEmpty") }}</li>
     </ol>
 
-    <button v-if="mode === 'random'" class="st-btn st-btn--ghost st-shuffle" type="button" @click="shuffle">
+    <button
+      v-if="mode === 'random'" class="st-btn st-btn--ghost st-shuffle" type="button"
+      :disabled="loading" @click="shuffle">
       ↻ {{ t("story.rankShuffle") }}
     </button>
+    <p v-if="noMore" class="st-hint st-no-more" role="status">{{ t("story.rankNoMore") }}</p>
     <p v-if="err" class="st-err">{{ err }}</p>
   </section>
 </template>

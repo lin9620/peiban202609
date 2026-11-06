@@ -10,6 +10,9 @@ import { t } from "./i18n.js";
 import SideRails from "./components/SideRails.vue";
 import SideNav from "./components/SideNav.vue";
 import TabBar from "./components/TabBar.vue";
+import MaintenanceBar from "./components/MaintenanceBar.vue";
+import { db } from "./utils/api/db.js";
+import { startMaintenanceWatch } from "./utils/maintenance.js";
 import { isApp, isMobileNav, runBack, tabbarSuppressed, navOpen, dlOpenSeq } from "./stores/uiStore.js";
 import { installTapFeedback } from "./utils/tapFeedback.js";
 import {
@@ -149,6 +152,9 @@ onMounted(async () => {
   /* 轮 424：全局「按下就有反应」。装得越早越好 —— 启动页上也应该能点出反馈，
    * 不能等 initCloud 那 2.5 秒。失败不影响主流程。 */
   try { unTapFeedback = installTapFeedback(); } catch (e) { /* 忽略 */ }
+  /* 轮 444：维护状态立刻订阅（app_state 公开可读，未登录也能拿）。
+   * 放在 initCloud 之前 —— 维护期间首屏就该是维护态，不能先闪一下正常页面。 */
+  try { startMaintenanceWatch(db); } catch (e) { /* 拿不到就当作正常，横幅不显示 */ }
   /* 轮 24：启动页（index.html 静态层）在「云端会话就绪 + 会话缓存预热」后淡出；
    * 最多等 2.5 秒兜底放行——云端挂了也不能把用户挡在启动页里。 */
   const boot = initCloud()
@@ -312,6 +318,8 @@ onBeforeUnmount(() => { clearTimeout(scrubTimer); scrubTimer = 0; });
         <div class="orb orb-3"></div>
 
         <div class="shell" :class="{ 'shell--mobile-nav': isMobileNav, 'shell--chat': inChat, 'shell--nav-open': !isMobileNav && navOpen }">
+          <!-- 轮 444：维护/升级提示。一条细横幅，不遮内容、可收起；维护结束后自己消失 -->
+          <MaintenanceBar />
           <header v-if="isMobileNav" class="topbar">
             <router-link to="/" class="brand">
               <span class="brand-paw">🐾</span>

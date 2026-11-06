@@ -16,6 +16,8 @@
  */
 import { cloud } from "./supabase.js";
 import { db } from "./api/db.js";
+import { detectContentLang, preferredLang } from "./contentLang.js";
+import { guardWrite } from "./maintenance.js";
 import { keys, removeItem } from "./storage.js";
 
 export const BOTTLE_SEND_MAX = 5;                 /* 滚动 24h 最多写几封（轮 305：3 → 5） */
@@ -115,6 +117,9 @@ export function bottleErrKey(e) {
   if (msg.includes("bottle-too-long")) return "bottle.errTooLong";
   if (msg.includes("bottle-chat-blocked")) return "bottle.chatBlocked";
   if (msg.includes("bottle-not-owner") || msg.includes("bottle-not-answered")) return "bottle.chatUnavailable";
+  /* 轮 444：维护期写入被触发器拦下（errcode PT503 / message 'maintenance-mode'）。
+   * 必须排在「没跑迁移」之前判断 —— 两者都会带英文技术原因，混淆了用户会以为要修库。 */
+  if (/maintenance-mode|PT503/i.test(msg)) return "bottle.errMaintenance";
   /* 没跑迁移：列/RPC 不存在。真实响应里码在 error.code，消息是
      「Could not find the function … in the schema cache」——两句都要认 */
   if (/42703|PGRST202|does not exist/i.test(msg) || /could not find the function/i.test(msg)) return "bottle.chatSetup";
@@ -125,21 +130,29 @@ export function bottleErrKey(e) {
 
 /** 投一封信进海里；返回投出的那封 */
 export async function bottleSend(body) {
+  /* 轮 444：维护期先拦一道（抛 maintenance-mode，调用方用 bottleErrKey 得到准确文案） */
+  if (!guardWrite()) throw new Error("maintenance-mode");
   const text = String(body || "").trim();
   if (!text) throw new Error("bottle-empty-body");
   const chars = bottleBodyChars(text);
   if (chars < BOTTLE_BODY_MIN) throw new Error("bottle-too-short");
   if (chars > BOTTLE_BODY_MAX) throw new Error("bottle-too-long");
-  return db.bottleSend(text);
+  /* 轮 439：信本身的语言（不是写信人的界面语言）。'prefer' 模式下读者优先捞同语言的信。 */
+  return db.bottleSend(text, detectContentLang(text));
 }
 
 /** 从海里随机捞一封（不是自己的）；没有可捞的信时抛 bottle-empty-sea */
 export async function bottleFish() {
-  return db.bottleFish();
+  /* 轮 444：捞信会写 bottle_fishes（记录谁捞过哪封），维护期同样被拦 ——
+   * 这里先给准确文案，别让用户以为是「海里没信了」。 */
+  if (!guardWrite()) throw new Error("maintenance-mode");
+  /* 轮 439：服务端先在本语言池里捞，池空自己退回全语言 —— 不会因为语言偏好捞不到。 */
+  return db.bottleFish(preferredLang());
 }
 
 /** 给手里这封写回信（只有持有者能回；回信只会送到写信人手里） */
 export async function bottleReply(id, reply) {
+  if (!guardWrite()) throw new Error("maintenance-mode");
   const text = String(reply || "").trim();
   if (!text) throw new Error("bottle-empty-body");
   if (bottleBodyChars(text) > BOTTLE_BODY_MAX) throw new Error("bottle-too-long");

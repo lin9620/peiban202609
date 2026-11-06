@@ -4,6 +4,7 @@
 import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
 import { t } from "../../i18n.js";
+import { sortByLang, langBadge } from "../../utils/contentLang.js";
 import { isMobileNav } from "../../stores/uiStore.js";
 import { storyErrKey } from "../../utils/storyRules.js";
 import { storyRank, storyFeatured } from "../../utils/story.js";
@@ -22,7 +23,9 @@ const featured = ref(null);
 
 const shown = computed(() => {
   const q = kw.value.trim().toLowerCase();
-  if (!q) return rows.value;
+  /* 轮 439：搜索态不按语言重排（找东西时要全部）；浏览态才「本语言优先」。
+     story_rank 有四种模式 + 分页，服务端不好按语言筛，客户端排一下最省事。 */
+  if (!q) return sortByLang(rows.value, (r) => r.lang);
   return rows.value.filter((r) =>
     String(r.title || "").toLowerCase().includes(q)
     || (Array.isArray(r.tags) ? r.tags : []).some((x) => String(x).toLowerCase().includes(q)));
@@ -147,7 +150,7 @@ defineExpose({ load, loadFeatured });
       <h3 class="st-card-title">{{ r.title }}</h3>
       <p class="st-card-meta">
         {{ t("story.by", { name: r.nickname || t("story.anonAuthor") }) }} · {{ day(r.published_at) }}
-        · {{ t("story.readTime", { n: r.read_minutes }) }}
+        · {{ t("story.readTime", { n: r.read_minutes }) }}<span v-if="langBadge(r.lang)" class="lang-tag">{{ langBadge(r.lang) }}</span>
       </p>
       <p class="st-card-tags">
         <span v-for="tg in (r.tags || [])" :key="tg" class="st-tag-sm">#{{ tg }}</span>

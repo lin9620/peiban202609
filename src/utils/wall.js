@@ -12,6 +12,10 @@ import { STATUS_WINDOW_MS } from "./statuses.js";
 import { VIEW_KEY, ANON_KEY, POST_DAY_KEY, POSTS_KEY, REACTS_KEY, extractTags, wallViewIds } from "./wallRules.js";
 import { registerScopeBases } from "./userScope.js";
 import { cacheKey, cachePeek, cacheSet } from "./cache.js";
+import { detectContentLang } from "./contentLang.js";
+/* 轮 444：维护期写守卫。放在数据层最外圈 —— 所有发帖/评论都必须先过这一关，
+ * 免得每个页面各写一遍（也免得漏掉某个入口，维护期还能写进去）。 */
+import { guardWrite } from "./maintenance.js";
 /* 所有云端数据访问都走适配层：换库 / 换托管时只改 utils/api/db.js（见那里的文件头说明） */
 import { db } from "./api/db.js";
 
@@ -64,6 +68,8 @@ export function rowsToPosts(rows, reactions = {}, imageUrlFor = () => "") {
       cloud: true,
       userId: r.user_id,
       imagePath: r.image_path || "",
+      /* 轮 439：内容语言。旧库没这列 → und（不参与「本语言优先」排序，也不显示角标） */
+      lang: typeof r.lang === "string" ? r.lang : "und",
     };
   });
 }
@@ -200,20 +206,29 @@ export async function cloudFetchPostsSample(limit = 50) {
 /** 发布帖子；imageDataUrl 可空。返回视图帖子或 null */
 export async function cloudInsertPost({ text, imageDataUrl, name, imgW = 0, imgH = 0 }) {
   if (!canUseWall()) return null;
+  /* 轮 444：维护期先拦一道。cloud.error 置成 maintenance-mode，调用方靠 errorKind
+   * 识别后显示「正在升级」而不是笼统的「发布失败」。 */
+  if (!guardWrite()) { cloud.error = "maintenance-mode"; return null; }
   const clean = String(text || "").trim().slice(0, 1000);
   if (!clean && !imageDataUrl) return null;
   /* 轮 252：老库（迁移没跑）insert 带未知列会 400 —— 先探一次表结构（缓存 1 小时），
    * 有 tags 列才带新列发；没列直接走旧载荷。比「发了 400 再重试」少一次失败往返。 */
-  let tagCols = false;
+  /* 轮 439：一次探列同时决定 tags 和 lang 带不带。缓存从 v1 换成 v2（存 JSON），
+     老键自动作废 —— 否则升级后仍读到旧布尔值，lang 会一直判定为「没这列」。 */
+  let cols = { tags: false, lang: false };
   try {
-    const cached = typeof sessionStorage !== "undefined" ? sessionStorage.getItem("wp-wall-cols-v1") : null;
-    if (cached) tagCols = cached === "1";
-    else {
+    const cached = typeof sessionStorage !== "undefined" ? sessionStorage.getItem("wp-wall-cols-v2") : null;
+    if (cached) {
+      try { cols = JSON.parse(cached); } catch (e) { /* 旧格式/脏值 → 重新探 */ }
+    } else {
       const probe = await db.probeColumns();
-      tagCols = Array.isArray(probe) && probe.includes("tags");
-      try { if (typeof sessionStorage !== "undefined") sessionStorage.setItem("wp-wall-cols-v1", tagCols ? "1" : "0"); } catch (e) { /* 忽略 */ }
+      const has = Array.isArray(probe);
+      cols = { tags: has && probe.includes("tags"), lang: has && probe.includes("lang") };
+      try {
+        if (typeof sessionStorage !== "undefined") sessionStorage.setItem("wp-wall-cols-v2", JSON.stringify(cols));
+      } catch (e) { /* 忽略 */ }
     }
-  } catch (e) { tagCols = false; }
+  } catch (e) { cols = { tags: false, lang: false }; }
   try {
     let imagePath = null;
     if (imageDataUrl) imagePath = await cloudUploadImage(imageDataUrl);
@@ -231,12 +246,15 @@ export async function cloudInsertPost({ text, imageDataUrl, name, imgW = 0, imgH
     try {
       data = await db.insertPost({
         ...base,
-        ...(tagCols ? { tags: extractTags(clean) } : {}),
-        ...(tagCols && imagePath && imgW > 0 && imgH > 0 ? { img_w: imgW, img_h: imgH } : {}),
+        ...(cols.tags ? { tags: extractTags(clean) } : {}),
+        /* 语言标的是**正文本身**的语言，不是作者的界面语言 —— 中文界面用户发英文帖，
+           标 en。图片帖没有正文，clean 为空 → und。 */
+        ...(cols.lang ? { lang: detectContentLang(clean) } : {}),
+        ...(cols.tags && imagePath && imgW > 0 && imgH > 0 ? { img_w: imgW, img_h: imgH } : {}),
       });
     } catch (e) {
       /* 只有首发改了新列才重试（否则是限额/RLS 类错误，重发同样徒劳） */
-      if (!tagCols) throw e;
+      if (!cols.tags && !cols.lang) throw e;
       retried = true;
       try { data = await db.insertPost(base); }
       catch (e2) { throw e2; }   /* 旧载荷也失败 → 交外层 warn 兜底 */
@@ -367,6 +385,7 @@ export async function cloudToggleCommentReaction(dbCommentId, kind) {
  */
 export async function cloudInsertComment(dbPostId, text, name, { parentId = null, replyToName = "" } = {}) {
   if (!canUseWall()) return null;
+  if (!guardWrite()) { cloud.error = "maintenance-mode"; return null; }
   const clean = normalizeText(text);
   if (!clean) return null;
   try {

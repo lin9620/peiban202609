@@ -856,6 +856,42 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 .post-meta { flex: 1; min-width: 0; }
 .post-name { font-size: 14.5px; font-weight: 500; }
 .post-time { font-size: 11.5px; color: var(--ink-faint); font-weight: 500; }
+/* 轮 439：内容语言角标。只在「优先本语言」模式下、且这条不是本语言时出现，
+   目的是解释「为什么刷到外文了」—— 没有它，用户会以为推荐坏了。 */
+.lang-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--hairline);
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .4px;
+  line-height: 15px;
+  vertical-align: 1px;
+}
+/* 轮 439：「优先我这种语言」开关。和界面语言选项放在同一个展开面板里，
+   但视觉上要分得开 —— 两者语义不同，混成一组用户会以为改的是同一件事。 */
+.lang-pref {
+  /* 插件化：它挂在 .set-opts（flex-wrap 的一排语言胶囊）里，
+     不写 flex-basis 100% 就会和某个语言胶囊挤在同一行、被压窄。
+     5 种语言时必然换行，这一条保证开关永远独占一行。 */
+  flex: 1 0 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.lang-pref-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.lang-pref-title { font-size: 13px; font-weight: 500; color: var(--ink); }
+.lang-pref-hint { font-size: 11px; line-height: 1.45; color: var(--ink-faint); }
 .post-text { font-size: 14.5px; line-height: 1.8; font-weight: 500; }
 /* 轮 81 · 动态流性能：图未解码完之前给一层极淡底色（原来完全透明），
    减少「白闪 → 图片弹出」的观感跳动；有图卡在懒加载期间也有稳定视觉轮廓。 */
@@ -3051,6 +3087,9 @@ html.cap-app .reply-bar {
 .st-cloud-tag.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .st-cloud-tag em { font-style: normal; opacity: .7; font-size: 11px; }
 .st-shuffle { margin-top: 10px; width: 100%; }
+/* 轮 443：换一批翻到底的提示（原来是把同一批内容本地打乱冒充新的，现在直说没内容了） */
+.st-no-more { margin-top: 8px; text-align: center; animation: st-fade-in 0.18s ease-out; }
+@keyframes st-fade-in { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
 
 /* ── 全屏写作 / 阅读页 ── */
 .story-write { max-width: 860px; margin: 0 auto; }
@@ -3162,4 +3201,169 @@ html.cap-app .cmt-main-bar.wp-kb-swap,
   line-height: 18px;
 }
 .cmt-entry:active { background: var(--wash-mid, #f1ece2); }
+
+/* ── 轮 444：维护/升级提示 ───────────────────────────────────────
+ * 设计红线：这是「提示」不是「拦截」。横幅只有一行、不占满屏、能收起，
+ * 维护结束后自己消失 —— 用户在维护期间照样能读、能翻、能聊私信。 */
+.maint-bar {
+  position: sticky;
+  top: var(--sat, env(safe-area-inset-top, 0px));
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 6px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: var(--accent-soft, #f3efe6);
+  border: 1px solid var(--hairline, #e7e1d5);
+  color: var(--ink, #3d3a33);
+  font-size: 12px;
+  line-height: 16px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  animation: maint-in .22s ease-out;
+}
+@keyframes maint-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+/* 有人试图写入被拦 → 横幅抖一下，把注意力引到「是我在维护」而不是「app 坏了」 */
+.maint-bar--shake { animation: maint-shake .7s ease-in-out; }
+@keyframes maint-shake {
+  0%, 100% { transform: translateX(0); }
+  18% { transform: translateX(-3px); }
+  38% { transform: translateX(3px); }
+  58% { transform: translateX(-2px); }
+  78% { transform: translateX(2px); }
+}
+.maint-dot-in {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent, #b08c5a);
+  box-shadow: 0 0 0 0 rgba(176, 140, 90, .55);
+  animation: maint-pulse 2.4s ease-out infinite;
+}
+@keyframes maint-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(176, 140, 90, .5); }
+  70% { box-shadow: 0 0 0 6px rgba(176, 140, 90, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(176, 140, 90, 0); }
+}
+.maint-bar-text { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; }
+.maint-bar-text strong { font-weight: 600; }
+.maint-bar-note { font-style: normal; color: var(--ink-faint, #8e8b82); }
+.maint-bar-left { color: var(--ink-faint, #8e8b82); }
+.maint-bar-admin { color: var(--accent, #b08c5a); }
+.maint-bar-preview { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--ink-faint, #8e8b82); white-space: nowrap; cursor: pointer; }
+.maint-bar-preview input { accent-color: var(--accent, #b08c5a); }
+.maint-bar-x {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-faint, #8e8b82);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.maint-bar-x:active { background: var(--wash-mid, rgba(0, 0, 0, .05)); }
+
+/* 收起后的小圆点：不占布局、不挡内容，想看了再点开 */
+.maint-dot {
+  position: fixed;
+  right: 14px;
+  bottom: calc(88px + var(--sab, env(safe-area-inset-bottom, 0px)));
+  z-index: 121;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--hairline, #e7e1d5);
+  background: var(--glass, rgba(255, 255, 255, .8));
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .08);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* full 档：真的要停服时的柔和占位（不是报错页，也不逼人刷新） */
+.maint-stop {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg, #faf7f0);
+  animation: maint-in .2s ease-out;
+}
+.maint-stop-card {
+  width: min(360px, 100%);
+  padding: 28px 24px 22px;
+  border-radius: 22px;
+  background: var(--card, #fff);
+  border: 1px solid var(--hairline, #e7e1d5);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, .06);
+  text-align: center;
+}
+.maint-stop-emoji { font-size: 34px; line-height: 1; margin-bottom: 10px; }
+.maint-stop-title { font-family: var(--font-display, inherit); font-size: 19px; font-weight: 600; margin: 0 0 8px; color: var(--ink, #3d3a33); }
+.maint-stop-body { font-size: 13px; line-height: 1.7; color: var(--ink-faint, #8e8b82); margin: 0 0 6px; }
+.maint-stop-left { font-size: 12px; color: var(--accent, #b08c5a); margin: 0 0 14px; }
+.maint-stop-btn {
+  padding: 8px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--hairline, #e7e1d5);
+  background: var(--accent-soft, #f3efe6);
+  color: var(--ink, #3d3a33);
+  font-size: 13px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.maint-stop-btn:active { transform: scale(.97); }
+.maint-stop-foot { font-size: 11px; color: var(--ink-faint, #8e8b82); margin: 12px 0 0; }
+
+/* 后台「维护升级」面板 */
+.admin-maint-tiers { display: grid; gap: 8px; margin: 14px 0 4px; }
+.admin-maint-tier {
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--hairline, #e7e1d5);
+  background: var(--card, #fff);
+  color: var(--ink, #3d3a33);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.admin-maint-tier.on { border-color: var(--accent, #b08c5a); background: var(--accent-soft, #f3efe6); }
+.admin-maint-tier.busy { opacity: .55; }
+.admin-maint-tier:disabled { cursor: default; }
+.admin-maint-tier-name { font-weight: 600; font-size: 13px; }
+.admin-maint-tier-desc { font-size: 12px; color: var(--ink-faint, #8e8b82); line-height: 1.5; }
+.admin-maint-field { display: grid; gap: 6px; margin: 14px 0 0; font-size: 13px; }
+.admin-maint-input {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--hairline, #e7e1d5);
+  background: var(--card, #fff);
+  color: var(--ink, #3d3a33);
+  font-size: 13px;
+}
+.admin-maint-hint { margin: 6px 0 0; font-size: 11px; }
+.admin-maint-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--ink-faint, #8e8b82);
+  cursor: pointer;
+}
 

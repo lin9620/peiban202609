@@ -17,6 +17,7 @@ import {
   SORT_MODES, DEFAULT_MODE, RANK_TABS,
   countChars, readMinutes, normalizeTags, validatePublish,
   periodKey, periodKeyWeek, renderLiteMd, storyErrKey, paraIndent,
+  shuffleStep,
   applyStoryToggle, flipStoryToggle,
 } from "../src/utils/storyRules.js";
 import { setStorySeed, takeStorySeed, peekStorySeed } from "../src/utils/storySeed.js";
@@ -658,6 +659,46 @@ ok("storyPublish 把 too-short 映射成 story-too-short（漏映射会误报 st
     && messages.zh.story.deleteDraft === "删除"
     && (i18nSrc.match(/deleteDraft:/g) || []).length === 2
     && (i18nSrc.match(/deleteDraftConfirm:/g) || []).length === 2);
+}
+
+/* ── 轮 443：排行榜「换一批」判定 ────────────────────────────────
+ * 产品口径（用户明确要求）：**不要本地换顺序**，翻到底就直说「没有新内容了」。
+ * 配套地服务端 random 模式改成「30 天优先 + 90 天 / 一年 / 更早逐级补位」，
+ * 所以「到底了」是真的到底，不是被固定 30 天窗口卡出来的假空榜。 */
+{
+  ok("换一批：满页时往后翻一页", (() => {
+    const s = shuffleStep({ loaded: 12, page: 12, offset: 0 });
+    return s.exhausted === false && s.offset === 12;
+  })());
+  ok("换一批：不满一页 = 到底了，不翻页也不改 offset", (() => {
+    const s = shuffleStep({ loaded: 5, page: 12, offset: 0 });
+    return s.exhausted === true && s.offset === 0;
+  })());
+  ok("换一批：已在第二页且不满一页 → 仍判定到底，offset 保持不动", (() => {
+    const s = shuffleStep({ loaded: 3, page: 12, offset: 12 });
+    return s.exhausted === true && s.offset === 12;
+  })());
+  ok("换一批：榜单为空时回第一批重拉（可能是网络失败，不是到底）", (() => {
+    const s = shuffleStep({ loaded: 0, page: 12, offset: 12 });
+    return s.exhausted === false && s.offset === 0;
+  })());
+  ok("换一批：脏参数不炸且 offset 非负", (() => {
+    const s = shuffleStep({ loaded: "x", page: 0, offset: -5 });
+    return Number.isFinite(s.offset) && s.offset >= 0;
+  })());
+  ok("换一批：判定里不再有 local/reshuffle 这类本地重排出口", (() => {
+    const s = shuffleStep({ loaded: 12, page: 12, offset: 0 });
+    return s.local === undefined && Object.keys(s).sort().join() === "exhausted,offset";
+  })());
+
+  ok("StoryRank 用 shuffleStep 判定、不再本地重排（防回退成把同一批打乱冒充新内容）",
+    rankVue.includes("shuffleStep") && !rankVue.includes("reshuffle") && !rankVue.includes("singlePage"));
+  ok("StoryRank 到底时弹「没有新内容了」而不是改列表",
+    rankVue.includes("showNoMore") && rankVue.includes('t("story.rankNoMore")'));
+  ok("StoryRank 换一批时禁用按钮（防连点叠加 offset）",
+    /st-shuffle[\s\S]{0,160}:disabled="loading"/.test(rankVue));
+  ok("StoryRank 服务端返回空也算到底（阶梯补位在 SQL 里做，前端不再兜底重排）",
+    /step\.offset > 0 && n === 0/.test(rankVue) && /n === 0\) showNoMore\(\)/.test(rankVue));
 }
 
 if (fails.length) {

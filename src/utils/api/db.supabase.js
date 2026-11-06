@@ -65,6 +65,15 @@ async function unwrap(p) {
   return r ? r.data : null;
 }
 
+/* 轮 439：迁移没跑时，带新参数的 RPC 会 404（PostgREST 在 schema cache 里找不到这个签名）。
+ * 识别出来是为了降级重试旧签名 —— 投瓶、捞瓶、发故事都是核心动作，
+ * 不能因为线上还没跑迁移就整个不可用。 */
+function isMissingRpc(e) {
+  const code = e && e.code ? String(e.code) : "";
+  const msg = String((e && e.message) || e || "").toLowerCase();
+  return code === "PGRST202" || msg.includes("could not find the function") || msg.includes("does not exist");
+}
+
 /* ──────── 轮 300：大厅四类人数（4 次精确计数 → 1 条 RPC） ──────── */
 
 /** 四类状态的固定顺序。老链路 Promise.all over 字面量数组天然保序；
@@ -129,16 +138,23 @@ export const db = {
        removed 兼容回退同款。链序与旧实现一致（from→select→eq→[lt]→order→limit/range）——api-contract 钉形状 */
     const off = Number(opts.offset) > 0 ? Number(opts.offset) : 0;
     const bid = Number(opts.beforeId) > 0 ? Number(opts.beforeId) : 0;
-    const q = (withRemoved) => {
+    /* 轮 439：多试一档 —— lang 是后加的列。当前线上库「有 removed、没 lang」是最常见的
+       中间态，所以先丢 lang 再丢 removed，逐档降级；每档只多一次往返，且只在真报错时发生。 */
+    const q = (withRemoved, withLang) => {
       /* 轮 170：显式列，不再 select *（rowsToPosts 消费字段全覆盖） */
-      let base = sb().from(T.posts).select("id,user_id,author_name,body,image_path,created_at,views,dislikes,removed");
+      let base = sb().from(T.posts).select(
+        "id,user_id,author_name,body,image_path,created_at,views,dislikes,removed" + (withLang ? ",lang" : ""),
+      );
       if (withRemoved) base = base.eq("removed", false);
       if (bid) base = base.lt("id", bid);
       base = base.order("created_at", { ascending: false });
       return off > 0 && !bid ? base.range(off, off + Number(limit) - 1) : base.limit(limit);
     };
-    let res = await q(true);
-    if (res && res.error) res = await q(false);
+    let res = null;
+    for (const [wr, wl] of [[true, true], [true, false], [false, false]]) {
+      res = await q(wr, wl);
+      if (!res || !res.error) break;
+    }
     return unwrap(Promise.resolve(res));
   },
 
@@ -477,14 +493,30 @@ export const db = {
 
   /* ══════════ 温暖漂流瓶（#6：写/捞/回/放回/我的信/我捞到的） ══════════ */
 
-  /** 投一封信进海里（滚动 24h 5 封由 RPC 把关；轮 305：3 → 5） */
-  bottleSend(body) {
-    return unwrap(sb().rpc("bottle_send", { p_body: body }));
+  /** 投一封信进海里（滚动 24h 5 封由 RPC 把关；轮 305：3 → 5）
+   *  轮 439：带 lang（信本身的语言）。迁移没跑时服务端不认这个参数 →
+   *  降级用旧签名重发，瓶子照投，只是这封信没有语言标记。 */
+  async bottleSend(body, lang = null) {
+    if (!lang) return unwrap(sb().rpc("bottle_send", { p_body: body }));
+    try {
+      return await unwrap(sb().rpc("bottle_send", { p_body: body, p_lang: lang }));
+    } catch (e) {
+      if (!isMissingRpc(e)) throw e;
+      return unwrap(sb().rpc("bottle_send", { p_body: body }));
+    }
   },
 
-  /** 公平捞一封（不是自己的；捞起即独占；24h 最多 30 瓶） */
-  bottleFish() {
-    return unwrap(sb().rpc("bottle_fish"));
+  /** 公平捞一封（不是自己的；捞起即独占；24h 最多 30 瓶）
+   *  轮 439：传 lang 让服务端先在本语言池里捞，池空自己会退回全语言。
+   *  迁移没跑 → 降级成无参调用（老行为：纯随机）。 */
+  async bottleFish(lang = null) {
+    if (!lang) return unwrap(sb().rpc("bottle_fish"));
+    try {
+      return await unwrap(sb().rpc("bottle_fish", { p_lang: lang }));
+    } catch (e) {
+      if (!isMissingRpc(e)) throw e;
+      return unwrap(sb().rpc("bottle_fish"));
+    }
   },
 
   /** 给手里这封写回信（只有当前持有者能回） */
@@ -541,10 +573,17 @@ export const db = {
     return unwrap(sb().rpc("story_delete_draft", { p_id: id }));
   },
 
-  /** 发布（校验不过抛 story-bad-* 错误码，前端用 storyErrKey 归类） */
-  storyPublish(id, title, body, tags) {
-    return unwrap(sb().rpc("story_publish",
-      { p_id: id, p_title: title, p_body: body, p_tags: tags || [] }));
+  /** 发布（校验不过抛 story-bad-* 错误码，前端用 storyErrKey 归类）
+   *  轮 439：带 lang。迁移没跑 → 降级旧签名，服务端会自己按汉字正则兜底。 */
+  async storyPublish(id, title, body, tags, lang = null) {
+    const params = { p_id: id, p_title: title, p_body: body, p_tags: tags || [] };
+    if (!lang) return unwrap(sb().rpc("story_publish", params));
+    try {
+      return await unwrap(sb().rpc("story_publish", { ...params, p_lang: lang }));
+    } catch (e) {
+      if (!isMissingRpc(e)) throw e;
+      return unwrap(sb().rpc("story_publish", params));
+    }
   },
 
   /** 赞 / 取消赞：返回 true=已赞 false=已取消 */
@@ -683,6 +722,28 @@ export const db = {
   /** 我是不是管理员（rpc is_admin，标量布尔） */
   amAdmin() {
     return unwrap(sb().rpc("is_admin"));
+  },
+
+  /* ══════════ 维护/升级开关（轮 444）══════════ */
+
+  /** 当前维护状态（公开可读，未登录也能拿 —— 横幅要在登录页也能显示）。
+   *  表是单行（id=1）；迁移没跑时 PostgREST 报 42P01/PGRST205，由调用方静默降级为 off。 */
+  maintenanceState() {
+    return unwrap(
+      sb().from("app_state")
+        .select("maintenance_mode,maintenance_note,maintenance_until,maintenance_started_at,updated_at")
+        .eq("id", 1)
+        .maybeSingle(),
+    );
+  },
+
+  /** 开/关维护（管理员；服务端 admin_set_maintenance 里再校验一次 is_admin） */
+  adminSetMaintenance(mode, note = null, until = null) {
+    return unwrap(sb().rpc("admin_set_maintenance", {
+      p_mode: mode,
+      p_note: note || null,
+      p_until: until || null,
+    }));
   },
 
   /** 看板总览（rpc admin_overview 的 jsonb；非管理员得到 {admin:false}） */

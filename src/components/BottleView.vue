@@ -9,6 +9,7 @@ import { NButton, NInput, NModal } from "naive-ui";
 import ReportDialog from "./ReportDialog.vue";
 import { isMobileNav } from "../stores/uiStore.js";
 import { t } from "../i18n.js";
+import { langName, uiLang } from "../utils/contentLang.js";
 import {
   BOTTLE_BODY_MIN, BOTTLE_BODY_MAX, BOTTLE_SEND_MAX, BOTTLE_PICK_MAX, BOTTLE_FISH_MAX,
   bottleBodyChars, bottleErrKey,
@@ -59,6 +60,13 @@ function mergePending() {
 /* 轮 22/25：捞信结果一律居中弹窗——捞到（就地回信/放回）、没捞到、限额，全部有明确反馈；
  * 「先收着，稍后回」按用户要求移除（捞到就当场回信或放回，不许囤） */
 const fishPop = ref({ show: false, mode: "msg", letter: null, msg: "" });
+/* 轮 439：捞到的信不是本语言时给一句「这封信是英语写的」。
+   用到 langName 而不是 langBadge —— 这里要读成句子，不能是 EN 这种代码。 */
+const fishLang = computed(() => {
+  const l = fishPop.value.letter;
+  if (!l || !l.lang || l.lang === "und") return "";
+  return l.lang === uiLang() ? "" : langName(l.lang);
+});
 /* 轮 411：举报弹窗；同一封信举报后不再发给我，3 人举报后全局隐藏 */
 const reportShow = ref(false);
 const reportTarget = ref(null);
@@ -728,6 +736,11 @@ async function decideRec(l, accept) {
       <template v-else-if="fishPop.mode === 'got' && fishPop.letter">
         <div class="m-q" style="font-size: 16px; line-height: 1.6">{{ fishPop.letter.body }}</div>
         <span class="m-who">{{ t("bottle.fromSea") }}</span>
+        <!-- 轮 439：捞到的信不是本语言时说明一句。用户开了「优先本语言」还会捞到外文，
+             是因为海里这个语言的信不够 —— 不解释的话会以为是 bug。 -->
+        <span v-if="fishLang" class="m-who bottle-lang-hint">
+          {{ t("bottle.otherLang", { lang: fishLang }) }}
+        </span>
         <van-field
           v-model="replyDrafts[fishPop.letter.id]"
           type="textarea" rows="3" :autosize="REPLY_AUTOSIZE" :maxlength="BOTTLE_BODY_MAX"

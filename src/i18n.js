@@ -1,18 +1,49 @@
 import { reactive } from "vue";
 import { getItem, setItem } from "./utils/storage.js";
+import esMessages from "./i18n.es.js";
+import ptMessages from "./i18n.pt.js";
+import frMessages from "./i18n.fr.js";
 
-/* ---------- 简易 i18n：默认英文，可切换中文 ---------- */
+/* ---------- 简易 i18n：默认英文，可切换中文 / 西班牙语 / 葡萄牙语 / 法语 ---------- */
 
-/* 语言注册表：新增语言两步走 —— ①下方 messages 加对应语言块 ②在此数组加一行 */
+/* 语言注册表：新增语言三步走 —— ① messages 里加对应语言块（或 .js 文件挂上去）
+   ② 在此数组加一行 ③ langDetect.js 的 SUPPORTED 加代码（否则「优先我这种语言」不生效）*/
 export const languages = [
   { code: "en", label: "English" },
   { code: "zh", label: "中文" },
+  { code: "es", label: "Español" },
+  { code: "pt", label: "Português" },
+  { code: "fr", label: "Français" },
 ];
+
+/* <html lang> 用完整的 BCP-47 标签：屏幕阅读器和字体挑选都看它，
+   只写 "es" 在某些系统上会挑到欧洲西语的字形。 */
+const HTML_LANG = { zh: "zh-CN", en: "en", es: "es-419", pt: "pt-BR", fr: "fr" };
 
 export const messages = {
   en: {
     brand: "Warm Paws",
     tagline: "A gentle place to be",
+    /* 轮 444 · 维护/升级提示：语气是「在收拾屋子，你先坐着」，不是「系统故障」 */
+    maint: {
+      bannerRead: "Upgrading right now",
+      readBody: "Reading and chats still work — posting resumes shortly.",
+      bannerFull: "Upgrading",
+      fullTitle: "Back in a moment",
+      fullBody: "We're doing a little repair work. It won't take long.",
+      fullFoot: "This page retries on its own — no need to refresh.",
+      retry: "Try again",
+      leftMin: "about {m} min left",
+      lessThanMin: "almost done",
+      almostDone: "any moment now",
+      adminFree: "you're not affected",
+      asUser: "as a user",
+      collapse: "Hide",
+      expand: "Show maintenance notice",
+    },
+    /* 轮 439：语言名的本地化写法。漂流瓶捞到外文信时要说「这封信是英语写的」，
+       直接把语言代码（EN / PT）丢给用户是很糙的做法。键名 = 语言代码。 */
+    lang: { zh: "Chinese", en: "English", es: "Spanish", pt: "Portuguese", fr: "French", ja: "Japanese", ko: "Korean" },
     nav: { home: "Home", pet: "My Pet", community: "Warm Wall", bottle: "Drift bottles", story: "Story Hall", profile: "Me", expand: "Expand menu", collapse: "Collapse menu",
       /* 轮 279：详情页左右滑到头时的边界提示（zh/en 成对，用在 PostDetailView） */
       prevEnd: "This is the first post", nextEnd: "This is the last post" },
@@ -267,6 +298,7 @@ export const messages = {
       leftFish: "{n} replies left in the last 24h",
       rules: "{w} letters / 24h · {p} picks / 24h · {f} replies / 24h. Throwing one back is instant; the same letter won't come back to you for 7 days.",
       fromSea: "A letter from the sea",
+      otherLang: "This letter is written in {lang}",
       replyPlaceholder: "Say something back to the writer…",
       reply: "Reply",
       replySend: "Send reply",
@@ -299,6 +331,7 @@ export const messages = {
       errTooLong: "Too long — keep it within 1000 characters.",
       replyTooLong: "Reply is too long — {n}/1000 characters. Please shorten it and try again.",
       errGeneric: "The waves are a bit rough — try again soon.",
+      errMaintenance: "We're upgrading right now — sending is paused for a few minutes.",
       errTimeout: "The records didn't come back within 15s — the connection is slow. Tap Refresh to try again.",
       recordsTitle: "Bottle records",
       recordsHint: "Replies stay here; the writer decides whether to start a chat.",
@@ -340,6 +373,7 @@ export const messages = {
       rankTitle: "Leaderboard",
       rankRandom: "Picks", rankLatest: "Newest", rankMonthly: "Monthly likes", rankTag: "Tags",
       rankShuffle: "Shuffle again",
+      rankNoMore: "No new stories for now — you've seen them all.",
       rankEmpty: "Nothing on the board yet — write the first story.",
       titlePh: "A title for your story",
       bodyPh: "Tell it slowly…  (## heading   > quote   --- divider   **bold**)",
@@ -397,6 +431,7 @@ export const messages = {
       errCommentEmpty: "Write something before sending.",
       errCommentLong: "Comments are limited to 1,000 characters.",
       errGeneric: "Something went a little sideways. Please try again.",
+      errMaintenance: "We're upgrading right now — publishing is paused for a few minutes.",
       comments: "Comments",
       commentPh: "Leave a gentle word…",
       commentSend: "Send",
@@ -464,6 +499,7 @@ export const messages = {
       composeTitle: "Share on the wall",
       composeBack: "Back to the wall",
       dailyLimit: "Seven notes a day is plenty — you've used them up. See you tomorrow 💛",
+      maintenance: "We're upgrading right now — posting is paused for a few minutes. Reading still works.",
       postLeft: "{n} of 7 posts left today · one image per note",
       postFail: "That didn't go through — please try again 🙏",
       needSetup: "This part isn't switched on yet — the wall owner needs to run the latest database update 🔧",
@@ -560,7 +596,30 @@ export const messages = {
       denied: "Not authorized — admins only.",
       loading: "Loading…",
       refresh: "Refresh",
-      tabs: { overview: "Overview", posts: "Posts", comments: "Comments", reports: "Reports", users: "Users", clientlogs: "Client errors" },
+      tabs: { overview: "Overview", posts: "Posts", comments: "Comments", reports: "Reports", users: "Users", clientlogs: "Client errors", maintenance: "Maintenance" },
+      /* 轮 444 · 维护/升级面板 */
+      maint: {
+        title: "Maintenance mode",
+        intro: "Most upgrades only need read-only: people keep reading and chatting, they just can't post for a little while.",
+        mode: { off: "Normal", read: "Read-only", full: "Full stop" },
+        desc: {
+          off: "Everything works, banner hidden.",
+          read: "Browse, history and chats all work. Posting paused.",
+          full: "Nobody can even browse. Only for schema changes.",
+        },
+        noteLabel: "Note for users (optional)",
+        notePh: "e.g. adding a new shelf — back in a few minutes",
+        untilLabel: "Auto-end after",
+        untilOff: "Never (manual only)",
+        min: "{n} min",
+        untilHint: "Ends by itself at that time even if you forget — the site can't get stuck in maintenance.",
+        preview: "Preview as a normal user (admins are exempt by default)",
+        started: "Maintenance started.",
+        ended: "Back to normal.",
+        fail: "Couldn't change it — is the migration applied?",
+        notAdmin: "Only admins can do this.",
+        loadFail: "Couldn't read the current state (migration not applied?).",
+      },
       /* 轮 33：举报/复核处理队列 */
       reports: {
         pending: "Pending", handled: "Handled", empty: "Nothing here — all calm ✨",
@@ -816,6 +875,9 @@ export const messages = {
       notifRow: "Notifications",
       theme: "Skin",
       language: "Language",
+      /* 轮 439：内容语言开关（不是界面语言）。语义是「优先」不是「只看」 */
+      preferLang: "Prefer my language",
+      preferLangHint: "Shows your language first, then other languages when there isn't enough. Nothing is hidden.",
       entry: "Settings",
       on: "on", off: "off",
       pwOld: "Current password",
@@ -980,6 +1042,24 @@ export const messages = {
   zh: {
     brand: "暖爪",
     tagline: "一个温柔的地方",
+    /* 轮 444 · 维护/升级提示：不说「系统维护中，请稍后」，说人话 */
+    maint: {
+      bannerRead: "正在升级维护",
+      readBody: "浏览和私信都不受影响，发布稍后就恢复。",
+      bannerFull: "正在升级",
+      fullTitle: "马上就好",
+      fullBody: "我们正在做一些小修缮，很快回来。",
+      fullFoot: "页面会自己重试，不用刷新。",
+      retry: "再试一下",
+      leftMin: "约剩 {m} 分钟",
+      lessThanMin: "快好了",
+      almostDone: "马上就好",
+      adminFree: "你不受限制",
+      asUser: "以用户视角",
+      collapse: "收起",
+      expand: "展开维护提示",
+    },
+    lang: { zh: "中文", en: "英语", es: "西班牙语", pt: "葡萄牙语", fr: "法语", ja: "日语", ko: "韩语" },
     nav: { home: "今天", pet: "我的宠物", community: "暖心墙", bottle: "漂流瓶", story: "故事栏", profile: "我的", expand: "展开导航", collapse: "收起导航",
       /* 轮 279：详情页左右滑到头时的边界提示（zh/en 成对，用在 PostDetailView） */
       prevEnd: "已经是第一条了", nextEnd: "已经是最后一条了" },
@@ -1234,6 +1314,7 @@ export const messages = {
       leftFish: "过去 24 小时还能回 {n} 封",
       rules: "每 24 小时可投 {w} 封 · 可捞 {p} 瓶 · 可回 {f} 封。放回后可立刻再捞；同一封信 7 天内不会再发给你。",
       fromSea: "来自海里的一封信",
+      otherLang: "这封信是 {lang} 写的",
       replyPlaceholder: "回一句话给这位写信的人……",
       reply: "回信",
       replySend: "发送回信",
@@ -1266,6 +1347,7 @@ export const messages = {
       errTooLong: "信太长啦——1000 字以内。",
       replyTooLong: "回信太长啦——当前 {n} 字，最多 1000 字，请删减后再发。",
       errGeneric: "海浪大了一点，稍后再试试。",
+      errMaintenance: "正在升级维护，暂时发不了信，几分钟就好。",
       errTimeout: "记录 15 秒没回来 —— 网络有点慢。点「刷新记录」再试一次。",
       recordsTitle: "漂流瓶记录",
       recordsHint: "回信会留在这里；是否开聊由原信作者决定。",
@@ -1307,6 +1389,7 @@ export const messages = {
       rankTitle: "排行榜",
       rankRandom: "推荐", rankLatest: "最新", rankMonthly: "月赞", rankTag: "标签",
       rankShuffle: "换一批",
+      rankNoMore: "暂时没有新内容了，都看完了。",
       rankEmpty: "榜单还空着，第一篇等你来写。",
       titlePh: "给故事起个标题",
       bodyPh: "慢慢写…（## 小标题　> 引用　--- 分割线　**粗体**）",
@@ -1364,6 +1447,7 @@ export const messages = {
       errCommentEmpty: "先写点什么再发吧。",
       errCommentLong: "评论最多 1000 字。",
       errGeneric: "这里好像有点小状况，再试一次。",
+      errMaintenance: "正在升级维护，暂时发布不了，几分钟就好。",
       comments: "评论",
       commentPh: "说句温柔的话…",
       commentSend: "发送",
@@ -1432,6 +1516,7 @@ export const messages = {
       composeTitle: "发暖心帖",
       composeBack: "回到暖心墙",
       dailyLimit: "每天最多 7 条——今天已经发满啦，明天再来吧 💛",
+      maintenance: "正在升级维护，暂时发不了新内容，几分钟就好。浏览不受影响。",
       postLeft: "今天还能发 {n} 条 · 每条配一张图",
       postFail: "没能发出去——再试一次吧 🙏",
       needSetup: "这个功能还没开启——墙的主人需要先执行一次数据库更新 🔧",
@@ -1528,7 +1613,30 @@ export const messages = {
       denied: "没有权限——仅管理员可访问。",
       loading: "加载中……",
       refresh: "刷新",
-      tabs: { overview: "总览", posts: "帖子", comments: "评论", reports: "举报", users: "用户", clientlogs: "客户端错误" },
+      tabs: { overview: "总览", posts: "帖子", comments: "评论", reports: "举报", users: "用户", clientlogs: "客户端错误", maintenance: "维护升级" },
+      /* 轮 444 · 维护/升级面板 */
+      maint: {
+        title: "维护升级",
+        intro: "大多数升级只需要「只读」：大家照样能看、能聊，只是暂时发不了新内容。",
+        mode: { off: "正常", read: "只读维护", full: "完全停机" },
+        desc: {
+          off: "一切照常，横幅不显示。",
+          read: "浏览、历史、私信都正常，发布/发信/评论暂停。",
+          full: "连浏览也停。只有改表结构时才用。",
+        },
+        noteLabel: "给用户看的说明（可不填）",
+        notePh: "例如：加一层新书架，几分钟就好",
+        untilLabel: "自动结束",
+        untilOff: "不自动（只手动关）",
+        min: "{n} 分钟",
+        untilHint: "到点会自动恢复 —— 忘了关也不会让站点一直卡在维护里。",
+        preview: "以普通用户视角预览（管理员默认不受限）",
+        started: "已开始维护。",
+        ended: "已恢复正常。",
+        fail: "没能改成功 —— 检查一下迁移是否跑过。",
+        notAdmin: "只有管理员能操作。",
+        loadFail: "读不到当前状态（迁移没跑？）",
+      },
       /* 轮 33：举报/复核处理队列 */
       reports: {
         pending: "待处理", handled: "已处理", empty: "这里静悄悄的，没有要处理的内容 ✨",
@@ -1781,6 +1889,9 @@ export const messages = {
       notifRow: "通知",
       theme: "皮肤",
       language: "语言",
+      /* 轮 439：内容语言开关。刻意写「优先」而不是「只看」—— 硬过滤会让西语用户白屏 */
+      preferLang: "优先我这种语言",
+      preferLangHint: "先给你看这种语言的内容，不够时再补其他语言；不会藏起任何内容。",
       entry: "设置",
       on: "开", off: "关",
       pwOld: "现在的密码",
@@ -1944,6 +2055,13 @@ export const messages = {
   },
 };
 
+/* 轮 439：西语 / 葡语 / 法语各自成文件（塞进这里会让本文件膨胀到 6000 行）。
+   三包都是 825～968 条；pt/fr 刻意不翻 admin.*，缺口由 t() 回退英文 ——
+   管理后台只有站主用，没必要翻。 */
+messages.es = esMessages;
+messages.pt = ptMessages;
+messages.fr = frMessages;
+
 export const i18n = reactive({
   /* 轮 18（#3 闪英文最后一环）：首次使用（无存档）跟随系统语言——
      中文手机/中文系统首启 App 直接是中文，不再先闪英文；
@@ -1967,7 +2085,7 @@ i18n.locale = normLocale(i18n.locale);
 
 /* 首屏 <html lang> 就与语言一致（无障碍/字体挑选都看它），后续 setLocale 继续维护 */
 if (typeof document !== "undefined") {
-  document.documentElement.lang = i18n.locale === "zh" ? "zh-CN" : "en";
+  document.documentElement.lang = HTML_LANG[i18n.locale] || i18n.locale;
 }
 
 function lookup(key, locale) {
@@ -1990,5 +2108,8 @@ export function t(key, params) {
 export function setLocale(l) {
   i18n.locale = normLocale(l);
   setItem("wp-lang", i18n.locale);
-  document.documentElement.lang = i18n.locale === "zh" ? "zh-CN" : "en";
+  /* Node（单测）没有 document，别在这里炸 */
+  if (typeof document !== "undefined") {
+    document.documentElement.lang = HTML_LANG[i18n.locale] || i18n.locale;
+  }
 }

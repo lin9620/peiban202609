@@ -144,6 +144,28 @@ export const RANK_TABS = [
   { mode: "tag", tk: "story.rankTag" },
 ];
 
+/* ── 排行榜「换一批」的下一步（轮 443 重写） ─────────────────────
+ * 为什么要抽成纯函数：边界（池子刚好等于一页）在界面上极难复现，只能钉进单测。
+ *
+ * 轮 443 改了产品口径 —— **不再本地重排顺序**，翻到底就明确说「没有新内容了」。
+ * 理由：本地重排只是把同一批内容打乱，用户以为换了新的，点开还是那几篇，是欺骗。
+ * 配套地服务端 random 模式改成「30 天优先 + 90 天 / 一年 / 更早逐级补位」，
+ * 所以这里的 exhausted 是可信的：真到底了就是整库都看完了。
+ *
+ *   · 榜单为空 → 回第一批重拉（上一次可能只是网络失败，值得再试）；
+ *   · 不足一页 → 池子就这么大，往后翻必定是空 → exhausted，界面弹提示、列表不动；
+ *   · 满页 → 正常往后翻一页。
+ * 返回 { offset, exhausted }：exhausted=true 表示别发请求、也别改 offset，
+ * 保持当前列表原样（再点还是这个提示，直到 5 分钟窗口换了种子或真有新故事发布）。 */
+export function shuffleStep({ loaded = 0, page = 12, offset = 0 } = {}) {
+  const n = Math.max(0, Number(loaded) || 0);
+  const p = Math.max(1, Number(page) || 1);
+  const off = Math.max(0, Number(offset) || 0);
+  if (n === 0) return { offset: 0, exhausted: false };
+  if (n < p) return { offset: off, exhausted: true };
+  return { offset: off + p, exhausted: false };
+}
+
 /* ── 服务端错误归类：RPC/HTTP 报文 → i18n key（story.err* 家族） ── */
 export function storyErrKey(e) {
   const raw = String(e?.message ?? e ?? "");
@@ -156,6 +178,9 @@ export function storyErrKey(e) {
   if (/story-not-found/.test(raw)) return "story.errNotFound";
   if (/story-auth|JWT|401|not authenticated/i.test(raw)) return "story.errAuth";
   if (/story-bad-mode/.test(raw)) return "story.errMode";
+  /* 轮 444：维护期写入被触发器拦下。必须排在通用分支之前，
+   * 否则用户看到「出了点问题」，会以为是自己写的内容有问题。 */
+  if (/maintenance-mode|PT503/i.test(raw)) return "story.errMaintenance";
   if (/429|rate|quota/.test(raw)) return "story.errRate";
   if (/network|fetch|Failed to fetch|timeout|502/i.test(raw)) return "story.errNetwork";
   return "story.errGeneric";

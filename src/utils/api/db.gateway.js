@@ -572,6 +572,18 @@ export const db = {
     return call("/admin/overview");
   },
 
+  /* ══════════ 维护/升级开关（轮 444）══════════
+   * 网关模式（VITE_API_GATEWAY=1）下 Worker 还没有对应端点，这里刻意「静默降级」：
+   * 读恒为 null（调用方当作正常），写直接抛错（后台点按钮会看到失败提示，不会假装成功）。
+   * 生产当前走直连 Supabase，功能完整；哪天切网关，在 worker/api.js 补两个端点即可。 */
+  maintenanceState() {
+    return Promise.resolve(null);
+  },
+
+  adminSetMaintenance() {
+    return Promise.reject(new Error("gateway-unsupported: 网关模式请在 Worker 里实现 /admin/maintenance"));
+  },
+
   /** 治理列表：用户分页（昵称/邮箱/ID/注册时间；邮箱由 DB 侧 RPC 提供） */
   adminUsersPage(offset, limit) {
     return call(`/admin/users?offset=${enc(offset)}&limit=${enc(limit)}`);

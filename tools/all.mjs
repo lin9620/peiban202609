@@ -49,11 +49,12 @@ const MANIFEST = [
     "dm-send-jump-test", "dm-send-ux-test", "dm-tail-cache-test", "dm-test", "dm-vac-test",
     "emoji-panel-test", "feed-archive-test", "feed-autoload-test", "feed-perf-test", "feed-window-test", "font-test",
     "fold-text-test", "food-painter-test", "gateway-contract-test", "home-panes-test",
-    "i18n-test", "i18n-usage-test", "icon-test", "skin-gate-test", "kb-math-test", "keyboard-policy-test", "messages-gap-test",
+    "i18n-test", "i18n-usage-test", "icon-test", "skin-gate-test", "kb-math-test", "keyboard-policy-test", "lang-detect-test", "content-lang-test", "template-scope-test", "messages-gap-test",
     "migration-check-test", "mood-test", "notify-test", "pet-home-test", "pet-visual-test",
     "post-detail-test", "post-nav-test", "privacy-test", "proto-chat-test", "rail-test",
     "react-multikind-test", "react-queue-test", "report-test", "responsiveness-test", "rps-test",
     "seo-test", "snack-test", "splash-test", "status-counts-test", "status-test", "story-test",
+    "maintenance-test",
     "tabbar-copy-test", "tap-guard-test", "teleport-test", "uifix-test", "undef-check",
     "userScope-test", "wall-addviews-test", "wall-composer-test", "wall-reaction-test",
     "wall-refresh-test", "wall-empty-test", "wall-end-test", "wall-rules-test", "wall-test", "web-refresh-test", "worker-test",
@@ -68,6 +69,8 @@ const MANIFEST = [
 
   /* 备份脚本的自检（--self-test 不连库、不碰网络，纯逻辑：脱敏/占位符/轮转/还原清单解析） */
   { file: "backup.mjs", tier: "fast", args: ["--self-test"], note: "备份脚本自检" },
+  /* 存量语言回填的自检（--self-test 不连库：检测→变化判定→SQL 生成，含 bigint/uuid 两种主键） */
+  { file: "backfill-lang.mjs", tier: "fast", args: ["--self-test"], note: "回填脚本自检" },
 
   /* ── live：需要 CDP / dev server / 真机 ─────────────────── */
   { file: "smoke.mjs", tier: "live", note: "需 dev 服务器 localhost:5173" },

@@ -11,6 +11,7 @@ import { cloud } from "../utils/supabase.js";
 import { db } from "../utils/api/db.js";
 import { fetchLatestRelease, currentVersion } from "../utils/appVersion.js";   /* 轮 297：读已登记的版本 + 当前构建的 versionCode */
 import { fmtNum, fmtBytes, clip, dailySeries, barHeights, sumReactions, dayOf, dayTimeOf, ratePct } from "../utils/admin.js";
+import { maint, applyState, setPreview } from "../utils/maintenance.js";
 import {
   reportKindOf, reportBatchAction, reportKindCount, reportSelectableIds,
   reportToggleSelection, reportActionKey,
@@ -361,8 +362,57 @@ async function loadComments() {
     fail(e);
   }
 }
+/* ═══ 维护/升级（轮 444）════════════════════════════════════════
+ * 三档而不是一个开关 —— 绝大多数升级只需要 read（浏览照旧、只有发布暂停），
+ * 用户几乎无感。full 留给「要动表结构、连读都会报错」的那种，别当默认。 */
+const MAINT_TIERS = ["off", "read", "full"];
+const maintMode = ref("off");
+const maintNote = ref("");
+const maintUntilMin = ref(30);   /* 0 = 不自动结束 */
+const maintLoaded = ref(false);
+const maintBusy = ref("");
+const maintMsg = ref("");
+
+async function loadMaint() {
+  try {
+    const row = await db.maintenanceState();
+    if (row) {
+      maintMode.value = MAINT_TIERS.includes(row.maintenance_mode) ? row.maintenance_mode : "off";
+      maintNote.value = row.maintenance_note || "";
+    }
+    maintLoaded.value = true;
+  } catch (e) {
+    /* 迁移没跑 / 非管理员：面板显示提示，不炸整页 */
+    maintMsg.value = t("admin.maint.loadFail");
+  }
+}
+
+async function setMaint(mode) {
+  if (maintBusy.value) return;
+  maintBusy.value = mode;
+  maintMsg.value = "";
+  try {
+    const mins = Number(maintUntilMin.value) || 0;
+    const until = mode === "off" || mins <= 0 ? null
+      : new Date(Date.now() + mins * 60000).toISOString();
+    const row = await db.adminSetMaintenance(mode, maintNote.value, until);
+    if (row && row.maintenance_mode) maintMode.value = row.maintenance_mode;
+    /* 本地状态同步：横幅立刻出现/消失，不用等 Realtime 那一跳 */
+    applyState(row);
+    maintMsg.value = mode === "off" ? t("admin.maint.ended") : t("admin.maint.started");
+  } catch (e) {
+    /* admin_set_maintenance 内部会再校验一次 is_admin（PT403）——
+     * 这里分开提示，免得管理员以为「按钮坏了」 */
+    maintMsg.value = /admin-only|PT403/i.test(String((e && e.message) || e))
+      ? t("admin.maint.notAdmin") : t("admin.maint.fail");
+  } finally {
+    maintBusy.value = "";
+  }
+}
+
 function switchTab(name) {
   tab.value = name;
+  if (name === "maintenance" && !maintLoaded.value) loadMaint();
   if (name === "posts" && !postsLoaded.value) loadPosts();
   if (name === "comments" && !commentsLoaded.value) loadComments();
   if (name === "users" && !usersLoaded.value) loadUsers(0);
@@ -599,7 +649,7 @@ const recentLogins = computed(() => (Array.isArray(ov.value && ov.value.recent_l
         </div>
         <div class="admin-tabs">
           <button
-            v-for="x in ['overview', 'posts', 'comments', 'reports', 'clientlogs']" :key="x"
+            v-for="x in ['overview', 'posts', 'comments', 'reports', 'clientlogs', 'maintenance']" :key="x"
             class="admin-tab" :class="{ on: tab === x }"
             @click="switchTab(x)">
             {{ t(`admin.tabs.${x}`) }}
@@ -983,6 +1033,49 @@ const recentLogins = computed(() => (Array.isArray(ov.value && ov.value.recent_l
       </section>
 
       <!-- ── 页签：客户端错误（轮 270；前端无声信标落库后的查看面板，只读） ── -->
+      <section v-else-if="tab === 'maintenance'" class="card">
+        <h2>{{ t("admin.maint.title") }}</h2>
+        <p class="sub" style="margin-top: 4px">{{ t("admin.maint.intro") }}</p>
+
+        <p v-if="maintMsg" class="notice" style="margin: 12px 0 0">{{ maintMsg }}</p>
+
+        <!-- 三档：点哪档就立刻切到哪档（带忙锁防连点）。没有「确认」弹窗 ——
+            这种小站点多一次点击只会让人犹豫，档位说明写得够清楚就够了。 -->
+        <div class="admin-maint-tiers">
+          <button
+            v-for="m in MAINT_TIERS" :key="m" type="button"
+            class="admin-maint-tier" :class="{ on: maintMode === m, busy: maintBusy === m }"
+            :disabled="!!maintBusy" @click="setMaint(m)">
+            <span class="admin-maint-tier-name">{{ t(`admin.maint.mode.${m}`) }}</span>
+            <span class="admin-maint-tier-desc">{{ t(`admin.maint.desc.${m}`) }}</span>
+          </button>
+        </div>
+
+        <label class="admin-maint-field">
+          <span>{{ t("admin.maint.noteLabel") }}</span>
+          <input
+            v-model="maintNote" class="admin-maint-input" type="text" maxlength="80"
+            :placeholder="t('admin.maint.notePh')" />
+        </label>
+
+        <label class="admin-maint-field">
+          <span>{{ t("admin.maint.untilLabel") }}</span>
+          <select v-model.number="maintUntilMin" class="admin-maint-input">
+            <option :value="0">{{ t("admin.maint.untilOff") }}</option>
+            <option :value="10">{{ t("admin.maint.min", { n: 10 }) }}</option>
+            <option :value="30">{{ t("admin.maint.min", { n: 30 }) }}</option>
+            <option :value="60">{{ t("admin.maint.min", { n: 60 }) }}</option>
+            <option :value="120">{{ t("admin.maint.min", { n: 120 }) }}</option>
+          </select>
+        </label>
+        <p class="sub admin-maint-hint">{{ t("admin.maint.untilHint") }}</p>
+
+        <label class="admin-maint-preview">
+          <input type="checkbox" :checked="maint.preview" @change="setPreview($event.target.checked)" />
+          <span>{{ t("admin.maint.preview") }}</span>
+        </label>
+      </section>
+
       <section v-else-if="tab === 'clientlogs'" class="card">
         <div class="row-between">
           <h2 style="margin-bottom: 0">

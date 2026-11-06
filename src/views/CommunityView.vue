@@ -16,6 +16,7 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick, onActivated, on
 import { useRouter, useRoute, onBeforeRouteLeave } from "vue-router";
 import { NButton, NInput, NAvatar, NTag } from "naive-ui";
 import { t, i18n } from "../i18n.js";
+import { sortByLang, langBadge, contentPref } from "../utils/contentLang.js";
 import { getItem, setItem, removeItem } from "../utils/storage.js";
 import { restoreScroll } from "../utils/scrollMem.js";
 /* 轮 32：个人数据键按账号分域（游客账/各登录账号互不串），读写走 scopeGet/scopeSet */
@@ -884,7 +885,7 @@ async function dislike(p) {
   if (!r) {
     p.mine = { ...(p.mine || {}), dislike: wasOn };
     p.reacts = { ...p.reacts, dislike: Math.max(0, (p.reacts.dislike || 0) + (wasOn ? 1 : -1)) };
-    showWallMsg(errorKind(cloud.error) === "not-migrated" ? "community.needSetup" : "community.dislikeFail");
+    showWallMsg(errKeyFor("community.dislikeFail"));
     return;
   }
   p.views = r.views;
@@ -901,6 +902,16 @@ const wallMsg = ref("");
 function showWallMsg(tk) {
   wallMsg.value = tk;
   setTimeout(() => { wallMsg.value = ""; }, 3600);
+}
+
+/* 轮 444：维护期写入被拦时给「正在升级」，别掉进各自的通用失败文案
+ * （「发布失败」会让人以为网坏了，然后反复重试 —— 那才是真的烦）。 */
+function errKeyFor(fallback) {
+  const k = errorKind(cloud.error);
+  if (k === "daily-limit") return "community.dailyLimit";
+  if (k === "not-migrated") return "community.needSetup";
+  if (k === "maintenance") return "community.maintenance";
+  return fallback;
 }
 
 /* ════════ 原生下拉刷新（轮 18 补做：用户点名「完全没做」）════════
@@ -1053,10 +1064,8 @@ async function submit() {
     if (created) {
       cloudPosts.value.unshift(created);
     } else {
-      /* 云端拒绝时区分原因：每日限额 / 未跑迁移 / 其它（cloud.error 已记录） */
-      const kind = errorKind(cloud.error);
-      showWallMsg(kind === "daily-limit" ? "community.dailyLimit"
-        : kind === "not-migrated" ? "community.needSetup" : "community.postFail");
+      /* 云端拒绝时区分原因：每日限额 / 未跑迁移 / 维护中 / 其它（cloud.error 已记录） */
+      showWallMsg(errKeyFor("community.postFail"));
       return;
     }
   } else {
@@ -1125,7 +1134,7 @@ async function reactSync(post, kind, k, seq) {
   /* 期间又点过（序号变了）：这次响应过期，什么都别改，后面的任务会把最终状态写对 */
   if (!reactQ.isLatest(k, seq)) return;
   if (!fresh) {
-    showWallMsg(errorKind(cloud.error) === "not-migrated" ? "community.needSetup" : "community.reactFail");
+    showWallMsg(errKeyFor("community.reactFail"));
   }
 }
 function react(post, kind) {
@@ -1735,16 +1744,21 @@ const all = computed(() => [
 ]);
 /* 展示用：推荐 = 最近 7 天按天随机（默认）；其余 = 按时间范围筛 + 排序 */
 const shown = computed(() => {
-  /* 轮 252：搜索激活 → 直接展示搜索结果（正常流的游标/缓存不动，清空搜索即原样回来） */
+  /* 轮 252：搜索激活 → 直接展示搜索结果（正常流的游标/缓存不动，清空搜索即原样回来）
+     轮 439：搜索结果**不按语言重排** —— 用户搜东西时要的是全部，不是「我这种语言的全部」。 */
   if (searchActive.value) return searchRows.value;
   const visible = visibleOnly(all.value);
+  /* 轮 439：开了「优先本语言」就把本语言的内容提到前面（稳定排序，组内顺序不动）。
+     注意这里是**排序不是过滤**：库里 99% 是中文，西语用户硬过滤会白屏。
+     没开开关时 sortByLang 原样返回，零开销。 */
   /* 轮 292：salt = 每台设备固定的观众盐 → 同一天不同人看到不同顺序；REC_SALT 为空时退化成旧的全站同序
      轮 293：days 不再写死 7 —— 跟着 recDays 走，触底逐级放宽（Infinity = 不筛天） */
-  if (sortMode.value === "recommend") return recommendPosts(visible, { days: recDays.value, salt: REC_SALT });
-  return sortPosts(
+  const byLang = (list) => sortByLang(list, (p) => p.lang);
+  if (sortMode.value === "recommend") return byLang(recommendPosts(visible, { days: recDays.value, salt: REC_SALT }));
+  return byLang(sortPosts(
     visible.filter((p) => inRange(p, rangeFor(sortMode.value, rangeMode.value))),
     sortMode.value
-  );
+  ));
 });
 /* 下架线提示用：厌恶 ÷ 浏览（#26 双档；只给数据层/管理侧用，用户界面不再显示比例） */
 function disPct(p) { return ratioPct(p.views, (p.reacts && p.reacts.dislike) || 0); }
@@ -2618,7 +2632,7 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
             :class="{ clickable: canOpen(p) }"
             :title="canOpen(p) ? t('community.viewHome') : ''"
             @click="goProfile(p)">{{ p.name }}</div>
-          <div class="post-time">{{ when(p.ts) }}</div>
+          <div class="post-time">{{ when(p.ts) }}<span v-if="langBadge(p.lang)" class="lang-tag">{{ langBadge(p.lang) }}</span></div>
         </div>
         <!-- 轮 146：示例帖下线，原「示例」角标（v-if="p.sample"）随之移除 -->
         <!-- 轮 84：帖子右上角 … 菜单（举报迁入 + 拷贝正文）；post-foot 里原举报按钮移除 -->

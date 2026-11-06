@@ -15,6 +15,7 @@ import {
   themeKey, themeOptions, applyTheme,
   langOptions, onLangPick, isMobileNav, isApp,
 } from "../stores/uiStore.js";
+import { contentPref, setPrefMode } from "../utils/contentLang.js";
 import { getItem, setItem } from "../utils/storage.js";
 import { blockState, refreshBlocks } from "../utils/userBlocks.js";
 /* 轮 297 · 版本与检查更新 */
@@ -91,6 +92,9 @@ const langName = computed(() => {
   const o = (langOptions || []).find((x) => x.key === i18n.locale);
   return o ? o.label : "";
 });
+/* 轮 439：内容语言开关。必须是 setup 顶层函数 —— 写进 computed 里模板就取不到（踩过）。
+   改了立即生效：暖心墙/故事靠 computed 重排，漂流瓶下次捞才变。 */
+function onPrefToggle(v) { setPrefMode(v ? "prefer" : "all"); }
 
 /* —— 昵称修改（常驻；与「我的」页同一套校验与写入路径） —— */
 const nickDraft = ref("");
@@ -352,6 +356,16 @@ watch(cloudSigned, (v) => {
           @click.stop="onLangPick(o.key)">
           {{ o.label }}
         </button>
+        <!-- 轮 439：内容语言开关。跟上面的界面语言是两件事 ——
+             界面语言决定按钮和标题说什么话，这个决定别人写的内容先给你看哪种语言。 -->
+        <div class="lang-pref" @click.stop>
+          <span class="lang-pref-text">
+            <span class="lang-pref-title">{{ t("settings.preferLang") }}</span>
+            <span class="lang-pref-hint">{{ t("settings.preferLangHint") }}</span>
+          </span>
+          <van-switch :model-value="contentPref.mode === 'prefer'" size="20px"
+            @update:model-value="onPrefToggle" />
+        </div>
       </div>
     </section>
 

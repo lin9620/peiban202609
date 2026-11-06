@@ -98,15 +98,26 @@ const rows = [{ id: 1 }, { id: 2 }];
 /* ─────────── 帖子 ─────────── */
 {
   const { fake, out } = await run([{ data: rows }], () => db.listPosts(200));
-  ok("listPosts 形状（轮 170 显式列，去 select *）",
-    fake.calls[0] === "from:wall_posts|select:id,user_id,author_name,body,image_path,created_at,views,dislikes,removed|eq:removed:false|order:created_at:desc|limit:200", fake.calls[0]);
+  ok("listPosts 形状（轮 170 显式列，去 select *；轮 439 起带 lang）",
+    fake.calls[0] === "from:wall_posts|select:id,user_id,author_name,body,image_path,created_at,views,dislikes,removed,lang|eq:removed:false|order:created_at:desc|limit:200", fake.calls[0]);
   ok("listPosts 返回行", JSON.stringify(out) === JSON.stringify(rows));
 }
 {
+  /* 当前线上最常见的中间态：有 removed、还没跑 lang 迁移 */
   const { fake, out } = await run([{ error: { code: "42703" } }, { data: rows }], () => db.listPosts(200));
-  ok("listPosts 无 removed 列 → 退回查询不带该过滤",
-    fake.calls[1] === "from:wall_posts|select:id,user_id,author_name,body,image_path,created_at,views,dislikes,removed|order:created_at:desc|limit:200", fake.calls[1]);
-  ok("listPosts 降级仍返回行", out && out.length === 2);
+  ok("listPosts 无 lang 列 → 退回不带 lang（保留 removed 过滤）",
+    fake.calls[1] === "from:wall_posts|select:id,user_id,author_name,body,image_path,created_at,views,dislikes,removed|eq:removed:false|order:created_at:desc|limit:200", fake.calls[1]);
+  ok("listPosts 缺 lang 降级仍返回行", out && out.length === 2);
+}
+{
+  /* 极老库：lang 和 removed 都没有 → 再降一档 */
+  const { fake, out } = await run(
+    [{ error: { code: "42703" } }, { error: { code: "42703" } }, { data: rows }],
+    () => db.listPosts(200),
+  );
+  ok("listPosts 无 removed 列 → 再退回不带该过滤",
+    fake.calls[2] === "from:wall_posts|select:id,user_id,author_name,body,image_path,created_at,views,dislikes,removed|order:created_at:desc|limit:200", fake.calls[2]);
+  ok("listPosts 两级降级仍返回行", out && out.length === 2);
 }
 {
   const { fake } = await run([{ data: rows }], () => db.listPostsByUser("u1", 50));

@@ -105,7 +105,8 @@ async function submit() {
   if (!created) {
     const kind = errorKind(cloud.error);
     return showMsg(kind === "daily-limit" ? "community.dailyLimit"
-      : kind === "not-migrated" ? "community.needSetup" : "community.postFail");
+      : kind === "not-migrated" ? "community.needSetup"
+        : kind === "maintenance" ? "community.maintenance" : "community.postFail");
   }
   setItem(POST_DAY_KEY, JSON.stringify({ day: utcDay(), n: localCount.value + 1 }));
   draft.value = "";
