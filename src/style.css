@@ -1394,6 +1394,11 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 /* 轮446：菜单里的破坏性项（删除）。危险色，与「收藏/拷贝」拉开层级 */
 .more-item.more-danger { color: var(--low); }
 .more-item.more-danger:hover { color: #fff; background: var(--low); }
+/* 轮453：帖子 / 评论 / 回复这三处 ⋯ 菜单同样在底部补「关闭」（与 dm-menu 同口径）。 */
+.more-sep { height: 1px; margin: 4px 2px 3px; background: rgba(140, 110, 92, .15); }
+.more-item.more-close { text-align: center; color: var(--ink-faint); }
+.more-item.more-close:hover { color: var(--ink-soft); background: rgba(120, 100, 90, .06); }
+html[data-theme="night"] .more-sep { background: rgba(255, 255, 255, .12); }
 
 /* 轮446：作者删帖的离场动画 —— 先淡出再发请求，避免「点了没反应」。
    不做高度塌陷：max-height 从 auto 到 0 无法过渡（会瞬跳），
@@ -2159,6 +2164,16 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 }
 .dm-menu-item:hover { background: var(--accent-soft); }
 .dm-menu-item.danger { color: #d9534f; }
+/* 轮453：菜单底部补一条「关闭」。
+ * 用户截图圈着菜单最下面问「加一个关闭功能」——原来这些 ⋯ 菜单只能靠点外面空白收起，
+ * 靠屏幕底边弹出时外面可点的区域很窄，看着像「出不去了」。
+ * 分隔线把它和上面的动作切开（它不是动作，是退出），文字弱化居中，不抢「拉黑」那种红字。 */
+.dm-menu-sep { height: 1px; margin: 5px 2px 4px; background: rgba(140, 110, 92, .15); }
+.dm-menu-item.dm-menu-close {
+  text-align: center; color: var(--ink-faint); font-weight: 500;
+}
+.dm-menu-item.dm-menu-close:hover { color: var(--ink-soft); background: rgba(120, 100, 90, .06); }
+html[data-theme="night"] .dm-menu-sep { background: rgba(255, 255, 255, .12); }
 .dm-req-acts { display: flex; gap: 8px; margin-top: 7px; }
 .dm-act {
   border: 1.5px dashed rgba(204, 120, 92, .45); background: transparent;
@@ -2182,6 +2197,9 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
  *  必须放在 .dm-menu 规则之后——同特异性下后写者胜，才能盖掉 .dm-menu 的 right:8px / top:34px。 */
 .dm-head-tools { position: relative; flex: 0 0 auto; }
 .dm-head-menu { top: 36px; right: 0; min-width: 156px; }
+/* 轮453：会话行菜单放不下时翻到行上方（判断在 toggleRowMenu 里量完再挂 .up）。
+ * 桌面端 .dm-list 是 overflow-y:auto，向下展开超出列表底边会被裁掉，最后两项直接看不见。 */
+.dm-menu.up { top: auto; bottom: 34px; }
 .dm-menu-note { margin: 4px 6px; font-size: 12px; max-width: 220px; }
 .dm-msg-avatar.clickable { cursor: pointer; }
 .dm-msg-avatar.clickable:hover { filter: brightness(1.06); }

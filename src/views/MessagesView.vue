@@ -230,7 +230,27 @@ let entryFallback = 0;              /* 杞?249锛歰penConv 鐨?2s 鎻ず鍏�
 function onListTouch() { userScrolling.value = true; }
 function onListWheel() { userScrolling.value = true; }
 const meta = ref(null);      // 褰撳墠浼氳瘽鍏冧俊鎭紙鏄电О / 鍏嶆墦鎵?/ 鎷夐粦 / 娑堟伅璇锋眰锛?
-const menuFor = ref("");     // 灞曞紑鎿嶄綔鑿滃崟鐨勪細璇?id
+const menuFor = ref("");     /* 展开操作菜单的会话 id */
+/* 轮453：菜单默认从行下方展开。会话列表靠屏幕底部时，展开后会顶到视口外 ——
+ * 桌面端更强：.dm-list 是 overflow-y:auto，超出列表底边会被直接裁掉（最后两项看不见）。
+ * 打开时量一次实际高度，放不下就翻到行上方（.up）。只在会溢出时才生效，不影响常规位置。 */
+const menuUp = ref(false);
+function toggleRowMenu(ev, convId) {
+  const k = String(convId);
+  if (menuFor.value === k) { menuFor.value = ""; return; }
+  menuUp.value = false;
+  menuFor.value = k;
+  nextTick(() => {
+    /* 注意：不能用 $event.currentTarget —— 事件处理结束后它会被浏览器置 null，
+     * 而这里是 nextTick 回调（异步）。target 是持久引用，closest 找到所属行。 */
+    const host = ev && ev.target && ev.target.closest && ev.target.closest(".dm-row");
+    const el = host && host.querySelector(".dm-menu");
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    if (r.bottom > window.innerHeight - 8) menuUp.value = true;
+  });
+}
+
 const fromList = ref(false); // 鎵嬫満褰㈡€侊細鏈細璇濇槸浠庝細璇濆垪琛ㄧ偣杩涙潵鐨勶紙鈫?鐢?router.back 鍥炲垪琛級
 
 const REQ = "requests";      // 浼細璇濆垎缁勯敭锛堟秷鎭姹傦級
@@ -2321,12 +2341,14 @@ function goSignIn() {
             <span v-if="rowUnread(c)" class="dm-badge">{{ rowUnread(c) > 99 ? "99+" : rowUnread(c) }}</span>
             <!-- 免打扰会话：不亮数字，只留一个无数字灰点（有未读但不催你） -->
             <i v-else-if="c.muted && Number(c.unread) > 0" class="dm-quiet-dot" :title="t('dm.mutedPending', { n: c.unread })"></i>
-            <button class="dm-more" :title="t('dm.more')" @click.stop="menuFor = (menuFor === String(c.conv_id) ? '' : String(c.conv_id))">⋯</button>
-            <div v-if="menuFor === String(c.conv_id)" class="dm-menu">
+            <button class="dm-more" :title="t('dm.more')" @click.stop="toggleRowMenu($event, c.conv_id)">⋯</button>
+            <div v-if="menuFor === String(c.conv_id)" class="dm-menu" :class="{ up: menuUp }">
               <button class="dm-menu-item" @click.stop="openConv(c.conv_id); menuFor = ''">{{ t("dm.open") }}</button>
               <button class="dm-menu-item" @click.stop="toggleMute(c)">{{ c.muted ? t("dm.unmute") : t("dm.mute") }}</button>
               <button class="dm-menu-item" @click.stop="hideConv(c)">{{ t("dm.hide") }}</button>
               <button class="dm-menu-item danger" @click.stop="toggleBlock(c)">{{ t("dm.block") }}</button>
+              <div class="dm-menu-sep" role="separator"></div>
+              <button class="dm-menu-item dm-menu-close" @click.stop="menuFor = ''">{{ t("common.close") }}</button>
             </div>
           </div>
         </template>
@@ -2363,6 +2385,8 @@ function goSignIn() {
                 <button class="dm-menu-item danger" @click="headMenu = false; blockPeer()">{{ curPeer.blocked ? t("dm.unblock") : t("dm.block") }}</button>
               </template>
               <p v-else class="sub dm-menu-note">{{ t("bottle.noChatYet") }}</p>
+              <div class="dm-menu-sep" role="separator"></div>
+              <button class="dm-menu-item dm-menu-close" @click="headMenu = false">{{ t("common.close") }}</button>
             </div>
           </div>
         </template>
@@ -2423,6 +2447,8 @@ function goSignIn() {
                 </template>
                 <!-- 婕傛祦鐡惰繕娌″缓浼氳瘽锛氭病鏈夊彲闈欓煶/鎷夐粦鐨勪細璇濓紝濡傚疄璇存槑锛堜笉鎽嗙┖鎸夐挳锛?-->
                 <p v-else-if="seg === 'bottle'" class="sub dm-menu-note">{{ t("bottle.noChatYet") }}</p>
+                <div class="dm-menu-sep" role="separator"></div>
+                <button class="dm-menu-item dm-menu-close" @click="headMenu = false">{{ t("common.close") }}</button>
               </div>
             </div>
           </header>

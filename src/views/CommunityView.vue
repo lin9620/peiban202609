@@ -2930,6 +2930,8 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
           <button class="more-item" @click="moreCopy">{{ t("common.copy") }}</button>
           <!-- 轮446：作者本人才能看到（canReportPost 要求「不是我」，两者天然互斥） -->
           <button v-if="canDeletePost(p)" class="more-item more-danger" @click="deletePost(p)">{{ t("post.delete") }}</button>
+          <div class="more-sep" role="separator"></div>
+          <button class="more-item more-close" @click="closeMore">{{ t("common.close") }}</button>
         </div>
       </div>
 
@@ -3033,6 +3035,8 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
             <div v-if="moreKey === cmtMoreKey(cm)" class="more-pop card" @click.stop>
               <button v-if="canReportCmt(cm)" class="more-item" @click="moreReport">{{ t("report.act") }}</button>
               <button class="more-item" @click="moreCopy">{{ t("common.copy") }}</button>
+              <div class="more-sep" role="separator"></div>
+              <button class="more-item more-close" @click="closeMore">{{ t("common.close") }}</button>
             </div>
           </div>
           <p class="cmt-text cmt-text-open" :title="t('comment.reply')">{{ cm.text }}</p>
@@ -3088,6 +3092,8 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
                 <div v-if="moreKey === cmtMoreKey(rp)" class="more-pop card" @click.stop>
                   <button v-if="canReportCmt(rp)" class="more-item" @click="moreReport">{{ t("report.act") }}</button>
                   <button class="more-item" @click="moreCopy">{{ t("common.copy") }}</button>
+                  <div class="more-sep" role="separator"></div>
+                  <button class="more-item more-close" @click="closeMore">{{ t("common.close") }}</button>
                 </div>
               </div>
               <p class="cmt-text cmt-text-open" :title="t('comment.reply')">{{ rp.text }}</p>

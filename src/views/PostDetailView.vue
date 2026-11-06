@@ -1175,6 +1175,8 @@ onUnmounted(() => {
             <button v-if="canUnfollowHere" class="more-item" @click="unfollowHere">{{ t("follow.unfollow") }}</button>
             <!-- 轮446：作者本人才能看到（canReportPost 要求「不是我」，两者天然互斥） -->
             <button v-if="canDeletePost()" class="more-item more-danger" @click="deleteCurrentPost">{{ t("post.delete") }}</button>
+            <div class="more-sep" role="separator"></div>
+            <button class="more-item more-close" @click="closeMore">{{ t("common.close") }}</button>
           </div>
         </div>
 
@@ -1256,6 +1258,8 @@ onUnmounted(() => {
               <div v-if="moreKey === 'cmt:' + cm.id" class="more-pop card" @click.stop>
                 <button v-if="canReportCmt(cm)" class="more-item" @click="moreReport">{{ t("report.act") }}</button>
                 <button class="more-item" @click="moreCopy">{{ t("common.copy") }}</button>
+                <div class="more-sep" role="separator"></div>
+                <button class="more-item more-close" @click="closeMore">{{ t("common.close") }}</button>
               </div>
             </div>
             <p class="cmt-text" :title="signedIn ? t('comment.reply') : ''" @click="startReply(cm, null, $event)">{{ cm.text }}</p>
@@ -1299,6 +1303,8 @@ onUnmounted(() => {
                   <div v-if="moreKey === 'cmt:' + rp.id" class="more-pop card" @click.stop>
                     <button v-if="canReportCmt(rp)" class="more-item" @click="moreReport">{{ t("report.act") }}</button>
                     <button class="more-item" @click="moreCopy">{{ t("common.copy") }}</button>
+                    <div class="more-sep" role="separator"></div>
+                    <button class="more-item more-close" @click="closeMore">{{ t("common.close") }}</button>
                   </div>
                 </div>
                 <p class="cmt-text" @click="startReply(cm, rp, $event)">{{ rp.text }}</p>
