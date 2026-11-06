@@ -295,8 +295,10 @@ t("T25 触底续载读真实滚动容器（手机端墙自滚，window.scrollY �
     && /if \(!cloudDone\.value && (?:!\w+ && )?notShown < REVEAL_STEP \/ 2\) loadMoreCloud\(\);/.test(B1),
     "预加载丢了（轮 231：不等亮完就提前拉下一页）");
   /* 轮 231：切回页签的静默新鲜化 —— KeepAlive 保活让切回时一个请求都不发（用户：点暖心墙没反应） */
-  assert.ok(/loadCloud\(\{ quiet: true \}\)/.test(B1) && /if \(quiet\) \{/.test(B1),
-    "切回暖心墙的静默新鲜化丢了");
+  /* 轮455：软合并要求列表里已经有内容（列表为空时软合并等于什么都不做，还会把
+     loadingCloud 提前置假 → 空态闪出）。所以这里锁的是「quiet 分支还在，且带非空守卫」。 */
+  assert.ok(/loadCloud\(\{ quiet: true \}\)/.test(B1) && /if \(quiet && cloudPosts\.value\.length\) \{/.test(B1),
+    "切回暖心墙的静默新鲜化丢了（或非空守卫被拿掉）");
   assert.ok(/if \(!cloudDone\.value && (?:!\w+ && )?notShown < REVEAL_STEP \/ 2\) loadMoreCloud\(\);/.test(B1), "向服务器取下一页丢了（轮 231：改预加载，不再挂在 else 分支上）");
   /* 本轮真事故的防复发锁：feedTick / onUserMove 的定义曾随退役一起被误删，而
      onMounted / onActivated / onDeactivated / onUnmounted 仍在引用它们 →

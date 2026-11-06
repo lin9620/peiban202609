@@ -186,6 +186,17 @@ ok("F12 关注流不复用 wall:posts 缓存（写进去会污染全部流）",
 ok("F13 关注流也过滤已拉黑的人（渲染层第二道防线）",
   /filterBlocked/.test(community) && /isBlockedHere/.test(waller));
 
+/* 轮455（用户截图）：退出关注流后整页变成「暖心墙还很安静，来做第一个温暖这里的人吧」。
+   根因是 exitFollowFeed 传了 quiet —— 那是「切回页签软合并」的口径，假设列表已有内容，
+   一进来就把 loadingCloud 置假且不读缓存。而它上一行刚清空 cloudPosts，
+   于是 feedEmpty 的三个条件（非关注流 / 非搜索 / 未加载 + 空列表）同时成立。 */
+const exitBody = (community.match(/function exitFollowFeed\(\)[\s\S]{0,1200}?\n\}/) || [""])[0];
+ok("F14 退出关注流走常规 SWR（不能再传 quiet：清空列表 + 不读缓存 = 空态闪出）",
+  /loadCloud\(\)/.test(exitBody) && !exitBody.includes("quiet: true"),
+  exitBody.slice(-120));
+ok("F15 quiet 软合并要求列表已有内容（列表为空要落回常规加载，否则同样闪空态）",
+  /if \(quiet && cloudPosts\.value\.length\)/.test(community));
+
 /* ══════════ ⑧ 作者主页 / 详情页 / 我的页面 ══════════ */
 
 ok("G1 作者主页关注按钮排在私信前面（关注是主按钮）",

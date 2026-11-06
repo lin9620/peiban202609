@@ -377,8 +377,12 @@ async function loadCloud({ fresh = false, quiet = false } = {}) {
      起因（用户反馈）：「点暖心墙，那个应该是刷新啊，现在怎么没反应」——
      轮 218 的 KeepAlive 保活让切回时一个数据请求都不发，内容停在离开那一刻；
      这里补上「数据新鲜」，同时保住「位置不变」。
-     ⚠ 必须放在 consume / consumeSoft 定义**之后**：提前 return 会踩 const 的 TDZ。 */
-  if (quiet) {
+     ⚠ 必须放在 consume / consumeSoft 定义**之后**：提前 return 会踩 const 的 TDZ。
+     轮455：软合并的前提是「列表里有东西」。列表是空的时候（刚从关注流退出、或上一步拉挂，
+       什么都没上屏）软合并等于什么都不做，还会把 loadingCloud 提前置假 —— 于是框架上的
+       feedEmpty 立刻成立，用户看到的是「暖心墙还很安静，来做第一个温暖这里的人吧」。
+       列表为空就落到下面的常规 SWR（有缓存读缓存、没缓存亮 loading），不在这里硬撑。 */
+  if (quiet && cloudPosts.value.length) {
     loadingCloud.value = false;
     try {
       const pack = await cloudFetchWallRefresh(REFRESH_PAGE);
@@ -1924,8 +1928,14 @@ function exitFollowFeed() {
   feedCursor.value = null;
   cloudDone.value = false;
   reveal.value = PAGE_SIZE;
-  /* 回到全部流：走常规 SWR（缓存先出、后台校准），游标/到底标志由 consume 自己重设 */
-  loadCloud({ quiet: true }).catch(() => {});
+  /* 回到全部流：走**常规** SWR（缓存先出、后台校准），游标/到底标志由 consume 自己重设。
+   * 轮455（用户截图）：这里原来带 quiet 开关，而 quiet 是给「切回页签软合并」用的 ——
+   * 它假设列表已经有内容：一进来就把 loadingCloud 置假、不读缓存、只把新帖并进现有列表。
+   * 可这里上一行刚把 cloudPosts 清空，于是 quiet 立刻满足 feedEmpty 的三个条件：
+   * 非关注流 + 非搜索 + 未在加载 + 列表为空 → 整页变成
+   * 「暖心墙还很安静——来做第一个温暖这里的人吧」，而墙上明明有几百条帖。
+   * 用常规路径才符合语义：先把缓存整表铺回来（同步，不闪空），再后台校准。 */
+  loadCloud().catch(() => {});
 }
 /* 轮449：分段控件把「全部 / 我的关注」拆成两个明确动作（enter / exit），
  * 原来的 toggleFollowFeed 已无调用点 —— 留着就是一段永远不跑的代码。 */
