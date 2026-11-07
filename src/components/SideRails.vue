@@ -345,6 +345,18 @@ async function copySlip() {
 .slip-text { font-size: 12px; line-height: 1.75; font-weight: 500; color: var(--ink); }
 .slip-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 7px; }
 
+/* 深色主题：今日任务四行原先是 55% 白玻璃 + --ink-soft 浅字，夜里就是「浅底浅字」
+ * （实测对比度约 1.5，与便签同一类毛玻），改用 --wash（夜间蓝紫 12% / 深夜黑 5.5% 白）——
+ * 底色走变量就不用给 midnight 再复制一份。完成态要显式补回 faint：
+ * .tk-row.done 只有 2 段，会被上面这条 3 段规则压成未完成色。 */
+html[data-theme="night"] .tk-row {
+  background: var(--wash);
+  color: var(--ink-soft);
+}
+html[data-theme="night"] .tk-row.done { color: var(--ink-faint); }
+html[data-theme="night"] .tk-row .tk-coin { color: var(--ink-soft); }
+html[data-theme="night"] .tk-row.done .tk-coin { color: var(--ink-faint); }
+
 /* 深色主题（星夜蓝 / 深夜黑）：便签原来是写死的白纸 + var(--ink) 文字 ——
  * 夜里 --ink 变浅（#e8eaf6），白底浅字实测对比度 1.2，整句等于隐形（用户截图报障）。
  * 便签底色跟着主题走（--card：夜间 #262c52 / 深夜黑 #141419），虚线提亮一档，
