@@ -40,7 +40,7 @@ import BottleChatList from "../components/BottleChatList.vue";
 import BottleChat from "../components/BottleChat.vue";
 import DmVacChat from "../components/DmVacChat.vue";
 import { readDmUi } from "../utils/dmUiFlag.js";
-import { isMobileNav, pushBack, popBack } from "../stores/uiStore.js";
+import { isMobileNav, chatOpen, pushBack, popBack } from "../stores/uiStore.js";
 /* T7 娑堟伅 Tab 鍐呭垎鏍忥紙绉佷俊 | 閫氱煡锛夛細閫氱煡娈电洿鎺ュ鐢?NotificationsView
  * 锛堟暟鎹眰闆堕噸鍐欙紱寮傛 chunk 涓嶆嫋鎱㈤灞忥紱鎸傝浇鍗虫媺绗?0 椤碉紝閰?SWR 缂撳瓨绉掑紑锛?*/
 const NotificationsView = defineAsyncComponent(() => import("./NotificationsView.vue"));
@@ -108,6 +108,14 @@ const paneReady = computed(() => {
   if (route.name === "messages" && String(route.params.id || "") === id) return true;
   return routeSettledFallback.value;
 });
+/* 轮 464：把「聊天面板开着」同步给外壳（App.vue 的 inChat 认它）。
+ * 判据必须与面板本身一模一样（activeId + paneReady），否则又会分叉：
+ * 面板画出来了、.shell--chat 却没挂 → height:100dvh 那一整套整屏规则全不命中，
+ * .dm-page 按内容撑到 2401px（屏高 744），输入条被推到文档末尾、进会话停在最前面。
+ * flush 默认 pre：activeId 一变就在同一次更新里写进去，外壳与面板同一帧落地。 */
+watch([isMobileNav, activeId, paneReady], () => {
+  chatOpen.value = isMobileNav.value && !!activeId.value && paneReady.value;
+}, { immediate: true });
 const msgs = ref([]);        // 褰撳墠浼氳瘽娑堟伅锛堟棫鈫掓柊锛?
 let msgsConv = "";           // msgs 鐜板湪瑁呯殑鏄摢涓細璇濓紙杞?157b锛氶槻璺ㄤ細璇濊鍚堝苟锛?
 /* 杞?225 路 浼氳瘽鍒囨崲绔炴€佸畧鍗細姣忔銆屾寜浼氳瘽鎷夋秷鎭€嶅彂鍙凤紙msgSeq锛夛紝鍝嶅簲鍥炴潵鏃舵牎楠屽彿涓庡綋鍓嶄細璇濄€?
@@ -1183,6 +1191,17 @@ function onScrollTop() {
   });
 }
 
+/* 轮 464：进会话时同步地址栏（手机 push 留历史 / 桌面 replace 不污染）。
+ * 抽出来是因为要两处调用：正常路径、以及「认证还没就绪」的早退路径。 */
+function syncConvRoute(id, same) {
+  if (isMobileNav.value) {
+    if (!same) fromList.value = true;
+    router.push({ name: "messages", params: { id: String(id) } }).catch(() => {});
+  } else {
+    router.replace({ name: "messages", params: { id: String(id) } }).catch(() => {});
+  }
+}
+
 async function openConv(id) {
   const owner = meId.value;
   seg.value = "dm";
@@ -1201,6 +1220,11 @@ async function openConv(id) {
   pressedId.value = "";
   /* 杞?376锛氳璇佽繕娌″氨缁椂鍙浣?activeId锛屽叿浣撳姞杞戒氦缁?boot 鐨?firstOpen锛?
    * 鍚﹀垯浼氭嬁绌鸿处鍙峰幓璇诲簱/鍙?markRead銆?*/
+  /* 轮 464：地址栏同步提到 owner 判断之前 —— 认证未就绪只表示「数据晚点拉」，
+   * 不代表「URL 不用变」。以前这里直接 return：activeId 有了、路由还停在 /messages，
+   * 而 App.vue 的 inChat 只认路由 → .shell--chat 不挂 → 整屏高度那一整套规则全不命中
+   * （真机 ?kbdiag=1：.dm-page 撑到 2401px，屏高只有 744，输入条被推到文档末尾）。 */
+  syncConvRoute(id, same);
   if (!owner) return;
   /* 杞?318锛氭崲浼氳瘽 = 杈撳叆妗嗗洖鍒颁竴琛岋紝鍒妸涓婁竴涓細璇濈殑銆岄珮搴﹂拤瀛愩€嶅甫杩囨潵 */
   if (!same) releaseCompose();
@@ -1272,6 +1296,14 @@ async function openConv(id) {
 /* 鈫?杩斿洖浼氳瘽鍒楄〃锛堟墜鏈哄舰鎬侊級锛氫粠鍒楄〃鐐硅繘鏉?鈫?閫€涓€姝ワ紙涓嶇暀澶氫綑鍘嗗彶锛夛紱
  * 鐩撮摼杩涙潵锛堥€氱煡涓績 / 鐡跺瓙璁板綍锛夆啋 鐩存帴璺冲垪琛ㄣ€?*/
 function backToList() {
+  /* 轮 464：路由没跟上时（openConv 早退 / 导航被拦 / 直链后回过列表）绝不能走
+   * router.back() —— 地址栏本来就在 /messages，一退就直接离开消息页。就地清态即可。 */
+  const onConvRoute = route.name === "messages" && !!route.params.id;
+  if (!onConvRoute) {
+    fromList.value = false;
+    resetConv();
+    return;
+  }
   if (fromList.value) {
     fromList.value = false;
     router.back();
@@ -2135,6 +2167,7 @@ onDeactivated(() => {
 });
 onBeforeUnmount(() => {
   popBack(segBack);
+  chatOpen.value = false;
   scrollGen++;   /* 轮 377：卸载后旧 rAF 不再写 DOM */
   if (topRaf) { cancelAnimationFrame(topRaf); topRaf = 0; }
   document.removeEventListener("pointerdown", onDocPointerDown);
@@ -2226,7 +2259,7 @@ function goSignIn() {
 </script>
 
 <template>
-  <div class="dm-page">
+  <div class="dm-page" :class="{ 'dm-page--chat': isMobileNav && !!activeId && paneReady }">
     <!-- 杞?344锛氬喎鍚姩鍏堢瓑鐧诲綍鎬佹仮澶嶏紝鍒妸銆屾鍦ㄦ仮澶嶃€嶇敾鎴愩€屾湭鐧诲綍銆?-->
     <div v-if="!signedIn && cloud.checking" class="dm-wrap">
       <section

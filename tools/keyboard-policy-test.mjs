@@ -110,8 +110,13 @@ t("轮 462：网页端用 visualViewport 量键盘，且只在真的在输入时
 t("style.css：.kb-web 三处让位与 .cap-app 一一对应（改一份就要改另一份）", () => {
   const css = readCss("src/style.css");
   assert(/html\.kb-web \{[^}]*--kb-h:\s*0px/.test(css), "kb-web 没定义 --kb-h 初值");
-  assert(/html\.kb-web \.shell--mobile-nav\.shell--chat \.dm-page\s*\{[^}]*height:\s*calc\(100dvh - var\(--kb-h\)\)/.test(css),
+  assert(/html\.kb-web \.shell--mobile-nav\.shell--chat \.dm-page\s*\{[^}]*height:\s*calc\(100dvh - var\(--kb-h/.test(css),
     "聊天页高度没接 --kb-h");
+  /* 轮 464：这条规则是 100dvh 单写 —— 内核不认 dvh 时整条失效，而它又压掉了上面
+   * 那条 100vh/100dvh，height 直接落回 auto（真机 .dm-page=2401，屏高 744）。
+   * 必须补一行 100vh 的同一算式当垫底。 */
+  assert(/html\.kb-web \.shell--mobile-nav\.shell--chat \.dm-page\s*\{[^}]*height:\s*calc\(100vh - var\(--kb-h/.test(css),
+    "聊天页高度缺 100vh 垫底（旧内核不认 dvh → 整条失效 → 按内容撑高）");
   assert(/html\.kb-web \.cmt-main-bar\s*\{[^}]*bottom:\s*var\(--kb-h\)/.test(css),
     "评论底条 bottom 没接 --kb-h");
   assert(/html\.kb-web \.reply-bar\s*\{[^}]*bottom:\s*calc\(var\(--kb-h\) \+ 64px/.test(css),

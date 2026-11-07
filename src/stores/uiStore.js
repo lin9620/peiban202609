@@ -25,6 +25,19 @@ export const isMobileNav = computed(() => isApp || vw.value < 900);
  * tabbar（轮 103 弹窗被盖是同一陷阱）；聊天页 inChat 隐藏 tabbar 是同款先例。 */
 export const tabbarSuppressed = ref(false);
 
+/* ═══ 轮 464 · 「聊天页开着」由聊天页自己声明 ═══
+ * 事故（用户真机截图 ?kbdiag=1）：聊天面板已经画出来了，但 .shell--chat 没挂上 ——
+ * 整屏聊天页的高度规则（height:100dvh 等一整套）全部不命中 → .dm-page 变成
+ * 「按内容撑高」的 2401px（屏高只有 744），于是：
+ *   ① 输入条被推到 2401 那一行的末尾，键盘怎么让位都看不见；
+ *   ② 进会话停在整个文档的最顶上 = 用户报的「直接出现在记录最前方」。
+ * 根因是两套判据各说各话：面板显不显示看 activeId / paneReady（组件内状态），
+ * .shell--chat 看 route.params.id（App.vue 的 inChat）。openConv 在
+ * 「登录态还没就绪（!owner）」时会提前 return、**根本没 push 路由**，而 paneReady
+ * 400ms 兜底照样放行面板 —— 两边就分叉了；路由被拦/重复导航同理。
+ * 现在改成：聊天页把「我在聊天」写进这个 ref，App.vue 的 inChat 认它，二者同源。 */
+export const chatOpen = ref(false);
+
 /* ═══ 轮 138 · 桌面左导航展开态（🐾 开关：64 → 212px，与右栏同宽）═══
  * 用户拍板方案 A：爪印只当开关，「回首页」交给展开后的品牌行。
  * 轮 140：**默认展开**（用户要求）——只有用户显式点过收起（存 "0"）才回到收起态；

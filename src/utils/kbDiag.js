@@ -36,14 +36,17 @@ export function installKbDiag() {
       const page = document.querySelector(".dm-page");
       const thread = document.querySelector(".dm-thread");
       const scroll = document.querySelector(".dm-scroll");
+      const shell = document.querySelector(".shell");
       const foot = document.querySelector(".dm-compose") || document.querySelector(".vac-room-footer");
       const lines = [
         `kb-web=${html.classList.contains("kb-web") ? "on" : "off"}  --kb-h=${kbVar || "无"}  shell=${html.dataset.theme || "-"}`,
-        `innerH=${px(window.innerHeight)}  vvH=${px(vv.height)}  vvTop=${px(vv.offsetTop)}  scale=${(vv.scale || 1).toFixed(2)}`,
-        `page=${page ? px(page.getBoundingClientRect().height) : "-"}  thread=${thread ? px(thread.getBoundingClientRect().height) : "-"}`,
+        `innerH=${px(window.innerHeight)}  innerW=${px(window.innerWidth)}  vvH=${px(vv.height)}  vvTop=${px(vv.offsetTop)}  scale=${(vv.scale || 1).toFixed(2)}`,
+        `page=${page ? px(page.getBoundingClientRect().height) : "-"}  thread=${thread ? px(thread.getBoundingClientRect().height) : "-"}  样式=${page ? Math.round(parseFloat(getComputedStyle(page).height) || 0) : "-"}`,
+        `壳=${shell ? shell.className : "-"}`,
         `foot.bottom=${foot ? px(foot.getBoundingClientRect().bottom) : "-"}  屏底=${px(window.innerHeight)}`,
         `scroll st=${scroll ? px(scroll.scrollTop) : "-"}/${scroll ? px(scroll.scrollHeight) : "-"}/${scroll ? px(scroll.clientHeight) : "-"}`,
-        `cls=${html.className.slice(0, 60)}`,
+        `cls=${html.className.slice(0, 60)}  ${(document.querySelector('script[type="module"]') || {}).src
+          ? String(document.querySelector('script[type="module"]').src).split("/").pop() : "-"}`,
       ];
       box.textContent = lines.join("\n");
       box.appendChild(close);   /* textContent 会清掉子节点，按钮补回去 */

@@ -2529,7 +2529,11 @@ html.cap-app .reply-bar {
  * 这三条规则等价于改造前，零变化。 */
 html.kb-web { --kb-h: 0px; }
 html.kb-web .shell--mobile-nav.shell--chat .dm-page {
-  height: calc(100dvh - var(--kb-h));
+  /* 轮 464：补 100vh 兜底 —— Xiaomi/国产浏览器内核常低于 Chromium 108，不认 dvh，
+   * 只写 dvh 时这条规则整条失效，而它又压掉了上面那条 100vh/100dvh，height 落回 auto
+   * （真机实测 .dm-page = 2401px，屏高 744）＝ 输入条被推到文档末尾。 */
+  height: calc(100vh - var(--kb-h, 0px));
+  height: calc(100dvh - var(--kb-h, 0px));
   transition: height .22s cubic-bezier(.2, .8, .2, 1);
 }
 /* 轮 463：底部保底 10px。安卓浏览器的 env(safe-area-inset-bottom) 恒为 0（Chromium 不返回
@@ -2538,6 +2542,32 @@ html.kb-web .shell--mobile-nav.shell--chat .dm-page {
    表情面板打开时归零 —— 面板自己带同高的 padding-bottom，否则会多一条。 */
 html.kb-web .shell--mobile-nav.shell--chat .dm-thread:not(.wp-emoji-open):not(.wp-kb-swap) {
   padding-bottom: max(10px, env(safe-area-inset-bottom, 0px));
+}
+
+/* ═══ 轮 464 · 聊天页自我兜底（.dm-page--chat 由 MessagesView 自己挂）═══
+ * 事故：面板已经画出来，外壳的 .shell--chat 却没挂上（面板看 activeId/paneReady，
+ * 外壳看路由，两套判据分叉）→ 下面这一整套整屏规则全部不命中，.dm-page 按内容
+ * 撑到 2401px（屏高 744）：输入条被推到文档末尾、进会话停在整个文档最顶上
+ * （用户报的「直接出现在记录最前方」）、键盘让位看起来完全没生效。
+ * 所以把「整屏」这件事也写一份在页面自己身上：只要面板开着，高度就必须是视口高度，
+ * 与外壳类无关。口径与上面 .shell--mobile-nav.shell--chat 那组一致，改一份要一起看。 */
+.dm-page--chat { height: 100vh; height: 100dvh; gap: 0; }
+html.kb-web .dm-page--chat,
+html.cap-app .dm-page--chat {
+  height: calc(100vh - var(--kb-h, 0px));
+  height: calc(100dvh - var(--kb-h, 0px));
+  transition: height .22s cubic-bezier(.2, .8, .2, 1);
+}
+.dm-page--chat .dm-wrap {
+  display: flex; flex-direction: column; align-items: stretch;
+  width: 100%; gap: 0; flex: 1; min-height: 0;
+}
+.dm-page--chat .dm-thread {
+  flex: 1; min-height: 0; width: 100%; margin-bottom: 0;
+  border: none; border-radius: 0; box-shadow: none; background: var(--page-bg);
+}
+.dm-page--chat .dm-scroll {
+  flex: 1; min-height: 0; width: 100%; max-height: none; overscroll-behavior: contain;
 }
 html.kb-web .cmt-main-bar {
   bottom: var(--kb-h);

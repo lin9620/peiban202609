@@ -13,7 +13,7 @@ import TabBar from "./components/TabBar.vue";
 import MaintenanceBar from "./components/MaintenanceBar.vue";
 import { db } from "./utils/api/db.js";
 import { startMaintenanceWatch } from "./utils/maintenance.js";
-import { isApp, isMobileNav, runBack, tabbarSuppressed, navOpen, dlOpenSeq } from "./stores/uiStore.js";
+import { isApp, isMobileNav, chatOpen, runBack, tabbarSuppressed, navOpen, dlOpenSeq } from "./stores/uiStore.js";
 import { installTapFeedback } from "./utils/tapFeedback.js";
 import {
   wallet, moodStreak, petNotices, dismissPetNotice,
@@ -44,9 +44,17 @@ const router = useRouter();
 
 /* 手机形态的整屏页（微信式）＝ 聊天页（/messages/:id）+ 独立发帖页（/compose）：
  * 底部 TabBar 与页脚一并让位，返回靠页内 ← 钮与系统返回键。
- * 桌面双列同页 / 桌面发布框不触发（isMobileNav=false，桌面零变化）。 */
-const inChat = computed(() => isMobileNav.value
-  && ((route.name === "messages" && !!route.params.id) || route.name === "compose"));
+ * 桌面双列同页 / 桌面发布框不触发（isMobileNav=false，桌面零变化）。
+ * 轮 464：聊天态还要认 chatOpen —— 聊天页开面板时自己写它。以前只认路由，
+ * 一旦 openConv 没把路由推上去（登录态未就绪时提前 return / 导航被拦），面板
+ * 画出来了而 .shell--chat 没挂 → 整屏高度全丢，输入条跑到 2401px 的文档末尾。 */
+const inChat = computed(() => isMobileNav.value && (
+  route.name === "compose"
+  || (route.name === "messages" && !!route.params.id)
+  /* 轮 464：chatOpen 只在消息页里算数 —— 消息页是 KeepAlive 保活的，离开后它的
+     onBeforeUnmount 不一定跑，若不加这个限定，去别的页面 tabbar 会一直不回来。 */
+  || ((route.name === "messages" || route.name === "messagesList") && chatOpen.value)
+));
 
 /* 私信 / 通知角标：登录后由 badgeStore 每 30s 智能轮询（后台暂停）。
  * #14：红点只挂在聊天入口（💬）——🔔 不再显示红点，通知进页面看。

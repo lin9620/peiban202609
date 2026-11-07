@@ -123,7 +123,7 @@ function applyWeb() {
      就没有文档级滚动，这一滚会在页尾露出一条「视口之外」的空白（用户截图①那块）。
      只在整屏聊天壳里归零 —— 别的页面（首页搜索框等）本来就靠文档滚动把输入框带进可视区，
      在那里强行归零会把光标送回键盘底下。每帧都判：Safari 会在键盘动画期间反复滚。 */
-  if (h > 0 && document.querySelector(".shell--chat")) {
+  if (h > 0 && document.querySelector(".shell--chat, .dm-page--chat")) {
     try {
       const se = document.scrollingElement || document.documentElement;
       if (se && se.scrollTop > 0) se.scrollTop = 0;

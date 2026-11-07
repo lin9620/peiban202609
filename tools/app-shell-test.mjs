@@ -199,7 +199,7 @@ ok("T34 冻结过渡自愈（后台/遮挡时路由过渡停在 opacity:0 → �
 const cv = read("src/views/ComposeView.vue");
 /* ─── ⑨ T10 · 手机端「＋ 发帖」独立页：整屏编辑器（不能再是默认款 textarea） ─── */
 ok("T35 /compose 归到 shell--chat 形态（TabBar 让位，自己吃满 100dvh）",
-  /const inChat = computed\(\(\) => isMobileNav\.value[\s\S]{0,160}route\.name === "compose"\)/.test(app)
+  /const inChat = computed\(\(\) => isMobileNav\.value[\s\S]{0,400}route\.name === "compose"/.test(app)
   && app.includes('<TabBar v-if="isMobileNav && !inChat && !tabbarSuppressed"'));
 ok("T36 发帖页有真正的排版样式（顶栏 / 卡片 / 大输入框 / 动作条，不再是光秃 textarea）",
   cv.includes(".compose-head {")
@@ -436,6 +436,30 @@ ok("T63 轮232：再点当前页签 = **回到顶部 + 刷新**（retapTab 信�
     && beacon.includes("sendBeacon")
     && !beacon.includes("Authorization") && !beacon.includes("apikey")
     && !beacon.includes("localStorage") && !beacon.includes("sessionStorage"));
+}
+
+/* ─── 轮 464 · 聊天面板与外壳「同源」 ───
+ * 真机 ?kbdiag=1 实拍：panel 已画出、shell--chat 却没挂 → .dm-page 按内容撑到 2401px
+ * （屏高 744），输入条被推到文档末尾；进会话还停在整个文档最顶上 = 用户报的
+ * 「点击会话直接出现在记录最前方」。根因是两套判据：面板看 activeId/paneReady，
+ * 外壳看 route.params.id；openConv 在登录态未就绪时提前 return，路由没推。 */
+{
+  const ui = read("src/stores/uiStore.js");
+  const mv = read("src/views/MessagesView.vue");
+  ok("T66 chatOpen：外壳认「聊天页自己声明的开态」",
+    /export const chatOpen = ref\(false\)/.test(ui)
+    && /import \{[^}]*chatOpen[^}]*\} from "\.\/stores\/uiStore\.js"/.test(app)
+    && /const inChat = computed\(\(\) => isMobileNav\.value && \(/.test(app)
+    && /route\.name === "messages" \|\| route\.name === "messagesList"\) && chatOpen\.value/.test(app));
+  ok("T67 chatOpen 判据与面板完全一致（activeId + paneReady，缺一个就会分叉）",
+    /watch\(\[isMobileNav, activeId, paneReady\][\s\S]{0,220}chatOpen\.value = isMobileNav\.value && !!activeId\.value && paneReady\.value/.test(mv)
+    && /onBeforeUnmount\(\(\) => \{[\s\S]{0,80}chatOpen\.value = false/.test(mv));
+  ok("T68 进会话先同步地址栏，再判「登录态就绪」（顺序反了就回到 2401px）",
+    /syncConvRoute\(id, same\);\n  if \(!owner\) return;/.test(mv)
+    && /function syncConvRoute\(id, same\)/.test(mv));
+  ok("T69 backToList：路由不在会话上时不许 router.back()（否则直接退出消息页）",
+    /const onConvRoute = route\.name === "messages" && !!route\.params\.id;/.test(mv)
+    && /if \(!onConvRoute\) \{[\s\S]{0,120}resetConv\(\);/.test(mv));
 }
 
 out.push("");
