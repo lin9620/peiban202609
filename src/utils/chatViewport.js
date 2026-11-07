@@ -169,6 +169,8 @@ function kick() {
 
 export function initChatViewport() {
   if (booted || typeof window === "undefined") return;
+  /* App 壳连监听都不装、定时器都不起 —— 那边完全走原生路径，这里零开销。 */
+  if (isNativeShell()) return;
   booted = true;
 
   if (window.visualViewport) {
