@@ -21,6 +21,11 @@ let files = 0, hero = 0, watch = 0, vp = 0;
  * 网页那份 dist/index.html 保持 resizes-visual（浏览器自己把可视视口平移到光标处）。 */
 const VP_OLD = "interactive-widget=resizes-visual";
 const VP_NEW = "interactive-widget=overlays-content";
+/* 轮 462：网页端为了手势条去掉了 viewport-fit=cover（安卓浏览器 env 恒 0，内容会铺到
+ * 手势条底下），但 App 这份必须留着 —— App 是 edge-to-edge 的 WebView，靠它把内容铺到
+ * 屏幕最底，安全区由 MainActivity 的 --sat / --sab 负责；抽掉等于让 WebView 自己再内缩
+ * 一条导航栏，底部白一条。两份 HTML 的差异就靠这里补回来。 */
+const VP_COVER_ANCHOR = 'content="width=device-width, initial-scale=1.0, ';
 
 function walk(dir) {
   for (const name of readdirSync(dir, { withFileTypes: true })) {
@@ -32,7 +37,13 @@ function walk(dir) {
       let next = html.replace(HERO_RE, "");
       if (next !== html) hero++;
       if (next.includes(WATCH_OLD)) { next = next.split(WATCH_OLD).join(WATCH_NEW); watch++; }
-      if (next.includes(VP_OLD)) { next = next.split(VP_OLD).join(VP_NEW); vp++; }
+      if (next.includes(VP_OLD)) {
+        next = next.split(VP_OLD).join(VP_NEW);
+        if (!next.includes("viewport-fit=cover") && next.includes(VP_COVER_ANCHOR)) {
+          next = next.replace(VP_COVER_ANCHOR, VP_COVER_ANCHOR + "viewport-fit=cover, ");
+        }
+        vp++;
+      }
       if (next !== html) writeFileSync(p, next);
     }
   }

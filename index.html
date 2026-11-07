@@ -2,7 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-visual" />
+  <!-- 轮 462：去掉 viewport-fit=cover。它在 App 里没有收益（WebView 的 env(safe-area-inset-*)
+       实测恒为 0，安全区由 MainActivity 的原生值负责），却让安卓浏览器把内容铺到手势条底下
+       —— 用户截图里「写点什么」被那条横线压住；iOS Safari 也会把内容顶到刘海下。
+       键盘仍是 resizes-visual：布局视口不动、只有可视视口缩，让位由 --kb-h
+       （src/utils/keyboardInset.js 的网页端分支）自己做。 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-visual" />
   <title>Warm Paws · A gentle place to be</title>
   <meta
     name="description"

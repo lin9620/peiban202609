@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { kbPageInset } from "../src/utils/keyboardMath.js";
+import { kbPageInset, kbWebInset } from "../src/utils/keyboardMath.js";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (rel) => fs.readFileSync(path.join(root, rel), "utf8");
@@ -115,7 +115,7 @@ t("T8 视口高一点/低一点不影响结果（只看 ime − sysBottom，不�
 
 t("T9 keyboardInset.js 必须调用 kbPageInset（不许再有内联减法）", () => {
   const js = read("src/utils/keyboardInset.js");
-  assert(/import \{ kbPageInset \} from "\.\/keyboardMath\.js"/.test(js), "没 import 纯函数");
+  assert(/import \{[^}]*\bkbPageInset\b[^}]*\} from "\.\/keyboardMath\.js"/.test(js), "没 import 纯函数");
   assert(/kbPageInset\(raw, sys, vh\)/.test(js), "没把 raw/sys/vh 喂给 kbPageInset");
   assert(!/Math\.round\(raw\s*-/.test(js), "还留着内联减法（两份口径迟早漂）");
   assert(/window\.__kbInfo/.test(js), "没有现场诊断 __kbInfo（别的机型出问题只能靠猜）");
@@ -124,6 +124,38 @@ t("T9 keyboardInset.js 必须调用 kbPageInset（不许再有内联减法）", 
 t("T10 纯函数模块本身不含 DOM / Capacitor 依赖（Node 里能直接测）", () => {
   const src = read("src/utils/keyboardMath.js");
   assert(!/document\.|window\.|getComputedStyle|@capacitor/.test(src), "纯函数里混进了环境依赖");
+});
+
+/* ══════════ ④ 轮 462：网页端（用可视视口反推，不看机型常量） ══════════ */
+
+t("T11 网页端：iOS Safari 393×852 弹 336 键盘 → 让位 336（布局视口不动）", () => {
+  /* 布局视口 852 不变，可视视口 852−336 = 516，偏移 0 */
+  assert.equal(kbWebInset(852, 516, 0), 336);
+});
+
+t("T12 网页端：Safari 上推可视视口时，上推量也要算进去（否则底条压进键盘一截）", () => {
+  /* 可见区 = 从 40 起、高 516 → 底边 556；键盘占 852−556 = 296 */
+  assert.equal(kbWebInset(852, 516, 40), 296);
+  assert.equal(852 - kbWebInset(852, 516, 40), 40 + 516, "底条底边必须正好落在可视视口下沿");
+});
+
+t("T13 网页端：「缩布局视口」型内核（resizes-content / 部分国产内核）→ 0，不许双重让位", () => {
+  assert.equal(kbWebInset(516, 516, 0), 0);
+  /* 小米浏览器两种路径都要能自洽：不缩（516 可视）→ 让位；缩（布局也 516）→ 不让 */
+  assert.equal(kbWebInset(852, 516, 0), 336);
+});
+
+t("T14 网页端：脏数据一律 0（宁可不让位，也不许把页面压成一条）", () => {
+  const dirty = [[null, 516, 0], [852, undefined, 0], ["x", 516, 0], [0, 0, 0], [NaN, NaN, NaN]];
+  for (const [a, b, c] of dirty) assert.equal(kbWebInset(a, b, c), 0, `kbWebInset(${a},${b},${c}) 应为 0`);
+  assert.equal(kbWebInset(852, 900, 0), 0, "可视视口比布局视口还大 → 0（不是负让位）");
+  assert.equal(kbWebInset(852, 516, -30), 336, "负数上移量按 0 处理");
+});
+
+t("T15 网页端：离谱值夹到「布局视口 − 120」，结果取整", () => {
+  assert.equal(kbWebInset(852, 100, 0), 732, "852 − 120 上限");
+  assert.equal(kbWebInset(852, 5000, 0), 0, "算出负数 → 0");
+  assert.equal(kbWebInset(393.4, 260.7, 0.2), 133, "132.5 → 取整成 133");
 });
 
 console.log(out.join("\n"));

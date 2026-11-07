@@ -28,3 +28,31 @@ export function kbPageInset(rawIme, sysBottom, viewportH) {
   if (vh > 0 && v > vh - 120) v = Math.max(0, Math.round(vh - 120));
   return v;
 }
+
+/* 轮 462 · 网页端（非 App 壳）的键盘让位高度 —— 用可视视口反推，不依赖任何机型常量。
+ *
+ *   kb = 布局视口高 − 可视视口高 − 可视视口上移量
+ *      = layoutH     − visualH        − visualTop
+ *
+ * 为什么要这么算（用户两张真机截图：iOS Safari 输入条下多一条空白 / 小米浏览器输入条
+ * 被手势条压住）：
+ *   ① index.html 的视口声明是 interactive-widget=resizes-visual —— 键盘弹起时
+ *      **布局视口不动，只有可视视口缩小**（iOS Safari 与 Chromium 的默认行为）。
+ *      于是 100dvh 不变、position:fixed 的底条仍钉在布局视口底部 = 键盘底下；
+ *   ② iOS Safari 还会为了露出光标把可视视口整体**上移**（visualViewport.offsetTop），
+ *      这段也要算进 kb，否则底条会有一截压进键盘；
+ *   ③ 反过来说，如果某个浏览器是「缩布局视口」型（resizes-content / 部分国产内核），
+ *      innerHeight 会同步变小，差值自然为 0 → 本函数返回 0，交回浏览器自己缩，
+ *      绝不会出现「浏览器缩一次 + 我们再让一次」的双重让位。
+ *
+ * 兜底与 kbPageInset 同口径：非数/非正 → 0；负数 → 0；大得离谱（> 视口 − 120）→ 夹住；
+ * 一律取整（CSS px）。任何异常都退回「不让位」，表现与改之前一致，不会更糟。 */
+export function kbWebInset(layoutH, visualH, visualTop) {
+  const layout = Number(layoutH) || 0;
+  const visual = Number(visualH) || 0;
+  if (!(layout > 0) || !(visual > 0)) return 0;
+  const top = Number(visualTop) > 0 ? Number(visualTop) : 0;
+  let v = Math.max(0, Math.round(layout - visual - top));
+  if (v > layout - 120) v = Math.max(0, Math.round(layout - 120));
+  return v;
+}

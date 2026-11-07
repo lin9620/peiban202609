@@ -2520,6 +2520,30 @@ html.cap-app .reply-bar {
   transition: bottom .22s cubic-bezier(.2, .8, .2, 1), padding-bottom .22s cubic-bezier(.2, .8, .2, 1);
 }
 
+/* ═══ 轮 462 · 网页端同款让位（.kb-web 由 keyboardInset.js 在非 App 壳时打上）═══
+ * 与上面三条 html.cap-app 规则一一对应 —— 改一份就要改另一份，否则 App 与浏览器
+ * 会各错一边。为什么网页端也要自己让：视口策略是 interactive-widget=resizes-visual
+ * （布局视口不动、只有可视视口缩），100dvh 因此不变，position:fixed 的底条会留在
+ * 布局视口底部 = 键盘底下（用户真机：iOS Safari 入力条下多一条空白 / 小米浏览器
+ * 输入条被手势条压住）。--kb-h 初值 0：老内核、桌面缩放、读不到 visualViewport 时
+ * 这三条规则等价于改造前，零变化。 */
+html.kb-web { --kb-h: 0px; }
+html.kb-web .shell--mobile-nav.shell--chat .dm-page {
+  height: calc(100dvh - var(--kb-h));
+  transition: height .22s cubic-bezier(.2, .8, .2, 1);
+}
+html.kb-web .cmt-main-bar {
+  bottom: var(--kb-h);
+  transition: bottom .22s cubic-bezier(.2, .8, .2, 1), padding-bottom .22s cubic-bezier(.2, .8, .2, 1);
+}
+/* 表情面板开着时底条抬到面板上沿：3 段选择器压过上面 2 段那条（同 cap-app 的口径） */
+html.kb-web .cmt-main-bar.wp-emoji-open,
+html.kb-web .cmt-main-bar.wp-kb-swap { bottom: min(46vh, 320px); }
+html.kb-web .reply-bar {
+  bottom: calc(var(--kb-h) + 64px + var(--sab, env(safe-area-inset-bottom, 0px)));
+  transition: bottom .22s cubic-bezier(.2, .8, .2, 1), padding-bottom .22s cubic-bezier(.2, .8, .2, 1);
+}
+
 /* ═══ T6 · 首页三联容器（仅手机形态渲染；桌面零规则零变化）═══
  * .home3 用 overflow: clip（不创建滚动容器）→ 频道条 sticky 仍相对视口生效；
  * 老内核回退 overflow: hidden（频道条不吸附，功能不受影响）。 */

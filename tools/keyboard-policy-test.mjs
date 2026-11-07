@@ -83,9 +83,41 @@ t("keyboardInset：四个键盘事件都接、写 --kb-h", () => {
   assert(/--kb-h/.test(js), "没有 --kb-h 变量名");
   assert(/setProperty\(/.test(js), "没有 setProperty 写入变量");
 });
-t("keyboardInset：只在原生壳生效（网页端零改动）", () => {
+t("轮 462：App 壳仍只走 Keyboard 插件，网页端另走可视视口（两条支路不许互相污染）", () => {
   const js = read("src/utils/keyboardInset.js");
-  assert(/if \(!Capacitor\.isNativePlatform\(\)\) return/.test(js), "缺少 isNativePlatform 守卫/早退");
+  assert(/if \(!Capacitor\.isNativePlatform\(\)\) \{ initWeb\(\); return; \}/.test(js),
+    "没有「原生 → 插件 / 网页 → initWeb」的分流");
+  /* 网页端不许碰 Keyboard 插件：浏览器里没有这个原生插件，调用会抛 */
+  const webFn = (js.match(/function initWeb\(\)[\s\S]*?\n\}/) || [""])[0];
+  assert(!!webFn, "缺 initWeb()");
+  assert(!/Keyboard\./.test(webFn), "initWeb 里调了 Keyboard 插件");
+  assert(/WEB_CLASS = "kb-web"/.test(js) && /classList\.add\(WEB_CLASS\)/.test(js),
+    "没给 html 打 kb-web（style.css 的三条网页端规则挂在这个类上）");
+});
+t("轮 462：网页端用 visualViewport 量键盘，且只在真的在输入时让位", () => {
+  const js = read("src/utils/keyboardInset.js");
+  assert(/window\.visualViewport/.test(js), "没读 visualViewport");
+  assert(/vv\.addEventListener\("resize"/.test(js) && /vv\.addEventListener\("scroll"/.test(js),
+    "可视视口的 resize / scroll 都要接（iOS 上推只派发 scroll）");
+  assert(/vv\.scale > 1\.05/.test(js), "缺双指缩放排除（缩放也会缩可视视口，但不是键盘）");
+  assert(/editableFocused\(\)/.test(js), "缺「有焦点才让位」的判据（否则地址栏伸缩会被当成键盘）");
+  assert(/shadowRoot\s*&&\s*el\.shadowRoot\.activeElement/.test(js),
+    "没钻进 shadow DOM：会话输入框在 vue-advanced-chat 里，宿主 tagName 判不出来 → 聊天页一动不动");
+  assert(/focusin/.test(js), "缺 focusin 逐帧采样（部分国产内核不派发可视视口事件）");
+  assert(/kbWebInset\(window\.innerHeight, vv\.height, vv\.offsetTop\)/.test(js),
+    "没把 innerHeight / vv.height / vv.offsetTop 一起喂给纯函数");
+});
+t("style.css：.kb-web 三处让位与 .cap-app 一一对应（改一份就要改另一份）", () => {
+  const css = readCss("src/style.css");
+  assert(/html\.kb-web \{[^}]*--kb-h:\s*0px/.test(css), "kb-web 没定义 --kb-h 初值");
+  assert(/html\.kb-web \.shell--mobile-nav\.shell--chat \.dm-page\s*\{[^}]*height:\s*calc\(100dvh - var\(--kb-h\)\)/.test(css),
+    "聊天页高度没接 --kb-h");
+  assert(/html\.kb-web \.cmt-main-bar\s*\{[^}]*bottom:\s*var\(--kb-h\)/.test(css),
+    "评论底条 bottom 没接 --kb-h");
+  assert(/html\.kb-web \.reply-bar\s*\{[^}]*bottom:\s*calc\(var\(--kb-h\) \+ 64px/.test(css),
+    "详情页回复条没接 --kb-h");
+  assert(/html\.kb-web \.cmt-main-bar\.wp-emoji-open/.test(css),
+    "表情面板打开时底条没跟着抬（3 段规则缺了会被 2 段的 bottom:var(--kb-h) 压掉）");
 });
 t("keyboardInset：异常一律归零 + 切后台归零（绝不带一条永久空白回来）", () => {
   const js = read("src/utils/keyboardInset.js");
@@ -106,7 +138,7 @@ t("轮 324：--kb-h = keyboardHeight − 导航栏（不扣就悬空一条 navBa
   assert(/const SYS_BOTTOM_VAR = "--sys-bottom"/.test(js), "没有 --sys-bottom 变量名");
   assert(/getComputedStyle\(document\.documentElement\)\.getPropertyValue\(SYS_BOTTOM_VAR\)/.test(js),
     "没有从 html 上读 --sys-bottom");
-  assert(/import \{ kbPageInset \} from "\.\/keyboardMath\.js"/.test(js), "没有用纯函数 kbPageInset");
+  assert(/import \{[^}]*\bkbPageInset\b[^}]*\} from "\.\/keyboardMath\.js"/.test(js), "没有用纯函数 kbPageInset");
   assert(/Math\.max\(0, Math\.round\(ime - sys\)\)/.test(math),
     "纯函数里没扣 sysBottom：Keyboard 的 keyboardHeight 从窗口底量，WebView 底已让掉导航栏");
   assert(/vh - 120/.test(math), "纯函数缺少「离谱值夹取」兜底");
@@ -165,6 +197,9 @@ t("cap-strip-hero：App 那份 index.html 的视口切成 overlays-content", () 
   assert(/interactive-widget=resizes-visual/.test(js) && /interactive-widget=overlays-content/.test(js),
     "cap-strip-hero 没有把 App 的视口策略改成 overlays-content");
   assert(/VP_OLD/.test(js) && /VP_NEW/.test(js), "改写逻辑没接线（VP_OLD/VP_NEW）");
+  /* 轮 462：网页端去掉 cover，App 这份要补回来（edge-to-edge WebView 靠它铺到最底） */
+  assert(/VP_COVER_ANCHOR/.test(js) && /viewport-fit=cover/.test(js),
+    "App 那份没补回 viewport-fit=cover（WebView 会自己内缩一条导航栏，底部白一条）");
 });
 t("style.css：不许再写 100svh（本机浏览器量出 0 = 无效声明，会被整条丢弃）", () => {
   const css = readCss("src/style.css");
