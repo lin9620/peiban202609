@@ -344,4 +344,25 @@ async function copySlip() {
 }
 .slip-text { font-size: 12px; line-height: 1.75; font-weight: 500; color: var(--ink); }
 .slip-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 7px; }
+
+/* 深色主题（星夜蓝 / 深夜黑）：便签原来是写死的白纸 + var(--ink) 文字 ——
+ * 夜里 --ink 变浅（#e8eaf6），白底浅字实测对比度 1.2，整句等于隐形（用户截图报障）。
+ * 便签底色跟着主题走（--card：夜间 #262c52 / 深夜黑 #141419），虚线提亮一档，
+ * 次要文字从 faint 升到 soft；「拷贝」按钮换成半透明白，才与便签底拉开层次。
+ * 浅色主题不受影响（白纸原样保留）。 */
+html[data-theme="night"] .slip {
+  background: var(--card);
+  border-color: rgba(232, 234, 246, .22);
+}
+html[data-theme="night"] .slip-foot .b-count { color: var(--ink-soft); }
+html[data-theme="night"] .slip .ra {
+  background: rgba(255, 255, 255, .10);
+  border-color: rgba(255, 255, 255, .18);
+}
+/* 深夜黑与 night 同权重（都是 3 段选择器），style.css 的 midnight .ra 规则排在后面会赢，
+ * 于是按钮又变成 #15151b、和便签 #141419 糊成一整块 —— 补一条变体专属，权重 4 段压住。 */
+html[data-theme="night"][data-theme-variant="midnight"] .slip .ra {
+  background: rgba(255, 255, 255, .10);
+  border-color: rgba(255, 255, 255, .18);
+}
 </style>
