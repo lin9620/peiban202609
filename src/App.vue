@@ -20,6 +20,7 @@ import {
 } from "./stores/petStore.js";
 import { cloud, initCloud, cloudHandleAppRedirect, isAppAuthRedirect } from "./utils/supabase.js";
 import { cloudFetchUserPosts } from "./utils/wall.js";
+import { warmFollowFeed } from "./utils/followFeed.js";   /* 轮 459：关注流启动预热 */
 import { setUserScope } from "./utils/userScope.js";
 import { cacheDrop, cacheKey, swr } from "./utils/cache.js";
 import { avatarUrlFor } from "./utils/avatar.js";   /* 轮 238:萌宠头像池 */
@@ -142,6 +143,15 @@ async function prefetchProfilePosts() {
   } catch (e) { /* 预热失败不影响启动 */ }
 }
 
+/* —— 轮 459：关注流预热（用户：「暖心墙点击我的关注，进去非常慢，能不能在启动页的时候
+ * 就获取一部分数据，缓存到本地」）——
+ * 进关注流原来是两段串行网络（名单 → 第一页），弱网要等好几秒，页面上只有一句「正在读取」。
+ * 这里在启动页放行后、浏览器空闲时先拉一次写本地快照；用户点进去就是 0ms 上屏 + 后台校准。
+ * 单独排一个 rIC：不跟启动页那几个预热抢带宽（弱网下多一条并发就是多等一轮）。 */
+async function prefetchFollowFeed() {
+  try { await warmFollowFeed(); } catch (e) { /* 预热失败不影响启动 */ }
+}
+
 /* 关闭启动页：淡出后从 DOM 摘掉（静态层在 #app 外，Vue 挂载不影响它） */
 function removeSplash() {
   const el = document.getElementById("app-splash");
@@ -177,6 +187,11 @@ onMounted(async () => {
   };
   if (typeof requestIdleCallback === "function") requestIdleCallback(warmChunks, { timeout: 4000 });
   else setTimeout(warmChunks, 2500);
+  /* 轮 459：关注流预热放在 chunk 预热之后单独排一次 —— 它要发两条网络（名单 + 第一页），
+   * 与启动页那几个预热错开，弱网下才不会互相拖死。未登录时函数内部直接返回。 */
+  const warmFollow = () => { prefetchFollowFeed(); };
+  if (typeof requestIdleCallback === "function") requestIdleCallback(warmFollow, { timeout: 6000 });
+  else setTimeout(warmFollow, 3000);
   if (!isApp) return; /* 浏览器里没有系统返回键 */
   try {
     backHandle = await CapApp.addListener("backButton", () => {
@@ -225,6 +240,7 @@ watch(cloudSigned, (v) => {
      * 「经常很久才出现」的断点之一）。listConvs/prefetch 有单飞/同 key SWR，重叠不多发。 */
     prefetchConvs();
     prefetchProfilePosts();
+    prefetchFollowFeed();   /* 轮 459：首装流程「先登录 → 再进页」，登录后补一次关注流预热 */
     return;
   }
   stopBadge();

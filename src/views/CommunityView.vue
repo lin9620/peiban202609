@@ -73,6 +73,10 @@ import { filterBlocked, refreshBlocks } from "../utils/userBlocks.js";
 import {
   followState, isFollowing, followUser, refreshFollows, followErrKey, followingCount,
 } from "../utils/follows.js";
+/* 轮 459：关注流的启动预热 + 本地快照（用户：点「我的关注」进去非常慢，能不能开机就先取一部分存本地） */
+import {
+  readFollowSnap, saveFollowSnap, clearFollowSnap, idsSig,
+} from "../utils/followFeed.js";
 /* 轮 84：…菜单的「拷贝」（WebView 里 navigator.clipboard 缺失时 execCommand 兜底） */
 import { copyText } from "../utils/clipboard.js";
 import { avatarUrlFor } from "../utils/avatar.js";   /* 轮 238:萌宠头像池 */
@@ -1879,6 +1883,35 @@ function stopFeedTimers() {
   feedTimers.forEach((x) => clearTimeout(x));
   feedTimers = [];
 }
+/* 关注流的帖子落到列表（轮 459）：
+ * 缓存先铺、网络后到，中间用户可能已经开始往下翻了 ——
+ *  · 还在顶部（刚进来）：整表换成服务端这一页，顺序以服务端为准（少见的删帖/取关会跟着消失）；
+ *  · 已经在翻缓存内容：只把**没见过的新帖**钉顶，正在看的位置一分不动
+ *    （与 loadCloud 的 consumeSoft 同一个取舍：内容新鲜不能拿滚动位置去换）。
+ * 两个分支都必须重设游标，否则触底续载会从「全站第一条」再翻一遍。 */
+function applyFollowRows(rows, soft) {
+  const el = wallScrollerEl.value;
+  if (!soft || !el || el.scrollTop <= 8) { consume({ rows, counts: null, fromFetch: true }); return; }
+  const known = new Set(cloudPosts.value.map((p) => cmtKey(p)));
+  const adds = filterBlocked(rows)
+    .filter((p) => !known.has(cmtKey(p)))
+    .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  if (adds.length) { countViews(adds); cloudPosts.value = [...adds, ...cloudPosts.value]; }
+  feedCursor.value = rows.length ? rows[rows.length - 1].dbId : feedCursor.value;
+  cloudDone.value = false;
+}
+
+/* 轮 459 · 进关注流（用户：「点击我的关注，进去非常慢，能不能在启动页的时候就获取一部分数据」）
+ * ─────────────────────────────────────────────────────────────
+ * 改前是**两段串行网络**：refreshFollows(true) 强制拉名单 → 拿到名单才拉第一页。
+ * 中间两段都没回来的那几秒，整页只有一句「正在读取你的关注」—— 用户看到的就是白等。
+ * 改后分三步，任何一步慢都不挡上屏：
+ *   ① 本地快照先铺（同步 0ms，启动期 warmFollowFeed 已经写好）；
+ *   ② 名单用现成的（已加载过就不再强制拉），没有才等它；
+ *   ③ 第一页回来才替换/合并，评论数继续后台补。
+ * 仍然守着的五条口径（别改崩）：① 空关注绝不请求；② 不复用 wall:posts 缓存盒；
+ * ③ 游标/cloudDone/reveal 归零；④ 不回退本机帖；⑤ 不排序、固定时间倒序。
+ */
 async function enterFollowFeed() {
   followOnly.value = true;
   followErr.value = "";
@@ -1888,23 +1921,50 @@ async function enterFollowFeed() {
   feedCursor.value = null;
   cloudDone.value = false;
   reveal.value = PAGE_SIZE;
+  /* 换数据源 = 从头看（与刷新同口径）。不清的话会停在「全部流」原来的滚动深度，
+     而列表已经换成关注流，等于让人凭空落到中间。 */
+  pinToTop();
+
+  /* ① 本地快照先上屏 —— 同步读取，不闪、不白等 */
+  const snap = readFollowSnap();
+  const seeded = !!(snap && Array.isArray(snap.rows) && snap.rows.length);
+  if (seeded) {
+    consume({ rows: snap.rows, counts: snap.counts || null, fromFetch: true });
+    followBusy.value = false;
+  }
 
   /* 未登录 / 云端不可用：不发请求，直接由模板的空状态引导登录 */
   if (!(cloud.ready && cloud.user)) { followBusy.value = false; return; }
 
   try {
-    /* 强制刷新一次：换了设备、或刚在别处关注/取关，本地快照可能是旧的 */
-    await refreshFollows(true);
-    if (followState.error) { followErr.value = "follow.feedFail"; return; }
+    /* ② 名单：已经拉过就直接用（省掉一次串行往返），没有才等它 */
+    if (!followState.loaded || !followState.ids.length) {
+      await refreshFollows(true);
+      if (followState.error) {
+        /* 已有快照就先把旧内容留着，别把能看的东西换成一个错误页 */
+        if (!seeded) followErr.value = "follow.feedFail";
+        return;
+      }
+    }
     const ids = followState.ids;
-    if (!ids.length) { cloudDone.value = true; return; }
+    if (!ids.length) {
+      /* 真的一个人都没关注：列表必须清空（快照里是别人关注流的内容），提示交给模板 */
+      cloudPosts.value = [];
+      cloudDone.value = true;
+      clearFollowSnap();
+      return;
+    }
 
+    /* ③ 第一页（服务端时间倒序）。counts 传 null：评论数后台补，
+       传 {} 会把每帖评论数先刷成 0 再跳回来（与首屏同口径） */
     const rows = await cloudFetchPosts(REFRESH_PAGE, 0, { userIds: ids });
-    if (!rows) { followErr.value = "follow.feedFail"; return; }
-    /* counts 传 null 而不是 {} —— 传空对象会把每帖评论数先刷成 0 再被后台补拉覆盖，
-       用户看到的是「评论数全部归零又跳回来」 */
-    consume({ rows, counts: null, fromFetch: true });
-    /* 评论数后台补（不阻塞上屏 —— 与首屏同口径） */
+    if (!rows) {
+      if (!seeded) followErr.value = "follow.feedFail";
+      return;
+    }
+    applyFollowRows(rows, seeded && snap.sig === idsSig(ids));
+    saveFollowSnap(ids, rows, null);
+
     cloudFetchCommentCounts(rows.map((r) => r.dbId)).then((counts) => {
       if (!counts) return;
       const next = { ...cloudCmtTotal.value };
@@ -1912,10 +1972,12 @@ async function enterFollowFeed() {
         if (p.dbId != null) next[cmtKey(p)] = counts[p.dbId] || 0;
       }
       cloudCmtTotal.value = next;
+      /* 评论数一并回写快照：下次进页连数字都是对的 */
+      saveFollowSnap(ids, rows, counts);
     }).catch(() => {});
     scheduleFeedTick();
   } catch (e) {
-    followErr.value = "follow.feedFail";
+    if (!seeded) followErr.value = "follow.feedFail";
   } finally {
     followBusy.value = false;
   }

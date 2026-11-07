@@ -181,8 +181,12 @@ ok("F10 关注流三种空状态分开（未登录 / 0 人 / 关注了没内容�
     && /follow\.feedEmpty"\)/.test(community) === false || /t\("follow\.feedEmpty"\)/.test(community));
 ok("F11 进关注流先清游标/到底标志/reveal（否则带全站游标去查关注流，第一页直接空）",
   /enterFollowFeed[\s\S]{0,600}?feedCursor\.value = null[\s\S]{0,200}?cloudDone\.value = false/.test(community));
-ok("F12 关注流不复用 wall:posts 缓存（写进去会污染全部流）",
-  !/enterFollowFeed[\s\S]{0,1200}?cacheSet\(/.test(community));
+/* 轮 459：关注流有了自己的本地快照（wall:follow-posts|uid），但**仍然不许碰全部流的
+   wall:posts 盒** —— 那是全站内容，写进去会把「全部」污染成「关注」的子集。
+   原来这条是「enterFollowFeed 里不许出现 cacheSet」，快照上线后必须改成「键不许是 wall:posts」。 */
+ok("F12 关注流的缓存用独立键（wall:follow-posts），绝不写进全部流的 wall:posts",
+  /cacheKey\("wall:follow-posts", uid\(\)\)/.test(read("src/utils/followFeed.js"))
+    && !/wall:posts/.test(read("src/utils/followFeed.js")));
 ok("F13 关注流也过滤已拉黑的人（渲染层第二道防线）",
   /filterBlocked/.test(community) && /isBlockedHere/.test(waller));
 
@@ -238,7 +242,57 @@ ok("G8 consume / consumeSoft 定义在模块作用域（关注流要跨函数复
     && !/^\s{2}const consume = \(box\) =>/m.test(community)
     && !/^\s{2}const consumeSoft = \(box\) =>/m.test(community));
 ok("G9 关注流复用同一个 consume（不另写一套上屏逻辑）",
-  /const rows = await cloudFetchPosts\(REFRESH_PAGE, 0, \{ userIds: ids \}\)[\s\S]{0,400}?consume\(\{ rows, counts: null, fromFetch: true \}\)/.test(community));
+  /function applyFollowRows[\s\S]{0,400}?consume\(\{ rows, counts: null, fromFetch: true \}\)/.test(community));
+
+/* ══════════ 轮 459 · 进关注流不再白等（启动预热 + 本地快照） ══════════
+ * 用户：「暖心墙点击我的关注，进去非常慢，能不能在启动页的时候就获取一部分数据，缓存到本地」。
+ * 改前 enterFollowFeed 是两段串行网络（强制拉名单 → 拉第一页），两段都没回来时整页只有
+ * 一句「正在读取你的关注」。这一组断言钉住「快照先上屏」这条路径，别再被改回纯网络等待。 */
+const ffJs = read("src/utils/followFeed.js");
+const enterBody = (community.match(/async function enterFollowFeed\(\)[\s\S]*?\n\}/) || [""])[0];
+
+ok("F16 本地快照先上屏（进页同步铺，不再干等两段网络）",
+  /readFollowSnap\(\)/.test(enterBody)
+    && /if \(seeded\) \{[\s\S]{0,200}?consume\(\{ rows: snap\.rows/.test(enterBody)
+    && /followBusy\.value = false;\s*\n\s*\}/.test(enterBody));
+ok("F17 名单已加载就不再强制拉（省掉一次串行往返），没有才等",
+  /if \(!followState\.loaded \|\| !followState\.ids\.length\) \{[\s\S]{0,120}?await refreshFollows\(true\)/.test(enterBody)
+    && enterBody.indexOf("readFollowSnap()") < enterBody.indexOf("await refreshFollows(true)"));
+ok("F18 换数据源要回顶（否则停在全部流原来的滚动深度，像凭空落到中间）",
+  /reveal\.value = PAGE_SIZE;\s*\n\s*\/\*[\s\S]{0,200}?\*\/\s*\n\s*pinToTop\(\);/.test(enterBody));
+ok("F19 快照能写能读能清，且按账号域分开（换号不串数据）",
+  /export function saveFollowSnap/.test(ffJs)
+    && /export function readFollowSnap/.test(ffJs)
+    && /export function clearFollowSnap/.test(ffJs)
+    && /cacheKey\("wall:follow-posts", uid\(\)\)/.test(ffJs)
+    && /if \(!uid\(\)\) return null/.test(ffJs));
+ok("F20 名单指纹变了的快照只能先垫场，不能当最终结果（关注/取关后必须整表换）",
+  /export function idsSig/.test(ffJs)
+    && /applyFollowRows\(rows, seeded && snap\.sig === idsSig\(ids\)\)/.test(community));
+ok("F21 启动期预热只发一次（单飞 + 节流），且未登录直接返回",
+  /let warming = null/.test(ffJs)
+    && /if \(warming\) return warming/.test(ffJs)
+    && /if \(!\(cloud\.ready && cloud\.user\)\) return Promise\.resolve\(null\)/.test(ffJs)
+    && /Date\.now\(\) - warmedAt < FRESH_MS/.test(ffJs));
+ok("F22 App 启动后空闲时预热关注流（不抢启动页带宽），登录后补一次",
+  /prefetchFollowFeed/.test(read("src/App.vue"))
+    && /requestIdleCallback\(warmFollow, \{ timeout: 6000 \}\)/.test(read("src/App.vue"))
+    && /prefetchConvs\(\);\s*\n\s*prefetchProfilePosts\(\);\s*\n\s*prefetchFollowFeed\(\);/.test(read("src/App.vue")));
+ok("F23 refreshFollows 并发时等同一个在途请求（否则后到的拿到空名单 = 满屏「关注」）",
+  /let inflight = null/.test(followsJs)
+    && /if \(inflight\) return inflight/.test(followsJs)
+    && /inflight = null;\s*\n\s*\}\s*\n\s*return followState\.ids/.test(followsJs));
+
+const ff = await import("../src/utils/followFeed.js");
+ok("F24 名单指纹与顺序无关、与人数有关（关注/取关必变；只是顺序变不算变）",
+  ff.idsSig(["a", "b"]) === ff.idsSig(["b", "a"])
+    && ff.idsSig(["a", "b"]) !== ff.idsSig(["a"])
+    && ff.idsSig([]) !== ff.idsSig(["a"])
+    && ff.idsSig([]) === ff.idsSig([]));
+ok("F25 未登录不产生快照（没有 uid 就没有账号域，不能落盘）",
+  ff.readFollowSnap() === null
+    && ff.saveFollowSnap(["a"], [{ dbId: 1 }], null) === undefined
+    && ff.readFollowSnap() === null);
 
 /* ══════════ ⑨ i18n：五语齐备 + 那句支点文案存在 ══════════ */
 

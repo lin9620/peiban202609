@@ -98,55 +98,65 @@ export function isFollowUnavailable(e) {
   return /42P01|42883|PGRST202|404/.test(m) || code === "42P01" || code === "42883";
 }
 
+/* 在途请求（轮 459）：原来 loading 期间直接 `return followState.ids`，那时 ids 可能还是**空的**
+ * ——启动期预热（warmFollowFeed）与暖心墙挂载几乎同时调它，后到的那个拿到空数组，于是
+ * 「卡片上人人都是未关注」「进关注流直接显示 0 人」。并发的调用一律等同一个在途 Promise，
+ * 谁先来谁发起，其他人拿同一份结果。 */
+let inflight = null;
+
 /** 拉「我的关注」清单（RPC 一次拿人 + 昵称 + 帖子数 + 最近发帖） */
-export async function refreshFollows(force = false) {
-  if (!(cloud.ready && cloud.user)) return followState.ids;
-  if (followState.loading) return followState.ids;
-  if (followState.loaded && !force) return followState.ids;
+export function refreshFollows(force = false) {
+  if (!(cloud.ready && cloud.user)) return Promise.resolve(followState.ids);
+  if (inflight) return inflight;
+  if (followState.loaded && !force) return Promise.resolve(followState.ids);
   followState.loading = true;
   followState.error = false;
-  let timer = 0;
-  try {
-    const rows = await Promise.race([
-      db.following(),
-      new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error("follow-timeout")), 10000);
-      }),
-    ]);
-    const fresh = (Array.isArray(rows) ? rows : [])
-      .filter((r) => r && r.user_id)
-      .map((r) => ({
-        user_id: String(r.user_id),
-        nickname: String(r.nickname || ""),
-        followed_at: r.followed_at || "",
-        post_count: Number(r.post_count) || 0,
-        last_post_at: r.last_post_at || null,
-      }));
+  inflight = (async () => {
+    let timer = 0;
+    try {
+      const rows = await Promise.race([
+        db.following(),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error("follow-timeout")), 10000);
+        }),
+      ]);
+      const fresh = (Array.isArray(rows) ? rows : [])
+        .filter((r) => r && r.user_id)
+        .map((r) => ({
+          user_id: String(r.user_id),
+          nickname: String(r.nickname || ""),
+          followed_at: r.followed_at || "",
+          post_count: Number(r.post_count) || 0,
+          last_post_at: r.last_post_at || null,
+        }));
 
-    /* 刚点关注、服务端还没带上的人：保住本地行，别让它「刚点完就在列表里消失」 */
-    const freshIds = new Set(fresh.map((r) => r.user_id));
-    const add = [];
-    for (const [id, op] of recentOps) {
-      if (recentKind(id) !== "follow" || freshIds.has(id)) continue;
-      add.push(op.row || followState.rows.find((r) => r.user_id === id)
-        || { user_id: id, nickname: "", followed_at: new Date(op.at).toISOString(), post_count: 0, last_post_at: null });
+      /* 刚点关注、服务端还没带上的人：保住本地行，别让它「刚点完就在列表里消失」 */
+      const freshIds = new Set(fresh.map((r) => r.user_id));
+      const add = [];
+      for (const [id, op] of recentOps) {
+        if (recentKind(id) !== "follow" || freshIds.has(id)) continue;
+        add.push(op.row || followState.rows.find((r) => r.user_id === id)
+          || { user_id: id, nickname: "", followed_at: new Date(op.at).toISOString(), post_count: 0, last_post_at: null });
+      }
+      /* 刚取关、服务端响应仍是旧名单的人：先摘掉 */
+      const merged = add.concat(fresh.filter((r) => recentKind(r.user_id) !== "unfollow"));
+
+      followState.rows = merged;
+      followState.ids = merged.map((r) => r.user_id);
+      followState.loaded = true;
+      persist();
+    } catch (e) {
+      /* 网络 / 网关端点缺失：保留快照，标记失败 —— 列表页据此显示「加载失败」
+         而不是「你还没关注任何人」（后者是骗人）。 */
+      followState.error = true;
+    } finally {
+      if (timer) clearTimeout(timer);
+      followState.loading = false;
+      inflight = null;
     }
-    /* 刚取关、服务端响应仍是旧名单的人：先摘掉 */
-    const merged = add.concat(fresh.filter((r) => recentKind(r.user_id) !== "unfollow"));
-
-    followState.rows = merged;
-    followState.ids = merged.map((r) => r.user_id);
-    followState.loaded = true;
-    persist();
-  } catch (e) {
-    /* 网络 / 网关端点缺失：保留快照，标记失败 —— 列表页据此显示「加载失败」
-       而不是「你还没关注任何人」（后者是骗人）。 */
-    followState.error = true;
-  } finally {
-    if (timer) clearTimeout(timer);
-    followState.loading = false;
-  }
-  return followState.ids;
+    return followState.ids;
+  })();
+  return inflight;
 }
 
 /** 关注某人：乐观先行（按钮立刻变「已关注」），失败回滚并抛错给调用方 */
@@ -231,6 +241,7 @@ export async function dropFollowQuietly(userId) {
 /* 换号 = 换域：读新域的快照并重置「已拉取」标记（登录后会重新 refreshFollows 校准） */
 onScopeSwitch({
   reload() {
+    inflight = null;   /* 上一个人的名单请求不再复用（新域第一次调用要真的发出去） */
     followState.ids = cachedIds();
     followState.rows = cachedRows();
     followState.loaded = false;
