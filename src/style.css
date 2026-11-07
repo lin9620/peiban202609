@@ -2569,6 +2569,27 @@ html.cap-app .dm-page--chat {
 .dm-page--chat .dm-scroll {
   flex: 1; min-height: 0; width: 100%; max-height: none; overscroll-behavior: contain;
 }
+
+/* ═══ 轮 465 · 网页端聊天页 fixed 接管（类由 utils/chatViewport.js 打）═══
+ * 位置/宽高全部写在元素内联样式里（视觉视口实时值），这里只补两件 CSS 管的事：
+ *   ① 底部手势条 —— 安卓 Chromium 的 env(safe-area-inset-bottom) 恒为 0，
+ *      edge-to-edge 的内核会把系统横线直接画在输入条下沿（用户截图②）。
+ *      给容器留 6px 保底，env 有值时用 env。
+ *   ② 文档锁死后的兜底高度 —— html.wp-chat-fix 期间 body 高度归零，
+ *      万一脚本没跑成（老内核），页面至少还在视口高度内，不会塌成一条。 */
+html.wp-chat-fix .dm-page {
+  padding-bottom: max(6px, env(safe-area-inset-bottom, 0px));
+}
+html.wp-chat-fix,
+html.wp-chat-fix body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+/* 层叠：.shell 自带 z-index:1，聊天页在里面就算写 z-index:30 也只是「壳内第一」，
+ * 根级的 tabbar（140）仍会盖在上面。聊天时 tabbar 本该隐藏，但「inChat 没挂上」
+ * 正是前几轮的事故形态 —— 这里把壳整体提到 tabbar 之上，少一个依赖。 */
+html.wp-chat-fix .shell { z-index: 200; }
 html.kb-web .cmt-main-bar {
   bottom: var(--kb-h);
   transition: bottom .22s cubic-bezier(.2, .8, .2, 1), padding-bottom .22s cubic-bezier(.2, .8, .2, 1);

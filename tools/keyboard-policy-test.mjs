@@ -223,6 +223,47 @@ t("style.css：聊天页高度仍是 100vh → 100dvh 两段式（旧内核回�
     "基线 .dm-page 的 height:100vh → 100dvh 两段式没了");
 });
 
+/* ─── 轮 465 · 网页端改用 fixed 精确覆盖可视视口 ───
+ * 462/463/464 三轮都在「算高度」，真机全部失败：iOS Safari 从不缩布局视口、只会把整个
+ * 文档往上推，只要文档比视口高一行（.shell 天生 padding-bottom:48px），算得再准也露白；
+ * 小米浏览器键盘是 overlay，输入条贴在布局视口底部正好压在手势条上。
+ * 结论：必须脱离文档流 —— fixed + visualViewport 高度，不依赖任何类名判据。 */
+t("chatViewport：fixed 接管存在且被 main.js 调用", () => {
+  assert(existsSync(ROOT + "/src/utils/chatViewport.js"), "没有 src/utils/chatViewport.js");
+  const js = read("src/utils/chatViewport.js");
+  const main = read("src/main.js");
+  assert(/export function initChatViewport/.test(js), "没导出 initChatViewport");
+  assert(/initChatViewport\(\)/.test(main), "main.js 没调用 initChatViewport");
+});
+t("chatViewport：高度取 visualViewport.height（不是 dvh / innerHeight）", () => {
+  const js = read("src/utils/chatViewport.js");
+  assert(/vv\.height/.test(js) && /el\.style\.height = h \+ "px"/.test(js),
+    "高度没有取 visualViewport.height");
+  assert(/el\.style\.position = "fixed"/.test(js), "没有设 position:fixed（文档仍可被上推）");
+});
+t("chatViewport：App 壳必须排除（那边走原生 --kb-h，两套混用会顶穿）", () => {
+  const js = read("src/utils/chatViewport.js");
+  assert(/isNativePlatform/.test(js) && /cap-app/.test(js),
+    "没有 App 壳守卫（isNativePlatform / cap-app）");
+  assert(/if \(isNativeShell\(\)\) return null/.test(js), "守卫没接进 findChatPage");
+});
+t("chatViewport：关掉 CSS 的 height 过渡（否则输入条落后键盘半拍）", () => {
+  const js = read("src/utils/chatViewport.js");
+  assert(/el\.style\.transition = "none"/.test(js), "没有显式清掉 transition");
+});
+t("chatViewport：容器变高矮后贴底要保住（否则键盘弹起会上跳一屏）", () => {
+  const js = read("src/utils/chatViewport.js");
+  assert(/stick/.test(js) && /sc\.scrollTop = sc\.scrollHeight/.test(js),
+    "缺「原本贴底就继续贴底」的处理");
+});
+t("style.css：wp-chat-fix 期间锁文档滚动 + 注入视口底部保底", () => {
+  const css = readCss("src/style.css");
+  assert(/html\.wp-chat-fix[\s\S]{0,200}overflow:\s*hidden/.test(css),
+    "wp-chat-fix 没锁 html/body 滚动");
+  assert(/html\.wp-chat-fix \.dm-page\s*\{[^}]*padding-bottom/.test(css),
+    "没给 fixed 容器补底部手势条保底");
+});
+
 console.log(`\nkeyboard-policy-test (${ROOT}) :: ${ok.length}/${ok.length + bad.length}`);
 for (const n of ok) console.log("  ok   " + n);
 for (const n of bad) console.log("  FAIL " + n);

@@ -42,6 +42,9 @@ export function installKbDiag() {
         `kb-web=${html.classList.contains("kb-web") ? "on" : "off"}  --kb-h=${kbVar || "无"}  shell=${html.dataset.theme || "-"}`,
         `innerH=${px(window.innerHeight)}  innerW=${px(window.innerWidth)}  vvH=${px(vv.height)}  vvTop=${px(vv.offsetTop)}  scale=${(vv.scale || 1).toFixed(2)}`,
         `page=${page ? px(page.getBoundingClientRect().height) : "-"}  thread=${thread ? px(thread.getBoundingClientRect().height) : "-"}  样式=${page ? Math.round(parseFloat(getComputedStyle(page).height) || 0) : "-"}`,
+        /* 轮 465：网页端改用 fixed 精确覆盖可视视口，这几项直接决定成败 */
+        `fix=${html.classList.contains("wp-chat-fix") ? "on" : "off"}  pos=${page ? getComputedStyle(page).position : "-"}  内联h=${page ? (page.style.height || "无") : "-"}  top=${page ? (page.style.top || "无") : "-"}`,
+        `docScroll=${px(document.documentElement.scrollTop)}  docH=${px(document.documentElement.scrollHeight)}  htmlOv=${getComputedStyle(html).overflow}`,
         `壳=${shell ? shell.className : "-"}`,
         `foot.bottom=${foot ? px(foot.getBoundingClientRect().bottom) : "-"}  屏底=${px(window.innerHeight)}`,
         `scroll st=${scroll ? px(scroll.scrollTop) : "-"}/${scroll ? px(scroll.scrollHeight) : "-"}/${scroll ? px(scroll.clientHeight) : "-"}`,

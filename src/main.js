@@ -10,6 +10,7 @@ import { isMobileNav } from "./stores/uiStore.js";
 import { initUserScope } from "./utils/userScope.js";
 import { installErrorBeacon } from "./utils/beacon.js";
 import { initKeyboardInset } from "./utils/keyboardInset.js";   /* 轮 322：键盘让位（App 壳） */
+import { initChatViewport } from "./utils/chatViewport.js";      /* 轮 465：聊天页 fixed 接管（网页端） */
 import { installKbDiag } from "./utils/kbDiag.js";             /* 轮 463：?kbdiag=1 现场自检条 */
 import { isApp, checkForUpdate, takePromptOnce } from "./utils/appVersion.js";   /* 轮 297 */
 import "./style.css";
@@ -80,6 +81,10 @@ watch(isMobileNav, (v) => applyGlassSkin(forceGlassSkin || v));
  * 输入法高度改由 CSS 变量 --kb-h 驱动 —— 否则键盘弹起那一瞬会露一条空区。
  * 网页端在函数内部直接 return，零影响。 */
 initKeyboardInset();
+/* 轮 465：聊天页在浏览器里改用 fixed 精确覆盖可视视口（见 utils/chatViewport.js）。
+ * 前三轮「算高度」的路子在真机上都失败：iOS 会把整个文档往上推、小米键盘是 overlay，
+ * 只要文档可滚就会错位。这里不依赖任何类名判据，桌面（≥900px）零影响。 */
+initChatViewport();
 installKbDiag();
 
 /* 轮 256：无声错误信标——未捕获异常/未处理拒绝 POST 给 Worker /api/client-log，
