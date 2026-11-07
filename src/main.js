@@ -10,6 +10,7 @@ import { isMobileNav } from "./stores/uiStore.js";
 import { initUserScope } from "./utils/userScope.js";
 import { installErrorBeacon } from "./utils/beacon.js";
 import { initKeyboardInset } from "./utils/keyboardInset.js";   /* 轮 322：键盘让位（App 壳） */
+import { installKbDiag } from "./utils/kbDiag.js";             /* 轮 463：?kbdiag=1 现场自检条 */
 import { isApp, checkForUpdate, takePromptOnce } from "./utils/appVersion.js";   /* 轮 297 */
 import "./style.css";
 /* 轮 406：皮肤样式表只作为「资源 URL」进来（?url），不进主 CSS 包 —— 是否下载由下面门控决定 */
@@ -79,6 +80,7 @@ watch(isMobileNav, (v) => applyGlassSkin(forceGlassSkin || v));
  * 输入法高度改由 CSS 变量 --kb-h 驱动 —— 否则键盘弹起那一瞬会露一条空区。
  * 网页端在函数内部直接 return，零影响。 */
 initKeyboardInset();
+installKbDiag();
 
 /* 轮 256：无声错误信标——未捕获异常/未处理拒绝 POST 给 Worker /api/client-log，
  * 否则错误边界把崩溃盖成「小状况」提示，开发者这边一无所知（轮 42/80 两次事故的盲区）。 */

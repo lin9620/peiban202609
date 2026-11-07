@@ -14,12 +14,13 @@ const WATCH_OLD = 'if (!app || !app.querySelector(".seo-hero")) return;';
 const WATCH_NEW = "if (!app) return;";
 let files = 0, hero = 0, watch = 0, vp = 0;
 
-/* 轮 322 · 键盘让位：App 里的视口策略必须从 resizes-visual 换成 overlays-content。
+/* 轮 322 · 键盘让位：App 里的视口策略必须换成 overlays-content。
  * 原因（真机实测）：Chromium 只在文档加载时读 interactive-widget，运行时改 meta 无效；
  * 而 App 侧由 CSS 变量 --kb-h + 过渡自己让位，视口必须一动不动 —— 否则「视口缩 304」
  * 和「我们扣 320」会叠加，输入栏直接被顶穿。
- * 网页那份 dist/index.html 保持 resizes-visual（浏览器自己把可视视口平移到光标处）。 */
-const VP_OLD = "interactive-widget=resizes-visual";
+ * 轮 463：网页那份从 resizes-visual 改成 resizes-content（浏览器自己缩布局视口，
+ * 100dvh 跟着变、输入条贴键盘上沿）—— App 这份仍要改回 overlays-content。 */
+const VP_OLD = "interactive-widget=resizes-content";
 const VP_NEW = "interactive-widget=overlays-content";
 /* 轮 462：网页端为了手势条去掉了 viewport-fit=cover（安卓浏览器 env 恒 0，内容会铺到
  * 手势条底下），但 App 这份必须留着 —— App 是 edge-to-edge 的 WebView，靠它把内容铺到
@@ -39,7 +40,9 @@ function walk(dir) {
       if (next.includes(WATCH_OLD)) { next = next.split(WATCH_OLD).join(WATCH_NEW); watch++; }
       if (next.includes(VP_OLD)) {
         next = next.split(VP_OLD).join(VP_NEW);
-        if (!next.includes("viewport-fit=cover") && next.includes(VP_COVER_ANCHOR)) {
+        /* ⚠️ 只能看 meta 标签里有没有，不能全文 includes：dist 的 head 里有一句
+           「去掉 viewport-fit=cover」的中文注释，按全文判会一直被这句注释骗过去。 */
+        if (!/<meta\s+name="viewport"[^>]*viewport-fit=cover/.test(next) && next.includes(VP_COVER_ANCHOR)) {
           next = next.replace(VP_COVER_ANCHOR, VP_COVER_ANCHOR + "viewport-fit=cover, ");
         }
         vp++;

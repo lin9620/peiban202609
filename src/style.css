@@ -2532,6 +2532,13 @@ html.kb-web .shell--mobile-nav.shell--chat .dm-page {
   height: calc(100dvh - var(--kb-h));
   transition: height .22s cubic-bezier(.2, .8, .2, 1);
 }
+/* 轮 463：底部保底 10px。安卓浏览器的 env(safe-area-inset-bottom) 恒为 0（Chromium 不返回
+   手势条高度），系统那条手势横线会正好贴着输入条下沿画（用户截图②）。键盘弹起时 --kb-h
+   已经把整页抬起，这 10px 只会让输入条离键盘上沿多一条窄边，不会再叠出一块空白。
+   表情面板打开时归零 —— 面板自己带同高的 padding-bottom，否则会多一条。 */
+html.kb-web .shell--mobile-nav.shell--chat .dm-thread:not(.wp-emoji-open):not(.wp-kb-swap) {
+  padding-bottom: max(10px, env(safe-area-inset-bottom, 0px));
+}
 html.kb-web .cmt-main-bar {
   bottom: var(--kb-h);
   transition: bottom .22s cubic-bezier(.2, .8, .2, 1), padding-bottom .22s cubic-bezier(.2, .8, .2, 1);

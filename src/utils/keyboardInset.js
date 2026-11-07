@@ -110,7 +110,25 @@ function readWebKb() {
 
 let lastWebKb = -1;
 function applyWeb() {
-  const h = editableFocused() ? readWebKb() : 0;
+  const raw = readWebKb();
+  /* 焦点判据只能当「加速」，不能当「门槛」—— 轮 463 真机反馈：iOS Safari 上输入法已经
+     起来了，--kb-h 还是 0。activeElement 在深层层级（vue-advanced-chat / 自定义元素 /
+     部分国产内核的 IME 代理）里不一定停在我们认得的 input 上，一条判死 = 整段失效。
+     所以只要可视视口比布局视口矮出 100px 以上，就直接认定是键盘：
+       · 地址栏伸缩 → innerHeight 与 vv.height 同增同减，差值为 0，不会误触；
+       · 双指放大 → readWebKb 已在 scale > 1.05 时返回 0；
+       · 页面被 iOS 上推 → offsetTop 已经计进算式，差值同步变小。 */
+  const h = (editableFocused() || raw > 100) ? raw : 0;
+  /* iOS 为了让光标可见会把**整个文档**往上滚（window.scrollY > 0）。整屏聊天页本来
+     就没有文档级滚动，这一滚会在页尾露出一条「视口之外」的空白（用户截图①那块）。
+     只在整屏聊天壳里归零 —— 别的页面（首页搜索框等）本来就靠文档滚动把输入框带进可视区，
+     在那里强行归零会把光标送回键盘底下。每帧都判：Safari 会在键盘动画期间反复滚。 */
+  if (h > 0 && document.querySelector(".shell--chat")) {
+    try {
+      const se = document.scrollingElement || document.documentElement;
+      if (se && se.scrollTop > 0) se.scrollTop = 0;
+    } catch (e) { /* 忽略 */ }
+  }
   if (h === lastWebKb) return;                    /* 逐帧采样时别反复写样式（会触发重排） */
   lastWebKb = h;
   const vv = window.visualViewport || {};

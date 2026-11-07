@@ -182,11 +182,14 @@ t("style.css：详情页固定回复条 .reply-bar 也要跟着抬", () => {
 });
 
 /* —— ⑥ 视口策略 + 已被证伪的写法 —— */
-t("index.html：viewport 声明 interactive-widget=resizes-visual（且不写 viewport-fit=cover）", () => {
+t("index.html：viewport 声明 interactive-widget=resizes-content（且不写 viewport-fit=cover）", () => {
   const html = read("index.html");
   const m = html.match(/<meta\s+name="viewport"[^>]*>/);
   assert(!!m, "index.html 没有 viewport meta");
-  assert(/interactive-widget=resizes-visual/.test(m[0]), "viewport 缺 interactive-widget=resizes-visual");
+  /* 轮 463：resizes-visual → resizes-content。前者只缩可视视口，100dvh 不变、底条留在键盘底下
+     （iOS 还会把整页上推露出一条空白）；后者让 Chromium 系缩布局视口，输入条自然贴键盘上沿。 */
+  assert(/interactive-widget=resizes-content/.test(m[0]), "viewport 缺 interactive-widget=resizes-content");
+  assert(!/interactive-widget=resizes-visual/.test(m[0]), "又退回 resizes-visual 了（底条会留在键盘底下）");
   /* viewport-fit=cover 在 App 里没有收益：这台 WebView 的 env(safe-area-inset-*) 实测恒为 0，
      安全区由 MainActivity 的原生 padding 负责；而它对 iPhone Safari 有副作用（内容顶到刘海下），
      所以别再写回来。 */
@@ -194,12 +197,16 @@ t("index.html：viewport 声明 interactive-widget=resizes-visual（且不写 vi
 });
 t("cap-strip-hero：App 那份 index.html 的视口切成 overlays-content", () => {
   const js = read("tools/cap-strip-hero.mjs");
-  assert(/interactive-widget=resizes-visual/.test(js) && /interactive-widget=overlays-content/.test(js),
-    "cap-strip-hero 没有把 App 的视口策略改成 overlays-content");
+  assert(/interactive-widget=resizes-content/.test(js) && /interactive-widget=overlays-content/.test(js),
+    "cap-strip-hero 没有把 App 的视口策略改成 overlays-content（VP_OLD 要跟着 index.html 走）");
   assert(/VP_OLD/.test(js) && /VP_NEW/.test(js), "改写逻辑没接线（VP_OLD/VP_NEW）");
   /* 轮 462：网页端去掉 cover，App 这份要补回来（edge-to-edge WebView 靠它铺到最底） */
   assert(/VP_COVER_ANCHOR/.test(js) && /viewport-fit=cover/.test(js),
     "App 那份没补回 viewport-fit=cover（WebView 会自己内缩一条导航栏，底部白一条）");
+  /* 判定必须落在 meta 标签上：dist 的 head 里有一句「去掉 viewport-fit=cover」的中文注释，
+     按全文 includes 判会被注释骗过去（本轮踩过，App 那份一直没补上）。 */
+  assert(/<meta\\s\+name="viewport"\[\^>\]\*viewport-fit=cover/.test(js) || /name="viewport"\[\^>\]\*viewport-fit=cover/.test(js),
+    "补 cover 前的判定没限定在 meta 标签里（会被 head 里的注释误判）");
 });
 t("style.css：不许再写 100svh（本机浏览器量出 0 = 无效声明，会被整条丢弃）", () => {
   const css = readCss("src/style.css");

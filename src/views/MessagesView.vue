@@ -1248,7 +1248,7 @@ async function openConv(id) {
    * 鏃?setTimeout 鐓у父瑙﹀彂锛屾妸鏂颁竴杞繕鍦ㄩ拤绋虫湡鐨勯〉闈㈡彁鍓嶆彮绀?= 闂存瓏璺抽棯锛垀7% 姒傜巼锛夈€?*/
   clearTimeout(entryFallback);
   entryFallback = setTimeout(() => {
-    if (entryReady.value && !listRevealed.value) {
+    if (!listRevealed.value) {
       const el2 = listEl.value;
       if (el2) el2.scrollTop = el2.scrollHeight;
       listRevealed.value = true;

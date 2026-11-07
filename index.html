@@ -2,12 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <!-- 轮 462：去掉 viewport-fit=cover。它在 App 里没有收益（WebView 的 env(safe-area-inset-*)
-       实测恒为 0，安全区由 MainActivity 的原生值负责），却让安卓浏览器把内容铺到手势条底下
-       —— 用户截图里「写点什么」被那条横线压住；iOS Safari 也会把内容顶到刘海下。
-       键盘仍是 resizes-visual：布局视口不动、只有可视视口缩，让位由 --kb-h
-       （src/utils/keyboardInset.js 的网页端分支）自己做。 -->
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-visual" />
+  <!-- 轮 463：键盘策略换 resizes-content（不是 resizes-visual）。
+       旧口径假设「浏览器会自己把可视视口平移到光标处」—— iOS Safari 确实会平移，但它是把
+       **整页往上推**，页面不会被缩短，于是输入条下方露出一条空白（用户真机截图①）；
+       小米浏览器连推都不推，输入条直接留在键盘底下。
+       resizes-content 让 Chromium 系（Chrome / Edge / 小米 / 华为等）在键盘弹起时**缩布局视口**，
+       100dvh 跟着变矮，固定在底部的输入条自然贴到键盘上沿 —— 这条不需要 JS。
+       iOS Safari 不认这个 hint，仍由 --kb-h（src/utils/keyboardInset.js 的网页端分支）兜底。
+       viewport-fit=cover 继续不写：安卓浏览器的 env(safe-area-inset-bottom) 恒为 0，
+       写了只会把内容铺到手势条底下。 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
   <title>Warm Paws · A gentle place to be</title>
   <meta
     name="description"
