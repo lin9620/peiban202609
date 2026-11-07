@@ -192,7 +192,9 @@ t("T23 「我的」页展示我的帖子（底部区块：最新 3 条 + 「更�
   assert.ok(profileView.includes("cloudFetchUserPosts(uid, 3)"), "ProfileView 应只拉最新 3 条（回应数与帖子同一批回来）");
   assert.ok(profileView.includes('to="/my-posts"') && profileView.includes("profile.more"), "缺「更多」入口");
   assert.ok(profileView.includes("profile.myPosts") && profileView.includes("profile.myPostsEmpty"), "缺少帖子区块文案键");
-  assert.ok(profileView.includes("'/post/' + p.dbId"), "深链进独立详情页 /post/:id（轮 20，不再跳回暖心墙列表）");
+  /* 轮 460：卡片由 <router-link> 改成 <article> + router.push（卡内放了评论输入框/按钮，
+     链接里嵌交互元素在手机上会让「点输入框」变成跳详情），深链目标仍是 /post/:id */
+  assert.ok(profileView.includes("router.push({ path: `/post/${p.dbId}` })"), "深链进独立详情页 /post/:id（轮 20，不再跳回暖心墙列表）");
   const i18n = read("src/i18n.js");
   assert.ok(i18n.split("myPosts:").length >= 3, "myPosts 未做到双语（en/zh 各一份）");
   /* 轮 36：首屏走 SWR（PAGE, 0）+ 翻页走 offset——两条路径都要在 */

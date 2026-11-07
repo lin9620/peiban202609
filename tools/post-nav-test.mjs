@@ -112,9 +112,12 @@ ok("他人主页 goDetail 跳转前 setPostNav(posts)",
   has(waller, "setPostNav(posts.value)")
   && waller.indexOf("setPostNav(posts.value)")
     < waller.indexOf('name: "postDetail", params: { id: p.dbId }'));
-ok("我的主页帖子卡 router-link 上 openMyPost(p)（内部 setPostNav，不改写成 push，导航仍由 vue-router 走）",
-  has(profile, '@click="openMyPost(p)"', "function openMyPost(p)", "setPostNav(myPosts.value)", "'/post/' + p.dbId")
-    && !profile.includes("router.push({ path: '/post/' + p.dbId"));
+/* 轮 460：卡片从 <router-link> 换成 <article> + router.push ——
+ * 卡片里要放评论输入框/按钮，而 <a> 里嵌交互元素在手机上会让「点输入框」变成跳详情。 */
+ok("我的主页帖子卡 = article + openMyPost 里 router.push（卡内可放评论控件）",
+  has(profile, '@click="openMyPost(p)"', "function openMyPost(p)", "setPostNav(myPosts.value)",
+    'class="post-card card my-post"', "router.push({ path: `/post/${p.dbId}` })")
+    && !profile.includes(`:to="'/post/' + p.dbId"`));
 ok("四个入口都 import 了 setPostNav",
   [community, myPosts, waller, profile].every((s) => has(s, 'from "../utils/postNav.js"')));
 

@@ -54,7 +54,7 @@ const MANIFEST = [
     "post-detail-test", "post-nav-test", "privacy-test", "proto-chat-test", "rail-test",
     "react-multikind-test", "react-queue-test", "report-test", "responsiveness-test", "rps-test",
     "seo-test", "snack-test", "splash-test", "status-counts-test", "status-test", "story-test",
-    "maintenance-test", "owner-delete-test", "follow-test", "follow-feed-test", "menu-close-test", "scoped-class-test",
+    "maintenance-test", "owner-delete-test", "follow-test", "follow-feed-test", "menu-close-test", "mypost-comments-test", "scoped-class-test",
     "tabbar-copy-test", "tap-guard-test", "teleport-test", "uifix-test", "undef-check",
     "userScope-test", "wall-addviews-test", "wall-composer-test", "wall-reaction-test",
     "wall-refresh-test", "wall-empty-test", "wall-end-test", "wall-rules-test", "wall-test", "web-refresh-test", "worker-test",

@@ -11,6 +11,8 @@ import { cacheKey, cachePatch, cacheSet, cacheDrop, swr } from "../utils/cache.j
 import { avatarUrlFor } from "../utils/avatar.js";   /* 轮 238:萌宠头像池 */
 import { setPostNav } from "../utils/postNav.js";    /* 轮 279:进详情前存列表快照,左右滑用 */
 import { onPostReaction, patchPostList } from "../utils/postReactionSync.js";
+/* 轮 460：评论区（暖心墙卡片同款）——用户「点击我的帖子，没有评论，需要跟暖心墙那一样」 */
+import PostComments from "../components/PostComments.vue";
 
 /* 轮 286:帖子时间接上统一的格式化函数 —— 此前这里是个裸 toLocaleDateString(),
  * 只出「2026/10/14」,连时分都没有。
@@ -247,6 +249,11 @@ async function delPost(p) {
           <button class="mypage-del" :disabled="removing.has(p.dbId)" @click.stop="delPost(p)">
             {{ removing.has(p.dbId) ? "…" : t("post.delete") }}
           </button>
+        </div>
+        <!-- 轮460：评论区与暖心墙卡片同款（说点温柔的话 + 💬 N 条评论 ▾），
+             点卡片其它位置仍进详情页；这里的事件用 .stop 守住自己的控件 -->
+        <div @click.stop>
+          <PostComments :post="p" />
         </div>
       </article>
 

@@ -25,6 +25,8 @@ import { cacheKey, cachePeek, cacheSet, cachePatch, swr } from "../utils/cache.j
 import { avatarUrlFor } from "../utils/avatar.js";   /* 轮 238:萌宠头像池 */
 import { setPostNav } from "../utils/postNav.js";    /* 轮 279:进详情前存列表快照,左右滑用 */
 import { onPostReaction, patchPostList } from "../utils/postReactionSync.js";
+/* 轮 460：帖子评论区（暖心墙卡片同款）——「我的页面」里这三张帖子卡也要能看评论 */
+import PostComments from "../components/PostComments.vue";
 /* 轮447：关注数（「关注 N」入口的角标）。只读 ids.length，进页面校准一次。 */
 import { followingCount, refreshFollows } from "../utils/follows.js";
 
@@ -162,6 +164,9 @@ function openMyPost(p) {
   if (!p || p.dbId == null) return;
   setPostNav(myPosts.value);
   cacheSet(cacheKey("wall:post", p.dbId), p);
+  /* 轮 460：卡片从 <router-link> 改成 <article>（卡片里要放评论输入框/按钮，
+     链接里嵌交互元素在手机上会让「点输入框」变成跳详情），导航改在这里做 */
+  router.push({ path: `/post/${p.dbId}` });
 }
 
 /* 轮 254：内嵌收藏逻辑（favRows/watch/unFav/showFavs）已迁往独立页 FavoritesView；
@@ -575,9 +580,9 @@ const brightRatio = computed(() => {
       <!-- 轮 18：与暖心墙完全同款的帖子卡（头像/署名/时间/全文/配图/回应数/浏览数）；
            轮 20：整卡点击进独立详情页 /post/:id（完整帖子+评论展开），不再跳回暖心墙列表 -->
       <div v-else class="my-posts">
-        <router-link
+        <article
           v-for="p in myPosts" :key="p.id"
-          class="post-card card my-post" :to="'/post/' + p.dbId"
+          class="post-card card my-post"
           @click="openMyPost(p)">
           <div class="post-head">
             <n-avatar round :size="42" class="post-avatar" :src="avatarUrlFor(cloud.user && cloud.user.id) || undefined"><template v-if="!avatarUrlFor(cloud.user && cloud.user.id)" #default>🙂</template><template v-else #fallback>🙂</template></n-avatar>
@@ -598,7 +603,12 @@ const brightRatio = computed(() => {
           <div v-if="p.stats" class="post-foot">
             <span class="post-views">{{ t("community.views", { n: p.views || 0 }) }}</span>
           </div>
-        </router-link>
+          <!-- 轮460：与暖心墙卡片同款的评论区（说点温柔的话 + 💬 N 条评论 ▾）；
+               点这一块不触发整卡跳详情 -->
+          <div @click.stop>
+            <PostComments :post="p" />
+          </div>
+        </article>
       </div>
     </section>
 
@@ -612,6 +622,8 @@ const brightRatio = computed(() => {
 .my-posts { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
 .my-post {
   display: block; text-decoration: none; color: inherit;
+  /* 轮 460：卡片由 <router-link> 改为 <article>（卡内要放评论框），手型要自己给 */
+  cursor: pointer;
 }
 .my-post:hover { background: var(--accent-soft); }
 /* 轮 18：卡片结构与暖心墙完全同款（.post-card/.post-head/.post-text/.pic/.react-row 全局类），
