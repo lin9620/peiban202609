@@ -24,6 +24,7 @@ const best = ref(Number(getItem(BEST_KEY)) || 0);
 const newBest = ref(false);
 const reward = ref(null);
 const rewardLeft = ref(RAIN_REWARD_MAX);   // #3 今日还剩几次金币奖励（说明页/结算都显示）
+const quitAsk = ref(false);                // 中途退出二次确认（同时暂停游戏）
 
 /* 宠物形象：自定义立绘 > 物种 emoji */
 const petImg = computed(() => (activePet.value && activePet.value.custom && activePet.value.custom.img) || "");
@@ -67,6 +68,8 @@ function onMove(e) {
 
 function loop(ts) {
   if (phase.value !== "playing") return;
+  /* 退出确认弹层打开时冻结画面：不刷新 last，取消后不会补算暂停期间的掉落 */
+  if (quitAsk.value) { last = ts; raf = requestAnimationFrame(loop); return; }
   if (!last) last = ts;
   const dt = Math.min(0.05, (ts - last) / 1000);
   last = ts;
@@ -114,6 +117,7 @@ function cleanup() {
 
 function onStart() {
   cleanup();
+  quitAsk.value = false;
   dishPool = cookbook.filter((d) => d && d.img).slice(0, 12);
   dishCount.value = dishPool.length;
   items.value = []; fx.value = [];
@@ -127,6 +131,7 @@ function onStart() {
 
 function finish() {
   cleanup();
+  quitAsk.value = false;
   phase.value = "over";
   items.value = [];
   reward.value = applySnackRain(score.value);
@@ -135,6 +140,23 @@ function finish() {
     best.value = score.value; newBest.value = true;
     try { setItem(BEST_KEY, String(best.value)); } catch (e) {}
   }
+}
+
+/* 中途退出：先暂停并二次确认，避免手滑丢掉本局成绩 */
+function askQuit() {
+  if (phase.value === "playing") quitAsk.value = true;
+  else emit("close");
+}
+function cancelQuit() {
+  quitAsk.value = false;
+  last = 0;                 // 取消后重新计时，避免暂停时长被算进本局
+}
+function confirmQuit() {
+  quitAsk.value = false;
+  cleanup();
+  items.value = [];
+  fx.value = [];
+  emit("close");
 }
 
 onBeforeUnmount(cleanup);
@@ -156,7 +178,8 @@ const itemStyle = (it) => ({ left: (it.x * 100) + "%", top: (Math.max(0, it.y) *
       <span class="sr-chip">⭐ {{ score }}</span>
       <span class="sr-chip">⏱ {{ Math.ceil(left) }}s</span>
       <span class="sr-chip" :class="{ bad: missed >= MAX_MISSED - 2 }">💔 {{ missed }}/{{ MAX_MISSED }}</span>
-      <button class="sr-x" :title="t('common.close')" @click="emit('close')">✕</button>
+      <button v-if="phase === 'playing'" class="sr-quit" @click="askQuit">{{ t("pet.snack.quit") }}</button>
+      <button v-else class="sr-x" :title="t('common.close')" @click="emit('close')">✕</button>
     </div>
 
     <!-- 开始说明 -->
@@ -188,7 +211,7 @@ const itemStyle = (it) => ({ left: (it.x * 100) + "%", top: (Math.max(0, it.y) *
     </div>
 
     <!-- 结算 -->
-    <div v-else class="sr-card">
+    <div v-else-if="phase === 'over'" class="sr-card">
       <h2>{{ t("pet.snack.over") }}</h2>
       <p class="sr-score">⭐ {{ score }}</p>
       <p v-if="newBest" class="sr-newbest">🎉 {{ t("pet.snack.newBest") }}</p>
@@ -208,6 +231,18 @@ const itemStyle = (it) => ({ left: (it.x * 100) + "%", top: (Math.max(0, it.y) *
         <button class="sr-btn ghost" @click="emit('close')">{{ t("common.close") }}</button>
       </div>
     </div>
+
+    <!-- 中途退出确认：暂停游戏后二次确认 -->
+    <div v-if="quitAsk" class="sr-confirm" @click.self="cancelQuit">
+      <div class="sr-confirm-card" role="dialog" aria-modal="true">
+        <h3>{{ t("pet.snack.quitTitle") }}</h3>
+        <p>{{ t("pet.snack.quitBody") }}</p>
+        <div class="sr-row">
+          <button class="sr-btn ghost" @click="cancelQuit">{{ t("pet.snack.keepPlaying") }}</button>
+          <button class="sr-btn" @click="confirmQuit">{{ t("pet.snack.quit") }}</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -216,10 +251,10 @@ const itemStyle = (it) => ({ left: (it.x * 100) + "%", top: (Math.max(0, it.y) *
   position: fixed; inset: 0; z-index: 90;
   background: rgba(38, 30, 22, .58); backdrop-filter: blur(7px);
   display: flex; align-items: center; justify-content: center;
-  font-family: inherit;
+  font-family: inherit; touch-action: none; overscroll-behavior: contain;
 }
 .sr-top {
-  position: fixed; top: 14px; left: 0; right: 0;
+  position: fixed; top: 14px; left: 0; right: 0; z-index: 5;
   display: flex; gap: 8px; justify-content: center; align-items: center;
 }
 .sr-chip {
@@ -233,10 +268,16 @@ const itemStyle = (it) => ({ left: (it.x * 100) + "%", top: (Math.max(0, it.y) *
   width: 34px; height: 34px; border-radius: 50%; font-size: 16px; margin-left: 6px;
   box-shadow: 0 4px 14px rgba(40, 28, 16, .18);
 }
+.sr-quit {
+  border: 0; cursor: pointer; margin-left: 6px;
+  background: var(--glass-strong, #fff); color: var(--ink, #4a3b2f);
+  border-radius: 999px; padding: 7px 13px; font-family: inherit; font-size: 13px; font-weight: 600;
+  box-shadow: 0 4px 14px rgba(40, 28, 16, .18);
+}
 .sr-card {
   background: var(--glass-strong, #fff); color: var(--ink, #4a3b2f);
   border-radius: 24px; padding: 30px 34px; text-align: center; max-width: 420px;
-  box-shadow: 0 20px 60px rgba(30, 20, 10, .35);
+  box-shadow: 0 20px 60px rgba(30, 20, 10, .35); touch-action: pan-y;
 }
 .sr-card h2 { margin: 0 0 8px; }
 .sr-sub { margin: 0 0 6px; opacity: .85; line-height: 1.55; }
@@ -255,6 +296,21 @@ const itemStyle = (it) => ({ left: (it.x * 100) + "%", top: (Math.max(0, it.y) *
 .sr-newbest { color: #46A78E; font-weight: 500; margin: 0 0 6px; }
 .sr-reward { list-style: none; padding: 0; margin: 8px 0 4px; display: flex; gap: 12px; justify-content: center; font-weight: 500; }
 .sr-row { display: flex; gap: 10px; justify-content: center; margin-top: 16px; }
+
+.sr-confirm {
+  position: fixed; inset: 0; z-index: 12; padding: 18px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(30, 22, 14, .35); backdrop-filter: blur(2px);
+}
+.sr-confirm-card {
+  width: min(100%, 360px); padding: 24px 22px 18px; text-align: center;
+  background: var(--glass-strong, #fff); color: var(--ink, #4a3b2f);
+  border-radius: 24px; box-shadow: 0 20px 60px rgba(30, 20, 10, .35);
+  animation: srConfirmIn .18s ease-out; touch-action: pan-y;
+}
+.sr-confirm-card h3 { margin: 0 0 8px; font-size: 18px; font-weight: 700; }
+.sr-confirm-card p { margin: 0; font-size: 13px; font-weight: 500; line-height: 1.6; color: var(--ink-soft, #7a6652); }
+@keyframes srConfirmIn { from { opacity: 0; transform: translateY(8px) scale(.97); } }
 
 .sr-arena { position: absolute; inset: 0; touch-action: none; overflow: hidden; }
 .sr-item {

@@ -41,6 +41,7 @@ import BottleChat from "../components/BottleChat.vue";
 import DmVacChat from "../components/DmVacChat.vue";
 import { readDmUi } from "../utils/dmUiFlag.js";
 import { isMobileNav, chatOpen, pushBack, popBack } from "../stores/uiStore.js";
+import { kickChatViewport } from "../utils/chatViewport.js";
 /* T7 娑堟伅 Tab 鍐呭垎鏍忥紙绉佷俊 | 閫氱煡锛夛細閫氱煡娈电洿鎺ュ鐢?NotificationsView
  * 锛堟暟鎹眰闆堕噸鍐欙紱寮傛 chunk 涓嶆嫋鎱㈤灞忥紱鎸傝浇鍗虫媺绗?0 椤碉紝閰?SWR 缂撳瓨绉掑紑锛?*/
 const NotificationsView = defineAsyncComponent(() => import("./NotificationsView.vue"));
@@ -116,6 +117,15 @@ const paneReady = computed(() => {
 watch([isMobileNav, activeId, paneReady], () => {
   chatOpen.value = isMobileNav.value && !!activeId.value && paneReady.value;
 }, { immediate: true });
+/* 轮 474 · 面板一打开就立刻校正视口几何，不等 utils/chatViewport 的 250ms 巡检。
+ * 病根：进会话是 history.pushState，不派发任何 resize/pageshow 事件，而
+ * `html.kb-web .dm-page--chat` 那条高度规则在**不认 dvh 的内核**上计算期作废
+ * （已改成 @supports 兜底，但脚本仍要第一时间写精确的 innerHeight）。
+ * nextTick = DOM 更新完、浏览器还没绘制 → 内联高度与面板同帧落地，
+ * 用户看不到「输入条先在屏幕中间闪一下再掉下去」。 */
+watch(chatOpen, (v) => {
+  if (v) nextTick(() => kickChatViewport());
+});
 const msgs = ref([]);        // 褰撳墠浼氳瘽娑堟伅锛堟棫鈫掓柊锛?
 let msgsConv = "";           // msgs 鐜板湪瑁呯殑鏄摢涓細璇濓紙杞?157b锛氶槻璺ㄤ細璇濊鍚堝苟锛?
 /* 杞?225 路 浼氳瘽鍒囨崲绔炴€佸畧鍗細姣忔銆屾寜浼氳瘽鎷夋秷鎭€嶅彂鍙凤紙msgSeq锛夛紝鍝嶅簲鍥炴潵鏃舵牎楠屽彿涓庡綋鍓嶄細璇濄€?
@@ -725,6 +735,9 @@ async function loadConvs() {
         if (!mine()) return;
         convs.value = withBlockedTombstones(mergeLocalConvs(rows));
         loadingConvs.value = false;
+        /* 有缓存行时列表已经可信；空缓存仍等后台明确应答（same/fresh）再亮空态，
+         * 避免网络失败时把「缓存里恰好是空」误报成「没有会话」。 */
+        if (Array.isArray(rows) && rows.length) convsLoaded.value = true;
       },
       fresh: (rows) => {
         if (!mine()) return;
@@ -736,6 +749,14 @@ async function loadConvs() {
         /* 杞?376锛歴wr 鍥炲啓鐨勬槸鏈嶅姟绔師濮嬪揩鐓э紱鎶婂悎骞跺悗鐨勬湰鍦版挙鍥?棰勮琛ヤ竵鍐嶇洊鍥炲幓锛?
          * 鍚﹀垯鍒锋柊涓€娆″垪琛ㄥ氨鎶婂垰鎾ゅ洖鐨勯瑙堟崲鍥炴棫姝ｆ枃銆?*/
         cacheSet(cacheKey("dm:convs", owner), merged);
+      },
+      same: () => {
+        if (!mine()) return;
+        /* 轮454：缓存里的空列表 + 服务端仍返回空列表时，swr 会跳过 fresh。
+         * 这里补收加载态，否则「没有会话」空态永远不出现，用户每次进来都像还在转圈。 */
+        convsLoaded.value = true;
+        failed.value = false;
+        convsRetryN = 0;
       },
       onError: () => { if (mine()) { failed.value = true; scheduleConvsRetry(); } },
     },

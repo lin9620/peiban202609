@@ -471,6 +471,33 @@ button.m-share-pill { border: none; font-family: inherit; font-size: 13px; curso
 .pfill.warn { background: linear-gradient(90deg, #ffd68f, #f2b24a); }
 .pfill.low { background: linear-gradient(90deg, #ff9d8f, #ef7d6a); }
 
+/* 小游戏入口：零食雨 / 石头剪刀布并排（RPS 从页面大卡片收进弹层后的入口） */
+.pet-games { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }
+.pet-game {
+  position: relative; display: flex; align-items: center; gap: 10px; min-width: 0;
+  padding: 11px 12px; border: 1px solid var(--hairline); border-radius: 18px;
+  background: var(--wash-strong); color: var(--ink); font-family: inherit; text-align: left;
+  cursor: pointer; box-shadow: var(--shadow-sm);
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+}
+.pet-game.snack { background: linear-gradient(135deg, var(--accent-soft), var(--wash-strong) 72%); }
+.pet-game.rps { background: linear-gradient(135deg, rgba(70, 167, 142, .16), var(--wash-strong) 72%); }
+.pet-game:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--accent); }
+.pet-game:active { transform: scale(.98); }
+.pg-ico {
+  flex: none; width: 42px; height: 42px; display: grid; place-items: center;
+  font-size: 24px; border-radius: 14px; background: var(--glass-strong);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+.pg-copy { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pg-copy b { font-size: 13px; font-weight: 700; line-height: 1.2; }
+.pg-copy small {
+  font-size: 10.5px; font-weight: 500; line-height: 1.25; color: var(--ink-soft);
+  overflow: hidden; text-overflow: ellipsis; display: -webkit-box;
+  -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.pg-go { flex: none; margin-left: auto; font-size: 10px; color: var(--accent-deep); opacity: .75; }
+
 .pet-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 16px; }
 .act {
   border: none; background: var(--wash-strong);
@@ -1502,6 +1529,25 @@ html[data-theme="night"] .more-sep { background: rgba(255, 255, 255, .12); }
   color: var(--ink-faint); font-size: 14px; cursor: pointer;
 }
 .cmt-entry:active { background: rgba(236, 239, 243, .95); }
+/* ═══ 轮 472 · 输入态暗层（用户拍板：「做输入的时候上面变暗一点点，然后点击外部返回」）═══
+ * 条一打开 tabbar 就整条收起（轮 108 为贴键盘），折叠键盘后四个页签点不到 ——
+ * 用户问「折叠之后怎么切底部按钮」。与其在底部堆两层（条 + tabbar，被否），
+ * 不如给一个明确出口：整页压一层很淡的暗色，点它就是返回。
+ * 返回走两级（utils/barReturn.js）：键盘在屏上先落键盘，落了再收条。
+ * z-index 149 —— 条是 150，暗层只盖条以上区域，不遮输入框本身。
+ * ⚠ 必须跟条一起 Teleport 到 body（模板侧），否则会被 .wall-scroller 的
+ *   fixed + overflow-y:auto 吃掉（轮 471 同一个坑）。 */
+.cmt-bar-mask {
+  position: fixed; inset: 0;
+  z-index: 149;
+  background: rgba(30, 24, 20, .14);
+  animation: cmt-mask-in .18s ease-out;
+  -webkit-tap-highlight-color: transparent;
+}
+@keyframes cmt-mask-in { from { opacity: 0; } to { opacity: 1; } }
+/* 深色皮肤下 16% 的黑几乎看不出来，加深一档（亮色底上仍保持「一点点」） */
+html[data-theme="night"] .cmt-bar-mask { background: rgba(0, 0, 0, .42); }
+
 .cmt-main-bar {
   position: fixed; left: 0; right: 0;
   bottom: 0; z-index: 150;
@@ -1997,7 +2043,10 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 .notif-line { font-size: 13.5px; font-weight: 500; color: var(--ink); margin: 0; overflow-wrap: anywhere; }
 .notif-quote {
   margin: 4px 0 0; font-size: 12.5px; color: var(--ink-soft);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  /* 公告可能很长：列表只露两行，点整行打开全文弹层（旧版单行省略号
+     让用户以为公告只有半句话）。 */
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden; white-space: normal; line-height: 1.5;
   overflow-wrap: anywhere;
 }
 .notif-time { margin: 3px 0 0; font-size: 11.5px; }
@@ -2469,8 +2518,14 @@ html[data-theme="night"] .dm-menu-sep { background: rgba(255, 255, 255, .12); }
 .shell--mobile-nav .dm-list {
   max-height: none; overflow: visible;
   /* 轮 163：列表卡拉满一屏——内容短时（如刚清空的会话列表）下方空白也在手势面里，
-     三段（漂流瓶/会话/通知）横滑不再有死区；78px=底部导航+safe-area 预留，28px=页内间隙 */
-  min-height: calc(100dvh - 106px - var(--sat, env(safe-area-inset-top, 0px)) - var(--sab, env(safe-area-inset-bottom, 0px)));
+     三段（漂流瓶/会话/通知）横滑不再有死区；78px=底部导航+safe-area 预留，28px=页内间隙
+     轮 474：vh 打底，dvh 关进 @supports（裸写时老内核实测无最小高度，列表拉不满）。 */
+  min-height: calc(100vh - 106px - var(--sat, env(safe-area-inset-top, 0px)) - var(--sab, env(safe-area-inset-bottom, 0px)));
+}
+@supports (height: 100dvh) {
+  .shell--mobile-nav .dm-list {
+    min-height: calc(100dvh - 106px - var(--sat, env(safe-area-inset-top, 0px)) - var(--sab, env(safe-area-inset-bottom, 0px)));
+  }
 }
 .shell--mobile-nav .dm-row { padding: 10px 8px; }
 
@@ -2483,8 +2538,16 @@ html[data-theme="night"] .dm-menu-sep { background: rgba(255, 255, 255, .12); }
 /* 轮 241（用户实报图2）：100vh 打底再用 dvh —— Android WebView < Chrome 108
    （2022 前的国产机常见）不认识 dvh，整条 height:100dvh 会被当无效声明丢弃 →
    .dm-page 高度塌缩 → 下面两级 flex:1 无处分配 → 聊天不撑满、输入框悬在中间；
-   桌面新 Chrome 测不出来，只有旧内核手机复现。新内核 dvh 覆盖 vh（随地址栏伸缩）。 */
-.shell--mobile-nav.shell--chat .dm-page { height: 100vh; height: 100dvh; gap: 0; }
+   桌面新 Chrome 测不出来，只有旧内核手机复现。新内核 dvh 覆盖 vh（随地址栏伸缩）。
+   轮 474 修正：上面「当无效声明丢弃」这个判断只对**解析期就非法**的值成立；
+   `100dvh` 解析期合法（只是个 dimension），于是层叠时赢过 100vh，到计算期才作废 →
+   高度变 auto（`height:auto`），**不会**回退到前一条 100vh。所以双声明写法在
+   旧内核上等于没兜底，必须把 dvh 关进 @supports（真机逐帧：进会话首帧
+   .dm-page = 377.8px / 屏高 744，输入条在屏幕中间闪一下）。 */
+.shell--mobile-nav.shell--chat .dm-page { height: 100vh; gap: 0; }
+@supports (height: 100dvh) {
+  .shell--mobile-nav.shell--chat .dm-page { height: 100dvh; }
+}
 /* ═══ 轮 322 · 键盘让位（App 壳专用；网页端零改动）═══
  * 用户实报：「点消息-会话的输入框，先有一层空白，然后手机输入法才上来」。
  * 真机实测病因链（详见 jiaojie 轮 322）：manifest 曾按 adjustResize 缩窗口 → 改
@@ -2506,8 +2569,19 @@ html.cap-app {
 html.cap-app body { padding-bottom: var(--kb-h); }
 html.cap-app .shell--mobile-nav.shell--chat .dm-page {
   height: calc(100vh - var(--kb-h));
-  height: calc(100dvh - var(--kb-h));
   transition: height .22s cubic-bezier(.2, .8, .2, 1);
+}
+/* 轮 474 · dvh 必须关在 @supports 里，不能当「同一条规则的第二条声明」写。
+ * 病根（小米浏览器 / 1080×2460 逐帧实测）：内核不认 dvh 时，`calc(100dvh - X)`
+ * 在**解析期是合法的**（dvh 只是个 dimension），所以层叠时它照样赢过前一条 100vh；
+ * 到计算值阶段才因为单位不认识变成 invalid → 该属性的计算值退成 **auto**，
+ * 而不会回退到同一规则里上一条 100vh。表现就是容器高度 = 内容高度：
+ * 进会话首帧 .dm-page 只有 377.8px（屏高 744），输入条排在屏幕中间弹一下又掉下去。
+ * 关进 @supports 后，不支持的内核根本看不到这条声明，100vh 才兜得住。 */
+@supports (height: 100dvh) {
+  html.cap-app .shell--mobile-nav.shell--chat .dm-page {
+    height: calc(100dvh - var(--kb-h));
+  }
 }
 html.cap-app .cmt-main-bar {
   bottom: var(--kb-h);
@@ -2531,10 +2605,16 @@ html.kb-web { --kb-h: 0px; }
 html.kb-web .shell--mobile-nav.shell--chat .dm-page {
   /* 轮 464：补 100vh 兜底 —— Xiaomi/国产浏览器内核常低于 Chromium 108，不认 dvh，
    * 只写 dvh 时这条规则整条失效，而它又压掉了上面那条 100vh/100dvh，height 落回 auto
-   * （真机实测 .dm-page = 2401px，屏高 744）＝ 输入条被推到文档末尾。 */
+   * （真机实测 .dm-page = 2401px，屏高 744）＝ 输入条被推到文档末尾。
+   * 轮 474：光「补一条 100vh 在前面」不够 —— 详见下方 @supports 那段注释，
+   * dvh 那条必须彻底关进去，否则它计算期作废时会把 100vh 一起吃掉。 */
   height: calc(100vh - var(--kb-h, 0px));
-  height: calc(100dvh - var(--kb-h, 0px));
   transition: height .22s cubic-bezier(.2, .8, .2, 1);
+}
+@supports (height: 100dvh) {
+  html.kb-web .shell--mobile-nav.shell--chat .dm-page {
+    height: calc(100dvh - var(--kb-h, 0px));
+  }
 }
 /* 轮 463：底部保底 10px。安卓浏览器的 env(safe-area-inset-bottom) 恒为 0（Chromium 不返回
    手势条高度），系统那条手势横线会正好贴着输入条下沿画（用户截图②）。键盘弹起时 --kb-h
@@ -2551,12 +2631,23 @@ html.kb-web .shell--mobile-nav.shell--chat .dm-thread:not(.wp-emoji-open):not(.w
  * （用户报的「直接出现在记录最前方」）、键盘让位看起来完全没生效。
  * 所以把「整屏」这件事也写一份在页面自己身上：只要面板开着，高度就必须是视口高度，
  * 与外壳类无关。口径与上面 .shell--mobile-nav.shell--chat 那组一致，改一份要一起看。 */
-.dm-page--chat { height: 100vh; height: 100dvh; gap: 0; }
+.dm-page--chat { height: 100vh; gap: 0; }
+@supports (height: 100dvh) {
+  .dm-page--chat { height: 100dvh; }
+}
 html.kb-web .dm-page--chat,
 html.cap-app .dm-page--chat {
+  /* 轮 474：同上 —— dvh 那条关进 @supports，别写成同规则的第二条声明。
+   * 这条是「面板自己兜底」的主路径：不加壳类也要整屏，一旦它算成 auto，
+   * 进会话首帧就是 377.8px 的塌缩（输入条在屏幕中间）。 */
   height: calc(100vh - var(--kb-h, 0px));
-  height: calc(100dvh - var(--kb-h, 0px));
   transition: height .22s cubic-bezier(.2, .8, .2, 1);
+}
+@supports (height: 100dvh) {
+  html.kb-web .dm-page--chat,
+  html.cap-app .dm-page--chat {
+    height: calc(100dvh - var(--kb-h, 0px));
+  }
 }
 .dm-page--chat .dm-wrap {
   display: flex; flex-direction: column; align-items: stretch;
@@ -2571,20 +2662,31 @@ html.cap-app .dm-page--chat {
 }
 
 /* ═══ 轮 465 · 网页端聊天页 fixed 接管（类由 utils/chatViewport.js 打）═══
- * 位置/宽高全部写在元素内联样式里（视觉视口实时值），这里只补两件 CSS 管的事：
- *   ① 底部手势条 —— 安卓 Chromium 的 env(safe-area-inset-bottom) 恒为 0，
- *      edge-to-edge 的内核会把系统横线直接画在输入条下沿（用户截图②）。
- *      给容器留 6px 保底，env 有值时用 env。
- *   ② 文档锁死后的兜底高度 —— html.wp-chat-fix 期间 body 高度归零，
- *      万一脚本没跑成（老内核），页面至少还在视口高度内，不会塌成一条。 */
-html.wp-chat-fix .dm-page {
-  padding-bottom: max(6px, env(safe-area-inset-bottom, 0px));
-}
+ * 位置/宽高由 utils/chatViewport.js 接管，这里只补 CSS 管的事：
+ *   ① 文档锁死后的兜底高度 —— html.wp-chat-fix 期间 body 高度归零，
+ *      万一脚本没跑成（老内核），页面至少还在视口高度内，不会塌成一条。
+ *
+ * 轮 466 · 删掉原来的 `padding-bottom: max(6px, env(...))`：
+ *   真机（小米浏览器 / 1080×2460）逐像素量过 —— 输入框底边到浏览器工具栏上沿
+ *   空出 63 物理像素（23 CSS px）。其中 16px 就是「.dm-page 的 6px + .dm-thread
+ *   的 10px」两处垫底叠出来的，剩下十来像素是 visualViewport.height 比真实可见底
+ *   偏小。网页端的浏览器工具栏已经把系统手势条让开了，页面底部再垫就是白白留白。
+ *   （App 壳走 cap-app 分支，wp-chat-fix 根本不会挂，那边的手势条保底不受影响。） */
 html.wp-chat-fix,
 html.wp-chat-fix body {
   height: 100%;
   overflow: hidden;
   overscroll-behavior: none;
+}
+/* 同一条账：那 10px 保底只在「没有浏览器工具栏」时才有意义，网页端一并归零。
+ * 选择器带 .shell--mobile-nav.shell--chat，压过 2570 行那条 5 段规则。 */
+html.wp-chat-fix .shell--mobile-nav.shell--chat .dm-thread,
+html.wp-chat-fix .shell--mobile-nav.shell--chat .dm-thread:not(.wp-emoji-open):not(.wp-kb-swap) {
+  padding-bottom: 0;
+  /* 轮 474：这 10px 保底归零是「进入聊天形态」的一次性动作，不是键盘让位。
+   * 留着 2787 行那条 .22s 过渡，进会话时内层容器会从 734 慢慢长到 744 ——
+   * 用户看到的就是「输入条到底了，又往上滑一小格」。瞬时到位即可。 */
+  transition: none;
 }
 /* 层叠：.shell 自带 z-index:1，聊天页在里面就算写 z-index:30 也只是「壳内第一」，
  * 根级的 tabbar（140）仍会盖在上面。聊天时 tabbar 本该隐藏，但「inChat 没挂上」
@@ -2608,8 +2710,14 @@ html.kb-web .reply-bar {
 .home3 {
   overflow: hidden; overflow: clip;
   /* 轮 166b：home3 拉满一屏（减页顶 14 + 底部导航 78 + safe-area）——它背景透明，
-     视觉与原来完全一致，但内容以下的空白都在 home3 手势面里，横滑不再有死区 */
-  min-height: calc(100dvh - 96px - var(--sat, env(safe-area-inset-top, 0px)) - var(--sab, env(safe-area-inset-bottom, 0px)));
+     视觉与原来完全一致，但内容以下的空白都在 home3 手势面里，横滑不再有死区。
+     轮 474：同 dvh 坑 —— vh 打底，dvh 关进 @supports，别当同规则第二条声明。 */
+  min-height: calc(100vh - 96px - var(--sat, env(safe-area-inset-top, 0px)) - var(--sab, env(safe-area-inset-bottom, 0px)));
+}
+@supports (height: 100dvh) {
+  .home3 {
+    min-height: calc(100dvh - 96px - var(--sat, env(safe-area-inset-top, 0px)) - var(--sab, env(safe-area-inset-bottom, 0px)));
+  }
 }
 /* 轮451 · 首页频道条恢复原样（胶囊排 + 选中实心橙）。
  * 轮450 我把它一并改成文字页签了，但用户只点名了暖心墙那一页 ——
@@ -3110,6 +3218,11 @@ html.kb-web .reply-bar {
   .pet-page .card { border-radius: 22px; }
   /* 主卡（舞台+动作+状态）去框全宽 */
   .pet-page .card:has(.pet-stage) { background: transparent; border: none; box-shadow: none; padding: 8px 14px 0; }
+  .pet-page .pet-games { gap: 10px; margin-top: 14px; }
+  .pet-page .pet-game { padding: 10px 11px; border-radius: 18px; }
+  .pet-page .pg-ico { width: 38px; height: 38px; font-size: 22px; border-radius: 13px; }
+  .pet-page .pg-copy b { font-size: 12.5px; }
+  .pet-page .pg-copy small { font-size: 10px; }
   .pet-page .pet-actions { gap: 10px; margin-top: 14px; }
   .pet-page .pet-actions .act { border: none; background: var(--wash); border-radius: 18px; font-weight: 700; }
   .pet-page .pet-actions .act span { font-size: 23px; }
@@ -3263,6 +3376,7 @@ html.kb-web .reply-bar {
 .st-mine-body { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .st-mine-name { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .st-mine-go { font-size: 12px; color: var(--accent-deep); }
+.st-mine-act { padding: 4px 10px; font-size: 12px; }
 .st-mine-del { color: var(--low); }
 
 /* ── 右栏榜单 ── */
@@ -3739,4 +3853,78 @@ html[data-theme="night"] .favpage-back, html[data-theme="night"] .favpage-refres
   font-size: 12.5px; font-weight: 500;
   color: var(--accent-deep);
 }
+
+/* ═══════════ 深夜黑（night 的纯黑变体）═══════════
+ * data-theme 仍是 night —— 直接复用上面所有深色结构规则（含组件 scoped 样式），
+ * 这里只把底色、玻璃和夜间硬编码的蓝紫表面压到近黑。
+ * 必须放在文件末尾：要压过前面所有 night 规则。 */
+html[data-theme="night"][data-theme-variant="midnight"] {
+  --ink: #f1f1f4; --ink-soft: #b5b5c0; --ink-faint: #7d7d88;
+  --accent: #c97a5d; --accent-deep: #e8a184; --accent-soft: rgba(232, 161, 132, .14);
+  --card: #141419; --hairline: rgba(255, 255, 255, .10); --page-bg: #0a0a0e;
+  --wash: rgba(255, 255, 255, .055); --wash-mid: rgba(255, 255, 255, .085); --wash-strong: rgba(255, 255, 255, .12);
+  --glass: rgba(14, 14, 19, .74); --glass-strong: rgba(22, 22, 28, .90);
+  --shadow-sm: 0 2px 10px rgba(0, 0, 0, .50);
+  --shadow: 0 8px 28px rgba(0, 0, 0, .62), 0 2px 6px rgba(0, 0, 0, .45);
+  --shadow-lg: 0 18px 50px rgba(0, 0, 0, .70);
+}
+html[data-theme="night"][data-theme-variant="midnight"] body {
+  background: linear-gradient(160deg, #0a0a0e 0%, #0d0d12 40%, #111116 75%, #08080b 100%);
+  background-attachment: fixed;
+}
+html[data-theme="night"][data-theme-variant="midnight"] .orb-1 { background: #241a1f; opacity: .32; }
+html[data-theme="night"][data-theme-variant="midnight"] .orb-2 { background: #1d1a26; opacity: .30; }
+html[data-theme="night"][data-theme-variant="midnight"] .orb-3 { background: #241f1a; opacity: .28; }
+
+/* 夜间写死成蓝紫的实心表面，统一压成暖黑 */
+html[data-theme="night"][data-theme-variant="midnight"] .rail-speech,
+html[data-theme="night"][data-theme-variant="midnight"] .acc-chip,
+html[data-theme="night"][data-theme-variant="midnight"] .ra,
+html[data-theme="night"][data-theme-variant="midnight"] .mq,
+html[data-theme="night"][data-theme-variant="midnight"] .carry-chip,
+html[data-theme="night"][data-theme-variant="midnight"] .modal,
+html[data-theme="night"][data-theme-variant="midnight"] .adopt-modal,
+html[data-theme="night"][data-theme-variant="midnight"] .postcard {
+  background: #15151b; color: var(--ink); border-color: rgba(255, 255, 255, .10);
+}
+html[data-theme="night"][data-theme-variant="midnight"] .rail-speech { background: rgba(255, 255, 255, .07); }
+html[data-theme="night"][data-theme-variant="midnight"] .g-frame {
+  background: linear-gradient(160deg, #24242c, #15151b);
+}
+html[data-theme="night"][data-theme-variant="midnight"] .soft-tag {
+  background: rgba(21, 21, 27, .94) !important; color: var(--ink-soft) !important;
+}
+html[data-theme="night"][data-theme-variant="midnight"] .r-chip,
+html[data-theme="night"][data-theme-variant="midnight"] .m-a,
+html[data-theme="night"][data-theme-variant="midnight"] .crash-msg {
+  background: rgba(232, 161, 132, .12);
+}
+html[data-theme="night"][data-theme-variant="midnight"] .waller .pic { border-color: rgba(21, 21, 27, .95); }
+html[data-theme="night"][data-theme-variant="midnight"] .waller-act,
+html[data-theme="night"][data-theme-variant="midnight"] .dish-feed,
+html[data-theme="night"][data-theme-variant="midnight"] .follow-chip {
+  color: #f0e6df; background: rgba(232, 161, 132, .14);
+}
+html[data-theme="night"][data-theme-variant="midnight"] .dish-card { background: rgba(21, 21, 27, .70); }
+html[data-theme="night"][data-theme-variant="midnight"] .admin-tab { background: rgba(21, 21, 27, .75); color: var(--ink-soft); }
+html[data-theme="night"][data-theme-variant="midnight"] .admin-row,
+html[data-theme="night"][data-theme-variant="midnight"] .admin-page-bar { border-top-color: rgba(255, 255, 255, .10); }
+html[data-theme="night"][data-theme-variant="midnight"] .admin-thumb { border-color: rgba(21, 21, 27, .90); }
+html[data-theme="night"][data-theme-variant="midnight"] .admin-bar-track { background: rgba(255, 255, 255, .10); }
+html[data-theme="night"][data-theme-variant="midnight"] .waller-follow.on { color: #d0d0d8; background: rgba(255, 255, 255, .08); }
+html[data-theme="night"][data-theme-variant="midnight"] .favpage-back,
+html[data-theme="night"][data-theme-variant="midnight"] .favpage-refresh { background: rgba(21, 21, 27, .70); border-color: rgba(255, 255, 255, .14); }
+html[data-theme="night"][data-theme-variant="midnight"] .oauth-google { color: var(--ink); background: rgba(255, 255, 255, .08); }
+html[data-theme="night"][data-theme-variant="midnight"] .or-line::before,
+html[data-theme="night"][data-theme-variant="midnight"] .or-line::after { background: rgba(255, 255, 255, .10); }
+
+/* 登录 / 发帖 / 拉黑页的 scoped 夜间蓝底 */
+html[data-theme="night"][data-theme-variant="midnight"] .compose-head {
+  background: linear-gradient(180deg, rgba(10, 10, 14, .94) 72%, rgba(10, 10, 14, 0)) !important;
+}
+html[data-theme="night"][data-theme-variant="midnight"] .compose-pic-wrap { background: rgba(21, 21, 27, .70) !important; }
+html[data-theme="night"][data-theme-variant="midnight"] .login-back,
+html[data-theme="night"][data-theme-variant="midnight"] .blocked-back,
+html[data-theme="night"][data-theme-variant="midnight"] .blocked-refresh { background: rgba(255, 255, 255, .08) !important; }
+html[data-theme="night"][data-theme-variant="midnight"] .login-page .n-input { background: rgba(255, 255, 255, .06) !important; }
 

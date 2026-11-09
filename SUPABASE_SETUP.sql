@@ -1631,6 +1631,134 @@ language sql security definer set search_path = public as $$
    offset greatest(coalesce(p_offset, 0), 0)
 $$;
 
+-- ── 轮 458 · 今日页「故事 + 语录」按日期发布 ──────────────────
+-- 与 MIGRATION_daily_stories.sql 同源；content = 5 语言 × {title,body,quote}。
+-- 表开 RLS 不建 policy，只有 security definer 函数能碰；公开读只返回 published。
+create table if not exists public.daily_stories (
+  story_date date primary key,
+  content    jsonb not null default '{}'::jsonb,
+  published  boolean not null default true,
+  updated_by uuid,
+  updated_at timestamptz not null default now()
+);
+alter table public.daily_stories enable row level security;
+
+create or replace function public.daily_story_get(p_date date)
+returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'date', d.story_date,
+    'content', d.content,
+    'published', d.published,
+    'updated_at', d.updated_at
+  )
+  from public.daily_stories d
+  where d.story_date = p_date
+    and d.published = true
+$$;
+
+create or replace function public.daily_story_admin_get(p_date date)
+returns jsonb
+language sql stable security definer set search_path = public as $$
+  select case
+    when exists (select 1 from public.admin_users a where a.user_id = auth.uid())
+      then (
+        select jsonb_build_object(
+          'date', d.story_date,
+          'content', d.content,
+          'published', d.published,
+          'updated_at', d.updated_at
+        )
+        from public.daily_stories d
+        where d.story_date = p_date
+      )
+    else null
+  end
+$$;
+
+create or replace function public.daily_story_list(
+  p_limit  integer default 30,
+  p_offset integer default 0
+)
+returns setof jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'date', d.story_date,
+    'content', d.content,
+    'published', d.published,
+    'updated_at', d.updated_at
+  )
+  from public.daily_stories d
+  where exists (select 1 from public.admin_users a where a.user_id = auth.uid())
+  order by d.story_date desc
+  limit least(greatest(coalesce(p_limit, 30), 1), 100)
+  offset greatest(coalesce(p_offset, 0), 0)
+$$;
+
+create or replace function public.daily_story_save(
+  p_date      date,
+  p_content   jsonb,
+  p_published boolean default true
+)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_row public.daily_stories%rowtype;
+begin
+  if not exists (select 1 from public.admin_users a where a.user_id = auth.uid()) then
+    raise exception 'admin-only';
+  end if;
+  if p_date is null then raise exception 'bad-date'; end if;
+  if p_content is null or jsonb_typeof(p_content) <> 'object' then
+    raise exception 'bad-content';
+  end if;
+  if octet_length(p_content::text) > 200000 then
+    raise exception 'content-too-large';
+  end if;
+
+  insert into public.daily_stories (story_date, content, published, updated_by, updated_at)
+  values (p_date, p_content, coalesce(p_published, true), auth.uid(), now())
+  on conflict (story_date) do update
+    set content = excluded.content,
+        published = excluded.published,
+        updated_by = excluded.updated_by,
+        updated_at = now()
+  returning * into v_row;
+
+  return jsonb_build_object(
+    'date', v_row.story_date,
+    'content', v_row.content,
+    'published', v_row.published,
+    'updated_at', v_row.updated_at
+  );
+end $$;
+
+create or replace function public.daily_story_delete(p_date date)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_count integer := 0;
+begin
+  if not exists (select 1 from public.admin_users a where a.user_id = auth.uid()) then
+    raise exception 'admin-only';
+  end if;
+  if p_date is null then raise exception 'bad-date'; end if;
+  delete from public.daily_stories where story_date = p_date;
+  get diagnostics v_count = row_count;
+  return jsonb_build_object('ok', v_count > 0, 'date', p_date);
+end $$;
+
+revoke all on function public.daily_story_get(date) from public;
+grant execute on function public.daily_story_get(date) to anon, authenticated;
+revoke all on function public.daily_story_admin_get(date) from public, anon;
+grant execute on function public.daily_story_admin_get(date) to authenticated;
+revoke all on function public.daily_story_list(integer, integer) from public, anon;
+grant execute on function public.daily_story_list(integer, integer) to authenticated;
+revoke all on function public.daily_story_save(date, jsonb, boolean) from public, anon;
+grant execute on function public.daily_story_save(date, jsonb, boolean) to authenticated;
+revoke all on function public.daily_story_delete(date) from public, anon;
+grant execute on function public.daily_story_delete(date) to authenticated;
+
 -- (待续10)
 
 -- ══════════════════ 通知触发器（挂现有表，AFTER INSERT） ══════════════════

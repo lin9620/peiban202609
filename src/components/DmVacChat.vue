@@ -19,6 +19,7 @@ import { convToRoom, convsToRooms, rowsToMessages } from "../utils/dmMap.js";
 import { BODY_MAX, canRecall } from "../utils/dmRules.js";
 import { avatarUrlFor } from "../utils/avatar.js";
 import { hideEmojiSearchIn } from "../utils/emojiPanel.js";
+import { scheduleEmojiWarm } from "../utils/emojiWarm.js";
 import { isApp } from "../stores/uiStore.js";
 import { t } from "../i18n.js";
 
@@ -1202,6 +1203,9 @@ watch(() => props.err, () => nextTick(syncErr));
 
 onMounted(() => {
   bind();
+  /* 轮 478：会话里的表情面板同样吃这份数据（库按 locale 共用一个 IndexedDB），
+     进会话就空闲预热，点表情不再空等。 */
+  scheduleEmojiWarm();
   if (draftSeed.value) applyDraftTextarea(curRoom.value || props.roomId, draftSeed.value, true);
   nextTick(() => { injectTheme(); injectBack(); injectHead(); syncErr(); });
   /* 轮 340：进会话钉底（首次挂载也算一次「进房」） */

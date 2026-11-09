@@ -32,14 +32,16 @@
        Vue 起来后 uiStore 才补 data-theme，深色/彩色主题的用户先看到一片米白再跳色。
        与 stores/uiStore.js 的 THEME_KEY 同源（wp-theme）；脏值一律回 cream。 */
     (function () {
-      var KEYS = ["cream", "sakura", "mint", "lavender", "night"];
-      var BG = { cream: "#faf9f5", sakura: "#fdf1f6", mint: "#eefaf4", lavender: "#f5f1fc", night: "#171a33" };
+      var KEYS = ["cream", "sakura", "mint", "lavender", "night", "midnight"];
+      var BASE = { midnight: "night" };
+      var BG = { cream: "#faf9f5", sakura: "#fdf1f6", mint: "#eefaf4", lavender: "#f5f1fc", night: "#171a33", midnight: "#0b0b10" };
       var th = "cream";
       try {
         var saved = localStorage.getItem("wp-theme");
         if (saved && KEYS.indexOf(saved) >= 0) th = saved;
       } catch (e) { /* 隐私模式读不到就用默认 */ }
-      document.documentElement.dataset.theme = th;
+      document.documentElement.dataset.theme = BASE[th] || th;
+      if (BASE[th]) document.documentElement.dataset.themeVariant = th;
       /* 地址栏/状态栏配色跟着主题走（网页端；App 里由原生控制） */
       var mc = document.querySelector('meta[name="theme-color"]');
       if (mc) mc.setAttribute("content", BG[th]);
@@ -229,7 +231,7 @@
        *   ① 布局（这里不写 display）→ ② 默认隐藏（网页端不闪）→ ③ App 壳恢复显示（优先级更高）
        * 注意：注释里**不能出现**字面的 style 结束标签——HTML 解析器在 style 元素里见到它就
        * 立刻结束元素（注释也不豁免），splash-test ⑥/⑦ 就是守这个的。 */
-      /* 轮 430：启动页随主题（五套）——奶油 / 樱花 / 薄荷 / 薰衣草 / 星夜。
+      /* 轮 430：启动页随主题（六套）——奶油 / 樱花 / 薄荷 / 薰衣草 / 星夜 / 深夜黑。
          每套 = 背景渐变 + 柔光斑 + 粒子（花瓣 / 气泡 / 星点 / 暖尘）+ 专属图标与文字色；
          DOM 与下面的 i18n 文本替换脚本一行不动，全靠 html[data-theme] 覆盖。
          data-theme 由 <head> 里的内联脚本在首帧前写好（否则永远只画默认奶油色）。 */
@@ -247,13 +249,13 @@
       html.cap-app #app-splash { display: flex; }
       #app-splash.out { opacity: 0; pointer-events: none; }
 
-      /* —— 视觉层：柔光斑 + 粒子（五套共用骨架，主题只换形状 / 颜色 / 动画） —— */
+      /* —— 视觉层：柔光斑 + 粒子（六套共用骨架，主题只换形状 / 颜色 / 动画） —— */
       #app-splash .sp-glow, #app-splash .sp-deco { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
       #app-splash .sp-glow b { position: absolute; display: block; border-radius: 50%; filter: blur(48px); }
       #app-splash .sp-glow b:nth-child(1) { width: 220px; height: 220px; top: -64px; left: -66px; background: rgba(233,152,112,.5); }
       #app-splash .sp-glow b:nth-child(2) { width: 190px; height: 190px; bottom: -58px; right: -54px; background: rgba(240,178,142,.44); }
       #app-splash .sp-glow b:nth-child(3) { width: 150px; height: 150px; top: 44%; right: -74px; background: rgba(255,214,190,.5); }
-      /* 位置表：五套共用，摊在四周，避开中间文字 */
+      /* 位置表：六套共用，摊在四周，避开中间文字 */
       #app-splash .sp-deco i { position: absolute; display: block; width: 6px; height: 6px; border-radius: 50%;
         background: rgba(204,120,92,.5); opacity: .6; animation: sp-twinkle 4.4s ease-in-out infinite; }
       #app-splash .sp-deco i:nth-child(1) { top: 14%; left: 12%; animation-delay: -.3s; }
@@ -370,6 +372,57 @@
       html[data-theme="night"] #app-splash .sp-quote { color: #98a2d4; }
       html[data-theme="night"] #app-splash .sp-dots i { background: #8b9ce8; }
 
+      /* ═══ ⑥ 深夜黑：无月夜 + 一点暖光，近黑底浅字 ═══ */
+      html[data-theme="midnight"] #app-splash {
+        background:
+          radial-gradient(110% 70% at 50% -10%, rgba(232,161,132,.10) 0%, rgba(11,11,16,0) 60%),
+          linear-gradient(168deg, #08080b 0%, #0d0d12 42%, #111116 72%, #060608 100%);
+        color: #f1f1f4;
+      }
+      /* 实际 App 里 data-theme 是 night，midnight 只作变体；预览页则直接是 midnight */
+      html[data-theme="night"][data-theme-variant="midnight"] #app-splash {
+        background:
+          radial-gradient(110% 70% at 50% -10%, rgba(232,161,132,.10) 0%, rgba(11,11,16,0) 60%),
+          linear-gradient(168deg, #08080b 0%, #0d0d12 42%, #111116 72%, #060608 100%);
+        color: #f1f1f4;
+      }
+      html[data-theme="midnight"] #app-splash .sp-glow b:nth-child(1),
+      html[data-theme="night"][data-theme-variant="midnight"] #app-splash .sp-glow b:nth-child(1) { background: rgba(201,122,93,.26); }
+      html[data-theme="midnight"] #app-splash .sp-glow b:nth-child(2),
+      html[data-theme="night"][data-theme-variant="midnight"] #app-splash .sp-glow b:nth-child(2) { background: rgba(120,100,140,.18); }
+      html[data-theme="midnight"] #app-splash .sp-glow b:nth-child(3),
+      html[data-theme="night"][data-theme-variant="midnight"] #app-splash .sp-glow b:nth-child(3) {
+        width: 54px; height: 54px; top: 12%; right: 21%;
+        filter: blur(1px); opacity: .82; box-shadow: 0 0 34px rgba(232,161,132,.32);
+        background: radial-gradient(circle at 34% 32%, #f6efe9 0%, #d9c7ba 56%, #8f7b70 100%);
+      }
+      html[data-theme="midnight"] #app-splash .sp-deco i,
+      html[data-theme="night"][data-theme-variant="midnight"] #app-splash .sp-deco i {
+        width: 5px; height: 5px; opacity: .9;
+        border-radius: 50%; background: #f2eee9; box-shadow: 0 0 8px rgba(232,161,132,.55);
+        animation: sp-twinkle 4.2s ease-in-out infinite;
+      }
+      html[data-theme="midnight"] #app-splash .sp-paw,
+      html[data-theme="night"][data-theme-variant="midnight"] #app-splash .sp-paw { font-size: 0; }
+      html[data-theme="midnight"] #app-splash .sp-paw::before,
+      html[data-theme="night"][data-theme-variant="midnight"] #app-splash .sp-paw::before {
+        content: "🌑"; display: block; font-size: 52px; line-height: 1.1;
+      }
+      html[data-theme="midnight"] #app-splash .sp-name,
+      html[data-theme="night"][data-theme-variant="midnight"] #app-splash .sp-name { color: #f4f4f7; letter-spacing: .5px; }
+      html[data-theme="midnight"] #app-splash .sp-sub,
+      html[data-theme="night"][data-theme-variant="midnight"] #app-splash .sp-sub { color: #9a9aa5; }
+      html[data-theme="midnight"] #app-splash .sp-tag,
+      html[data-theme="night"][data-theme-variant="midnight"] #app-splash .sp-tag { color: #c4c4cc; }
+      html[data-theme="midnight"] #app-splash .sp-feat,
+      html[data-theme="night"][data-theme-variant="midnight"] #app-splash .sp-feat {
+        background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.12); color: #d4d4dc;
+      }
+      html[data-theme="midnight"] #app-splash .sp-quote,
+      html[data-theme="night"][data-theme-variant="midnight"] #app-splash .sp-quote { color: #9a9aa5; }
+      html[data-theme="midnight"] #app-splash .sp-dots i,
+      html[data-theme="night"][data-theme-variant="midnight"] #app-splash .sp-dots i { background: #c97a5d; }
+
       @media (prefers-reduced-motion: reduce) {
         /* !important 是必需的：主题规则（html[data-theme="…"] #app-splash .sp-deco i）特异性更高，
            不带它会被主题里的 animation 反压 —— 开了「减少动画」的用户照样看花瓣飘、气泡升。 */
@@ -377,7 +430,7 @@
         #app-splash .sp-deco i { animation: none !important; }
       }
     </style>
-    <!-- 轮 430：主题视觉层（纯装饰，aria-hidden；五套主题共用这组节点，靠 CSS 换形状与动画） -->
+    <!-- 轮 430：主题视觉层（纯装饰，aria-hidden；六套主题共用这组节点，靠 CSS 换形状与动画） -->
     <div class="sp-glow" aria-hidden="true"><b></b><b></b><b></b></div>
     <div class="sp-deco" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
     <div class="sp-paw">🐾</div>

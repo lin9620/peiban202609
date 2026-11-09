@@ -7,7 +7,9 @@ import MoodFace from "./MoodFace.vue";
 import { t, i18n } from "../i18n.js";
 import { stories } from "../data/stories.js";
 import { dayIndex, todayKey } from "../utils/daily.js";
-import { getItem, setItem, removeItem } from "../utils/storage.js";
+import { getItem, setItem, removeItem, getJSON, setJSON } from "../utils/storage.js";
+import { db } from "../utils/api/db.js";
+import { isoDate, hasDailyStory, pickDailyContent } from "../utils/dailyStory.js";
 import { checkInMood, moodLog, moodStreak, activePet, activePetAway } from "../stores/petStore.js";
 import { seasonNow } from "../data/extras.js";
 import { cloud } from "../utils/supabase.js";
@@ -32,14 +34,75 @@ const greeting = computed(() => {
   return t("home.evening");
 });
 
-/* —— 今日内容（按日期轮换）—— */
+/* —— 今日内容（内置轮换 + 管理中心按日期发布）——
+ * 轮 458：优先读 daily_stories 当天已发布的内容；没有（或迁移未跑/网络失败）
+ * 就继续用 src/data/stories.js 的内置轮换 —— 今日页永远不会因为云端而空白。
+ * 缓存按日期分键，先渲染上次内容，网络回来原地替换；跨天/回到页面时自动换。 */
+const DAILY_CACHE_PREFIX = "wp-daily-story:";
+const DAILY_REFRESH_MS = 5 * 60 * 1000;   /* 同一天也每 5 分钟轻量刷新，管理员刚发布的能尽快看到 */
 const todayStory = computed(() => stories[dayIndex(stories.length)]);
-const story = computed(() =>
-  i18n.locale === "zh" ? todayStory.value.zh : todayStory.value.en
-);
-const quote = computed(() =>
-  i18n.locale === "zh" ? todayStory.value.quote.zh : todayStory.value.quote.en
-);
+const remoteStory = ref(null);
+const remoteDate = ref("");
+let dailyFetchBusy = false;
+let dailyFetchedAt = 0;
+
+try {
+  const date0 = isoDate();
+  const cached = getJSON(DAILY_CACHE_PREFIX + date0, null);
+  if (cached && cached.date === date0 && hasDailyStory(cached.content)) {
+    remoteStory.value = cached;
+    remoteDate.value = date0;
+  }
+} catch (e) { /* 本地缓存坏了就当没有 */ }
+
+async function loadDailyStory() {
+  if (dailyFetchBusy) return;
+  const date = isoDate();
+  const cacheKey = DAILY_CACHE_PREFIX + date;
+  if (remoteDate.value !== date) {
+    const cached = getJSON(cacheKey, null);
+    remoteStory.value = cached && cached.date === date && hasDailyStory(cached.content) ? cached : null;
+    remoteDate.value = date;
+  }
+  dailyFetchBusy = true;
+  dailyFetchedAt = Date.now();
+  try {
+    const row = await db.dailyStoryGet(date);
+    if (isoDate() !== date) return;   /* 请求途中跨天：丢弃旧日期结果 */
+    if (row && row.date === date && hasDailyStory(row.content)) {
+      remoteStory.value = row;
+      setJSON(cacheKey, row);
+    } else {
+      remoteStory.value = null;
+      removeItem(cacheKey);
+    }
+    remoteDate.value = date;
+  } catch (e) {
+    /* 迁移未跑 / 网络失败：保留缓存或内置轮换，不打断今日页 */
+  } finally {
+    dailyFetchBusy = false;
+  }
+}
+
+function refreshDailyIfNewDay() {
+  if (remoteDate.value !== isoDate() || Date.now() - dailyFetchedAt > DAILY_REFRESH_MS) {
+    loadDailyStory();
+  }
+}
+
+const dailyPick = computed(() => (remoteStory.value && hasDailyStory(remoteStory.value.content)
+  ? pickDailyContent(remoteStory.value.content, i18n.locale)
+  : null));
+const story = computed(() => {
+  if (dailyPick.value) {
+    return { title: dailyPick.value.title, body: dailyPick.value.body };
+  }
+  return i18n.locale === "zh" ? todayStory.value.zh : todayStory.value.en;
+});
+const quote = computed(() => {
+  if (dailyPick.value && dailyPick.value.quote) return dailyPick.value.quote;
+  return i18n.locale === "zh" ? todayStory.value.quote.zh : todayStory.value.quote.en;
+});
 
 /* —— 陪你大厅（#4 状态上云：本机兜底 + 云端同步/广播）—— */
 const myStatus = ref(getItem("wp-status") || "");
@@ -165,17 +228,24 @@ watch(() => [cloud.ready, cloud.user && cloud.user.id], () => {
  * 切回浏览器标签/App 走 visibilitychange；桌面切回窗口走 focus。
  * 三处都过 30s 冷却，所以数字不会因为来回切页一直跳。 */
 function onPageVisible() {
-  if (typeof document !== "undefined" && document.visibilityState === "visible") refreshStatusCounts();
+  if (typeof document !== "undefined" && document.visibilityState === "visible") {
+    refreshStatusCounts();
+    refreshDailyIfNewDay();
+  }
 }
 onMounted(() => {
   document.addEventListener("visibilitychange", onPageVisible);
   window.addEventListener("focus", onPageVisible);
+  loadDailyStory();
 });
 onUnmounted(() => {
   document.removeEventListener("visibilitychange", onPageVisible);
   window.removeEventListener("focus", onPageVisible);
 });
-onActivated(() => { refreshStatusCounts(); });
+onActivated(() => {
+  refreshStatusCounts();
+  refreshDailyIfNewDay();
+});
 
 /* —— 心情打卡 —— */
 const justDone = ref(false);
@@ -339,8 +409,8 @@ const seasonName = computed(() => season.name[i18n.locale] || season.name.en);
 
       <section class="card story-card">
         <span class="sec-label">{{ t("home.storyLabel") }}</span>
-        <h2 class="story-title">{{ story.title }}</h2>
-        <p class="story-body">{{ story.body }}</p>
+        <h2 v-if="story.title" class="story-title">{{ story.title }}</h2>
+        <p v-if="story.body" class="story-body">{{ story.body }}</p>
       </section>
     </div>
 

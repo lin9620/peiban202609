@@ -5,6 +5,9 @@
  * 所以只能往它自己的 shadowRoot 里塞一条 style。库每次打开面板都会重建
  * <emoji-picker> 元素（vue-advanced-chat 的 v-if，WpComposer 的 v-if 同理），
  * 所以调用点要「拿到元素就调一次」；函数自己按 data 标记幂等，重复调不叠加。
+ *
+ * 轮 478 的表情数据预热在 emojiWarm.js —— 那个文件会 import 库里整套 DOM 代码，
+ * 而本文件要能在 Node 里直接跑单测，两者不能混。
  */
 export function hideEmojiSearch(picker) {
   const sr = picker && picker.shadowRoot;

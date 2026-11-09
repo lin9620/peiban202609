@@ -31,7 +31,9 @@ import { fmtWhen, canDeletePost as canDeletePostRule } from "../utils/wallRules.
  *        到了详情页反而没有关注入口，只能退回列表再点一次。 */
 import { isFollowing, followUser, unfollowUser, refreshFollows, followErrKey } from "../utils/follows.js";
 import { cacheKey, swr, cacheSet, cacheGet, cachePatch, cacheDrop } from "../utils/cache.js";   /* 轮 158：帖子主体 SWR */
-import { isApp, isMobileNav, tabbarSuppressed } from "../stores/uiStore.js";
+import { isApp, isMobileNav, tabbarSuppressed, pushBack, popBack } from "../stores/uiStore.js";
+/* 轮 472：与暖心墙同一套两级返回（先落键盘、再收条） */
+import { barTapIsKbBack, resetBarReturn } from "../utils/barReturn.js";
 /* 轮 279：左右滑看上一条/下一条 —— 方向判定复用 panes 的 swipeDir（已有单测），上下文来自 postNav */
 import { swipeDir } from "../utils/panes.js";
 import { navIdsFor, navTarget } from "../utils/postNav.js";
@@ -620,9 +622,28 @@ async function deleteCurrentPost() {
  * 占位「回复 xxx…」、草稿按回复目标隔离存取（repDraft，与桌面内联框同 store）、
  * 点空白/再点同目标收起、tabbar 收起。桌面保持就地内联框（repActive）原路不变。 */
 const detailBarReply = ref(null);   /* 底部条回复目标 { cm, rp }；null = 主评论模式 */
+
+/* ═══ 轮 477（用户要求）· 暗层上「滑动」= 一步退出输入态（与暖心墙同款）═══
+ * 用户原话：「在有键盘的情况下，外面若是滑动的话，就直接显示四个底部，输入部分全消失，
+ * 外面若是点击的话就还是之前改动过的（两级返回）」。
+ *
+ * 病根：暗层是 fixed 铺满全屏，滑动手势全被它吃掉 —— 底下页面收不到 scroll，
+ * 屏幕上什么都不会发生。而想继续往下翻评论的人第一反应就是往外滑一下，不是精准点一下。
+ *
+ * 定案：按手势意图分流
+ *   · 滑动（位移 > 10px）→ 落键盘 + 收条 + tabbar 回原位，一步到位；
+ *   · 点击（位移 ≤ 10px）→ 保留轮 472 的两级返回（先落键盘、再收条）。
+ * 10px 是手指自然抖动（3~5px）与真正滑动的分界；一次手势只退一次。 */
+const MASK_SWIPE_PX = 10;   /* 低于它仍算点击 */
+let maskSwipe = false;      /* 本次触摸已判成滑动 → 吞掉随后补派的那次 click */
+let maskX0 = 0;
+let maskY0 = 0;
+
 function closeDetailBar() {
   detailBar.value = false;
   detailBarReply.value = null;
+  resetBarReturn();   /* 轮 472：清账，免得下一次开条的第一击被误判成「刚收过键盘」 */
+  maskSwipe = false;  /* 轮 477：手势状态跟着条一起清，别残留吞掉下一次点击 */
 }
 const detailBarDraft = computed({
   get() {
@@ -833,16 +854,68 @@ function detailBarDocClose(e) {
   const tgt = e.target;
   if (detailBarEl.value && detailBarEl.value.contains(tgt)) return;   /* 条内（输入/发送）不关 */
   if (tgt && tgt.closest && tgt.closest(".cmt-entry")) return;        /* 占位条点击归 toggle 管 */
+  /* 轮 472（用户提案）：键盘还在屏上时这一击只落键盘，条和草稿都留着；再点才收条 */
+  if (barTapIsKbBack()) return;
   detailBar.value = false;
+  resetBarReturn();
 }
+/* 轮 472：点暗处 = 返回一级（有键盘先落键盘），键盘已落则收条。
+ * stopPropagation 必需：document 上挂着 detailBarDocClose，否则同一击连走两级。
+ * 轮 477：位移超过 10px 的手势已在 touchmove 里退过了，这里只负责吞掉它补派的那次 click。 */
+function detailBarMaskTap(e) {
+  if (e) e.stopPropagation();
+  if (maskSwipe) { maskSwipe = false; return; }
+  if (barTapIsKbBack()) return;
+  detailBar.value = false;
+  resetBarReturn();
+}
+
+/* 轮 477：滑动 = 一步退出（落键盘 + 收条），抬手补派的 click 由 maskSwipe 吞掉 */
+function detailBarMaskDown(e) {
+  const tp = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
+  if (!tp) return;
+  maskSwipe = false;
+  maskX0 = tp.clientX;
+  maskY0 = tp.clientY;
+}
+
+function detailBarMaskMove(e) {
+  if (maskSwipe) return;
+  const tp = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
+  if (!tp) return;
+  if (Math.abs(tp.clientX - maskX0) < MASK_SWIPE_PX && Math.abs(tp.clientY - maskY0) < MASK_SWIPE_PX) return;
+  /* 必须显式 blur：只靠「元素被移除」在部分内核里落不下键盘（小米浏览器实测过） */
+  try {
+    const inp = detailBarEl.value && detailBarEl.value.querySelector("textarea, input");
+    const ae = document.activeElement;
+    if (inp && typeof inp.blur === "function") inp.blur();
+    else if (ae && ae !== document.body && typeof ae.blur === "function") ae.blur();
+  } catch (err) { /* 收不了键盘也必须退得掉，别让异常拦住 */ }
+  closeDetailBar();
+  /* 放在 closeDetailBar 之后：它会把这个账清掉（防上一轮残留），而这一次滑动要留着，
+   * 好在同一手势末尾补派的 click 上认出来并吞掉。 */
+  maskSwipe = true;
+}
+/* 轮 472：系统返回键同款两级 */
+const detailBarBackFn = () => {
+  if (!detailBar.value) return false;
+  if (barTapIsKbBack()) return true;
+  detailBar.value = false;
+  resetBarReturn();
+  return true;
+};
+let detailBarBackArmed = false;
 watch(detailBar, (v) => {
   tabbarSuppressed.value = v;   /* 条开着 = tabbar 收起（贴键盘，图2），与暖心墙同口径 */
+  if (v && !detailBarBackArmed) { pushBack(detailBarBackFn); detailBarBackArmed = true; }
+  else if (!v && detailBarBackArmed) { popBack(detailBarBackFn); detailBarBackArmed = false; }
   if (typeof document === "undefined") return;
   if (v) document.addEventListener("click", detailBarDocClose);
   else document.removeEventListener("click", detailBarDocClose);
 });
 onUnmounted(() => {
   tabbarSuppressed.value = false;
+  if (detailBarBackArmed) { popBack(detailBarBackFn); detailBarBackArmed = false; }
   if (typeof document !== "undefined") document.removeEventListener("click", detailBarDocClose);
 });
 async function toggleDetailBar() {
@@ -993,8 +1066,11 @@ watch(uid, () => {
   preTimer = setTimeout(prefetchAround, 700);
 }, { immediate: true });
 
+/* 轮 477：输入条开着时禁掉左右滑翻帖 —— 暗层刚好盖满全屏，一个横向手势会同时被
+ * 暗层（收条）和 window 上的翻帖监听看到：收条的同一瞬间整页滑到下一条帖子。 */
 const canSwipe = computed(() => navIds.value.length > 1
   && dragPhase.value === ""
+  && !detailBar.value
   && !reportShow.value && !moreKey.value && !gone.value);
 
 function prefetch(id) {
@@ -1130,7 +1206,8 @@ onUnmounted(() => {
   <div class="pd">
     <!-- 轮 279：左右滑的位移只作用在这一层。手机端底部输入条 cmt-main-bar 与举报弹窗
          刻意留在本层**之外** —— position:fixed 一旦进了带 transform 的祖先就会被劫持包含块
-         （style.css 2392 行记着同一坑，轮 238/175/151 各踩过一次）。 -->
+         （style.css 2392 行记着同一坑，轮 238/175/151 各踩过一次）。
+         轮 471：条已进一步 Teleport 到 body（见文件末尾），祖先链上任何裁剪/包含块都碰不到它。 -->
     <div class="pd-swipe" :class="{ drag: dragPhase === 'drag', out: dragPhase === 'out' }" :style="swipeStyle">
     <div class="pd-head">
       <button class="pd-back" @click="goBack">&#8249; {{ t("nav.community") }}</button>
@@ -1362,11 +1439,23 @@ onUnmounted(() => {
 
     <!-- 轮 108 续5：手机端回复输入条（reply-bar）已退役——回复统一走下方 cmt-main-bar 底部输入条 -->
     <!-- 轮 108 续5：手机端底部输入条（主评论+回复共用，与暖心墙同款：贴键盘、tabbar 收起、点空白收起） -->
-    <div v-if="isMobileNav && detailBar" ref="detailBarEl" class="cmt-main-bar">
-      <WpComposer ref="detailBarInput" v-model="detailBarDraft"
-        :placeholder="detailBarPh" :maxlength="MAX_LEN"
-        @send="sendDetailBar" />
-    </div>
+    <!-- 轮 471 · 与暖心墙同款：Teleport 到 body。原来挂在 .pd 里，而 .shell 带
+         overflow-x: clip —— 固定定位后代被这个裁剪上下文吞掉（真机详情页实测：条 rect
+         报 693~744，而 .shell 的盒子只到 523，屏幕上完全看不到条；刷色验证连一像素都不显示）。 -->
+    <Teleport to="body">
+      <!-- 轮 472（用户拍板）：与暖心墙同款输入态暗层，点暗处 = 返回
+           轮 477：暗层 fixed 铺满全屏，滑动会被它整片吃掉（底下页面收不到 scroll），
+           所以这里必须自己听 touch —— 滑动 = 一步退出输入态，点击 = 两级返回。 -->
+      <div v-if="isMobileNav && detailBar" class="cmt-bar-mask"
+        @click="detailBarMaskTap"
+        @touchstart.passive="detailBarMaskDown"
+        @touchmove.passive="detailBarMaskMove"></div>
+      <div v-if="isMobileNav && detailBar" ref="detailBarEl" class="cmt-main-bar">
+        <WpComposer ref="detailBarInput" v-model="detailBarDraft"
+          :placeholder="detailBarPh" :maxlength="MAX_LEN"
+          @send="sendDetailBar" />
+      </div>
+    </Teleport>
 
     <!-- 轮 87：…菜单改 document 点击收起（原全屏遮罩会被卡片堆叠上下文盖住，举报/拷贝点了没反应） -->
     <!-- 举报弹窗（帖子/评论共用一个实例） -->

@@ -3,7 +3,7 @@
 import { ref, computed } from "vue";
 import { i18n, setLocale, languages } from "../i18n.js";
 import { naiveThemeFor } from "../theme.js";
-import { THEMES } from "../data/themes.js";
+import { THEMES, themeBaseKey, themeVariantKey } from "../data/themes.js";
 import { darkTheme } from "naive-ui";
 import { Capacitor } from "@capacitor/core";
 import { getItem, setItem } from "../utils/storage.js";
@@ -52,23 +52,37 @@ export function toggleNav() { setNavOpen(!navOpen.value); }
 
 const THEME_KEY = "wp-theme";
 function loadTheme() {
-  try { return localStorage.getItem(THEME_KEY) || "cream"; } catch (e) { return "cream"; }
+  try {
+    const saved = localStorage.getItem(THEME_KEY) || "cream";
+    return THEMES.some((x) => x.key === saved) ? saved : "cream";
+  } catch (e) { return "cream"; }
 }
 export const themeKey = ref(loadTheme());
 export const themeDef = computed(() => THEMES.find((x) => x.key === themeKey.value) || THEMES[0]);
 export const naiveOverrides = computed(() => naiveThemeFor(themeKey.value));
 export const naiveTheme = computed(() => (themeDef.value.dark ? darkTheme : null));
 export const themeOptions = computed(() => THEMES.map((x) => ({
-  label: (x.dark ? "\u{1F319} " : "\u{1F3A8} ") + (x.name[i18n.locale] || x.name.en),
+  label: (x.icon || (x.dark ? "\u{1F319}" : "\u{1F3A8}")) + " " + (x.name[i18n.locale] || x.name.en),
   key: x.key,
 })));
+
+/* 主题落到 DOM：data-theme 是结构基座（night），data-theme-variant 才是
+ * 具体深色变体（midnight）。设置页仍以 themeKey 为准，选中的是变体名。 */
+function syncThemeDom(key) {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  root.dataset.theme = themeBaseKey(key);
+  const variant = themeVariantKey(key);
+  if (variant) root.dataset.themeVariant = variant;
+  else delete root.dataset.themeVariant;
+}
 export function applyTheme(key) {
   themeKey.value = key;
   try { localStorage.setItem(THEME_KEY, key); } catch (e) {}
-  document.documentElement.dataset.theme = key;
+  syncThemeDom(key);
 }
 /* 首帧即套用主题（Node 侧单测导入本模块时无 document → 跳过，测试只关心纯逻辑） */
-if (typeof document !== "undefined") document.documentElement.dataset.theme = themeKey.value;
+if (typeof document !== "undefined") syncThemeDom(themeKey.value);
 
 /* ═══ T7/T9 · 系统返回键拦截栈 ═══
  * 视图可临时接管系统返回键（例：消息 Tab 的「通知」段 → 先退回「私信」段，

@@ -100,6 +100,13 @@ export function storyDeleteDraft(id) {
   return db.storyDeleteDraft(n);
 }
 
+/** 删除已发布故事：服务端只允许作者删自己的 status='published'，评论/赞/收藏级联清理 */
+export function storyDeletePublished(id) {
+  const n = Number(id);
+  if (!Number.isInteger(n) || n <= 0) throw new Error("story-not-found");
+  return db.storyDeletePublished(n);
+}
+
 /* ══════════ 批 2：评论 / 书架 / 每日精选 / 数据面板（RPC 8-15） ══════════ */
 
 /** 评论上限（与 SQL 端 story_add_comment 的 char_length>1000 同口径，前端先挡） */

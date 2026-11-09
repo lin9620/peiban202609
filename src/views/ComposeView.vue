@@ -3,9 +3,10 @@
 <script setup>
 import { ref, computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { NButton } from "naive-ui";
+import { NAvatar } from "naive-ui";
 import { t } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
+import { avatarUrlFor } from "../utils/avatar.js";
 import { cloudInsertPost, canUseWall } from "../utils/wall.js";
 import { errorKind, utcDay, POST_DAY_KEY, dayCountFromStorage, canPostToday, postsLeftToday, extractTags, TAG_MAX } from "../utils/wallRules.js";
 import { getItem, setItem } from "../utils/storage.js";
@@ -29,8 +30,13 @@ const posted = ref(false);
 const busy = ref(false);
 const needText = ref(false);
 
-const wallName = computed(() => cloud.nickname || getItem("wp-nickname") || "Guest");
+const wallName = computed(() => cloud.nickname || getItem("wp-nickname") || t("common.guest"));
 const signedIn = computed(() => !!(cloud.ready && cloud.user));
+/* 发帖页头像 / 首字母兜底：头像池与暖心墙帖子卡同一套 uid 映射 */
+const avatarSrc = computed(() => avatarUrlFor(cloud.user && cloud.user.id));
+const avatarInitial = computed(() => (wallName.value || "?").trim().slice(0, 1).toUpperCase());
+/* 工具条只放图标，文案去掉 i18n 里的旧 emoji（各语言都从 🖼️ 开头） */
+const addImageText = computed(() => t("community.addImage").replace(/^🖼️\s*/, ""));
 /* 帖子上限 1000 字：与数据层同口径（wall.js cloudInsertPost 内部 slice(0, 1000)），
    输入框硬限制 + 右下角字数，避免写超了被静默截断 */
 const POST_MAX = 1000;
@@ -73,6 +79,12 @@ function pickImage(e) {
     img.src = reader.result;
   };
   reader.readAsDataURL(f);
+}
+
+function clearImage() {
+  imgData.value = "";
+  imgW.value = 0;
+  imgH.value = 0;
 }
 
 /* 返回：从暖心墙点进来 → 回墙；深链进来 → replace 到墙（不污染历史） */
@@ -123,197 +135,307 @@ async function submit() {
   <div class="compose-page">
     <header class="compose-head">
       <button class="compose-back" :aria-label="t('community.composeBack')" @click="goBack">←</button>
-      <h1 class="compose-title">❤️ {{ t("community.composeTitle") }}</h1>
+      <div class="compose-heading">
+        <span class="compose-kicker">{{ t("community.title") }}</span>
+        <h1 class="compose-title">{{ t("community.composeTitle") }}</h1>
+      </div>
+      <button
+        v-if="!cloud.ready || signedIn"
+        type="button"
+        class="compose-send"
+        :disabled="postedToday || busy"
+        :aria-busy="busy ? 'true' : 'false'"
+        @click="submit">
+        <span v-if="busy" class="compose-spin" aria-hidden="true"></span>
+        <span>{{ t("community.post") }}</span>
+      </button>
     </header>
 
     <!-- 未登录：先去登录（发帖要身份）；登录后按 ?redirect= 回到本页继续写 -->
     <section v-if="cloud.ready && !signedIn" class="compose-card compose-card--signin">
       <p class="compose-sub">{{ t("community.commentSignIn") }}</p>
-      <n-button type="primary" round class="compose-send" @click="goSignIn">
+      <button type="button" class="compose-send compose-send--signin" @click="goSignIn">
         {{ t("profile.goSignIn") }}
-      </n-button>
+      </button>
     </section>
 
-    <!-- 写帖：整屏大输入框 + 图片预览 + 底部动作条（图片 / 字数 / 发布） -->
+    <!-- 写帖：作者行 + 大输入框 + 图片 / 标签 + 底部工具条；发布键放顶栏，拇指够得到 -->
     <section v-else class="compose-card">
-      <textarea
-        v-model="draft"
-        class="compose-area"
-        rows="8"
-        :maxlength="POST_MAX"
-        autofocus
-        :placeholder="t('community.placeholder')"></textarea>
+      <div class="compose-author">
+        <n-avatar round :size="42" class="compose-avatar" :src="avatarSrc || undefined">
+          <template #default>{{ avatarInitial }}</template>
+          <template #fallback>{{ avatarInitial }}</template>
+        </n-avatar>
+        <div class="compose-author-meta">
+          <b>{{ wallName }}</b>
+          <span :class="{ 'is-warn': postedToday }">
+            {{ postedToday ? t("community.dailyLimit") : t("community.postLeft", { n: postsLeft }) }}
+          </span>
+        </div>
+      </div>
 
-      <img v-if="imgData" :src="imgData" class="compose-pic" alt="preview"
-          :style="imgW > 0 && imgH > 0 ? { aspectRatio: imgW + ' / ' + imgH } : {}" />
+      <div class="compose-writing">
+        <textarea
+          v-model="draft"
+          class="compose-area"
+          rows="8"
+          :maxlength="POST_MAX"
+          autofocus
+          :aria-label="t('community.placeholder')"></textarea>
+        <!-- 空信纸的居中提示：开始写字 / 选图后自动让位，避免一大片纯白看起来像没加载 -->
+        <div v-if="!draft && !imgData" class="compose-empty" aria-hidden="true">
+          <span class="compose-empty-paw">🐾</span>
+          <span class="compose-empty-text">{{ t("community.placeholder") }}</span>
+        </div>
+      </div>
+
+      <!-- 轮 252：#xxx# 标签实时预览（发帖后可被搜索 / 点击筛选） -->
+      <div v-if="draftTags.length" class="compose-tags">
+        <span v-for="tg in draftTags" :key="tg" class="compose-tag">#{{ tg }}#</span>
+      </div>
+
+      <div v-if="imgData" class="compose-pic-wrap">
+        <img :src="imgData" class="compose-pic" alt="preview"
+            :style="imgW > 0 && imgH > 0 ? { aspectRatio: imgW + ' / ' + imgH } : {}" />
+        <button type="button" class="compose-pic-x" :aria-label="t('community.removeImage')"
+          @click="clearImage">×</button>
+      </div>
 
       <p v-if="imgErr" class="compose-hint bad">{{ imgErr }}</p>
 
-      <!-- 工具行：图片 / 移除 / 字数（窄屏优先放一行，字数始终贴右） -->
       <div class="compose-bar">
         <label class="compose-tool">
-          🖼️ {{ t("community.addImage") }}
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="3.2" y="5.2" width="17.6" height="13.6" rx="3" fill="none" stroke="currentColor" stroke-width="1.7" />
+            <circle cx="8.4" cy="10" r="1.4" fill="currentColor" />
+            <path d="M4.8 17.2l4.6-4.3 3.4 3.1 2.1-2 4.3 4.2" fill="none" stroke="currentColor"
+              stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <span>{{ addImageText }}</span>
           <input type="file" accept="image/*" style="display: none" @change="pickImage" />
         </label>
-        <n-button v-if="imgData" quaternary size="small" @click="imgData = ''; imgW = 0; imgH = 0">
-          {{ t("community.removeImage") }}
-        </n-button>
-        <!-- 轮 252：#xxx# 标签实时预览（发帖后可被搜索 / 点击筛选） -->
-          <span v-if="draftTags.length" class="compose-tags">
-            <span v-for="tg in draftTags" :key="tg" class="compose-tag">#{{ tg }}#</span>
-          </span>
-          <span class="compose-count">{{ draft.length }}/{{ POST_MAX }}</span>
+        <span class="compose-count" :class="{ 'is-near': draft.length >= POST_MAX * 0.9 }">
+          {{ draft.length }}/{{ POST_MAX }}
+        </span>
       </div>
 
-      <!-- 发布：整行大按钮（拇指友好；窄屏不再挤在工具行里换行成半截） -->
-      <n-button
-        type="primary" round block class="compose-send"
-        :loading="busy" :disabled="postedToday" @click="submit">
-        {{ t("community.post") }}
-      </n-button>
-
-      <p v-if="postedToday" class="compose-hint">{{ t("community.dailyLimit") }}</p>
-      <p v-else-if="posted" class="compose-hint good">{{ t("community.postedThanks") }}</p>
-      <p v-else class="compose-hint">{{ t("community.postLeft", { n: postsLeft }) }}</p>
-      <p v-if="wallMsg" class="compose-hint bad">{{ t(wallMsg) }}</p>
-      <p v-else-if="needText" class="compose-hint bad">{{ t("community.needText") }}</p>
+      <div v-if="posted || wallMsg || needText" class="compose-foot">
+        <p v-if="posted" class="compose-hint good">{{ t("community.postedThanks") }}</p>
+        <p v-if="wallMsg" class="compose-hint bad">{{ t(wallMsg) }}</p>
+        <p v-else-if="needText" class="compose-hint bad">{{ t("community.needText") }}</p>
+      </div>
     </section>
   </div>
 </template>
 
 <style scoped>
 /* ═══════════ 手机端独立发帖页（/compose）═══════════
- * 用户反馈「点了 ＋ 发帖之后那页丑得没法看」：以前这页只有类名、一条样式都没有
- *   （.compose-page/.compose-head/.compose-area 全是空的，textarea 还是浏览器默认款）。
- * 现在按「整屏编辑器」排：sticky 顶栏（← 回墙）+ 中间一张大卡片（输入框撑满）
- *   + 底部动作条（图片 / 字数 / 发布）。App.vue 把 /compose 归到 shell--chat 形态，
- *   TabBar 与页脚一并让位 → 这页自己吃满 100dvh，底部留 safe-area。
- * 桌面形态也走同一页（窄屏居中 max-width 720；桌面形态改为铺满流式壳，见下方轮 137 覆盖），不会因为手机优先而崩。 */
+ * App 里从底部 ＋ 进来，是一整屏编辑器；顶栏只留返回 / 标题 / 发布，
+ * 正文是「作者行 + 信纸大输入框」，图片和字数收进底部工具条。
+ * App.vue 把 /compose 归到 shell--chat 形态，TabBar 与页脚一并让位，
+ * 这页自己吃满 100dvh，底部留 safe-area。 */
 .compose-page {
-  display: flex; flex-direction: column; gap: 10px;
+  display: flex; flex-direction: column; gap: 12px;
   min-height: 100dvh;
   max-width: 720px; margin: 0 auto;
-  padding: 10px 14px calc(16px + env(safe-area-inset-bottom, 0px));
+  padding: 12px 14px calc(16px + env(safe-area-inset-bottom, 0px));
 }
-/* 轮 137：桌面流式壳（轮 133 起）下不再收窄居中——铺满左导航与右栏之间整块宽度；
- * 窄屏/App 形态不受影响（720 的 max-width 在 <900px 视口本就触不到）。 */
+/* 轮 137 口径：桌面流式壳下页面容器铺满，不再收窄居中（App / 窄屏不受影响） */
 @media (min-width: 900px) { .compose-page { max-width: none; } }
 
-/* 顶栏 */
+/* 顶栏：返回 / 标题 / 发布。sticky 但不用 backdrop-filter（跟手机端性能口径） */
 .compose-head {
   position: sticky; top: 0; z-index: 6;
-  display: flex; align-items: center; gap: 10px;
-  padding: 4px 0 12px;
-  /* 底边淡出：滚动时正文不会和标题糊在一起，又不用画一条硬线。
-     不做 backdrop-filter —— 跟着手机端 5 的「毛玻璃退场」走（性能） */
-  background: linear-gradient(180deg, var(--glass-strong) 68%, rgba(255, 255, 255, 0));
+  display: grid; grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center; gap: 10px;
+  padding: 4px 0 10px;
+  background: linear-gradient(180deg, var(--glass-strong) 72%, rgba(255, 255, 255, 0));
 }
 .compose-back {
   flex: 0 0 auto;
-  width: 38px; height: 38px; border-radius: 14px;
-  border: 1.5px solid rgba(255, 255, 255, .95);
+  width: 40px; height: 40px; border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, .95);
   background: var(--glass-strong); color: var(--ink);
-  font-size: 17px; font-weight: 500; line-height: 1;
+  font-size: 18px; font-weight: 500; line-height: 1;
   display: flex; align-items: center; justify-content: center;
   box-shadow: var(--shadow-sm); cursor: pointer;
   transition: transform .15s ease;
 }
 .compose-back:active { transform: scale(.94); }
-.compose-title { font-size: 17px; font-weight: 500; letter-spacing: .3px; }
+.compose-heading { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.compose-kicker {
+  font-size: 10.5px; font-weight: 600; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--accent-deep); opacity: .72;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.compose-title {
+  margin: 0; font-size: 18px; font-weight: 600; letter-spacing: .2px;
+  line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.compose-send {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  flex: 0 0 auto; min-width: 78px; height: 38px; padding: 0 16px;
+  border: 0; border-radius: 999px;
+  background: var(--accent); color: #fff;
+  font: inherit; font-size: 13.5px; font-weight: 600; letter-spacing: .2px;
+  box-shadow: 0 6px 16px rgba(204, 120, 92, .22);
+  cursor: pointer; transition: transform .15s ease, opacity .15s ease;
+}
+.compose-send:active { transform: scale(.96); }
+.compose-send:disabled { opacity: .45; cursor: default; box-shadow: none; }
+.compose-spin {
+  width: 13px; height: 13px; border: 2px solid rgba(255, 255, 255, .45);
+  border-top-color: #fff; border-radius: 50%;
+  animation: compose-spin .7s linear infinite;
+}
+@keyframes compose-spin { to { transform: rotate(360deg); } }
 
-/* 卡片：输入框吃掉剩余高度，动作条自然吸底 */
-/* 轮 76：发帖卡 = 「信纸」——暖纸渐变 + 爪印水印 + 收紧的留白。
-   皮肤变量优先（夜间主题不破），渐变仅在浅色皮肤变量缺失时兜底。 */
+/* 信纸卡片：输入框吃掉剩余高度，工具条自然吸底 */
 .compose-card {
   position: relative; overflow: hidden;
   flex: 1 1 auto;
-  display: flex; flex-direction: column; gap: 10px;
-  background: var(--glass-strong, #fff);
-  border: 1px solid rgba(160, 110, 60, .16);
-  border-radius: 24px; padding: 16px 16px 12px;
-  box-shadow: 0 10px 30px rgba(160, 110, 60, .10);
+  display: flex; flex-direction: column; gap: 12px;
+  background:
+    radial-gradient(110% 80% at 100% 0%, rgba(255, 211, 184, .32), transparent 60%),
+    var(--glass-strong, #fff);
+  border: 1px solid rgba(160, 110, 60, .14);
+  border-radius: 26px; padding: 18px 18px 14px;
+  box-shadow: 0 18px 44px rgba(160, 110, 60, .10);
 }
 .compose-card::before {
-  content: "🐾"; position: absolute; right: 10px; top: 6px;
-  font-size: 34px; opacity: .12; pointer-events: none;
+  content: ""; position: absolute; right: -34px; bottom: -42px;
+  width: 150px; height: 150px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(245, 140, 80, .13), transparent 68%);
+  pointer-events: none;
 }
-.compose-card--signin { align-items: center; justify-content: center; text-align: center; gap: 16px; min-height: 46vh; }
-.compose-sub { font-size: 13.5px; font-weight: 500; color: var(--ink-soft); line-height: 1.75; }
-.compose-count { font-size: 11.5px; font-weight: 500; color: var(--accent-deep); opacity: .85; }
+.compose-card--signin {
+  align-items: center; justify-content: center; text-align: center;
+  gap: 18px; min-height: 46vh;
+}
+.compose-sub {
+  max-width: 280px; margin: 0;
+  font-size: 13.5px; font-weight: 500; color: var(--ink-soft); line-height: 1.75;
+}
+.compose-card--signin .compose-send { min-width: 112px; height: 42px; padding: 0 20px; font-size: 14px; }
 
-/* 大输入框：把原生 textarea 的边框/把手全去掉，只用字号与行高排字 */
+/* 作者行：头像 + 昵称 + 今日额度，给空白信纸一个视觉锚点 */
+.compose-author {
+  display: flex; align-items: center; gap: 11px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(204, 120, 92, .12);
+}
+.compose-avatar {
+  flex: 0 0 auto;
+  background: linear-gradient(135deg, #ffe0c2, #ffd0df);
+}
+.compose-author-meta { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.compose-author-meta b {
+  font-size: 14px; font-weight: 600; line-height: 1.35;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.compose-author-meta span {
+  font-size: 11.5px; font-weight: 500; color: var(--ink-faint); line-height: 1.4;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.compose-author-meta span.is-warn { color: var(--low); }
+
+/* 大输入框：去掉原生边框 / 把手，只靠字号与行高排字 */
+.compose-writing { position: relative; flex: 1 1 auto; display: flex; min-height: 0; }
 .compose-area {
   flex: 1 1 auto;
-  width: 100%; min-height: 38vh;
+  width: 100%; min-height: 34vh;
   border: none; outline: none; resize: none; background: transparent;
-  font: inherit; font-size: 16px; line-height: 1.9; letter-spacing: .2px;
-  color: var(--ink); padding: 0;
+  font: inherit; font-size: 17px; line-height: 1.85; letter-spacing: .15px;
+  color: var(--ink); padding: 2px 0;
+  caret-color: var(--accent-deep);
 }
-.compose-area::placeholder { color: var(--ink-faint); font-weight: 500; opacity: .9; }
+.compose-area::placeholder { color: var(--ink-faint); font-weight: 500; opacity: .85; }
+.compose-empty {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; text-align: center; color: var(--ink-faint);
+  pointer-events: none;
+}
+.compose-empty-paw { font-size: 30px; line-height: 1; opacity: .16; filter: saturate(.7); }
+.compose-empty-text { font-size: 12.5px; font-weight: 500; letter-spacing: .3px; opacity: .75; }
 
-.compose-pic {
-  width: 100%; max-height: 260px; object-fit: contain;
-  border-radius: 16px; border: 2px solid rgba(255, 255, 255, .95);
-  background: rgba(255, 246, 236, .85);
-}
-
-/* 工具行：图片 / 移除 / 字数（字数贴右；发布按钮独立成整行，见下） */
-.compose-bar {
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  padding-top: 10px;
-  border-top: 1px dashed rgba(255, 159, 90, .28);
-}
-.compose-bar .compose-count { margin-left: auto; }
-/* 轮 252：标签预览 chip */
-.compose-tags { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.compose-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: -2px; }
 .compose-tag {
-  padding: 2px 8px; border-radius: 999px;
+  padding: 3px 9px; border-radius: 999px;
   background: var(--accent-soft); color: var(--accent-deep);
   font-size: 11.5px; font-weight: 600;
 }
-.compose-tool {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 7px 14px; border-radius: 999px;
-  background: var(--accent-soft);
-  border: 1.5px solid rgba(255, 255, 255, .9);
-  font-size: 12.5px; font-weight: 500; color: var(--accent-deep);
-  cursor: pointer; user-select: none;
-  transition: transform .15s ease;
+
+.compose-pic-wrap {
+  position: relative; display: flex;
+  border-radius: 18px; overflow: hidden;
+  border: 1px solid rgba(160, 110, 60, .12);
+  background: rgba(255, 246, 236, .85);
 }
+.compose-pic { width: 100%; max-height: 300px; object-fit: contain; display: block; }
+.compose-pic-x {
+  position: absolute; top: 8px; right: 8px;
+  width: 30px; height: 30px; border: 0; border-radius: 50%;
+  background: rgba(30, 24, 20, .55); color: #fff;
+  font-size: 18px; line-height: 1; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; backdrop-filter: blur(6px);
+  transition: transform .15s ease, background .15s ease;
+}
+.compose-pic-x:active { transform: scale(.92); background: rgba(30, 24, 20, .72); }
+
+/* 底部工具条：图片 / 字数。发布键已上移顶栏，底部不再压一整行大按钮 */
+.compose-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: nowrap;
+  padding-top: 12px;
+  border-top: 1px solid rgba(204, 120, 92, .12);
+}
+.compose-tool {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 8px 12px; border-radius: 12px;
+  background: var(--accent-soft);
+  font-size: 12.5px; font-weight: 600; color: var(--accent-deep);
+  cursor: pointer; user-select: none;
+  transition: transform .15s ease, background .15s ease;
+}
+.compose-tool svg { width: 18px; height: 18px; display: block; flex: 0 0 auto; }
 .compose-tool:active { transform: scale(.96); }
 .compose-count {
   margin-left: auto;
   font-size: 12px; font-weight: 500; color: var(--ink-faint);
   font-variant-numeric: tabular-nums;
 }
-/* 竖屏手机：发布键独占一整行（拇指好按，也和主流编辑器一致 —— 实测三个元素挤一行会换行成左对齐） */
-.compose-send { flex: 0 0 auto; width: 100%; height: 46px; font-weight: 500; font-size: 15px; }
-.compose-card--signin .compose-send { width: auto; min-width: 104px; height: 40px; font-size: 14px; }
-.compose-hint { font-size: 12.5px; font-weight: 500; color: var(--ink-soft); line-height: 1.7; }
+.compose-count.is-near { color: var(--low); }
+
+.compose-foot { display: flex; flex-direction: column; gap: 4px; }
+.compose-hint { margin: 0; font-size: 12px; font-weight: 500; color: var(--ink-soft); line-height: 1.7; }
 .compose-hint.bad { color: var(--low); }
 .compose-hint.good { color: var(--good); }
 
 /* 夜间皮肤 */
 html[data-theme="night"] .compose-head {
-  background: linear-gradient(180deg, rgba(23, 26, 51, .92) 68%, rgba(23, 26, 51, 0));
+  background: linear-gradient(180deg, rgba(23, 26, 51, .92) 72%, rgba(23, 26, 51, 0));
 }
 html[data-theme="night"] .compose-back { border-color: rgba(255, 255, 255, .14); }
-/* 夜间：卡片底色已由 --glass-strong 跟着皮肤走，这里只补描边 */
-html[data-theme="night"] .compose-card { border-color: rgba(255, 255, 255, .12); }
-html[data-theme="night"] .compose-pic {
+html[data-theme="night"] .compose-card {
+  background:
+    radial-gradient(110% 80% at 100% 0%, rgba(255, 180, 140, .10), transparent 60%),
+    var(--glass-strong);
+  border-color: rgba(255, 255, 255, .12);
+}
+html[data-theme="night"] .compose-author { border-bottom-color: rgba(255, 255, 255, .10); }
+html[data-theme="night"] .compose-pic-wrap {
   background: rgba(30, 35, 64, .6); border-color: rgba(255, 255, 255, .12);
 }
-html[data-theme="night"] .compose-tool { border-color: rgba(255, 255, 255, .14); }
+html[data-theme="night"] .compose-bar { border-top-color: rgba(255, 255, 255, .10); }
+html[data-theme="night"] .compose-tool { background: rgba(255, 255, 255, .08); }
 
-/* 窄屏（手机）：输入框再高一点，标题小一点 */
+/* 窄屏（手机）：输入框再高一点，顶栏收窄 */
 @media (max-width: 560px) {
-  .compose-area { min-height: 46vh; }
-  .compose-title { font-size: 16px; }
-  .compose-card { border-radius: 20px; padding: 14px; }
-}
-/* 宽屏（桌面 / 横屏 iPad）：动作条回到一行 —— 图片 + 字数 + 发布（发布键靠右） */
-@media (min-width: 561px) {
-  .compose-bar { flex-wrap: nowrap; }
-  .compose-send { flex: 0 0 auto; min-width: 128px; height: 40px; font-size: 14px; }
+  .compose-page { padding: 8px 12px calc(14px + env(safe-area-inset-bottom, 0px)); }
+  .compose-head { grid-template-columns: 38px minmax(0, 1fr) auto; gap: 8px; }
+  .compose-back { width: 38px; height: 38px; }
+  .compose-title { font-size: 17px; }
+  .compose-card { border-radius: 22px; padding: 16px 15px 12px; }
+  .compose-area { min-height: 40vh; font-size: 16.5px; }
 }
 </style>

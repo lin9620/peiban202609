@@ -54,6 +54,45 @@ const MISSING_FN_CODES = new Set(["PGRST202", "42883", "42703", "42P01"]);
 const UID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const FILE_RE = /^[A-Za-z0-9_.-]{1,128}$/;
 
+/* ── 轮 457 · 公告翻译（Workers AI） ──
+ * 通知中心只把管理员写的一种语言存进 meta.body；读者打开时按自己的界面语言
+ * 调 /api/translate。模型是 Cloudflare 自家的 m2m100，不需要外部 API key。
+ * 没配 AI binding（env.AI 不存在）→ 503，前端静默退回原文。 */
+const TRANSLATE_LANGS = new Set(["zh", "en", "es", "pt", "fr"]);
+const TRANSLATE_NAMES = { zh: "chinese", en: "english", es: "spanish", pt: "portuguese", fr: "french" };
+const TRANSLATE_MODEL = "@cf/meta/m2m100-1.2b";
+const translateCache = new Map();   // `${source}:${target}:${hash}` -> 译文（单 isolate 内存，够挡重复打开）
+const TRANSLATE_CACHE_MAX = 600;
+
+function guessTextLang(text) {
+  const s = String(text || "");
+  if (/[\u4E00-\u9FFF\u3400-\u4DBF]/.test(s)) return "zh";
+  if (/[ñÑ¿¡]/.test(s)) return "es";
+  if (/[ãõÃÕ]/.test(s)) return "pt";
+  if (/[œŒ]/.test(s)) return "fr";
+  return "en";
+}
+
+function hashText(text) {
+  const s = String(text || "");
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(36);
+}
+
+/* 轮 458 · 今日故事按日期发布：只接受真实存在的 YYYY-MM-DD，避免把脏字符串
+ * 透传给 PostgREST 的 date 参数（2026-02-31 这类会变成 500）。 */
+function isIsoDate(s) {
+  const v = String(s || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const [y, m, d] = v.split("-").map(Number);
+  const x = new Date(Date.UTC(y, m - 1, d));
+  return x.getUTCFullYear() === y && x.getUTCMonth() === m - 1 && x.getUTCDate() === d;
+}
+
 /* ──────── 小工具 ──────── */
 
 const json = (data, status = 200, extra = {}) =>
@@ -1170,6 +1209,58 @@ async function handleApi(request, env, ctx) {
       if (seg[0] === "health") {
         return m === "GET" ? json({ ok: true, mode: "gateway", ts: Date.now() }) : fail(405, "method-not-allowed");
       }
+      /* 轮 457 · 公告翻译：登录用户把管理员写的一种语言翻成自己的界面语言。
+       * 轮 458 · 今日故事复用同一接口；故事正文上限 2000 字，故把接口上限放宽到 4000
+       *   （公告输入框仍限 1000，不会因此变长）。只接受 5 种目标语言；
+       *   没配 Workers AI binding → 503，前端退回原文。 */
+      if (seg[0] === "translate" && seg.length === 1) {
+        if (m !== "POST") return fail(405, "method-not-allowed");
+        if (!jwtUid(request)) return fail(401, "auth-required");
+        const b = await readJson(request);
+        if (b.err) return b.err;
+        const t = b.body || {};
+        const text = typeof t.text === "string" ? t.text.trim() : "";
+        const target = String(t.target || "").toLowerCase();
+        if (!text || text.length > 4000) return fail(400, "bad-text");
+        if (!TRANSLATE_LANGS.has(target)) return fail(400, "bad-target");
+        const asked = String(t.source || "").toLowerCase();
+        const source = TRANSLATE_LANGS.has(asked) ? asked : guessTextLang(text);
+        if (source === target) return json({ text, source, target, translated: false });
+        if (!env.AI) return fail(503, "ai-not-configured");
+        const key = `${source}:${target}:${hashText(text)}`;
+        if (translateCache.has(key)) {
+          return json({ text: translateCache.get(key), source, target, translated: true, cached: true });
+        }
+        try {
+          /* 模型文档两种写法都出现过（语言代码 / 英文名）——先用代码，失败再用全名，
+           * 避免某天 Workers AI 收紧了参数格式就把公告翻译整条打挂。 */
+          let out;
+          try {
+            out = await env.AI.run(TRANSLATE_MODEL, {
+              text, source_lang: source, target_lang: target,
+            });
+          } catch (e) {
+            out = await env.AI.run(TRANSLATE_MODEL, {
+              text, source_lang: TRANSLATE_NAMES[source], target_lang: TRANSLATE_NAMES[target],
+            });
+          }
+          const raw = out && (out.translated_text ?? out.response ?? out.text);
+          const tr = typeof raw === "string" ? raw.trim() : "";
+          if (!tr) throw new Error("empty-translation");
+          if (translateCache.size >= TRANSLATE_CACHE_MAX) translateCache.clear();
+          translateCache.set(key, tr);
+          return json({ text: tr, source, target, translated: true });
+        } catch (e) {
+          return fail(502, "translate-failed");
+        }
+      }
+      /* 轮 458 · 今日页故事：公开 GET，只返回指定日期已发布的条目（草稿不泄露）。
+       * 没有发布条目 / 迁移未跑 → 200 null，前端退回内置故事轮换。 */
+      if (seg[0] === "daily-story" && seg.length === 1 && m === "GET") {
+        const date = q.get("date") || "";
+        if (!isIsoDate(date)) return fail(400, "bad-date");
+        return rpc(env, request, "daily_story_get", { p_date: date });
+      }
       /* 轮 256 · 客户端错误信标：前端 utils/beacon.js 把未捕获错误/拒绝 POST 过来。
        * 这里做 白名单字段 + 截断 + 限频；只用 cf-connecting-ip 限频，不解析任何凭据。
        * 轮 270 · 此前只 console.log 进 Cloudflare 临时日志区 —— 采得到、看不到、回溯不了；
@@ -1604,6 +1695,33 @@ async function handleApi(request, env, ctx) {
           if (!Number.isInteger(id) || id <= 0) return fail(400, "bad-id");
           return rpc(env, request, "story_delete_draft", { p_id: id });
         }
+        /* POST /story/published-delete：{ id } —— 作者删自己的已发布故事。
+           迁移没跑（RPC 不存在）时退回 REST 直删，RLS 仍只允许作者删自己的行。 */
+        if (seg[1] === "published-delete" && seg.length === 2 && m === "POST") {
+          const b = await readJson(request);
+          if (b.err) return b.err;
+          const id = Number((b.body || {}).id);
+          if (!Number.isInteger(id) || id <= 0) return fail(400, "bad-id");
+          const res = await rpc(env, request, "story_delete_published", { p_id: id });
+          if (res.ok) return res;
+          let code = "";
+          try {
+            const body = await res.clone().json();
+            code = String((body && body.code) || "").toUpperCase();
+          } catch (e) { /* 非 JSON 错误体：按 code 空处理 */ }
+          if (res.status !== 404 && !MISSING_FN_CODES.has(code)) return res;
+          const del = await upstream(env, request,
+            restUrl(env, "stories", `id=eq.${id}&status=eq.published`), {
+              method: "DELETE",
+              headers: { prefer: "return=representation" },
+            });
+          if (!del) return fail(502, "upstream-unreachable");
+          if (!del.ok) return del;
+          let rows = null;
+          try { rows = await del.json(); } catch (e) { rows = null; }
+          if (!Array.isArray(rows) || !rows.length) return fail(404, "story-not-found");
+          return json(true, 200);
+        }
         /* POST /story/like | /story/view：{ id } */
         if ((seg[1] === "like" || seg[1] === "view") && seg.length === 2 && m === "POST") {
           const b = await readJson(request);
@@ -1850,6 +1968,47 @@ async function handleApi(request, env, ctx) {
             const id = decodeSeg(seg[2]);
             if (!id) return fail(400, "bad-id");
             return deleteRows(env, request, TABLE.comments, `id=eq.${encodeURIComponent(id)}`);
+          }
+        }
+        /* 轮 458 · 今日页故事（管理端）：GET 带 date = 单条（含草稿）；
+         * GET 不带 date = 最近列表；POST = 保存/发布；POST /delete = 删除。
+         * 是否管理员由 SQL 函数内的 admin_users 判定，Worker 只做形状校验。 */
+        if (seg[1] === "daily-story") {
+          if (seg.length === 2 && m === "GET") {
+            const date = q.get("date") || "";
+            if (date) {
+              if (!isIsoDate(date)) return fail(400, "bad-date");
+              return rpc(env, request, "daily_story_admin_get", { p_date: date });
+            }
+            return rpc(env, request, "daily_story_list", {
+              p_limit: Math.min(parseLimit(q.get("limit"), 30), 100),
+              p_offset: parseOffset(q.get("offset")),
+            });
+          }
+          if (seg.length === 2 && m === "POST") {
+            const b = await readJson(request);
+            if (b.err) return b.err;
+            const t = b.body || {};
+            const date = typeof t.date === "string" ? t.date : "";
+            if (!isIsoDate(date)) return fail(400, "bad-date");
+            if (!t.content || typeof t.content !== "object" || Array.isArray(t.content)) {
+              return fail(400, "bad-content");
+            }
+            /* 2MB 是 readJson 的硬上限；故事正文 5 语言合计远小于它。
+             * 这里再压到 200KB，避免管理员误贴大段二进制文本进 jsonb。 */
+            if (JSON.stringify(t.content).length > 200000) return fail(413, "content-too-large");
+            return rpc(env, request, "daily_story_save", {
+              p_date: date,
+              p_content: t.content,
+              p_published: t.published !== false,
+            });
+          }
+          if (seg.length === 3 && seg[2] === "delete" && m === "POST") {
+            const b = await readJson(request);
+            if (b.err) return b.err;
+            const date = typeof (b.body || {}).date === "string" ? b.body.date : "";
+            if (!isIsoDate(date)) return fail(400, "bad-date");
+            return rpc(env, request, "daily_story_delete", { p_date: date });
           }
         }
       }

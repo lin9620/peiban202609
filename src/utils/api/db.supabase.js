@@ -620,6 +620,21 @@ export const db = {
     return unwrap(sb().rpc("story_delete_draft", { p_id: id }));
   },
 
+  /** 删除已发布故事（服务端只允许作者删 status=published；关联行级联删）。
+   *  迁移没跑时退回 RLS 直删：stories_write 仍只允许作者删自己的行。 */
+  async storyDeletePublished(id) {
+    try {
+      return await unwrap(sb().rpc("story_delete_published", { p_id: id }));
+    } catch (e) {
+      if (!isMissingRpc(e)) throw e;
+      const rows = await unwrap(
+        sb().from("stories").delete().eq("id", id).eq("status", "published").select("id")
+      );
+      if (!Array.isArray(rows) || !rows.length) throw new Error("story-not-found");
+      return true;
+    }
+  },
+
   /** 发布（校验不过抛 story-bad-* 错误码，前端用 storyErrKey 归类）
    *  轮 439：带 lang。迁移没跑 → 降级旧签名，服务端会自己按汉字正则兜底。 */
   async storyPublish(id, title, body, tags, lang = null) {
@@ -1003,6 +1018,27 @@ export const db = {
   /** 公告历史（admin_broadcasts_list；非管理员得到空集） */
   adminBroadcasts(limit = 20, offset = 0) {
     return unwrap(sb().rpc("admin_broadcasts_list", { p_limit: limit, p_offset: offset }));
+  },
+
+  /* ═══ 轮 458 · 今日页故事（按日期发布；公开读只返回 published，管理端可读写草稿）═══
+   * 表与函数见 MIGRATION_daily_stories.sql / SUPABASE_SETUP.sql。
+   * 老库没跑迁移时 RPC 会抛错，TodayPane 静默退回内置故事轮换，AdminView 显示迁移提示。 */
+  dailyStoryGet(date) {
+    return unwrap(sb().rpc("daily_story_get", { p_date: date }));
+  },
+  adminDailyStoryGet(date) {
+    return unwrap(sb().rpc("daily_story_admin_get", { p_date: date }));
+  },
+  adminDailyStoryList(limit = 30, offset = 0) {
+    return unwrap(sb().rpc("daily_story_list", { p_limit: limit, p_offset: offset }));
+  },
+  adminDailyStorySave(date, content, published = true) {
+    return unwrap(sb().rpc("daily_story_save", {
+      p_date: date, p_content: content, p_published: !!published,
+    }));
+  },
+  adminDailyStoryDelete(date) {
+    return unwrap(sb().rpc("daily_story_delete", { p_date: date }));
   },
 
   /* ═══ 轮 238 · App 安装包发布（管理中心上传 → 下载/二维码即指向新包）═══

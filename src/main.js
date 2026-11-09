@@ -11,6 +11,8 @@ import { initUserScope } from "./utils/userScope.js";
 import { installErrorBeacon } from "./utils/beacon.js";
 import { initKeyboardInset } from "./utils/keyboardInset.js";   /* 轮 322：键盘让位（App 壳） */
 import { initChatViewport } from "./utils/chatViewport.js";      /* 轮 465：聊天页 fixed 接管（网页端） */
+import { initFixedBar } from "./utils/fixedBar.js";             /* 轮 469：评论条/回复栏钉到可视视口底 */
+import { initBarReturn } from "./utils/barReturn.js";           /* 轮 472：键盘可见状态 + 两级返回 */
 import { installKbDiag } from "./utils/kbDiag.js";             /* 轮 463：?kbdiag=1 现场自检条 */
 import { isApp, checkForUpdate, takePromptOnce } from "./utils/appVersion.js";   /* 轮 297 */
 import "./style.css";
@@ -85,6 +87,13 @@ initKeyboardInset();
  * 前三轮「算高度」的路子在真机上都失败：iOS 会把整个文档往上推、小米键盘是 overlay，
  * 只要文档可滚就会错位。这里不依赖任何类名判据，桌面（≥900px）零影响。 */
 initChatViewport();
+/* 轮 469：评论条 / 回复栏直接钉到可视视口底（见 utils/fixedBar.js）。
+ * 原来靠 `bottom: var(--kb-h)` 间接推导，--kb-h 那条链上一环失效，条就掉到键盘下面
+ * —— 用户「打字看不见」就是这么来的。App 壳内部早退，零影响。 */
+initFixedBar();
+/* 轮 472：键盘可见状态 + 「点外面 = 两级返回」（见 utils/barReturn.js）。
+ * App.vue 用它决定 tabbar 要不要让位：只有键盘真占着屏才收，键盘一落就让条抬到 tabbar 头顶。 */
+initBarReturn();
 installKbDiag();
 
 /* 轮 256：无声错误信标——未捕获异常/未处理拒绝 POST 给 Worker /api/client-log，

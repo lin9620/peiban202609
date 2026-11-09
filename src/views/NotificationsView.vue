@@ -10,14 +10,18 @@
  * 未登录 / 云端不可用时显示引导，不报错（与站内其他页面一致的降级哲学）。
  */
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { ref, reactive, computed, watch, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { NButton } from "naive-ui";
-import { t } from "../i18n.js";
+import { t, i18n } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
 import * as notifyApi from "../utils/notify.js";
 import { cacheKey, swr, cacheDrop } from "../utils/cache.js";
 import { aggregate, kindsFor, itemView, targetOf, idsOf } from "../utils/notifyRules.js";
+import {
+  needsTranslation, sourceLangOf, translationCacheKey,
+} from "../utils/announcement.js";
+import { translateAnnouncement, readCachedTranslation, writeCachedTranslation } from "../utils/translate.js";
 import { relativeTime } from "../utils/dmRules.js";
 import { badge, refreshBadge, badgeLocal } from "../stores/badgeStore.js";
 
@@ -46,6 +50,73 @@ const loading = ref(false);
 const done = ref(false);     // 当前页不满 → 没有下一页了
 const failed = ref(false);
 const signedIn = computed(() => !!(cloud.ready && cloud.user));
+
+/* ── 管理员公告：详情弹层 + 按读者语言自动翻译 ─────────────────────
+ * 通知列表里的正文只露两行（长公告会被省略号截断），点开弹层看全文；
+ * 译文按「原文 + 目标语言」缓存在本机，换语言/重进都不重复调模型。
+ * 翻译失败时一律退回原文 —— 公告不能因为模型没开就变成空白。 */
+const detail = ref(null);          // { n }：当前打开的系统公告
+const trMap = reactive({});        // cacheKey -> 译文
+const trBusy = reactive({});       // cacheKey -> true（正在翻）
+
+function systemBody(n) {
+  return String((n && n.view && n.view.systemBody) || "").trim();
+}
+
+function bodyFor(n) {
+  const body = systemBody(n);
+  if (!body) return "";
+  if (!needsTranslation(body, i18n.locale)) return body;
+  return trMap[translationCacheKey(body, i18n.locale)] || body;
+}
+
+function isTranslating(n) {
+  const body = systemBody(n);
+  if (!body || !needsTranslation(body, i18n.locale)) return false;
+  return !!trBusy[translationCacheKey(body, i18n.locale)];
+}
+
+async function ensureBody(n) {
+  const body = systemBody(n);
+  if (!body) return;
+  if (!needsTranslation(body, i18n.locale)) return;
+  const key = translationCacheKey(body, i18n.locale);
+  if (trMap[key] || trBusy[key]) return;
+  const cached = readCachedTranslation(key);
+  if (cached) { trMap[key] = cached; return; }
+  trBusy[key] = true;
+  try {
+    const out = await translateAnnouncement(body, i18n.locale, sourceLangOf(body));
+    if (out) {
+      trMap[key] = out;
+      writeCachedTranslation(key, out);
+    }
+  } catch (e) {
+    /* 静默退回原文：通知中心不因翻译失败弹错/空白 */
+  } finally {
+    delete trBusy[key];
+  }
+}
+
+/* 打开公告：标已读 + 打开全文弹层（系统公告没有帖子可跳，别让点击像没反应） */
+function openAnnouncement(n) {
+  detail.value = { n };
+  ensureBody(n);
+}
+
+const detailBody = computed(() => (detail.value ? bodyFor(detail.value.n) : ""));
+const detailKey = computed(() => {
+  const n = detail.value && detail.value.n;
+  const body = systemBody(n);
+  return body ? translationCacheKey(body, i18n.locale) : "";
+});
+const detailTranslating = computed(() => !!trBusy[detailKey.value]);
+const detailOriginal = computed(() => {
+  const n = detail.value && detail.value.n;
+  const body = systemBody(n);
+  if (!body || !needsTranslation(body, i18n.locale)) return false;
+  return !trMap[detailKey.value] && !trBusy[detailKey.value];
+});
 
 /* 分栏未读：全部 = 通知表未读（私信不在通知中心，#23 —— 私信未读只看导航 💬 角标） */
 const counts = computed(() => ({
@@ -145,6 +216,12 @@ async function openItem(n) {
   if (cat) patch[cat] = Math.max(0, badge[cat] - dec);
   badgeLocal(patch);
   refreshBadge({ after: markP });
+  /* 管理员公告：点开看全文（含长文），并顺带触发当前语言的自动翻译。
+   * 举报处理结果（system 但没有正文）没有可展开的内容，保持原来的「点一下 = 已读」。 */
+  if (n.kind === "system" && systemBody(n)) {
+    openAnnouncement(n);
+    return;
+  }
   const tg = targetOf(n);
   if (!tg) return;
   if (tg.type === "bottle") router.push({ name: "messagesList", query: { bottle: String(tg.bottleId) } });
@@ -175,6 +252,17 @@ async function clearAll() {
   badgeLocal({ notif: 0, comments: 0, reactions: 0, pets: 0, system: 0 });
   refreshBadge({ after: clearP });
 }
+
+/* 列表上屏 / 切换语言时，把系统公告补翻成当前语言（同一段原文只翻一次） */
+watch(
+  [shown, () => i18n.locale],
+  () => {
+    for (const n of shown.value) {
+      if (n.kind === "system") ensureBody(n);
+    }
+  },
+  { immediate: true },
+);
 
 onMounted(async () => {
   if (!signedIn.value) return;
@@ -226,8 +314,13 @@ onMounted(async () => {
             : n.kind === "reaction" ? "🤗" : n.kind === "system" ? "📢" : "💬" }}</span>
           <div class="notif-body">
             <p class="notif-line">{{ line(n) }}</p>
-            <!-- 轮 238 · 公告正文：system 通知的 meta.body 在这里露出（此前模板只有「管理员公告」四个字，用户收了提示看不到内容） -->
-            <p v-if="(n.view && n.view.systemBody) || n.post_body" class="sub notif-quote">{{ (n.view && n.view.systemBody) || n.post_body }}</p>
+            <!-- 轮 238 · 公告正文：system 通知的 meta.body 在这里露出（此前模板只有「管理员公告」四个字，用户收了提示看不到内容）。
+                 正文按读者当前语言自动翻译；列表只露两行，点整行看全文弹层。 -->
+            <p v-if="n.kind === 'system' && systemBody(n)" class="sub notif-quote">{{ bodyFor(n) }}</p>
+            <p v-else-if="n.post_body" class="sub notif-quote">{{ n.post_body }}</p>
+            <span v-if="n.kind === 'system' && systemBody(n)" class="notif-readfull">
+              {{ isTranslating(n) ? t("notif.translating") : t("notif.readFull") }} <span aria-hidden="true">›</span>
+            </span>
             <p class="sub notif-time">{{ when(n.created_at) }}</p>
           </div>
           <!-- 这一行是几条通知合并的（用户反馈：一进去十几条，列表只见 3 条 —— 把数亮出来） -->
@@ -250,6 +343,29 @@ onMounted(async () => {
     </template>
 
     <router-link class="notif-back" to="/">{{ "← " + t("nav.home") }}</router-link>
+
+    <!-- 公告全文：长文不再被列表的单行省略号吃掉；点遮罩/关闭/× 都能退出。
+         Teleport 到 body —— 通知中心可能挂在带 transform 的容器里（首页三联），
+         留在原地会让 position:fixed 的遮罩被包含块裁切。 -->
+    <Teleport to="body">
+      <div v-if="detail" class="announce-mask" @click.self="detail = null">
+        <section class="announce-card" role="dialog" aria-modal="true" :aria-label="t('notif.system')">
+          <header class="announce-head">
+            <div>
+              <p class="announce-kicker">📢 {{ t("notif.system") }}</p>
+              <p class="sub announce-time">{{ when(detail.n.created_at) }}</p>
+            </div>
+            <button class="announce-x" :aria-label="t('common.close')" @click="detail = null">×</button>
+          </header>
+          <div class="announce-body">{{ detailBody }}</div>
+          <p v-if="detailTranslating" class="sub announce-note">{{ t("notif.translating") }}</p>
+          <p v-else-if="detailOriginal" class="sub announce-note">{{ t("notif.original") }}</p>
+          <footer class="announce-foot">
+            <n-button size="small" round type="primary" @click="detail = null">{{ t("common.close") }}</n-button>
+          </footer>
+        </section>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -259,5 +375,53 @@ onMounted(async () => {
   flex: none; align-self: center; margin-left: 6px;
   font-size: 11.5px; font-weight: 500; color: var(--ink-soft);
   background: rgba(160, 110, 60, .1); border-radius: 999px; padding: 3px 9px;
+}
+
+/* 系统公告：列表里给一个明确的「可点开」信号 */
+.notif-readfull {
+  display: inline-block; margin-top: 4px;
+  font-size: 11.5px; font-weight: 500; color: var(--accent-deep);
+}
+
+/* 公告全文弹层（Teleport 到 body） */
+.announce-mask {
+  position: fixed; inset: 0; z-index: 3000;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  background: rgba(28, 20, 14, .46);
+  -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+}
+.announce-card {
+  width: min(560px, 100%);
+  max-height: min(82vh, 760px);
+  display: flex; flex-direction: column;
+  padding: 18px 20px 16px;
+  border-radius: 24px;
+  background: var(--glass-strong, #fffdf9);
+  border: 1px solid rgba(160, 110, 60, .16);
+  box-shadow: 0 24px 70px rgba(60, 35, 15, .28);
+}
+.announce-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.announce-kicker { margin: 0; font-size: 14px; font-weight: 600; color: var(--ink); }
+.announce-time { margin: 3px 0 0; font-size: 11.5px; }
+.announce-x {
+  flex: none; width: 32px; height: 32px; border-radius: 999px;
+  border: 1px solid rgba(160, 110, 60, .16); background: transparent;
+  color: var(--ink-soft); font-size: 20px; line-height: 1; cursor: pointer;
+}
+.announce-x:hover { background: rgba(160, 110, 60, .08); color: var(--ink); }
+.announce-body {
+  flex: 1; min-height: 0; overflow-y: auto;
+  margin-top: 12px; padding: 2px 2px 12px;
+  font-size: 14px; line-height: 1.75; color: var(--ink);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.announce-note { margin: 0 0 8px; font-size: 11.5px; }
+.announce-foot { display: flex; justify-content: flex-end; padding-top: 10px; border-top: 1px solid rgba(160, 110, 60, .12); }
+
+@media (max-width: 640px) {
+  .announce-mask { padding: 14px; align-items: flex-end; }
+  .announce-card { max-height: 86vh; border-radius: 22px; padding: 16px 16px 14px; }
+  .announce-body { font-size: 13.5px; line-height: 1.7; }
 }
 </style>

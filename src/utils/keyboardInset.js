@@ -28,6 +28,7 @@
 import { Capacitor } from "@capacitor/core";
 import { Keyboard } from "@capacitor/keyboard";
 import { kbPageInset, kbWebInset } from "./keyboardMath.js";
+import { kbInsetValue } from "./chatHeight.js";
 
 const VAR = "--kb-h";
 const SYS_BOTTOM_VAR = "--sys-bottom";
@@ -118,7 +119,11 @@ function applyWeb() {
        · 地址栏伸缩 → innerHeight 与 vv.height 同增同减，差值为 0，不会误触；
        · 双指放大 → readWebKb 已在 scale > 1.05 时返回 0；
        · 页面被 iOS 上推 → offsetTop 已经计进算式，差值同步变小。 */
-  const h = (editableFocused() || raw > 100) ? raw : 0;
+  /* 轮 468：焦点那条捷径也必须过「工具栏量级」闸门（80px）。小米浏览器无键盘时
+     vv 比 inner 矮 31px（浏览器工具栏），一聚焦输入框，这 31px 就被当成键盘 → 评论条 /
+     回复栏整体抬 31px，下方平白多一条空白。而真键盘最低也 ≥ 200px，80 这道闸门
+     两边都不误伤。判据抽到 chatHeight.js，与聊天容器高度共用同一份口径。 */
+  const h = kbInsetValue(raw, editableFocused());
   /* iOS 为了让光标可见会把**整个文档**往上滚（window.scrollY > 0）。整屏聊天页本来
      就没有文档级滚动，这一滚会在页尾露出一条「视口之外」的空白（用户截图①那块）。
      只在整屏聊天壳里归零 —— 别的页面（首页搜索框等）本来就靠文档滚动把输入框带进可视区，

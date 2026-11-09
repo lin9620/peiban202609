@@ -1221,3 +1221,81 @@ html[data-theme="night"] .wp-press {
 html[data-theme="night"] .wp-press.wp-big {
   opacity: 0.8 !important;
 }
+
+/* ═══════════════ 深夜黑（glass 皮肤）═══════════════
+ * night 的纯黑变体：结构仍走上面整套夜间规则，这里只换玻璃、底色和彩色表面。 */
+html[data-theme="night"][data-theme-variant="midnight"] {
+  --g-bg: rgba(16, 16, 21, 0.72);
+  --g-bg-soft: rgba(16, 16, 21, 0.55);
+  --g-bg-strong: rgba(9, 9, 13, 0.90);
+  --g-bg-card: rgba(20, 20, 26, 0.94);
+  --g-tabbar: rgba(9, 9, 13, 0.94);
+  --g-line: rgba(255, 255, 255, 0.10);
+  --g-hi: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  --g-shadow: 0 14px 34px rgba(0, 0, 0, 0.60), 0 2px 8px rgba(0, 0, 0, 0.42);
+  --g-shadow-sm: 0 6px 18px rgba(0, 0, 0, 0.48);
+  --g-fade: 8, 8, 12;
+  --ink-62: rgba(255, 255, 255, 0.62);
+  --ink-44: rgba(255, 255, 255, 0.42);
+  --p-blue-a: rgba(110, 130, 170, 0.18);   --p-blue-ink: #b8c4da;
+  --p-yellow-a: rgba(170, 150, 100, 0.16); --p-yellow-ink: #d8cba4;
+  --p-mint-a: rgba(100, 150, 120, 0.16);   --p-mint-ink: #b8d8c4;
+  --p-peach-a: rgba(180, 120, 90, 0.18);   --p-peach-ink: #e2bda6;
+  --p-pink-a: rgba(170, 110, 130, 0.18);   --p-pink-ink: #e2b4c4;
+  --p-lilac-a: rgba(125, 110, 165, 0.18);  --p-lilac-ink: #c8bce2;
+  --p-celadon-a: rgba(95, 145, 140, 0.16); --p-celadon-ink: #b2d4d0;
+  --p-gray-a: rgba(140, 140, 150, 0.16);   --p-gray-ink: #c8c6ce;
+}
+html[data-theme="night"][data-theme-variant="midnight"] { background: #08080b; }
+html[data-theme="night"][data-theme-variant="midnight"]::before {
+  background:
+    radial-gradient(58% 40% at 10% 2%, rgba(201, 122, 93, 0.12) 0%, rgba(201, 122, 93, 0) 62%),
+    radial-gradient(54% 38% at 94% 4%, rgba(120, 100, 140, 0.10) 0%, rgba(120, 100, 140, 0) 60%),
+    radial-gradient(62% 42% at 14% 74%, rgba(80, 110, 100, 0.08) 0%, rgba(80, 110, 100, 0) 64%),
+    #08080b;
+}
+html[data-theme="night"][data-theme-variant="midnight"] .orb { opacity: 0.18; }
+html[data-theme="night"][data-theme-variant="midnight"] .card,
+html[data-theme="night"][data-theme-variant="midnight"] .glass,
+html[data-theme="night"][data-theme-variant="midnight"] .st-card,
+html[data-theme="night"][data-theme-variant="midnight"] .st-card--featured {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+html[data-theme="night"][data-theme-variant="midnight"] .tabbar-sheet {
+  background: #0f0f13 !important;
+  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.55) !important;
+}
+html[data-theme="night"][data-theme-variant="midnight"] .tabbar-sheet::before { background: rgba(255, 255, 255, 0.12); }
+html[data-theme="night"][data-theme-variant="midnight"] .tabbar-sheet .tabbar-opt + .tabbar-opt {
+  border-top-color: rgba(255, 255, 255, 0.08) !important;
+}
+html[data-theme="night"][data-theme-variant="midnight"] .today-hi {
+  background: linear-gradient(150deg, rgba(201, 122, 93, 0.20), rgba(20, 20, 26, 0.78) 58%, rgba(120, 100, 140, 0.14)) !important;
+}
+html[data-theme="night"][data-theme-variant="midnight"] .profile-head {
+  background: linear-gradient(150deg, rgba(201, 122, 93, 0.18), rgba(120, 100, 140, 0.14) 55%, rgba(80, 100, 140, 0.14)) !important;
+}
+html[data-theme="night"][data-theme-variant="midnight"] .quote-box,
+html[data-theme="night"][data-theme-variant="midnight"] .quote-card {
+  background: linear-gradient(150deg, rgba(180, 120, 90, 0.16), rgba(160, 100, 120, 0.12)) !important;
+}
+html[data-theme="night"][data-theme-variant="midnight"] .post-card:nth-child(4n + 1) { background: linear-gradient(180deg, rgba(201, 122, 93, 0.10), var(--g-bg-card) 42%) !important; }
+html[data-theme="night"][data-theme-variant="midnight"] .post-card:nth-child(4n + 2) { background: linear-gradient(180deg, rgba(120, 100, 140, 0.10), var(--g-bg-card) 42%) !important; }
+html[data-theme="night"][data-theme-variant="midnight"] .post-card:nth-child(4n + 3) { background: linear-gradient(180deg, rgba(100, 150, 120, 0.08), var(--g-bg-card) 42%) !important; }
+html[data-theme="night"][data-theme-variant="midnight"] .post-card:nth-child(4n + 4) { background: linear-gradient(180deg, rgba(170, 150, 100, 0.08), var(--g-bg-card) 42%) !important; }
+html[data-theme="night"][data-theme-variant="midnight"] .stat { background: rgba(24, 24, 30, 0.70) !important; }
+html[data-theme="night"][data-theme-variant="midnight"] .status-ico,
+html[data-theme="night"][data-theme-variant="midnight"] .soft-tag,
+html[data-theme="night"][data-theme-variant="midnight"] .chip,
+html[data-theme="night"][data-theme-variant="midnight"] .admin-entry {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.10) !important;
+}
+html[data-theme="night"][data-theme-variant="midnight"] .input,
+html[data-theme="night"][data-theme-variant="midnight"] textarea.input,
+html[data-theme="night"][data-theme-variant="midnight"] .wall-search-input,
+html[data-theme="night"][data-theme-variant="midnight"] .q-input input,
+html[data-theme="night"][data-theme-variant="midnight"] .q-input textarea {
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: var(--ink) !important;
+}

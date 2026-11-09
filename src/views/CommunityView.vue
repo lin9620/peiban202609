@@ -64,7 +64,9 @@ import {
   recommendPosts, RECOMMEND_DAYS, RECOMMEND_WIDE_DAYS,
   hasNewPosts, applyReactionAuthoritative,
 } from "../utils/wallRules.js";
-import { isApp, isMobileNav, tabbarSuppressed, retapSeq, retapPath } from "../stores/uiStore.js";
+import { isApp, isMobileNav, tabbarSuppressed, retapSeq, retapPath, pushBack, popBack } from "../stores/uiStore.js";
+/* 轮 472：点条外面 = 两级返回（先落键盘、再收条），键盘可见状态由它维护 */
+import { barTapIsKbBack, resetBarReturn } from "../utils/barReturn.js";
 /* 轮 33：举报弹窗 + 全站拉黑过滤（我拉黑的人，TA 的帖子/评论在我这里渲染前剔除） */
 import ReportDialog from "../components/ReportDialog.vue";
 import WpComposer from "../components/WpComposer.vue";
@@ -1505,6 +1507,8 @@ function closeMainBar() {
   mainBarKey.value = "";
   mainBarPost.value = null;
   mainBarReply.value = null;
+  resetBarReturn();   /* 轮 472：清掉「刚收过键盘」的账，下次开条第一击不被误判 */
+  maskSwipe = false;  /* 轮 475：顺手清手势账，别让上一轮的「滑动」吞掉下一次点击 */
 }
 /* 底部条草稿：主评论模式读写 cmtDraft[postKey]，回复模式读写 repDraft[repKey]——
  * 与内联框同源存取，切目标/切模式互不串字 */
@@ -1540,10 +1544,81 @@ function mainBarDocClose(e) {
   /* 占位条与回复触发点（评论正文/回复钮）不关——它们自己管开条/切换/收起；
    * 否则点「回复」先开条、同一击冒泡到 document 又把它关掉（真机实测条闪没） */
   if (tgt && tgt.closest && tgt.closest(".cmt-entry, .bar-reply-tap")) return;
+  /* 轮 472（用户提案）：这一击先当「返回」——键盘在屏上就只落键盘，条和草稿都留着；
+   * 键盘已经落了才收条。微信/小红书评论区同款手感，也免得用户为了切页签把整条关掉。 */
+  if (barTapIsKbBack()) return;
   closeMainBar();
 }
+/* ═══ 轮 475（用户要求）· 暗层上「滑动」= 一步退出输入态 ═══
+ * 用户原话：「在有键盘的情况下，外面若是滑动的话，就直接显示四个底部，输入部分全消失，
+ * 外面若是点击的话就还是之前改动过的（两级返回）」。
+ *
+ * 病根：暗层 fixed 铺满全屏，滑动手势全被它吃掉 —— 底下 .wall-scroller 收不到 scroll，
+ * 屏幕上什么都不会发生。而想「继续刷墙」的人第一反应就是往外滑一下，不是精准点一下。
+ *
+ * 定案：按手势意图分流
+ *   · 滑动（位移 > 10px）→ 落键盘 + 收条 + tabbar 回原位，一步到位；
+ *   · 点击（位移 ≤ 10px）→ 保留轮 472 的两级返回（先落键盘、再收条）。
+ * 10px 是手指自然抖动（3~5px）与真正滑动的分界；一次手势只退一次。 */
+const MASK_SWIPE_PX = 10;   /* 低于它仍算点击 */
+let maskSwipe = false;      /* 本次触摸已判成滑动 → 吞掉随后补派的那次 click */
+let maskX0 = 0;
+let maskY0 = 0;
+
+/* 轮 472（用户拍板方案）：打开输入条时整页压一层极淡暗色，点暗处就是「返回」。
+ *   ① 有键盘：这一下只落键盘 —— 条和草稿都留着，等于键盘上的「收起」；
+ *   ② 键盘已经落了：再点才收条，tabbar 回原位。
+ * 必须 stopPropagation：document 上还挂着 mainBarDocClose，不拦住就会同一击连走两级
+ * （先判「收键盘」、紧接着判「收条」），用户点一下整条就没了。 */
+function mainBarMaskTap(e) {
+  if (e) e.stopPropagation();
+  /* 这一击可能是滑动的尾巴（部分内核位移大也照派 click）——滑动时已经退过了，别再走两级 */
+  if (maskSwipe) { maskSwipe = false; return; }
+  if (barTapIsKbBack()) return;
+  closeMainBar();
+}
+
+function mainBarMaskDown(e) {
+  const tp = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
+  if (!tp) return;
+  maskSwipe = false;
+  maskX0 = tp.clientX;
+  maskY0 = tp.clientY;
+}
+
+function mainBarMaskMove(e) {
+  if (maskSwipe) return;
+  const tp = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
+  if (!tp) return;
+  if (Math.abs(tp.clientX - maskX0) < MASK_SWIPE_PX && Math.abs(tp.clientY - maskY0) < MASK_SWIPE_PX) return;
+  maskSwipe = true;
+  /* 必须显式 blur：只靠「元素被移除」在部分内核里落不下键盘（小米浏览器实测过） */
+  try {
+    const inp = mainBarEl.value && mainBarEl.value.querySelector("textarea, input");
+    const ae = document.activeElement;
+    if (inp && typeof inp.blur === "function") inp.blur();
+    else if (ae && ae !== document.body && typeof ae.blur === "function") ae.blur();
+  } catch (err) { /* 收不了键盘也必须退得掉，别让异常拦住 */ }
+  closeMainBar();
+  /* 放在 closeMainBar 之后：它会把这个账清掉（防上一轮残留），而这一次滑动要留着，
+   * 好在同一手势末尾补派的 click 上认出来并吞掉。 */
+  maskSwipe = true;
+}
+/* 轮 472：App 端系统返回键走同一套两级返回 —— 键盘在屏上先落键盘，落了才收条。
+ * 与「点条外面」共用 barTapIsKbBack，两处手感一致（用户提的就是「点外面当返回」）。 */
+const mainBarBackFn = () => {
+  if (!mainBarKey.value) return false;
+  if (barTapIsKbBack()) return true;
+  closeMainBar();
+  return true;
+};
+/* 切换帖子/回复目标时 mainBarKey 是非空 → 非空，watch 会再跑一次；用这个标记防止
+ * 同一份拦截器在栈里叠成两份（关条只 pop 一个，另一个会变成永远弹不响的死闭包）。 */
+let mainBarBackArmed = false;
 watch(mainBarKey, (v) => {
   tabbarSuppressed.value = !!v;
+  if (v && !mainBarBackArmed) { pushBack(mainBarBackFn); mainBarBackArmed = true; }
+  else if (!v && mainBarBackArmed) { popBack(mainBarBackFn); mainBarBackArmed = false; }
   if (typeof document === "undefined") return;
   if (v) document.addEventListener("click", mainBarDocClose);
   else document.removeEventListener("click", mainBarDocClose);
@@ -1630,13 +1705,13 @@ onBeforeRouteLeave(() => {
 });
 onUnmounted(() => {
   tabbarSuppressed.value = false;
+  if (mainBarBackArmed) { popBack(mainBarBackFn); mainBarBackArmed = false; }
   if (typeof document !== "undefined") document.removeEventListener("click", mainBarDocClose);
 });
 function focusMainBar() {
   return nextTick().then(() => { try { mainBarInput.value?.focus(); } catch (e) { /* 无焦点环境忽略 */ } });
 }
-async function openMainBar(p) {
-  if (p.cloud && !signedIn.value) {
+async function openMainBar(p) {  if (p.cloud && !signedIn.value) {
     if (!isOpen(p)) toggleCmt(p);
     return;
   }
@@ -3235,11 +3310,28 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
     <!-- 轮 87：…菜单改 document 点击收起（原全屏遮罩被卡片堆叠上下文盖住菜单，举报/拷贝点了没反应） -->
 
     <!-- 轮 108：手机端主评论底部输入条（图2样式：发送在右；贴键盘；点空白收起；一次只服务一条帖） -->
-    <div v-if="isMobileNav && mainBarPost" ref="mainBarEl" class="cmt-main-bar">
-      <WpComposer ref="mainBarInput" v-model="mainBarDraft"
-        :placeholder="mainBarPh" :maxlength="MAX_LEN"
-        @send="sendMainBar" />
-    </div>
+    <!-- 轮 471 · 必须 Teleport 到 body（与 PostComments 同款，那一处早就这么做了）。
+         它原来挂在 .wall-scroller 里面，而那个容器在手机形态是 position:fixed + overflow-y:auto。
+         固定定位后代一旦套进滚动容器就画不出来：真机实测（小米浏览器 393×744）
+         rect 报 433~484、elementsFromPoint 也能命中 textarea，但屏幕上那个位置是帖子卡片，
+         条一像素都没画（把背景刷成 #00ff00 只在容器底边露出几像素）；同一时刻用
+         appendChild 把它挪到 body 下，整条立刻完整显形。与 --kb-h / visualViewport /
+         内联 top 的计算无关 —— 算得再准也不生效，所以问题会「换个浏览器还在」。 -->
+    <Teleport to="body">
+      <!-- 轮 472（用户拍板）：输入态压一层极淡暗色，点暗处 = 返回。
+           不给暗层的话「切底部四个页签」只能靠猜点哪儿；有了它就是明确的出口。
+           轮 475：暗层是 fixed 铺满全屏，滑动会被它整片吃掉（底下 .wall-scroller 收不到），
+           所以这里必须自己听 touch —— 滑动 = 一步退出输入态，点击 = 两级返回。 -->
+      <div v-if="isMobileNav && mainBarPost" class="cmt-bar-mask"
+        @click="mainBarMaskTap"
+        @touchstart.passive="mainBarMaskDown"
+        @touchmove.passive="mainBarMaskMove"></div>
+      <div v-if="isMobileNav && mainBarPost" ref="mainBarEl" class="cmt-main-bar">
+        <WpComposer ref="mainBarInput" v-model="mainBarDraft"
+          :placeholder="mainBarPh" :maxlength="MAX_LEN"
+          @send="sendMainBar" />
+      </div>
+    </Teleport>
 
     <!-- 举报弹窗（帖子/评论共用一个实例） -->
     <ReportDialog v-model:show="reportShow" :target="reportTarget" />

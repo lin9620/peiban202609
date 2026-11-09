@@ -485,6 +485,11 @@ export const db = {
     return call("/story/draft-delete", { method: "POST", body: { id } });
   },
 
+  /** 删除已发布故事（服务端只允许作者删 status=published；RPC 缺失时 Worker 退回 RLS 直删） */
+  storyDeletePublished(id) {
+    return call("/story/published-delete", { method: "POST", body: { id } });
+  },
+
   /** 发布（服务端校验 标题/正文≤3万/标签1~3） */
   storyPublish(id, title, body, tags) {
     return call("/story/publish", { method: "POST", body: { id, title, body, tags: tags || [] } });
@@ -788,6 +793,26 @@ export const db = {
   /** 公告历史（admin_broadcasts_list；非管理员得到空集） */
   async adminBroadcasts(limit = 20, offset = 0) {
     return call(`/admin/broadcast?limit=${limit}&offset=${offset}`, { method: "GET" });
+  },
+
+  /* ═══ 轮 458 · 今日页故事（公开读 + 管理端按日期读写；与直连实现同一契约）═══ */
+  async dailyStoryGet(date) {
+    return call(`/daily-story?date=${enc(date)}`);
+  },
+  async adminDailyStoryGet(date) {
+    return call(`/admin/daily-story?date=${enc(date)}`);
+  },
+  async adminDailyStoryList(limit = 30, offset = 0) {
+    return call(`/admin/daily-story?limit=${enc(limit)}&offset=${enc(offset)}`);
+  },
+  async adminDailyStorySave(date, content, published = true) {
+    return call("/admin/daily-story", {
+      method: "POST",
+      body: { date, content, published: !!published },
+    });
+  },
+  async adminDailyStoryDelete(date) {
+    return call("/admin/daily-story/delete", { method: "POST", body: { date } });
   },
 
   /* ═══ 轮 238 · App 安装包发布（经 /sb 透传到 Storage；对象名固定 warm-paws.apk）═══ */

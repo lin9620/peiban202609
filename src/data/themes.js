@@ -32,6 +32,26 @@ export const THEMES = [
     swatch: "#8B9CE8",
     naive: { primary: "#8B9CE8", hover: "#A3B2F0", pressed: "#6E80D0" },
   },
+  {
+    /* 深夜黑：星夜蓝的纯黑变体。CSS 仍复用 night 的整套深色结构规则，
+     * 只通过 data-theme-variant="midnight" 把底色、玻璃和蓝紫表面压到近黑。 */
+    key: "midnight", dark: true, base: "night", icon: "🌑",
+    name: { en: "Midnight Black", zh: "深夜黑" },
+    swatch: "#0B0B10",
+    naive: { primary: "#C97A5D", hover: "#D98E72", pressed: "#A9583E" },
+  },
 ];
 
 export const themeByKey = (key) => THEMES.find((t) => t.key === key) || THEMES[0];
+
+/* data-theme 只负责挂“结构基座”（night 的深色规则），变体主题再用
+ * data-theme-variant 覆盖颜色。这样 night 里几十条深色适配（含组件 scoped
+ * 样式）不需要为每个新深色主题复制一遍。 */
+export const themeBaseKey = (key) => {
+  const t = themeByKey(key);
+  return t.base || t.key;
+};
+export const themeVariantKey = (key) => {
+  const t = themeByKey(key);
+  return t.base ? t.key : "";
+};

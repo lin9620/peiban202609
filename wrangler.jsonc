@@ -4,6 +4,9 @@
   // 其余路径仍静态资源优先；SPA 兜底行为由 assets 配置决定，npm run deploy 用法不变。
   "main": "worker/api.js",
   "compatibility_date": "2025-09-01",
+  // 公告多语言：通知中心把管理员写的中文按读者语言自动翻译（@cf/meta/m2m100-1.2b）。
+  // 没配这个 binding 时 /api/translate 返回 503，前端自动退回原文，不会白屏。
+  "ai": { "binding": "AI" },
   // 轮 114：恢复 workers.dev 预览地址（加了 routes 后 Cloudflare 默认关闭它；之前一直开着，保持原状）
   "workers_dev": true,
   // 轮 115：旧域 dale.de5.net 已按用户要求下线（用户要拿它另做静态页）——本 Worker 唯一入口

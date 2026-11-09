@@ -14,6 +14,7 @@ import { t } from "../i18n.js";
 import { isMobileNav, isApp } from "../stores/uiStore.js";
 import { enterSends, insertText, pickerOpensUp } from "../utils/composer.js";
 import { hideEmojiSearch } from "../utils/emojiPanel.js";
+import { scheduleEmojiWarm } from "../utils/emojiWarm.js";
 
 const props = defineProps({
   modelValue: { type: String, default: "" },
@@ -107,12 +108,32 @@ const toggleEmoji = () => {
   }
 };
 
-/* 面板开关 → 底条让位 + 去掉 picker 的搜索框（库每次打开都会重建元素） */
+/* 面板开关 → 底条让位 + 去掉 picker 的搜索框（库每次打开都会重建元素）
+ * 轮 478：数据已在空闲时预热过（见 emojiWarm.js 的 scheduleEmojiWarm），
+ * 正常情况下面板一打开就是满的；预热没赶上（刚装/弱网/存储被清）时，
+ * 先铺一层骨架占位，别让面板是一片空白 —— 用户说的「点了很慢、卡顿」就是这段空白。 */
+const pickerReady = ref(false);
+let readyTimer = 0;
+function watchPickerReady() {
+  clearTimeout(readyTimer);
+  pickerReady.value = false;
+  const started = Date.now();
+  const tick = () => {
+    const el = picker.value;
+    const sr = el && el.shadowRoot;
+    if (sr && sr.querySelector(".emoji")) { pickerReady.value = true; return; }
+    /* 兜底 2.5s：真拉不下来也不能永远盖着骨架（库拉不到数据时自己会停在空态） */
+    if (Date.now() - started > 2500) { pickerReady.value = true; return; }
+    readyTimer = setTimeout(tick, 40);
+  };
+  readyTimer = setTimeout(tick, 16);
+}
 watch(emojiOpen, async (open) => {
   syncBar(open);
-  if (!open) return;
+  if (!open) { clearTimeout(readyTimer); pickerReady.value = false; return; }
   await nextTick();
   hideEmojiSearch(picker.value);
+  watchPickerReady();
   /* emoji-picker 的 shadow 可能晚一帧才挂好，再补一次（幂等） */
   setTimeout(() => hideEmojiSearch(picker.value), 80);
 });
@@ -210,9 +231,13 @@ onMounted(() => {
   document.addEventListener("pointerdown", onDocDown, true);
   document.addEventListener("click", onDocClick);
   grow();
+  /* 轮 478：输入组件一出现就在空闲时把表情数据备好（幂等，全站只跑一次）——
+     首次点开表情要等 500~800ms 就是这段数据现拉现写造成的。 */
+  scheduleEmojiWarm();
 });
 onBeforeUnmount(() => {
   endKbSwap();
+  clearTimeout(readyTimer);
   document.removeEventListener("pointerdown", onDocDown, true);
   document.removeEventListener("click", onDocClick);
 });
@@ -276,6 +301,10 @@ defineExpose({
     </button>
 
     <div v-if="emojiOpen" class="wp-composer-picker" @click.stop>
+      <!-- 轮 478：数据没到位时铺一层占位（面板原本这段是纯空白，看着像点坏了） -->
+      <div v-if="!pickerReady" class="wp-picker-skel" aria-hidden="true">
+        <i v-for="n in 48" :key="n"></i>
+      </div>
       <emoji-picker data-source="/emoji/data.json" ref="picker" @emoji-click="onEmoji"></emoji-picker>
     </div>
   </div>
@@ -379,6 +408,37 @@ defineExpose({
   --indicator-color: var(--accent, #cc785c);
   --input-border-color: var(--hairline, #e6dfd8);
   --category-emoji-size: 1.15rem;
+}
+/* 轮 478：加载占位。尺寸对齐真实网格（8 列、格子近正方），数据到位后直接换成真表情，
+   不会看到「一小撮 → 一整屏」的跳变。 */
+.wp-picker-skel {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  grid-auto-rows: 34px;
+  gap: 4px;
+  padding: 10px 8px;
+  background: var(--wash-strong, #fffdf9);
+}
+.wp-picker-skel i {
+  border-radius: 8px;
+  background: var(--hairline, #e6dfd8);
+  opacity: .45;
+  animation: wp-skel-pulse 1.1s ease-in-out infinite;
+}
+.wp-picker-skel i:nth-child(8n+2) { animation-delay: .08s; }
+.wp-picker-skel i:nth-child(8n+3) { animation-delay: .16s; }
+.wp-picker-skel i:nth-child(8n+4) { animation-delay: .24s; }
+.wp-picker-skel i:nth-child(8n+5) { animation-delay: .32s; }
+.wp-picker-skel i:nth-child(8n+6) { animation-delay: .4s; }
+@keyframes wp-skel-pulse {
+  0%, 100% { opacity: .32; }
+  50% { opacity: .62; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wp-picker-skel i { animation: none; opacity: .45; }
 }
 
 @media (max-width: 768px) {

@@ -123,7 +123,8 @@ function prune() {
 /**
  * 本地优先读取（stale-while-revalidate）：
  *  - 有缓存 → 立刻 hooks.cached(cached)（页面先渲染，调用方把「载入中」关掉），随后后台拉取；
- *  - 后台成功且与缓存不同 → hooks.fresh(fresh) + 回写缓存；相同 → 不触发（避免无谓重渲染）；
+ *  - 后台成功且与缓存不同 → hooks.fresh(fresh) + 回写缓存；相同 → 不触发 fresh（避免无谓重渲染），
+ *    但会触发 hooks.same(fresh)：调用方可借此确认「服务端已应答」，例如空列表也要收起加载态；
  *  - 后台失败 → 有缓存就静默保留（陈旧好过白屏）；无缓存才走 hooks.onError（与原行为一致）；
  *  - fetcher 返回 null（如 cloudFetchPosts 的失败语义）→ 不覆盖、不回写。
  * @returns {Promise<boolean>} 是否命中缓存（调用方可用来决定首屏要不要显示骨架）
@@ -145,6 +146,8 @@ export async function swr(key, hooks, fetcher, { maxAge = DEFAULT_MAX_AGE } = {}
   const same = has && JSON.stringify(fresh) === JSON.stringify(hit);
   if (!same && hooks && hooks.fresh) {
     try { hooks.fresh(fresh); } catch (e) { /* 渲染失败下次轮询再纠正 */ }
+  } else if (same && hooks && hooks.same) {
+    try { hooks.same(fresh); } catch (e) { /* 同 fresh：渲染失败下次轮询再纠正 */ }
   }
   return has;
 }

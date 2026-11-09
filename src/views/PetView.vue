@@ -63,8 +63,9 @@ watch(() => routeQ.query.petTab, (v) => {
 if (["care", "adv", "paint", "book"].includes(qPet)) tab.value = qPet;
 else if (["care", "adv", "paint", "book"].includes(qTab)) tab.value = qTab;
 
-/* —— 零食雨小游戏 —— */
+/* —— 小游戏：零食雨 / 石头剪刀布 —— */
 const snackOn = ref(false);
+const rpsOn = ref(false);
 
 /* —— 领养/创建弹窗 —— */
 const showAdopt = ref(false);
@@ -453,6 +454,28 @@ function onToggleFramed(d) {
         </div>
       </div>
 
+      <!-- 小游戏：零食雨 / 石头剪刀布并排，先选玩法再开局。
+           轮 131 的 RpsGame 原本是页面里的大卡片，会把宠物页拉得很长；
+           现在收进全屏弹层，入口紧挨零食雨，动作栏回到两行。 -->
+      <div v-if="!away" class="pet-games">
+        <button class="pet-game snack" @click="snackOn = true">
+          <span class="pg-ico">{{ "\u{1F36C}" }}</span>
+          <span class="pg-copy">
+            <b>{{ t("pet.snack.btn") }}</b>
+            <small>{{ t("pet.snack.short") }}</small>
+          </span>
+          <span class="pg-go">▶</span>
+        </button>
+        <button class="pet-game rps" :title="t('rps.title')" @click="rpsOn = true">
+          <span class="pg-ico">✊</span>
+          <span class="pg-copy">
+            <b>{{ t("rps.btn") }}</b>
+            <small>{{ t("rps.short") }}</small>
+          </span>
+          <span class="pg-go">▶</span>
+        </button>
+      </div>
+
       <!-- #3 动作栏紧贴舞台：按玩耍/喂食时宠物就在同一屏内，不用再往下翻 -->
       <div v-if="!away" class="pet-actions">
         <button class="act" @click="feedHint"><span>{{ "\u{1F35A}" }}</span>{{ t("pet.actions.feed") }}</button>
@@ -463,12 +486,8 @@ function onToggleFramed(d) {
           <span>{{ activePet.sleeping ? "\u2600\uFE0F" : "\u{1F319}" }}</span>
           {{ activePet.sleeping ? t("pet.actions.wake") : t("pet.actions.sleep") }}
         </button>
-        <button class="act" @click="snackOn = true"><span>{{ "\u{1F36C}" }}</span>{{ t("pet.snack.btn") }}</button>
         <button class="act" @click="showShare = true"><span>🖼️</span>{{ t("home.share") }}</button>
       </div>
-
-      <!-- 轮 131 · 石头剪刀布 vs 宠物（清单 #20）：性格加权出拳，赢金币计入陪它玩任务 -->
-      <RpsGame />
 
       <div class="pet-stats">
         <div v-for="s in stats" :key="s.key" class="pstat">
@@ -728,6 +747,7 @@ function onToggleFramed(d) {
 
   <ShareCard v-if="showShare" :quote="quote" :pet="activePet" @close="showShare = false" />
   <SnackRain v-if="snackOn" @close="snackOn = false" />
+  <RpsGame v-if="rpsOn" @close="rpsOn = false" />
   </Teleport>
   </div>
 </template>

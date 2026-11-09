@@ -6,10 +6,16 @@
 import { ref, computed, watch } from "vue";
 import { useRouter } from "vue-router";
 import { NButton, NTag } from "naive-ui";
-import { t } from "../i18n.js";
+import { t, i18n } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
 import { db } from "../utils/api/db.js";
 import { fetchLatestRelease, currentVersion } from "../utils/appVersion.js";   /* 轮 297：读已登记的版本 + 当前构建的 versionCode */
+import { translateText } from "../utils/translate.js";
+import {
+  DAILY_STORY_LANGS, DAILY_STORY_FIELDS, DAILY_STORY_LIMITS,
+  emptyDailyContent, normalizeDailyContent, pickDailyContent, dailyStoryTitle,
+  dailyFormFilled, validateDailyContent, isoDate, isIsoDate, shiftIsoDate,
+} from "../utils/dailyStory.js";
 import { fmtNum, fmtBytes, clip, dailySeries, barHeights, sumReactions, dayOf, dayTimeOf, ratePct } from "../utils/admin.js";
 import { maint, applyState, setPreview } from "../utils/maintenance.js";
 import {
@@ -334,6 +340,24 @@ const bcastProgress = ref("");   /* "正在发送 x/y…" —— 发送期间替
 /* —— 历史「继续发送」：同一循环接着推（step 幂等，不会重复送达）—— */
 const resumeBid = ref("");
 
+/* —— 轮 458 · 今日页故事：按日期 + 5 种语言编辑 ——
+ * 位置同样必须在 watch(signedIn) 之前（TDZ 前科）：switchTab('daily') 会读到这些 ref。 */
+const dailyToday = ref(isoDate());
+const dailyDate = ref(dailyToday.value);
+const dailyLang = ref("zh");
+const dailyForm = ref(emptyDailyContent());
+const dailyExisting = ref(null);
+const dailyRows = ref([]);
+const dailyLoaded = ref(false);
+const dailyEditorLoaded = ref(false);
+const dailyBusy = ref("");          /* "" | load | save | delete */
+const dailyListBusy = ref(false);
+const dailyMsg = ref("");
+const dailyTranslating = ref(false);
+const dailyTranslateProgress = ref("");
+const dailyOverwrite = ref(false);
+let dailyDateSeq = 0;
+
 /* 跟随登录态：直接打开 /admin（书签 / 刷新）时 Auth 可能还没就绪 —— 就绪后自动加载；
  * 确认未登录时显示「没有权限」（保持与旧 onMounted 版本一致的语义） */
 watch(signedIn, (ok) => {
@@ -418,8 +442,180 @@ function switchTab(name) {
   if (name === "users" && !usersLoaded.value) loadUsers(0);
   if (name === "reports" && !repLoaded.value) loadReports(0);
   if (name === "clientlogs" && !clogsLoaded.value) loadClientLogs();
+  if (name === "daily") openDailyTab();
 }
 
+/* ═══ 轮 458 · 今日页故事：日期选择 + 5 语言编辑 + 草稿/发布 ═══
+ * 数据在 daily_stories（MIGRATION_daily_stories.sql）。未跑迁移时：
+ *   - 今日页静默退回内置轮换；
+ *   - 这里显示「先执行迁移」，不把整个管理中心打成错误态。 */
+const dailyLangFilled = computed(() => dailyFormFilled(dailyForm.value));
+
+function dailyErrText(e) {
+  const s = String((e && (e.message || e.code || e.reason)) || e || "");
+  if (/daily_story|PGRST202|42883|42P01|does not exist|could not find the function|schema cache/i.test(s)) {
+    return t("admin.daily.migrateHint");
+  }
+  return t("admin.daily.fail", { r: s || "error" });
+}
+
+function dailyRowTitle(row) {
+  return dailyStoryTitle(row && row.content, i18n.locale);
+}
+
+async function loadDailyList(silent = false) {
+  if (dailyListBusy.value) return;
+  dailyListBusy.value = true;
+  try {
+    const rows = await db.adminDailyStoryList(30, 0);
+    dailyRows.value = Array.isArray(rows) ? rows : [];
+    dailyLoaded.value = true;
+  } catch (e) {
+    if (!silent) {
+      dailyLoaded.value = true;
+      dailyRows.value = [];
+      dailyMsg.value = dailyErrText(e);
+    }
+  } finally {
+    dailyListBusy.value = false;
+  }
+}
+
+async function selectDailyDate(date) {
+  if (!isIsoDate(date)) {
+    dailyMsg.value = t("admin.daily.dateInvalid");
+    return;
+  }
+  dailyDate.value = date;
+  const seq = ++dailyDateSeq;
+  dailyBusy.value = "load";
+  dailyMsg.value = "";
+  try {
+    const row = await db.adminDailyStoryGet(date);
+    if (seq !== dailyDateSeq) return;
+    dailyExisting.value = row && row.content ? row : null;
+    dailyForm.value = normalizeDailyContent(row && row.content);
+    /* 该日期只有英文/西语等译文时，直接把编辑器切到第一个有内容的语言，
+     * 否则管理员会看到一个空白的中文页签，误以为故事丢了。 */
+    const filled = dailyFormFilled(dailyForm.value);
+    if (!filled[dailyLang.value]) {
+      const first = DAILY_STORY_LANGS.find((l) => filled[l]);
+      if (first) dailyLang.value = first;
+    }
+  } catch (e) {
+    if (seq !== dailyDateSeq) return;
+    dailyExisting.value = null;
+    dailyForm.value = emptyDailyContent();
+    dailyMsg.value = dailyErrText(e);
+  } finally {
+    if (seq === dailyDateSeq) dailyBusy.value = "";
+  }
+}
+
+function onDailyDateChange() {
+  selectDailyDate(dailyDate.value);
+}
+
+function openDailyTab() {
+  dailyToday.value = isoDate();   /* 管理页跨过午夜后，「今天」仍然对 */
+  if (!dailyLoaded.value) loadDailyList();
+  if (!dailyEditorLoaded.value) {
+    dailyEditorLoaded.value = true;
+    selectDailyDate(dailyDate.value);
+  }
+}
+
+/* 从中文自动填其他 4 种语言。默认只填空字段，避免覆盖管理员手改过的译文；
+ * 勾选「覆盖已有译文」后才全量重翻。逐字段请求，进度显示在按钮上。 */
+async function autoTranslateDaily() {
+  if (dailyTranslating.value || dailyBusy.value) return;
+  const src = dailyForm.value.zh;
+  if (!src.title.trim() && !src.body.trim() && !src.quote.trim()) {
+    dailyMsg.value = t("admin.daily.needZh");
+    return;
+  }
+  const targets = DAILY_STORY_LANGS.filter((x) => x !== "zh");
+  const total = targets.length * DAILY_STORY_FIELDS.length;
+  let done = 0;
+  let failed = 0;
+  dailyTranslating.value = true;
+  dailyMsg.value = "";
+  dailyTranslateProgress.value = `0/${total}`;
+  try {
+    for (const lang of targets) {
+      for (const field of DAILY_STORY_FIELDS) {
+        const text = src[field].trim();
+        if (text && (dailyOverwrite.value || !dailyForm.value[lang][field].trim())) {
+          try {
+            dailyForm.value[lang][field] = await translateText(text, lang, "zh");
+          } catch (e) {
+            failed++;
+          }
+        }
+        done++;
+        dailyTranslateProgress.value = `${done}/${total}`;
+      }
+    }
+    dailyMsg.value = failed
+      ? t("admin.daily.translatePartial", { n: failed })
+      : t("admin.daily.translated");
+  } finally {
+    dailyTranslating.value = false;
+    dailyTranslateProgress.value = "";
+  }
+}
+
+async function saveDaily(published) {
+  if (dailyBusy.value || dailyTranslating.value) return;
+  if (!isIsoDate(dailyDate.value)) {
+    dailyMsg.value = t("admin.daily.dateInvalid");
+    return;
+  }
+  const bad = validateDailyContent(dailyForm.value);
+  if (bad) {
+    dailyMsg.value = bad.startsWith("too-long") ? t("admin.daily.tooLong") : t("admin.daily.needContent");
+    return;
+  }
+  dailyBusy.value = "save";
+  dailyMsg.value = "";
+  try {
+    const content = normalizeDailyContent(dailyForm.value);
+    const row = await db.adminDailyStorySave(dailyDate.value, content, published);
+    dailyExisting.value = row && row.date
+      ? row
+      : { date: dailyDate.value, content, published, updated_at: new Date().toISOString() };
+    dailyMsg.value = t(published ? "admin.daily.savedPublished" : "admin.daily.savedDraft");
+    await loadDailyList(true);
+  } catch (e) {
+    dailyMsg.value = dailyErrText(e);
+  } finally {
+    dailyBusy.value = "";
+  }
+}
+
+async function deleteDailyRow(row) {
+  if (!row || dailyBusy.value) return;
+  if (!window.confirm(t("admin.daily.confirmDelete", { d: row.date }))) return;
+  dailyBusy.value = "delete";
+  dailyMsg.value = "";
+  try {
+    await db.adminDailyStoryDelete(row.date);
+    dailyRows.value = dailyRows.value.filter((x) => x.date !== row.date);
+    if (dailyDate.value === row.date) {
+      dailyExisting.value = null;
+      dailyForm.value = emptyDailyContent();
+    }
+    dailyMsg.value = t("admin.daily.deleted");
+  } catch (e) {
+    dailyMsg.value = dailyErrText(e);
+  } finally {
+    dailyBusy.value = "";
+  }
+}
+
+function deleteDaily() {
+  if (dailyExisting.value) deleteDailyRow(dailyExisting.value);
+}
 
 /* announce / rel* 五个 ref 已上移到 watch(signedIn) 之前（位置硬约束），此处只留函数。 */
 async function loadRelMeta() {
@@ -649,7 +845,7 @@ const recentLogins = computed(() => (Array.isArray(ov.value && ov.value.recent_l
         </div>
         <div class="admin-tabs">
           <button
-            v-for="x in ['overview', 'posts', 'comments', 'reports', 'clientlogs', 'maintenance']" :key="x"
+            v-for="x in ['overview', 'daily', 'posts', 'comments', 'reports', 'clientlogs', 'maintenance']" :key="x"
             class="admin-tab" :class="{ on: tab === x }"
             @click="switchTab(x)">
             {{ t(`admin.tabs.${x}`) }}
@@ -847,6 +1043,160 @@ const recentLogins = computed(() => (Array.isArray(ov.value && ov.value.recent_l
           </section>
         </div>
       </template>
+
+      <!-- ── 页签：今日页故事（轮 458：按日期 + 5 语言发布） ── -->
+      <section v-else-if="tab === 'daily'" class="card daily-admin">
+        <div class="row-between">
+          <div>
+            <h2 style="margin-bottom: 0">{{ t("admin.daily.title") }}</h2>
+            <p class="sub" style="margin-top: 4px">{{ t("admin.daily.hint") }}</p>
+          </div>
+          <n-button quaternary size="small" :disabled="dailyListBusy" @click="loadDailyList()">
+            {{ t("admin.refresh") }}
+          </n-button>
+        </div>
+
+        <div class="daily-layout">
+          <div class="daily-editor">
+            <div class="daily-date-row">
+              <label class="daily-label" for="daily-date">{{ t("admin.daily.dateLabel") }}</label>
+              <input id="daily-date" v-model="dailyDate" class="daily-date" type="date"
+                :disabled="dailyTranslating || dailyBusy !== ''" @change="onDailyDateChange" />
+              <button type="button" class="daily-quick" :class="{ on: dailyDate === dailyToday }"
+                :disabled="dailyTranslating || dailyBusy !== ''"
+                @click="selectDailyDate(dailyToday)">{{ t("admin.daily.today") }}</button>
+              <button type="button" class="daily-quick"
+                :disabled="dailyTranslating || dailyBusy !== ''"
+                @click="selectDailyDate(shiftIsoDate(dailyToday, 1))">{{ t("admin.daily.tomorrow") }}</button>
+              <button type="button" class="daily-quick"
+                :disabled="dailyTranslating || dailyBusy !== ''"
+                @click="selectDailyDate(shiftIsoDate(dailyToday, -1))">{{ t("admin.daily.yesterday") }}</button>
+            </div>
+            <p class="sub daily-hint">{{ t("admin.daily.dateHint") }}</p>
+
+            <p v-if="dailyMsg" class="notice" style="margin: 10px 0 0">{{ dailyMsg }}</p>
+
+            <div class="daily-lang-tabs">
+              <button v-for="l in DAILY_STORY_LANGS" :key="l" type="button"
+                class="daily-lang" :class="{ on: dailyLang === l }"
+                :disabled="dailyTranslating" @click="dailyLang = l">
+                {{ t("lang." + l) }}<span v-if="dailyLangFilled[l]" class="daily-dot"></span>
+              </button>
+            </div>
+
+            <label class="daily-field">
+              <span class="daily-field-label">
+                {{ t("admin.daily.titleLabel") }}
+                <em>{{ dailyForm[dailyLang].title.length }}/{{ DAILY_STORY_LIMITS.title }}</em>
+              </span>
+              <input v-model="dailyForm[dailyLang].title" class="daily-input"
+                :disabled="dailyTranslating" :maxlength="DAILY_STORY_LIMITS.title"
+                :placeholder="t('admin.daily.titlePh')" />
+            </label>
+
+            <label class="daily-field">
+              <span class="daily-field-label">
+                {{ t("admin.daily.bodyLabel") }}
+                <em>{{ dailyForm[dailyLang].body.length }}/{{ DAILY_STORY_LIMITS.body }}</em>
+              </span>
+              <textarea v-model="dailyForm[dailyLang].body" class="daily-input daily-textarea" rows="8"
+                :disabled="dailyTranslating" :maxlength="DAILY_STORY_LIMITS.body"
+                :placeholder="t('admin.daily.bodyPh')"></textarea>
+            </label>
+
+            <label class="daily-field">
+              <span class="daily-field-label">
+                {{ t("admin.daily.quoteLabel") }}
+                <em>{{ dailyForm[dailyLang].quote.length }}/{{ DAILY_STORY_LIMITS.quote }}</em>
+              </span>
+              <input v-model="dailyForm[dailyLang].quote" class="daily-input"
+                :disabled="dailyTranslating" :maxlength="DAILY_STORY_LIMITS.quote"
+                :placeholder="t('admin.daily.quotePh')" />
+            </label>
+
+            <div class="daily-translate-row">
+              <label class="daily-overwrite">
+                <input v-model="dailyOverwrite" type="checkbox" :disabled="dailyTranslating" />
+                <span>{{ t("admin.daily.translateOverwrite") }}</span>
+              </label>
+              <n-button size="small" quaternary :loading="dailyTranslating"
+                :disabled="dailyBusy !== '' || dailyTranslating" @click="autoTranslateDaily">
+                {{ dailyTranslating
+                  ? t("admin.daily.translating", { p: dailyTranslateProgress })
+                  : t("admin.daily.translate") }}
+              </n-button>
+            </div>
+            <p class="sub daily-hint">{{ t("admin.daily.translateHint") }}</p>
+
+            <div class="daily-publish-row">
+              <span class="daily-status" :class="{
+                on: dailyExisting && dailyExisting.published,
+                'daily-draft': dailyExisting && !dailyExisting.published,
+              }">
+                {{ dailyExisting
+                  ? (dailyExisting.published ? t("admin.daily.published") : t("admin.daily.draft"))
+                  : t("admin.daily.noCustom") }}
+              </span>
+              <div class="daily-publish-actions">
+                <n-button size="small" :disabled="dailyBusy !== '' || dailyTranslating"
+                  @click="saveDaily(false)">{{ t("admin.daily.saveDraft") }}</n-button>
+                <n-button size="small" type="primary" :disabled="dailyBusy !== '' || dailyTranslating"
+                  @click="saveDaily(true)">{{ t("admin.daily.publish") }}</n-button>
+                <n-button v-if="dailyExisting" size="small" quaternary type="error"
+                  :disabled="dailyBusy !== '' || dailyTranslating" @click="deleteDaily">
+                  {{ t("admin.daily.delete") }}
+                </n-button>
+              </div>
+            </div>
+
+            <div class="daily-preview">
+              <div class="daily-preview-head">
+                <span class="sec-label">{{ t("admin.daily.previewTitle") }}</span>
+                <span class="sub">{{ t("admin.daily.previewHint", { l: t("lang." + dailyLang) }) }}</span>
+              </div>
+              <div class="daily-preview-grid">
+                <div class="daily-preview-quote">
+                  <span class="sec-label">{{ t("home.quoteLabel") }}</span>
+                  <p>{{ dailyForm[dailyLang].quote || "—" }}</p>
+                </div>
+                <div class="daily-preview-story">
+                  <span class="sec-label">{{ t("home.storyLabel") }}</span>
+                  <h3>{{ dailyForm[dailyLang].title || t("admin.daily.previewEmpty") }}</h3>
+                  <p>{{ dailyForm[dailyLang].body || t("admin.daily.previewEmpty") }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <aside class="daily-list">
+            <div class="row-between">
+              <h3 style="margin: 0">{{ t("admin.daily.listTitle") }}</h3>
+              <n-button quaternary size="tiny" :disabled="dailyListBusy" @click="loadDailyList()">
+                {{ t("admin.refresh") }}
+              </n-button>
+            </div>
+            <p v-if="!dailyLoaded" class="sub" style="margin-top: 10px">{{ t("admin.daily.listLoading") }}</p>
+            <p v-else-if="!dailyRows.length" class="sub" style="margin-top: 10px">{{ t("admin.daily.listEmpty") }}</p>
+            <div v-for="row in dailyRows" :key="row.date" class="daily-row"
+              :class="{ on: row.date === dailyDate }">
+              <button type="button" class="daily-row-main"
+                :disabled="dailyTranslating || dailyBusy !== ''"
+                @click="selectDailyDate(row.date)">
+                <span class="daily-row-date">
+                  {{ row.date }}<template v-if="row.date === dailyToday"> · {{ t("admin.daily.today") }}</template>
+                </span>
+                <span class="daily-row-title">{{ dailyRowTitle(row) || t("admin.daily.untitled") }}</span>
+                <span class="daily-row-meta">{{ row.published ? t("admin.daily.published") : t("admin.daily.draft") }}</span>
+              </button>
+              <n-button size="tiny" quaternary type="error"
+                :disabled="dailyBusy !== '' || dailyTranslating"
+                @click="deleteDailyRow(row)">{{ t("admin.daily.delete") }}</n-button>
+            </div>
+            <p class="sub daily-hint">{{ t("admin.daily.builtinHint") }}</p>
+          </aside>
+        </div>
+      </section>
+
       <!-- ── 页签：帖子治理（下架 / 恢复 / 删除） ── -->
       <section v-else-if="tab === 'posts'" class="card">
         <div class="row-between">
@@ -1217,5 +1567,106 @@ const recentLogins = computed(() => (Array.isArray(ov.value && ov.value.recent_l
   .rep-row .admin-grow { flex: 1 1 calc(100% - 26px); min-width: 0; }
   .rep-note { flex: 0 0 100%; width: 100%; max-width: 100%; order: 3; }
   .rep-row .admin-actions { width: 100%; justify-content: flex-start; order: 4; }
+}
+
+/* ── 轮 458 · 今日页故事编辑器 ── */
+.daily-layout {
+  display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(240px, .8fr);
+  gap: 18px; margin-top: 14px;
+}
+.daily-date-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.daily-label { font-size: 12.5px; font-weight: 600; color: var(--ink-soft, #7a6655); }
+.daily-date {
+  padding: 6px 9px; border-radius: 10px; font: inherit; font-size: 12.5px;
+  border: 1px solid rgba(160, 110, 60, .28); background: var(--wash-mid); color: var(--ink);
+}
+.daily-quick {
+  padding: 5px 10px; border-radius: 999px; cursor: pointer; font: inherit; font-size: 12px;
+  border: 1px solid rgba(160, 110, 60, .24); background: var(--wash-mid); color: var(--ink-soft, #7a6655);
+}
+.daily-quick.on { background: var(--accent, #e58a3a); border-color: var(--accent, #e58a3a); color: #fff; }
+.daily-hint { font-size: 11.5px; line-height: 1.55; margin-top: 6px; }
+.daily-lang-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 14px 0 10px; }
+.daily-lang {
+  padding: 5px 11px; border-radius: 999px; cursor: pointer; font: inherit; font-size: 12px;
+  border: 1px solid rgba(160, 110, 60, .22); background: transparent; color: var(--ink-soft, #7a6655);
+}
+.daily-lang.on { background: var(--accent, #e58a3a); border-color: var(--accent, #e58a3a); color: #fff; }
+.daily-dot {
+  display: inline-block; width: 5px; height: 5px; border-radius: 50%;
+  background: var(--good, #4f9d69); margin-left: 5px; vertical-align: middle;
+}
+.daily-field { display: block; margin-top: 10px; }
+.daily-field-label {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  font-size: 12.5px; font-weight: 600; color: var(--ink-soft, #7a6655);
+}
+.daily-field-label em { font-style: normal; font-size: 11px; font-weight: 400; color: var(--ink-faint, #a08e7d); }
+.daily-input {
+  width: 100%; box-sizing: border-box; margin-top: 5px; padding: 9px 11px;
+  border-radius: 11px; font: inherit; font-size: 13px; line-height: 1.55;
+  border: 1px solid rgba(160, 110, 60, .24); background: var(--wash-mid); color: var(--ink);
+}
+.daily-input:focus { outline: 2px solid var(--accent, #e58a3a); outline-offset: 1px; }
+.daily-input:disabled, .daily-date:disabled, .daily-quick:disabled, .daily-lang:disabled,
+.daily-row-main:disabled {
+  opacity: .55; cursor: not-allowed;
+}
+.daily-textarea { resize: vertical; min-height: 140px; }
+.daily-translate-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  flex-wrap: wrap; margin-top: 12px;
+}
+.daily-overwrite {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  font-size: 12px; color: var(--ink-soft, #7a6655);
+}
+.daily-publish-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  flex-wrap: wrap; margin-top: 16px; padding-top: 14px;
+  border-top: 1px dashed rgba(160, 110, 60, .24);
+}
+.daily-status {
+  padding: 4px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+  background: var(--wash-mid); color: var(--ink-faint, #a08e7d);
+}
+.daily-status.on { color: var(--good, #4f9d69); background: rgba(79, 157, 105, .12); }
+.daily-status.daily-draft { color: var(--warn, #c58b2a); background: rgba(197, 139, 42, .12); }
+.daily-publish-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.daily-preview { margin-top: 16px; padding: 12px; border-radius: 14px; background: var(--wash-mid); }
+.daily-preview-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.daily-preview-grid { display: grid; grid-template-columns: 1fr 1.5fr; gap: 10px; margin-top: 8px; }
+.daily-preview-quote, .daily-preview-story {
+  min-width: 0; padding: 10px; border-radius: 12px; background: var(--wash-strong, rgba(255, 246, 236, .7));
+}
+.daily-preview-quote p { margin-top: 6px; font-size: 13px; line-height: 1.65; white-space: pre-line; }
+.daily-preview-story h3 { margin: 6px 0; font-size: 14px; line-height: 1.45; }
+.daily-preview-story p {
+  margin: 0; font-size: 12px; line-height: 1.6; white-space: pre-line;
+  color: var(--ink-soft, #7a6655); max-height: 170px; overflow: auto;
+}
+.daily-list { min-width: 0; padding-left: 16px; border-left: 1px dashed rgba(160, 110, 60, .24); }
+.daily-row {
+  display: flex; align-items: center; gap: 6px; margin-top: 8px; padding: 8px;
+  border-radius: 11px; background: var(--wash-mid);
+}
+.daily-row.on { outline: 2px solid var(--accent, #e58a3a); outline-offset: 1px; }
+.daily-row-main {
+  flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;
+  padding: 0; border: 0; background: none; color: inherit; text-align: left; cursor: pointer;
+}
+.daily-row-date { font-size: 11.5px; color: var(--ink-faint, #a08e7d); }
+.daily-row-title {
+  font-size: 13px; font-weight: 600; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.daily-row-meta { font-size: 11px; color: var(--ink-faint, #a08e7d); }
+@media (max-width: 820px) {
+  .daily-layout { grid-template-columns: 1fr; }
+  .daily-list {
+    border-left: 0; border-top: 1px dashed rgba(160, 110, 60, .24);
+    padding-left: 0; padding-top: 14px;
+  }
+  .daily-preview-grid { grid-template-columns: 1fr; }
 }
 </style>

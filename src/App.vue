@@ -23,6 +23,7 @@ import { cloudFetchUserPosts } from "./utils/wall.js";
 import { warmFollowFeed } from "./utils/followFeed.js";   /* 轮 459：关注流启动预热 */
 import { setUserScope } from "./utils/userScope.js";
 import { cacheDrop, cacheKey, swr } from "./utils/cache.js";
+import { scheduleEmojiWarm } from "./utils/emojiWarm.js";
 import { avatarUrlFor } from "./utils/avatar.js";   /* 轮 238:萌宠头像池 */
 import { APP_RELEASE_URL } from "./utils/api/db.js";   /* 轮 238:App 安装包发布地址 */
 import { getItem } from "./utils/storage.js";
@@ -200,6 +201,11 @@ onMounted(async () => {
   const warmFollow = () => { prefetchFollowFeed(); };
   if (typeof requestIdleCallback === "function") requestIdleCallback(warmFollow, { timeout: 6000 });
   else setTimeout(warmFollow, 3000);
+  /* 轮 478：表情数据预热（用户：「点表情加载很慢、显得卡顿」）。
+   * 首次点开慢的全部原因是 emoji-picker-element 要在那一刻现拉 430KB JSON + 写 1923 条
+   * 进 IndexedDB（真机实测面板空白 500~800ms）。挪到空闲时段先备好，之后点开只查库（~34ms）。
+   * 省流/2G 不预热（函数内部判断）。 */
+  scheduleEmojiWarm();
   if (!isApp) return; /* 浏览器里没有系统返回键 */
   try {
     backHandle = await CapApp.addListener("backButton", () => {
@@ -467,7 +473,9 @@ onBeforeUnmount(() => { clearTimeout(scrubTimer); scrubTimer = 0; });
           </div>
         </n-modal>
 
-        <!-- 轮 108：tabbarSuppressed —— 底部输入条打开时收起 tabbar（输入条直接贴键盘，图2） -->
+        <!-- 轮 108：tabbarSuppressed —— 底部输入条打开时收起 tabbar（输入条直接贴键盘，图2）
+             轮 472：让位照旧。用户否掉了「折叠后 tabbar 回来、条坐它头顶」那版，
+             改成「输入时整页压一层淡暗色，点暗处返回」—— 出口明确，也不用在底部堆两层。 -->
         <SideNav v-if="!isMobileNav" />
         <TabBar v-if="isMobileNav && !inChat && !tabbarSuppressed" />
         <SideRails v-if="!isMobileNav" />

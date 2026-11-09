@@ -5,13 +5,14 @@ export function naiveThemeFor(key) {
   const t = themeByKey(key);
   const p = t.naive;
   const dark = !!t.dark;
+  const mid = t.key === "midnight";
 
-  const ink = dark ? "#E8EAF6" : "#141413";
-  const ink2 = dark ? "#C0C6E8" : "#6C6A64";
-  const ink3 = dark ? "#9AA3CC" : "#8E8B82";
-  const line = dark ? "rgba(139, 156, 232, .25)" : "#E6DFD8";
-  const cardBg = dark ? "rgba(38, 44, 78, .72)" : "#EFE9DE";
-  const popBg = dark ? "#262C52" : "rgba(255, 255, 255, .96)";
+  const ink = dark ? (mid ? "#F1F1F4" : "#E8EAF6") : "#141413";
+  const ink2 = dark ? (mid ? "#B5B5C0" : "#C0C6E8") : "#6C6A64";
+  const ink3 = dark ? (mid ? "#7D7D88" : "#9AA3CC") : "#8E8B82";
+  const line = dark ? (mid ? "rgba(255, 255, 255, .12)" : "rgba(139, 156, 232, .25)") : "#E6DFD8";
+  const cardBg = dark ? (mid ? "rgba(20, 20, 26, .86)" : "rgba(38, 44, 78, .72)") : "#EFE9DE";
+  const popBg = dark ? (mid ? "#141419" : "#262C52") : "rgba(255, 255, 255, .96)";
 
   return {
     common: {
@@ -28,15 +29,15 @@ export function naiveThemeFor(key) {
       textColor2: ink2,
       textColor3: ink3,
       borderColor: line,
-      dividerColor: dark ? "rgba(139, 156, 232, .18)" : "#EBE6DF",
+      dividerColor: dark ? (mid ? "rgba(255, 255, 255, .10)" : "rgba(139, 156, 232, .18)") : "#EBE6DF",
       borderRadius: "8px",
       borderRadiusSmall: "6px",
       fontFamily:
         "'Inter', 'LXGW WenKai', 'PingFang SC', 'Microsoft YaHei', sans-serif",
       fontSize: "15px",
-      hoverColor: dark ? "rgba(139, 156, 232, .14)" : "rgba(204, 120, 92, .10)",
-      boxShadow1: dark ? "0 2px 10px rgba(0, 0, 0, .35)" : "0 2px 10px rgba(160, 110, 60, .08)",
-      boxShadow2: dark ? "0 8px 28px rgba(0, 0, 0, .45)" : "0 8px 28px rgba(160, 110, 60, .13)",
+      hoverColor: dark ? (mid ? "rgba(232, 161, 132, .14)" : "rgba(139, 156, 232, .14)") : "rgba(204, 120, 92, .10)",
+      boxShadow1: dark ? (mid ? "0 2px 10px rgba(0, 0, 0, .55)" : "0 2px 10px rgba(0, 0, 0, .35)") : "0 2px 10px rgba(160, 110, 60, .08)",
+      boxShadow2: dark ? (mid ? "0 8px 28px rgba(0, 0, 0, .65)" : "0 8px 28px rgba(0, 0, 0, .45)") : "0 8px 28px rgba(160, 110, 60, .13)",
     },
     Button: {
       borderRadiusMedium: "8px",
@@ -45,7 +46,7 @@ export function naiveThemeFor(key) {
       fontWeightStrong: "500",
       textColorGhost: ink2,
       colorQuaternary: "transparent",
-      colorQuaternaryHover: dark ? "rgba(139, 156, 232, .16)" : "rgba(204, 120, 92, .12)",
+      colorQuaternaryHover: dark ? (mid ? "rgba(232, 161, 132, .14)" : "rgba(139, 156, 232, .16)") : "rgba(204, 120, 92, .12)",
     },
     Card: {
       borderRadius: "12px",
@@ -53,12 +54,12 @@ export function naiveThemeFor(key) {
     },
     Input: {
       borderRadius: "8px",
-      color: dark ? "rgba(38, 44, 78, .6)" : "rgba(255, 255, 255, .85)",
-      colorFocus: dark ? "#2A3060" : "#FFFFFF",
-      border: dark ? "1px solid rgba(139, 156, 232, .3)" : "1px solid #E6DFD8",
+      color: dark ? (mid ? "rgba(20, 20, 26, .78)" : "rgba(38, 44, 78, .6)") : "rgba(255, 255, 255, .85)",
+      colorFocus: dark ? (mid ? "#101014" : "#2A3060") : "#FFFFFF",
+      border: dark ? (mid ? "1px solid rgba(255, 255, 255, .14)" : "1px solid rgba(139, 156, 232, .3)") : "1px solid #E6DFD8",
       borderHover: `1px solid ${p.hover}`,
       borderFocus: `1px solid ${p.primary}`,
-      boxShadowFocus: dark ? "0 0 0 3px rgba(139, 156, 232, .2)" : "0 0 0 3px rgba(204, 120, 92, .15)",
+      boxShadowFocus: dark ? (mid ? "0 0 0 3px rgba(232, 161, 132, .18)" : "0 0 0 3px rgba(139, 156, 232, .2)") : "0 0 0 3px rgba(204, 120, 92, .15)",
     },
     Tag: { borderRadius: "999px", fontWeightStrong: "500" },
     Avatar: { borderRadius: "50%" },
@@ -67,12 +68,12 @@ export function naiveThemeFor(key) {
       color: popBg,
       optionTextColor: ink,
       optionTextColorActive: p.pressed,
-      optionColorHover: dark ? "rgba(139, 156, 232, .16)" : "rgba(255, 159, 90, .14)",
+      optionColorHover: dark ? (mid ? "rgba(232, 161, 132, .14)" : "rgba(139, 156, 232, .16)") : "rgba(255, 159, 90, .14)",
     },
     Message: { borderRadius: "12px", color: popBg },
     Dialog: { borderRadius: "16px", color: popBg },
     Progress: {
-      railColor: dark ? "rgba(139, 156, 232, .18)" : "#E6DFD8",
+      railColor: dark ? (mid ? "rgba(255, 255, 255, .12)" : "rgba(139, 156, 232, .18)") : "#E6DFD8",
     },
   };
 }

@@ -13,18 +13,23 @@
  *
  * 换机制：把聊天页容器直接钉成 `position: fixed` + 精确覆盖 visualViewport。
  *   · fixed 脱离文档流 → 文档没有任何可滚内容 → Safari / 小米都无处可推，空白消失；
- *   · height 取 visualViewport.height（不是 dvh）→ 无论内核用 resizes-content 还是
- *     overlay，这个值都等于「键盘上方的可见高度」，一套代码覆盖两边；
+ *   · height 无键盘取 innerHeight（小米浏览器实测与真实可见底一致），
+ *     有键盘取 visualViewport.height（那时布局视口不变、只有可视视口缩）；
  *   · top 取 visualViewport.offsetTop → 万一被强制滚动了也跟着钉住不会错位。
  *
  * 也刻意**不依赖任何类名判据**（前两轮死在 .shell--chat / .dm-page--chat 没挂上）：
  * 只认「移动形态 + 聊天面板真的渲染了」这一条事实。
  */
 
+import { pickChatHeight, pickChatTop } from "./chatHeight.js";
+
 const MOBILE_QUERY = "(max-width: 899px)";
 const MOBILE = typeof window !== "undefined" && window.matchMedia
   ? window.matchMedia(MOBILE_QUERY)
   : null;
+/* 内核认不认 dvh（Chrome 108+）。不认就只能由脚本写死高度。 */
+const supportsDvh = typeof CSS !== "undefined" && typeof CSS.supports === "function"
+  && (() => { try { return CSS.supports("height", "100dvh"); } catch (e) { return false; } })();
 
 let el = null;          /* 当前被接管的 .dm-page */
 let lastKey = "";       /* 上次写入的 高度|偏移|宽度，没变就不碰样式（避免每帧重排） */
@@ -103,14 +108,18 @@ function sync() {
   }
 
   const vv = window.visualViewport;
-  const h = Math.round(vv ? vv.height : window.innerHeight);
+  /* 轮 468 · 高度不再在脚本里拍板，交给纯函数按内核语义选源（见 utils/chatHeight.js）：
+   * 无键盘用 innerHeight（各内核都等于真实可见高），有键盘用 visualViewport.height
+   * （唯一随键盘缩的值）。小米浏览器 vv 偏小 31px、iOS 键盘不缩 inner —— 两种病同一套判据。 */
+  const kbRaw = parseFloat(
+    getComputedStyle(document.documentElement).getPropertyValue("--kb-h")
+  ) || 0;
+  const { h, kbOpen } = pickChatHeight(window.innerHeight, vv ? vv.height : 0, kbRaw);
   const left = Math.round(vv ? vv.offsetLeft : 0);
-  const w = Math.round(vv ? vv.width : window.innerWidth);
+  const w = Math.round(document.documentElement.clientWidth || window.innerWidth);
   /* offsetTop 是「可视视口相对布局视口的位移」——iOS 为了让光标可见会把可视视口往上推，
-   * fixed 元素却钉在布局视口上，不补这一下就会错位。但补偿不能超过「布局视口 - 可视高度」
-   * （即键盘占掉的那部分），否则极端情况会把整页推出屏幕。 */
-  const maxTop = Math.max(0, window.innerHeight - h);
-  const top = Math.min(Math.max(0, Math.round(vv ? vv.offsetTop : 0)), maxTop);
+   * fixed 元素却钉在布局视口上，不补这一下就会错位。补偿上限由 pickChatTop 夹住。 */
+  const top = pickChatTop(window.innerHeight, vv ? vv.offsetTop : 0, h);
   if (!(h > 0) || !(w > 0)) return;
 
   if (page !== el) {
@@ -130,12 +139,23 @@ function sync() {
   const sc = el.querySelector(".dm-scroll");
   const stick = sc ? sc.scrollHeight - sc.scrollTop - sc.clientHeight < 48 : false;
 
+  /* 轮 470 · 只要判定「键盘占位」就必须由脚本写内联高度，不能交回 CSS。
+   *
+   * 病根（多内核矩阵抓到的，不是这台机）：某些国产内核键盘弹起时**不派发
+   * visualViewport 事件**，--kb-h 一直是 0。而 `100dvh` 在 overlay 键盘下根本不变
+   * （布局视口不动，缩的只有可视视口）→ 容器仍是全屏高，底边落在键盘底下，
+   * 输入条被整个盖住 = 用户说的「打字看不见」。
+   * 所以判据只能是「可视视口已经缩了」（pickChatHeight 给的 kbOpen），
+   * 不能是「--kb-h 有值」（那只是某一条链路的结果）。
+   * 无键盘 + 认 dvh 时才交回 CSS —— 那种情况浏览器自己算得比脚本准。 */
+  const useInlineH = kbOpen || !supportsDvh;
+
   lockDoc();
   el.style.position = "fixed";
   el.style.top = top + "px";
   el.style.left = left + "px";
   el.style.width = w + "px";
-  el.style.height = h + "px";
+  el.style.height = useInlineH ? h + "px" : "";
   el.style.maxHeight = "none";
   el.style.zIndex = "30";
   el.style.overflow = "hidden";
@@ -162,9 +182,27 @@ function settleScroll(node) {
   }, 80);
 }
 
+let rafPending = false;
 function kick() {
+  /* 轮 474：16ms 定时器可能正好跨过下一次绘制，导致「错高度先画一帧」。
+   * 补一条 rAF —— 它在**本帧绘制之前**跑，sync 写进去的内联高度和 DOM 更新同帧落地，
+   * 用户永远不会看见中间态。两路都留：rAF 在后台标签页会被挂起，定时器兜底。 */
+  if (!rafPending && typeof requestAnimationFrame === "function") {
+    rafPending = true;
+    requestAnimationFrame(() => { rafPending = false; sync(); });
+  }
   clearTimeout(timer);
   timer = setTimeout(sync, 16);
+}
+/* 轮 474：进会话是 history.pushState（没有任何事件可听），面板什么时候真的画出来
+ * 只有页面自己知道。由 MessagesView 在面板打开的那个 tick 主动踢一脚，
+ * 不用干等 250ms 巡检 —— 那 0~250ms 就是「输入条先在屏幕中间弹一下」的全部时长。
+ * 这里**同步**跑 sync 而不是走 kick 的延后：调用方已经等过 nextTick（DOM 更新完、
+ * 尚未绘制），此刻写内联高度就能和面板落在同一帧；再延 16ms 就会先画一帧 100vh
+ * （比可见区高 24px，输入条低一截）。 */
+export function kickChatViewport() {
+  if (!booted) return;
+  sync();
 }
 
 export function initChatViewport() {
