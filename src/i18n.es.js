@@ -1309,9 +1309,12 @@ export default {
     "days": "últimos 30 días",
     "daysLogged": "días registrados",
     "brightDays": "días luminosos",
-    "sharePage": "Compartir esta página",
+    "sharePage": "Compartir",
     "shareText": "Un rincón cálido en internet — pásate a mirar 💛",
+    "shareCopy": "Copiar enlace",
+    "shareHowto": "Copia el enlace y pégalo en WeChat o QQ.",
+    "shareWx": "En WeChat: toca ··· (arriba a la derecha) → Compartir",
     "shareCopied": "Enlace copiado",
-    "shareFail": "No se pudo compartir — inténtalo de nuevo"
+    "shareFail": "No se pudo copiar — mantén pulsada la barra de direcciones"
   }
 };

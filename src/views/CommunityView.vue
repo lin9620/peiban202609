@@ -1056,6 +1056,12 @@ function pinToTop() {
  * 等于白回顶。刷新复用 manualRefresh（与下拉刷新、网页刷新钮同一条路径，成败都有提示）。 */
 watch([retapSeq, retapPath], ([, p]) => {
   if (p !== route.path) return;                 /* 点的是别的页签，不归我管 */
+  /* 轮 483（用户：「点了我的关注，再点下面的暖心墙按钮，结果在我的关注里面直接更新了」）：
+   * 关注流是暖心墙的**子状态**（等于进了下一层），而页签的语义是「回到频道主页」。
+   * 所以必须先退出关注流，不能就地 manualRefresh —— 那样刷的是关注流，用户看到的就是
+   * 明明点了「暖心墙」却在关注流里原地更新了一遍。
+   * 回顶 + 取新一批由 exitFollowFeed 自己负责（它会走常规 SWR 把全部流铺回来）。 */
+  if (followOnly.value) { exitFollowFeed(); return; }
   const el = wallScrollerEl.value;
   /* 轮 304：与 goTop 同口径改 instant —— 再点页签时人可能在几千 px 深处，
    * smooth 回滚要好几秒（用户原话「长长的返回滚动，知乎就不会」）。 */
@@ -2065,6 +2071,10 @@ function exitFollowFeed() {
   feedCursor.value = null;
   cloudDone.value = false;
   reveal.value = PAGE_SIZE;
+  /* 换数据源 = 从头看（与 enterFollowFeed 同口径，轮 483 补）。
+   * 原来这里没回顶：退出关注流后列表整体换成全部流，视口却还停在关注流的滚动深度，
+   * 「点页签退出」这条路会让人落到一屏陌生的中间位置。 */
+  pinToTop();
   /* 回到全部流：走**常规** SWR（缓存先出、后台校准），游标/到底标志由 consume 自己重设。
    * 轮455（用户截图）：这里原来带 quiet 开关，而 quiet 是给「切回页签软合并」用的 ——
    * 它假设列表已经有内容：一进来就把 loadingCloud 置假、不读缓存、只把新帖并进现有列表。

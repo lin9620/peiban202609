@@ -31,6 +31,14 @@
 html { scrollbar-width: none; -ms-overflow-style: none; }
 html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display: none; }
 
+  /* 轮 482 · 表情面板与键盘共用一把尺子。
+   * 用户报「暖心墙评论，表情包跟打字的上拉框高度不一致」：面板写死 min(46vh, 320px)，
+   * 键盘态却是 --kb-h（真机多在 280~310），所以收键盘弹面板时输入条会明显跳一截。
+   * --kb-last 由 keyboardInset.js 在键盘「有效高度」时写入、键盘收起时**不清零**，
+   * 于是面板永远复现上一次键盘的高度；从没弹过键盘才退回原来的 46vh/320px。
+   * 62vh 只是防呆上限（矮屏 + 超大键盘时不至于吃掉整屏）。 */
+  --kb-panel-h: min(var(--kb-last, min(46vh, 320px)), 62vh);
+
   /* 轮 120 · DESIGN.md（Claude 体系）换肤：暖奶油画布 + 陶珊瑚 + 发丝线，阴影退役 */
   --ink: #141413;
   --ink-soft: #6c6a64;
@@ -2259,6 +2267,18 @@ html[data-theme="night"] .dm-menu-sep { background: rgba(255, 255, 255, .12); }
   background: var(--accent);
 }
 .dm-thread { display: flex; flex-direction: column; min-height: 60vh; padding: 14px; }
+
+/* 轮 481 · 进会话过渡（手机端「列表 → 会话」这一跳）。
+ * 由 MessagesView 的 threadIn 加类/摘类驱动，只活 280ms：
+ * 动画不带 fill-mode，结束即回 transform:none —— **绝不能让它常驻**，
+ * 否则会劫持内部 position:fixed 的表情面板（containing block 从视口变成这个
+ * 面板，面板会浮在聊天框底部而不是屏幕底部）。 */
+.dm-thread--in { animation: dm-thread-in .28s cubic-bezier(.2, .8, .2, 1); }
+@keyframes dm-thread-in {
+  from { opacity: 0; transform: translateX(14px); }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) { .dm-thread--in { animation: none; } }
 .dm-thread-head {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   padding-bottom: 10px;
@@ -2398,7 +2418,13 @@ html[data-theme="night"] .dm-menu-sep { background: rgba(255, 255, 255, .12); }
   height: auto;
   max-width: 640px; margin: 0 auto;
 }
-.tabbar .van-tabbar-item { background: transparent; position: relative; }
+.tabbar .van-tabbar-item {
+  background: transparent; position: relative;
+  /* 轮 482：系统灰块 + 长按选字都会让「按下去」到「click」之间多出一段不确定的等待，
+     国产自带浏览器上尤其明显（长按 300ms 就进入选择/拖拽，抬手不再派发 click）。 */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none; user-select: none;
+}
 /* 轮 265：TabBar 红点角标不许压住文字（用户报「数字1跟下面都重合了」，对照小红书）。
  * 根因：tab 项是**纯文字、没有图标**（轮「手机端 9」定的设计），而 vant 把角标锚在 .van-badge__wrapper 上——
  * 这个本该装图标的壳里没东西 → 空盒、宽 0 高 0，角标就被钉在文字行**中间**。
@@ -2421,8 +2447,14 @@ html[data-theme="night"] .dm-menu-sep { background: rgba(255, 255, 255, .12); }
   display: flex; justify-content: space-around; align-items: stretch;
   background: var(--glass-strong, rgba(255, 255, 255, .92));
   border-top: 1px solid rgba(140, 128, 112, .14);
-  padding: 4px 6px calc(4px + var(--sab, env(safe-area-inset-bottom, 0px)));
-  max-width: 640px; margin: 0 auto;
+  /* 轮 482（用户：「手机浏览器上底部按钮点击不顺畅，老是点击了但是没有效果」）：
+   * ① touch-action:none —— 页签条本身不需要滚，别让这一带的触摸参与「滚动判定」。
+   *    国产自带浏览器（小米 / 华为 / OPPO 等）在页面惯性滚动或刚开始滚动时，第一次
+   *    落在底栏上的点击会被当成「停住滚动」直接吞掉，用户看到的就是点了没反应。
+   * ② 底部内边距 4px → 8px：全面屏手势条占屏幕最底 16~24px，原来 tab 项下沿离
+   *    底边只有 4px，点偏一点就被系统手势接走。 */
+  padding: 4px 6px calc(8px + var(--sab, env(safe-area-inset-bottom, 0px)));
+  touch-action: none;
 }
 .tab-item {
   position: relative; flex: 1; display: flex; align-items: center; justify-content: center;
@@ -2696,9 +2728,10 @@ html.kb-web .cmt-main-bar {
   bottom: var(--kb-h);
   transition: bottom .22s cubic-bezier(.2, .8, .2, 1), padding-bottom .22s cubic-bezier(.2, .8, .2, 1);
 }
-/* 表情面板开着时底条抬到面板上沿：3 段选择器压过上面 2 段那条（同 cap-app 的口径） */
+/* 表情面板开着时底条抬到面板上沿：3 段选择器压过上面 2 段那条（同 cap-app 的口径）。
+   轮 482：跟着 --kb-panel-h 走，与面板高度同一个来源，不再各写一个 320。 */
 html.kb-web .cmt-main-bar.wp-emoji-open,
-html.kb-web .cmt-main-bar.wp-kb-swap { bottom: min(46vh, 320px); }
+html.kb-web .cmt-main-bar.wp-kb-swap { bottom: var(--kb-panel-h); }
 html.kb-web .reply-bar {
   bottom: calc(var(--kb-h) + 64px + var(--sab, env(safe-area-inset-bottom, 0px)));
   transition: bottom .22s cubic-bezier(.2, .8, .2, 1), padding-bottom .22s cubic-bezier(.2, .8, .2, 1);
@@ -3510,13 +3543,14 @@ html.kb-web .reply-bar {
     padding: 7px 2px calc(7px + var(--sab, env(safe-area-inset-bottom, 0px))) 7px;
   }
 }
-/* 轮 348 · 暖心墙手机表情面板贴底（与会话同款）：面板占屏底 320 时，
-   底条整体抬到面板上沿（面板高度见 WpComposer 的 @media ≤899px）。 */
+/* 轮 348 · 暖心墙手机表情面板贴底（与会话同款）：底条整体抬到面板上沿。
+   轮 482：高度不再写死 320 —— 用 --kb-panel-h（= 上一次真实键盘高度），
+   否则「收键盘弹面板」与「面板收键盘」两次切换的条位置差一截，看着像跳。 */
 html.cap-app .cmt-main-bar.wp-emoji-open,
 .cmt-main-bar.wp-emoji-open,
 html.cap-app .cmt-main-bar.wp-kb-swap,
 .cmt-main-bar.wp-kb-swap {
-  bottom: min(46vh, 320px);
+  bottom: var(--kb-panel-h);
 }
 
 /* 手机卡内「说点温柔的话…」占位条：不再用浅蓝 12px 圆角；
@@ -3927,4 +3961,20 @@ html[data-theme="night"][data-theme-variant="midnight"] .login-back,
 html[data-theme="night"][data-theme-variant="midnight"] .blocked-back,
 html[data-theme="night"][data-theme-variant="midnight"] .blocked-refresh { background: rgba(255, 255, 255, .08) !important; }
 html[data-theme="night"][data-theme-variant="midnight"] .login-page .n-input { background: rgba(255, 255, 255, .06) !important; }
+
+/* ═══════════════ 轮 481 · 页面切换过渡 ═══════════════
+ * 用户要「其他页面点击也搞点过渡动画」。之前路由出口是硬切，零动画。
+ *
+ * 只做「新页淡入」，不定义 leave 类 —— 旧页立即移除，不会两块同屏；
+ * 也绝不用 out-in（轮 221 用户明确否掉过：旧页要停留 ~300ms 才换）。
+ *
+ * **只能用 opacity**：transform / filter / perspective 都会创建包含块，
+ * 把后代 position:fixed 的定位基准从「视口」改成这个祖先（style.css:2884 记过
+ * 同款坑）。全站导航栏、底栏、聊天输入条都是 fixed，给页面容器加 translate
+ * 就会整片错位 —— 所以宁可只淡入，也不做「从右滑入」。
+ *
+ * 页签互切不经过这里：App.vue 里 pageFx 置空 + :css="false"，仍是即时互换。 */
+.wp-page-enter-active { animation: wp-page-in .2s cubic-bezier(.2, .8, .2, 1) backwards; }
+@keyframes wp-page-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .wp-page-enter-active { animation: none; } }
 

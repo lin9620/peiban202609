@@ -1,7 +1,7 @@
 <!-- 首页「今日」联（T6 抽件）：主视觉 + 陪你大厅 + 心情打卡 + 语录/故事 + 分享卡。
      桌面首页与手机三联共用；「去宠物」只发事件，落点（/pet 路由 or 宠物联）由父层定。 -->
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted, onActivated } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted, onActivated, onDeactivated } from "vue";
 import { NButton, NTag } from "naive-ui";
 import MoodFace from "./MoodFace.vue";
 import { t, i18n } from "../i18n.js";
@@ -18,7 +18,7 @@ import { errorKind } from "../utils/wallRules.js";
 import {
   STATUS_KEYS, statusFresh, statusCountsCanApply, statusCountsDue,
 } from "../utils/statuses.js";
-import { isMobileNav } from "../stores/uiStore.js";
+import { isMobileNav, dailySeq } from "../stores/uiStore.js";
 import SeasonFx from "./SeasonFx.vue";
 import PetMotion from "./PetMotion.vue";
 import ShareCard from "./ShareCard.vue";
@@ -39,12 +39,22 @@ const greeting = computed(() => {
  * 就继续用 src/data/stories.js 的内置轮换 —— 今日页永远不会因为云端而空白。
  * 缓存按日期分键，先渲染上次内容，网络回来原地替换；跨天/回到页面时自动换。 */
 const DAILY_CACHE_PREFIX = "wp-daily-story:";
-const DAILY_REFRESH_MS = 5 * 60 * 1000;   /* 同一天也每 5 分钟轻量刷新，管理员刚发布的能尽快看到 */
+/* 轮 484（用户：「改了今天文案，结果首页长时间不更新，只有重新打开才会」）：
+ * 原来只有**一个 5 分钟冷却**挡在「回到页面」这条路上 —— 也就是说改完文案切回首页，
+ * 只要距上次拉取不到 5 分钟就一次也不问，而 App 里首页是 KeepAlive 常驻、
+ * 人可能一整天都停在首页，于是除了冷启动（onMounted）根本没有第二次机会。
+ * 现在两条路分开：
+ *   · PULL_GAP  —— 「回到页面」的最小间隔（10s，纯防连点抖动，不再是 5 分钟）；
+ *   · TICK      —— 停在首页时的轻量轮询（60s，只在页面可见且组件激活时跑）。
+ * 一份单行 JSON 的 GET，代价远小于「文案改了用户看不到」。 */
+const DAILY_PULL_GAP_MS = 10 * 1000;
+const DAILY_TICK_MS = 60 * 1000;
 const todayStory = computed(() => stories[dayIndex(stories.length)]);
 const remoteStory = ref(null);
 const remoteDate = ref("");
 let dailyFetchBusy = false;
 let dailyFetchedAt = 0;
+let dailyTickTimer = null;
 
 try {
   const date0 = isoDate();
@@ -84,11 +94,27 @@ async function loadDailyStory() {
   }
 }
 
-function refreshDailyIfNewDay() {
-  if (remoteDate.value !== isoDate() || Date.now() - dailyFetchedAt > DAILY_REFRESH_MS) {
+function refreshDailyIfNewDay(force = false) {
+  if (force || remoteDate.value !== isoDate() || Date.now() - dailyFetchedAt > DAILY_PULL_GAP_MS) {
     loadDailyStory();
   }
 }
+
+/* 停在首页时的轻量轮询：管理员在别处（电脑后台 / 另一台设备）改了文案，
+ * 人还在首页看着，这条是唯一能把新内容送进来的路径。
+ * 页面不可见的这一拍直接跳过（不请求），但定时器保留 —— 熄屏再亮起时下一拍就补上。 */
+function startDailyTick() {
+  if (dailyTickTimer) return;
+  dailyTickTimer = setInterval(() => {
+    if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+    refreshDailyIfNewDay();
+  }, DAILY_TICK_MS);
+}
+function stopDailyTick() {
+  if (dailyTickTimer) { clearInterval(dailyTickTimer); dailyTickTimer = null; }
+}
+/* 后台保存成功 → 立刻重拉，不等轮询（同设备改完回首页就该看到新的） */
+watch(dailySeq, () => refreshDailyIfNewDay(true));
 
 const dailyPick = computed(() => (remoteStory.value && hasDailyStory(remoteStory.value.content)
   ? pickDailyContent(remoteStory.value.content, i18n.locale)
@@ -237,15 +263,20 @@ onMounted(() => {
   document.addEventListener("visibilitychange", onPageVisible);
   window.addEventListener("focus", onPageVisible);
   loadDailyStory();
+  startDailyTick();
 });
 onUnmounted(() => {
   document.removeEventListener("visibilitychange", onPageVisible);
   window.removeEventListener("focus", onPageVisible);
+  stopDailyTick();
 });
 onActivated(() => {
   refreshStatusCounts();
   refreshDailyIfNewDay();
+  startDailyTick();
 });
+/* 被 KeepAlive 切走（去别的页签）就停轮询：首页看不见的时候没必要问服务端 */
+onDeactivated(() => { stopDailyTick(); });
 
 /* —— 心情打卡 —— */
 const justDone = ref(false);

@@ -376,9 +376,13 @@ const passShort = computed(() => passwordProblem(authPass.value) === "short");
  * 没有卡片壳：表单直接落在白底上，靠间距分组；输入框极淡灰填充。 */
 .login-page {
   max-width: 400px; margin: 0 auto; position: relative;
-  min-height: calc(100dvh - 120px);
+  /* 轮 480：dvh 关进 @supports，外层留 vh 兜底（同轮 474 的坑，别写成同规则两条） */
+  min-height: calc(100vh - 120px);
   display: flex; flex-direction: column; justify-content: center;
   padding: 48px 24px 28px;
+}
+@supports (height: 100dvh) {
+  .login-page { min-height: calc(100dvh - 120px); }
 }
 .login-back {
   position: absolute; top: 12px; left: 8px; z-index: 2;

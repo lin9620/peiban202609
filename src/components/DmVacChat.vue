@@ -637,7 +637,7 @@ emoji-picker {
 /* 9) 轮 347 · 手机表情面板 = 贴底整宽（微信式），输入条落在面板上沿。
    面板高用 --wp-emoji-h（≈键盘高），footer 的 padding-bottom 同步撑到同高；
    面板本身 fixed 到屏底，safe-area 用 padding-bottom 让开手势条。 */
-:host { --wp-emoji-h: min(46vh, 320px); }
+:host { --wp-emoji-h: var(--kb-panel-h, min(46vh, 320px)); }
 @media (max-width: 899px) {
   /* 轮 350：过渡常驻在 footer 上 —— 面板→键盘交接时，padding 和 .dm-page 的 height
      同曲线同时长（.22s）各走 --wp-emoji-h，输入框原地不动（详见脚本里的 holdForKeyboard）。 */

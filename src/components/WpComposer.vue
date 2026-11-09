@@ -463,7 +463,10 @@ defineExpose({
     top: auto;
     bottom: 0;
     width: 100%;
-    height: min(46vh, 320px);
+    /* 轮 482：与底条 .cmt-main-bar 的 bottom 用同一个变量 —— 面板高 = 上一次真实键盘高，
+       「收键盘弹面板 / 面板收键盘」两次切换的位置完全对齐（原来写死 min(46vh,320px)，
+       和真机键盘 280~310 差一截，用户看到输入条跳一下）。 */
+    height: var(--kb-panel-h);
     max-height: none;
     border: 0;
     border-top: 1px solid var(--hairline, #e6dfd8);

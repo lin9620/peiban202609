@@ -32,6 +32,9 @@ const pane = ref(paneFromQuery(route.query.tab));
 const idx = computed(() => paneIndex(pane.value));
 const petMounted = ref(pane.value === "pet");
 const storyMounted = ref(pane.value === "story");
+/* 轮 482：每个联自己的滚动位置（见 setPane 注释）。restoreY 是「下一次 idx 变化后要恢复到的 y」。 */
+const paneScroll = new Map();
+let restoreY = null;
 
 /* /?tab=xxx 变化（＋ 钮投瓶 / 深链）→ 切联；桌面忽略（不消费 query） */
 onActivated(() => { restoreScroll(route.path); });   /* 轮 219：页签回位 */
@@ -53,6 +56,16 @@ function setPane(k, scroll = true) {
   if (k === "pet") petMounted.value = true;
   if (k === "story") storyMounted.value = true;
   if (pane.value === k) return;
+  /* 轮 482（用户：「点故事阅读了，再点今日，然后再点故事，直接回故事最前面了」）：
+   * 四个联共用同一个 window 滚动条（.home3 是 overflow:clip，不建滚动容器），
+   * 旧实现切联时无脑 window.scrollTo(0,0) —— 从故事联切去今日就把故事的滚动位置
+   * 一起抹掉了，切回来自然在顶上。改成**每个联各记各的**：切走时存当前 y，
+   * 切回来后一帧恢复（等 measure() 把 track 高度撑回该联的高度，否则 scrollTo 会被
+   * 还没长高的文档钳到 0）。 */
+  if (scroll) {
+    paneScroll.set(pane.value, window.scrollY);
+    restoreY = paneScroll.get(k) || 0;
+  }
   pane.value = k;
   /* 轮 152：联位置同步进地址栏（replaceState 不堆历史）——否则从故事联进 /story/mine
      再返回时，首页按默认联重建 = 「返回跑到今日/漂流瓶」（用户实测）。 */
@@ -60,7 +73,6 @@ function setPane(k, scroll = true) {
     const q = { ...route.query, tab: k };
     router.replace({ query: q }).catch(() => {});
   }
-  if (scroll) window.scrollTo(0, 0);
 }
 
 /* hero 的「去宠物」：手机 → 切宠物联；桌面 → 跳 /pet 路由（原行为） */
@@ -116,7 +128,18 @@ function measure() {
   const el = paneEls.value[idx.value];
   if (el) trackH.value = Math.max(120, Math.round(el.offsetHeight)) + "px";
 }
-watch(idx, async () => { await nextTick(); measure(); });
+watch(idx, async () => {
+  await nextTick();
+  measure();
+  /* 轮 482：track 高度刚换到新联，再等一帧让布局落定，才不会被「文档还没长高」钳住 */
+  if (restoreY != null) {
+    const y = restoreY;
+    restoreY = null;
+    requestAnimationFrame(() => {
+      try { window.scrollTo({ top: y, left: 0, behavior: "instant" }); } catch (e) { window.scrollTo(0, y); }
+    });
+  }
+});
 onMounted(() => {
   measure();
   if (typeof ResizeObserver !== "undefined") {

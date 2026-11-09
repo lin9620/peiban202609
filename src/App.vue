@@ -13,7 +13,7 @@ import TabBar from "./components/TabBar.vue";
 import MaintenanceBar from "./components/MaintenanceBar.vue";
 import { db } from "./utils/api/db.js";
 import { startMaintenanceWatch } from "./utils/maintenance.js";
-import { isApp, isMobileNav, chatOpen, runBack, tabbarSuppressed, navOpen, dlOpenSeq } from "./stores/uiStore.js";
+import { isApp, isMobileNav, chatOpen, runBack, tabbarSuppressed, navOpen, dlOpenSeq, retapSeq, retapPath } from "./stores/uiStore.js";
 import { installTapFeedback } from "./utils/tapFeedback.js";
 import {
   wallet, moodStreak, petNotices, dismissPetNotice,
@@ -294,6 +294,38 @@ const crashed = ref("");
  * 离开时存（window.scrollY），新页 enter 完成后回位——KeepAlive 的 DOM 原样回来，
  * 回位即所见，无跳变。 */
 const keepAliveNames = ["HomeView", "CommunityView", "MessagesView", "ProfileView"];
+
+/* ── 轮 481 · 路由切换过渡 ──────────────────────────────────────────────
+ * 用户原话：「进入聊天框搞点过渡动画，现在这啥都没有，还有其他的页面点击也搞点
+ * 过渡动画好吗」。路由出口此前是硬切（keep-alive 里直接塞 component，零动画）。
+ *
+ * 两条硬约束：
+ *  ① **页签互切不加动画**——轮 221 用户录屏要求「第一帧就在正确位置」，
+ *     加淡入等于先白一下再出现，是打回过的方案。所以只有「进下一层」
+ *     （页签 → 详情/设置/故事…，或详情 → 另一详情）才淡入。
+ *  ② **只用 opacity，绝不用 transform**——transform 会创建包含块，
+ *     把后代 position:fixed 的定位基准从视口改成这个祖先（style.css:2884
+ *     记过这个坑：fixed 元素会被「劫持」到 transform 容器里）。全站导航栏、
+ *     底栏、聊天输入条都用 fixed，一加 translate 就整片错位。
+ *
+ * 实现：只定义 enter 动画、不定义 leave → 旧页立即移除，新页 200ms 淡入，
+ * 不做 out-in（那是轮 221 否掉的「旧页停留 300ms」）。 */
+const TAB_PATHS = new Set(["/", "/community", "/messages", "/profile"]);
+function tabKeyOf(p) {
+  if (!p) return "";
+  const s = p === "/zh" ? "/" : p.startsWith("/zh/") ? p.slice(3) : p;
+  return TAB_PATHS.has(s) ? s : "";
+}
+const pageFx = ref("");
+watch(
+  () => route.path,
+  (to, from) => {
+    const a = tabKeyOf(from);
+    const b = tabKeyOf(to);
+    /* 页签之间来回 = 即时互换；其余一律淡入 */
+    pageFx.value = a && b && a !== b ? "" : "wp-page";
+  }
+);
 /* 轮 219：滚动位置记忆改共享工具（utils/scrollMem.js）——离开时 rememberScroll(from.path)，
  * 回位由各页 onActivated 调 restoreScroll（KeepAlive 重插 DOM 的瞬间，零闪零跳）。 */
 watch(() => route.fullPath, (to, from) => {
@@ -302,6 +334,28 @@ watch(() => route.fullPath, (to, from) => {
   if (from) rememberScroll(from);
 });
 /* 轮 220：新页面插入的第一瞬间回位（绘制之前）——页面出现时就在原位置，无滚动动作 */
+/* 轮 482 · 「再点当前页签」的兜底响应。
+ * 用户：「手机浏览器上底部按钮点击不顺畅，老是点击了但是没有效果」。
+ * 真凶：TabBar 的 goItem 在 isActive(item) 时走 retapTab(信号)，不走 router.push；
+ * 而这个信号**只有 CommunityView 接了**（回顶 + 刷新）。首页 / 消息 / 我的都没人听，
+ * 于是「点当前所在页签」= 发个信号给空气，用户看到的完全是没反应。
+ *
+ * 这里统一兜底：同路径 → 回顶；当前在子路径（/messages/123 点「消息」）→ 退回列表页。
+ * 暖心墙自己有更完整的版本（回顶 + 取新一批），重复滚一次无副作用。 */
+watch([retapSeq, retapPath], ([, p]) => {
+  const target = String(p || "");
+  if (!target) return;
+  const cur = route.path;
+  if (cur === target) {
+    try { window.scrollTo({ top: 0, behavior: "instant" }); } catch (e) { window.scrollTo(0, 0); }
+    /* 页签内部还有自己的滚动容器（消息双栏 / 桌面列表），一并回顶 */
+    document.querySelectorAll("main .dm-scroll, main .dm-list").forEach((el) => { el.scrollTop = 0; });
+    return;
+  }
+  if (target !== "/" && cur.startsWith(target + "/")) {
+    router.push(target).catch(() => {});
+  }
+});
 
 onErrorCaptured((err) => {
   crashed.value = (err && err.message) || String(err);
@@ -433,10 +487,14 @@ onBeforeUnmount(() => { clearTimeout(scrubTimer); scrubTimer = 0; });
                * key 仍用 meta.grp（列表/会话同组原地复用，轮 196 结论不变）；跨组 = 不同缓存项 + 过渡。
                * 滚动位置按 fullPath 记忆，after-enter 回位（onPageEntered）。 -->
               <!-- 轮 221：去掉 out-in 渐隐——它让旧页先显示 ~300ms 再进新页（用户录屏对标知乎：
-                   页签切换必须即时互换，第一帧就在正确位置）。KeepAlive + @enter 回位已保证。 -->
-              <keep-alive :include="keepAliveNames">
-                <component :is="Component" :key="(route.meta && route.meta.grp) || route.name || route.path" />
-              </keep-alive>
+                   页签切换必须即时互换，第一帧就在正确位置）。KeepAlive + @enter 回位已保证。
+                   轮 481：只给「进下一层」加 enter 淡入（pageFx 为空 = 页签互切，:css 关掉过渡，
+                   仍是即时互换）。不写 leave 类 → 旧页立刻移除，不会两块同屏。 -->
+              <transition :name="pageFx" :css="pageFx !== ''">
+                <keep-alive :include="keepAliveNames">
+                  <component :is="Component" :key="(route.meta && route.meta.grp) || route.name || route.path" />
+                </keep-alive>
+              </transition>
             </router-view>
           </main>
 

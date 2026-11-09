@@ -85,7 +85,12 @@ function composeStory() {
 </script>
 
 <template>
-  <van-tabbar v-model="activeIdx" class="tabbar" :placeholder="false" :safe-area-inset-bottom="false" :fixed="true">
+  <!-- 轮 482：v-model → :model-value（单向）。
+       activeIdx 是 computed（只读），v-model 会在每次点击时让 Vant 往只读值上写，
+       生产构建里静默失败、开发构建里只是一条 warning —— 状态源却有两个，一旦 Vant
+       内部依赖 modelValue 是否变化来决定后续行为，就会出现「点了没反应」。
+       高亮本来就是我们自己的 `.active` 类（isActive 按路由算），不需要 Vant 回写。 -->
+  <van-tabbar :model-value="activeIdx" class="tabbar" :placeholder="false" :safe-area-inset-bottom="false" :fixed="true">
     <van-tabbar-item
       v-for="item in TABS.slice(0, 2)" :key="item.path"
       :class="{ active: isActive(item) }" @click="goItem(item)">

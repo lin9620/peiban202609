@@ -18,6 +18,8 @@ import {
 } from "../utils/dailyStory.js";
 import { fmtNum, fmtBytes, clip, dailySeries, barHeights, sumReactions, dayOf, dayTimeOf, ratePct } from "../utils/admin.js";
 import { maint, applyState, setPreview } from "../utils/maintenance.js";
+/* 轮 484：今日文案保存/删除成功后发信号，首页 TodayPane 立即重拉（否则要等它自己的轮询） */
+import { bumpDailyStory } from "../stores/uiStore.js";
 import {
   reportKindOf, reportBatchAction, reportKindCount, reportSelectableIds,
   reportToggleSelection, reportActionKey,
@@ -585,6 +587,9 @@ async function saveDaily(published) {
       ? row
       : { date: dailyDate.value, content, published, updated_at: new Date().toISOString() };
     dailyMsg.value = t(published ? "admin.daily.savedPublished" : "admin.daily.savedDraft");
+    /* 轮 484：保存成功 → 通知首页立刻重拉。草稿不动前台，只有发布才需要；
+       但草稿也可能覆盖了当天已发布的内容（服务端按 date 整行覆盖），所以一律发。 */
+    bumpDailyStory();
     await loadDailyList(true);
   } catch (e) {
     dailyMsg.value = dailyErrText(e);
@@ -606,6 +611,8 @@ async function deleteDailyRow(row) {
       dailyForm.value = emptyDailyContent();
     }
     dailyMsg.value = t("admin.daily.deleted");
+    /* 轮 484：删掉当天内容 → 首页要退回内置轮换，同样立刻重拉 */
+    bumpDailyStory();
   } catch (e) {
     dailyMsg.value = dailyErrText(e);
   } finally {

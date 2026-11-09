@@ -236,9 +236,15 @@ async function submit() {
  * 这页自己吃满 100dvh，底部留 safe-area。 */
 .compose-page {
   display: flex; flex-direction: column; gap: 12px;
-  min-height: 100dvh;
+  /* 轮 480：dvh 一律关进下面的 @supports，外层只留 vh 兜底。
+   * 这是轮 474 的同一个坑——不认 dvh 的内核不是「回退到前一条声明」，
+   * 而是把整条属性判成无效（退 auto），所以两条声明必须分在不同规则里。 */
+  min-height: 100vh;
   max-width: 720px; margin: 0 auto;
   padding: 12px 14px calc(16px + env(safe-area-inset-bottom, 0px));
+}
+@supports (height: 100dvh) {
+  .compose-page { min-height: 100dvh; }
 }
 /* 轮 137 口径：桌面流式壳下页面容器铺满，不再收窄居中（App / 窄屏不受影响） */
 @media (min-width: 900px) { .compose-page { max-width: none; } }

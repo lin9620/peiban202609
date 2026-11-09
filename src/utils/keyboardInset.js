@@ -56,7 +56,13 @@ function sysBottom() {
 }
 
 function writeVar(px, info) {
-  try { document.documentElement.style.setProperty(VAR, px + "px"); } catch (e) { /* 极端环境忽略：样式变量设不上也不能抛错 */ }
+  try {
+    document.documentElement.style.setProperty(VAR, px + "px");
+    /* 轮 482：「上一次真实键盘高度」单独记一份，键盘收起（px=0）时**不清零**。
+     * 用途：表情面板高度（--kb-panel-h）要跟键盘一致 —— 可面板弹出时键盘必然已经收起，
+     * 那时 --kb-h 已经是 0，只能靠这份残留值还原。见 style.css 的 :root。 */
+    if (px > 0) document.documentElement.style.setProperty("--kb-last", px + "px");
+  } catch (e) { /* 极端环境忽略：样式变量设不上也不能抛错 */ }
   /* 现场诊断（只写全局、不改行为）：别的机型若报「还是有缝/被压住」，一句
      JSON.stringify(window.__kbInfo) 就能看清是哪个输入没对，不用连 logcat。 */
   try { window.__kbInfo = info; } catch (e) { /* 忽略 */ }

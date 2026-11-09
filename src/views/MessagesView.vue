@@ -126,6 +126,27 @@ watch([isMobileNav, activeId, paneReady], () => {
 watch(chatOpen, (v) => {
   if (v) nextTick(() => kickChatViewport());
 });
+
+/* 轮 481 · 进会话过渡（用户：「进入聊天框搞点过渡动画，现在这啥都没有」）。
+ * 只在手机形态（列表 → 会话这一跳）加：桌面双栏是同时可见，没有「进入」这个动作。
+ *
+ * 为什么是「加类 → 定时摘类」而不是 <transition>：
+ * 面板是 v-show 控制的，v-show 只切 display，拿不到 enter 钩子；而且它内部
+ * 有 position:fixed 的表情面板，**transform 不能常驻**——一旦残留，fixed 的
+ * 包含块就从视口变成这个面板，面板会贴到聊天框底部而不是屏幕底部。
+ * 所以动画类跑完就摘，transform 在动画结束瞬间回到 none。 */
+const threadIn = ref(false);
+let threadInTimer = 0;
+watch(chatOpen, (v) => {
+  clearTimeout(threadInTimer);
+  if (!v) { threadIn.value = false; return; }
+  if (!isMobileNav.value) return;
+  nextTick(() => {
+    threadIn.value = true;
+    threadInTimer = setTimeout(() => { threadIn.value = false; }, 320);
+  });
+});
+onBeforeUnmount(() => clearTimeout(threadInTimer));
 const msgs = ref([]);        // 褰撳墠浼氳瘽娑堟伅锛堟棫鈫掓柊锛?
 let msgsConv = "";           // msgs 鐜板湪瑁呯殑鏄摢涓細璇濓紙杞?157b锛氶槻璺ㄤ細璇濊鍚堝苟锛?
 /* 杞?225 路 浼氳瘽鍒囨崲绔炴€佸畧鍗細姣忔銆屾寜浼氳瘽鎷夋秷鎭€嶅彂鍙凤紙msgSeq锛夛紝鍝嶅簲鍥炴潵鏃舵牎楠屽彿涓庡綋鍓嶄細璇濄€?
@@ -2447,7 +2468,7 @@ function goSignIn() {
       </BottleChat>
 
       <!-- 涓垪锛氬綋鍓嶄細璇濓紙鎵嬫満褰㈡€?= 寰俊寮忕嫭绔嬭亰澶╅〉锛屽甫杩斿洖锛?-->
-      <section v-else v-show="!isMobileNav || (!!activeId && paneReady)" class="card dm-thread">
+      <section v-else v-show="!isMobileNav || (!!activeId && paneReady)" class="card dm-thread" :class="{ 'dm-thread--in': threadIn }">
         <template v-if="activeId && paneReady">
           <!-- 杞?334锛堢敤鎴锋媿鏉匡級锛氫細璇濇銆岃亰澶╁ご + 娑堟伅娴?+ 杈撳叆鍖恒€嶆暣娈典氦缁欑粍浠讹紝
                杩炲ご閮ㄥ拰杈撳叆妗嗕篃鐢ㄧ粍浠惰嚜宸辩殑锛堜笉鍐嶆墜鍐欓偅涓ゅ潹锛夈€傛棫鐗堥偅濂楀彧鍦ㄩ潪 vac 鏃跺厹搴曘€?

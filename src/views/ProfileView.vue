@@ -23,6 +23,7 @@ import { db } from "../utils/api/db.js";
 import { cloudFetchUserPosts } from "../utils/wall.js";
 import { cacheKey, cachePeek, cacheSet, cachePatch, swr } from "../utils/cache.js";
 import { avatarUrlFor } from "../utils/avatar.js";   /* 轮 238:萌宠头像池 */
+import { copyText } from "../utils/clipboard.js";    /* 轮 485：带 execCommand 兜底的复制 */
 import { setPostNav } from "../utils/postNav.js";    /* 轮 279:进详情前存列表快照,左右滑用 */
 import { onPostReaction, patchPostList } from "../utils/postReactionSync.js";
 /* 轮 460：帖子评论区（暖心墙卡片同款）——「我的页面」里这三张帖子卡也要能看评论 */
@@ -276,10 +277,39 @@ async function doSetPassword() {
   cloudClearRecovery();
   flash.value = t("profile.resetDone");
 }
-/* 轮 333：分享当前页面（网页端）。优先 Web Share API，不支持时复制链接并提示。 */
+/* 轮 333：分享当前页面（网页端）。优先 Web Share API，不支持时复制链接并提示。
+ * 轮 485（用户：「怎么我点击分享没有用呢，显示是已复制」）：
+ * 手机自带浏览器（小米 / 华为 / OPPO / vivo / 微信内置等）普遍**没有 navigator.share**，
+ * 旧代码于是默默走复制 —— 用户点完只看到「链接已复制」，以为按钮坏了。
+ * 现在：没有系统分享就弹一个面板，说清「复制后粘到微信 / QQ」，微信里再补一条
+ * 「点右上角 ···」的路径（微信内置浏览器只能这样分享）。
+ * 复制也换成 utils/clipboard 的 copyText：navigator.clipboard 在非安全上下文/老内核里
+ * 可能缺失，它带 execCommand 兜底。 */
+const shareOpen = ref(false);
+const shareDone = ref(false);
+const shareBusy = ref(false);
+/* 打开那一刻的地址（面板里要显示出来，用户才知道复制的是什么） */
+const pageUrl = ref(typeof location !== "undefined" ? location.href : "");
+const inWeChat = typeof navigator !== "undefined" && /MicroMessenger/i.test(navigator.userAgent || "");
+
+function closeShare() {
+  shareOpen.value = false;
+  shareDone.value = false;
+}
+
+async function copyShareLink() {
+  if (shareBusy.value) return;
+  shareBusy.value = true;
+  const ok = await copyText(pageUrl.value || location.href);
+  shareBusy.value = false;
+  shareDone.value = ok;
+  flash.value = ok ? t("profile.shareCopied") : t("profile.shareFail");
+  setTimeout(() => { flash.value = ""; }, 2400);
+}
+
 async function sharePage() {
   const url = location.href;
-  if (typeof navigator !== "undefined" && navigator.share) {
+  if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
     try {
       await navigator.share({
         title: t("profile.sharePage"),
@@ -289,24 +319,13 @@ async function sharePage() {
       return;
     } catch (e) {
       /* 用户点取消（AbortError）不算失败，静默忽略 */
-      if (e && e.name !== "AbortError") {
-        await copyLink(url);
-      }
-      return;
+      if (e && e.name === "AbortError") return;
+      /* 其他错误（这组数据不被支持 / 权限被拒）→ 落到下面的面板，别静默复制 */
     }
   }
-  await copyLink(url);
-}
-
-async function copyLink(url) {
-  try {
-    await navigator.clipboard.writeText(url);
-    flash.value = t("profile.shareCopied");
-    setTimeout(() => { flash.value = ""; }, 2200);
-  } catch {
-    flash.value = t("profile.shareFail");
-    setTimeout(() => { flash.value = ""; }, 2200);
-  }
+  shareDone.value = false;
+  pageUrl.value = location.href;
+  shareOpen.value = true;
 }
 
 function leaveRecovery() {
@@ -612,6 +631,26 @@ const brightRatio = computed(() => {
       </div>
     </section>
 
+    <!-- 轮 485：分享面板。手机自带浏览器（小米/华为/OPPO/vivo/微信内置）普遍没有
+         navigator.share，旧代码于是默默复制、只弹一句「链接已复制」——用户以为按钮坏了。
+         现在没有系统分享就弹这个面板，把「复制链接」和「微信里怎么发」两条路说清楚。
+         Teleport 到 body 是必须的：`.shell` 自带 z-index:1，页内子元素写多大都只是
+         「壳内第一」，根级底栏(140)照样盖在上面（实测面板下沿被页签切掉一截）。 -->
+    <Teleport to="body">
+      <div v-if="shareOpen" class="share-mask" @click.self="closeShare">
+        <div class="share-sheet" role="dialog" aria-modal="true" :aria-label="t('profile.sharePage')">
+          <div class="share-title">{{ t("profile.sharePage") }}</div>
+          <div class="share-url">{{ pageUrl }}</div>
+          <button type="button" class="share-copy" :disabled="shareBusy" @click="copyShareLink">
+            {{ shareDone ? t("profile.shareCopied") : t("profile.shareCopy") }}
+          </button>
+          <p class="share-tip">{{ t("profile.shareHowto") }}</p>
+          <p v-if="inWeChat" class="share-tip share-tip-wx">{{ t("profile.shareWx") }}</p>
+          <button type="button" class="share-close" @click="closeShare">{{ t("common.close") }}</button>
+        </div>
+      </div>
+    </Teleport>
+
   </div>
 </template>
 
@@ -628,4 +667,54 @@ const brightRatio = computed(() => {
 .my-post:hover { background: var(--accent-soft); }
 /* 轮 18：卡片结构与暖心墙完全同款（.post-card/.post-head/.post-text/.pic/.react-row 全局类），
    这里只保留链接化外观；旧的 mp-* 缩略样式随结构一起退役 */
+
+/* 轮 485 · 分享面板（移动端贴底，桌面端居中）：层级压过底栏 140 与聊天壳 200，
+   低于维护遮罩 4000。表面色走 --glass-strong，夜间主题自动跟随，不写死白底。 */
+.share-mask {
+  position: fixed; inset: 0; z-index: 300;
+  display: flex; align-items: flex-end; justify-content: center;
+  background: rgba(28, 22, 16, .42);
+}
+.share-sheet {
+  width: 100%; max-width: 520px;
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 18px 18px calc(18px + var(--sab, env(safe-area-inset-bottom, 0px)));
+  /* glass 主题把 --card 定义成半透明白（alpha .62），直接当面板底会透出被压暗的页面，
+     字也糊。这里「不透明画布色打底 + 半透明卡色叠加」：视觉仍是卡色，但底下不透光。
+     不用 --glass-strong：它在几个主题里同样带 alpha。 */
+  background-color: var(--page-bg, #faf9f5);
+  background-image: linear-gradient(var(--card, #efe9de), var(--card, #efe9de));
+  border-radius: 18px 18px 0 0;
+  box-shadow: 0 -10px 34px rgba(20, 20, 19, .18);
+  color: var(--ink);
+}
+.share-title { font-size: 15px; font-weight: 600; text-align: center; }
+/* 地址要能一眼看清是哪个链接，但不能撑破面板：单行截断 + 允许手动选中 */
+.share-url {
+  font-size: 12px; color: var(--ink-soft);
+  background: var(--accent-soft);
+  border: 1px solid var(--hairline);
+  border-radius: 10px; padding: 9px 11px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  user-select: text; -webkit-user-select: text;
+}
+.share-copy {
+  border: 0; border-radius: 12px; padding: 12px 16px;
+  font-size: 15px; font-weight: 600; color: #fff;
+  background: var(--accent); cursor: pointer;
+  /* 手机浏览器里 300ms 点击延迟 + 双击缩放会把「点了没反应」放大，这里一并关掉 */
+  touch-action: manipulation;
+}
+.share-copy:disabled { opacity: .6; }
+.share-tip { margin: 0; font-size: 12px; line-height: 1.5; color: var(--ink-faint); text-align: center; }
+.share-tip-wx { color: var(--accent-deep); }
+.share-close {
+  border: 1px solid var(--hairline); border-radius: 12px;
+  padding: 11px 16px; font-size: 14px; color: var(--ink-soft);
+  background: transparent; cursor: pointer; touch-action: manipulation;
+}
+@media (min-width: 720px) {
+  .share-mask { align-items: center; }
+  .share-sheet { border-radius: 16px; padding-bottom: 18px; }
+}
 </style>

@@ -124,6 +124,13 @@ export function retapTab(path) {
  * dlUrl/dlQr 全套复用，不复制下载逻辑。App 内永远不发（pill 只在浏览器渲染）。 */
 export const dlOpenSeq = ref(0);
 export function openDownload() { dlOpenSeq.value++; }
+
+/* ═══ 轮 484 · 今日文案改完要立刻可见 ═══
+ * 用户：「改了今天文案，结果首页长时间不更新，只有重新打开才会」。
+ * 后台保存成功时发这个信号，首页 TodayPane 收到就**跳过冷却**立刻重拉，
+ * 不用等轮询那一拍（同设备改文案 → 回首页就该是新内容）。 */
+export const dailySeq = ref(0);
+export function bumpDailyStory() { dailySeq.value++; }
 export const currentLang = computed(
   () => (languages.find((l) => l.code === i18n.locale) || languages[0]).label
 );
