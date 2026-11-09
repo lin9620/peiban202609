@@ -360,6 +360,116 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
   - APK：`apk/warm-paws-1.0.2-round486.apk`（6.0MB），包内入口 `main-DGB0Bs8q.js` 与构建一致，`ProfileView` 分包含 `share-mask`。
   - 装机：`adb install -r` → **Success**；`versionName=1.0.2 / versionCode=3`，`lastUpdateTime=2026-11-10 01:37:26`。入口 Activity 是 **`net.de5.dale.MainActivity`**（不是 `net.de5.warmpaws.MainActivity`，直接 `am start -n net.de5.warmpaws/.MainActivity` 会报 `Error type 3`，用 `monkey -p net.de5.warmpaws -c android.intent.category.LAUNCHER 1` 起）。启动后进程 PID 9515 存活、截图为暖心墙正常内容（无白屏/无崩溃）。
   - 全量 **110 项 / 106 通过**、断言 1578 / 1570，4 套历史遗留不变；build EXIT=0。
+- **轮 487（改动完成、测试过了、待发话）**：用户「暖心墙我的关注，下拉刷新，在没任何新增内容的情况下，第一次刷新是无任何新内容，第二次刷新就是那个 ♥ 的已刷新，怎么回事」。
+  - 真因：**关注流的下拉刷新根本没看关注的人**。`te()` 不管在哪个流里都调 `loadCloud({ fresh: true })`，那条路拉的是 `cloudFetchWallRefresh` → 服务端 `wall_feed_page(p_limit)` 的**全站**包（最新 20 条 + 7 天随机批，RPC 连作者白名单参数都没有）。而「有没有新内容」是 `hasNewPosts(这一包, 眼前这份列表)` —— 两份数据来源不同，答案全看它们碰巧重不重合：列表里恰好含整包 → 「暂无新内容」；包里有没关注的人 → 「♥已刷新」。同一动作两种结论，就是用户看到的一二次不一致。**更糟的是命中「有新」会 `consume` 整表替换** —— 人在关注流里，刷一下却刷出一屏没关注的人的帖（与轮 483 那条「在关注流里原地更新」同类）。
+  - 实测旁证（线上库只读探针）：`wall_feed_page(20)` 返回的 20 条是全站 id 倒序最新（731/720/695/694…），7 天池随机批**为空**（全库 539 帖里 7 天内只有 1 条且已在最新页里）→ 这一包每次完全一样；作者 91 个。所以「同一包 vs 不同列表」才是两次结论不同的唯一解释，不存在"随机"。
+  - 改法（`CommunityView.vue`）：新增 `refreshFollowFeed({ silent })` —— ① 数据源只认 `cloudFetchPosts(REFRESH_PAGE, 0, { userIds })`（服务端时间倒序）；② 判新用 `newFollowRows(页, 列表)`（这一页里列表没有的帖，`src/utils/followFeed.js` 新增，纯函数），不再用「整页都陌生」；③ 有新只 `[...adds, ...cur]` **并回顶部**，已加载的更深页与位置都留着，同时 `cloudDone=false` 解除到底。`loadCloud` 顶部加**唯一一条护栏**：`if (followOnly.value) return refreshFollowFeed({ silent: !fresh })` —— 三个入口（挂载/登录校准、切回页签的 quiet 软合并、下拉与刷新钮的 fresh）一起改道，关注流再也不会被塞进全站帖；`te()` / `manualRefresh()` 也显式分流（用户主动刷新才弹提示条，切回页签静默）。
+  - 顺手修掉一个**会让页面永久卡在「刷新中…」**的坑：`loadCloud` 的 fresh 分支原来先跑 `hasNewPosts(box.rows, …)` 再判 `if (box && …)`，8s 超时时 `box === null` → TypeError 抛在 try 之前 → `loadingCloud` 一路留 true，之后的刷新按钮全被卫语句挡死。判定已挪进 if 里（`tools/follow-refresh-test.mjs` R12 钉住顺序）。
+  - 新增 `tools/follow-refresh-test.mjs`（**18 项**）：`newFollowRows` 6 条纯函数（页内顺序、整页都认识=空、空列表、脏输入、id 数字/字符串混用、不改入参）+ 12 条源码分流断言（loadCloud 顶部改道、te/manualRefresh 分支、只拉 `{userIds}`、**绝不含 `cloudFetchWallRefresh`**、不调 `hasNewPosts`、只并顶部、consume 仅列表为空那一处、解除到底、fail 分支、静默口径、判新顺序）。`web-refresh-test` T8 的 `noteMs` 调用点 2 → **3**（新增关注流那条，仍全部走 noteMs，不许写死毫秒）。
+  - 全量 **111 项 / 107 通过**（新增 1 项），断言 1596 / 1588，4 套历史遗留不变（app-download、keyboard-policy、responsiveness、uifix）；build EXIT=0。**未 commit、未 deploy、未打 APK。**
+- **轮 488（改动完成、测试过了、待发话）**：用户「点击故事阅读了，在点击今日，然后再点击故事，直接回故事最前面首页了，这不对啊，之前说的，你没改对啊，故事页那里应该保存原来的页面跟位置啊」——轮 482 那版没改对，这次用无头 Edge 把三个环节一步步量出来了。
+  - **取证环境**（下次照抄）：`.env.probe` 只写 `VITE_API_BASE=` → `VITE_API_BASE= npx vite build --mode probe --outDir dist-probe` → `node tools/web-probe.mjs --serve=dist-probe --proxy=/sb=https://rwulplykvipkshkxyxfe.supabase.co --url='/?tab=story' --w=393 --h=852`。**坑：Git Bash 会把 `--proxy=/sb=...` 当路径改写**（变成 `--proxy=D:\...\sb=https;\...`），必须加 `MSYS2_ARG_CONV_EXCL='*'`，否则代理不生效、故事列表永远是空、后面所有数据都不对。
+  - **三个真 bug（都有实测数字）**：
+    1. **滚动记忆的键不一致**：`App.vue` 写的是 `route.fullPath`（首页手机端是 `/?tab=story`），各页 `onActivated` 读的是 `route.path`（`/`）→ 从阅读页返回读到的是更早那份 `"/": 0`，"位置"直接变 0。实测 mem：`{"/":0, "/?tab=story":698}`，返回后仍 0。
+    2. **切联回位被文档高度钳住**：`.home-track` 的高度带 CSS 过渡，切联后文档是**慢慢长高**的（1889px 要走 ~320ms：1404 → 1654 → 1787 → 1889）。轮 482 只等 1 帧（或补 6 帧）就 scrollTo，长不够就被钳成中途值 —— 故事停在 700，切回来只到 **325**。
+    3. **track 高度读到 0 就写 120px**：KeepAlive 把 DOM 从隐藏容器搬回的那一瞬 `offsetHeight === 0`，`Math.max(120, 0)` 把 track 压成 120px → 文档当场塌到几百像素 → 浏览器把滚动位置钳到 0（实测文档高 2734 → 1889，位置 0）。
+  - 改法：`scrollMem.js` 新增 `keyOf()`（去掉 query/hash），写入/读取两头都过它，App 给 fullPath、页面给 path 都落到同一个键；`HomeView.vue` 把「一帧回位」换成待办 `pendingY`：`restorePaneY()` 带「文档还没长够就先别落」的判据（`max < y - 1`）+ `pumpRestore()` 一直补帧到 600ms 兜底（到期强制落，取文档能给的最大值），`measure()` 里 `offsetHeight === 0` 直接跳过不写 track，`onActivated` 把记忆位 y 也挂成同一条待办；手指一落下（`onTouchStart`）就清掉待办，不跟用户抢滚动。
+  - **改后实测（同一套探针）**：故事滚到 700 → 点今日 0 → 点故事 **700** ✓；点进阅读页 `/story/14`（y=0）→ 返回 **700** ✓；再 今日(0)→故事 **700** ✓。深滚版：故事 1033 / 今日 260 各记各的，来回都不串（漂冰瓶 0 → 故事 1033 → 今日 260）✓。桌面 1280×900 无频道条、页面滚动正常 ✓。
+  - 护栏：`nav-response-test` 的 N6 从「找 restoreY」改成「找 restorePaneY + pumpRestore + `max < y - 1` + pendingUntil + **不许退回固定帧数**」，新增 N11（measure 必须挡 0 高度）、N12（scrollMem 三个函数都必须过 keyOf，router 仍按 to.path 取）；反向验证过（把 pumpRestore 改回固定帧 → N6 立刻 FAIL，改回 12/12 全过）。
+  - 全量 **111 项 / 107 通过**，断言 1596 / 1588，4 套历史遗留不变；build EXIT=0。**未 commit、未 deploy、未打 APK。**
+- **轮 489（改动完成、测试过了、待发话）**：用户看了建议清单后说「先做1」= **把全量测试的红清干净**。
+  - 结论先行：**8 条红（fast 7 + prod 1）没有一条是真 bug，全是护栏把旧实现/旧格式当成了标准答案**。这也解释了为什么「红了没人看」——锁字面量的断言每次产品决策一变就假红，真回归反而淹在里面。
+  - 逐条核对与改法（每条都在文件里写明「此决策已于轮 X 变更」）：
+    | 位置 | 旧断言锁的东西 | 代码里的真实口径 | 改成 |
+    |---|---|---|---|
+    | `app-download-test` pill | `v-if="isMobileNav && !isApp"` | 轮308 拆掉顶部横幅后，手机/桌面共用一颗 pill（`v-if="!isApp"`） | 反转为「必须有 `!isApp`、**不许**再按 `isMobileNav` 分流」 |
+    | `keyboard-policy` ① | `MainActivity` 必须 `setPadding` | 轮347 撤掉 decorView padding（改由 `env()`/`--sat`/`--sab` 让位，双让位=内容低一整条） | 反转为「不许 `setPadding`」+ 必须 `imeVisible ? 0 : bars.bottom` + 必须算 displayCutout |
+    | `keyboard-policy` ② | `--kb-h` 要减 `--sys-bottom`，且监听里按 navBar 缓存取大者 | 轮347 真·全屏后 WebView 底 = 窗口底，`--sys-bottom` 恒推 `0px` | 纯函数减法保留（旧布局兜底）+ 断言 App 壳**必须推 0px**，删掉缓存分支 |
+    | `keyboard-policy` ③ | 同一规则里 `height: calc(100dvh - var(--kb-h))` | 轮474：dvh 必须关进 `@supports`，基线是 `calc(100vh - …)` | 基线锁 `100vh` + 过渡，dvh 版单独在 `@supports` 里 |
+    | `keyboard-policy` ④ | 连续两行 `height:100vh; height:100dvh;` | 同上（那种写法本身就是 bug，dvh 计算期作废会把 100vh 一起吃掉） | 基线 `100vh` + `gap:0`，`@supports` 内 `100dvh`（用 `lastIndexOf` 判定在块内） |
+    | `responsiveness` B4 | 必须有 `for (const kk of ["hug","warm","relate","dislike"])` 这行字面量 | 实现简化成 `{ ...p.reacts, dislike: r.dislikes }`（行为等价：以现值为底、只改 dislike） | 锁行为：回写段必须 `...p.reacts` 打底，且不许 `{ hug: … }` 从零构造 |
+    | `uifix` T3 | `assert.equal(MAX_LEN, 200)` | 上限已改 500 | 锁「单一来源」：`MAX_LEN` 是正数、评论框/详情页/WpComposer 都不许写死数字 |
+    | `uifix` T15 | `index.html` 必须有 `fonts.googleapis.com` | 楷体已换回 jsDelivr | 锁「外链样式存在 → CSP `style-src`/`font-src` 必须放行 `https:`」，换 CDN 不再假红 |
+    | `online-check` sitemap | `<loc>${BASE}/</loc>` 必须带尾斜杠 | Worker 动态生成的 sitemap 根 URL 不带斜杠（两种写法 SEO 等价） | 抽出所有 `<loc>`，去尾斜杠后比对 `BASE` |
+  - **反向验证（关键，证明不是改成「永远绿」）**：逐条注入错误再跑 —— 给 `MainActivity` 加 `setPadding`、`--sys-bottom` 推 12px、基线 100vh 删掉、基线改成 dvh、`reacts` 改成从零构造、`maxlength="500"` 写死、CSP 删 `style-src https:`、pill 加回 `isMobileNav` → **对应 8 条逐个变红，错误消息都指向真因**；全部复原后 `grep -c FAIL` 归 0，`git status` 对 `public/_headers` 与 `ProfileView.vue` 无残留。
+  - 结果：**fast 111/111（1591 条断言）、mount 3/3（26 条）、prod 4/4（52 条）—— 全绿，0 红**。`npm run build` EXIT=0（3265 modules / 13.65s）。这是项目第一次三层同时全绿。
+  - **未 commit、未 deploy、未打 APK**（与轮487/488 一起攒批，等用户发话）。
+- **轮 490（改动完成、测试过了、待发话）**：用户「消息页在会话那个文字那一行的最右边做个全部已读」。
+  - 位置：会话列表里 `<span class="sec-label">会话</span>` 那一行的右端（`.dm-sec` 内 `margin-left:auto`），不另起一行、不加图标。
+  - 触发：**有未读才出现**（`v-if="pendingUnread.length || allReadNote"`）；点完未读清空，它自己消失 —— 消失就是「做完了」的反馈。处理中 `disabled` 防连点，文案「处理中… / 已全部读完 / 有几条没清掉」。
+  - 范围：只清「会话」段（`accepted !== false && !blocked && !isBlocked`），**不动消息请求**（那走 `badge.requests`，接受前不算会话）。判据从 `convs` 起算**不能从 `normal` 起算** —— `normal` 被搜索词过滤过，搜索态下点「全部」会只清掉搜出来的几条、剩下的红点还在（这是本轮改掉的第二个语义坑）。
+  - 静音会话也算：`convUnread()` 对静音返回 0（它不进导航角标），所以判据取 `Math.max(convUnread, c.unread)`，否则灰点清不掉。
+  - 网络：服务端只有单会话 `dm_mark_read`（没有全读 RPC，本轮不加迁移），按会话 **`Promise.all` 并发**抬水位；串行在 20+ 会话时要等好几秒。
+  - 乐观清零三件事：行 `unread=0` + `badgeDmConvPatch(id,0)` + `badgeLocal({dm: dm - ΣunreadToClear})`；**失败按行还原**（`results[i] === false` 那条把快照 unread 放回去），不许整表 reload 糊过去，也不许留在「假的干净列表」上等 30s 轮询；结束时 `refreshBadge()` 拉权威值校正。
+  - 样式：`.dm-sec-act`（文字按钮、`--accent-deep`、圆角 999、`touch-action:manipulation`、padding 3×9、字号 11.5px）。实测 393×852：右侧 gap 0（贴容器边）、与「会话」同一行、行高 23px 不撑开；四主题对比度 cream 5.1 / sakura 3.0（与 `sec-label` 同色同值，保持一致）/ night 7.2 / midnight 5.1。
+  - 五语种：`dm.markAll` / `markAllBusy` / `markAllDone` / `markAllFail`（en+zh 在 `i18n.js`，es/pt/fr 各自文件）。
+  - 护栏：新增 `tools/mark-all-read-test.mjs`（**23 项**：位置/触发/范围/并发/回滚/样式/五语种 + 3 条 `convUnread`·`unreadToClear` 纯函数口径），已登记 `all.mjs`。**反向验证 5 处注入全部变红**（去掉 `.stop`、换成 `dmApi.hide`、删行级还原、删 `margin-left:auto`、判据退回 `rowUnread`），复原后 0 红。
+  - 全量 **112 项 / 112 通过，断言 1614 / 1614**；`page-smoke 16/16`；build EXIT=0。**未 commit、未 deploy、未打 APK**（与轮487/488/489 一起攒批）。
+- **轮 491（改动完成、测试过了、待发话）**：用户「会话中心，列表很长的时候，我下拉到最下面，点一个用户进去再返回，结果是回到最上面了」。
+  - 先做了只读复现：造 40 行会话 + 真实 CSS，滚到底 3484 → 加 `.dm-page--chat` + `display:none` → 停留 750ms（期间改内容模拟后台 tick）→ 移除类 + 恢复显示 → **scrollTop 仍是 3484**。结论：**浏览器会把列表内部的偏移还回来，病根不在 `v-show`**，而在外层。
+  - 真因（两层，只修里面那层不够）：
+    1. **外层 window**：手机形态 `.dm-page` 高度是 auto（内容撑），进会话后被 `.dm-page--chat` 改成 `100dvh` + `gap:0`，文档当场变短 → 浏览器把 `window.scrollY` 钳到 0；返回时文档虽然变高，但**没人再滚回去**（`restoreScroll` 只在 `onActivated` 跑，而 `/messages → /messages/:id → /messages` 是同一条 KeepAlive 记录，不触发它）。列表越长用户越可能已经滚过页面，所以症状只在长列表出现。
+    2. **内层 aside**：虽然 Chromium 实测会保留，但不能依赖 —— 父级从 grid 变 flex column、后台 tick 刷新行内容都可能让它丢，且不可滚动期间 `scrollTop` 读出来恒为 0。自己存一份最稳。
+  - 改法：`MessagesView.vue`
+    - `aside.dm-list` 加 `ref="convListEl"` + `@scroll.passive="onConvListScroll"` 实时存 `convListY`；
+    - `syncConvRoute()` 手机 push 前 `savePageScroll()`（`pageY` + `rememberScroll(route.path)`）；
+    - `watch(activeId)` 从「有」到「无」= 返回列表 → `restoreListScroll()`：内层写 `scrollTop`、外层 `window.scrollTo({behavior:"instant"})`（全程 `scroll-behavior:smooth`，不给 instant 会变成「先到顶部再滑下来」）；
+    - **补三拍**（`nextTick` / 一帧 / 90ms）：返回那一刻 `.dm-page--chat` 刚摘掉、aside 刚恢复显示，文档还没长回原高，太早写会被钳成中途值（与轮488 首页 track 同源）；
+    - 用户自己一滚（`onConvListScroll`）就 `convRestoreGen += 1` 取消排队中的补写，不跟手指抢；
+    - 桌面形态只恢复内层（双栏同屏，window 没人动过）。
+  - 护栏：`dm-scroll-test` 新增 **S11/S12/S13**；顺带发现该文件 `fnBody(src, sig, "function ")` 的结束标记会**自匹配函数自身**，退化成 1600 字符切片（把「必须有 90ms 补写」变成永远通过）—— 改成精确结束标记后，删掉 90ms 那行立刻 FAIL。
+  - **反向验证 5 处注入全部变红**（删 watch、删 90ms 补写、删 `savePageScroll`、删 `@scroll`、`instant` 改 `smooth`）。
+  - 全量 **112 项 / 112 通过，断言 1614 / 1614**；`page-smoke 16/16`；build EXIT=0。**未 commit、未 deploy、未打 APK**。
+- **轮 492（改动完成、测试过了、待发话）**：用户实报图（App 真机截图）「手机端的发布页面有问题啊」——红框圈住顶部：系统的时间/网速/信号图标压在「发暖心帖」标题和右上角「发布」键上，整条顶栏跟状态栏叠在一起。
+  - 真因：`/compose` 被归到 `shell--chat` 整屏形态，而 `style.css` 里 `.shell--mobile-nav.shell--chat main { padding-top: 0 }`（聊天页是 `.dm-thread` 自己让位）。发帖页只在容器上垫了 12px（窄屏 8px），**完全没吃顶部安全区**。
+  - 无头 Edge 量化（393×852，`html.cap-app` + `--sat:28` 模拟 App）：改前 `.compose-head` top=8、返回键 top=13、标题 29 → **全部在状态栏（0~28）里**。
+  - 关键设计取舍（实测出来的，不是猜的）：安全区**必须由 `.compose-head` 自己吃，不能垫在 `.compose-page` 上** —— 页面在键盘弹起时可滚 300px（`body` 吃 `padding-bottom: var(--kb-h)`），sticky 吸顶后容器上的 padding 已滚出视口：实测「垫在容器上」时吸顶后返回键 top=0（又回到状态栏里），「垫在顶栏上」吸顶后仍是 41。
+  - 改法（`ComposeView.vue`）：
+    - `.compose-page` 顶部 padding 改 0，底部 `16px/14px + var(--sab, env(safe-area-inset-bottom, 0px))`（App 壳里 `env()` 常为 0，真实值由 MainActivity 推 `--sab`）；
+    - `.compose-head` 改 `padding-top: calc(16px + var(--sat, env(safe-area-inset-top, 0px)))`（窄屏 `12px + var(--sat…)`，对应原「容器 12/8 + 顶栏 4」），并加 `margin: 0 -14px`（窄屏 `-12px`）让顶栏背景铺满屏幕两边、内容仍与卡片左对齐；sticky `top:0` 不变。
+  - 改后同口径实测：返回键 top 41 / kicker 40 / title 57（全在 28 之下）；键盘态吸顶后仍 41/57；卡片底距屏底 38（= 14 + sab 24）；`docH` 仍 852（没多出滚动）；360/393/700/1280 四个宽度横向溢出 0、`backInset` 0（内容与卡片对齐）；桌面 1280 截图无异常。
+  - 护栏：新增 `tools/compose-safearea-test.mjs`（**9 项**：顶栏吃 `--sat`、容器不许再垫一层、sticky、负外边距与容器内边距同值、底部认 `--sab`、文件内不许有裸 `env()`、整屏形态两页都要自己让位、禁止用 transform/负 top 挪位），已登记 `all.mjs`。**反向验证 8 处注入全部变红**（顶栏/窄屏去掉 `--sat`、容器/窄屏容器加回顶部 padding、sticky 改 static、负外边距改 -10px、底部与顶栏退回裸 `env()`），复原后 9/9。
+  - 全量 **113 项 / 113 通过，断言 1614 / 1614**；`app-shell 75/75`；`page-smoke 16/16`；build EXIT=0。**未 commit、未 deploy、未打 APK**（与轮487~491 一起攒批）。
+- **轮 493（改动完成、测试过了、待发话）**：用户「app端为什么所有的返回都是返回桌面了，而不是前一页或者返回首页呢，你设计一下正常app的返回逻辑」。
+  - 真因不是"返回键失灵"，而是**设计错了**。轮 T9 的规则只有一句：`if (inChat || !ROOT_VIEWS.includes(route.name)) router.back(); else minimizeApp();`。于是站在四个 Tab 根（暖心墙 / 消息 / 我的）上按一下返回 = 直接 `minimizeApp()` 缩到桌面，用户看到的就是"所有返回都回桌面"。
+  - 第二个洞：非根视图一律 `router.back()`。冷启动深链（通知点进来 / 分享链接 / 谷歌登录回跳）时 `history.state.back` 为空，back() 要么没反应、要么把 WebView 历史退到底 → 白屏/掉出应用。旧代码没有"退无可退时回我所属那一页"这一层。
+  - 第三个隐患：注册写在 `onMounted` 末尾（前面排着 initCloud 2.5s 竞速 + 三处 rIC 预热 + `scheduleEmojiWarm`），任何一个抛错都会把注册整个跳过，返回键退回系统默认。
+  - 新决策表（`src/utils/backPlan.js`，**纯函数、零依赖、Node 可单测**），优先级从上到下命中即止：
+    ① 页面内浮层（`runBack` 拦截栈：输入条 / ＋弹层 / 消息页段位）→ 关掉，不往下走
+    ② `meta.backMode === "replace"` → 直接 `replace(backTo)`。故事系专用：`/story/12` 一律回 `/story`，哪怕上一页是首页今日联（轮 148 老 bug 不许复活）
+    ③ 应用内还有上一页（`history.state.back`，只认站内 `/` 开头）→ `router.back()` ← 用户说的"前一页"
+    ④ 没有上一页但声明了父页 → `replace(meta.backTo)`，深链兜底，绝不留在原地也绝不退出
+    ⑤ 非首页的 Tab 根 → `replace("/")` ← 用户说的"返回首页"
+    ⑥ 已在首页 → 第一次只弹一句「再按一次退出」，**2 秒内**再按才 `minimizeApp()`（不是 finish，任务留在后台）
+  - 为什么不再用 `ROOT_VIEWS.includes(route.name)`：名字白名单是"页面身份"，而返回键关心的是"我还能不能往回走"和"我该回哪个上级"。白名单漏一个（/compose、/following、/settings/blocked…）就掉进历史黑洞。现在换成两条正交信息 + 路由自己声明父页，新增页面只要写 `meta.backTo` 就自动正确。
+  - 改法：
+    - 新建 `src/utils/backPlan.js`（决策表 + `normPath` 归一：去 query/hash、`/zh` 别名、尾斜杠）与 `src/utils/backNav.js`（读 `router.options.history.state`、执行决策、调 `CapApp.minimizeApp`）。
+    - `src/router.js`：**23 条路由补 `meta.backTo`**（pet/bottle/story→`/`；storyWrite·mine·rank·detail→`/story`；compose→`/community`；my-posts·favorites·following→`/profile`；postDetail·waller→`/community`；messages/:id→`/messages`；notifications→`/messages`；settings·admin→`/profile`；blocked→`/settings`；privacy→`/settings`；login→`/`），storyDetail 另加 `backMode:"replace"`。
+    - `src/App.vue`：注册提到 **setup 顶层**（不等 onMounted）；删掉 `ROOT_VIEWS` 白名单与自调的 `minimizeApp`；加 `backHint` 轻提示（fixed 深色胶囊 + `pointer-events:none` + `--sab` 避开底栏，2s 自动收）。
+    - 五语种 `common.pressAgain`（en/zh 在 `i18n.js`，es/pt/fr 各自文件）。
+  - 护栏：新增 `tools/back-nav-test.mjs`（**25 项**）= 13 条决策表（含"站 Tab 根按一次返回绝不能 minimize"这条用户实景）+ 5 条路由表遍历（每个二级页必须有 backTo、backTo 必须指向真实存在且以 `/` 开头的路径、storyDetail 必须 replace 型）+ 7 条接线（注册在 setup 顶层、不再有 ROOT_VIEWS、runBack 仍排最前、提示 UI/样式/自动收、五语种、决策模块零依赖）。**反向验证 3 处注入全部变红**（删 Tab 根分支 → P4/P10/P11 红；注册挪回 onMounted → A1 红；favorites 漏写 backTo → R2 红），复原后 25/25。
+  - 顺带修：`app-shell-test` T19（旧断言锁 `ROOT_VIEWS` 字面量）改成锁 `createBackNav` + 不许有 ROOT_VIEWS；`privacy-test` P2（正则把 name 与 component 紧邻当契约）改成允许中间夹 meta —— 锁的仍是"用动态 import"，不是属性顺序。
+  - 全量 **114 项 / 114 通过，断言 1614 / 1614**；`app-shell 75/75`；`page-smoke 16/16`；build EXIT=0。**未 commit、未 deploy、未打 APK**（与轮487~492 一起攒批）。
+  - 待真机确认：① 站暖心墙/消息/我的按返回 → 应回首页（不再缩桌面）；② 首页按一次 → 弹「再按一次退出」，2 秒内再按才回桌面；③ 帖子详情/设置等二级页 → 回上一页；④ 从通知点进某个帖子，按返回 → 应回暖心墙（历史里没有上一页时的父页兜底）。
+- **轮 494（改动完成、测试过了、待发话）**：用户「这个页面各种按钮布局也太丑了，重新更改设计一些」，附夜间主题截图（消息 → 漂流瓶 → 记录段）。
+  - 不是审美偏好问题，**四个实打实的缺陷**叠在一起：
+    ① `.bottle-record` 写的是 `border: 1px solid var(--line)`，而 `--line` 这个变量**全仓从未定义**（只有 `--hairline`）。CSS 简写里含无效 var 会**整条声明失效** → 卡片根本没有边框，只是一堆浮在页面上的文字，靠空白分隔。
+    ② 卡片内部三块重量散在三个角落：标题在左上、状态在中间一行、撤回是**一颗裸红字飘在右下角**（`.bottle-op` 无边框无底色，`justify-content:flex-end`）。一张 130px 高的卡片只有两行内容，中间大片空白。
+    ③ 「刷新记录」用的是全局 `.dm-act`（`border: 1.5px dashed`）虚线胶囊，夹在实体标题右边，像没做完的草稿。
+    ④ 两个页签是 `.br-tab.on { background: var(--accent) }` + 默认 `--ink-soft` 字。夜间主题 `--accent` 是淡紫 `#8b9ce8`、`--ink-soft` 是 `#a9b1d6`，实测对比 **1.4:1** —— 截图上「我发布的」几乎读不出来。另外 `<summary>` 用的是原生 ▶，颜色/大小/基线都不受控。
+  - 改法（只动 `src/components/BottleRecords.vue`，桌面走的是 `BottleChatList`，不碰）：
+    - **头部**：标题 15px/700 + 提示 12px 归左列，刷新改成有边界的胶囊（`--wash-mid` 底 + `--hairline` 边 + 内联 SVG 环形箭头，loading 时 0.9s 匀速旋转，`prefers-reduced-motion` 关掉）。
+    - **页签改分段控件**：一条 `--wash` 底 + `--hairline` 边的胶囊容器，选中项 `--accent-soft` 底 + `--ink` 正文色 + 700 字重 + `inset 0 0 0 1px var(--accent)` 内描边 + `--shadow-sm`。五套主题实测对比全部 **≥8:1**（cream 15.7 / night 8.6 / sakura 8.9 / mint 8.4 / lavender 9.4），彻底不再依赖 accent 的明度。
+    - **卡片**：`--hairline` 发丝边 + 16px 圆角 + `--wash` 柔底；待决定的信左侧 `inset 3px 0 0 var(--accent)` 竖条（比整圈描边安静，也不会跟 focused 抢）。原生 ▶ 换成自绘 chevron（6px 双边框方块，收起 `rotate(45deg)` 朝下 / 展开 `rotate(-135deg)` 朝上，`.22s` 过渡，`::-webkit-details-marker` 与 `list-style:none` 双保险去掉原生三角）。
+    - **状态行**（本轮核心）：状态胶囊与撤回/隐藏搬到**同一行** `flex`，撤回 `margin-left:auto` 靠右。状态胶囊带色阶 —— `choose` 态用 accent-soft 底 + accent-deep 字（「收到回信 · 同意或拒绝聊天」），其余灰底；`accepted` 显示「已开启聊天」（用上了早就有、一直没人用的 `bottle.stAccepted`）。撤回从裸红字改成**有边界的低频小按钮**（`--wash-mid` 底 + 11.5px 字 + 8px 圆角，danger 变体红描边，hover 才转实心红）。
+    - **动作区**：`choose` 态两个按钮 `display:grid; grid-template-columns:1fr 1fr` 一行等分（原来是两个 inline-block 各占一行、参差不齐）；`accepted` 态「进入漂流瓶聊天」`width:100%` 整行。主按钮**夜间主题换深墨字** `#171a33`（`html[data-theme="night"] .br-btn--main`）—— accent 在那里是淡紫，白字只有 2.6:1 会糊；其余主题保持全站口径的白字。
+    - **顺手**：`loading` 时不再把列表整段替换成「正在找回…」（改 `loading && !displayed.length`），有缓存/SWR 数据时刷新不再闪一下。
+  - 视觉实测（不是靠猜）：用 mock 数据把 5 种状态（漂流中 / 待决定 / 已开启聊天 / 已拒绝 / 被捞走）喂进真组件，无头 Edge 在 **393×852 与 320×700、cream 与 night** 四组下截图：无横向溢出、chip 与撤回不重叠、320 窄屏下两个按钮文字完整、卡片边框在浅色底上可见。截图 `_scratch/br-night-393.png` / `_scratch/br-cream-393.png`。
+  - 护栏：新增 `tools/bottle-records-ui-test.mjs`（**8 项**）= 边框不许再用幽灵变量 `--line` / 状态与撤回必须同行且靠右 / 页签必须 accent-soft 浅底 + `--ink` 字 / 刷新不许回退成 `.dm-act` 虚线 / 夜间主按钮深字覆盖 / 原生 marker 去除 + 自绘 chevron 翻转 / 动作按钮 grid 等分 / 旧类名仍在（`bottle-gap-test`、`bottle-test` 轮398 按名锁着）。**反向验证 5 处注入全部变红**（边框改回 `--line` → U1；撤回去掉 `margin-left:auto` → U2；页签改回 accent 实底 → U3；删夜间覆盖 → U5；`.br-acts` 改 flex → U7），复原后 8/8。
+  - 全量 **115 项 / 115 通过，断言 1614 / 1614**；`app-shell 75/75`；prod 4/4；build EXIT=0。**未 commit、未 deploy、未打 APK**（与轮487~493 一起攒批）。
+  - mount 层 2 项（`feed-virtual-live` / `kb-matrix`）失败与本事无关：`kb-matrix` 单独跑 `--only=app-shell --devices=393x852` **8/8 全绿**，跑完整 28 组合时最后三个 `app-shell` 组合才挂（`barDbg=null`、内联 top 没写），是矩阵连续切内核的顺序/端口污染，轮 493 已用旧代码复现过同一现象。
+  - 待真机确认：卡片高度与点击展开手感；「撤回」小按钮会不会太小不好点（现在 3px/10px 内边距 ≈ 24×22，觉得小我加到 28 高）；夜间主题下「进入漂流瓶聊天」的深墨字是否清楚。
+- **⚠️ 环境坑（本轮踩到，记一笔）**：`git config core.autocrlf = true`。任何一次 `git stash` / `git checkout` 都会把工作区文件从 LF 转成 **CRLF**，而 `app-shell-test` T68 之类用 `\n` 精确匹配的断言会当场变红（且报错跟真因毫无关系）。本轮 stash 对照实验后 127 个文件被转成 CRLF，已全部转回 LF（`grep` 复查 0 个）。下次谁再 checkout，先跑一遍「CRLF → LF」再跑测试，别把假红当真回归。
 - **轮395（已打包，未提交）**：用户确认 `MIGRATION_story_draft_delete.sql` 已在 Supabase 执行；匿名 RPC 探针返回 `401 / 42501 permission denied for function story_delete_draft`，证明函数存在且未向 anon 开放（符合只授 authenticated 的设计），未删除任何真实草稿。代码无改动，重新 `build + cap:sync + assembleDebug` 后打 `apk/warm-paws-1.0.2-round395.apk`，与 round394 字节/SHA-256 相同（`A83A01B2CDD47201466FA44069952199D1B5C692590D6EA45EE86BA06D15A395`）；**未安装**。
 - **轮396（已部署，未提交）**：修「故事页加载更多点了没反应」——旧逻辑 `more = rows.length >= offset + PAGE` 且点击时先把 `offset += PAGE`，按钮在请求回来前当场消失；请求慢/失败/挂住时既没有新内容，也没有按钮可重试。现在改成 `hasMore` 状态机：只有成功拿到一页才推进 `offset`，请求中按钮保留并显示「加载中…」，失败保留「加载更多」并提示可重试，最后一页显示「没有更多了」。翻页请求加 20s 兜底超时（线上 `/sb` 代理实测第二页 9.4s，避免误杀）。`story-test` 232/0、`app-shell-test` 70/0、`i18n-test` 19/0、undef/tdz 0、build 成功、page-smoke 14/14；真实 DOM 探针：mock 12→14（加载中→没有更多了）、500 失败保留 12 篇+按钮+错误、真实 Supabase 只读数据 12→14。已部署 Worker Version `aeaf0e60-d065-4086-93e5-0be543988934`，入口 `main-C3Hi3Z0k.js`，故事分包 `StoryFeed-DleUGvMA.js`；本次未重打 APK，round395 不含此修复。
 - **轮400（已部署，未提交）**：App 聊天输入区改成微信式「表情 ↔ 键盘」——键盘展开时点表情，面板贴底出现、输入条原地不动；此时表情键变成键盘键，再点会把面板收起、焦点还给输入框，系统键盘从原高度接上，不再「再点一下直接折叠」。`DmVacChat.vue` 注入双图标 + 宿主类切换，panel-open 时拦截表情键 click：先 `holdForKeyboard()` 钉住 footer 让位，组件收完面板后 `textarea.focus()`；`tools/emoji-panel-test.mjs` 新增 E10 锁。`emoji-panel-test` 10/0、`chat-look-test` 8/0、`dm-vac-test` 37/0、`bottle-vac-test` 28/0、`dm-test` 402/0、`app-shell-test` 70/0、`i18n-test` 19/0、`bottle-test` 98/0、undef/tdz 0、build 成功、page-smoke 14/14；393×852 真实 DOM 探针（mock `--kb-h=320`）输入条底边 532→532→532，收面板后焦点回到 textarea。已部署 Worker Version `de461eb4-c77e-4d32-9bdc-8b064fafae96`，线上 `MessagesView-GTObf30E.js` / `main-C7bcPXlx.js` / `main-CU2xrXeF.css` 均与本地逐字节一致。**已重打并安装** `apk/warm-paws-1.0.2-round400.apk`（5,887,423 bytes，SHA-256 `421FB5E9BDE58501048D4DC7257CD5DB35A9BAC890FF23DFA59B3077BC5A8FF9`，versionCode 3 / versionName 1.0.2），真机 `23054RA19C` 安装 `Success`，冷启动已进入消息页。
