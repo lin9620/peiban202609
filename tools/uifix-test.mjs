@@ -36,9 +36,16 @@ t("T2 评论框仍受 :maxlength 硬限制（轮 97 起字数提示行退役，�
   assert.ok(cmt.includes(':maxlength="MAX_LEN"'), "缺少 :maxlength");
   assert.ok(!cmt.includes('class="cmt-left"'), "字数提示元素应已按统一输入条样式移除");
 });
-t("T3 字数由 MAX_LEN 单一来源驱动（不是写死 200）", () => {
-  assert.equal(MAX_LEN, 200);
-  assert.ok(/cmtLeft\(p\)[\s\S]{0,120}MAX_LEN/.test(cmt), "cmtLeft 未使用 MAX_LEN");
+t("T3 字数上限由 MAX_LEN 单一来源驱动（不锁具体数值）", () => {
+  /* 轮 487：上限从 200 调到 500 后，旧断言 `assert.equal(MAX_LEN, 200)` 立刻变红 ——
+   * 把「产品改字数」判成了 bug。改成锁「只有一个来源」：值随便改，写死数字才红。 */
+  assert.ok(Number.isFinite(MAX_LEN) && MAX_LEN > 0, "MAX_LEN 不是正数");
+  assert.ok(/:maxlength="MAX_LEN"/.test(cmt), "评论框没用 :maxlength=\"MAX_LEN\"");
+  assert.ok(!/:maxlength="\d+"/.test(cmt), "评论框把字数写死成数字了");
+  const box = read("src/components/WpComposer.vue");
+  assert.ok(!/:maxlength="\d+"/.test(box), "WpComposer 内部写死了 maxlength");
+  const detail = read("src/views/PostDetailView.vue");
+  assert.ok(!/:maxlength="\d+"/.test(detail), "详情页评论框把字数写死成数字了");
 });
 t("T4 文案双语齐备（轮 258：字数提示行退役，left/full 死键已删——反转为防复活断言）", () => {
   const i18n = read("src/i18n.js");
@@ -100,12 +107,19 @@ t("T14 CSP 关键指令：禁 object / 限 frame-ancestors / default-src self", 
   assert.ok(hdr.includes("frame-ancestors 'self'"), "缺少 frame-ancestors 'self'");
   assert.ok(hdr.includes("default-src 'self'"), "缺少 default-src 'self'");
 });
-t("T15 CSP 放行项目实际依赖（Google Fonts / jsDelivr / Supabase / dataURL 图）", () => {
+t("T15 CSP 放行项目实际依赖（外链样式/字体 https: 通配 + dataURL 图）", () => {
+  /* 轮 487：楷体从 Google Fonts 换回 jsDelivr，旧断言还在找 fonts.googleapis.com。
+   * 锁死某个 CDN 域名 = 每次依赖变动都假红；改成「index.html 真外链的那些资源，
+   * CSP 的对应指令必须放行」—— 换 CDN 不用改断言，漏放行才红。 */
   for (const s of ["style-src 'self' 'unsafe-inline' https:", "img-src 'self' data: blob: https:",
     "font-src 'self' data: https:", "connect-src 'self' https: wss: data:"]) {
     assert.ok(hdr.includes(s), "缺少 " + s);
   }
-  assert.ok(read("index.html").includes("fonts.googleapis.com"), "静态依赖变了，CSP 需要同步复查");
+  const html = read("index.html");
+  const extCss = [...html.matchAll(/<link[^>]+href="(https:\/\/[^"]+)"/g)].map((m) => m[1]);
+  assert.ok(extCss.length > 0, "index.html 不再外链样式（本断言需随依赖更新）");
+  assert.ok(/style-src[^;]*https:/.test(hdr), "CSP style-src 没放行 https:（外链样式表会被拦）");
+  assert.ok(/font-src[^;]*https:/.test(hdr), "CSP font-src 没放行 https:（外链字体文件会被拦）");
 });
 t("T16 _headers 含 HSTS", () => {
   assert.ok(/Strict-Transport-Security:\s*max-age=\d{6,}/.test(hdr), "缺少 HSTS");

@@ -85,10 +85,12 @@ t("T8 轮 323：App 壳里「已刷新 / 换了一批内容」提示 = 2200 × 2
   assert.ok(/isApp\s*\?\s*NOTE_OK_MS_APP\s*:\s*NOTE_OK_MS/.test(fn), "noteMs 没有按 App 壳分叉");
   assert.ok(/import\s*\{[^}]*\bisApp\b[^}]*\}\s*from\s*"\.\.\/stores\/uiStore\.js"/.test(view),
     "没从 uiStore 引入 isApp（App 端判定丢了就会静默退回 2200）");
-  /* 两个入口（下拉 te / 点刷新钮 manualRefresh）都只能走 noteMs，不许在调用点写死毫秒 */
+  /* 三个入口（全部流的下拉 te / 点刷新钮走的 loadCloud / 轮487 的关注流 refreshFollowFeed）
+     都只能走 noteMs，不许在调用点写死毫秒 */
   assert.ok(!/setTimeout\(\(\)\s*=>\s*\{\s*refreshNote\.value\s*=\s*"";\s*\},\s*\d/.test(view),
     "有调用点写死了毫秒（应走 noteMs）");
-  assert.equal((view.match(/noteMs\(/g) || []).length, 2, "noteMs 调用点应恰好两处（下拉 te + 刷新钮路径）");
+  assert.equal((view.match(/noteMs\(/g) || []).length, 3,
+    "noteMs 调用点应恰好三处（下拉 te + loadCloud 刷新钮路径 + 轮487 关注流 refreshFollowFeed）");
 });
 
 /* ══════════ 自检（跟 feed-perf-test T16 同款：exit 之后不许再有用例） ══════════ */

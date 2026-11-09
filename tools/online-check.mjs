@@ -53,9 +53,14 @@ ok("HTML 含 canonical", html.includes(`<link rel="canonical" href="${BASE}/"`))
 ok("HTML 含 OG 分享卡", html.includes(`property="og:image" content="${BASE}/og-image.png"`));
 
 /* ─── ④ SEO 静态资产 ─── */
+/* 轮 487：sitemap 由 Worker 动态生成（含 /post/:id 与 /zh 变体），根 URL 写的是
+ * `https://warmpaws.de5.net`（无尾斜杠）。旧断言要求 `<loc>BASE/</loc>` 带斜杠，
+ * 于是长期假红 —— 两种写法对 SEO 等价，不该锁格式。改成「去尾斜杠后能对上」。 */
+const norm = (s) => s.replace(/\/+$/, "");
 const seoFiles = [
   ["robots.txt", (t) => t.includes(`${BASE}/sitemap.xml`)],
-  ["sitemap.xml", (t) => t.includes(`<loc>${BASE}/</loc>`)],
+  ["sitemap.xml", (t) => [...t.matchAll(/<loc>([^<]+)<\/loc>/g)]
+    .some((m) => norm(m[1].trim()) === norm(BASE))],
   ["og-image.png", null],
   ["favicon.png", null],
   ["apple-touch-icon.png", null],

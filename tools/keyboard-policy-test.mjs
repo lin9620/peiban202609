@@ -63,15 +63,21 @@ t("窗口底 = 页面底颜色（capacitor.config / styles.xml / --page-bg 三�
   for (const c of wb) assert(c === nativeBg, "styles.xml 的 windowBackground " + c + " 与 config 不同值");
 });
 
-/* —— ③ 系统栏照旧让位、唯独不计输入法 —— */
-t("MainActivity：接管 insets，只给系统栏让位（不计输入法高度）", () => {
+/* —— ③ 系统栏照旧让位、唯独不计输入法 ——
+ * 轮 487 口径复核：轮 347 把「decorView 加 padding」整套撤了 —— 让位改由
+ * env(safe-area-inset-*) + --sat/--sab 承担（真机实测重复让位 = 内容比状态栏低一整条、
+ * 底部多一条导航栏高的空白）。所以「必须 setPadding」这条老断言已经反了，改成锁：
+ *   ① 仍接管 insets 并按 systemBars 取值；② 绝不再加 padding；③ 键盘可见时安全区底部归零。 */
+t("MainActivity：接管 insets，只给系统栏让位（轮347 起不再 setPadding）", () => {
   const java = read("android/app/src/main/java/net/de5/dale/MainActivity.java");
   assert(/setOnApplyWindowInsetsListener/.test(java), "MainActivity 没有接管 insets 监听");
   const block = (java.match(/setOnApplyWindowInsetsListener\([\s\S]*?\n        \}\);/g) || []).join("\n");
   assert(/Type\.systemBars\(\)/.test(block), "监听里没有按 systemBars 让位（状态栏/导航栏会压到内容上）");
-  assert(/setPadding\(/.test(block), "监听里没有 setPadding");
-  assert(!/imeInsets/.test(block) && !/getInsets\(\s*WindowInsetsCompat\.Type\.ime\(\)/.test(block),
-    "监听里把输入法高度算进 padding 了（正是这条把布局视口压成 539）");
+  assert(!/setPadding\(/.test(block),
+    "又给 decorView 加 padding 了：会和 --sat/--sab 双重让位（轮347 真机实测：内容低一整条 + 底部空一条）");
+  assert(/imeVisible\s*\?\s*0\s*:\s*bars\.bottom/.test(block),
+    "键盘可见时安全区底部没归零（输入法顶掉导航栏后会多一条 navBar 高的缝）");
+  assert(/Type\.displayCutout\(\)/.test(block), "没算刘海（displayCutout），横屏会压到挖孔区");
 });
 
 /* —— ④ 输入法高度 → CSS 变量 —— */
@@ -136,8 +142,12 @@ t("main.js：启动即初始化键盘让位", () => {
   assert(/(^|\n)\s*initKeyboardInset\(\);/.test(m), "没调用 initKeyboardInset()");
 });
 
-/* —— ④b 轮 324/325：键盘高度必须扣掉「WebView 底部让掉的系统栏」 —— */
-t("轮 324：--kb-h = keyboardHeight − 导航栏（不扣就悬空一条 navBar 宽的空白）", () => {
+/* —— ④b 轮 324/347：键盘高度的扣减口径 ——
+ * 轮 324 时 WebView 底被导航栏顶上去，--kb-h 必须减 --sys-bottom。
+ * 轮 347 改真·全屏后 WebView 底 = 窗口底，`--sys-bottom` 恒推 0px，减法自然退化成 no-op。
+ * 轮 487 复核：纯函数的减法必须留着（旧布局 / 未来改回仍要用），但 App 壳必须推 0，
+ * 且不许再出现「按 navBar 缓存取大者」那种只对旧布局成立的分支。 */
+t("轮 324/347：--kb-h 仍扣 --sys-bottom（纯函数兜底），App 壳该值恒 0", () => {
   const js = read("src/utils/keyboardInset.js");
   const math = read("src/utils/keyboardMath.js");
   assert(/const SYS_BOTTOM_VAR = "--sys-bottom"/.test(js), "没有 --sys-bottom 变量名");
@@ -145,14 +155,14 @@ t("轮 324：--kb-h = keyboardHeight − 导航栏（不扣就悬空一条 navBa
     "没有从 html 上读 --sys-bottom");
   assert(/import \{[^}]*\bkbPageInset\b[^}]*\} from "\.\/keyboardMath\.js"/.test(js), "没有用纯函数 kbPageInset");
   assert(/Math\.max\(0, Math\.round\(ime - sys\)\)/.test(math),
-    "纯函数里没扣 sysBottom：Keyboard 的 keyboardHeight 从窗口底量，WebView 底已让掉导航栏");
+    "纯函数里没扣 sysBottom：Keyboard 的 keyboardHeight 从窗口底量，旧布局下会悬空一条 navBar");
   assert(/vh - 120/.test(math), "纯函数缺少「离谱值夹取」兜底");
   const java = read("android/app/src/main/java/net/de5/dale/MainActivity.java");
   assert(/setProperty\('--sys-bottom'/.test(java), "MainActivity 没把 --sys-bottom 推给网页层");
+  assert(/setProperty\('--sys-bottom',\s*'0px'\)/.test(java),
+    "--sys-bottom 不是恒 0：轮347 已让 WebView 铺到窗口底，再减一次就是白垫一条");
   assert(/evaluateJavascript\(/.test(java), "MainActivity 没走 evaluateJavascript 推值");
   assert(/\/ density\)/.test(java), "推给网页的值没按 density 换成 CSS px");
-  assert(/imeVisible \? Math\.max\(navBarBottom\[0\], bars\.bottom\)/.test(java),
-    "键盘可见时没取「缓存值与当前值的大者」（某 ROM 首次派发就带输入法时缓存可能是 0）");
   const css = read("src/style.css");
   assert(/html\.cap-app \{[^}]*--sys-bottom: 0px/.test(css), "CSS 缺 --sys-bottom 默认值（读不到会算成 NaN）");
 });
@@ -164,12 +174,20 @@ t("style.css：--kb-h 变量 + 正文底部让位", () => {
   assert(/html\.cap-app body\s*\{[^}]*padding-bottom:\s*var\(--kb-h\)/.test(css),
     "body 没有 padding-bottom: var(--kb-h)（长页面滚不到输入框）");
 });
-t("style.css：聊天整屏页高度跟着 --kb-h 缩，且带过渡", () => {
+t("style.css：聊天整屏页高度跟着 --kb-h 缩，且带过渡（dvh 关在 @supports 里）", () => {
   const css = readCss("src/style.css");
-  const m = css.match(/html\.cap-app \.shell--mobile-nav\.shell--chat \.dm-page\s*\{[^}]*\}/);
-  assert(!!m, "缺「聊天整屏页高度跟着键盘缩」的规则");
-  assert(/height:\s*calc\(100dvh - var\(--kb-h\)\)/.test(m[0]), "高度没用 calc(100dvh - var(--kb-h))");
-  assert(/transition:\s*height\s/.test(m[0]), "高度没有过渡（会硬跳、与输入法错位）");
+  const at = css.indexOf("html.cap-app .shell--mobile-nav.shell--chat .dm-page {");
+  assert(at > 0, "缺「聊天整屏页高度跟着键盘缩」的规则");
+  const base = css.slice(at, css.indexOf("}", at) + 1);
+  /* 轮 474：基线必须是 100vh（旧内核只认 vh）；dvh 版单独关进 @supports。
+   * 同一规则里写两条声明是错的 —— dvh 解析期合法、计算期作废，会把 100vh 一起吃掉。 */
+  assert(/height:\s*calc\(100vh - var\(--kb-h\)\)/.test(base),
+    "基线高度没用 calc(100vh - var(--kb-h))（旧内核只有这一条能兜住）");
+  assert(/transition:\s*height\s/.test(base), "高度没有过渡（会硬跳、与输入法错位）");
+  const sup = css.indexOf("@supports (height: 100dvh)", at);
+  assert(sup > at, "缺 dvh 的 @supports 覆盖块");
+  assert(/height:\s*calc\(100dvh - var\(--kb-h\)\)/.test(css.slice(sup, sup + 400)),
+    "dvh 版高度没关进 @supports（旧内核会把整条 height 算成 auto）");
 });
 t("style.css：暖心墙吸底评论条 bottom 跟着 --kb-h 抬，且带过渡", () => {
   const css = readCss("src/style.css");
@@ -217,10 +235,20 @@ t("style.css：不许再写 100svh（本机浏览器量出 0 = 无效声明，�
   const css = readCss("src/style.css");
   assert(!/100svh/.test(css), "又出现了 100svh");
 });
-t("style.css：聊天页高度仍是 100vh → 100dvh 两段式（旧内核回退口径不许丢）", () => {
+t("style.css：聊天页高度仍是 100vh 基线 + @supports 内 100dvh（旧内核回退口径不许丢）", () => {
   const css = readCss("src/style.css");
-  assert(/\.shell--mobile-nav\.shell--chat \.dm-page\s*\{\s*height:\s*100vh;\s*height:\s*100dvh;/.test(css),
-    "基线 .dm-page 的 height:100vh → 100dvh 两段式没了");
+  /* 轮 487 复核：轮 474 把「同规则两条声明」改成「vh 基线 + @supports 覆盖」，
+   * 旧断言还在找连续两行 `height:100vh; height:100dvh;` —— 那种写法本身就是 bug。
+   * 现在锁的是行为：基线认 vh，dvh 只在不支持时才不生效。 */
+  const base = css.match(/(?:^|\n)\.shell--mobile-nav\.shell--chat \.dm-page \{([^}]*)\}/);
+  assert(!!base, "缺基线 .shell--mobile-nav.shell--chat .dm-page 规则");
+  assert(/height:\s*100vh/.test(base[1]), "基线高度不是 100vh（旧内核会落回 auto）");
+  assert(/gap:\s*0/.test(base[1]), "基线丢了 gap:0（会话列表与输入条之间会多一条缝）");
+  const dvh = /\.shell--mobile-nav\.shell--chat \.dm-page \{\s*height:\s*100dvh;?\s*\}/.exec(css);
+  assert(!!dvh, "@supports 里没有把高度覆盖成 100dvh（新内核就不会随地址栏伸缩）");
+  const near = css.lastIndexOf("@supports (height: 100dvh)", dvh.index);
+  assert(near >= 0 && dvh.index - near < 260,
+    "dvh 覆盖不在 @supports 块里（旧内核不认 dvh，整条 height 会退成 auto）");
 });
 
 /* ─── 轮 465 · 网页端改用 fixed 精确覆盖可视视口 ───

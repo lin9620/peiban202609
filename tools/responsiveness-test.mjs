@@ -147,10 +147,14 @@ ok("B2 详情页评论回应按「评论 id + 回应种类」分键",
 ok("B3 暖心墙评论回应按「评论 id + 回应种类」分键",
   /const qKey = `\$\{cm\.id\}:\$\{kind\}`/.test(communityCode));
 /* B4：暖心墙帖级回应回写权威计数时不整包覆盖 post.reacts
-      —— 整包覆盖会把没动的 💔厌恶计数抹成 0（角标/占比突然归零）。 */
+      —— 整包覆盖会把没动的 💔厌恶计数抹成 0（角标/占比突然归零）。
+      轮487 复核：实现从「按四个键逐个赋值」简化成 `{ ...p.reacts, dislike: r.dislikes }`
+      （行为等价：以现值为底、只改 dislike）。旧断言在找那行 for 循环字面量，纯属锁写法。
+      现在锁行为：必须以现有 reacts 打底，且不得从零构造。 */
+const viewWrite = communityCode.match(/for \(const p of pending\)[\s\S]*?\n\}/) || [""];
 ok("B4 暖心墙回写权威计数时保留 💔厌恶计数（不整包覆盖 reacts）",
-  !/post\.reacts = \{\s*hug:\s*fresh\.hug/.test(communityCode)
-    && /for \(const kk of \["hug", "warm", "relate", "dislike"\]\)/.test(communityCode));
+  /\.\.\.p\.reacts/.test(viewWrite[0])
+    && !/\.reacts = \{\s*(hug|warm|relate|dislike):/.test(viewWrite[0]));
 
 console.log("");
 console.log("── C. 故事评论：删除按条锁 / 发送可连发 ──");

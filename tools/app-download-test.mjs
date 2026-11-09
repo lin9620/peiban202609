@@ -35,8 +35,15 @@ ok(/watch\(dlOpenSeq, \(\) => \{ dlOpen\.value = true; \}\)/.test(app),
 const prof = readFileSync(join(ROOT, "src", "views", "ProfileView.vue"), "utf8");
 ok(prof.includes('class="admin-entry m-dl-pill"') && /@click="openDownload"/.test(prof),
   "「我的」页设置旁有下载 pill（openDownload 发信号）");
-ok(/v-if="isMobileNav && !isApp"[\s\S]{0,220}?class="admin-entry m-dl-pill"/.test(prof),
-  "pill 条件正确：手机形态 + 非 App 壳（桌面走横幅、App 内不显示）");
+/* 轮 487 口径复核：旧断言写死 `isMobileNav && !isApp`（当时桌面另有顶部横幅）。
+ * 轮 308 拆掉横幅后，桌面网页端没有第二个下载入口了；实际实现改成 `v-if="!isApp"`，
+ * 手机/桌面共用这一颗 pill。锁 isMobileNav 会逼着以后把桌面用户挡在门外 —— 改成锁行为：
+ *   ① App 壳内绝不显示；② 网页端不按形态分流（桌面也得能下）。 */
+const pillBlock = prof.match(/<[^>]*v-if="[^"]*"[\s\S]{0,260}?class="admin-entry m-dl-pill"/);
+ok(!!pillBlock, "找不到下载 pill 的 v-if 守卫");
+ok(!!pillBlock && /!isApp/.test(pillBlock[0]), "pill 缺 !isApp 守卫（App 内会重复显示下载入口）");
+ok(!!pillBlock && !/isMobileNav/.test(pillBlock[0]),
+  "pill 又按手机形态分流了（桌面网页端已无横幅，会被挡在门外）");
 const store = readFileSync(join(ROOT, "src", "stores", "uiStore.js"), "utf8");
 ok(store.includes("export const dlOpenSeq = ref(0)") && store.includes("export function openDownload()"),
   "uiStore 有 dlOpenSeq/openDownload（retapSeq 同款信号）");
