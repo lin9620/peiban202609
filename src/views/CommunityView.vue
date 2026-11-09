@@ -77,7 +77,7 @@ import {
 } from "../utils/follows.js";
 /* 轮 459：关注流的启动预热 + 本地快照（用户：点「我的关注」进去非常慢，能不能开机就先取一部分存本地） */
 import {
-  readFollowSnap, saveFollowSnap, clearFollowSnap, idsSig,
+  readFollowSnap, saveFollowSnap, clearFollowSnap, idsSig, newFollowRows,
 } from "../utils/followFeed.js";
 /* 轮 84：…菜单的「拷贝」（WebView 里 navigator.clipboard 缺失时 execCommand 兜底） */
 import { copyText } from "../utils/clipboard.js";
@@ -374,6 +374,14 @@ const consumeSoft = (box) => {
 };
 
 async function loadCloud({ fresh = false, quiet = false } = {}) {
+  /* 轮487 · 关注流**只有一个数据源**：我关注的人。
+   * 这个函数的每一条路（挂载/登录校准、切回页签的 quiet 软合并、下拉与刷新钮的 fresh）
+   * 拉的都是 cloudFetchWallRefresh —— 服务端 wall_feed_page 的**全站**包，RPC 连作者白名单
+   * 参数都没有。人在关注流里时，那三种入口都会把全站内容塞进来（软合并塞新帖、
+   * fresh 甚至整表替换），「有没有新内容」的判定也就必然错乱。
+   * 所以在这一个地方统一改道：关注流一律交给 refreshFollowFeed（只拉关注作者第一页）。
+   * 用户明确点刷新（fresh）→ 提示语照常；其余静默，不打扰。 */
+  if (followOnly.value) return refreshFollowFeed({ silent: !fresh });
   loadingCloud.value = true;
   let freshOk = true;   /* 轮 165 修：必须声明在函数作用域——上一轮写进了 if(fresh) 块内，
                            而函数尾 return freshOk 在块外 → ReferenceError 直接把整页炸成错误卡 */
@@ -419,12 +427,13 @@ async function loadCloud({ fresh = false, quiet = false } = {}) {
     return { rows, counts: counts || {}, fromFetch: true };
   };
   if (fresh) {
+    /* 轮487：注意这里**已经不会**在关注流里跑到（函数顶部那条护栏会把关注流改道到
+       refreshFollowFeed）。下面拉的是全站合并包，只服务「全部流」。 */
     /* 轮 77（用户：「刷新根本不动」——上轮死锁真因：拉取失败时 box.posts=null 仍进
        consume → filterBlocked(null) 抛错 → loadingCloud 永久 true → 之后所有刷新被
        卫语句挡死。修：①帖数据必须是数组才进 consume（失败/超时如实提示并复位）；
        ②整函数 try/finally，loadingCloud 任何路径必复位；③评论数后台补不阻塞。 */
     refreshNote.value = "busy";
-    const prevNewest = newestSeenTs.value;
     const key = cacheKey("wall:posts", (cloud.user && cloud.user.id) || "");
     /* 轮 169：刷新只有一个请求了——worker 打包「最新+随机+回应+评论数」一次回；
        新帖必现（最新 4 条钉顶），其余随机换一批。 */
@@ -435,9 +444,12 @@ async function loadCloud({ fresh = false, quiet = false } = {}) {
        **没有** → 用随机批（换一批）——此前随机批取了但永远不用，内容自然「不刷新」。
        两个分支都回写缓存；都失败/超时 → 如实提示并保留旧列表。 */
     /* 轮 333：用「本批 dbId 是否已在当前列表」判定有无新内容，而非只比 ts 水位——
-       水位只增不减，一旦见过很新的帖子，后续刷新就永远判定为「无新」。 */
-    const { hasNew, newRows } = hasNewPosts(box.rows, cloudPosts.value.map((p) => p.dbId));
+       水位只增不减，一旦见过很新的帖子，后续刷新就永远判定为「无新」。
+       轮487：判定挪进 if 里 —— 外面先 `box.rows` 会在超时（box === null）时抛 TypeError，
+       而这条 throw 发生在下面那个 try 之前，loadingCloud 一路留在 true：
+       页面永远「刷新中…」，之后的刷新按钮全被卫语句挡死。 */
     if (box && box.rows.length) {
+      const { hasNew } = hasNewPosts(box.rows, cloudPosts.value.map((p) => p.dbId));
       lastPulledRows.value = box.rows;
       if (hasNew) {
         consume({ rows: box.rows, counts: box.counts || {}, fromFetch: true });
@@ -1017,9 +1029,15 @@ async function te() {
   if (!pulling) return;
   pulling = false;
   if (pullDist.value >= 62) {
-    /* 轮 56：下拉刷新 = 强制取新第 1 页（不再拿缓存装样子）；轮 162：成败如实提示 */
-    await loadCloud({ fresh: true });   /* refreshNote 已由 loadCloud 内部按 hasNew 设置，此处不再覆盖 */
-    setTimeout(() => { refreshNote.value = ""; }, noteMs(refreshNote.value));   /* 轮 323：时长按状态 + App 壳取 2/3 */
+    /* 轮487：关注流的刷新不能走全站合并包（见 refreshFollowFeed 上面的注释）。
+       它自己管提示语与停留时长，这里不再补 setTimeout。 */
+    if (followOnly.value) {
+      await refreshFollowFeed();
+    } else {
+      /* 轮 56：下拉刷新 = 强制取新第 1 页（不再拿缓存装样子）；轮 162：成败如实提示 */
+      await loadCloud({ fresh: true });   /* refreshNote 已由 loadCloud 内部按 hasNew 设置，此处不再覆盖 */
+      setTimeout(() => { refreshNote.value = ""; }, noteMs(refreshNote.value));   /* 轮 323：时长按状态 + App 壳取 2/3 */
+    }
   }
   pullDist.value = 0;
 }
@@ -1032,6 +1050,8 @@ async function te() {
 async function manualRefresh(opts = {}) {
   if (loadingCloud.value) return;   /* 刷新进行中防重入（按钮同时 disabled 兜底） */
   if (opts.pin) pinToTop();         /* 轮 294：刷新钮深滚时点 → 先归位再换内容（页签重按自己滚顶，不传 pin） */
+  /* 轮487：与下拉刷新同一条分支 —— 关注流只刷关注的人 */
+  if (followOnly.value) { await refreshFollowFeed(); return; }
   await loadCloud({ fresh: true });
 }
 
@@ -2061,6 +2081,77 @@ async function enterFollowFeed() {
     if (!seeded) followErr.value = "follow.feedFail";
   } finally {
     followBusy.value = false;
+  }
+}
+
+/* ═════════ 轮487 · 关注流下拉刷新 ═════════
+ * 用户实测：「暖心墙我的关注，下拉刷新，在没任何新增内容的情况下，第一次刷新是暂无新内容，
+ * 第二次刷新就是那个 ♥ 的已刷新，怎么回事」。
+ * 真因：下拉刷新（te）不管在哪个流里都调 loadCloud({ fresh: true })，而那条路拉的是
+ *   cloudFetchWallRefresh —— 服务端 wall_feed_page 的**全站**包（最新 20 条 + 7 天随机批，
+ *   RPC 根本没有作者白名单参数）。拿全站包去比关注流那份列表，答案就取决于两份数据碰巧
+ *   重不重合：列表里刚好含整包 → 「暂无新内容」；包里有没关注的人 → 「♥已刷新」。
+ *   同一动作两种结果，而且命中「有新」还会 consume 整表替换成**全站帖** —— 人在关注流里，
+ *   刷一下却刷出一屏没关注的人。
+ * 现在的口径（三条，别改回去）：
+ *   ① 数据源只认关注流：cloudFetchPosts(REFRESH_PAGE, 0, { userIds })（服务端时间倒序）；
+ *   ② 「有没有新内容」= 这一页里有没有列表里没有的帖（newFollowRows），不是整页都陌生；
+ *   ③ 有新也只**并回顶部**，不整表替换 —— 已加载的更深页和正在看的位置都留着。
+ */
+function mergeFollowPage(pageRows) {
+  const cur = cloudPosts.value;
+  /* 列表为空（刚进关注流 / 上一次拉挂）：整页铺上去，游标/到底标志交给 consume 重设。
+     返回值取**上屏后的条数**——filterBlocked 会剔掉拉黑的人，按原始页长度报「已刷新」会骗人。 */
+  if (!cur.length) { consume({ rows: pageRows, counts: null, fromFetch: true }); return cloudPosts.value.length; }
+  const adds = filterBlocked(newFollowRows(pageRows, cur));
+  if (!adds.length) return 0;
+  countViews(adds);
+  cloudPosts.value = [...adds, ...cur];   /* 页内已是时间倒序，整体钉顶即正确顺序 */
+  cloudDone.value = false;                /* 新内容进来了 → 解除「到底」，否则触底不再续载 */
+  return adds.length;
+}
+async function refreshFollowFeed({ silent = false } = {}) {
+  if (loadingCloud.value) return;   /* 刷新进行中防重入（与 manualRefresh 同口径） */
+  loadingCloud.value = true;
+  /* 静默口径：切回页签 / 挂载校准这类「用户没点刷新」的场合不弹提示条，
+     与全部流那边 quiet 软合并的观感保持一致；用户自己下拉/点刷新才提示。 */
+  const say = (v) => { if (!silent) refreshNote.value = v; };
+  say("busy");
+  let added = 0;
+  try {
+    /* 名单：已加载过就用现成的（省一次往返）；没加载过 / 空才等它 */
+    if (!followState.loaded || !followState.ids.length) await refreshFollows(true);
+    if (followState.error) { say("fail"); return; }
+    const ids = followState.ids;
+    if (!ids.length) {
+      /* 真的一个人都没关注：列表必须清空（延续 enterFollowFeed 的口径，快照一并丢掉） */
+      cloudPosts.value = [];
+      cloudDone.value = true;
+      clearFollowSnap();
+      say("none");
+      return;
+    }
+    const rows = await cloudFetchPosts(REFRESH_PAGE, 0, { userIds: ids });
+    if (!rows) { say("fail"); return; }   /* 拉取失败：保留现场，如实提示 */
+    added = mergeFollowPage(rows);
+    say(added ? "ok" : "none");
+    if (added) saveFollowSnap(ids, rows, null);
+    /* 评论数后台补（与进页同口径：不阻塞上屏，回来再写进列表与快照） */
+    cloudFetchCommentCounts(rows.map((r) => r.dbId)).then((counts) => {
+      if (!counts) return;
+      const next = { ...cloudCmtTotal.value };
+      for (const p of cloudPosts.value) {
+        if (p.dbId != null) next[cmtKey(p)] = counts[p.dbId] || 0;
+      }
+      cloudCmtTotal.value = next;
+      if (added) saveFollowSnap(ids, rows, counts);
+    }).catch(() => {});
+    scheduleFeedTick();
+  } catch (e) {
+    say("fail");
+  } finally {
+    loadingCloud.value = false;
+    if (!silent) setTimeout(() => { refreshNote.value = ""; }, noteMs(refreshNote.value));
   }
 }
 function exitFollowFeed() {

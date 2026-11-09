@@ -74,6 +74,22 @@ export function clearFollowSnap() {
   cacheDrop(snapKey());
 }
 
+/**
+ * 轮487 · 关注流下拉刷新：这一页里**列表还没有**的帖（按页内顺序，不重排）。
+ * 关注流固定按发布时间倒序，服务端这一页就是「最新的一屏」——所以「有新内容」=
+ * 页里有列表没有的，而不是「页里每条都不认识」（那会永远判有新）。
+ * 纯函数，别在这里塞过滤/排序：调用方还要拿它做 countViews 与去重后的拼接。
+ * @param {Array} pageRows 服务端这一页（cloudFetchPosts 的返回）
+ * @param {Array} currentRows 当前列表
+ * @returns {Array} 新帖（保持页内顺序）
+ */
+export function newFollowRows(pageRows, currentRows) {
+  const page = Array.isArray(pageRows) ? pageRows : [];
+  const cur = Array.isArray(currentRows) ? currentRows : [];
+  const known = new Set(cur.filter(Boolean).map((p) => String(p.id)));
+  return page.filter((p) => p && p.id != null && !known.has(String(p.id)));
+}
+
 /* 启动预热的单飞 + 节流：App 启动与登录各调一次，不能变成两次同样的请求 */
 let warming = null;
 let warmedAt = 0;
