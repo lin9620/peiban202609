@@ -344,48 +344,78 @@ t("T35 被否掉的方案不许回潮：折叠后 tabbar 不回来、条不坐�
   assert(!/tabbar-h/.test(read("src/utils/fixedBar.js")), "fixedBar 又在让 tabbar 高度");
 });
 
-t("T36 100dvh 不允许裸写（不认 dvh 的内核会把整条 height 作废 → 退成 auto）", () => {
-  const raw = read("src/style.css");
-  /* 注释里出现 100dvh 是正常的（就是解释这个坑的文字），但位置必须保留、
-   * 否则行号会漂。用等长空格顶掉，只改内容不改坐标。 */
-  const css = raw.replace(/\/\*[\s\S]*?\*\//g, (s) => s.replace(/[^\n]/g, " "));
+t("T36 100dvh 不允许裸写（扫 src 下全部 .css / .vue，不认 dvh 的内核会把整条声明作废）", () => {
   /* 轮 474 真机病象：Xiaomi 浏览器 CSS.supports("height","100dvh") === false。
    * 只要有一条 `height: calc(100dvh - ...)` 裸写在 @supports 外，整条声明在计算阶段
    * 就被判无效，连带前面 `height: 100vh` 的兜底一起作废 → .dm-page 落回内容高
    * （实测 377.8px / 屏高 744）→ 输入条停在屏幕中间闪一下再跳到底。
-   * 所以：dvh 必须被 @supports (height: 100dvh) 圈住，vh 版本留在外层。 */
-  const open = /@supports\s*\([^)]*100dvh[^)]*\)/g;
-  const ranges = [];
-  const conds = []; // @supports 的条件文本自身也含 100dvh，那是合法的，要排除
-  let m;
-  while ((m = open.exec(css))) {
-    let i = css.indexOf("{", m.index + m[0].length);
-    if (i < 0) continue;
-    conds.push([m.index, i + 1]);
-    let d = 1;
-    i++;
-    const start = i;
-    while (i < css.length && d > 0) {
-      if (css[i] === "{") d++;
-      else if (css[i] === "}") d--;
-      if (d > 0) i++;
+   * 所以：dvh 必须被 @supports (height: 100dvh) 圈住，vh 版本留在外层。
+   *
+   * 轮 480 扩到全量：原先只扫 style.css，ComposeView / LoginView 的 scoped 样式
+   * 裸写了两处却一直没被发现（发帖页 min-height:100dvh、登录页 calc(100dvh - 120px)）。
+   * 现在 src 下所有 .css / .vue 一起扫。 */
+  const files = [];
+  (function walk(dir) {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (/\.(css|vue)$/.test(e.name)) files.push(p);
     }
-    ranges.push([start, i]);
-  }
-  const naked = [];
-  const re = /100dvh/g;
-  while ((m = re.exec(css))) {
-    const p = m.index;
-    const inCond = conds.some(([a, b]) => p >= a && p < b);
-    if (!inCond && !ranges.some(([a, b]) => p >= a && p < b)) {
-      const line = css.slice(0, p).split("\n").length;
-      naked.push(`${line}: ${css.slice(Math.max(0, p - 60), p + 12).replace(/\s+/g, " ").trim()}`);
+  })(path.join(root, "src"));
+
+  const scan = (raw) => {
+    /* 注释里出现 100dvh 是正常的（就是解释这个坑的文字），但位置必须保留、
+     * 否则行号会漂。用等长空格顶掉，只改内容不改坐标。 */
+    const css = raw.replace(/\/\*[\s\S]*?\*\//g, (s) => s.replace(/[^\n]/g, " "));
+    const open = /@supports\s*\([^)]*100dvh[^)]*\)/g;
+    const ranges = [];
+    const conds = []; // @supports 的条件文本自身也含 100dvh，那是合法的，要排除
+    let m;
+    while ((m = open.exec(css))) {
+      let i = css.indexOf("{", m.index + m[0].length);
+      if (i < 0) continue;
+      conds.push([m.index, i + 1]);
+      let d = 1;
+      i++;
+      const start = i;
+      while (i < css.length && d > 0) {
+        if (css[i] === "{") d++;
+        else if (css[i] === "}") d--;
+        if (d > 0) i++;
+      }
+      ranges.push([start, i]);
     }
+    const naked = [];
+    const re = /100dvh/g;
+    while ((m = re.exec(css))) {
+      const p = m.index;
+      const inCond = conds.some(([a, b]) => p >= a && p < b);
+      if (!inCond && !ranges.some(([a, b]) => p >= a && p < b)) {
+        const line = css.slice(0, p).split("\n").length;
+        naked.push(`${line}: ${css.slice(Math.max(0, p - 60), p + 12).replace(/\s+/g, " ").trim()}`);
+      }
+    }
+    return { blocks: ranges.length, naked, hasVh: /100vh/.test(css) };
+  };
+
+  let totalBlocks = 0;
+  const bad = [];
+  const missingVh = [];
+  for (const f of files) {
+    const rel = path.relative(root, f).replace(/\\/g, "/");
+    const r = scan(fs.readFileSync(f, "utf8"));
+    totalBlocks += r.blocks;
+    for (const n of r.naked) bad.push(`${rel}:${n}`);
+    /* 有 dvh 块就必须有 vh 兜底，否则老内核那页直接没高度 */
+    if (r.blocks > 0 && !r.hasVh) missingVh.push(rel);
   }
-  assert(ranges.length > 0, "@supports (height: 100dvh) 一条都没有 —— 是不是把兜底整段删了");
-  assert(naked.length === 0, `有 ${naked.length} 处 100dvh 裸写在 @supports 外：\n    ${naked.join("\n    ")}`);
+
+  assert(totalBlocks > 0, "@supports (height: 100dvh) 一条都没有 —— 是不是把兜底整段删了");
+  assert(bad.length === 0, `有 ${bad.length} 处 100dvh 裸写在 @supports 外：\n    ${bad.join("\n    ")}`);
+  assert(missingVh.length === 0, `这些文件有 dvh 但外层没有 vh 兜底：${missingVh.join(", ")}`);
   /* 反过来也要有：@supports 外必须有 100vh 兜底，否则老内核直接没高度 */
-  assert(/\.dm-page\s*\{[^}]*height:\s*100vh/.test(css) || /dm-page[^{}]*\{[^}]*height:\s*100vh/.test(css),
+  const styleCss = read("src/style.css").replace(/\/\*[\s\S]*?\*\//g, (s) => s.replace(/[^\n]/g, " "));
+  assert(/\.dm-page\s*\{[^}]*height:\s*100vh/.test(styleCss) || /dm-page[^{}]*\{[^}]*height:\s*100vh/.test(styleCss),
     ".dm-page 没有 100vh 兜底");
 });
 

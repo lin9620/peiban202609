@@ -88,14 +88,19 @@ t("E7 暖心墙：≤899px 面板贴底整宽 + 高度与会话同一条", () =>
   has(block, /position: fixed;/, "不是 fixed");
   has(block, /left: 0;[\s\S]{0,40}right: 0;/, "没整宽");
   has(block, /bottom: 0;/, "没贴底");
-  has(block, /height: min\(46vh, 320px\);/, "高度与会话不一致");
+  /* 轮 482：高度从写死 320 改成 --kb-panel-h（= 上一次真实键盘高），
+   * 否则收键盘弹面板时输入条会跳一截（用户报「表情包跟打字的上拉框高度不一致」）。 */
+  has(block, /height: var\(--kb-panel-h\);/, "面板高度没跟 --kb-panel-h 走（会和键盘不一致）");
   has(block, /border-radius: 0;/, "还带圆角（浮窗样）");
   has(block, /z-index: 170;/, "z-index 会被底条盖住");
-  has(BC, /--wp-emoji-h: min\(46vh, 320px\)/, "会话段的高度基准变了（两处必须同一条）");
+  has(BC, /--wp-emoji-h: var\(--kb-panel-h/, "会话段的高度基准变了（两处必须同一个变量）");
+  has(CSS, /--kb-panel-h:\s*min\(var\(--kb-last,\s*min\(46vh, 320px\)\),\s*62vh\)/,
+    ":root 里没有 --kb-panel-h（= 上一次键盘高，默认退回 46vh/320）");
 });
 
 t("E8 底条抬到面板上沿（暖心墙手机主评论条）", () => {
-  has(CSS, /\.cmt-main-bar\.wp-emoji-open,[\s\S]{0,120}bottom: min\(46vh, 320px\);/, "底条没抬起来（会被面板盖住）");
+  has(CSS, /\.cmt-main-bar\.wp-emoji-open,[\s\S]{0,200}bottom: var\(--kb-panel-h\);/, "底条没抬起来（会被面板盖住）");
+  has(CSS, /html\.kb-web \.cmt-main-bar\.wp-emoji-open,[\s\S]{0,80}bottom: var\(--kb-panel-h\);/, "网页端那条没跟同一个变量");
   has(CSS, /html\.cap-app \.cmt-main-bar\.wp-emoji-open/, "App 壳那条没覆盖（bottom 仍是 --kb-h）");
   has(WC, /bar\.classList\.toggle\("wp-emoji-open", !!open && isSheet\(\)\)/, "没给底条挂类");
   has(WC, /root\.value\.closest\("\.cmt-main-bar"\)/, "找不到底条");

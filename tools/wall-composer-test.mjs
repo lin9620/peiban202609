@@ -223,7 +223,8 @@ t("P5 表情面板打开时帖子卡必须让路（不裁、不压在上一张�
  * 真机 393×895 实测：面板开着点输入框，barY 518→781→525（掉 256px）；
  * 面板里点一个表情，输入法立刻弹起（看着像「选一个就自动切回文字输入」）。 */
 t("P6 轮 350：收面板时底条让位钉到键盘上来；面板里点表情不抢焦点", () => {
-  has(CSS, /html\.cap-app \.cmt-main-bar\.wp-kb-swap,\s*\n\s*\.cmt-main-bar\.wp-kb-swap \{\s*\n\s*bottom: min\(46vh, 320px\);/, "没有 .wp-kb-swap 的钉住规则（底条会先掉到屏底）");
+  /* 轮 482：钉住的高度从写死 320 改成 --kb-panel-h（上一次真实键盘高） */
+  has(CSS, /\.cmt-main-bar\.wp-kb-swap \{\s*\n\s*bottom: var\(--kb-panel-h\);/, "没有 .wp-kb-swap 的钉住规则（底条会先掉到屏底）");
   has(WPC, /if \(isSheet\(\)\) holdForKeyboard\(\);/, "onDocClick 里没在收面板前钉住底条");
   has(WPC, /if \(v > 0\) endKbSwap\(\);/, "没等 --kb-h > 0 再摘钉");
   has(WPC, /if \(!isApp\) return;/, "网页上也会钉住（底条会先悬空 1.2s）");

@@ -121,6 +121,15 @@ const read = (p) => fs.readFileSync(path.join(root, p), "utf8");
   ok("TodayPane：有本地缓存", today.includes("wp-daily-story:"));
   ok("TodayPane：无云端时回退内置轮换", today.includes("todayStory.value.zh"));
   ok("TodayPane：跨天/回页刷新", today.includes("refreshDailyIfNewDay"));
+  /* 轮 484（用户：「改了今天文案，结果首页长时间不更新，只有重新打开才会」）：
+   * 原来只有冷启动（onMounted）会拉，回页还要过 5 分钟冷却 —— 人停在首页就永远看不到新文案。 */
+  ok("TodayPane：停在首页有 60s 轮询", /DAILY_TICK_MS = 60 \* 1000/.test(today) && /setInterval\(/.test(today));
+  ok("TodayPane：回页刷新的冷却降到 10s（不再是 5 分钟）",
+    /DAILY_PULL_GAP_MS = 10 \* 1000/.test(today) && !/5 \* 60 \* 1000/.test(today));
+  ok("TodayPane：切走页签就停轮询、卸载清定时器",
+    today.includes("onDeactivated") && /stopDailyTick\(\)/.test(today) && /stopDailyTick\(\);\n\}\)/.test(today));
+  ok("TodayPane：管理端保存后立即重拉（跳过冷却）",
+    /watch\(dailySeq, \(\) => refreshDailyIfNewDay\(true\)\)/.test(today));
 }
 {
   const admin = read("src/views/AdminView.vue");
@@ -131,6 +140,13 @@ const read = (p) => fs.readFileSync(path.join(root, p), "utf8");
   ok("AdminView：自动翻译", admin.includes("autoTranslateDaily") && admin.includes("translateText"));
   ok("AdminView：删除确认", admin.includes("admin.daily.confirmDelete"));
   ok("AdminView：迁移缺失提示", admin.includes("admin.daily.migrateHint"));
+  ok("AdminView：保存/删除后通知首页立即重拉",
+    (admin.match(/bumpDailyStory\(\)/g) || []).length >= 2);
+}
+{
+  const ui = read("src/stores/uiStore.js");
+  ok("uiStore：dailySeq 信号 + bumpDailyStory",
+    ui.includes("export const dailySeq") && ui.includes("export function bumpDailyStory"));
 }
 {
   const worker = read("worker/api.js");
