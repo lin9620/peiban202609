@@ -32,12 +32,24 @@ const pane = ref(paneFromQuery(route.query.tab));
 const idx = computed(() => paneIndex(pane.value));
 const petMounted = ref(pane.value === "pet");
 const storyMounted = ref(pane.value === "story");
-/* 轮 482：每个联自己的滚动位置（见 setPane 注释）。restoreY 是「下一次 idx 变化后要恢复到的 y」。 */
+/* 轮 482：每个联自己的滚动位置（见 setPane 注释）。
+   轮488：恢复不再是「一帧就落」——改成待办 pendingY，等文档长够再落（见 restorePaneY）。 */
 const paneScroll = new Map();
-let restoreY = null;
+let pendingY = null;      /* 要回到的 y；null = 没有待办 */
+let pendingUntil = 0;     /* 兜底截止：超时也照落（取文档能给的最大值），不无限等 */
 
 /* /?tab=xxx 变化（＋ 钮投瓶 / 深链）→ 切联；桌面忽略（不消费 query） */
-onActivated(() => { restoreScroll(route.path); });   /* 轮 219：页签回位 */
+onActivated(() => {
+  /* 轮 219：页签回位。
+     轮488：回来那一瞬间文档可能还没长回原高度（KeepAlive 重插 + track 还没量），
+     一次性 scrollTo 会被钳掉 —— 把 y 也挂成待办，让 measure()/随后几帧补落。 */
+  const y = restoreScroll(route.path);
+  if (y) {
+    pendingY = y;
+    pendingUntil = Date.now() + 600;
+    pumpRestore();
+  }
+});
 
 watch(() => route.query.tab, (v) => {
   /* 轮 235 修（真机实测抓到的 URL 污染）：
@@ -60,11 +72,11 @@ function setPane(k, scroll = true) {
    * 四个联共用同一个 window 滚动条（.home3 是 overflow:clip，不建滚动容器），
    * 旧实现切联时无脑 window.scrollTo(0,0) —— 从故事联切去今日就把故事的滚动位置
    * 一起抹掉了，切回来自然在顶上。改成**每个联各记各的**：切走时存当前 y，
-   * 切回来后一帧恢复（等 measure() 把 track 高度撑回该联的高度，否则 scrollTo 会被
-   * 还没长高的文档钳到 0）。 */
+   * 切回来后恢复（等 track 高度撑回该联的高度，否则 scrollTo 会被还没长高的文档钳住）。 */
   if (scroll) {
     paneScroll.set(pane.value, window.scrollY);
-    restoreY = paneScroll.get(k) || 0;
+    pendingY = paneScroll.get(k) ?? 0;
+    pendingUntil = Date.now() + 600;
   }
   pane.value = k;
   /* 轮 152：联位置同步进地址栏（replaceState 不堆历史）——否则从故事联进 /story/mine
@@ -87,6 +99,9 @@ function goPet() {
 let sx = 0, sy = 0, swiping = false, axis = "", petGuard = false;
 const PET_GUARD_SEL = "canvas, button, a, input, textarea, select, .sr-overlay, .painter-bar, .swatch";
 function onTouchStart(e) {
+  /* 轮488：手指一落下就放弃待恢复的位置 —— 回位在这 0.6s 里是慢慢补的，
+     用户这时候自己往下滑，绝不能再把他拽回去（不跟用户抢滚动）。 */
+  pendingY = null;
   const t0 = e.touches[0];
   sx = t0.clientX; sy = t0.clientY; swiping = true; axis = "";
   petGuard = false;
@@ -126,19 +141,53 @@ function measure() {
   /* 轮 166b：track 恢复内容高（stretch 方案撤了——长空白难看）。手势面在 home3，
      内容以下的空白照样能滑，track 高度不再需要撑屏 */
   const el = paneEls.value[idx.value];
-  if (el) trackH.value = Math.max(120, Math.round(el.offsetHeight)) + "px";
+  if (el) {
+    const h = el.offsetHeight;
+    /* 轮488：h === 0 = 这一刻还没布局（KeepAlive 把 DOM 从隐藏容器搬回来、切联过渡的
+       那一瞬都会读到 0）。**绝不能**在这时把 track 压成 120px —— 文档会当场塌到几百像素，
+       浏览器顺手把滚动位置钳到 0，回位也就白做了（真机取证：从故事阅读页返回，位置变 0，
+       文档高 2734 → 1889，就是这一塌）。0 直接跳过，等 ResizeObserver 拿到真高度再写。 */
+    if (h > 0) trackH.value = Math.max(120, Math.round(h)) + "px";
+  }
+  /* 轮488：ResizeObserver 也会走到这里 —— 文档一长高就把待恢复的位置补上 */
+  restorePaneY();
+}
+
+/* ═══ 轮488 · 切联回位：等文档长够再落 ═══
+ * 真机取证（无头 Edge 390×844，首页故事联）：停在 700 → 点今日 → 点故事，回来只到 **325**。
+ * 原因：nextTick + 一帧 rAF 时 track 高度还是上一个联的（比故事联矮），
+ *   scrollTo(700) 被文档高度钳成 325；之后 track 长高了，却再没有人补这一枪。
+ * 现在把「要去的 y」留成待办 pendingY：measure()（含 ResizeObserver 回调）与随后几帧都会
+ * 再落一次，直到文档高度够 / 或 600ms 兜底到期（到期就取文档能给的最大值，绝不无限等）。 */
+function restorePaneY(force = false) {
+  if (pendingY == null) return;
+  const doc = document.scrollingElement || document.documentElement;
+  const max = Math.max(0, (doc && doc.scrollHeight ? doc.scrollHeight : 0) - window.innerHeight);
+  const y = pendingY;
+  if (!force && max < y - 1 && Date.now() < pendingUntil) return;   /* 还没长够：等下一拍 */
+  pendingY = null;
+  const top = Math.max(0, Math.min(y, max));
+  try { window.scrollTo({ top, left: 0, behavior: "instant" }); } catch (e) { window.scrollTo(0, top); }
+}
+function pumpRestore() {
+  if (pendingY == null) return;
+  requestAnimationFrame(() => {
+    measure();
+    restorePaneY();
+    if (pendingY == null) return;
+    /* 关键（实测）：.home-track 的高度是带 CSS 过渡的，切联后文档是**慢慢长高**的
+       （1889px 要走 ~320ms：1404 → 1654 → 1787 → 1889）。所以不能只补 6 帧就收手 ——
+       那 6 帧里文档还没长够，之后没人再落，人就被留在原地看着「回到最前面」。
+       改成按截止时间一直补，到期强制落（取文档能给的最大值）。 */
+    if (Date.now() < pendingUntil) pumpRestore();
+    else restorePaneY(true);
+  });
 }
 watch(idx, async () => {
   await nextTick();
   measure();
-  /* 轮 482：track 高度刚换到新联，再等一帧让布局落定，才不会被「文档还没长高」钳住 */
-  if (restoreY != null) {
-    const y = restoreY;
-    restoreY = null;
-    requestAnimationFrame(() => {
-      try { window.scrollTo({ top: y, left: 0, behavior: "instant" }); } catch (e) { window.scrollTo(0, y); }
-    });
-  }
+  restorePaneY();
+  pumpRestore();
 });
 onMounted(() => {
   measure();
