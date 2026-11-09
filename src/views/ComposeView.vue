@@ -241,7 +241,11 @@ async function submit() {
    * 而是把整条属性判成无效（退 auto），所以两条声明必须分在不同规则里。 */
   min-height: 100vh;
   max-width: 720px; margin: 0 auto;
-  padding: 12px 14px calc(16px + env(safe-area-inset-bottom, 0px));
+  /* 轮 492（用户实报图：App 里发帖页顶栏被状态栏压住）：
+   * 顶部安全区**不垫在这一层**，交给 .compose-head 自己吃（见那条注释）。
+   * 垫在容器上的话，页面被键盘顶起、一滚（sticky 生效）时会顾不上一头。
+   * 底部同理：App 壳里 env(safe-area-inset-*) 常为 0，得先认 MainActivity 推的 --sab。 */
+  padding: 0 14px calc(16px + var(--sab, env(safe-area-inset-bottom, 0px)));
 }
 @supports (height: 100dvh) {
   .compose-page { min-height: 100dvh; }
@@ -249,12 +253,20 @@ async function submit() {
 /* 轮 137 口径：桌面流式壳下页面容器铺满，不再收窄居中（App / 窄屏不受影响） */
 @media (min-width: 900px) { .compose-page { max-width: none; } }
 
-/* 顶栏：返回 / 标题 / 发布。sticky 但不用 backdrop-filter（跟手机端性能口径） */
+/* 顶栏：返回 / 标题 / 发布。sticky 但不用 backdrop-filter（跟手机端性能口径）
+ * 轮 492（用户实报图：标题「发暖心帖」与「发布」键跟系统时间/信号图标挤在一起）：
+ * 整屏形态下 `.shell--mobile-nav.shell--chat main` 的 padding-top 是 0，这页原先只垫 12px
+ * → 状态栏直接盖住整条顶栏。改由顶栏自己吃顶部安全区：
+ *   · 不滚动时 —— padding-top 把内容推到状态栏下面，渐变色顺带铺满状态栏那条；
+ *   · 键盘顶起页面、sticky 真正吸顶时 —— padding-top 还在，内容不会滑到状态栏底下。
+ * 负外边距让顶栏背景铺满屏幕两边，内容仍与卡片左右对齐（与 .compose-page 的水平内边距同值）。 */
 .compose-head {
   position: sticky; top: 0; z-index: 6;
   display: grid; grid-template-columns: 40px minmax(0, 1fr) auto;
   align-items: center; gap: 10px;
-  padding: 4px 0 10px;
+  margin: 0 -14px;
+  /* 16px = 原先「容器 12px + 顶栏自己 4px」，安全区只是加在它前面 —— 没有刘海时不改变观感 */
+  padding: calc(16px + var(--sat, env(safe-area-inset-top, 0px))) 14px 10px;
   background: linear-gradient(180deg, var(--glass-strong) 72%, rgba(255, 255, 255, 0));
 }
 .compose-back {
@@ -437,8 +449,14 @@ html[data-theme="night"] .compose-tool { background: rgba(255, 255, 255, .08); }
 
 /* 窄屏（手机）：输入框再高一点，顶栏收窄 */
 @media (max-width: 560px) {
-  .compose-page { padding: 8px 12px calc(14px + env(safe-area-inset-bottom, 0px)); }
-  .compose-head { grid-template-columns: 38px minmax(0, 1fr) auto; gap: 8px; }
+  .compose-page { padding: 0 12px calc(14px + var(--sab, env(safe-area-inset-bottom, 0px))); }
+  /* 顶栏的负外边距与内边距必须跟着容器的水平内边距（12px）走，否则内容会错位 2px。
+     12px = 原先「容器 8px + 顶栏自己 4px」，安全区同样只加在前面。 */
+  .compose-head {
+    grid-template-columns: 38px minmax(0, 1fr) auto; gap: 8px;
+    margin: 0 -12px;
+    padding: calc(12px + var(--sat, env(safe-area-inset-top, 0px))) 12px 10px;
+  }
   .compose-back { width: 38px; height: 38px; }
   .compose-title { font-size: 17px; }
   .compose-card { border-radius: 22px; padding: 16px 15px 12px; }
