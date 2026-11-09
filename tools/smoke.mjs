@@ -8,7 +8,7 @@ const targets = [
   "/src/views/HomeView.vue", "/src/views/PetView.vue",
   "/src/views/CommunityView.vue", "/src/views/ProfileView.vue",
   "/src/components/SideRails.vue", "/src/components/LottiePet.vue",
-  "/src/components/ShareCard.vue", "/src/components/SnackRain.vue",
+  "/src/components/ShareCard.vue", "/src/components/SnackRain.vue", "/src/components/RpsGame.vue",
   "/src/components/FoodPainter.vue", "/src/components/SeasonFx.vue",
   "/src/utils/comments.js", "/src/utils/storage.js", "/src/utils/lottiePet.js",
   "/src/utils/snackGame.js",

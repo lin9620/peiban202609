@@ -5,7 +5,23 @@
  *   表达式文件最后是一个 IIFE/表达式，返回值 JSON 打印；超时 20s。
  */
 import fs from "node:fs";
+import http from "node:http";
 import WebSocket from "ws";
+
+/* 本机调试口必须绕开系统代理：环境里 HTTP_PROXY 常指向 127.0.0.1:xxxxx（抓包/代理工具），
+ * Node 的 fetch 会遵守它，于是连 127.0.0.1:9222 也走代理 → fetch failed。
+ * 用最原始的 http.request 直连，不受 env proxy 影响。 */
+const httpGetJson = (port, pathname) => new Promise((res, rej) => {
+  const req = http.request({ host: "127.0.0.1", port, path: pathname, method: "GET" }, (r) => {
+    let s = "";
+    r.setEncoding("utf8");
+    r.on("data", (d) => { s += d; });
+    r.on("end", () => { try { res(JSON.parse(s)); } catch (e) { rej(new Error("bad-json")); } });
+  });
+  req.on("error", rej);
+  req.setTimeout(5000, () => req.destroy(new Error("timeout")));
+  req.end();
+});
 
 const arg = (name, dflt) => {
   const hit = process.argv.find((a) => a.startsWith("--" + name + "="));
@@ -13,6 +29,9 @@ const arg = (name, dflt) => {
 };
 const file = arg("file", "");
 const waitMs = Number(arg("wait", "500"));
+/* 9222 常被历史转发/本机代理占着（占着时 curl 能通但内容是 upstream connect failed）。
+ * 用 --port=9333 换一口，不必为了取一次数去杀别人的监听。 */
+const port = arg("port", "9222");
 /* 息屏/被遮挡时 WebView 的 rAF 冻结 → Vue 路由过渡（transition out-in）会停在中途、新视图不挂载。
  * 默认开 Emulation.setFocusEmulationEnabled：让页面自认「可见且聚焦」，取数不再受屏幕状态影响。
  * 需要真实可见性行为时传 --focus=0 关掉。 */
@@ -21,7 +40,7 @@ const focus = arg("focus", "1") !== "0";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
-  const list = await fetch("http://127.0.0.1:9222/json").then((r) => r.json());
+  const list = await httpGetJson(port, "/json");
   const page = list.find((t) => t.type === "page");
   if (!page) throw new Error("no-page-target");
   const ws = new WebSocket(page.webSocketDebuggerUrl, { maxPayload: 64 * 1024 * 1024 });

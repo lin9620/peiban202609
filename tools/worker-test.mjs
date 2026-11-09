@@ -550,6 +550,31 @@ async function hit(script, path, init) {
     res.status === 400 && c.outbound.length === 0);
 }
 {
+  const { c } = await hit([{ body: true }],
+    "/api/story/published-delete", { method: "POST", body: JSON.stringify({ id: 21 }) });
+  ok("storyDeletePublished rpc URL + body",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/story_delete_published` &&
+    c.outbound[0].init.body === JSON.stringify({ p_id: 21 }),
+    c.outbound[0] && c.outbound[0].init.body);
+}
+{
+  const { c } = await hit([
+    { status: 404, body: { code: "PGRST202", message: "Could not find the function" } },
+    { body: [{ id: 21 }] },
+  ], "/api/story/published-delete", { method: "POST", body: JSON.stringify({ id: 21 }) });
+  ok("storyDeletePublished 迁移没跑 → REST 直删（仍走 RLS）",
+    c.outbound[1].url === `${ORIGIN}/rest/v1/stories?id=eq.21&status=eq.published` &&
+    c.outbound[1].init.method === "DELETE" &&
+    hdr(c.outbound[1].init).get("prefer") === "return=representation",
+    c.outbound[1] && c.outbound[1].url);
+}
+{
+  const { res, c } = await hit([], "/api/story/published-delete",
+    { method: "POST", body: JSON.stringify({ id: 0 }) });
+  ok("story 删除已发布缺/非法 id → 400 bad-id 且 0 出站",
+    res.status === 400 && c.outbound.length === 0);
+}
+{
   const { c } = await hit([{ body: { ok: true } }],
     "/api/story/like", { method: "POST", body: JSON.stringify({ id: 7 }) });
   ok("storyToggleLike rpc URL + body",
@@ -1846,6 +1871,161 @@ function seoEnv() {
       ok("轮311 verify 网络挂 → fail-open { ok:true }", (await r.json()).ok === true);
     } finally { c7.restore(); }
   }
+}
+
+/* ─────────── 轮 457 · 公告翻译 ─────────── */
+{
+  const payload = Buffer.from(JSON.stringify({ sub: "u-translate" })).toString("base64url");
+  const jwt = `x.${payload}.y`;
+  const auth = { authorization: `Bearer ${jwt}`, "content-type": "application/json" };
+  const body = (text, target, source) => JSON.stringify({ text, target, source });
+
+  /* 未登录 → 401（公告翻译只服务已登录的通知中心，不给匿名刷 AI 配额） */
+  {
+    const c = capture([]);
+    __resetRateLimitsForTests();
+    try {
+      const r = await worker.fetch(req("/api/translate", { method: "POST", headers: { "content-type": "application/json" }, body: body("今晚维护", "en", "zh") }), makeEnv(), {});
+      ok("翻译：未登录 → 401", r.status === 401 && c.outbound.length === 0);
+    } finally { c.restore(); }
+  }
+
+  /* 目标语言白名单 */
+  {
+    const c = capture([]);
+    __resetRateLimitsForTests();
+    try {
+      const r = await worker.fetch(req("/api/translate", { method: "POST", headers: auth, body: body("今晚维护", "de", "zh") }), makeEnv(), {});
+      ok("翻译：目标语言不在 5 种内 → 400", r.status === 400);
+    } finally { c.restore(); }
+  }
+
+  /* 原文 = 目标语言：直接回原文，不调模型 */
+  {
+    let calls = 0;
+    const env = { ...makeEnv(), AI: { run: async () => { calls++; return { translated_text: "不该调用" }; } } };
+    __resetRateLimitsForTests();
+    const r = await worker.fetch(req("/api/translate", { method: "POST", headers: auth, body: body("今晚维护", "zh", "zh") }), env, {});
+    const j = await r.json();
+    ok("翻译：源=目标 → 原样返回且不调模型", r.status === 200 && j.text === "今晚维护" && calls === 0);
+  }
+
+  /* 正常翻译：模型返回 translated_text */
+  {
+    const seen = [];
+    const env = {
+      ...makeEnv(),
+      AI: { run: async (model, input) => { seen.push({ model, input }); return { translated_text: "Tonight maintenance" }; } },
+    };
+    const c = capture([]);
+    __resetRateLimitsForTests();
+    try {
+      const r = await worker.fetch(req("/api/translate", { method: "POST", headers: auth, body: body("今晚维护", "en", "zh") }), env, {});
+      const j = await r.json();
+      ok("翻译：200 + 译文", r.status === 200 && j.text === "Tonight maintenance");
+      ok("翻译：模型/语言参数正确", seen[0].model === "@cf/meta/m2m100-1.2b"
+        && seen[0].input.source_lang === "zh" && seen[0].input.target_lang === "en");
+      ok("翻译：不走 Supabase 上游", c.outbound.length === 0);
+    } finally { c.restore(); }
+  }
+
+  /* 未配 AI binding → 503，前端据此退回原文 */
+  {
+    const c = capture([]);
+    __resetRateLimitsForTests();
+    try {
+      const r = await worker.fetch(req("/api/translate", { method: "POST", headers: auth, body: body("今晚维护", "en", "zh") }), makeEnv(), {});
+      ok("翻译：没配 AI → 503 ai-not-configured", r.status === 503 && (await r.json()).error === "ai-not-configured");
+    } finally { c.restore(); }
+  }
+
+  /* 模型参数格式不兼容时用英文名重试 */
+  {
+    let calls = 0;
+    const env = {
+      ...makeEnv(),
+      AI: {
+        run: async (model, input) => {
+          calls++;
+          if (calls === 1) throw new Error("bad-lang-code");
+          return { response: input.source_lang === "chinese" ? "今晚维护（英文）" : "" };
+        },
+      },
+    };
+    __resetRateLimitsForTests();
+    /* 换一段原文：避免命中上一条用例的 isolate 内存缓存 */
+    const r = await worker.fetch(req("/api/translate", { method: "POST", headers: auth, body: body("明晚维护", "en", "zh") }), env, {});
+    const j = await r.json();
+    ok("翻译：语言代码失败 → 英文名重试", r.status === 200 && calls === 2 && j.text === "今晚维护（英文）");
+  }
+}
+
+/* ─────────── 轮 458 · 今日页故事 ─────────── */
+{
+  const { res, c } = await hit([{ body: { date: "2026-11-08", content: {}, published: true } }],
+    "/api/daily-story?date=2026-11-08");
+  ok("今日故事：公开 GET 200", res.status === 200);
+  ok("今日故事：公开 GET 调 daily_story_get",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/daily_story_get`
+    && JSON.parse(c.outbound[0].init.body).p_date === "2026-11-08",
+    c.outbound[0].url);
+}
+{
+  const { res, c } = await hit([], "/api/daily-story?date=2026-02-31");
+  ok("今日故事：非法日期 400 且不出站", res.status === 400 && c.outbound.length === 0);
+}
+{
+  const { res, c } = await hit([{ text: "null" }], "/api/daily-story?date=2026-11-08");
+  ok("今日故事：没有发布条目 → 200 null（前端退回内置轮换）",
+    res.status === 200 && (await res.text()) === "null" && c.outbound.length === 1);
+}
+{
+  const { c } = await hit([{ body: [] }], "/api/admin/daily-story?limit=30&offset=0");
+  ok("今日故事：管理列表调 daily_story_list",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/daily_story_list`
+    && JSON.parse(c.outbound[0].init.body).p_limit === 30
+    && JSON.parse(c.outbound[0].init.body).p_offset === 0,
+    c.outbound[0].url);
+}
+{
+  const { c } = await hit([{ body: null }], "/api/admin/daily-story?date=2026-11-08");
+  ok("今日故事：管理单条调 daily_story_admin_get",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/daily_story_admin_get`
+    && JSON.parse(c.outbound[0].init.body).p_date === "2026-11-08",
+    c.outbound[0].url);
+}
+{
+  const content = { zh: { title: "慢面包", body: "正文", quote: "恰好抵达" } };
+  const { c } = await hit([{ body: { date: "2026-11-08", content } }], "/api/admin/daily-story", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ date: "2026-11-08", content, published: true }),
+  });
+  const out = JSON.parse(c.outbound[0].init.body);
+  ok("今日故事：保存调 daily_story_save 且发布状态透传",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/daily_story_save`
+    && out.p_date === "2026-11-08" && out.p_published === true
+    && out.p_content.zh.title === "慢面包",
+    c.outbound[0].url);
+}
+{
+  const { res, c } = await hit([], "/api/admin/daily-story", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ date: "2026-11-08", content: "not-an-object" }),
+  });
+  ok("今日故事：content 不是对象 → 400 且不出站", res.status === 400 && c.outbound.length === 0);
+}
+{
+  const { c } = await hit([{ body: { ok: true } }], "/api/admin/daily-story/delete", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ date: "2026-11-08" }),
+  });
+  ok("今日故事：删除调 daily_story_delete",
+    c.outbound[0].url === `${ORIGIN}/rest/v1/rpc/daily_story_delete`
+    && JSON.parse(c.outbound[0].init.body).p_date === "2026-11-08",
+    c.outbound[0].url);
 }
 
 console.log(`worker-test: ${pass} pass, ${fails.length} fail`);

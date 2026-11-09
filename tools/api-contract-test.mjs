@@ -633,6 +633,31 @@ if (!getClient()) {
   ok("notifClear 形状", fake.calls[0] === "rpc:notif_clear:undefined", fake.calls[0]);
 }
 
+/* ─────────── 轮 458 · 今日页故事 RPC 形状 ─────────── */
+{
+  const { fake } = await run([{ data: { date: "2026-11-08" } }], () => db.dailyStoryGet("2026-11-08"));
+  ok("dailyStoryGet 形状", fake.calls[0] === 'rpc:daily_story_get:{"p_date":"2026-11-08"}', fake.calls[0]);
+}
+{
+  const { fake } = await run([{ data: null }], () => db.adminDailyStoryGet("2026-11-08"));
+  ok("adminDailyStoryGet 形状", fake.calls[0] === 'rpc:daily_story_admin_get:{"p_date":"2026-11-08"}', fake.calls[0]);
+}
+{
+  const { fake } = await run([{ data: [] }], () => db.adminDailyStoryList(30, 10));
+  ok("adminDailyStoryList 形状", fake.calls[0] === 'rpc:daily_story_list:{"p_limit":30,"p_offset":10}', fake.calls[0]);
+}
+{
+  const content = { zh: { title: "t", body: "b", quote: "q" } };
+  const { fake } = await run([{ data: { date: "2026-11-08" } }], () => db.adminDailyStorySave("2026-11-08", content, false));
+  ok("adminDailyStorySave 形状（草稿）",
+    fake.calls[0] === 'rpc:daily_story_save:{"p_date":"2026-11-08","p_content":{"zh":{"title":"t","body":"b","quote":"q"}},"p_published":false}',
+    fake.calls[0]);
+}
+{
+  const { fake } = await run([{ data: { ok: true } }], () => db.adminDailyStoryDelete("2026-11-08"));
+  ok("adminDailyStoryDelete 形状", fake.calls[0] === 'rpc:daily_story_delete:{"p_date":"2026-11-08"}', fake.calls[0]);
+}
+
 setDbClient(null); /* 兜底：绝不把假 client 泄漏出测试进程 */
 console.log(`api-contract: ${pass} pass, ${fails.length} fail`);
 for (const f of fails) console.log("FAIL  " + f);

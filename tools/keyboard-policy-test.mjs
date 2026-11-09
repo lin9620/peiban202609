@@ -235,11 +235,21 @@ t("chatViewport：fixed 接管存在且被 main.js 调用", () => {
   assert(/export function initChatViewport/.test(js), "没导出 initChatViewport");
   assert(/initChatViewport\(\)/.test(main), "main.js 没调用 initChatViewport");
 });
-t("chatViewport：高度取 visualViewport.height（不是 dvh / innerHeight）", () => {
+t("chatViewport：高度决策交给纯函数（轮 468：不再在脚本里按单一内核语义取值）", () => {
   const js = read("src/utils/chatViewport.js");
-  assert(/vv\.height/.test(js) && /el\.style\.height = h \+ "px"/.test(js),
-    "高度没有取 visualViewport.height");
+  assert(/pickChatHeight\(window\.innerHeight/.test(js),
+    "没把 innerHeight / vv.height / --kb-h 喂给 pickChatHeight");
+  assert(/pickChatTop\(/.test(js), "没调用 pickChatTop");
+  /* 轮 470：判据从「--kb-h 有值」改成「可视视口缩了」(kbOpen)。原因是多内核矩阵实测：
+     部分国产内核键盘弹起时不派发 visualViewport 事件，--kb-h 恒为 0；而 overlay 键盘下
+     100dvh 根本不变 → 容器仍全屏高，底边落到键盘底下，输入条被整个盖住。
+     真正的理由是「键盘占到地方了」，不是「某条链路算出值了」。 */
+  assert(/const \{ h, kbOpen \} = pickChatHeight/.test(js), "没接 pickChatHeight 的 kbOpen");
+  assert(/useInlineH = kbOpen \|\| !supportsDvh/.test(js),
+    "内联高度判据没走 kbOpen（overlay 且不派发事件的内核会在键盘底下留全屏高）");
+  assert(/supportsDvh/.test(js), "没有 dvh 能力探测（老内核要退回写死）");
   assert(/el\.style\.position = "fixed"/.test(js), "没有设 position:fixed（文档仍可被上推）");
+  /* 具体选源口径由 tools/chat-height-test.mjs 的多内核矩阵锁住（轮 468）。 */
 });
 t("chatViewport：App 壳必须排除（那边走原生 --kb-h，两套混用会顶穿）", () => {
   const js = read("src/utils/chatViewport.js");
@@ -256,12 +266,17 @@ t("chatViewport：容器变高矮后贴底要保住（否则键盘弹起会上�
   assert(/stick/.test(js) && /sc\.scrollTop = sc\.scrollHeight/.test(js),
     "缺「原本贴底就继续贴底」的处理");
 });
-t("style.css：wp-chat-fix 期间锁文档滚动 + 注入视口底部保底", () => {
+t("style.css：wp-chat-fix 锁滚动，且底部不再垫底", () => {
   const css = readCss("src/style.css");
   assert(/html\.wp-chat-fix[\s\S]{0,200}overflow:\s*hidden/.test(css),
     "wp-chat-fix 没锁 html/body 滚动");
-  assert(/html\.wp-chat-fix \.dm-page\s*\{[^}]*padding-bottom/.test(css),
-    "没给 fixed 容器补底部手势条保底");
+  /* 轮 466：`html.wp-chat-fix .dm-page { padding-bottom: max(6px, env(...)) }` 删掉了。
+   * 真机（1080×2460）逐像素量：输入框底边到工具栏上沿空 63 物理像素，其中 16px 就是
+   * 这条 6px + thread 的 10px 叠出来的。网页端浏览器工具栏已经让开手势条，再垫就是留白。 */
+  assert(!/html\.wp-chat-fix \.dm-page\s*\{[^}]*padding-bottom/.test(css),
+    "wp-chat-fix 又把 .dm-page 的底部垫底加回来了（真机实测就是这条留白）");
+  assert(/html\.wp-chat-fix \.shell--mobile-nav\.shell--chat \.dm-thread[\s\S]{0,90}padding-bottom:\s*0/.test(css),
+    "thread 的 10px 底部保底没在网页端归零");
 });
 
 console.log(`\nkeyboard-policy-test (${ROOT}) :: ${ok.length}/${ok.length + bad.length}`);

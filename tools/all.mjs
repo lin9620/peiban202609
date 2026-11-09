@@ -40,10 +40,12 @@ const TOOLS = path.join(ROOT, "tools");
 const MANIFEST = [
   /* ── fast：纯 Node，无网络无浏览器 ───────────────────────── */
   ...[
-    "admin-test", "admin-dau-test", "api-contract-test", "app-download-test", "app-shell-test",
+    "admin-test", "admin-dau-test", "announcement-test", "api-contract-test", "app-download-test", "app-shell-test",
+    "daily-story-test",
     "app-version-test", "arity-test", "auth-test", "avatar-test", "back-stack-test",
     "bottle-autosize-test", "bottle-chat-test", "bottle-gap-test", "bottle-records-speed-test",
-    "bottle-test", "bottle-vac-test", "cache-test", "chat-look-test", "cmt-style-test",
+    "bottle-test", "bottle-vac-test", "cache-test", "chat-height-test", "chat-look-test", "cmt-style-test",
+    "cmt-teleport-test",
     "card-tap-test", "comment-test", "community-safe-area-test", "dm-entry-fail-test", "dm-first-open-test",
     "dm-map-test", "dm-race-test", "dm-recall-menu-test", "dm-scroll-test", "dm-search-test",
     "dm-send-jump-test", "dm-send-ux-test", "dm-tail-cache-test", "dm-test", "dm-vac-test", "dm-mute-test",
@@ -66,6 +68,9 @@ const MANIFEST = [
   /* 轮 434：虚拟滚动的真实浏览器实测（滚到底 + 原路回顶 + 进详情再回来）。
      需要**同源构建**的产物（VITE_API_BASE= npx vite build）与网络：它会真的去读生产数据。 */
   { file: "feed-virtual-live.mjs", tier: "mount", note: "需同源 dist/ + 无头浏览器 + 网络" },
+  /* 轮 470：多内核矩阵 —— 6 种浏览器语义 × 4 种屏幕，真实排版量「输入条/聊天页」的几何。
+     不需要网络也不写真数据（注入 DOM + 伪造视口读数），只要求 dist/ 是最新的。约 100s。 */
+  { file: "kb-matrix.mjs", tier: "mount", note: "需 dist/（先 npm run build），约 100s" },
 
   /* 备份脚本的自检（--self-test 不连库、不碰网络，纯逻辑：脱敏/占位符/轮转/还原清单解析） */
   { file: "backup.mjs", tier: "fast", args: ["--self-test"], note: "备份脚本自检" },
@@ -83,6 +88,8 @@ const MANIFEST = [
   { file: "press-verify.mjs", tier: "live", note: "需 CDP 9222（按压帧取色）" },
   { file: "row-glass-verify.mjs", tier: "live", note: "需 CDP 9222（会话行玻璃）" },
   { file: "row2-verify.mjs", tier: "live", note: "需 CDP 9222（高亮搬家）" },
+  /* 轮 474：进会话首帧逐帧录制（定位「输入条弹起又折叠」的塌缩帧），需真机 WebView 调试口 */
+  { file: "kb-enter-probe.mjs", tier: "live", args: ["--port=9333", "--click=.dm-row|1"], note: "需真机 CDP（进会话首帧）" },
 
   /* ── prod：线上只读探针 ─────────────────────────────────── */
   { file: "live-check.mjs", tier: "prod", note: "部署后跑，读线上" },

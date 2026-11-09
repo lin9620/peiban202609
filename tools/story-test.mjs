@@ -33,6 +33,7 @@ const has = (src, ...parts) => parts.every((p) => src.includes(p));
 
 const sql = read("MIGRATION_story.sql");
 const delSql = read("MIGRATION_story_draft_delete.sql");
+const pubDelSql = read("MIGRATION_story_published_delete.sql");
 const worker = read("worker/api.js");
 const sb = read("src/utils/api/db.supabase.js");
 const gw = read("src/utils/api/db.gateway.js");
@@ -136,6 +137,7 @@ ok("429 → errRate", storyErrKey(new Error("HTTP 429")) === "story.errRate");
   ok("侧栏 nav.story 中英成对", !!messages.en.nav.story && !!messages.zh.nav.story);
   ok("四榜页签词条齐", ["rankRandom", "rankLatest", "rankMonthly", "rankTag"].every((k) => en[k] && zh[k]));
   ok("标签搜索/计数/空态词条齐", ["tagSearch", "tagTotal", "tagNone"].every((k) => en[k] && zh[k]));
+  ok("删除已发布/取消收藏词条中英成对", ["deleteStory", "deleteStoryConfirm", "unbookmark"].every((k) => en[k] && zh[k]));
   /* 占位符成对：{n}/{max}/{min}/{name}/{likes}/{views}/{t} 两边都得在，否则中文缺参渲染成原文 */
   const phMissing = [];
   for (const k of Object.keys(en)) {
@@ -205,6 +207,8 @@ ok("编辑器用常量而非硬编码 3 万", editor.includes("BODY_MAX") && !ed
 ok("编辑器有停机自动存草稿", has(editor, "setTimeout(autosave, 3000)", "saveLocalDraft"));
 ok("编辑器有写/预览双页签", has(editor, "story.modeWrite", "story.modePreview", "renderLiteMd"));
 ok("榜页签四种模式齐", has(rankVue, "RANK_TABS", "story.rankShuffle", "periodKey"));
+ok("榜页头标题只出现一次（组件内不重复「排行榜」）",
+  !rankVue.includes('t("story.rankTitle")') && rankView.includes('t("story.tabRank")'));
 // 标签下钻必须走 latest 档：monthly 档在 SQL 里 inner join 当月 story_likes，
 // 没被赞过的故事会整条消失 → 点标签必然空列表（这正是线上反馈的现象）。
 ok("榜标签下钻走 latest 档（非 monthly，避免无赞即空）",
@@ -491,18 +495,20 @@ ok("storyPublish 把 too-short 映射成 story-too-short（漏映射会误报 st
     && feedVue.includes('t("story.noMore")')
     && messages.zh.story.noMore === "没有更多了"
     && messages.en.story.noMore === "No more stories");
-  /* 全局反向锁：「阅读」(story.openStory) 只允许出现在「我的故事」行尾（点已发布故事→进详情），
-     任何别的按钮再借这个键＝又顶着「阅读」的名字干别的活（本轮就是这么翻车的）。 */
+  /* 全局反向锁：「阅读」不再作为行尾按钮文案；整行点击仍进详情。
+     已发布行尾改为「删除」，书架行尾改为「取消收藏」，别处也不得借位。 */
   {
     const storyViews = ["src/components/story/StoryFeed.vue", "src/components/story/StoryRank.vue",
       "src/components/story/StoryShell.vue", "src/views/StoryView.vue", "src/views/StoryDetailView.vue",
       "src/views/StoryRankView.vue", "src/views/StoryMineView.vue", "src/views/StoryWriteView.vue",
       "src/components/story/StoryEditor.vue", "src/components/story/StoryComments.vue"];
     const misuses = storyViews.filter((f) => /t\(["']story\.openStory["']\)/.test(read(f)));
-    ok("story.openStory（值=「阅读」）只许出现在「我的故事」页，别处不得借位",
+    ok("story.openStory（值=「阅读」）不再被任何页面借位",
       misuses.length === 0, misuses.join(","));
-    ok("「我的故事」行尾仍用 openStory（点已发布故事进详情，语义正确）",
-      /t\(["']story\.openStory["']\)/.test(mineVue));
+    ok("「我的故事」行尾不再用 openStory（已发布/书架改成删除/取消收藏）",
+      !/t\(["']story\.openStory["']\)/.test(mineVue)
+      && mineVue.includes('@click.stop="removePublished(r)"')
+      && mineVue.includes('@click.stop="removeShelf(r)"'));
   }
 
   /* ───────── 轮 321：故事详情页「点了没反应」+ 评论发送慢 ─────────
@@ -666,6 +672,47 @@ ok("storyPublish 把 too-short 映射成 story-too-short（漏映射会误报 st
     && messages.zh.story.deleteDraft === "删除"
     && (i18nSrc.match(/deleteDraft:/g) || []).length === 2
     && (i18nSrc.match(/deleteDraftConfirm:/g) || []).length === 2);
+}
+
+/* ───────── 已发布删除 / 书架取消收藏 ───────── */
+{
+  ok("已发布删除迁移：只删作者自己的 published 行",
+    pubDelSql.includes("function public.story_delete_published(")
+    && pubDelSql.includes("delete from public.stories")
+    && pubDelSql.includes("user_id = me")
+    && pubDelSql.includes("status = 'published'")
+    && pubDelSql.includes("from public, anon")
+    && pubDelSql.includes("to authenticated"));
+  ok("已发布删除 story.js 挡非法 id 并收口到 db",
+    storyJs.includes("export function storyDeletePublished")
+    && storyJs.includes("db.storyDeletePublished(n)")
+    && storyJs.includes("story-not-found"));
+  ok("已发布删除三通道齐：直连 / 网关 / Worker",
+    sb.includes('rpc("story_delete_published"')
+    && sb.includes('from("stories").delete()')
+    && gw.includes('"/story/published-delete"')
+    && worker.includes('seg[1] === "published-delete"')
+    && worker.includes('rpc(env, request, "story_delete_published"')
+    && worker.includes("MISSING_FN_CODES.has(code)"));
+  ok("已发布行显示删除、书架行显示取消收藏，且都不冒泡阅读",
+    mineVue.includes('@click.stop="removePublished(r)"')
+    && mineVue.includes('@click.stop="removeShelf(r)"')
+    && mineVue.includes('t("story.deleteStory")')
+    && mineVue.includes('t("story.unbookmark")')
+    && mineVue.includes("storyDeletePublished")
+    && mineVue.includes("storySetBookmark")
+    && mineVue.includes("published.value.filter((x) => x.id !== id)")
+    && mineVue.includes("shelf.value.filter((x) => x.id !== id)")
+    && mineVue.includes("published.value = prevPublished")
+    && mineVue.includes("shelf.value = prevShelf"));
+  ok("已发布删除 / 取消收藏文案中英成对",
+    messages.en.story.deleteStory === "Delete story"
+    && messages.zh.story.deleteStory === "删除故事"
+    && messages.en.story.unbookmark === "Remove from shelf"
+    && messages.zh.story.unbookmark === "取消收藏"
+    && (i18nSrc.match(/deleteStory:/g) || []).length === 2
+    && (i18nSrc.match(/deleteStoryConfirm:/g) || []).length === 2
+    && (i18nSrc.match(/unbookmark:/g) || []).length === 2);
 }
 
 /* ── 轮 443：排行榜「换一批」判定 ────────────────────────────────

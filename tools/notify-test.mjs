@@ -171,10 +171,13 @@ const NEED = [
   "notif.title", "notif.intro", "notif.needSignIn", "notif.loadFail", "notif.tabAll",
   "notif.tabComments", "notif.tabReactions", "notif.tabPets", "notif.tabSystem",
   "notif.unreadOnly", "notif.unreadOnlyOn", "notif.markAll", "notif.clear", "notif.empty",
-  "notif.more", "notif.noMore", "notif.unread", "notif.prefs", "notif.prefsHint",
+  "notif.more", "notif.noMore", "notif.unread", "notif.prefs",
+  /* 轮 476：notif.prefsHint 已按用户要求从设置页删除（说「红框里的介绍文字太多，全删掉」），
+   * 这里不再要求它存在 —— 别以为漏了又给加回去。 */
   "notif.prefComments", "notif.prefReactions", "notif.prefPets",
   "notif.prefsSaved", "notif.someone", "notif.comment", "notif.reply", "notif.reaction",
   "notif.pet", "notif.dm", "notif.system", "notif.fallback",
+  "notif.readFull", "notif.translating", "notif.original",
 ];
 for (const k of NEED) {
   ok(`通知文案键 en:${k}`, typeof EN[k] === "string" && EN[k].length > 0);

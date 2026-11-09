@@ -187,7 +187,7 @@ ok("轮 312 ⑤ 语义：认证就绪且无用户 {ready:true,user:null} → 清
 ok("轮 312 ⑥ 语义：已登录 {ready:true,user:{id}} → 不清",
   v312(true, { id: "u1" }) === false);
 
-/* ─── 轮 430：启动页随主题（五套皮肤）────────────────────────────────
+/* ─── 轮 430：启动页随主题（六套皮肤）────────────────────────────────
  * 用户原话：「app启动页只有一个样式。改成随主题不同而不同，多设计几个」。
  * 守四件事：① 主题表里每套都有专属规则（新增主题不补 = 又退回一种样式）；
  *   ② 每套换的是自己的图标 + 配色，不是只把背景刷个色；
@@ -195,7 +195,7 @@ ok("轮 312 ⑥ 语义：已登录 {ready:true,user:{id}} → 不清",
 const themeKeys = [...read("src/data/themes.js").matchAll(/key:\s*"([a-z]+)"/g)].map((m) => m[1]);
 const spThemes = themeKeys.filter((k) => k !== "cream");
 const headTheme = html.slice(0, html.indexOf('id="app-splash"'));
-const spIcons = { sakura: "🌸", mint: "🌿", lavender: "✨", night: "🌙" };
+const spIcons = { sakura: "🌸", mint: "🌿", lavender: "✨", night: "🌙", midnight: "🌑" };
 
 ok("轮 430 ① 主题表里每一套都有专属启动页规则（除默认 cream）",
   spThemes.length >= 4 && spThemes.every((k) => styleBlocks.includes(`html[data-theme="${k}"] #app-splash {`)));
@@ -206,9 +206,13 @@ ok("轮 430 ② 每套换了自己的图标（不是只换背景色）",
 ok("轮 430 ③ 星夜是深底浅字（不是把奶油配色照抄一遍）",
   /html\[data-theme="night"\] #app-splash \{[^}]*#12152c/.test(styleBlocks)
   && /html\[data-theme="night"\] #app-splash \.sp-name \{[^}]*#f0f2ff/.test(styleBlocks));
+ok("轮 430 ③b 深夜黑是近黑底浅字（不是把星夜蓝照抄一遍）",
+  /html\[data-theme="midnight"\] #app-splash \{[^}]*#08080b/.test(styleBlocks)
+  && /html\[data-theme="midnight"\] #app-splash \.sp-name,[\s\S]{0,200}?#f4f4f7/.test(styleBlocks));
 ok("轮 430 ④ data-theme 在首帧前就挂到 <html>（否则启动页永远先画奶油色再跳色）",
   headTheme.includes('localStorage.getItem("wp-theme")')
-  && headTheme.includes("document.documentElement.dataset.theme = th"));
+  && (headTheme.includes("document.documentElement.dataset.theme = th")
+    || headTheme.includes("document.documentElement.dataset.theme = BASE[th] || th")));
 ok("轮 430 ⑤ 内联白名单与主题表同源（新增主题漏加 → 那套用户仍看到米白启动页）",
   themeKeys.every((k) => headTheme.includes(`"${k}"`)));
 ok("轮 430 ⑥ 粒子动画不止一套（花瓣飘 / 气泡升 / 星点闪各归其主题）",

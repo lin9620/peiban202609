@@ -126,5 +126,50 @@ t("E10 轮400 表情键二次点击 = 键盘键（换图标 + 回焦点 + 让位
   has(b, /ta\.focus\(\)/, "收面板后没把焦点还给输入框");
 });
 
+/* ═══ 轮 478 · 「点表情等半天」的修法护栏 ═══
+ * 病根：首次点开时 emoji-picker-element 要在那一刻现拉 430KB JSON + 写 1923 条进
+ * IndexedDB（实测面板空白 500~800ms）；同一页面再点开只要 34ms。
+ * 修法：空闲时先建一个 Database 把表填好 → 真面板走「查库」快路径；
+ *       万一预热没赶上，面板先铺骨架，别让用户对着一块空白。
+ * 这几个断言防的是「有人觉得预热多余把它删了 / 骨架忘了收」：
+ *   ① 预热必须由根组件在启动后触发，且必须用库自己的 Database（同一个 IndexedDB）；
+ *   ② 省流/2G 不预热（不能替用户悄悄花流量）；
+ *   ③ 面板必须铺骨架 + 有 2.5s 上限 + 卸载时清定时器；
+ *   ④ emojiPanel.js 不许 import 库（它要在 Node 里单测，库一进就 requestAnimationFrame 崩）。 */
+const WARM = fs.readFileSync("src/utils/emojiWarm.js", "utf8");
+const APP = fs.readFileSync("src/App.vue", "utf8");
+
+t("E11 预热走库自己的 Database（共用同一个 IndexedDB）", () => {
+  has(WARM, /import \{ Database \} from "emoji-picker-element"/, "没用库导出的 Database");
+  has(WARM, /new Database\(\{ dataSource: EMOJI_DATA \}\)/, "没指定自托管的 data.json");
+  has(WARM, /await emojiDatabase\(\)\.ready\(\)/, "没等 ready 就算预热完了");
+  has(WARM, /dataSource: EMOJI_DATA/, "数据源不是 /emoji/data.json");
+  has(WARM, /const EMOJI_DATA = "\/emoji\/data\.json"/, "数据源地址被改");
+});
+
+t("E12 根组件启动后触发预热，且省流/2G 跳过", () => {
+  has(APP, /import \{ scheduleEmojiWarm \} from "\.\/utils\/emojiWarm\.js"/, "App 没引预热");
+  has(APP, /scheduleEmojiWarm\(\);/, "App 没调用（等于白做）");
+  has(WARM, /saveData/, "没看 saveData");
+  has(WARM, /2g\|slow-2g/, "没排掉 2G");
+  has(WARM, /if \(warming\) return warming/, "没有幂等（会重复拉数据）");
+  has(WARM, /if \(scheduled \|\|/, "重复调用会重复排空闲任务");
+});
+
+t("E13 面板加载态：骨架 + 上限 + 卸载清理", () => {
+  has(WC, /class="wp-picker-skel"/, "面板没有加载占位");
+  has(WC, /v-if="!pickerReady"/, "骨架没挂在 pickerReady 上");
+  has(WC, /const pickerReady = ref\(false\)/, "没有 pickerReady 状态");
+  has(WC, /querySelector\("\.emoji"\)/, "没按真实表情节点判断就绪");
+  has(WC, /Date\.now\(\) - started > 2500/, "没有 2.5s 上限（数据拉不到会永远盖着）");
+  has(WC, /onBeforeUnmount\(\(\) => \{[\s\S]{0,200}clearTimeout\(readyTimer\)/, "卸载没清定时器");
+  has(WC, /\.wp-picker-skel \{/, "骨架样式没写");
+  has(WC, /@media \(prefers-reduced-motion: reduce\)[\s\S]{0,120}\.wp-picker-skel i \{ animation: none/, "骨架没做 reduced-motion 降级");
+});
+
+t("E14 emojiPanel.js 保持纯 DOM（不许 import 库，否则 Node 单测崩）", () => {
+  no(UTIL, /from "emoji-picker-element"/, "又把库引进来了 —— Node 里 requestAnimationFrame 未定义会直接崩");
+});
+
 console.log(`emoji-panel-test: ${pass} pass, ${fails.length} fail`);
 if (fails.length) { for (const f of fails) console.log("  FAIL " + f); process.exit(1); }

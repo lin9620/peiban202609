@@ -47,12 +47,21 @@ await t("T3 swr 命中：cached 同步上屏，fresh 后到覆盖并回写", asy
   assert.deepEqual(cachePeek("t3"), [{ id: 1 }, { id: 2 }]);   /* 新数据已回写 */
 });
 
-await t("T4 swr fresh 与缓存相同 → fresh 钩子不触发（不闪重渲染）", async () => {
+await t("T4 swr fresh 与缓存相同 → fresh 不触发，但 same 触发（可确认服务端已应答）", async () => {
   const same = [{ id: 9 }];
   cacheSet("t4", JSON.parse(JSON.stringify(same)));
-  let freshCalls = 0;
-  await swr("t4", { fresh: () => freshCalls++ }, async () => JSON.parse(JSON.stringify(same)));
+  let freshCalls = 0, sameCalls = 0;
+  await swr("t4", { fresh: () => freshCalls++, same: () => sameCalls++ }, async () => JSON.parse(JSON.stringify(same)));
   assert.equal(freshCalls, 0);
+  assert.equal(sameCalls, 1);
+});
+
+await t("T4b 空缓存 + 服务端仍返回空列表 → same 也触发（空态能收加载）", async () => {
+  cacheSet("t4b", []);
+  let freshCalls = 0, sameCalls = 0;
+  await swr("t4b", { fresh: () => freshCalls++, same: () => sameCalls++ }, async () => []);
+  assert.equal(freshCalls, 0);
+  assert.equal(sameCalls, 1);
 });
 
 await t("T5 swr 无缓存：cached 不触发；成功 fresh+缓存；失败 onError", async () => {

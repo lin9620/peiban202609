@@ -468,6 +468,7 @@ setGatewayAuthProbe(() => true); /* 单测注入：auth 就绪（与 db.supabase
     await db.storyMine("published", 30, 0);
     await db.storyMine();
     await db.storyDeleteDraft(9);
+    await db.storyDeletePublished(11);
     const u = (i) => c.calls[i].url;
     const m = (i) => c.calls[i].init.method || "GET";
     const b = (i) => c.calls[i].init.body;
@@ -493,6 +494,9 @@ setGatewayAuthProbe(() => true); /* 单测注入：auth 就绪（与 db.supabase
     ok("轮391 storyDeleteDraft 端点+body",
       u(9) === "/api/story/draft-delete" && m(9) === "POST"
       && b(9) === JSON.stringify({ id: 9 }), u(9));
+    ok("storyDeletePublished 端点+body",
+      u(10) === "/api/story/published-delete" && m(10) === "POST"
+      && b(10) === JSON.stringify({ id: 11 }), u(10));
   } finally {
     c.restore();
   }
@@ -601,6 +605,35 @@ setGatewayAuthProbe(() => true); /* 单测注入：auth 就绪（与 db.supabase
     const r = await db.listPosts(200);
     ok("轮311 退避清零后恢复（第二次 fetch 正常发出）", c3.calls.length === 1 && Array.isArray(r));
   } finally { c3.restore(); }
+}
+
+/* ── 轮 458 · 今日页故事端点形状 ── */
+{
+  setGatewayAuthProbe(() => true);
+  const c = capture();
+  try {
+    await db.dailyStoryGet("2026-11-08");
+    await db.adminDailyStoryGet("2026-11-08");
+    await db.adminDailyStoryList(30, 10);
+    await db.adminDailyStorySave("2026-11-08", { zh: { title: "t", body: "b", quote: "q" } }, false);
+    await db.adminDailyStoryDelete("2026-11-08");
+    ok("dailyStoryGet 端点", c.calls[0].url === "/api/daily-story?date=2026-11-08", c.calls[0].url);
+    ok("adminDailyStoryGet 端点", c.calls[1].url === "/api/admin/daily-story?date=2026-11-08", c.calls[1].url);
+    ok("adminDailyStoryList 端点", c.calls[2].url === "/api/admin/daily-story?limit=30&offset=10", c.calls[2].url);
+    const saveBody = JSON.parse(c.calls[3].init.body);
+    ok("adminDailyStorySave 端点 + body",
+      c.calls[3].url === "/api/admin/daily-story" && c.calls[3].init.method === "POST"
+      && saveBody.date === "2026-11-08" && saveBody.published === false
+      && saveBody.content.zh.title === "t",
+      c.calls[3].url);
+    ok("adminDailyStoryDelete 端点 + body",
+      c.calls[4].url === "/api/admin/daily-story/delete" && c.calls[4].init.method === "POST"
+      && JSON.parse(c.calls[4].init.body).date === "2026-11-08",
+      c.calls[4].url);
+  } finally {
+    c.restore();
+    setGatewayAuthProbe(null);
+  }
 }
 
 console.log(`gateway-contract: ${pass} pass, ${fails.length} fail`);

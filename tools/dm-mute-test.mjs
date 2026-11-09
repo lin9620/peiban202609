@@ -105,11 +105,14 @@ const css = read("src/style.css");
 ok("样式：.dm-quiet-dot 有定义", /\.dm-quiet-dot \{/.test(css));
 ok("样式：灰点比红角标小（不抢眼）", /\.dm-quiet-dot \{[^}]*width: 8px/.test(css));
 
-/* ───────── ③ 设置页：把「私信不在这里」讲清楚 ───────── */
+/* ───────── ③ 设置页：不再用文字解释「私信不在这里」─────────
+ * 轮 476：用户要求把设置页通知下面那两段介绍文字整块删掉（「介绍文字太多了」）。
+ * 原来这里钉的是「必须有这段说明」，现在翻成「必须没有」——反向钉住，
+ * 免得以后谁觉得「少了个解释」又给加回去。 */
 const settings = read("src/views/SettingsView.vue");
-ok("设置页引用 notif.dmNotHere", /t\("notif\.dmNotHere"\)/.test(settings));
-ok("设置页说明是弱化的一行（不抢主提示）", /set-hint set-hint-soft/.test(settings));
-ok("样式：set-hint-soft 有定义", /\.set-hint-soft \{/.test(read("src/views/SettingsView.vue")));
+ok("设置页已不再引用 notif.dmNotHere（轮 476 用户要求删除）", !/t\("notif\.dmNotHere"\)/.test(settings));
+ok("设置页已不再引用 notif.prefsHint（轮 476 用户要求删除）", !/t\("notif\.prefsHint"\)/.test(settings));
+ok("样式：.set-hint-soft 随文案一起退役", !/\.set-hint-soft \{/.test(settings));
 
 /* ───────── 五语文案：缺一条就会露 key 名 ───────── */
 const flat = (obj, prefix = "") => {
@@ -126,9 +129,8 @@ for (const [name, m] of Object.entries(langs)) {
   ok(`${name}：dm.mutedPending 存在`, typeof m["dm.mutedPending"] === "string", m["dm.mutedPending"]);
   ok(`${name}：dm.mutedPending 带 {n}`,
     typeof m["dm.mutedPending"] === "string" && m["dm.mutedPending"].includes("{n}"));
-  ok(`${name}：notif.dmNotHere 存在`, typeof m["notif.dmNotHere"] === "string");
-  ok(`${name}：notif.dmNotHere 提到免打扰入口`,
-    typeof m["notif.dmNotHere"] === "string" && m["notif.dmNotHere"].length >= 20);
+  ok(`${name}：notif.dmNotHere 已移除（轮 476 删文案，别加回来）`, m["notif.dmNotHere"] === undefined);
+  ok(`${name}：notif.prefsHint 已移除（轮 476 删文案，别加回来）`, m["notif.prefsHint"] === undefined);
 }
 
 /* ───────── 回归护栏：别把「私信退出通知中心」的结论改回去 ───────── */

@@ -373,6 +373,12 @@ ok("轮 344：私信页登录闸等 cloud.checking 落位（恢复中不画未�
     /cacheSet\(\s*cacheKey\("dm:convs",\s*meId\.value\)\s*,\s*(rows|merged)\s*\)/.test(lci));
   ok("轮320：回写的是合并后的列表（merged），不是服务端原值（否则抹掉刚发的预览）",
     /cacheSet\(\s*cacheKey\("dm:convs",\s*meId\.value\)\s*,\s*merged\s*\)/.test(lci));
+  const lc = mv.slice(mv.indexOf("async function loadConvs()"),
+    mv.indexOf("async function loadConvs()") + 1800);
+  ok("轮454：空列表命中缓存时 same 钩子也标记已加载（否则空态永远不出现）",
+    /same:\s*\(\)\s*=>[\s\S]{0,300}convsLoaded\.value\s*=\s*true/.test(lc));
+  ok("轮454：cached 有行时立即标记已加载（搜索无结果也不空白）",
+    /cached:[\s\S]{0,500}if\s*\(Array\.isArray\(rows\)\s*&&\s*rows\.length\)\s*convsLoaded\.value\s*=\s*true/.test(lc));
 }
 const nv = fs.readFileSync("src/views/NotificationsView.vue", "utf8");
 /* #14 偏好开关移到设置页；通知页负责分栏 + 每页 20 条手动翻页 */

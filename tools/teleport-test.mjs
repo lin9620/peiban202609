@@ -51,7 +51,7 @@ t("T2 PetView 的 fixed 弹层都在 Teleport to=body 内", () => {
       );
     }
   }
-  for (const comp of ["ShareCard", "SnackRain"]) {
+  for (const comp of ["ShareCard", "SnackRain", "RpsGame"]) {
     if (new RegExp(`<${comp}[\\s>]`).test(src)) {
       assert.ok(new RegExp(`<${comp}[\\s>]`).test(inner), `<${comp}> 必须在 Teleport to=body 内`);
     }

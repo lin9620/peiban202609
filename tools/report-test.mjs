@@ -199,7 +199,7 @@ ok("PostDetailView：帖子/评论举报 + 作者被拉黑隐藏正文",
 ok("WallerView：拉黑两步确认 + 撤销 + 名单刷新",
   has(waller, "blockArm", "toggleBlock", "blockUser(uid, name.value)", "unblockUser(uid)", "refreshBlocks()"));
 ok("AdminView：举报页签（待处理/已处理）+ 红点 + 处理动作",
-  has(admin, "'overview', 'posts', 'comments', 'reports'", "switchRepTab('pending')", "switchRepTab('handled')",
+  has(admin, "'overview', 'daily', 'posts', 'comments', 'reports'", "switchRepTab('pending')", "switchRepTab('handled')",
     "admin-tab-dot", "handleReport(r, 'remove_post')", "handleReport(r, 'unhide_comment')", "pendingReports > 0"));
 ok("轮 368：AdminView 帖子/评论分类 + 批量选择/驳回/下架",
   has(admin, "repKind", "switchRepKind('post')", "switchRepKind('comment')", "repSelected",

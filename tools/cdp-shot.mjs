@@ -16,10 +16,11 @@ const arg = (name, dflt) => {
 const out = arg("out", ".probe10/shot.png");
 const clipArg = arg("clip", "");
 const scale = Number(arg("scale", "2"));
+const port = arg("port", "9222");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
-  const list = await fetch("http://127.0.0.1:9222/json").then((r) => r.json());
+  const list = await fetch("http://127.0.0.1:" + port + "/json").then((r) => r.json());
   const page = list.find((t) => t.type === "page");
   if (!page) throw new Error("no-page-target");
   const ws = new WebSocket(page.webSocketDebuggerUrl, { maxPayload: 64 * 1024 * 1024 });
