@@ -104,6 +104,45 @@ t("S10 别误伤：私信/漂流瓶都走这个外壳，hideHeader 默认仍是 
   has(RAW("src/components/BottleChat.vue"), /<DmVacChat[\s\S]{0,240}?hide-header/, "漂流瓶不再复用 DmVacChat");
 });
 
+/* ═══ 轮491 · 会话列表「进去再返回」必须停在原位置 ═══
+ * 用户原话：「列表很长的时候，我下拉到最下面，点一个用户进去再返回，结果是回到最上面了」。
+ * 两层都会丢：
+ *   ① 内层 —— aside.dm-list 自己滚（手机 max-height:46vh），进会话被 v-show 切成
+ *      display:none，不可滚动期间 scrollTop 读出来是 0；后台 tick 还会刷新行内容，
+ *      重新显示时不能指望浏览器把旧偏移还回来 → 必须自己 @scroll 存、回来时写回。
+ *   ② 外层 —— 手机 .dm-page 高度是 auto，进会话后 .dm-page--chat 改成 100dvh，
+ *      文档当场变短把 window.scrollY 钳到 0，返回时没人滚回去。
+ * 恢复必须补帧（移除 .dm-page--chat 后布局要重新长高），且用户自己一滚就停手。 */
+t("S11 会话列表自己记位置（@scroll 实时存），不能只靠浏览器保留", () => {
+  const tpl = RAW("src/views/MessagesView.vue");
+  has(tpl, /<aside[\s\S]{0,200}?ref="convListEl"/, "aside 没挂 ref（拿不到滚动位置）");
+  has(tpl, /<aside[\s\S]{0,300}?@scroll\.passive="onConvListScroll"/, "没监听 aside 的 scroll");
+  has(VIEW, /function onConvListScroll\(\)[\s\S]{0,240}?convListY = el\.scrollTop/, "scroll 里没存 scrollTop");
+});
+
+t("S12 返回列表时两层都回位（内层 scrollTop + 外层 window）", () => {
+  has(VIEW, /watch\(activeId, \(v, old\) => \{ if \(!v && old\) restoreListScroll\(\); \}\)/,
+    "activeId 清空时没恢复滚动位置（返回列表不会回位）");
+  const rl = fnBody(VIEW, "function restoreListScroll()", "function ");
+  has(rl, /restoreConvList\(\)/, "restoreListScroll 没恢复会话列表");
+  has(rl, /restorePageScroll\(\)/, "restoreListScroll 没恢复页面（window）位置");
+  const rc = fnBody(VIEW, "function restoreConvList()", "function savePageScroll");
+  has(rc, /el\.scrollTop = y/, "没把 scrollTop 写回去");
+  has(rc, /requestAnimationFrame\([\s\S]{0,120}?setTimeout\(put, 90\)/,
+    "只写一次（.dm-page--chat 刚摘掉时文档还没长回原高，会被钳成中途值）");
+  const rp = fnBody(VIEW, "function restorePageScroll()", "function restoreListScroll");
+  has(rp, /behavior: "instant"/, "回位必须 instant（全局 scroll-behavior:smooth 会滑下来）");
+});
+
+t("S13 进会话前先记页面位置，且用户自己一滚就取消补写（不跟手指抢）", () => {
+  has(fnBody(VIEW, "function syncConvRoute(id, same) {", "function "), /savePageScroll\(\)/,
+    "进会话（手机 push）前没记 window 位置");
+  has(fnBody(VIEW, "function onConvListScroll()", "function "), /convRestoreGen \+= 1/,
+    "用户滚动没有让排队中的补写失效");
+  has(fnBody(VIEW, "function restoreConvList()", "function "), /gen !== convRestoreGen/,
+    "补写没有代次校验（会在用户已经滚走之后又把人拽回去）");
+});
+
 console.log(out.join("\n"));
 console.log(`\n${pass} 通过 / ${fail} 失败`);
 process.exit(fail ? 1 : 0);

@@ -17,7 +17,7 @@ import { cloud } from "../utils/supabase.js";
 import * as dmApi from "../utils/dm.js";
 import { cacheKey, cacheSet, cachePatch, swr } from "../utils/cache.js";
 import { dmStoreLoad, dmStoreSave, dmStoreDrop, dmStoreAppend, dmStoreUpsert, dmStoreReplace, dmStoreRemove } from "../utils/dmStore.js";
-import { restoreScroll } from "../utils/scrollMem.js";
+import { restoreScroll, rememberScroll } from "../utils/scrollMem.js";
 import { avatarUrlFor } from "../utils/avatar.js";   /* 杞?238:钀屽疇澶村儚姹?*/
 import { idbMerge, idbOlderThan, idbServerDone, idbDrop, idbLoad, idbRemoveRows } from "../utils/dmIdb.js";
 import {
@@ -229,6 +229,72 @@ const loadingMsgs = ref(false);
 const hasMore = ref(true);
 const oldestId = ref(null);
 const listEl = ref(null);
+/* ── 轮491 · 会话列表（aside.dm-list）自己的滚动位置 ──
+ * 用户实测：「列表很长的时候，我下拉到最下面，点一个用户进去再返回，结果是回到最上面了」。
+ * 病根：aside 是**自己滚动的容器**（手机上 max-height:46vh），进会话时被 v-show 切成
+ * display:none —— 不可滚动期间 scrollTop 读出来就是 0，而父级 .dm-wrap 同时从 grid 变
+ * flex column、后台 tick 还在刷新会话行，等它重新显示时浏览器未必把旧偏移还回来。
+ * 所以位置由我们自己拿：@scroll 实时存住（display:none 期间不会再触发，存的是最后一次
+ * 真实值），回列表时主动写回去。
+ *
+ * 为什么写多次：.dm-page--chat 类移除后 .dm-wrap 要重新布局，第一次写可能被「还没长回
+ * 46vh」的容器钳成 0（与首页 track 高度那个坑同源）。一帧后 + 90ms 各补一次，并用代次
+ * 号让「用户已经自己滚了」时立刻停手，不跟手指抢。 */
+const convListEl = ref(null);
+let convListY = 0;
+let convRestoreGen = 0;
+function onConvListScroll() {
+  const el = convListEl.value;
+  if (!el) return;
+  convListY = el.scrollTop;
+  convRestoreGen += 1;   /* 用户自己滚了 → 取消还在排队的补写 */
+}
+function restoreConvList() {
+  const y = convListY;
+  if (!y) return;        /* 停在顶部就不用管 */
+  const gen = ++convRestoreGen;
+  const put = () => {
+    if (gen !== convRestoreGen) return;
+    const el = convListEl.value;
+    if (el) el.scrollTop = y;
+  };
+  nextTick(() => {
+    put();
+    requestAnimationFrame(() => { put(); setTimeout(put, 90); });
+  });
+}
+
+/* 页面（window）这一层的位置：进会话前记一次，返回时补写。
+ * 补三拍（nextTick / 一帧 / 90ms）的理由同上 —— 返回那一刻 .dm-page--chat 刚摘掉、
+ * aside 刚恢复显示，文档还没长回原来的高度，太早 scrollTo 会被浏览器钳成中途值。 */
+let pageY = 0;
+function savePageScroll() {
+  try { pageY = window.scrollY; rememberScroll(route.path); } catch (e) { /* 忽略 */ }
+}
+function restorePageScroll() {
+  const y = pageY;
+  if (!y) return;
+  const put = () => {
+    try { window.scrollTo({ top: y, left: 0, behavior: "instant" }); }
+    catch (e) { window.scrollTo(0, y); }
+  };
+  nextTick(() => {
+    put();
+    requestAnimationFrame(() => { put(); setTimeout(put, 90); });
+  });
+}
+function restoreListScroll() {
+  restoreConvList();
+  /* 桌面双栏一直是同一屏，window 位置没人动过（也不该动）*/
+  if (isMobileNav.value) restorePageScroll();
+}
+/* 从「有会话」回到「没有会话」= 返回列表（路由返回 / 安卓返回键 / 面板收起都走这条）。
+ * 轮491：内外两层都要回位 —— 里面是 aside 自己的 scrollTop，外面是 window。
+ * 外面那层为什么也会丢：手机形态 .dm-page 高度是 auto（内容撑），进会话后被
+ * .dm-page--chat 改成 100dvh，文档当场变短 → 浏览器把 window.scrollY 钳到 0；
+ * 返回时文档虽然有变高，但没人再滚回去。列表很长时用户往往已经滚过页面，
+ * 于是「返回 = 回到最上面」。 */
+watch(activeId, (v, old) => { if (!v && old) restoreListScroll(); });
 const userScrolling = ref(false);   /* 杞?173锛氱敤鎴锋墜鍔ㄤ笂婊戞爣璁扳€斺€旇拷搴曞仠鎵?*/
 const listRevealed = ref(true);     /* 杞?176锛氳繘浼氳瘽鍏堥殣钘忔秷鎭尯锛岄拤搴曠ǔ瀹氬悗鍐嶆樉绀衡€斺€?
     棣栧抚 fallback 瀛椾綋鎺掔増 鈫?webfont 鎹㈣鎾戦珮鍐呭 = 钀界偣閿欎綅闂幇锛堢敤鎴峰疄娴嬭烦闂級 */
@@ -442,6 +508,59 @@ function rowUnread(c) {
    *（服务端 dm_unread_total 已把静音会话排除，见 MIGRATION_dm_mute_silence.sql）。
    * 消息本身还在：模板里 muted 用 c.unread 画一个无数字灰点，点进去照常能读。 */
   return convUnread(c, badge.dmConvs);
+}
+
+/* ── 轮490 · 「全部已读」（用户：会话那个文字那一行的最右边）──
+ * 服务端只有单会话 dm_mark_read（没有全读 RPC，也不为了这一颗按钮加一次建表迁移），
+ * 所以按会话并发抬水位：会话数一般几条到几十条，并发一次就完；串行在 20+ 会话时要等好几秒。
+ *
+ * 只清「会话」这一段（已接受、未拉黑、未屏蔽）；消息请求不动 —— 那一段的未读走
+ * badge.requests，还没接受之前它不算「会话」，清了反而让请求消失得莫名其妙。
+ * 静音会话要算进来：它有灰点未读，用户点「全部已读」时期待灰点也一起没。 */
+const allReadBusy = ref(false);
+const allReadNote = ref("");     /* "" | "ok" | "fail" */
+let allReadTimer = 0;
+
+/** 还有未读的会话（rowUnread 对静音会话返回 0，所以要连原始 unread 一起取大）。
+ *  口径要从 convs 起算、不能从 normal 起算：normal 被搜索词过滤过，
+ *  搜索态下点「全部已读」会只清掉搜出来的那几条，剩下的红点还在 —— 用户会觉得没生效。 */
+const pendingUnread = computed(() => convs.value.filter(
+  (c) => c.accepted !== false && !c.blocked && !isBlocked(c.other_id)
+    && Math.max(convUnread(c, badge.dmConvs), Number(c.unread) || 0) > 0));
+
+async function markAllRead() {
+  if (allReadBusy.value) return;
+  const rows = pendingUnread.value;
+  if (!rows.length) return;
+  allReadBusy.value = true;
+  clearTimeout(allReadTimer);
+  allReadNote.value = "";
+  /* 快照：失败要原样还原。不做「等下一轮角标轮询自己好」——那 30s 里用户看到的
+   * 是一份假的干净列表，比明说失败更糟。 */
+  const snap = rows.map((c) => {
+    const id = String(c.conv_id);
+    const row = convs.value.find((x) => String(x.conv_id) === id) || null;
+    return { id, row, unread: row ? (Number(row.unread) || 0) : 0 };
+  });
+  /* 乐观清零：行红点 / 灰点 / 导航角标一起跟手（网络回来再按权威值校正） */
+  const lost = rows.reduce((n, c) => n + unreadToClear(c, badge.dmConvs), 0);
+  for (const s of snap) {
+    if (s.row) s.row.unread = 0;
+    badgeDmConvPatch(s.id, 0);
+  }
+  if (lost) badgeLocal({ dm: Math.max(0, badge.dm - lost) });
+  const results = await Promise.all(
+    rows.map((c) => dmApi.markRead(c.conv_id).then(() => true).catch(() => false)));
+  const bad = results.filter((x) => !x).length;
+  for (let i = 0; i < results.length; i++) {
+    if (results[i]) continue;
+    const s = snap[i];
+    if (s.row) s.row.unread = s.unread;   /* 失败的这条把红点放回去 */
+  }
+  allReadNote.value = bad ? "fail" : "ok";
+  refreshBadge();   /* 权威校正：成功的会话服务端已抬水位，失败的会自己补回来 */
+  allReadBusy.value = false;
+  allReadTimer = setTimeout(() => { allReadNote.value = ""; }, bad ? 3200 : 1600);
 }
 
 /* 甯︽棩鏈熷垎闅旂殑娑堟伅娴?*/
@@ -1237,7 +1356,9 @@ function onScrollTop() {
  * 抽出来是因为要两处调用：正常路径、以及「认证还没就绪」的早退路径。 */
 function syncConvRoute(id, same) {
   if (isMobileNav.value) {
+    /* 轮491：进会话前把列表的页面位置记下来（返回时 restoreListScroll 补回去） */
     if (!same) fromList.value = true;
+    if (!same) savePageScroll();
     router.push({ name: "messages", params: { id: String(id) } }).catch(() => {});
   } else {
     router.replace({ name: "messages", params: { id: String(id) } }).catch(() => {});
@@ -2175,6 +2296,7 @@ onActivated(() => {
   armDmRealtime();   /* 杞?269锛氫繚娲绘仮澶嶆椂閲嶆寕瀹炴椂鍥炶皟锛堜笌杞鍚岃妭濂忥級 */
   document.addEventListener("pointerdown", onDocPointerDown);
   restoreScroll(route.path);   /* 杞?219锛氬洖浣嶏紙KeepAlive 閲嶆彃鐬棿锛?*/
+  restoreConvList();           /* 轮491：会话列表自己的滚动位置（切走再回来的那条路） */
   /* 杞?245 鈫?247/248 鏀跺彛锛氱湡鎭㈠鏃?*鍙ˉ婊氬姩浣嶇疆锛岀粷涓嶅姩 listRevealed** 鈥斺€?
    * 鈶?鍚屼細璇濇仮澶嶏細缂撳瓨 DOM 鏈氨澶勪簬鎻ず鎬侊紙涓婃绂诲紑鏃?visible锛夛紝鍙渶鎶婂仠鍦ㄩ《閮ㄧ殑
    *    scrollTop 閽夊洖搴曪紙淇€岀浜屾杩涜亰澶╁仠椤躲€嶏級锛?
@@ -2323,8 +2445,10 @@ function goSignIn() {
       <!-- 宸﹀垪锛氫細璇濆垪琛紙鎵嬫満褰㈡€?= 寰俊寮忓垪琛ㄩ〉锛涜繘鍏ヤ細璇濆悗鏁撮〉璁╃粰鑱婂ぉ鍖猴級 -->
       <aside
         v-show="!isMobileNav || !activeId || !paneReady"
+        ref="convListEl"
         class="card dm-list"
         :class="{ 'dm-list--seg': isMobileNav && seg === 'notif' }"
+        @scroll.passive="onConvListScroll"
         @touchstart.passive="segTouchStart"
         @touchmove.passive="segTouchMove"
         @touchend.passive="segTouchEnd">
@@ -2385,7 +2509,24 @@ function goSignIn() {
         </template>
 
         <template v-if="normal.length">
-          <div class="dm-sec"><span class="sec-label">{{ t("dm.conversations") }}</span></div>
+          <!-- 轮490：会话标题这一行的最右边放「全部已读」。
+               只在真有未读时出现 —— 一颗点了没反应的按钮比没有更糟；
+               点完未读清空，它就自己消失，这就是最直接的「做完了」反馈。 -->
+          <div class="dm-sec">
+            <span class="sec-label">{{ t("dm.conversations") }}</span>
+            <button
+              v-if="pendingUnread.length || allReadNote"
+              type="button" class="dm-sec-act"
+              :class="{ 'is-ok': allReadNote === 'ok', 'is-fail': allReadNote === 'fail' }"
+              :disabled="allReadBusy || !pendingUnread.length"
+              :title="t('dm.markAll')"
+              @click.stop="markAllRead">
+              {{ allReadBusy ? t("dm.markAllBusy")
+                : allReadNote === "ok" ? t("dm.markAllDone")
+                : allReadNote === "fail" ? t("dm.markAllFail")
+                : t("dm.markAll") }}
+            </button>
+          </div>
           <!-- 杞?197锛氱敤鎴风偣鍗曗€斺€旀挙鎺夊井淇″紡宸︽粦锛堣疆 190 鐨?SwipeCell锛夛紝鎿嶄綔鍏ㄨ蛋 鈰?鑿滃崟
            * 锛堟墦寮€ / 鍏嶆墦鎵?/ 闅愯棌浼氳瘽 / 鎷夐粦锛屾湰鏉ュ氨鍦ㄩ噷闈級锛屾仮澶嶄互鍓嶇殑绾鏍峰紡 -->
           <div

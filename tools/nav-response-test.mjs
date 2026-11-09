@@ -83,12 +83,42 @@ t("N5 首页切联：存当前联的 y，切回来恢复（不许无脑回顶）
     "还在无条件回顶（正是「点今日再点故事回到最前面」的成因）");
 });
 
-t("N6 恢复必须在 track 高度落定之后（否则被短文档钳到 0）", () => {
+t("N6 恢复必须在 track 高度落定之后，且要一直补到文档长够（否则被钳在中途）", () => {
   const i = home.indexOf("watch(idx, async");
   assert(i > 0, "找不到 watch(idx)");
   const seg = home.slice(i, i + 700);
-  assert(/measure\(\)/.test(seg) && /restoreY/.test(seg), "watch(idx) 里没在 measure 之后恢复位置");
-  assert(/requestAnimationFrame/.test(seg), "没有等下一帧再滚（track 刚换高，布局还没落定）");
+  assert(/measure\(\)/.test(seg) && /restorePaneY\(\)/.test(seg), "watch(idx) 里没在 measure 之后恢复位置");
+  assert(/pumpRestore\(\)/.test(seg), "watch(idx) 没有继续补帧（只落一次的话，文档还没长够就废了）");
+  /* 轮488 真机取证：.home-track 高度带 CSS 过渡，切联后文档是慢慢长高的
+     （1889px 要走 ~320ms：1404 → 1654 → 1787 → 1889）。所以：
+       · 必须有「文档还没长够就先别落」的判据（max < y），否则 scrollTo 被钳到中途；
+       · 必须有兜底截止时间，否则长不够时永远不落；
+       · **不许**退回「只补固定几帧」——那 6 帧里长不够就再也不补了（这次就是这么坏的）。 */
+  assert(/max < y - 1/.test(home), "没有「文档还没长够就先别落」的判据");
+  assert(/pendingUntil/.test(home), "没有兜底截止时间（长不够时会永远不落）");
+  assert(!/frames > 0/.test(home), "又退回「只补固定几帧」—— 过渡期间文档长不够就再也不补");
+});
+
+t("N11 track 高度读到 0 时不许写（否则文档塌缩，滚动位置被浏览器钳到 0）", () => {
+  const i = home.indexOf("function measure()");
+  assert(i > 0, "找不到 measure()");
+  const seg = home.slice(i, i + 600);
+  assert(/if \(h > 0\)/.test(seg), "measure() 没挡 h === 0 —— KeepAlive 重插那一瞬 offsetHeight 是 0，track 会被压成 120px");
+  assert(!/trackH\.value = Math\.max\(120, Math\.round\(el\.offsetHeight\)\)/.test(home),
+    "还在直接套 Math.max(120, el.offsetHeight)（0 高度时会把 track 压到 120px）");
+});
+
+t("N12 滚动记忆的键必须统一（写 fullPath、读 path 会永远读不到）", () => {
+  const sm = read("src/utils/scrollMem.js");
+  assert(/function keyOf\(/.test(sm), "scrollMem 没有 keyOf —— 写入用 fullPath、读取用 path，键对不上");
+  for (const fn of ["rememberScroll", "getScroll", "restoreScroll"]) {
+    const i = sm.indexOf("export function " + fn);
+    assert(i > 0, "找不到 " + fn);
+    const seg = sm.slice(i, i + 420);
+    assert(/keyOf\(/.test(seg), fn + " 没过 keyOf —— 首页带 ?tab=xxx 时回位会读不到");
+  }
+  const rt = read("src/router.js");
+  assert(/getScroll\(to\.path\)/.test(rt), "router.scrollBehavior 不再按 to.path 取位置");
 });
 
 /* ─── ②（轮 483）再点「暖心墙」页签时，关注流是子状态，必须先退出 ─── */

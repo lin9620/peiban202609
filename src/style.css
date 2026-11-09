@@ -2182,6 +2182,23 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 .dm-list > * { flex-shrink: 0; }
 .dm-search { margin-bottom: 6px; }
 .dm-sec { display: flex; align-items: center; gap: 8px; margin: 8px 0 2px; }
+/* 轮490 · 会话标题行右端的「全部已读」（MessagesView）
+   不另起一行：跟 sec-label 同一行、margin-left:auto 推到最右。
+   只用文字 + 极淡底色 —— 它是次要动作，不该抢昵称和红点的注意力。
+   常态下「有未读才出现」：一颗点了没反应的按钮比没有更糟。 */
+.dm-sec-act {
+  margin-left: auto; display: inline-flex; align-items: center;
+  padding: 3px 9px; border: 0; border-radius: 999px; background: transparent;
+  font: inherit; font-size: 11.5px; line-height: 1.5; letter-spacing: .02em;
+  color: var(--accent-deep); opacity: .9; cursor: pointer;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  transition: background-color .15s ease, color .15s ease, opacity .15s ease;
+}
+.dm-sec-act:hover { background: var(--wash-mid); opacity: 1; }
+.dm-sec-act:active { background: var(--accent-soft); }
+.dm-sec-act:disabled { cursor: default; opacity: .5; }
+.dm-sec-act.is-ok { color: var(--ink-soft); opacity: .8; }
+.dm-sec-act.is-fail { color: var(--low); opacity: 1; }
 .dm-row {
   position: relative; display: flex; align-items: center; gap: 10px;
   padding: 9px 10px; border-radius: 16px; cursor: pointer;
