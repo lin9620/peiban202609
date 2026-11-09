@@ -76,9 +76,10 @@ ok("T17 ← 返回钮走 backToList（非硬跳 /messages）", mv.includes('clas
 ok("T18 回到列表时清空当前会话（activeId='' + msgs=[]）",
   mv.includes('activeId.value = "";') && mv.includes("msgs.value = [];"));
 
-/* ─── ⑥ 安卓系统返回键（T9 提前） ─── */
-ok("T19 系统返回键：二级页/聊天页回退 + 根视图最小化",
-  app.includes('addListener("backButton"') && app.includes("minimizeApp") && app.includes("const ROOT_VIEWS = ["));
+/* ─── ⑥ 安卓系统返回键（T9 提前；轮 493 改统一决策表） ─── */
+ok("T19 系统返回键：统一走 backNav 决策，不再用 ROOT_VIEWS 名字白名单",
+  app.includes('addListener("backButton"') && app.includes("createBackNav(router")
+  && !app.includes("ROOT_VIEWS"));
 
 /* ─── ⑦ 手机聊天页横向撑满（真机回归：曾表现为「只占左侧一条」） ─── */
 const chatWrap = (css.match(/\.shell--mobile-nav\.shell--chat \.dm-wrap \{[\s\S]*?\}/) || [""])[0];

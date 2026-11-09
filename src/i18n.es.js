@@ -71,6 +71,7 @@ export default {
     "localMode": "Modo local: tus datos se quedan en este navegador. Entra luego para sincronizarlos en la nube.",
     "oops": "Algo se torció un poco",
     "reload": "Recargar la página",
+    "pressAgain": "Pulsa atrás otra vez para salir",
     "gotIt": "Entendido",
     "copy": "Copiar",
     "copied": "Copiado ✓",

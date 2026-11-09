@@ -65,6 +65,8 @@ export const messages = {
         "Local mode: your data stays in this browser. Sign in to sync to the cloud later.",
       oops: "Something went a little sideways",
       reload: "Reload the page",
+      /* 轮 493：系统返回键在首页的二次确认（Android 惯例：先提示、再退出） */
+      pressAgain: "Press back again to exit",
       gotIt: "Got it",
       /* 轮 84：…菜单里的拷贝（delete 见上，与 send/save/cancel 同行，不重复声明） */
       copy: "Copy", copied: "Copied ✓", copyFail: "Couldn't copy — try again",
@@ -1214,6 +1216,7 @@ export const messages = {
       localMode: "本地模式：数据保存在当前浏览器。连接云端后登录即可同步。",
       oops: "这里好像有点小状况",
       reload: "刷新页面",
+      pressAgain: "再按一次退出",
       gotIt: "知道啦",
       /* 轮 84：…菜单里的拷贝（delete 见上，与 send/save/cancel 同行，不重复声明） */
       copy: "拷贝", copied: "已拷贝 ✓", copyFail: "没拷上，再试一次",

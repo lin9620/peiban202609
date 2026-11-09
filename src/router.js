@@ -15,53 +15,60 @@ export const router = createRouter({
     const y = getScroll(to.path);
     return { top: y != null ? y : 0, behavior: "instant" };
   },
+  /* 轮 493 · meta.backTo / meta.backMode —— 系统返回键的父页声明。
+   * 口径见 utils/backPlan.js：有历史就回上一页；**没有历史（冷启动深链 / 通知直达 /
+   * 分享链接 / 谷歌登录回跳）就回这里声明的父页**，绝不留在原地、也绝不掉到桌面。
+   * 以前这条兜底不存在，深链进二级页按返回 = 把 WebView 历史退到底 = 白屏/掉出应用。
+   * 新增二级页时**必须补一个 backTo**（tools/back-nav-test.mjs 会遍历路由表卡这条）。 */
   routes: [
     /* 轮 86：/zh/* 别名 —— 中文预渲染着陆页（dist/zh/**，构建期生成）与 en 页共用同一组件；
      * 语言由 i18n.js 按 location.pathname 强制 zh（只影响本次视图，不覆盖用户语言存档） */
     { path: "/", alias: "/zh", name: "home", component: HomeView },
-    { path: "/pet", alias: "/zh/pet", name: "pet", component: () => import("./views/PetView.vue") },
+    { path: "/pet", alias: "/zh/pet", name: "pet", meta: { backTo: "/" }, component: () => import("./views/PetView.vue") },
     { path: "/community", alias: "/zh/community", name: "community", component: () => import("./views/CommunityView.vue") },
     /* 轮 133：漂流瓶独立页（桌面左导航直达；手机端仍走首页三联/消息段） */
-    { path: "/bottle", name: "bottle", component: () => import("./views/BottlePageView.vue") },
+    { path: "/bottle", name: "bottle", meta: { backTo: "/" }, component: () => import("./views/BottlePageView.vue") },
     /* 轮 145 · 故事栏。轮 148 重做：/story = 纯阅读的发现页（取消了原来的投稿|发现|我的 页签壳）。
      * 投稿/我的/排行榜 各拆成独立路由；字面量子路径排在 /story/:id(\d+) 之前，
      * 详情页同时用数字约束（/story/12），双保险避免 "mine" 被当成 id 吞掉。 */
-    { path: "/story", name: "story", component: () => import("./views/StoryView.vue") },
-    { path: "/story/write", name: "storyWrite", component: () => import("./views/StoryWriteView.vue") },
-    { path: "/story/mine", name: "storyMine", component: () => import("./views/StoryMineView.vue") },
-    { path: "/story/rank", name: "storyRank", component: () => import("./views/StoryRankView.vue") },
-    { path: "/story/:id(\\d+)", name: "storyDetail", component: () => import("./views/StoryDetailView.vue") },
+    { path: "/story", name: "story", meta: { backTo: "/" }, component: () => import("./views/StoryView.vue") },
+    { path: "/story/write", name: "storyWrite", meta: { backTo: "/story" }, component: () => import("./views/StoryWriteView.vue") },
+    { path: "/story/mine", name: "storyMine", meta: { backTo: "/story" }, component: () => import("./views/StoryMineView.vue") },
+    { path: "/story/rank", name: "storyRank", meta: { backTo: "/story" }, component: () => import("./views/StoryRankView.vue") },
+    /* 轮 493：故事详情是「替换式返回」——它不要"上一页"，只要"发现页"。轮 148 的
+     * 实报就是让 back() 抢了先：从首页今日联点进来，返回直接回到今日。 */
+    { path: "/story/:id(\\d+)", name: "storyDetail", meta: { backTo: "/story", backMode: "replace" }, component: () => import("./views/StoryDetailView.vue") },
     /* 手机端发帖：底部 ＋ → 独立大输入框页（桌面仍用暖心墙页顶发布框，不进这页） */
-    { path: "/compose", name: "compose", component: () => import("./views/ComposeView.vue") },
+    { path: "/compose", name: "compose", meta: { backTo: "/community" }, component: () => import("./views/ComposeView.vue") },
     /* 我的帖子：暖心墙「我的」区点「更多」进来，10 条一页 + 下拉续载 */
-    { path: "/my-posts", name: "myPosts", component: () => import("./views/MyPostsView.vue") },
+    { path: "/my-posts", name: "myPosts", meta: { backTo: "/profile" }, component: () => import("./views/MyPostsView.vue") },
     /* 我的收藏（轮 254 独立页，用户拍板）：「我的」页按钮跳进来，不再在页面下面展开。
        不进 keepAliveNames —— 每次进入重新挂载重取，收藏列表永远是新的。 */
-    { path: "/favorites", name: "favorites", component: () => import("./views/FavoritesView.vue") },
+    { path: "/favorites", name: "favorites", meta: { backTo: "/profile" }, component: () => import("./views/FavoritesView.vue") },
     /* 我的关注（轮447 独立页）：「我的」页「关注 N」按钮跳进来。
        同样不进 keepAliveNames —— 关注/取关状态每次都要是新的。 */
-    { path: "/following", name: "following", component: () => import("./views/FollowingView.vue") },
+    { path: "/following", name: "following", meta: { backTo: "/profile" }, component: () => import("./views/FollowingView.vue") },
     /* 帖子详情（轮 19）：/post/:id 独立页 —— 完整帖子 + 评论展开（与暖心墙同款交互）。
      * 我的帖子 / 资料页点卡片进来，不再把用户甩回暖心墙信息流里找帖子。 */
-    { path: "/post/:id", name: "postDetail", component: () => import("./views/PostDetailView.vue") },
+    { path: "/post/:id", name: "postDetail", meta: { backTo: "/community" }, component: () => import("./views/PostDetailView.vue") },
     { path: "/profile", alias: "/zh/profile", name: "profile", component: () => import("./views/ProfileView.vue") },
     /* 登录页：手机 + 网页共用；?redirect=/x 登录后回跳（Google 往返用 sessionStorage 兜底） */
-    { path: "/login", name: "login", component: () => import("./views/LoginView.vue") },
-    { path: "/u/:id", name: "waller", component: () => import("./views/WallerView.vue") },
+    { path: "/login", name: "login", meta: { backTo: "/" }, component: () => import("./views/LoginView.vue") },
+    { path: "/u/:id", name: "waller", meta: { backTo: "/community" }, component: () => import("./views/WallerView.vue") },
     /* 私信：列表与具体会话同页（/messages/:id 可直链，通知点击跳这里）。
      * 轮 196：meta.grp = 路由过渡 key 分组——同一组件的两条路由必须同 key，
      * 否则 out-in 每次点开会话都整页拆掉重挂（懒加载组件每次导航都是新对象，
      * 按组件身份做 key 救不了：线上逐帧实测 key 序列 c1→c2→c3），= 用户反复报的进会话跳闪。 */
     { path: "/messages", name: "messagesList", meta: { grp: "messages" }, component: () => import("./views/MessagesView.vue") },
-    { path: "/messages/:id", name: "messages", meta: { grp: "messages" }, component: () => import("./views/MessagesView.vue") },
+    { path: "/messages/:id", name: "messages", meta: { grp: "messages", backTo: "/messages" }, component: () => import("./views/MessagesView.vue") },
     /* 通知中心 */
-    { path: "/notifications", name: "notifications", component: () => import("./views/NotificationsView.vue") },
-{ path: "/settings", name: "settings", component: () => import("./views/SettingsView.vue") },
+    { path: "/notifications", name: "notifications", meta: { backTo: "/messages" }, component: () => import("./views/NotificationsView.vue") },
+    { path: "/settings", name: "settings", meta: { backTo: "/profile" }, component: () => import("./views/SettingsView.vue") },
     /* 轮409：已拉黑名单不再在设置页内展开，单独一页。 */
-    { path: "/settings/blocked", name: "blockedUsers", component: () => import("./views/BlockedView.vue") },
-    { path: "/admin", name: "admin", component: () => import("./views/AdminView.vue") },
+    { path: "/settings/blocked", name: "blockedUsers", meta: { backTo: "/settings" }, component: () => import("./views/BlockedView.vue") },
+    { path: "/admin", name: "admin", meta: { backTo: "/profile" }, component: () => import("./views/AdminView.vue") },
     /* 隐私政策：Google OAuth 发布需要可公开访问的政策链接（外部审核会来抓这页） */
-    { path: "/privacy", alias: "/zh/privacy", name: "privacy", component: () => import("./views/PrivacyView.vue") },
+    { path: "/privacy", alias: "/zh/privacy", name: "privacy", meta: { backTo: "/settings" }, component: () => import("./views/PrivacyView.vue") },
     { path: "/:pathMatch(.*)*", redirect: "/" },
   ],
 });

@@ -58,7 +58,9 @@ t_("P1 路由 /privacy 已登记且命名 privacy", () => {
   assert.ok(/path:\s*"\/privacy",[^\n]*name:\s*"privacy"/.test(router), "缺少 /privacy 路由");
 });
 t_("P2 /privacy 按需加载（不拖首屏）", () => {
-  assert.ok(/name:\s*"privacy",\s*component:\s*\(\)\s*=>\s*import\(\s*"\.\/views\/PrivacyView\.vue"\s*\)/.test(router),
+  /* 轮 493：允许 name 与 component 之间夹 meta（/privacy 现在带 meta.backTo，
+   * 给系统返回键声明父页）；锁的仍是「用动态 import」这件事，不是属性顺序。 */
+  assert.ok(/name:\s*"privacy",(\s*meta:\s*\{[^}]*\},)?\s*component:\s*\(\)\s*=>\s*import\(\s*"\.\/views\/PrivacyView\.vue"\s*\)/.test(router),
     "privacy 未使用动态 import");
 });
 t_("P3 通配兜底在 /privacy 之后（否则会被重定向回首页）", () => {

@@ -147,6 +147,23 @@ button, input, textarea { font-family: inherit; }
 .wb-dl:hover { background: var(--accent); color: #fff; transform: translateY(-2px); }
 .wb-dl:active { transform: scale(.96); }
 .wb-dl-ico { font-size: 15px; line-height: 1; }
+/* 轮 493 · 系统返回键「再按一次退出」轻提示。
+ * 深色胶囊 + 白字，与皮肤无关（雀巢/夜间/午夜/樱花上都够对比度）；
+ * pointer-events:none —— 它只是一句话，不能挡住下面任何东西。
+ * 位置避开 TabBar（底栏 ~62px + 安全区），横屏时也不会压到内容。 */
+.back-hint {
+  position: fixed; left: 50%; bottom: calc(96px + var(--sab, env(safe-area-inset-bottom, 0px)));
+  transform: translateX(-50%); z-index: 4200; pointer-events: none;
+  padding: 9px 18px; border-radius: 999px;
+  background: rgba(20, 20, 19, .84); color: #fff;
+  font-size: 13.5px; line-height: 1.2; letter-spacing: .02em; white-space: nowrap;
+  box-shadow: 0 6px 20px rgba(20, 20, 19, .22);
+  animation: back-hint-in .18s ease-out;
+}
+@keyframes back-hint-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
 /* 轮 238 · 「下载 App」弹窗 v2：渐变 hero 带（光斑装饰）+ 双卡 + 入场动画。
  * 前版一张白卡太素（用户「丑哭了」）——现在：hero 用主题色渐变 + 两枚模糊光斑，
  * 双卡各自带图标徽章 / 二维码盒，悬停上浮，圆角 22 + 大而软的暖色投影。 */

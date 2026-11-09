@@ -14,6 +14,7 @@ import MaintenanceBar from "./components/MaintenanceBar.vue";
 import { db } from "./utils/api/db.js";
 import { startMaintenanceWatch } from "./utils/maintenance.js";
 import { isApp, isMobileNav, chatOpen, runBack, tabbarSuppressed, navOpen, dlOpenSeq, retapSeq, retapPath } from "./stores/uiStore.js";
+import { createBackNav } from "./utils/backNav.js";   /* 轮 493：系统返回键决策（见 utils/backPlan.js） */
 import { installTapFeedback } from "./utils/tapFeedback.js";
 import {
   wallet, moodStreak, petNotices, dismissPetNotice,
@@ -113,14 +114,42 @@ watch(dlOpen, (v) => {
   }).catch(() => { if (dlOpen.value) dlQrErr.value = true; });
 });
 
-/* ─── T9 · 安卓系统返回键（App 内导航与原生一致）───
- * 手机形态导航 = 「Tab 根视图 + push 二级页」：
- *   聊天页 / 其他二级页（他人主页 · 设置 · 通知…）→ 回上一页
- *   四个 Tab 根视图 → 最小化到桌面（Android 惯例；不误退出、后台保留） */
-const ROOT_VIEWS = ["home", "community", "messagesList", "profile"];
+/* ─── 轮 493 · 安卓系统返回键（App 内导航与原生一致）───
+ * 决策表在 src/utils/backPlan.js（纯函数、Node 可单测），执行在 src/utils/backNav.js。
+ *
+ * 一句话口径：**先关浮层 → 再退上一页 → 没有上一页就回路由声明的父页 →
+ * 非首页的 Tab 根回首页 → 已在首页则连按两次才退到桌面**。
+ *
+ * 轮 T9 的老口径是「四个 Tab 根视图一按就 minimizeApp()，其余一律 router.back()」，
+ * 于是用户站在暖心墙/消息/我的上按一下返回，整屏直接没了 —— 他那句
+ * 「所有的返回都是返回桌面了，而不是前一页或者返回首页」说的就是这个。
+ * 旧代码还把注册放在 onMounted 末尾（前面一堆启动预热 + rIC 排程，任何一个抛错
+ * 都会把注册整个跳过，返回键就退回系统默认 = 退出应用），现在一律挪到 setup 顶层。 */
+const backHint = ref(false);
+let backHintTimer = 0;
+function showBackHint() {
+  backHint.value = true;
+  clearTimeout(backHintTimer);
+  backHintTimer = setTimeout(() => { backHint.value = false; }, 2000);
+}
+const backNav = isApp ? createBackNav(router, { onHint: showBackHint }) : null;
+
 let backHandle = null;
 let authUrlHandle = null;   /* 轮 31：谷歌登录回跳监听（App 端） */
 let unTapFeedback = null;  /* 轮 424：全局按压反馈（见 utils/tapFeedback.js） */
+
+if (backNav) {
+  /* 立即注册，不等 onMounted。Capacitor 的 backButton 事件只有 JS 侧挂上监听
+   * 才会分发给我们（原生见 AppPlugin.java:49）；挂晚了那几次按键就走原生默认。 */
+  try {
+    CapApp.addListener("backButton", () => {
+      /* 页面内部层级先接管（消息 Tab 通知段 → 私信段、输入条、＋弹层…），
+       * 没拦住才交给决策表。 */
+      if (runBack()) return;
+      if (backNav) backNav.run();
+    }).then((h) => { backHandle = h; }).catch(() => {});
+  } catch (e) { /* 插件缺失（网页调试）时静默 */ }
+}
 
 /* —— 启动页预热（轮 24）：与 MessagesView.loadConvs 同款 key + fetcher ——
  * 启动页期间把会话列表缓存刷新好，用户点进消息 Tab 时 cached 直接命中（秒开最新列表）。 */
@@ -206,18 +235,9 @@ onMounted(async () => {
    * 进 IndexedDB（真机实测面板空白 500~800ms）。挪到空闲时段先备好，之后点开只查库（~34ms）。
    * 省流/2G 不预热（函数内部判断）。 */
   scheduleEmojiWarm();
+  /* 轮 493：系统返回键的注册已提到 setup 顶层（见上方 backNav）——放在这里的话，
+   * 前面任何一个预热函数抛错都会把注册整个跳过。剩下只有登录回跳要在这儿挂。 */
   if (!isApp) return; /* 浏览器里没有系统返回键 */
-  try {
-    backHandle = await CapApp.addListener("backButton", () => {
-      /* T7：页面内部层级先接管（消息 Tab 通知段 → 回私信段），再走路由/最小化 */
-      if (runBack()) return;
-      if (inChat.value || !ROOT_VIEWS.includes(route.name)) {
-        router.back();
-        return;
-      }
-      CapApp.minimizeApp();
-    });
-  } catch (e) { /* 插件缺失（网页调试）时静默 */ }
 
   /* —— 轮 31：谷歌登录从 App 内授权窗口回到 App ——
    * 中转页（站内 /app-auth）把令牌转交给 net.de5.warmpaws://login，Android 据此拉起本 App：
@@ -239,6 +259,7 @@ onBeforeUnmount(() => {
   if (backHandle) backHandle.remove();
   if (authUrlHandle) authUrlHandle.remove();
   if (unTapFeedback) { unTapFeedback(); unTapFeedback = null; }
+  clearTimeout(backHintTimer);
 });
 
 /* 登录态变化 → 起停角标轮询（未登录不轮询，省流量）；
@@ -501,6 +522,11 @@ onBeforeUnmount(() => { clearTimeout(scrubTimer); scrubTimer = 0; });
           <!-- 轮 57：页脚整块移除（用户：去掉「用心制作·你做的比你认为的更好」和那段空框）。
                隐私政策入口在「设置」页；/privacy 路由保留（Google 审核用）。 -->
         </div>
+
+        <!-- 轮 493 · 系统返回键「再按一次退出」轻提示（只在首页出现，2 秒自动消失）。
+             有这层提示，用户才不会把「一按就没了」当成闪退 —— 也解释了为什么
+             第一次按键不该真的退到桌面。 -->
+        <div v-if="backHint" class="back-hint">{{ t("common.pressAgain") }}</div>
 
         <!-- 轮 238 · 下载 App 弹窗：直接下载 APK / 扫码下载（渐变 hero + 双卡） -->
         <n-modal v-model:show="dlOpen" transform-origin="center">

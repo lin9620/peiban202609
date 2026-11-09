@@ -72,6 +72,7 @@ export default {
     "localMode": "Mode local : tes données restent dans ce navigateur. Connecte-toi pour les synchroniser plus tard.",
     "oops": "Quelque chose a un peu dérapé",
     "reload": "Recharger la page",
+    "pressAgain": "Appuyez encore sur retour pour quitter",
     "gotIt": "Compris",
     "copy": "Copier",
     "copied": "Copié ✓",
