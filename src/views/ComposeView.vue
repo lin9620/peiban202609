@@ -405,7 +405,9 @@ async function submit() {
   width: 30px; height: 30px; border: 0; border-radius: 50%;
   background: rgba(30, 24, 20, .55); color: #fff;
   font-size: 18px; line-height: 1; display: flex; align-items: center; justify-content: center;
-  cursor: pointer; backdrop-filter: blur(6px);
+  cursor: pointer;
+  -webkit-backdrop-filter: blur(6px);   /* 轮 502：iOS ≤17 只认前缀，否则这颗 × 底下是生硬的方框 */
+  backdrop-filter: blur(6px);
   transition: transform .15s ease, background .15s ease;
 }
 .compose-pic-x:active { transform: scale(.92); background: rgba(30, 24, 20, .72); }

@@ -570,6 +570,93 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
   - **发车核验（2026-11-11 02:5x）**：`live-check` **15/15**、`page-smoke` **16/16**、`live-bundle-check` **5/5 SAME**（入口 `main-C1_Fy2H7.js` 1019962 字节 sha16 `ebd22acd32e9b864`，slug 在入口里）；单独核 `PostComments-CiTt5IZY.js` sha16 `c3ec088633f7f16c` 本地=线上。线上 CSS 里 `kb-panel-h: min(var(--kb-last, var(--kb-fallback, min(46vh, 320px))), var(--kb-cap, 62vh))` 已在。
   - **部署时的并发提示**：工作区里混着另一会话的故事页改版（`StoryFeed.vue` / `glass.css` / `i18n.*`），但它们已经先发过一轮线上（线上 `main-BIeLjCHP.css` 与本地逐字节相同），所以本次 deploy = 线上现有 + 本轮两笔，没有多推别人的东西。
   - 待真机确认（浏览器里）：①打字让键盘弹出，记下输入条位置 ②点表情：面板贴底出现，**输入条原地不动、不被盖住** ③再点键盘键：面板收起、键盘接上，输入条还是原地不动 ④来回切三次不跳。
+- **轮 499（改动完成、测试过了、待发话）**：用户「高度不一致还没改好啊」，附四张图（App 键盘/表情两张、浏览器 表情/键盘两张）。
+  - **四张图逐像素量出来的实情**（不是猜）：把每张图按宽度归一化到 393 CSS px 后比输入条位置 ——
+    · 浏览器：表情态条顶 ≈412，键盘态 ≈547，**差 135**；且表情态时条把内容挤掉一大块。
+    · App：表情态比键盘态高 **约 17**（小，但确实在）。
+  - **根因（一句话）**：`--kb-panel-h` 的兜底按**整屏**算，可面板和输入条都锚在**页面可视区底部**，两个坐标系差着「浏览器底部工具栏」那一截。
+    · 面板 `.wp-composer-picker` 是 `position:fixed;bottom:0` ⇒ 锚在布局视口底（用户那台 innerHeight 只有 **732**，852 的屏被底部工具栏占掉 120）；
+    · 键盘是从**屏幕**底往上顶的：真键盘屏幕高 305，落到页面里只剩 **185**；
+    · 旧兜底 `min(46vh,320px)`（轮498 起是 `restH×0.46` 夹 240~320）在这台机上 = **320**：
+      732−320=**412** —— 与量出来的表情态位置**分毫不差**。App 那 17px 也是同一份兜底（320 vs 真键盘 303）。
+  - **改法**：新增纯函数 `kbPanelFallback(base, screenH, stored)`（`keyboardMath.js`）——
+    键盘本体约占屏高 36% ⇒ 页面内该让的高度 = `innerHeight − 屏高×0.64`；
+    852 全面屏 → 307（真机 303），852 屏 + 底部工具栏（inner=732）→ 187（真机 185）。
+    再叠一层「本机实测值」：弹过一次键盘就把 `{base, panel}` 存 localStorage，
+    冷启动（先点表情后打字）也能用真值；**只在 base 对得上（±8px）时复用** ——
+    工具栏一收一放 innerHeight 差 120，旧值换过去就不是那个位置了。
+    屏高与本页不是一个坐标系（个别 WebView 返回物理像素 2340）时当拿不到，退回 36%。
+  - **实测（真 style.css + 真 WpComposer + 真 initKeyboardInset，无头 Edge，`screen.height` 钉成 852）**：
+    | 形态 | 键盘态条底 | 表情态条底 | 差 | 改前 |
+    |---|---|---|---|---|
+    | 浏览器 393×732 / kb 185 | 547 | 545 | **−2** | −135 |
+    | App 形态 393×852 / kb 303 | 549 | 545 | **−4** | −17 |
+    两档都是「条底 = 面板顶（缝隙 0）」，再收面板回键盘态差 0。
+  - **护栏**：`kb-math-test` 新增 T20~T24（页面坐标系算式 / 全面屏 / 实测值只在 base 对得上时复用 / 脏输入 / 接线），24/24；`emoji-panel-test` E17 改锁新接线，17/17。
+    **反向注入四连全部变红**：屏高系数改 0.5 → T20/T21/T22 红；36% 改回 46% → T22 红；不存实测值 → T24 红；兜底退回写死 320 → T24 红（第一版这条没红，说明断言只匹配到了 import，已收紧）。
+  - 全量 **115 项 / 115 通过，断言 1646 / 1646**；`undef 4`（老误报）/ `tdz 0`；build EXIT=0。**未 commit、未 deploy、未打包。**
+  - 待真机确认：①浏览器里先点表情（别先打字）→ 输入条**不该**再往上跳 ②点输入框切键盘 → 条原地不动 ③来回切三次不跳 ④App 里同样试一遍。
+- **轮 500（改动完成、测试过了、待发话）**：用户追问「你不要只看我这台手机的，如果是别的手机，还会有这样问题吗」。
+  - **答案是「会」**：轮 499 那条 `base − 屏高×0.64` 等价于「键盘占屏高 36%」，这条**比例**假设只在他那台 852 上成立。把各机型摆开算（Node 直跑）：
+    | 机型 | 屏高/页面高 | 真键盘 | 真面板 | 旧算式 | 误差 |
+    |---|---|---|---|---|---|
+    | iPhone SE3 | 667 / 553 | 258 | 144 | 126 | −18 |
+    | iPhone 15（用户这台） | 852 / 732 | 305 | 185 | 187 | +2 |
+    | 小屏 Android | 640 / 640 | 250 | 250 | 230 | −20 |
+    | 大屏 Android | 915 / 915 | 300 | 300 | 329 | +29 |
+    | iPad 竖 | 1024 / 1024 | 310 | 310 | 369 | **+59** |
+    | 手机横屏 | 393 / 393 | 210 | 210 | 141 | **−69** |
+    | Android 分屏 | 852 / 400 | 305 | 305 | 56 | **−249** |
+    · 根因一：键盘的**屏高比例**随屏幕尺寸变（平板 30%、横屏 53%），但**绝对高度**很稳（240~330）。
+    · 根因二：`screen.height` 与 `innerHeight` 不一定同一个参照系（分屏 / 桌面窗口 / 平板浮窗），按屏高硬推会算出负数。
+  - **改法（三处）**：
+    1. 键盘高度改成**绝对区间夹取**：`kb = clamp(屏高×0.36, 240, 330)`，再反推页面内占高。852 屏仍是 307、带工具栏仍是 187 —— 用户这台**零退化**。
+    2. **参照系分流**：`屏高 − 页面高 ≤ 200` 才是「浏览器工具栏」（扣掉那一段）；差得更多说明窗口没占满屏、键盘整个落在窗口里 → 页面内占高就是 `kb` 本身（分屏从 56 修正到 307）。面板上限也从「45%」改成 `min(80%, 380)`：分屏窗口 400 高、键盘 305（76%），按 45% 夹会把面板压矮 120。
+    3. **实测值改存「键盘本体绝对高度」** `{abs, screen}`，不再存 `(base, panel)` 对。工具栏一收一放 innerHeight 差 120，旧格式换坐标系就作废；存绝对值后 732 测到的 185 换成 852 也能正确折成 307。
+  - **探针实测又挖出第三个 bug（不是猜的）**：把同一个 iframe 从 852 压到 732（模拟工具栏出现），面板尺子变成 **120px** 且之后回 852 也停在 120。原因是 `kbShrinkInset` 的闸门刚好是 120，把「工具栏变化」当成键盘弹起，还把这个 120 当实测值存进了 localStorage（之后永久错）。修法两条：闸门 120 → **150**；反推键盘高度**必须要求输入框有焦点**（工具栏变化没有焦点）。重测序列变成 `852:307 → 732:187 → 852:307`。
+  - **多机型实测**（真实构建 + 真实 `initKeyboardInset`，8 个 iframe 各代表一台机器，`screen.height` 在 frame 内覆写）：
+    iPhone15 852→307 / 带工具栏 732→187 / SE3 553→126 / 小屏 640→240 / 大屏 915→329 / iPad 1024→330 / 横屏 393→240（上限 314）/ 分屏 400→307（上限 320）—— 全部与算式一致。
+  - **护栏**：`kb-math-test` 新增 T25（**10 机型矩阵，每种偏差必须 ≤35px**）、T26（用户这台零退化）、T27（绝对区间与上限口径）、T28（物理像素按 dpr 折回）、T29（接线：屏高归一 / 存绝对值 / 尺子跟工具栏）、T30（反推必须有焦点）；T17 闸门改 150、T22/T23 随新口径重写，共 **30/30**。`emoji-panel-test` E17 反向锁新接线（17/17）。
+  - **反向注入六连全部变红**：纯比例（去绝对夹取）、不判参照系、上限改回 45%、`kbScreenH` 直接放行、尺子不跟键盘状态、实测值存回 `(base,panel)` —— 每条都让 T22/T25/T28/T29 之一亮红。
+  - 全量 **115 项 / 115 通过，断言 1646 / 1646**；build EXIT=0。**未 commit、未 deploy、未打包**（轮 499 + 500 一起攒批）。
+  - 已知剩余误差（有真值就自动纠正）：大屏 915 估 329 而真值 300（+29）、横屏估 240 而真值 210（+30）、SE3 估 126 而真值 144（−18）。这些只在「冷启动后第一次就点表情、一次键盘都没弹过」的窗口里出现；弹过一次键盘即用实测值。
+  - 待真机确认（换台手机最好）：①任意机型先点表情 → 输入条不跳 ②打字切面板来回三次不跳 ③浏览器上下滑让地址栏收起/出现 → 面板高度跟着变，不顶住输入条。
+- **轮 501（改动完成、测试过了、待发话）**：用户发来「我的」页分享面板截图，红框圈住那行小字：「你这个分享怎么做的，我们是面向海外用户，你搞这个？？重新设计这个分享功能」。
+  - **病根不是样式，是受众**：那行字是「复制后粘到微信 / QQ 发给朋友」，而且五语种里的 `shareHowto` / `shareWx` **全是从中文版直接抄过去的 WeChat / QQ**（`i18n.es.org` / `pt` / `fr` 一模一样）。暖爪的用户在英语/西语/葡语/法语区 —— 这不是「少一个入口」，是**看不出这产品是给他的**。
+  - **新结构（两层）**：
+    1. **系统分享优先**：`navigator.share` 存在就直接走系统面板（iOS / 安卓 Chrome / 桌面 Chrome 都有），一次覆盖 AirDrop、Messages、Instagram、Gmail……不用我们枚举平台；用户点取消（`AbortError`）静默退出，其它错误才落到下面的面板。
+    2. **系统分享缺席或抛错 → 弹面板**：顶部把手 + 「Invite a friend / 邀请朋友」+ 一句话副标题 → **地址行（整行就是一个复制按钮，右侧 chip 显示 Copy link / Copied / Couldn't copy）** → 系统分享按钮（可点重试，只在 `navigator.share` 存在时出现）→ 「or send it directly」→ **六格直连**：WhatsApp / Telegram / X / Facebook / Email / SMS → 一句说明（链接打开的是首页、免费、不用装 App）→ 关闭。
+  - **分享地址改成站点首页**：以前分享的是 `location.href`，也就是 `/profile` —— 陌生人点开看到的是「未登录 + 去登录」，等于什么都没分享。现在 `shareUrl()` 只取 `origin + "/"`；`capacitor://localhost`、`https://localhost`（安卓 WebView 的 origin）、`127.0.0.1` 一律回落到 `https://warmpaws.de5.net/`（本地/模拟器地址发出去对方打开是一片空白）。
+  - **六个直连都是公开 share intent，无 SDK 无 App ID**（新文件 `src/utils/shareLinks.js`，纯函数、Node 直接单测）：`wa.me/?text=`、`t.me/share/url`、`x.com/intent/post`、`facebook.com/sharer/sharer.php?u=`、`mailto:?subject=&body=`、`sms:?&body=`（安卓对 `+` 敏感，正文空格一律 `%20`）。https 走新标签、mailto/sms 交给系统，App 内 WebView 也走同一条路（Capacitor 的 `launchIntent` 对非本域 URL 一律 `startActivity`，实测代码路径确认过）。
+  - **顺手清掉的四处**：
+    ① 第一版把「复制链接」也做成第七个格子 → 3 列 × 6 渠道刚好两行，第 7 个必然落单，截图里孤零零挂在第三行。删掉格子，复制只留地址行（护栏 S3 钉住「格子块里只能有一个 button」）。
+    ② 图标底色写成 `--tile` 变量时，在 `.share-tile-ico` 自己身上声明默认值 → **自定义属性自身声明会压掉继承**，六个格子当场变成同一块颜色。默认值只能走 `var(--tile, var(--ink-soft))` 第二参数。
+    ③ 邮件 / 短信原本用 `--ink-soft` / `--accent-deep` 当底色，**夜间主题里这两个会翻成浅色**，白字配浅底只剩 1.6:1 对比度（实测两格几乎看不见）。改成固定深色 `#6c6a64` / `#a9583e`；X 是黑白标，底色 `var(--ink)` + 字色 `var(--page-bg)` 跟着主题反转。护栏 S14 两个方向都钉。
+    ④ 点渠道后原本 `setTimeout(closeShare, 160)` 收面板 —— 那个延时会把「刚被重新打开的面板」一起关掉（连点时面板闪一下就没了）。改同步收，点击事件在收面板前已经派发完。
+  - **无头 Edge 实测**（真实 dist + 真实点击，`navigator.share` 用 `defineProperty` 置 `undefined` 模拟内置浏览器/WebView）：
+    · 393×852：面板 441 高、贴底、间距 `bottomGap=0`；六格 48×48、品牌色 `#25d366 / #2aabee / #12131 / #1877f2`、X 夜间反转为浅底深字；**六条 intent 逐条打印出来核对**（wa.me / t.me / x.com / facebook / mailto 带 `%0A%0A` / sms 带 `%20`）✓；点渠道 → 面板关闭 ✓；重开 → 地址行显示 `https://warmpaws.de5.net/` ✓。
+    · 320×640：六个标签**一个都没截断**（`scrollWidth === clientWidth`），面板 441 高不溢出。
+    · 西/葡/法三种文案（最长那句 2 行）撑开后最高 460，仍在 320×640 内；中文 `/zh/profile` 截图人工看过版式。
+    · 夜间主题截图：六个图标全部清晰；浅色主题同样。
+    · `navigator.share` 存在但抛 `NotAllowedError` → 面板照开且多出「System share sheet」主按钮，点它重试 ✓。
+  - **护栏重写**：`tools/share-page-test.mjs` 从 12 条 → **17 条**：系统分享优先且必须写在开面板之前、`AbortError` 静默、六渠道齐全且每格有图标、每条 intent 的形状与编码、**分享链接必须是首页**（含 localhost/capacitor 回落）、**五语种可见文案里不许出现 WeChat/QQ/微信**、内置浏览器兜底文案不点名平台、`copyText` + `execCommand` 兜底且失败要说话、五语种 16 个分享键齐全且品牌名不许翻译、标签必须走 `TARGET_LABEL` 字面量映射（模板里拼 key 会被 `i18n-usage-test` 判成死键）、z-index 区间、面板背景走主题变量且有打底层、X 变量反转、邮件/短信不许用会翻面的变量、必须 `Teleport to="body"`、按钮 `touch-action`。
+  - **反向注入三条全部变红**：把 `sms` 从渠道表删掉 → S3 FAIL；`shareUrl` 改回返回完整路径 → S6 FAIL；英文 `shareHint` 改回「Paste it into WeChat or QQ」→ S7 FAIL。改回 17/17。
+  - 全量 **115 项 / 115 通过，断言 1646 / 1646**；`i18n-test` 54/54、`i18n-usage-test` 漏键 0 死键 0；build EXIT=0。**未 commit、未 deploy、未打包**（轮 499 + 500 + 501 一起攒批）。
+  - 遗留说明：①App 内 WebView 没有 `navigator.share`，所以 App 里看到的是六格直连（点渠道由系统接手打开对应 App/浏览器），地址行复制永远可用；要 App 里也弹系统分享面板，得给 `WpShare` 加一个 `shareText` 方法 —— 那是原生改动，要重新打包，等发话。②无头浏览器里「复制」会失败并显示 `Couldn't copy the link`（headless 不给剪贴板），真人浏览器/App 里是正常的，这条正好验证了失败分支会说话。
+
+- **轮 502（改动完成、测试过了、待发话）**：用户问「我插上苹果手机，你能像控制安卓一样控制吗，苹果浏览器上有很多问题」，随后补一句「你不要又是只看我这台苹果手机，要兼容啊，你在这台上修好了，别的型号怎么办」。
+  - **先答能力问题（别再重复问）**：不能。安卓走 `adb`（`input tap/swipe` / `screencap` / `uiautomator dump`），iOS 的触控注入只有 WebDriverAgent 一条路，需要 **macOS + Xcode + 开发者证书**现场编译签名；本机是 Windows + Git Bash，走不通。实测他插上的 iPhone 在设备管理器里只有 `USB\VID_05AC&PID_12A8`（Class=**WPD** 便携设备），**系统里没有 Apple Mobile Device 服务**（没装 iTunes / 「Apple 设备」）→ 连 usbmux 都没有，`pymobiledevice3` / syslog / 截图 / Web Inspector 全部接不上。装驱动后也只是**只读**，仍然点不了。
+  - **所以这轮不按机型修，按能力修**（轮 500 的教训：「凡是按屏幕尺寸写死的常量，换块屏就废」）。三处改动：
+    · **backdrop-filter 补 `-webkit-` 前缀 6 处**（RpsGame 猜拳遮罩、SnackRain 两处、style.css `.dm-menu`、ComposeView 删图按钮、PetView 领养遮罩）。iOS ≤17 的 Safari **只认前缀那条**，裸写整条被丢 —— 遮罩退成实心棕、菜单压着字看不懂。全库现在是 33 处配对，0 处裸奔。
+    · **裸 `100vh` 补 `@supports` 兜底 3 处**（body 的 `min-height`、桌面/iPad 两列聊天 `calc(100vh - 210px)`、右栏 `.rail-card` 的 `max-height`）。iOS 的 `100vh` 是**工具栏收起后的大视口**，比可见区高一截：body 永远多一段可滚量（一滑就橡皮筋抖），两列聊天则把输入条顶到屏幕外。**注意用 `100dvh` 不是 `100svh`** —— 项目早有禁令（`keyboard-policy-test`：本机量出 svh=0、整条被丢），我第一版写了 svh，被这条测试当场拦下，已改回 dvh。
+    · **附带更正一处假注释**：`style.css` 里写着「网页端退回 env()（index.html 已加 viewport-fit=cover）」，但 `index.html` 明明写着「继续不写」。真相是**浏览器里 `env(safe-area-inset-*) 恒为 0`**，`--sat/--sab` 只在 `html.cap-app`（原生壳）里存在。不写 cover 时 Safari 会把版面整个放进安全区（代价是底部一条页面底色的带、横屏左右留边），所以也没被压住 —— 但下轮别再指望从这里拿到刘海高度。
+  - **新增 `?diag=1` 跨机型自检面板**（`src/utils/compatDiag.js`，main.js 注册，正常用户看不到）：全部走 `CSS.supports` / `getComputedStyle` / `visualViewport` 实测，**不读 UA 做分支**（UA 只原样打印）。输出 13 行：UA、屏与 dpr、inner/vv/scale、**安全区 env() 四个方向实测值**（挂 0×0 探针读 computed padding）、`--sat/--sab/--kb-h/--kb-panel-h`、是否 PWA、**键盘实测（聚焦前后 vv 差 = 键盘真实高度）**、16 项能力表，右上「复制」一键出纯文本。这就是「别的型号怎么办」的答案：换任何一台机器打开它，把文本发我，不用再猜。
+  - **护栏 `tools/ios-compat-test.mjs`（7 条，已进 fast 层）**：I1 backdrop 必须 `-webkit-` 配对且值一致（同行 / 相邻行都算）；I2 任何 dvh/svh **必须写在 @supports 里**（轮 474 口径：裸写会被旧内核算成 auto，vh 一起丢）；I3 用 `height:100vh` 的文件两边都不能缺；I4 `env(safe-area-inset-*)` 必须带第二参数（先去注释，避免注释里举例子被误判）；I5 `?diag=1` 必须注册且带「不带参数就 return」的门控；I6 自检面板**不许**按 UA 机型分支；I7 `index.html` 的 viewport 口径与 `style.css` 注释不许互相矛盾（**必须只取 meta 标签本体** —— 整份文件里那句「viewport-fit=cover 继续不写」会把判定骗过去，本轮栽过一次）。
+  - **反向注入四条全红 → 恢复 7/7**：删 `-webkit-backdrop-filter` → I1 红；把 `body` 的 dvh 从 @supports 里挪出来 → I2 红；`env(safe-area-inset-top)` 去掉 `0px` → I4 红；拆掉 diag 门控 → I5 红。
+  - **实测**：无头 Edge 393×852 打开 `/zh?diag=1`，面板 13 行 / 377px 高 / 贴顶不回滚，能力表 `100dvh ✓ :has() ✓ backdrop-filter ✓ -webkit-backdrop-filter ✗`（Chromium 不暴露前缀版，符合预期），安全区四向 0、`--sat/--sab 未定义 [浏览器本就未定义]` 均由面板自己标明，不再需要人去猜。截图 `_scratch/diag3.png`。
+  - 全量 `--tier=fast,mount`：**脚本 119 / 119 通过，断言 1672 / 1672**，build EXIT=0。**未 commit、未 deploy、未打包**（轮 499 + 500 + 501 + 502 一起攒批）。
+  - **待用户拍板**：要不要写 `viewport-fit=cover` 让 iPhone 真正吃满全屏（改了会动全站上下留白，且安卓那边 `env()` 常报 0，需要配 JS 兜底）—— 这是唯一一条我没敢自己动的。
+
 - **⚠️ 环境坑（本轮踩到，记一笔）**：`git config core.autocrlf = true`。任何一次 `git stash` / `git checkout` 都会把工作区文件从 LF 转成 **CRLF**，而 `app-shell-test` T68 之类用 `\n` 精确匹配的断言会当场变红（且报错跟真因毫无关系）。本轮 stash 对照实验后 127 个文件被转成 CRLF，已全部转回 LF（`grep` 复查 0 个）。下次谁再 checkout，先跑一遍「CRLF → LF」再跑测试，别把假红当真回归。
 - **轮395（已打包，未提交）**：用户确认 `MIGRATION_story_draft_delete.sql` 已在 Supabase 执行；匿名 RPC 探针返回 `401 / 42501 permission denied for function story_delete_draft`，证明函数存在且未向 anon 开放（符合只授 authenticated 的设计），未删除任何真实草稿。代码无改动，重新 `build + cap:sync + assembleDebug` 后打 `apk/warm-paws-1.0.2-round395.apk`，与 round394 字节/SHA-256 相同（`A83A01B2CDD47201466FA44069952199D1B5C692590D6EA45EE86BA06D15A395`）；**未安装**。
 - **轮396（已部署，未提交）**：修「故事页加载更多点了没反应」——旧逻辑 `more = rows.length >= offset + PAGE` 且点击时先把 `offset += PAGE`，按钮在请求回来前当场消失；请求慢/失败/挂住时既没有新内容，也没有按钮可重试。现在改成 `hasMore` 状态机：只有成功拿到一页才推进 `offset`，请求中按钮保留并显示「加载中…」，失败保留「加载更多」并提示可重试，最后一页显示「没有更多了」。翻页请求加 20s 兜底超时（线上 `/sb` 代理实测第二页 9.4s，避免误杀）。`story-test` 232/0、`app-shell-test` 70/0、`i18n-test` 19/0、undef/tdz 0、build 成功、page-smoke 14/14；真实 DOM 探针：mock 12→14（加载中→没有更多了）、500 失败保留 12 篇+按钮+错误、真实 Supabase 只读数据 12→14。已部署 Worker Version `aeaf0e60-d065-4086-93e5-0be543988934`，入口 `main-C3Hi3Z0k.js`，故事分包 `StoryFeed-DleUGvMA.js`；本次未重打 APK，round395 不含此修复。

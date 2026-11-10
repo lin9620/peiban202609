@@ -249,7 +249,10 @@ const itemStyle = (it) => ({ left: (it.x * 100) + "%", top: (Math.max(0, it.y) *
 <style scoped>
 .sr-overlay {
   position: fixed; inset: 0; z-index: 90;
-  background: rgba(38, 30, 22, .58); backdrop-filter: blur(7px);
+  /* 轮 502：iOS ≤17 的 Safari 只认带前缀的那条（同 RpsGame 遮罩的理由），两条并列 */
+  background: rgba(38, 30, 22, .58);
+  -webkit-backdrop-filter: blur(7px);
+  backdrop-filter: blur(7px);
   display: flex; align-items: center; justify-content: center;
   font-family: inherit; touch-action: none; overscroll-behavior: contain;
 }
@@ -300,7 +303,9 @@ const itemStyle = (it) => ({ left: (it.x * 100) + "%", top: (Math.max(0, it.y) *
 .sr-confirm {
   position: fixed; inset: 0; z-index: 12; padding: 18px;
   display: flex; align-items: center; justify-content: center;
-  background: rgba(30, 22, 14, .35); backdrop-filter: blur(2px);
+  background: rgba(30, 22, 14, .35);
+  -webkit-backdrop-filter: blur(2px);   /* 轮 502：iOS ≤17 只认前缀 */
+  backdrop-filter: blur(2px);
 }
 .sr-confirm-card {
   width: min(100%, 360px); padding: 24px 22px 18px; text-align: center;

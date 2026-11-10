@@ -39,7 +39,10 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
    * 轮 498：不再用 CSS 的 vh 兜底 —— 有的内核（键盘缩布局视口那批 / 部分国产 WebView）
    * 会把 vh 算成「键盘剩下那点高度」，46vh 于是只有一百多像素，面板矮成一条，
    * 收键盘弹面板时输入条又从上面掉下来（用户第四次报的「高度不一致」就是这个）。
-   * 兜底与上限改由 JS 用「见过的最高的正常视口」算成 px 写进来（--kb-fallback / --kb-cap），
+   * 轮 499：兜底值还必须跟面板**同一量纲**：面板锚在布局视口底，键盘是从屏幕底往上顶的，
+   * 浏览器底部工具栏那条落在页外 —— 852 的屏 innerHeight 只有 732，真键盘在页面里只占 185，
+   * 旧兜底 320 高一截，面板一开底条被顶上天。改由 JS 按「键屏高 64% 起点」算成 px
+   * （--kb-fallback / --kb-cap），命中过一次真键盘后改用本机实测比例。
    * 读不到时才退回 46vh/320：老内核、桌面缩放、JS 没跑到，表现与改之前完全一致。 */
   --kb-panel-h: min(var(--kb-last, var(--kb-fallback, min(46vh, 320px))), var(--kb-cap, 62vh));
 
@@ -84,9 +87,16 @@ body {
   font-family: var(--font-body);
   color: var(--ink);
   background: var(--page-bg);
+  /* 轮 502：iOS Safari 的 100vh 是「工具栏收起后」的大视口，比眼前这块可见区还高一截，
+     body 于是永远多出一段可滚动量 —— 一滑就整页橡皮筋抖。100dvh 才是跟着工具栏走的真实高度。
+     不用 100svh：本机实测它算出来是 0（整条声明被丢，见 keyboard-policy-test 那条禁令）。
+     仍旧 100vh 打底：旧内核看不到下面这个 @supports，行为跟改动前完全一样。 */
   min-height: 100vh;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+}
+@supports (height: 100dvh) {
+  body { min-height: 100dvh; }
 }
 
 button, input, textarea { font-family: inherit; }
@@ -2134,6 +2144,13 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
   .dm-wrap > .dm-thread { min-height: calc(100vh - 210px); height: calc(100vh - 210px); }
   .dm-wrap .dm-scroll { max-height: none; flex: 1; }
   .dm-wrap > .dm-list { max-height: none; height: calc(100vh - 210px); }
+  /* 轮 502：iPad / 桌面 Safari 的 100vh 同样是大视口 —— 两列按它定死高度就比可见区高一截，
+     消息页的输入条被顶到屏幕外。dvh 跟着工具栏实时走；关进 @supports 是轮 474 的口径
+     （旧内核不认 dvh 时，裸写 calc(100dvh - X) 会算成 auto，不会回退到上面的 100vh）。 */
+  @supports (height: 100dvh) {
+    .dm-wrap > .dm-thread { min-height: calc(100dvh - 210px); height: calc(100dvh - 210px); }
+    .dm-wrap > .dm-list { height: calc(100dvh - 210px); }
+  }
   /* 列间发丝分隔线（取代两张卡各自的描边）；特异性必须压过上面的 `.dm-wrap > .card { border: 0 }` */
   .dm-wrap > .dm-list { border-right: 1px solid var(--hairline); }
   /* 轮 142 · 滚动条隐藏（图 2「不要」）：照常可滚，只是不显示条 */
@@ -2272,7 +2289,11 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
 .dm-menu {
   position: absolute; right: 8px; top: 34px; z-index: 12;
   display: flex; flex-direction: column; min-width: 140px; padding: 6px;
-  background: var(--glass-strong); backdrop-filter: blur(12px);
+  background: var(--glass-strong);
+  /* 轮 502：iOS ≤17 的 Safari 只认带前缀的 backdrop-filter，裸写会被丢掉 ——
+     .dm-menu 是消息列表那枚「…」菜单，丢了就是一块半透明板压着文字，很难读。 */
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
   border: 1.5px solid rgba(204, 120, 92, .35); border-radius: 14px;
   box-shadow: var(--shadow);
 }
@@ -2632,7 +2653,11 @@ html.cap-app {
   --kb-h: 0px;
   --sys-bottom: 0px;
   /* 轮 347：真·全屏后的安全区。MainActivity 会用真实像素覆盖这两个值；
-     网页端 / 覆盖失败时退回 env()（index.html 已加 viewport-fit=cover）。 */
+     网页端 / 覆盖失败时退回 env()。
+     轮 502 更正一句之前写错的注释：index.html **没有**写 viewport-fit=cover（那边刻意不写，
+     理由是安卓常报 0）。所以**浏览器里 env(safe-area-inset-*) 恒为 0**，这两个变量在网页端
+     实际就是 0 —— 别以为能从这里拿到 iPhone 的刘海/手势条高度。不写 cover 时 Safari 会把
+     整个版面放进安全区（代价是底部留一条页面底色的带、横屏左右留边），所以也不会被压住。 */
   --sat: env(safe-area-inset-top, 0px);
   --sab: env(safe-area-inset-bottom, 0px);
 }

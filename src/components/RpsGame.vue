@@ -115,7 +115,12 @@ onBeforeUnmount(() => clearTimeout(resetTimer));
   position: fixed; inset: 0; z-index: 90;
   display: flex; align-items: center; justify-content: center;
   padding: 18px; touch-action: none; overscroll-behavior: contain;
-  background: rgba(38, 30, 22, .55); backdrop-filter: blur(7px);
+  background: rgba(38, 30, 22, .55);
+  /* 轮 502：iOS 17 及以下的 Safari 只认带 -webkit- 的写法，裸 backdrop-filter 被整条丢掉，
+     遮罩就退成一层实心棕（底下的场景全看不见）。两条并列：能认哪条用哪条，
+     都不认还有上面的 background 兜住，不会有中间态。 */
+  -webkit-backdrop-filter: blur(7px);
+  backdrop-filter: blur(7px);
   font-family: inherit;
 }
 .rps-card {

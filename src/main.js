@@ -14,6 +14,7 @@ import { initChatViewport } from "./utils/chatViewport.js";      /* 轮 465：�
 import { initFixedBar } from "./utils/fixedBar.js";             /* 轮 469：评论条/回复栏钉到可视视口底 */
 import { initBarReturn } from "./utils/barReturn.js";           /* 轮 472：键盘可见状态 + 两级返回 */
 import { installKbDiag } from "./utils/kbDiag.js";             /* 轮 463：?kbdiag=1 现场自检条 */
+import { installCompatDiag } from "./utils/compatDiag.js";      /* 轮 502：?diag=1 跨机型兼容自检 */
 import { isApp, checkForUpdate, takePromptOnce } from "./utils/appVersion.js";   /* 轮 297 */
 import "./style.css";
 /* 轮 406：皮肤样式表只作为「资源 URL」进来（?url），不进主 CSS 包 —— 是否下载由下面门控决定 */
@@ -95,6 +96,9 @@ initFixedBar();
  * App.vue 用它决定 tabbar 要不要让位：只有键盘真占着屏才收，键盘一落就让条抬到 tabbar 头顶。 */
 initBarReturn();
 installKbDiag();
+/* 轮 502：跨机型兼容自检。用户插着的 iPhone 我这边点不了（iOS 没有 adb 那套），
+ * 所以反过来让机器自己报：?diag=1 打出能力表 / 安全区 / 键盘实测，一键复制成纯文本。 */
+installCompatDiag();
 
 /* 轮 256：无声错误信标——未捕获异常/未处理拒绝 POST 给 Worker /api/client-log，
  * 否则错误边界把崩溃盖成「小状况」提示，开发者这边一无所知（轮 42/80 两次事故的盲区）。 */

@@ -263,6 +263,11 @@ async function copySlip() {
   box-shadow: var(--shadow); max-height: calc(100vh - 112px); overflow-y: auto;
   scrollbar-width: none; -ms-overflow-style: none;
 }
+/* 轮 502：iPad / 桌面 Safari 的 100vh 是大视口，右栏卡片会比可见区高一截、底部被裁。
+   关进 @supports 是轮 474 的口径：旧内核不认 dvh 时会算成 auto，不能裸写。 */
+@supports (height: 100dvh) {
+  .rail-card { max-height: calc(100dvh - 112px); }
+}
 .rail-card::-webkit-scrollbar { display: none; }
 .rail-head { font-size: 11px; font-weight: 500; letter-spacing: 1.5px; text-transform: uppercase; color: var(--ink-faint); }
 .rail-pet { display: flex; align-items: center; gap: 9px; margin: 10px 0 6px; }

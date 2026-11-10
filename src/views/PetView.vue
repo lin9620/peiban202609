@@ -793,6 +793,7 @@ function onToggleFramed(d) {
   position: fixed; inset: 0; z-index: 2000;
   display: flex; align-items: center; justify-content: center;
   background: rgba(60, 40, 20, .42);
+  -webkit-backdrop-filter: blur(3px);   /* 轮 502：iOS ≤17 只认前缀 */
   backdrop-filter: blur(3px);
   padding: 16px;
 }
