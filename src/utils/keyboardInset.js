@@ -27,7 +27,7 @@
  */
 import { Capacitor } from "@capacitor/core";
 import { Keyboard } from "@capacitor/keyboard";
-import { kbPageInset, kbWebInset } from "./keyboardMath.js";
+import { kbPageInset, kbWebInset, kbShrinkInset } from "./keyboardMath.js";
 import { kbInsetValue } from "./chatHeight.js";
 
 const VAR = "--kb-h";
@@ -55,13 +55,18 @@ function sysBottom() {
   } catch (e) { return 0; }
 }
 
-function writeVar(px, info) {
+function writeVar(px, info, panelPx) {
   try {
     document.documentElement.style.setProperty(VAR, px + "px");
     /* 轮 482：「上一次真实键盘高度」单独记一份，键盘收起（px=0）时**不清零**。
      * 用途：表情面板高度（--kb-panel-h）要跟键盘一致 —— 可面板弹出时键盘必然已经收起，
-     * 那时 --kb-h 已经是 0，只能靠这份残留值还原。见 style.css 的 :root。 */
-    if (px > 0) document.documentElement.style.setProperty("--kb-last", px + "px");
+     * 那时 --kb-h 已经是 0，只能靠这份残留值还原。见 style.css 的 :root。
+     * 轮 496：键盘本体高度与「页面让位高度」在网页端不是同一个量（缩布局视口型内核
+     * 不需要我们让位，--kb-h 恒为 0，但键盘实际压住了屏底一大截）——面板要跟的是
+     * **键盘本体**，所以单独传 panelPx 进来，别再拿 --kb-h 顶替。 */
+    const panel = Number(panelPx);
+    if (panel > 0) document.documentElement.style.setProperty("--kb-last", Math.round(panel) + "px");
+    else if (px > 0) document.documentElement.style.setProperty("--kb-last", px + "px");
   } catch (e) { /* 极端环境忽略：样式变量设不上也不能抛错 */ }
   /* 现场诊断（只写全局、不改行为）：别的机型若报「还是有缝/被压住」，一句
      JSON.stringify(window.__kbInfo) 就能看清是哪个输入没对，不用连 logcat。 */
@@ -73,7 +78,9 @@ function setInset(px) {
   const sys = raw > 0 ? sysBottom() : 0;
   const vh = (typeof window !== "undefined" && window.innerHeight) || 0;
   const h = kbPageInset(raw, sys, vh);
-  writeVar(h, { src: "native", raw, sysBottom: sys, kbH: h, innerHeight: vh, at: Date.now() });
+  /* App 壳里「让位高度」与「键盘本体高度」是同一个量（插件报的就是输入法真实高度），
+     第三参显式传同一个值，别让两条口径在将来分叉。 */
+  writeVar(h, { src: "native", raw, sysBottom: sys, kbH: h, innerHeight: vh, at: Date.now() }, h);
   if (h <= 0) return;
   /* 长页面里的输入框可能被键盘盖住（窗口不再缩 ⇒ 系统不会替我们滚）：
      等让位生效后再把焦点元素滚进可视区。 */
@@ -116,6 +123,14 @@ function readWebKb() {
 }
 
 let lastWebKb = -1;
+let lastPanelKb = -1;
+/* 轮 496：本会话内见过的最大的「可视视口让位高度」。
+ * 只在 >0 时更新 —— 它同时是「这台设备/这个浏览器走的是 visualViewport 让位路线」的标记，
+ * 表情面板 → 键盘交接要不要先钉住让位，就看它（见 webSwapNeeded）。 */
+let webKbSeen = 0;
+/* 键盘弹起前的 innerHeight 基线：缩布局视口型内核靠它反推键盘本体高度。 */
+let restH = 0;
+
 function applyWeb() {
   const raw = readWebKb();
   /* 焦点判据只能当「加速」，不能当「门槛」—— 轮 463 真机反馈：iOS Safari 上输入法已经
@@ -129,7 +144,22 @@ function applyWeb() {
      vv 比 inner 矮 31px（浏览器工具栏），一聚焦输入框，这 31px 就被当成键盘 → 评论条 /
      回复栏整体抬 31px，下方平白多一条空白。而真键盘最低也 ≥ 200px，80 这道闸门
      两边都不误伤。判据抽到 chatHeight.js，与聊天容器高度共用同一份口径。 */
-  const h = kbInsetValue(raw, editableFocused());
+  const focused = editableFocused();
+  const h = kbInsetValue(raw, focused);
+  const inner = (typeof window !== "undefined" && window.innerHeight) || 0;
+
+  /* 轮 496：表情面板要跟的是「键盘本体占多高」，它跟「页面需要让多高」不是同一个量。
+   * 缩可视视口型内核：让位就是键盘高，两者相等；
+   * 缩布局视口型内核：让位恒为 0（浏览器自己缩），键盘高只能从 innerHeight 缩掉的量反推。
+   * 不补这一段，--kb-last 在后者上永远拿不到值，面板就退回 46vh/320px 的死值 ——
+   * 用户看到的「表情跟文字输入高度不一致」。 */
+  let panelH = h;
+  if (!(panelH > 0)) panelH = kbShrinkInset(restH, inner);
+  if (h > 0) webKbSeen = Math.max(webKbSeen, h);
+  /* 基线只在「确实没有键盘」时刷新：不然键盘弹起后的 innerHeight 会被记成基线，
+   * 下一次就再也算不出差值。 */
+  if (!(panelH > 0) && !focused && inner > 0) restH = inner;
+
   /* iOS 为了让光标可见会把**整个文档**往上滚（window.scrollY > 0）。整屏聊天页本来
      就没有文档级滚动，这一滚会在页尾露出一条「视口之外」的空白（用户截图①那块）。
      只在整屏聊天壳里归零 —— 别的页面（首页搜索框等）本来就靠文档滚动把输入框带进可视区，
@@ -140,13 +170,22 @@ function applyWeb() {
       if (se && se.scrollTop > 0) se.scrollTop = 0;
     } catch (e) { /* 忽略 */ }
   }
-  if (h === lastWebKb) return;                    /* 逐帧采样时别反复写样式（会触发重排） */
+  if (h === lastWebKb && panelH === lastPanelKb) return;   /* 逐帧采样时别反复写样式（会触发重排） */
   lastWebKb = h;
+  lastPanelKb = panelH;
   const vv = window.visualViewport || {};
   writeVar(h, {
-    src: "web", kbH: h, innerHeight: window.innerHeight,
+    src: "web", kbH: h, panelH, innerHeight: inner, restH,
     vvHeight: vv.height, vvTop: vv.offsetTop, scale: vv.scale, at: Date.now(),
-  });
+  }, panelH);
+}
+
+/* 轮 496：表情面板「收起 → 键盘接上」这段空档，底条要不要先钉在面板高度上。
+ * 只有走 visualViewport 让位路线的设备会掉（--kb-h 归零 ⇒ fixed 底条落回屏底，
+ * 键盘几百毫秒后才把它顶回来）；缩布局视口型内核本来就跟着视口走，钉住反而悬空。
+ * 判据 = 本会话见过 --kb-h > 0。 */
+export function webSwapNeeded() {
+  return !Capacitor.isNativePlatform() && webKbSeen > 0;
 }
 
 let sampleRaf = 0;
@@ -167,6 +206,9 @@ function sampleFrames(ms) {
 
 function initWeb() {
   try { document.documentElement.classList.add(WEB_CLASS); } catch (e) { /* 忽略 */ }
+  /* 轮 496：键盘前基线。缩布局视口型内核（innerHeight 直接变小的那批）就是靠
+     「基线 − 当前 innerHeight」反推键盘本体高度的，没有基线就永远是 0。 */
+  restH = (typeof window !== "undefined" && window.innerHeight) || 0;
   const vv = window.visualViewport;
   if (vv && typeof vv.addEventListener === "function") {
     vv.addEventListener("resize", applyWeb);

@@ -21,6 +21,7 @@ import { avatarUrlFor } from "../utils/avatar.js";
 import { hideEmojiSearchIn } from "../utils/emojiPanel.js";
 import { scheduleEmojiWarm } from "../utils/emojiWarm.js";
 import { isApp } from "../stores/uiStore.js";
+import { webSwapNeeded } from "../utils/keyboardInset.js";
 import { t } from "../i18n.js";
 
 register();
@@ -802,8 +803,10 @@ const endKbSwap = () => {
   if (thread) thread.classList.remove("wp-kb-swap");
 };
 const holdForKeyboard = () => {
-  /* 只有 App 壳才有 --kb-h（网页端是浏览器自己缩视口）——网页上钉住会让输入框先悬空 1.2s */
-  if (!isApp) return;
+  /* 轮 496：网页端一样会掉 —— 走 visualViewport 让位路线的浏览器，收面板那刻 --kb-h 还是 0，
+     输入框先落回屏底、键盘 200~350ms 后才顶回来。缩布局视口型内核不需要钉（会悬空），
+     判据由 keyboardInset 给。 */
+  if (!isApp && !webSwapNeeded()) return;
   const n = el.value;
   if (!n) return;
   n.classList.add("wp-kb-swap");

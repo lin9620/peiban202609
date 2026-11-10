@@ -12,6 +12,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import "emoji-picker-element";
 import { t } from "../i18n.js";
 import { isMobileNav, isApp } from "../stores/uiStore.js";
+import { webSwapNeeded } from "../utils/keyboardInset.js";
 import { enterSends, insertText, pickerOpensUp } from "../utils/composer.js";
 import { hideEmojiSearch } from "../utils/emojiPanel.js";
 import { scheduleEmojiWarm } from "../utils/emojiWarm.js";
@@ -194,8 +195,10 @@ const endKbSwap = () => {
   if (bar) bar.classList.remove("wp-kb-swap");
 };
 const holdForKeyboard = () => {
-  /* 只有 App 壳才有 --kb-h（网页端是浏览器自己缩视口）——网页上钉住会让底条先悬空 1.2s */
-  if (!isApp) return;
+  /* 轮 496：网页端一样会掉 —— 走 visualViewport 让位路线的浏览器里，收面板那一刻
+     --kb-h 还是 0，底条先落回屏底、键盘 200~350ms 后才把它顶回来（393×852 实测掉 249px）。
+     只有「浏览器自己缩布局视口」那批不需要钉（钉住反而让底条悬空），判据由 keyboardInset 给。 */
+  if (!isApp && !webSwapNeeded()) return;
   const bar = barOf();
   if (!bar) return;
   bar.classList.add("wp-kb-swap");

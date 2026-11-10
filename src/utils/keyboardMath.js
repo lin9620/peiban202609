@@ -56,3 +56,26 @@ export function kbWebInset(layoutH, visualH, visualTop) {
   if (v > layout - 120) v = Math.max(0, Math.round(layout - 120));
   return v;
 }
+
+/* 轮 496 · 「缩布局视口」型内核的键盘本体高度
+ *   kb = 键盘弹起前的 innerHeight − 当前 innerHeight
+ *
+ * 为什么要单独算（用户：「手机浏览器输入的时候，表情跟文字输入高度不一致」）：
+ *   网页端一直用 kbWebInset（布局视口 − 可视视口）当键盘高度，再把它写进 --kb-last
+ *   给表情面板当尺子。可这条式子只在「布局视口不动、只缩可视视口」的内核里成立；
+ *   另一批内核（部分国产浏览器 / 老 Chromium）弹键盘时**直接把 innerHeight 缩掉**，
+ *   于是差值为 0 → --kb-h 恒为 0（不用我们让位，浏览器自己缩，底条确实是对的），
+ *   但 --kb-last 也跟着永远写不进去 → 表情面板只能退回 46vh/320px 的死值，
+ *   和真键盘差一截。表现就是「表情面板高度跟键盘高度不一致」，输入条跟着跳。
+ *
+ * 闸门 120px：地址栏伸缩最多 60 上下，键盘最低也 ≥200，两边都不误判。
+ * 兜底与 kbWebInset 同口径：非数/非正 → 0，大得离谱 → 夹到 rest − 120。 */
+export function kbShrinkInset(restH, innerH) {
+  const rest = Number(restH) || 0;
+  const now = Number(innerH) || 0;
+  if (!(rest > 0) || !(now > 0)) return 0;
+  let v = Math.round(rest - now);
+  if (!(v >= 120)) return 0;
+  if (v > rest - 120) v = Math.max(0, Math.round(rest - 120));
+  return v;
+}
