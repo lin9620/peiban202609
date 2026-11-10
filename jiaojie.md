@@ -542,6 +542,34 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
     ⑤ 手机浏览器：打字 → 点表情 → 点回输入框，输入条全程不跳。
   - 待真机确认：浏览器里①先打字让键盘弹出 ②点表情看输入条是否原地不动 ③点输入框切回键盘，
     输入条应当不往下掉。若「不一致」指的是**输入条上那个笑脸图标与输入框大小不齐**，那是另一处，另说。
+- **轮 497（已发车）**：用户截图报「我的页面，帖子下面，输入的都没改，改成跟暖心墙保持一致啊，然后我的帖子查看更多那一页也要改，点击我的页面帖子详细页面的输入也要改」。
+  - **定位**：「我的」页（`ProfileView`）与「我的帖子」页（`MyPostsView`）的卡片评论共用 `PostComments.vue`，它只抄了**形状**（占位条 + 底部输入条），外壳行为一条没抄：
+    ① 点占位条**不聚焦**（`openBar` 只置 `barOpen=true`）→ 键盘不弹，用户得再点一次输入框；
+    ② **没有暗层**（`cmt-bar-mask`），不知道点哪儿能退出；
+    ③ 没有**两级返回**（键盘在屏上时一点就把条和草稿全收了）；
+    ④ 系统返回键**直接退页面**，草稿跟着丢；
+    ⑤ 条开着 **tabbar 不收**（被条压住一半）；
+    ⑥ 底部条里多一颗「关闭」按钮 —— 暖心墙根本没有这颗（**用户截图红框圈的就是它**）。
+    详情页（`PostDetailView`）与暖心墙（`CommunityView`）这六条**本来就有**（轮 472/477 做的），已逐条核过，本轮未动。
+  - **改法**（`PostComments.vue`，其余页面零改动）：import `tabbarSuppressed/pushBack/popBack` + `barTapIsKbBack/resetBarReturn`；`openBar` 里补「再点同一条=收起」与 `nextTick` 后聚焦条内 textarea；新增 `barEl` / `MASK_SWIPE_PX=10` / `maskSwipe`(普通变量，与另两处同写法) / `barDocClose` / `maskTap` / `maskDown` / `maskMove` / `barBackFn` + `watch(barOpen)`（收 tabbar、压栈、挂 document 监听）+ `onUnmounted` 清理；模板加暗层、去掉「关闭」按钮；样式删掉那颗按钮的 `.cmt-act` 规则。
+  - **一个多实例细节**：「我的」页一屏多张卡 = 多个 `PostComments` 实例，而 `tabbarSuppressed` 是全局的 —— `onUnmounted` 里只在**自己开着条**时才把它放回去，否则一张卡被列表刷掉会把别人的 tabbar 也放出来。
+  - **护栏**（`tools/cmt-teleport-test.mjs`）：手势分流遍历从 2 处扩到 **3 处**（加 `PostComments`，函数名 `closeBar/maskMove/maskTap`）；新增一组「三处必须同款」6 项 × 3 页 = 18 条（点开即聚焦 / 聚焦前 nextTick / 有暗层 / 接管返回键 / 收 tabbar / 条内无「关闭」）。`69/69`。**反向注入**：把 `class="cmt-bar-mask"` 改名 → 2 条立刻红；改回 → 69/69。
+  - **真机形态实测**（`_scratch/cmtbarprobe`：真 `PostComments` + 真壳层 `shell shell--mobile-nav shell--chat`，393×852，已删）：
+    初始 = 只有占位条（无条/无暗层）；点占位条 → 暗层 z=149、条 z=150 贴屏底（top 777 / bottom 852）、**条内无「关闭」**、`tabbarSuppressed=true`、`document.activeElement` 是条内 **TEXTAREA**（键盘会自动弹）；点暗层 → 条与暗层同时消失、`tabbarSuppressed` 回 false。
+  - 全量 **115 项 / 115 通过，断言 1646 / 1646**（新增 31 条）；`undef 4`（同前误报）/ `tdz 0`；build EXIT=0。**commit `5daffc5`，随轮 498 一起部署。**
+  - 待真机确认：①「我的」页帖子卡点「说点温柔的话…」→ 键盘直接弹（不用再点一次）②条开着时点上方空白 / 往上滑 / 按系统返回键，都能退，且先落键盘再收条 ③条里不再有「关闭」④条开着时底部四个页签收起、关掉回来 ⑤「我的帖子」查看更多页同上。
+- **轮 498（已发车）**：用户第四次报同一件事，附私信页截图 ——「浏览器早就跟你说了，表情跟输入框高度不一致，你一直说改好了，改好了屁」。
+  - **截图读出来的事实**（不是猜）：面板贴底开着，**输入条整条不见了**，消息列表被面板从中间截断，面板只有屏高的 ~1/5（远矮于键盘）。所以这句话至少包含两个毛病：**①面板把输入条盖住了 ②面板比键盘矮一大截**。
+  - **根因①（让位只靠两条命）**：会话页 footer 的让位写在两处高特异性选择器里 —— `:has(.vac-emoji-picker)` 与 `:host(.wp-emoji-open)`。前者在 Chromium<105 / X5 / 多数国产 WebView 里**整套不认**；后者依赖 `bind()` 里的 `observeEmoji()` 挂上 MutationObserver，而旧写法是 `if (!sr) return;` —— 只要那一拍 `shadowRoot` 还没建好，观察者**永久失联**，宿主永远没有那个类。两条同时失效 ⇒ footer `padding-bottom` 归零 ⇒ 面板正好盖住输入条。**我在 Edge/Chrome 上测不出来，就是因为这台两条都通。**
+  - **根因②（vh 不可信）**：`--kb-panel-h: min(var(--kb-last, min(46vh,320px)), 62vh)` —— 有的内核把 `vh` 算成「键盘剩下那点高度」，46vh 只有一百多像素。再加上 `restH` 基线旧写法「没键盘就覆盖」，弹完键盘布局视口没复原的机型会把矮值记成基线，面板高度从此就错。
+  - **改法（会话页 · `DmVacChat.vue`）**：新增 `emojiPad(open)` —— 面板一出现就**量**它的 `getBoundingClientRect()`（自身高度 + 到底部还有多少缝），直接写 footer 的**内联** `padding-bottom`（内联压过一切选择器，内联不认 `:has`）；`ResizeObserver` 盯住面板，高度一变就重量（256ms 补量一次兜过渡）；收起时清内联值回落给 CSS。桌面浮窗（>899px）不套这条。`observeEmoji()` 改成退避重试（40×60ms，卸载即停），切会话再补挂一次。
+  - **改法（全局尺子 · `keyboardInset.js` + `style.css`）**：`--kb-panel-h` 改成 `min(var(--kb-last, var(--kb-fallback, min(46vh,320px))), var(--kb-cap, 62vh))`；`writePanelRuler()` 用「见过的最高的正常视口」算**px** 兜底（×0.46，夹 240~320）和上限（取 `min(restH, 当前可视高)` ×0.62，不低于 200），跟随可视高度重算、只在数值变化时写样式；`restH` 改成**只往上记**，旋屏重取。852 屏下算出来仍是 320 / 528，与改前逐值相同 —— 正常机器零变化。
+  - **实测（真 dist + 真登录态 + 真 Edge，393×852，真点表情键）**：面板开 → footer `padding-bottom` 320、输入条 481~532、面板 532~852，**条底 = 面板顶，无缝无叠**；把 `--kb-last` 写成 300 → 面板 552~852、条 501~552，仍然严丝合缝（改之前这里会留 20px 缝）；**焊死宿主类 + 把 `:has` 选择器改名**（模拟用户那台内核）→ 条仍在 501~552，`padding-bottom` 由内联值顶着；再点一次收起 → `padding-bottom` 归 0，条回屏底 801~852。
+  - **护栏**：`tools/emoji-panel-test.mjs` 新增 **E15/E16/E17**（量出来的内联让位 / 观察者退避重试 / 尺子用 px）+ E7 改锁新变量链 + E10 同步口径，17/17。**反向注入四连**全部变红：去掉 `emojiPad` 调用 → E10+E15 红；观察者改回 `return` → E16 红；CSS 链改回只有 vh → E7 红；`restH` 改回覆盖 → E17 红。
+  - 全量 **115 项 / 115 通过，断言 1646 / 1646**；`undef 4`（同前误报）/ `tdz 0`；build EXIT=0。**commit `277bc50`，已部署 Worker Version `ce721fa9-e313-431c-b61c-f61b964711f6`。**
+  - **发车核验（2026-11-11 02:5x）**：`live-check` **15/15**、`page-smoke` **16/16**、`live-bundle-check` **5/5 SAME**（入口 `main-C1_Fy2H7.js` 1019962 字节 sha16 `ebd22acd32e9b864`，slug 在入口里）；单独核 `PostComments-CiTt5IZY.js` sha16 `c3ec088633f7f16c` 本地=线上。线上 CSS 里 `kb-panel-h: min(var(--kb-last, var(--kb-fallback, min(46vh, 320px))), var(--kb-cap, 62vh))` 已在。
+  - **部署时的并发提示**：工作区里混着另一会话的故事页改版（`StoryFeed.vue` / `glass.css` / `i18n.*`），但它们已经先发过一轮线上（线上 `main-BIeLjCHP.css` 与本地逐字节相同），所以本次 deploy = 线上现有 + 本轮两笔，没有多推别人的东西。
+  - 待真机确认（浏览器里）：①打字让键盘弹出，记下输入条位置 ②点表情：面板贴底出现，**输入条原地不动、不被盖住** ③再点键盘键：面板收起、键盘接上，输入条还是原地不动 ④来回切三次不跳。
 - **⚠️ 环境坑（本轮踩到，记一笔）**：`git config core.autocrlf = true`。任何一次 `git stash` / `git checkout` 都会把工作区文件从 LF 转成 **CRLF**，而 `app-shell-test` T68 之类用 `\n` 精确匹配的断言会当场变红（且报错跟真因毫无关系）。本轮 stash 对照实验后 127 个文件被转成 CRLF，已全部转回 LF（`grep` 复查 0 个）。下次谁再 checkout，先跑一遍「CRLF → LF」再跑测试，别把假红当真回归。
 - **轮395（已打包，未提交）**：用户确认 `MIGRATION_story_draft_delete.sql` 已在 Supabase 执行；匿名 RPC 探针返回 `401 / 42501 permission denied for function story_delete_draft`，证明函数存在且未向 anon 开放（符合只授 authenticated 的设计），未删除任何真实草稿。代码无改动，重新 `build + cap:sync + assembleDebug` 后打 `apk/warm-paws-1.0.2-round395.apk`，与 round394 字节/SHA-256 相同（`A83A01B2CDD47201466FA44069952199D1B5C692590D6EA45EE86BA06D15A395`）；**未安装**。
 - **轮396（已部署，未提交）**：修「故事页加载更多点了没反应」——旧逻辑 `more = rows.length >= offset + PAGE` 且点击时先把 `offset += PAGE`，按钮在请求回来前当场消失；请求慢/失败/挂住时既没有新内容，也没有按钮可重试。现在改成 `hasMore` 状态机：只有成功拿到一页才推进 `offset`，请求中按钮保留并显示「加载中…」，失败保留「加载更多」并提示可重试，最后一页显示「没有更多了」。翻页请求加 20s 兜底超时（线上 `/sb` 代理实测第二页 9.4s，避免误杀）。`story-test` 232/0、`app-shell-test` 70/0、`i18n-test` 19/0、undef/tdz 0、build 成功、page-smoke 14/14；真实 DOM 探针：mock 12→14（加载中→没有更多了）、500 失败保留 12 篇+按钮+错误、真实 Supabase 只读数据 12→14。已部署 Worker Version `aeaf0e60-d065-4086-93e5-0be543988934`，入口 `main-C3Hi3Z0k.js`，故事分包 `StoryFeed-DleUGvMA.js`；本次未重打 APK，round395 不含此修复。
