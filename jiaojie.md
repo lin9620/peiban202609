@@ -644,6 +644,15 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
   - 全量 **115 项 / 115 通过，断言 1646 / 1646**；`i18n-test` 54/54、`i18n-usage-test` 漏键 0 死键 0；build EXIT=0。**未 commit、未 deploy、未打包**（轮 499 + 500 + 501 一起攒批）。
   - 遗留说明：①App 内 WebView 没有 `navigator.share`，所以 App 里看到的是六格直连（点渠道由系统接手打开对应 App/浏览器），地址行复制永远可用；要 App 里也弹系统分享面板，得给 `WpShare` 加一个 `shareText` 方法 —— 那是原生改动，要重新打包，等发话。②无头浏览器里「复制」会失败并显示 `Couldn't copy the link`（headless 不给剪贴板），真人浏览器/App 里是正常的，这条正好验证了失败分支会说话。
 
+
+- **🎯 轮 499~502 发车（已提交 · 已部署 · 未打包 · 未装机）**：用户一句「好，部署，我看看苹果上问题有没有解决」。
+  - 提交三个（每轮一个主题）：`080e796` 轮499+500 键盘面板高度判据 · `1f3a608` 轮501 分享面板重做 · `b1fbb75` 轮502 iOS 兼容底座。
+  - Worker Version **`0f7945da-7c82-4e6f-a8fe-4e4d23a52b51`**；入口 `main-xWsXM6B3.js` 1026521 bytes，sha16 **`194b19ccf1610e01`**，local=live 逐字节一致。
+  - `live-check` **15 / 15**（含 /api/health、robots、sitemap、安全头、真 404）；`live-bundle-check` **5 / 5**。
+  - **⚠️ 部署隔离（重要，另一个会话请留意）**：工作区当时有**另一路未提交的改动**（`StoryFeed.vue` +96、`glass.css` +27、`dmStore.js` +17、`MessagesView.vue` +30、`dm-test`/`dm-race-test`，以及 `style.css` 里漂流瓶桌面版与 `.st-hero` 故事页头共 204 行、四份 i18n 里的 `story.clearSearch`）。这些**没有上线**：部署前先把那 6 个文件还原成 HEAD 内容、把 `style.css` 重建为「HEAD + 我这 5 处改动」、临时摘掉 `clearSearch`（否则 `i18n-test` T4 五语种对不齐、`i18n-usage-test` 报死键），构建部署完再**逐字节恢复**。恢复后 `git diff --numstat` 与隔离前完全吻合（style.css 204+5、StoryFeed 96+32 …），对方的活一个字节没动。
+  - 隔离后全量复核：`--tier=fast,mount` **119 / 119 通过、断言 1672 / 1672**；build EXIT=0。
+  - **请用户在 iPhone 上验的四条**：①Safari 打开任意页，底栏/浮层/菜单的毛玻璃应该恢复（不再是死板的灰块）；②长页面上下滑，整页不该再多出可滚量、不该一滑就橡皮筋回弹；③iPad 或横屏打开消息页，输入条应贴在键盘/屏底，不再被顶到屏幕外；④打开 `warmpaws.de5.net/?diag=1` 把面板文本发回来 —— 那是后续所有 iOS 问题的第一手证据。
+  - **未打包**（用户只说部署）：App 内看不到这轮改动，`public/apk/warmpaws.apk` 仍是旧包。
 - **轮 502（改动完成、测试过了、待发话）**：用户问「我插上苹果手机，你能像控制安卓一样控制吗，苹果浏览器上有很多问题」，随后补一句「你不要又是只看我这台苹果手机，要兼容啊，你在这台上修好了，别的型号怎么办」。
   - **先答能力问题（别再重复问）**：不能。安卓走 `adb`（`input tap/swipe` / `screencap` / `uiautomator dump`），iOS 的触控注入只有 WebDriverAgent 一条路，需要 **macOS + Xcode + 开发者证书**现场编译签名；本机是 Windows + Git Bash，走不通。实测他插上的 iPhone 在设备管理器里只有 `USB\VID_05AC&PID_12A8`（Class=**WPD** 便携设备），**系统里没有 Apple Mobile Device 服务**（没装 iTunes / 「Apple 设备」）→ 连 usbmux 都没有，`pymobiledevice3` / syslog / 截图 / Web Inspector 全部接不上。装驱动后也只是**只读**，仍然点不了。
   - **所以这轮不按机型修，按能力修**（轮 500 的教训：「凡是按屏幕尺寸写死的常量，换块屏就废」）。三处改动：
