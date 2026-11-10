@@ -722,6 +722,62 @@ const syncEmojiIcon = (open) => {
   if (!btn.querySelector(".wp-vac-emoji-swap")) btn.innerHTML = EMOJI_SWAP_HTML;
   btn.setAttribute("data-wp-emoji-key", open ? "keyboard" : "emoji");
 };
+
+/* 轮 498 · 面板让位改成「量出来的」内联让位（用户第四次报「表情开着，输入条不见了」）。
+ * 旧做法只有两条命：① .vac-room-footer:has(.vac-emoji-picker) ② :host(.wp-emoji-open)。
+ * ① 在 Chromium <105 和多数国产 WebView（X5/系统浏览器）里整套不认；② 依赖
+ *   MutationObserver 挂上了没有 —— bind() 若跑在 shadowRoot 建好之前就直接 return，
+ *   那个观察者从此再也挂不上，宿主永远没有 wp-emoji-open（本轮已改成退避重试）。
+ * 两条同时失效时 footer 的 padding-bottom 归零，面板正好把输入条整条盖住：
+ *   Edge/Chrome 上两条都通，所以前几轮在本机怎么测都是好的，用户机器上是空的。
+ * 现在不看选择器、也不看变量：面板一出现就量它实际占掉多少（自身高度 + 底下到屏底的缝），
+ * 直接写 footer 的内联 padding-bottom（内联压过一切规则），收起时清掉回落给 CSS。
+ * 顺带兜住「面板比键盘矮一截」的机型：条永远落在面板上沿，差多少补多少。 */
+let emojiPadTimer = 0;
+let padRO = null;
+let padPick = null;
+const sheetMode = () => typeof window !== "undefined"
+  && typeof window.matchMedia === "function"
+  && window.matchMedia("(max-width: 899px)").matches;
+const stopPadRO = () => {
+  if (padRO) { try { padRO.disconnect(); } catch (e) { /* 忽略 */ } }
+  padRO = null;
+  padPick = null;
+};
+const emojiPad = (open) => {
+  clearTimeout(emojiPadTimer);
+  const n = el.value;
+  const sr = n && n.shadowRoot;
+  const foot = sr && sr.querySelector("#room-footer");
+  if (!foot) return;
+  if (!open || !sheetMode()) { stopPadRO(); foot.style.paddingBottom = ""; return; }
+  const put = () => {
+    const s = n.shadowRoot;
+    const f = s && s.querySelector("#room-footer");
+    const p = s && s.querySelector(".vac-emoji-picker");
+    if (!f) return;
+    if (!p || !sheetMode()) { f.style.paddingBottom = ""; return; }
+    const b = p.getBoundingClientRect();
+    const vh = window.innerHeight || 0;
+    const covered = Math.round(b.height) + Math.max(0, Math.round(vh - b.bottom));
+    if (covered > 0) f.style.paddingBottom = covered + "px";
+  };
+  put();
+  /* 面板高度走着 .22s 过渡，落定后再量一次（量早了会少补一截）；
+     另外盯着面板本身 —— --kb-last / 视口高度一变它就会换高矮，
+     跟着重量才不会留下一条缝（表情和输入条必须严丝合缝）。 */
+  emojiPadTimer = setTimeout(put, 260);
+  if (typeof ResizeObserver === "function") {
+    const p = sr.querySelector(".vac-emoji-picker");
+    if (p && p !== padPick) {
+      stopPadRO();
+      padPick = p;
+      padRO = new ResizeObserver(put);
+      try { padRO.observe(p); } catch (e) { /* 忽略 */ }
+    }
+  }
+};
+
 const setEmojiOpen = (open) => {
   const n = el.value;
   if (!n) return;
@@ -753,6 +809,7 @@ const setEmojiOpen = (open) => {
     }
   }
   syncEmojiIcon(open);
+  emojiPad(open);
   emojiWasOpen = open;
 };
 const syncEmoji = () => {
@@ -767,9 +824,19 @@ const syncEmoji = () => {
   injectBack();          /* 轮381：会话列表刷新会让组件重画头部，← 被一起抹掉 */
   setEmojiOpen(!!sr.querySelector(".vac-emoji-picker"));
 };
+let emojiTries = 0;
+let unmounted = false;
 const observeEmoji = () => {
   const sr = el.value && el.value.shadowRoot;
-  if (!sr) return;
+  if (!sr) {
+    /* 轮 498：bind() 可能跑在 shadowRoot 建好之前（自定义元素的升级时机各内核不一样）。
+       旧写法在这里直接 return —— 这个 MutationObserver 就永远挂不上，宿主再也没有
+       wp-emoji-open，面板让位只剩 :has() 一条命（国产内核不认 → 输入条被面板盖住）。
+       这里退避重试，拿到就挂；组件卸载后自动停。 */
+    if (emojiTries++ < 40) setTimeout(() => { if (!unmounted) observeEmoji(); }, 60);
+    return;
+  }
+  emojiTries = 0;
   if (!emojiMO) {
     emojiMO = new MutationObserver(syncEmoji);
     emojiMO.observe(sr, { childList: true, subtree: true });
@@ -1199,7 +1266,7 @@ const bind = () => {
   observeEmoji();
 };
 
-watch(() => [curRoom.value, props.showBack], () => nextTick(() => { injectTheme(); injectBack(); }));
+watch(() => [curRoom.value, props.showBack], () => nextTick(() => { injectTheme(); injectBack(); observeEmoji(); }));
 watch(() => props.hideHeader, () => nextTick(injectHead));
 /* 轮 353：失败原因随 sendErr 变化重画（清空时把注入的那行摘掉） */
 watch(() => props.err, () => nextTick(syncErr));
@@ -1231,12 +1298,15 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   commitSeq++;
+  unmounted = true;
   clearTimeout(holdTimer);
   clearTimeout(gateTimer);
   gateTimer = 0;
   clearPin();
   endKbSwap();
   if (emojiMO) { emojiMO.disconnect(); emojiMO = null; }
+  clearTimeout(emojiPadTimer);
+  stopPadRO();
   emojiWasOpen = false;
   /* 轮379：组件可能因切到漂流瓶/通知段而卸载；把每个会话的草稿交给父级保管。 */
   if (curRoom.value) {

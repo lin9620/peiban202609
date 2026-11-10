@@ -94,8 +94,10 @@ t("E7 暖心墙：≤899px 面板贴底整宽 + 高度与会话同一条", () =>
   has(block, /border-radius: 0;/, "还带圆角（浮窗样）");
   has(block, /z-index: 170;/, "z-index 会被底条盖住");
   has(BC, /--wp-emoji-h: var\(--kb-panel-h/, "会话段的高度基准变了（两处必须同一个变量）");
-  has(CSS, /--kb-panel-h:\s*min\(var\(--kb-last,\s*min\(46vh, 320px\)\),\s*62vh\)/,
-    ":root 里没有 --kb-panel-h（= 上一次键盘高，默认退回 46vh/320）");
+  /* 轮 498：兜底与上限改由 JS 算成 px（--kb-fallback / --kb-cap），
+     CSS 的 46vh/62vh 只当「JS 没跑到」时的最后兜底 —— vh 在部分内核上不可信。 */
+  has(CSS, /--kb-panel-h:\s*min\(var\(--kb-last,\s*var\(--kb-fallback,\s*min\(46vh, 320px\)\)\),\s*var\(--kb-cap,\s*62vh\)\)/,
+    ":root 里 --kb-panel-h 不是「键盘高 → JS px 兜底 → vh 末位兜底」这条链");
 });
 
 t("E8 底条抬到面板上沿（暖心墙手机主评论条）", () => {
@@ -118,7 +120,7 @@ t("E10 轮400 表情键二次点击 = 键盘键（换图标 + 回焦点 + 让位
   has(BC, /const EMOJI_SWAP_HTML = `/, "没有两枚图标的 HTML");
   has(BC, /class="wp-vac-emoji-swap"[\s\S]{0,900}class="wp-vac-kb"/, "图标里没有键盘键");
   has(BC, /const syncEmojiIcon = \(open\) => \{[\s\S]{0,520}data-wp-emoji-key/, "没有按开关同步图标");
-  has(BC, /syncEmojiIcon\(open\);\s*\n\s*emojiWasOpen = open;/, "setEmojiOpen 没调用图标同步");
+  has(BC, /syncEmojiIcon\(open\);\s*\n\s*emojiPad\(open\);\s*\n\s*emojiWasOpen = open;/, "setEmojiOpen 没调用图标同步 / 让位");
   has(BC, /:host\(\.wp-emoji-open\)[^{]*\.wp-vac-emoji-swap \.wp-vac-emoji \{ display: none; \}/, "面板打开时笑脸没藏起来");
   has(BC, /:host\(\.wp-emoji-open\)[^{]*\.wp-vac-emoji-swap \.wp-vac-kb \{ display: block; \}/, "面板打开时键盘键没显示");
   /* 新监听必须只在「面板已开 + 点的是表情键」时接管，且在组件收面板前
@@ -174,6 +176,62 @@ t("E13 面板加载态：骨架 + 上限 + 卸载清理", () => {
 
 t("E14 emojiPanel.js 保持纯 DOM（不许 import 库，否则 Node 单测崩）", () => {
   no(UTIL, /from "emoji-picker-element"/, "又把库引进来了 —— Node 里 requestAnimationFrame 未定义会直接崩");
+});
+
+/* 轮 498 · 用户第四次报「手机浏览器里表情跟输入框高度不一致、根本不能用」。
+ * 真因不是高度算错，而是**会话页让位只靠两条命**：
+ *   ① .vac-room-footer:has(.vac-emoji-picker)  —— 旧内核（Chromium<105 / X5 / 国产 WebView）整套不认
+ *   ② :host(.wp-emoji-open)                     —— 依赖 MutationObserver 挂上了没有
+ * 两条同时失效 → footer 的 padding-bottom 归零 → 面板把输入条整条盖住。
+ * Edge/Chrome 上两条都通，本机怎么测都是好的；用户机器上是一条白板。
+ * 现在的做法：面板一出现就「量」它实际占掉多少，写 footer 的内联 padding-bottom
+ * （内联压过一切选择器），并且盯着面板尺寸变化重量。 */
+t("E15 会话页让位不赌选择器：量出来的内联 padding（:has 不支持、类没挂上也不塌）", () => {
+  has(BC, /const emojiPad = \(open\) => \{/, "没有「量出来」的让位函数");
+  has(BC, /querySelector\("\.vac-emoji-picker"\)[\s\S]{0,400}getBoundingClientRect\(\)/, "没有量面板的真实矩形");
+  has(BC, /f\.style\.paddingBottom = covered \+ "px"/, "没写内联 padding-bottom（选择器一失效就白给）");
+  /* 面板底下到屏底的缝也要算进去，否则面板没贴底时会少补一条 */
+  has(BC, /Math\.round\(b\.height\) \+ Math\.max\(0, Math\.round\(vh - b\.bottom\)\)/, "只算了面板高度，没算它离屏底的缝");
+  /* 收起时必须清掉内联值，否则关掉面板后输入条永远悬在半空 */
+  has(BC, /if \(!open \|\| !sheetMode\(\)\) \{ stopPadRO\(\); foot\.style\.paddingBottom = ""; return; \}/,
+    "收起面板没清内联让位（输入条会一直悬空）");
+  /* 桌面浮窗不能套这条（否则桌面 footer 也被顶起来 300） */
+  has(BC, /const sheetMode = \(\) =>[\s\S]{0,200}matchMedia\("\(max-width: 899px\)"\)/, "没有 sheet 判据");
+  /* 面板高度会随 --kb-last / 视口变化，必须跟着重量 */
+  has(BC, /new ResizeObserver\(put\)/, "没有盯面板尺寸变化（差一截就会留缝）");
+  has(BC, /padRO\.observe\(p\)/, "ResizeObserver 没盯上面板");
+  /* 接线：一定要在 setEmojiOpen 里调，否则面板开了也不量 */
+  has(BC, /syncEmojiIcon\(open\);\s*\n\s*emojiPad\(open\);/, "setEmojiOpen 没接上 emojiPad");
+  has(BC, /onBeforeUnmount\(\(\) => \{[\s\S]{0,400}stopPadRO\(\);/, "卸载没断开 ResizeObserver");
+});
+
+t("E16 表情观察者不许「第一帧拿不到 shadowRoot 就永久失联」", () => {
+  /* 旧写法：const sr = ...; if (!sr) return; —— bind() 若跑在自定义元素升级之前，
+     这个 MutationObserver 从此再也挂不上，宿主永远没有 wp-emoji-open。 */
+  has(BC, /const observeEmoji = \(\) => \{[\s\S]{0,300}if \(emojiTries\+\+ < 40\) setTimeout/, "拿不到 shadowRoot 没有退避重试");
+  has(BC, /if \(!unmounted\) observeEmoji\(\)/, "卸载后定时器还在重试（会空转）");
+  has(BC, /onBeforeUnmount\(\(\) => \{[\s\S]{0,120}unmounted = true;/, "卸载没置位 unmounted");
+  /* 切会话时再补挂一次，双保险 */
+  has(BC, /watch\(\(\) => \[curRoom\.value, props\.showBack\][\s\S]{0,240}observeEmoji\(\)/, "切会话没补挂观察者");
+  no(BC, /const observeEmoji = \(\) => \{\s*\n\s*const sr = el\.value && el\.value\.shadowRoot;\s*\n\s*if \(!sr\) return;/,
+    "还是「拿不到就 return」的老写法");
+});
+
+t("E17 面板高度尺子：兜底与上限用 JS 的 px，vh 只当最后兜底", () => {
+  const KI = fs.readFileSync("src/utils/keyboardInset.js", "utf8");
+  has(KI, /const FALLBACK_VAR = "--kb-fallback"/, "没有 --kb-fallback");
+  has(KI, /const CAP_VAR = "--kb-cap"/, "没有 --kb-cap");
+  has(KI, /function writePanelRuler\(\) \{/, "没有写尺子的函数");
+  has(KI, /Math\.min\(Math\.max\(base \* 0\.46, 240\), 320\)/, "兜底高度的算式变了（应与 46vh/320 同量级）");
+  has(KI, /Math\.min\(base, vis\) \* 0\.62/, "上限没跟「当前可视高度」走（矮视口下面板会吃掉整屏）");
+  /* 852 高的屏：兜底 320 / 上限 528，与改之前的 46vh、62vh 完全同值 */
+  has(KI, /restH = \(typeof window !== "undefined" && window\.innerHeight\) \|\| 0;\s*\n\s*writePanelRuler\(\);/, "initWeb 没算尺子");
+  /* 键盘起落会改可视高度，尺子必须跟着重算（只有变化时才写样式） */
+  has(KI, /writePanelRuler\(\);\s*\n\s*\n?\s*\/\* 轮 496：表情面板要跟的是/, "applyWeb 里没跟可视高度重算尺子");
+  has(KI, /if \(fb === lastFb && cap === lastCap\) return;/, "没有变化判据（逐帧写样式会一直触发重排）");
+  /* 基线只往上记：弹完键盘布局视口没复原的机型，矮值不能盖掉真基线 */
+  has(KI, /inner > restH\) \{\s*\n\s*restH = inner;\s*\n\s*writePanelRuler\(\);/, "基线还会被矮视口覆盖（面板高度会一直错）");
+  has(KI, /orientationchange[\s\S]{0,240}restH = window\.innerHeight \|\| 0;/, "旋屏没重取基线");
 });
 
 console.log(`emoji-panel-test: ${pass} pass, ${fails.length} fail`);

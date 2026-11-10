@@ -32,6 +32,13 @@ import { kbInsetValue } from "./chatHeight.js";
 
 const VAR = "--kb-h";
 const SYS_BOTTOM_VAR = "--sys-bottom";
+/* 轮 498：表情面板的「兜底高度 / 上限」也由 JS 用 px 写，别让 CSS 的 vh 算。
+ * 起因（用户第四次报同一件事）：有的内核会把 vh 算成「键盘剩下那点高度」，
+ * 46vh 于是只有一百多像素 —— 面板矮成一条，输入条从上面掉下来，看着就是
+ * 「表情和文字输入高度不一致」。用「见过的最高的正常视口 × 0.46」算成 px 就稳了。
+ * CSS 侧写法：--kb-panel-h: min(var(--kb-last, var(--kb-fallback, min(46vh,320px))), var(--kb-cap, 62vh)) */
+const FALLBACK_VAR = "--kb-fallback";
+const CAP_VAR = "--kb-cap";
 /* 网页端打这个类，style.css 里三条 .kb-web 规则才生效（与 cap-app 三条一一对应）。
    默认 --kb-h: 0px ⇒ 老内核 / 读不到可视视口时表现与改之前完全一致。 */
 const WEB_CLASS = "kb-web";
@@ -128,8 +135,35 @@ let lastPanelKb = -1;
  * 只在 >0 时更新 —— 它同时是「这台设备/这个浏览器走的是 visualViewport 让位路线」的标记，
  * 表情面板 → 键盘交接要不要先钉住让位，就看它（见 webSwapNeeded）。 */
 let webKbSeen = 0;
-/* 键盘弹起前的 innerHeight 基线：缩布局视口型内核靠它反推键盘本体高度。 */
+/* 键盘弹起前的 innerHeight 基线：缩布局视口型内核靠它反推键盘本体高度。
+ * 轮 498：只往上记（取见过的最大值）—— 有些内核弹完键盘会把布局视口留在矮的那一档，
+ * 旧写法（每次没键盘就覆盖）会把这个矮值记成基线，之后反推出的键盘高度全是错的。 */
 let restH = 0;
+
+/* 轮 498：把「面板兜底高度 / 上限」写成 px（见文件头的 FALLBACK_VAR 说明）。
+ * 兜底 = 见过的最高的正常视口 × 0.46（夹 240~320，与旧的 46vh/320 同量级）；
+ * 上限 = 当前**可视**高度 × 0.62（夹不低于 200）—— 矮视口下面板不许吃掉整屏。
+ * 只在数值真的变了才写（逐帧采样时别反复改样式触发重排）。 */
+let lastFb = -1;
+let lastCap = -1;
+function writePanelRuler() {
+  const win = typeof window !== "undefined" ? window : null;
+  if (!win) return;
+  const inner = win.innerHeight || 0;
+  const vis = (win.visualViewport && win.visualViewport.height) || inner;
+  const base = restH > 0 ? restH : inner;
+  if (!(base > 0) || !(vis > 0)) return;
+  const fb = Math.round(Math.min(Math.max(base * 0.46, 240), 320));
+  const cap = Math.round(Math.max(Math.min(base, vis) * 0.62, 200));
+  if (fb === lastFb && cap === lastCap) return;
+  lastFb = fb;
+  lastCap = cap;
+  try {
+    const el = document.documentElement;
+    el.style.setProperty(FALLBACK_VAR, fb + "px");
+    el.style.setProperty(CAP_VAR, cap + "px");
+  } catch (e) { /* 极端环境忽略 */ }
+}
 
 function applyWeb() {
   const raw = readWebKb();
@@ -147,6 +181,9 @@ function applyWeb() {
   const focused = editableFocused();
   const h = kbInsetValue(raw, focused);
   const inner = (typeof window !== "undefined" && window.innerHeight) || 0;
+  /* 轮 498：可视高度变了（键盘起落 / 地址栏伸缩 / 旋屏）就重算面板尺子的上限，
+     面板高度才不会被一个「已经不成立」的视口尺寸钉死。内部有变化判据，不会每帧写样式。 */
+  writePanelRuler();
 
   /* 轮 496：表情面板要跟的是「键盘本体占多高」，它跟「页面需要让多高」不是同一个量。
    * 缩可视视口型内核：让位就是键盘高，两者相等；
@@ -156,9 +193,13 @@ function applyWeb() {
   let panelH = h;
   if (!(panelH > 0)) panelH = kbShrinkInset(restH, inner);
   if (h > 0) webKbSeen = Math.max(webKbSeen, h);
-  /* 基线只在「确实没有键盘」时刷新：不然键盘弹起后的 innerHeight 会被记成基线，
-   * 下一次就再也算不出差值。 */
-  if (!(panelH > 0) && !focused && inner > 0) restH = inner;
+  /* 基线只在「确实没有键盘」时往上记：不然键盘弹起后的 innerHeight 会被记成基线，
+   * 下一次就再也算不出差值；而弹完键盘布局视口没复原的机型，矮值也不能盖掉真基线
+   * （旧写法每次覆盖 → 面板高度从头就错，用户看到的「矮成一条」）。 */
+  if (!(panelH > 0) && !focused && inner > 0 && inner > restH) {
+    restH = inner;
+    writePanelRuler();
+  }
 
   /* iOS 为了让光标可见会把**整个文档**往上滚（window.scrollY > 0）。整屏聊天页本来
      就没有文档级滚动，这一滚会在页尾露出一条「视口之外」的空白（用户截图①那块）。
@@ -207,15 +248,22 @@ function sampleFrames(ms) {
 function initWeb() {
   try { document.documentElement.classList.add(WEB_CLASS); } catch (e) { /* 忽略 */ }
   /* 轮 496：键盘前基线。缩布局视口型内核（innerHeight 直接变小的那批）就是靠
-     「基线 − 当前 innerHeight」反推键盘本体高度的，没有基线就永远是 0。 */
+     「基线 − 当前 innerHeight」反推键盘本体高度的，没有基线就永远是 0。
+     轮 498：同时把面板兜底高度算成 px 写进 CSS（vh 在部分内核上不可信）。 */
   restH = (typeof window !== "undefined" && window.innerHeight) || 0;
+  writePanelRuler();
   const vv = window.visualViewport;
   if (vv && typeof vv.addEventListener === "function") {
     vv.addEventListener("resize", applyWeb);
     vv.addEventListener("scroll", applyWeb);       /* iOS 上推可视视口只派发 scroll */
   }
   window.addEventListener("resize", applyWeb);      /* 兼容「缩布局视口」型内核 / 旋屏 */
-  window.addEventListener("orientationchange", () => sampleFrames(600));
+  window.addEventListener("orientationchange", () => {
+    /* 旋屏后视口是真的换了：基线必须重取，否则「基线 − 当前」会算出个假键盘高度 */
+    restH = window.innerHeight || 0;
+    writePanelRuler();
+    sampleFrames(600);
+  });
   document.addEventListener("focusin", () => sampleFrames(900), true);
   document.addEventListener("focusout", () => { setTimeout(applyWeb, 60); }, true);
   document.addEventListener("visibilitychange", () => {
@@ -227,6 +275,9 @@ function initWeb() {
 
 export function initKeyboardInset() {
   if (!Capacitor.isNativePlatform()) { initWeb(); return; }   /* 网页端走可视视口那套 */
+  /* 轮 498：App 壳也把面板兜底高度算成 px（与网页端同一把尺子，别一边一个数） */
+  restH = (typeof window !== "undefined" && window.innerHeight) || 0;
+  writePanelRuler();
   try {
     Keyboard.addListener("keyboardWillShow", (i) => setInset(i && i.keyboardHeight));
     Keyboard.addListener("keyboardDidShow", (i) => setInset(i && i.keyboardHeight));
