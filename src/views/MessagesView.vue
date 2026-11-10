@@ -2510,12 +2510,12 @@ function goSignIn() {
 
         <template v-if="normal.length">
           <!-- 轮490：会话标题这一行的最右边放「全部已读」。
-               只在真有未读时出现 —— 一颗点了没反应的按钮比没有更糟；
-               点完未读清空，它就自己消失，这就是最直接的「做完了」反馈。 -->
+               轮495（用户：「没有按钮」）：**恒定渲染**，不再「有未读才出现」。
+               上一版是为了「不摆一颗点了没反应的按钮」，结果用户在有未读时也找不到它
+               —— 藏起来的入口等于没有入口。现在没未读时置灰禁用，位置和名字始终可见。 -->
           <div class="dm-sec">
             <span class="sec-label">{{ t("dm.conversations") }}</span>
             <button
-              v-if="pendingUnread.length || allReadNote"
               type="button" class="dm-sec-act"
               :class="{ 'is-ok': allReadNote === 'ok', 'is-fail': allReadNote === 'fail' }"
               :disabled="allReadBusy || !pendingUnread.length"

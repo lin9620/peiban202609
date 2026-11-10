@@ -40,3 +40,30 @@ export function restoreScroll(path) {
     return y == null ? null : y;
   } catch (e) { return null; }
 }
+
+/* ═══ 轮495 · 给「不保活、数据异步」的页面回位（/story 这类）═══
+ * App.vue 对每条路由都 rememberScroll 了，但只有四个保活页签会 restore —— 原因是别的
+ * 页面每次重新挂载、列表是异步拉的，挂载那一瞬文档还没长够，scrollTo 会被钳到当时
+ * 的最大值（等于没回）。
+ * 这里一直轮询到「文档能滚到记忆位」为止，最多 timeout 毫秒；到期就落到当时能给的最大值。
+ * 用户自己一动就由调用方取消（不跟用户抢滚动）。 */
+export function restoreWhenTall(path, { timeout = 900, onAbort } = {}) {
+  const y = getScroll(path);
+  if (y == null || y <= 0) return null;
+  const t0 = Date.now();
+  let alive = true;
+  const stop = () => { alive = false; };
+  const tick = () => {
+    if (!alive) return;
+    let max = 0;
+    try { max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight); } catch (e) {}
+    if (max >= y - 1 || Date.now() - t0 >= timeout) {
+      try { window.scrollTo({ top: Math.min(y, max), left: 0, behavior: "instant" }); } catch (e) {}
+      return;
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+  if (onAbort) onAbort(stop);
+  return stop;
+}

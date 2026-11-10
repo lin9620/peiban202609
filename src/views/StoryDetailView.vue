@@ -235,12 +235,11 @@ function openRelated(r) {
   router.push(`/story/${r.id}`);
 }
 
-/* ── 返回：一律回发现页，不用router.back() ──
- * 物理返回键在 App.vue 里对非ROOT_VIEWS 一律 router.back()，而/story 是独立路由
- * （不在 ROOT_VIEWS 里），back() 会退回浏览历史的上一页 —— 往往是你之前待过的首页今日/漂流瓶联，
- * 于是「详情页返回跑到了今日或漂流瓶」。这里改用共享的 useStoryBack：
- * replace 到 /story，既修正落点，又不留多余历史记录（连按多次返回不会一层层回退）。
- * mine / rank 页共用同一份逻辑，避免三处各写一遍监听、以后只改一处。 */
+/* ── 返回：有上一页就回上一页，没有才回发现页 ──
+ * 轮 495 改口（用户：「点击具体页面，来回切，位置不变，页面不变」）：
+ * 从首页故事联点进来就回首页故事联，从 /story 列表点进来就回那个列表，位置都留着。
+ * 只有冷启动深链（历史里没有上一页）才落回 /story —— 就是 useStoryBack 现在的口径。
+ * 系统返回键不归这里管，App.vue → backNav.js 统一处理（同一件事不要两处监听）。 */
 const { storyBack: back } = useStoryBack(router, "/story");
 onMounted(load);
 /* 轮 313：用户域也进依赖 —— 冷启动深链（App 被通知/外链直接拉进 /story/:id）时 setup 阶段登录态

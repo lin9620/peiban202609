@@ -9,7 +9,7 @@
  *   vue-router 4 自己在 history.state 里维护 back/current/position，才是权威。
  */
 import { App as CapApp } from "@capacitor/app";
-import { planBack, EXIT_HINT_WINDOW } from "./backPlan.js";
+import { planBack, normPath, EXIT_HINT_WINDOW } from "./backPlan.js";
 
 /* history.state.back 是"上一页的 URL"。只有站内路径才认 —— App 内正常不会有外链，
  * 但谷歌登录那一套用了系统浏览器/自定义 scheme，保险起见挡一层。 */
@@ -64,4 +64,21 @@ export function createBackNav(router, { onHint } = {}) {
   }
 
   return { run, reset: () => { lastHintAt = 0; } };
+}
+
+/* 页面内「←」按钮用的简易口径（轮 495）：
+ *   有上一页 → 回上一页（从哪进来就回哪，位置也留着）；没有 → replace 到 fallback。
+ *
+ * 为什么不用 createBackNav().run()：那条路带「再按一次退出 / 回首页」等系统键语义，
+ * 页面内的 ← 不该退到桌面、也不该把 Tab 根拉回首页。这里只要「上一页」一件事。
+ * 判断和 backPlan 同源（normPath 归一），避免 /zh 别名或 ?tab= 造成的键对不上。 */
+export function backOr(router, fallback = "/") {
+  const cur = normPath((router.currentRoute.value && router.currentRoute.value.path) || "/");
+  const back = internalBack(router);
+  if (back && normPath(back) !== cur) {
+    router.back();
+    return true;
+  }
+  router.replace(fallback).catch(() => {});
+  return false;
 }

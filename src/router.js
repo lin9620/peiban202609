@@ -35,9 +35,12 @@ export const router = createRouter({
     { path: "/story/write", name: "storyWrite", meta: { backTo: "/story" }, component: () => import("./views/StoryWriteView.vue") },
     { path: "/story/mine", name: "storyMine", meta: { backTo: "/story" }, component: () => import("./views/StoryMineView.vue") },
     { path: "/story/rank", name: "storyRank", meta: { backTo: "/story" }, component: () => import("./views/StoryRankView.vue") },
-    /* 轮 493：故事详情是「替换式返回」——它不要"上一页"，只要"发现页"。轮 148 的
-     * 实报就是让 back() 抢了先：从首页今日联点进来，返回直接回到今日。 */
-    { path: "/story/:id(\\d+)", name: "storyDetail", meta: { backTo: "/story", backMode: "replace" }, component: () => import("./views/StoryDetailView.vue") },
+    /* 轮 495：故事详情回到「走历史」，不再强制 replace 到 /story。
+     * 用户原话：「我说的是点击具体页面，来回切，位置不变，页面不变」——从哪进去就回哪。
+     * 轮 493 那个 backMode:"replace" 是照轮 148 的老诉求写的（当时嫌回到今日联），
+     * 结果把「从首页故事联点进来的人」甩到了他从没去过的发现页，位置也没了。
+     * backTo 留着给深链兜底：冷启动直接打开 /story/12 时没有上一页，才回发现页。 */
+    { path: "/story/:id(\\d+)", name: "storyDetail", meta: { backTo: "/story" }, component: () => import("./views/StoryDetailView.vue") },
     /* 手机端发帖：底部 ＋ → 独立大输入框页（桌面仍用暖心墙页顶发布框，不进这页） */
     { path: "/compose", name: "compose", meta: { backTo: "/community" }, component: () => import("./views/ComposeView.vue") },
     /* 我的帖子：暖心墙「我的」区点「更多」进来，10 条一页 + 下拉续载 */

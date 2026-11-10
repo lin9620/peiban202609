@@ -13,6 +13,7 @@ import { getItem, setItem } from "../utils/storage.js";
 import {
   validateImageFile, isSaneShape, isUsableDataUrl, shrinkToDataUrl,
 } from "../utils/imaging.js";
+import { backOr } from "../utils/backNav.js";
 
 const router = useRouter();
 const route = useRoute();
@@ -87,11 +88,11 @@ function clearImage() {
   imgH.value = 0;
 }
 
-/* 返回：从暖心墙点进来 → 回墙；深链进来 → replace 到墙（不污染历史） */
+/* 返回：有上一页就回上一页（从哪进来回哪），深链进来才 replace 到暖心墙。
+ * 轮 495：原来只在「上一页就是暖心墙」时才 back()，其它情况一律 replace ——
+ * 从「我的」页或首页进来的用户会被硬塞到暖心墙，和「回到原来那页」的预期不符。 */
 function goBack() {
-  const st = router.options && router.options.history && router.options.history.state;
-  if (st && st.back === "/community") router.back();
-  else router.replace("/community");
+  backOr(router, "/community");
 }
 
 /* 未登录 → 登录页（轮 17 统一口径）：登录成功按 ?redirect= 回到本页继续写，
@@ -239,7 +240,12 @@ async function submit() {
   /* 轮 480：dvh 一律关进下面的 @supports，外层只留 vh 兜底。
    * 这是轮 474 的同一个坑——不认 dvh 的内核不是「回退到前一条声明」，
    * 而是把整条属性判成无效（退 auto），所以两条声明必须分在不同规则里。 */
-  min-height: 100vh;
+  /* 轮 495（用户：「内容折叠了」）：高度要**减掉键盘高度**。
+   * 这页是自动聚焦的，一进来键盘就顶起来 ~300px；页面却仍按整屏高排，
+   * 结果整张卡片被顶到键盘底下，底部工具条（添加图片 / 字数）根本够不着，
+   * 看着就像内容被折起来了。--kb-h 由 keyboardInset.js 推到 <html> 上，
+   * 网页端恒 0（浏览器自己缩视口），所以这条在浏览器里不改变观感。 */
+  min-height: calc(100vh - var(--kb-h, 0px));
   max-width: 720px; margin: 0 auto;
   /* 轮 492（用户实报图：App 里发帖页顶栏被状态栏压住）：
    * 顶部安全区**不垫在这一层**，交给 .compose-head 自己吃（见那条注释）。
@@ -248,7 +254,7 @@ async function submit() {
   padding: 0 14px calc(16px + var(--sab, env(safe-area-inset-bottom, 0px)));
 }
 @supports (height: 100dvh) {
-  .compose-page { min-height: 100dvh; }
+  .compose-page { min-height: calc(100dvh - var(--kb-h, 0px)); }
 }
 /* 轮 137 口径：桌面流式壳下页面容器铺满，不再收窄居中（App / 窄屏不受影响） */
 @media (min-width: 900px) { .compose-page { max-width: none; } }
@@ -361,7 +367,10 @@ async function submit() {
 .compose-writing { position: relative; flex: 1 1 auto; display: flex; min-height: 0; }
 .compose-area {
   flex: 1 1 auto;
-  width: 100%; min-height: 34vh;
+  width: 100%;
+  /* 轮 495：下限用像素而不是 34vh —— 键盘顶起后可用高度只剩三四百，
+     34vh（约 290）会把底栏挤出卡片，overflow:hidden 一裁就是「内容折叠」。 */
+  min-height: 120px;
   border: none; outline: none; resize: none; background: transparent;
   font: inherit; font-size: 17px; line-height: 1.85; letter-spacing: .15px;
   color: var(--ink); padding: 2px 0;
@@ -460,6 +469,6 @@ html[data-theme="night"] .compose-tool { background: rgba(255, 255, 255, .08); }
   .compose-back { width: 38px; height: 38px; }
   .compose-title { font-size: 17px; }
   .compose-card { border-radius: 22px; padding: 16px 15px 12px; }
-  .compose-area { min-height: 40vh; font-size: 16.5px; }
+  .compose-area { min-height: 132px; font-size: 16.5px; }
 }
 </style>

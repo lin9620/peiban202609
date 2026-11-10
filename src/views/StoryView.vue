@@ -7,13 +7,33 @@
  *   手机端仍走底部 ＋ 第三瓣，避免与 StoryFeed 联内导航重复。
  * 新增路由必须同步 vite.config.js 的 seoRoutes（轮 134 红线：没有预渲染文件线上真 404）。 -->
 <script setup>
-import { useRouter } from "vue-router";
+import { onMounted, onBeforeUnmount } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { t } from "../i18n.js";
 import { isMobileNav } from "../stores/uiStore.js";
+import { restoreWhenTall } from "../utils/scrollMem.js";
 import StoryShell from "../components/story/StoryShell.vue";
 import StoryFeed from "../components/story/StoryFeed.vue";
 
 const router = useRouter();
+const route = useRoute();
+
+/* 轮495：从具体故事返回本页时位置要还在（用户：「来回切，位置不变」）。
+ * 本页不在 KeepAlive 名单里（每次进来都重新拉列表），所以不能用 restoreScroll 一刀切 ——
+ * 挂载那一瞬文档还没长够，会被浏览器钳回顶部。restoreWhenTall 会等到列表长够再落位。
+ * 用户一碰屏幕就取消，别跟人抢滚动。 */
+let stopRestore = null;
+onMounted(() => {
+  stopRestore = restoreWhenTall(route.path);
+  window.addEventListener("touchstart", cancelRestore, { passive: true });
+  window.addEventListener("wheel", cancelRestore, { passive: true });
+});
+function cancelRestore() { if (stopRestore) { stopRestore(); stopRestore = null; } }
+onBeforeUnmount(() => {
+  cancelRestore();
+  window.removeEventListener("touchstart", cancelRestore);
+  window.removeEventListener("wheel", cancelRestore);
+});
 </script>
 
 <template>

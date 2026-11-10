@@ -20,14 +20,14 @@
  *
  *  ① 页面内浮层 —— **不在本表**。调用方先问 uiStore 的 runBack() 拦截栈
  *     （输入条 / ＋弹层 / 消息页段位切换），关掉浮层再谈页面。
- *  ② `meta.backMode === "replace"` 且声明了 backTo —— 替换式返回。故事系专用：
- *     /story/12 一律回 /story 发现页，哪怕上一页是首页今日联（轮 148 实报
- *     「返回跑到了今日或漂流瓶」就是让 back() 抢了先）。
- *  ③ 应用内还有上一页（history.state.back）→ 正常回退。这是用户最常说的「前一页」。
- *  ④ 没有上一页但有 backTo → replace 到父页。深链兜底，绝不留在原地也绝不退出。
- *  ⑤ 在非首页的 Tab 根 → replace 回首页。用户要的「返回首页」。
- *  ⑥ 已经在首页 → 第一次只给提示（「再按一次退出」），窗口内再按才最小化。
- *     minimizeApp 而非 exitApp：任务留在后台，用户切回来还是原样。
+ *  ② `meta.backMode === "replace"` 且声明了 backTo —— 替换式返回（目前无路由使用，
+ *     留给「进去就该回某个固定页」的页面）。
+ *  ③ **Tab 根**：首页 → 第一次只给提示（「再按一次退出」），窗口内再按才最小化；
+ *     其余三个 Tab 根 → replace 回首页。**必须排在历史回退之前**，理由见下面 ③ 的注释
+ *     （replace 会让 history.state.back 指回来路，排后面就是来回乒乓 + 永远退不出去）。
+ *  ④ 应用内还有上一页（history.state.back）→ 正常回退，回到用户来的页面与位置。
+ *  ⑤ 没有上一页但有 backTo → replace 到父页。深链兜底，绝不留在原地也绝不退出。
+ *  ⑥ 都不满足 → 同 ③ 的首页口径（提示 / 最小化）。
  *
  * 为什么不用 `ROOT_VIEWS.includes(route.name)` 判断：名字是"页面身份"，而返回键
  * 真正关心的是"我还能不能往回走 / 我该回到哪个上级"。名字白名单一旦漏掉新页面
@@ -87,27 +87,47 @@ export function planBack({
   const parent = backTo ? normPath(backTo) : "";
   const prev = back ? normPath(back) : "";
 
-  /* ② 替换式返回（故事系）：目标就是父页，不看历史。 */
+  /* ② 替换式返回（`meta.backMode:"replace"`）：目标就是父页，不看历史。
+   * 轮 495：**故事详情不再用它**（见 router.js 那条注释）——用户要求「点进具体
+   * 故事再返回，页面和位置都不变」，所以详情页改回走 ④ 的历史回退。
+   * 表里留着这一档，给「进去就该回某个固定页」的页面用。 */
   if (backMode === "replace" && parent && parent !== cur) {
     return { action: "replace", to: parent, reason: "replace-page" };
   }
 
-  /* ③ 应用内还有上一页 —— 用户口中的「前一页」。 */
+  /* ③ Tab 根**优先于历史回退**（轮 495 实测定下来的顺序，别改回去）。
+   *
+   * 真机 + 真实路由探针（_scratch/backprobe）实测：vue-router 执行 replace 之后，
+   * `history.state.back` 会指回**刚离开的那一页**：
+   *     在 /story 按返回 → replace("/") → state = {back:"/story", current:"/"}
+   * 此时如果先问「还有没有上一页」，答案是「有」→ router.back() → **又弹回 /story**。
+   * 用户按两次返回 = 去了首页又弹回来，原话就是「故事主页连续两次返回没有用」。
+   * 首页病得更重：站在首页按返回本来该提示「再按一次退出」，却先被这条回退规则
+   * 抓走，跳去上一个页面 —— 永远退不出去。
+   *
+   * 所以 Tab 根一律不问历史：首页只做「再按一次退出」，其余三个 Tab 根回首页。 */
+  if (cur === "/") {
+    if (!allowExit) return { action: "none", reason: "no-exit" };
+    if (lastHintAt && now - lastHintAt < hintWindow) {
+      return { action: "minimize", reason: "exit" };
+    }
+    return { action: "hint", reason: "hint" };
+  }
+  if (tabRoots.indexOf(cur) >= 0) {
+    return { action: "replace", to: "/", reason: "tab-root" };
+  }
+
+  /* ④ 应用内还有上一页 —— 用户口中的「前一页」。回到他来的那个页面与位置。 */
   if (prev && prev !== cur) {
     return { action: "history", reason: "history" };
   }
 
-  /* ④ 深链兜底：没有上一页，回路由自己声明的父页。 */
+  /* ⑤ 深链兜底：没有上一页，回路由自己声明的父页。 */
   if (parent && parent !== cur) {
     return { action: "replace", to: parent, reason: "parent" };
   }
 
-  /* ⑤ 非首页的 Tab 根 → 回首页（用户要的「返回首页」）。 */
-  if (cur !== "/" && tabRoots.indexOf(cur) >= 0) {
-    return { action: "replace", to: "/", reason: "tab-root" };
-  }
-
-  /* ⑥ 已经在首页：先提示，窗口内再按才走。 */
+  /* ⑥ 剩下的（无父页、无历史、又不是 Tab 根）：当作「到头了」。 */
   if (!allowExit) return { action: "none", reason: "no-exit" };
   if (lastHintAt && now - lastHintAt < hintWindow) {
     return { action: "minimize", reason: "exit" };
