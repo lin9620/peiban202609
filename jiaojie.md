@@ -478,6 +478,70 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
   - **未装机**：`adb devices` 当前无设备连接（列表为空）。插上手机后 `adb install -r apk/warm-paws-1.0.2-round494.apk` 即可。
   - 测试：fast **115/115**、断言 **1614/1614**；prod **4/4**（52 条）；`app-shell 75/75`；`page-smoke 16/16`；build EXIT=0。
   - **待真机验收（本批 8 轮全部）**：① 关注流连刷两次结论一致 ② 故事联来回切不丢位置 ③ 消息页「全部已读」按钮大小与红点时序 ④ 长会话列表返回不跳顶 ⑤ 发帖页「发布」键与状态栏距离 ⑥ **系统返回键**：Tab 根回首页、首页二次确认、二级页回上一页、通知深链回暖心墙 ⑦ 漂流瓶记录段的新版式与「撤回」小按钮手感。
+- **轮 495（已提交 · 已部署 · 待打包）**：用户装着 round494 真机验收，回四条 —— 「2.我说的是点击具体页面，来回切，位置不变，页面不变 / 3.没有按钮 / 5.有问题，内容折叠了 / 6.故事主页连续两次返回没有用」。**这四条全是真 bug，且 #6 是我上一轮（493）亲手埋的。**
+  - **#6 返回键乒乓（最严重，根因靠实测拿到，不是猜的）**：写了一个跑**真实路由**的探针 `_scratch/backprobe/index.html`（import `/src/router.js` + `/src/utils/backNav.js`，直接调 `backNav.run()` 再读 `router.currentRoute` + `history.state`），一次跑完 5 个场景。实测输出把病根钉死：**`router.replace()` 之后 `history.state.back` 会指回刚离开的那一页** —— `/story` 按返回 → `replace("/")` → `state={back:"/story", current:"/"}`。而轮493 的决策表把「有上一页就 back()」排在「Tab 根」**前面**，于是：在首页按返回 → 判定「有上一页」→ `router.back()` → **弹回 /story**。用户按两次 = 去了首页又弹回来 = 「连续两次返回没有用」。首页更惨：它永远被这条规则抓走，**「再按一次退出」根本没机会执行**。
+    - 改法（`utils/backPlan.js`）：**Tab 根提到历史回退之前**。首页只做「提示 → 2s 内再按最小化」；其余三个 Tab 根 `replace("/")`；之后才轮到 `history` / `backTo`。探针复跑：A1 详情→/story ✓、A2 /story→/ ✓、A3 首页→提示 ✓、B3 第二次→minimize ✓、C1 排行榜→/profile ✓、E1 帖子详情→/community ✓，乒乓消失。
+    - 护栏：P13（首页即使 back 指向别人也只提示）、P14（Tab 根不问历史）、P15（故事主页回它来的地方）、P16（详情走历史回退）。**反向注入：把 history 那段挪回 Tab 根前面 → P13/P14 立刻红。**
+  - **#2 故事详情强制回发现页**：轮493 给 `storyDetail` 标了 `meta.backMode:"replace"`，理由抄的是轮148 的老诉求，结果是**从首页故事联点进来的人被甩到一个他从没去过的 /story**（页面变了），列表也没位置了。
+    - 改法：去掉 `backMode`（只留 `backTo:"/story"` 给深链兜底）→ 走历史回退，「从哪进去回哪」。
+    - 同时把 `utils/storyBack.js` 里**自己挂的那个 backButton 监听整段删掉**（双监听 = 同一次按键被处理两遍，后到的 replace 覆盖先到的决策，从代码上根本看不出是谁干的）。它现在只剩 `backOr(router, to)`：有上一页回上一页，没有才 replace 到兜底页。`backNav.js` 新增 `backOr()`，`ComposeView` 的返回也改走它（原来写死「上一页必须是 /community 才 back」，从「我的」页进来会被硬塞到暖心墙）。
+    - **位置**：`/story` 不在 KeepAlive 名单里（每次重新挂载、列表异步拉），`restoreScroll` 一次性 scrollTo 会被文档高度钳回顶部。`scrollMem.js` 新增 `restoreWhenTall(path)`：逐帧等到「文档能滚到记忆位」再落，900ms 兜底，用户一碰屏幕就取消。StoryView 挂上。
+    - 护栏：R4 反转（故事详情**不能**是 replace 型）、R6、A8（页面自己不许再挂 backButton）、A9（← 钮走 backOr）、A10、N13（restoreWhenTall 必须逐帧重试）。反向注入：给 storyDetail 加回 `backMode` → R4 红；StoryView 去掉 restoreWhenTall → N13 红。
+  - **#3「全部已读」没按钮**：轮490 我做的是「有未读才出现」，理由是「不摆一颗点了没反应的按钮」。结果 **用户在有未读时也找不到它** —— 藏起来的入口等于没有入口。改成**恒定渲染**，没未读时置灰禁用（`:disabled`），位置和名字始终可见。护栏 M3 反转 + 新增 M3b（禁用门控）。
+  - **#5 发帖页「内容折叠」**：这页 `autofocus`，一进来键盘就顶起约 300px，而 `.compose-page` 是 `min-height: 100vh`（整屏），卡片被顶到键盘底下，**底部工具条（添加图片 / 字数）根本够不着**。
+    - 改法：`min-height: calc(100vh - var(--kb-h, 0px))`（`@supports` 里是 dvh 版，两条分开写）；输入框下限从 `34vh/40vh` 改成 `120px/132px` —— 键盘态可用高度只剩三四百，vh 下限会把底栏挤出卡片，`overflow:hidden` 一裁就是「折叠」。
+    - 实测（`_scratch/uiprobe` 挂真组件 + 真壳层类名，`--sat=44`，`--kb-h` 分 0/300 两组）：kb=300 时修前 card 底 838、工具条底 825（键盘线在 552，全在键盘后面）→ 修后 page 561 / card 底 523 / 工具条底 510，**全部在键盘线之上**；无键盘时观感不变（page 852、card 底 814）。
+    - 护栏：C10（高度必须减 --kb-h，且 @supports 里也要减）、C11（输入框下限不许用 vh）。反向注入：改回 `min-height:100vh` → C10 红。
+  - 全量 **115 项 / 115 通过，断言 1615 / 1615**；prod 4/4（52 条）；app-shell 75/75；story-test 258/258；build EXIT=0。~~未 commit、未 deploy、未打包~~ → **已随轮 495/496 批次发车（见下条）。**
+  - **两个可复用的实测工装（留在 `_scratch/`，用完可删）**：① `backprobe/` —— 真路由驱动返回键，输出「在 A → plan=xxx → 到 B」并打印 `history.state`，查返回类问题别再靠读代码猜；② `uiprobe/` —— 挂真组件进真壳层（`shell shell--mobile-nav shell--chat`），支持 `?sat=44&kb=300` 模拟刘海与键盘，配 `measure.js` 量 head/card/area/bar 的 top/bottom。**坑：`html.cap-app` 会把 `:root` 的 `--sat` 压掉，安全区必须像 MainActivity 那样写成 documentElement 的行内样式。**
+- **轮 496（已提交 · 已部署 · 待打包）**：用户「之前就说的，手机浏览器输入的时候，表情跟文字输入高度不一致，根本不能用」。
+  - **定位方式**：搭 `_scratch/kbprobe`（真 `.cmt-main-bar` + 真 `WpComposer`，`?kb=` 注入 `--kb-last`），
+    在 393×852 下量四档：键盘态 / 面板态 / 刚收面板 / 面板已收。**结果分两半**：
+    - 有 `--kb-last` 时，面板态与键盘态的底条位置**完全一致**（477 / 552，两档同值）—— 轮482 的修法本身是对的；
+    - 刚收面板、键盘还没到的那一拍，底条 top **从 477 掉到 726（掉 249px）**，键盘到位后再弹回来。
+  - **两个真因**（都在网页端，App 壳早就没这两条问题 —— 所以只有「手机浏览器」才报）：
+    1. `--kb-last` 在「缩布局视口」型内核里**永远写不进去**。`keyboardInset` 网页端一直拿
+       `kbWebInset(innerHeight, vv.height, offsetTop)` 当键盘高度；可这批内核弹键盘时直接把
+       innerHeight 缩掉，差值恒为 0（我们确实不用让位，底条由浏览器顶着，是对的），但
+       `--kb-last` 也跟着永远是空 → 表情面板退回 `min(46vh, 320px)` 死值，与真键盘差一截。
+       改法：新增纯函数 `kbShrinkInset(restH, innerH)`（基线用「键盘弹起前的 innerHeight」，
+       闸门 120px 挡住地址栏伸缩，夹到 `rest − 120`），`applyWeb` 里把它当**键盘本体高度**
+       单独喂给 `writeVar(px, info, panelPx)` → 只写 `--kb-last`。`--kb-h`（页面让位）仍只认原式子。
+    2. `holdForKeyboard()` 里 `if (!isApp) return;` —— 网页端一律不钉。可走 visualViewport
+       让位路线的浏览器里，收面板那一刻 `--kb-h` 还是 0，底条先落回屏底（实测 249px）、
+       200~350ms 后才被键盘顶回来。改法：导出 `webSwapNeeded()`（本会话见过 `--kb-h > 0` 才算），
+       条件改成 `if (!isApp && !webSwapNeeded()) return;` —— 缩布局视口型内核仍不钉（钉住会悬空）。
+    `WpComposer` / `DmVacChat` 两处同改。
+  - 护栏：`kb-math-test` 新增 T16~T19（反推值 / 地址栏闸门 / 脏值兜底 / 接线）；
+    `chat-look` L7 与 `wall-composer` P6 由「网页端一律不许钉」反向改成「必须走 webSwapNeeded」；
+    `chat-height` T24 允许焦点判据提成局部变量。反向注入 2 处（去掉 panelH 入参 / 改回 `!isApp`）→ T19 红。
+  - 全量 **115/115、断言 1615/1615**；`kb-math 19/19`、`chat-height 36/36`、`app-shell 75/75`、`build EXIT=0`。
+  - **未 commit、未 deploy、未打包**（与轮 495 一起攒批）。→ **已发车，见下一条。**
+- **轮 495 + 496 发车（已提交 · 已部署 · 待打包 · 未装机）**：用户一句「部署」。按 0.6 攒批制把两轮一起处理。
+  - **提交 3 笔**（源码 2 笔按轮拆，测试护栏 1 笔）：
+    `d8e35e4` 轮495 App 返回键与页面自洽（9 文件）/ `e6e8832` 轮496 手机浏览器表情与键盘切换（4 文件）/
+    `41f6a31` 测试：轮495/496 护栏（10 套）。**行尾噪音挡在外面**：`git status` 里有 126 个 M，但
+    `git diff --stat` 只认 24 个 —— 其余 100 来个是 `core.autocrlf` 的空改动，一律**不 add**，只按路径逐个 add 真实改动文件。
+  - 部署：Worker Version **`94e03d2d-5eb8-4bb4-ac27-9dcf449ff7d8`**，`Uploaded 67 files (73 already uploaded)`。
+  - **线上核验（逐字节）**：入口 `main-BjZANfLi.js`（1019254 字节，sha16 `e5370217671f5abc`）
+    + `avatar` / `vue` / `naive` / `lottie` 4 个 preload 分片，本地 dist 与线上 **5/5 全 SAME**；
+    Supabase slug 在入口 chunk 内。另抽验本轮改到的页面 chunk：`ComposeView-BEnqeLy2.js` `d8aab265f7003f54`、
+    `MessagesView-CjeTT9HH.js` `9253ba913d8dc234`、`StoryView-jFYEthBg.js` `3e7d157ce044826c`、
+    `StoryDetailView-D-CZukEf.js` `d0dc95b36330f9b5`、`ComposeView-B-S9XmEo.css` `220924e5457a65ef` —— 全部本地=线上。
+    线上 CSS 里 `compose-page` 已是 `min-height:calc(100vh - var(--kb-h,0px))` 且 `@supports` 里 dvh 版同样减（#5 的修复确实在线）。
+  - **顺手修了一颗假绿护栏**：`tools/live-bundle-check.mjs` 原来只匹配 `assets/index-*.js`，而入口早改名 `main-*` ——
+    匹配集合恒为空，输出 `entryRefs: []` 却仍 exit 0，看着「通过」实际一个字节都没核。改成：匹配首页所有
+    `/assets/*.js`、空集合直接 `NO_ENTRY` 失败、逐文件 SHA 与本地 dist 比对、slug 只查入口 chunk
+    （vendor 分片本来不含 slug，第一版对全量查导致稳定假红，已改）。**反向验证过两次**：假路径 → `NO_ENTRY` exit 1；
+    往本地 `vue-*.js` 追加 5 字节 → `BAD … live=bfbe2fcad06429bd local=46a018f70c4879f9` exit 1，恢复后回 `bfbe2fcad06429bd`。
+  - 测试：fast **115/115**、断言 **1615/1615**；`page-smoke 16/16`；build EXIT=0；`live-check` **LIVE ALL PASS (15)**。
+  - **未打包、未装机**（用户只说「部署」）：轮 495 的四条全是 App 壳内问题（返回键 / 全部已读 / 发帖页折叠），
+    要真机验证必须 `cap sync` + APK。等一句「打包」。
+  - **待真机验收**：① 点进具体故事再返回（页面和位置都不该变）② 故事主页连按两次返回（第一次回首页、第二次才退出）
+    ③ 消息页「全部已读」恒定可见 ④ 发帖页键盘弹起时卡片与底部工具条都在键盘线之上
+    ⑤ 手机浏览器：打字 → 点表情 → 点回输入框，输入条全程不跳。
+  - 待真机确认：浏览器里①先打字让键盘弹出 ②点表情看输入条是否原地不动 ③点输入框切回键盘，
+    输入条应当不往下掉。若「不一致」指的是**输入条上那个笑脸图标与输入框大小不齐**，那是另一处，另说。
 - **⚠️ 环境坑（本轮踩到，记一笔）**：`git config core.autocrlf = true`。任何一次 `git stash` / `git checkout` 都会把工作区文件从 LF 转成 **CRLF**，而 `app-shell-test` T68 之类用 `\n` 精确匹配的断言会当场变红（且报错跟真因毫无关系）。本轮 stash 对照实验后 127 个文件被转成 CRLF，已全部转回 LF（`grep` 复查 0 个）。下次谁再 checkout，先跑一遍「CRLF → LF」再跑测试，别把假红当真回归。
 - **轮395（已打包，未提交）**：用户确认 `MIGRATION_story_draft_delete.sql` 已在 Supabase 执行；匿名 RPC 探针返回 `401 / 42501 permission denied for function story_delete_draft`，证明函数存在且未向 anon 开放（符合只授 authenticated 的设计），未删除任何真实草稿。代码无改动，重新 `build + cap:sync + assembleDebug` 后打 `apk/warm-paws-1.0.2-round395.apk`，与 round394 字节/SHA-256 相同（`A83A01B2CDD47201466FA44069952199D1B5C692590D6EA45EE86BA06D15A395`）；**未安装**。
 - **轮396（已部署，未提交）**：修「故事页加载更多点了没反应」——旧逻辑 `more = rows.length >= offset + PAGE` 且点击时先把 `offset += PAGE`，按钮在请求回来前当场消失；请求慢/失败/挂住时既没有新内容，也没有按钮可重试。现在改成 `hasMore` 状态机：只有成功拿到一页才推进 `offset`，请求中按钮保留并显示「加载中…」，失败保留「加载更多」并提示可重试，最后一页显示「没有更多了」。翻页请求加 20s 兜底超时（线上 `/sb` 代理实测第二页 9.4s，避免误杀）。`story-test` 232/0、`app-shell-test` 70/0、`i18n-test` 19/0、undef/tdz 0、build 成功、page-smoke 14/14；真实 DOM 探针：mock 12→14（加载中→没有更多了）、500 失败保留 12 篇+按钮+错误、真实 Supabase 只读数据 12→14。已部署 Worker Version `aeaf0e60-d065-4086-93e5-0be543988934`，入口 `main-C3Hi3Z0k.js`，故事分包 `StoryFeed-DleUGvMA.js`；本次未重打 APK，round395 不含此修复。
