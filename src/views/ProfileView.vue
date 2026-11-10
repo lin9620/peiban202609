@@ -24,6 +24,8 @@ import { cloudFetchUserPosts } from "../utils/wall.js";
 import { cacheKey, cachePeek, cacheSet, cachePatch, swr } from "../utils/cache.js";
 import { avatarUrlFor } from "../utils/avatar.js";   /* 轮 238:萌宠头像池 */
 import { copyText } from "../utils/clipboard.js";    /* 轮 485：带 execCommand 兜底的复制 */
+/* 轮 501：分享地址与各渠道 intent（纯函数，tools/share-page-test 覆盖） */
+import { shareUrl, shareHref, SHARE_TARGETS } from "../utils/shareLinks.js";
 import { setPostNav } from "../utils/postNav.js";    /* 轮 279:进详情前存列表快照,左右滑用 */
 import { onPostReaction, patchPostList } from "../utils/postReactionSync.js";
 /* 轮 460：帖子评论区（暖心墙卡片同款）——「我的页面」里这三张帖子卡也要能看评论 */
@@ -277,56 +279,131 @@ async function doSetPassword() {
   cloudClearRecovery();
   flash.value = t("profile.resetDone");
 }
-/* 轮 333：分享当前页面（网页端）。优先 Web Share API，不支持时复制链接并提示。
- * 轮 485（用户：「怎么我点击分享没有用呢，显示是已复制」）：
- * 手机自带浏览器（小米 / 华为 / OPPO / vivo / 微信内置等）普遍**没有 navigator.share**，
- * 旧代码于是默默走复制 —— 用户点完只看到「链接已复制」，以为按钮坏了。
- * 现在：没有系统分享就弹一个面板，说清「复制后粘到微信 / QQ」，微信里再补一条
- * 「点右上角 ···」的路径（微信内置浏览器只能这样分享）。
- * 复制也换成 utils/clipboard 的 copyText：navigator.clipboard 在非安全上下文/老内核里
- * 可能缺失，它带 execCommand 兜底。 */
+/* 轮 501 · 分享（海外版）
+ * 用户原话：「我们是面向海外用户，你搞这个？？重新设计这个分享功能」
+ * 旧面板只有「复制后粘到微信 / QQ 发给朋友」，五语种里全是直接从中文版抄的 WeChat / QQ ——
+ * 对英语 / 西语 / 葡语 / 法语区用户来说，这不是少个入口，是**看不出这产品是给他的**。
+ *
+ * 现在的两层：
+ *   ① 系统分享（navigator.share）：iOS / 安卓 Chrome / 桌面 Chrome 一把覆盖
+ *      AirDrop、Messages、Instagram、Gmail……不用我们枚举平台 —— 有就直接走它，
+ *      面板都不弹（系统面板本来就是我们想做的东西）。
+ *   ② 系统分享缺席（各家内置浏览器、旧内核）或抛错 → 弹面板，给**直连**入口：
+ *      WhatsApp / Telegram / X / Facebook / Email / SMS + 复制链接。
+ *      直连地址由 utils/shareLinks 拼（纯函数，有单测），https 链接交给系统接手，
+ *      网页端与 App 内 WebView 走同一条路。
+ * 复制仍走 utils/clipboard 的 copyText（带 execCommand 兜底）。 */
 const shareOpen = ref(false);
-const shareDone = ref(false);
+/* 复制状态："" 未复制 / "ok" 成功 / "fail" 失败 —— 失败也要说话，不能像旧版那样静默 */
+const shareState = ref("");
 const shareBusy = ref(false);
-/* 打开那一刻的地址（面板里要显示出来，用户才知道复制的是什么） */
-const pageUrl = ref(typeof location !== "undefined" ? location.href : "");
+/* 面板里显示的地址 = 实际分享出去的地址（都是站点首页，不是 /profile） */
+const shareLink = ref(shareUrl(typeof location !== "undefined" ? location.href : ""));
+/* 有没有系统分享（模板里决定要不要那条主按钮） */
+const canNativeShare = ref(typeof navigator !== "undefined" && typeof navigator.share === "function");
+/* 微信/QQ 等内置浏览器只能「···→ 在浏览器打开」；只有真在里面时才提示 */
 const inWeChat = typeof navigator !== "undefined" && /MicroMessenger/i.test(navigator.userAgent || "");
+
+const shareText = () => t("profile.shareText");
+const shareSubject = () => t("profile.shareSubject");
+const copyLabel = () => t(shareState.value === "ok" ? "profile.shareCopied"
+  : shareState.value === "fail" ? "profile.shareFail" : "profile.shareCopy");
+/* 渠道标签：**字面量集中在这里**（i18n-usage-test 靠字面量判死键，模板里拼字符串会被当成死键） */
+const TARGET_LABEL = {
+  whatsapp: "profile.shareWhatsapp",
+  telegram: "profile.shareTelegram",
+  x: "profile.shareX",
+  facebook: "profile.shareFacebook",
+  email: "profile.shareEmail",
+  sms: "profile.shareSms",
+};
 
 function closeShare() {
   shareOpen.value = false;
-  shareDone.value = false;
+  shareState.value = "";
 }
 
 async function copyShareLink() {
   if (shareBusy.value) return;
   shareBusy.value = true;
-  const ok = await copyText(pageUrl.value || location.href);
+  const ok = await copyText(shareLink.value);
   shareBusy.value = false;
-  shareDone.value = ok;
-  flash.value = ok ? t("profile.shareCopied") : t("profile.shareFail");
-  setTimeout(() => { flash.value = ""; }, 2400);
+  shareState.value = ok ? "ok" : "fail";
+  setTimeout(() => { shareState.value = ""; }, 2400);
+}
+
+/* 面板里的直连渠道：https 走新标签、mailto/sms 交给系统，点完就收面板。
+ * 收面板是**同步**的：早先写成 setTimeout(160) 收，那次延时会把「刚被重新打开的面板」
+ * 一起关掉（实测连点时面板闪一下就没了）。点击事件在收面板前已经派发完，不需要等。 */
+function openShareTarget(key) {
+  const href = shareHref(key, { url: shareLink.value, text: shareText(), subject: shareSubject() });
+  if (!href) return;
+  const a = document.createElement("a");
+  a.href = href;
+  a.target = key === "email" || key === "sms" ? "_self" : "_blank";
+  a.rel = "noopener noreferrer";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  closeShare();
+}
+
+/* 面板里的「系统分享」按钮：刚才 share() 抛错时给一次重试机会 */
+async function shareNative() {
+  if (typeof navigator === "undefined" || typeof navigator.share !== "function") return;
+  try {
+    await navigator.share({ title: shareSubject(), text: shareText(), url: shareLink.value });
+    closeShare();
+  } catch (e) {
+    if (e && e.name === "AbortError") return;   /* 用户点取消，不算失败 */
+  }
 }
 
 async function sharePage() {
-  const url = location.href;
-  if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+  shareLink.value = shareUrl(location.href);
+  shareState.value = "";
+  canNativeShare.value = typeof navigator !== "undefined" && typeof navigator.share === "function";
+  /* 有系统分享就先走它：用户点取消（AbortError）静默退出，别追着弹面板 */
+  if (canNativeShare.value) {
     try {
       await navigator.share({
-        title: t("profile.sharePage"),
-        text: t("profile.shareText"),
-        url,
+        title: shareSubject(),
+        text: shareText(),
+        url: shareLink.value,
       });
       return;
     } catch (e) {
-      /* 用户点取消（AbortError）不算失败，静默忽略 */
       if (e && e.name === "AbortError") return;
-      /* 其他错误（这组数据不被支持 / 权限被拒）→ 落到下面的面板，别静默复制 */
+      /* 其他错误（不支持这组数据 / 权限被拒）→ 落到面板，别静默复制 */
     }
   }
-  shareDone.value = false;
-  pageUrl.value = location.href;
   shareOpen.value = true;
 }
+
+/* 渠道图标（24×24，单色描边全部走 currentColor，颜色由 CSS 的格子底色反白）。
+ * 用 SVG 手绘而不是引第三方 icon 包：分享面板只有 7 个图标，不值得为它加依赖；
+ * 也不用 emoji —— 各家系统的 emoji 字体差异大，WhatsApp 的绿色电话 emoji 根本认不出来。 */
+const GLYPHS = {
+  whatsapp: [
+    "M12.04 3.2c-4.9 0-8.86 3.96-8.86 8.85 0 1.56.41 3.09 1.19 4.44L3.1 21.2l4.83-1.25a8.86 8.86 0 0 0 4.11 1.05h.01c4.89 0 8.86-3.96 8.86-8.85 0-2.37-.92-4.59-2.6-6.26a8.8 8.8 0 0 0-6.27-2.6Zm0 16.2h-.01a7.36 7.36 0 0 1-3.74-1.02l-.27-.16-2.78.72.74-2.71-.17-.28a7.32 7.32 0 0 1-1.13-3.9c0-4.06 3.31-7.36 7.37-7.36 1.97 0 3.82.77 5.21 2.16a7.3 7.3 0 0 1 2.16 5.21c-.01 4.06-3.31 7.34-7.38 7.34Z",
+    "M16.6 13.87c-.25-.13-1.47-.72-1.7-.8-.23-.09-.4-.13-.56.13-.17.25-.65.8-.8.96-.14.17-.29.19-.54.06-.25-.12-1.06-.39-2.01-1.24-.74-.66-1.25-1.48-1.39-1.73-.15-.25-.02-.39.11-.51.11-.11.25-.29.37-.44.13-.14.17-.25.25-.41.09-.17.04-.31-.02-.44-.06-.13-.55-1.33-.76-1.82-.2-.48-.4-.41-.55-.42h-.47c-.16 0-.42.06-.64.31-.22.25-.84.82-.84 2 0 1.18.86 2.32.98 2.48.12.17 1.68 2.68 4.08 3.66 2.4.98 2.4.65 2.83.61.43-.04 1.39-.57 1.59-1.12.2-.55.2-1.02.14-1.12-.06-.1-.22-.16-.47-.29Z",
+  ],
+  telegram: [
+    "M21.6 4.3c.3-1.2-.45-1.75-1.28-1.44L2.7 9.83c-1.2.46-1.19 1.13-.21 1.43l4.5 1.4 1.75 5.4c.2.55.36.77.73.77.36 0 .52-.16.72-.35l1.72-1.66 3.54 2.6c.65.36 1.12.17 1.29-.6l2.36-11.1Zm-4.5 3.15-6.6 6.05-.26 3.1-1.33-4.28 8.19-4.87Z",
+  ],
+  x: [
+    "M17.6 3.5h2.9l-6.33 7.23L21.6 20.5h-5.5l-4.3-5.6-4.92 5.6H4l6.77-7.72L3.4 3.5h5.64l3.9 5.14 4.66-5.14Zm-1.02 15.2h1.6L8.02 5.2H6.3l10.28 13.5Z",
+  ],
+  facebook: [
+    "M13.6 20.7v-7.3h2.47l.42-2.87H13.6V8.7c0-.83.23-1.4 1.42-1.4h1.5V4.72c-.26-.03-1.15-.11-2.19-.11-2.17 0-3.66 1.33-3.66 3.76v2.16H8.2v2.87h2.47v7.3h2.93Z",
+  ],
+  email: [
+    "M4.5 5h15A2.5 2.5 0 0 1 22 7.5v9a2.5 2.5 0 0 1-2.5 2.5h-15A2.5 2.5 0 0 1 2 16.5v-9A2.5 2.5 0 0 1 4.5 5Zm0 1.6 7.5 5.1 7.5-5.1h-15Zm15.6 1.9-7.4 5.03a1.7 1.7 0 0 1-1.4 0L3.9 8.5v8a.9.9 0 0 0 .9.9h14.4a.9.9 0 0 0 .9-.9v-8Z",
+  ],
+  sms: [
+    "M12 3.5c-5 0-9 3.24-9 7.24 0 2.3 1.33 4.35 3.4 5.68l-.6 3.28c-.05.3.26.53.52.38l3.7-2.09c.63.12 1.3.19 1.98.19 5 0 9-3.24 9-7.24s-4-7.24-9-7.24Z",
+  ],
+};
 
 function leaveRecovery() {
   newPass.value = "";
@@ -631,20 +708,44 @@ const brightRatio = computed(() => {
       </div>
     </section>
 
-    <!-- 轮 485：分享面板。手机自带浏览器（小米/华为/OPPO/vivo/微信内置）普遍没有
-         navigator.share，旧代码于是默默复制、只弹一句「链接已复制」——用户以为按钮坏了。
-         现在没有系统分享就弹这个面板，把「复制链接」和「微信里怎么发」两条路说清楚。
+    <!-- 轮 501 · 分享面板（海外版）。
+         旧版只有「复制后粘到微信 / QQ」—— 暖爪面向海外用户，那句话等于把产品说给了中国人。
+         现在：系统分享优先（有就直接走系统面板，不弹这个）；没有就弹这里，
+         给 WhatsApp / Telegram / X / Facebook / Email / SMS + 复制链接六条直连。
          Teleport 到 body 是必须的：`.shell` 自带 z-index:1，页内子元素写多大都只是
          「壳内第一」，根级底栏(140)照样盖在上面（实测面板下沿被页签切掉一截）。 -->
     <Teleport to="body">
       <div v-if="shareOpen" class="share-mask" @click.self="closeShare">
-        <div class="share-sheet" role="dialog" aria-modal="true" :aria-label="t('profile.sharePage')">
-          <div class="share-title">{{ t("profile.sharePage") }}</div>
-          <div class="share-url">{{ pageUrl }}</div>
+        <div class="share-sheet" role="dialog" aria-modal="true" :aria-label="t('profile.shareTitle')">
+          <span class="share-grab" aria-hidden="true"></span>
+          <div class="share-head">
+            <div class="share-title">{{ t("profile.shareTitle") }}</div>
+            <p class="share-sub">{{ t("profile.shareSub") }}</p>
+          </div>
+          <!-- 要分享的地址：点一下即复制（知道自己在发什么，也知道能直接拿走） -->
           <button type="button" class="share-copy" :disabled="shareBusy" @click="copyShareLink">
-            {{ shareDone ? t("profile.shareCopied") : t("profile.shareCopy") }}
+            <span class="share-url">{{ shareLink }}</span>
+            <span class="share-copy-tag" aria-live="polite">{{ copyLabel() }}</span>
           </button>
-          <p class="share-tip">{{ t("profile.shareHowto") }}</p>
+          <button v-if="canNativeShare" type="button" class="share-native" @click="shareNative">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path v-for="(d, i) in [
+              'M12 3v11.2',
+              'M8.2 6.5 12 2.8l3.8 3.7',
+              'M6 12.5H4.6A1.6 1.6 0 0 0 3 14.1v5.3A1.6 1.6 0 0 0 4.6 21h14.8a1.6 1.6 0 0 0 1.6-1.6v-5.3a1.6 1.6 0 0 0-1.6-1.6H18'
+            ]" :key="i" :d="d" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            {{ t("profile.shareNative") }}
+          </button>
+          <div class="share-or">{{ t("profile.shareDirect") }}</div>
+          <div class="share-grid">
+            <button v-for="k in SHARE_TARGETS" :key="k" type="button"
+              class="share-tile" :class="'is-' + k" @click="openShareTarget(k)">
+              <span class="share-tile-ico" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path v-for="(d, i) in GLYPHS[k]" :key="i" :d="d" fill="currentColor" /></svg>
+              </span>
+              <span class="share-tile-label">{{ t(TARGET_LABEL[k]) }}</span>
+            </button>
+          </div>
+          <p class="share-tip">{{ t("profile.shareHint") }}</p>
           <p v-if="inWeChat" class="share-tip share-tip-wx">{{ t("profile.shareWx") }}</p>
           <button type="button" class="share-close" @click="closeShare">{{ t("common.close") }}</button>
         </div>
@@ -668,53 +769,122 @@ const brightRatio = computed(() => {
 /* 轮 18：卡片结构与暖心墙完全同款（.post-card/.post-head/.post-text/.pic/.react-row 全局类），
    这里只保留链接化外观；旧的 mp-* 缩略样式随结构一起退役 */
 
-/* 轮 485 · 分享面板（移动端贴底，桌面端居中）：层级压过底栏 140 与聊天壳 200，
-   低于维护遮罩 4000。表面色走 --glass-strong，夜间主题自动跟随，不写死白底。 */
+/* 轮 501 · 分享面板（移动端贴底，桌面端居中）：层级压过底栏 140 与聊天壳 200，
+   低于维护遮罩 4000。表面色走主题变量，夜间主题自动跟随，不写死白底。
+   结构：把手 → 标题 → 地址（点即复制）→ 系统分享（可选）→ 六渠道九宫格 → 说明 → 关闭。 */
 .share-mask {
   position: fixed; inset: 0; z-index: 300;
   display: flex; align-items: flex-end; justify-content: center;
   background: rgba(28, 22, 16, .42);
 }
 .share-sheet {
-  width: 100%; max-width: 520px;
+  width: 100%; max-width: 480px;
   display: flex; flex-direction: column; gap: 12px;
-  padding: 18px 18px calc(18px + var(--sab, env(safe-area-inset-bottom, 0px)));
+  padding: 6px 18px calc(16px + var(--sab, env(safe-area-inset-bottom, 0px)));
   /* glass 主题把 --card 定义成半透明白（alpha .62），直接当面板底会透出被压暗的页面，
      字也糊。这里「不透明画布色打底 + 半透明卡色叠加」：视觉仍是卡色，但底下不透光。
      不用 --glass-strong：它在几个主题里同样带 alpha。 */
   background-color: var(--page-bg, #faf9f5);
   background-image: linear-gradient(var(--card, #efe9de), var(--card, #efe9de));
-  border-radius: 18px 18px 0 0;
-  box-shadow: 0 -10px 34px rgba(20, 20, 19, .18);
+  border-radius: 22px 22px 0 0;
+  box-shadow: 0 -12px 40px rgba(20, 20, 19, .18);
   color: var(--ink);
+  animation: share-rise .22s cubic-bezier(.2, .8, .3, 1);
 }
-.share-title { font-size: 15px; font-weight: 600; text-align: center; }
-/* 地址要能一眼看清是哪个链接，但不能撑破面板：单行截断 + 允许手动选中 */
-.share-url {
-  font-size: 12px; color: var(--ink-soft);
-  background: var(--accent-soft);
-  border: 1px solid var(--hairline);
-  border-radius: 10px; padding: 9px 11px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  user-select: text; -webkit-user-select: text;
+@keyframes share-rise {
+  from { transform: translateY(14px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }
+/* 顶部把手：底部面板的通用暗号（小红书/微信同款），给「可以点外面关掉」一个视觉锚 */
+.share-grab {
+  width: 36px; height: 4px; border-radius: 999px;
+  background: var(--hairline); margin: 4px auto 2px; flex: none;
+}
+.share-head { text-align: center; }
+.share-title { font-size: 16px; font-weight: 650; letter-spacing: .2px; }
+.share-sub { margin: 4px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--ink-soft); }
+
+/* 地址行：左边链接（单行截断），右边「复制链接 / 已复制」小标签 —— 整行就是一个复制按钮 */
 .share-copy {
-  border: 0; border-radius: 12px; padding: 12px 16px;
-  font-size: 15px; font-weight: 600; color: #fff;
-  background: var(--accent); cursor: pointer;
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; min-width: 0; text-align: left;
+  border: 1px solid var(--hairline); border-radius: 12px;
+  padding: 10px 12px; background: var(--accent-soft);
+  color: var(--ink-soft); cursor: pointer;
   /* 手机浏览器里 300ms 点击延迟 + 双击缩放会把「点了没反应」放大，这里一并关掉 */
   touch-action: manipulation;
 }
 .share-copy:disabled { opacity: .6; }
-.share-tip { margin: 0; font-size: 12px; line-height: 1.5; color: var(--ink-faint); text-align: center; }
+.share-copy:active { background: var(--accent-soft); filter: brightness(.97); }
+.share-url {
+  flex: 1 1 auto; min-width: 0;
+  font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  user-select: text; -webkit-user-select: text;
+}
+.share-copy-tag {
+  flex: none; border-radius: 999px; padding: 3px 9px;
+  font-size: 11px; font-weight: 600;
+  color: var(--accent-deep); background: var(--card);
+  border: 1px solid var(--hairline);
+}
+
+/* 系统分享：能用到就放最显眼的位置（一次覆盖 AirDrop / Messages / Instagram…） */
+.share-native {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  border: 0; border-radius: 13px; padding: 12px 16px;
+  font-size: 14.5px; font-weight: 600; color: #fff;
+  background: var(--accent); cursor: pointer; touch-action: manipulation;
+}
+.share-native svg { width: 17px; height: 17px; }
+
+.share-or { font-size: 11.5px; color: var(--ink-faint); text-align: center; letter-spacing: .2px; }
+
+/* 六渠道：3 列 × 2 行。图标底色即品牌色，标签走主题字色（夜间不打眼） */
+.share-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 6px 4px;
+}
+.share-tile {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  border: 0; background: transparent; padding: 4px 2px 6px;
+  cursor: pointer; touch-action: manipulation; color: var(--ink-soft);
+  border-radius: 12px;
+}
+.share-tile:active { background: var(--accent-soft); }
+.share-tile-ico {
+  width: 48px; height: 48px; border-radius: 15px;
+  display: flex; align-items: center; justify-content: center;
+  /* 图标色只由两个变量决定：底色 --tile、字色 --tile-ink（由 .is-* 设在按钮上，图标继承）。
+     **不要在图标自己身上声明这两个变量的默认值** —— 自定义属性在自身声明后会压掉继承，
+     六个格子会一起变成同一块颜色（实测踩过）。默认值只能走 var() 的第二参数。
+     也不让字色跟着主题走：夜间主题里 --accent-deep / --ink-soft 会翻成浅色，
+     白字配浅底只剩 1.6:1 对比度（邮件/短信两格几乎看不见）。 */
+  color: var(--tile-ink, #fff); background: var(--tile, var(--ink-soft));
+  box-shadow: 0 2px 8px rgba(20, 20, 19, .14);
+}
+.share-tile-ico svg { width: 26px; height: 26px; }
+.share-tile-label { font-size: 11.5px; font-weight: 500; line-height: 1.2; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 品牌色：官方主色，只用在图标底上（整块按钮染色会抢走面板的主次）。
+   邮件 / 短信没有公认品牌色，用固定深色 —— 两套主题里都是白字，对比度稳定。 */
+.share-tile.is-whatsapp { --tile: #25d366; }
+.share-tile.is-telegram { --tile: #2aabee; }
+.share-tile.is-facebook { --tile: #1877f2; }
+/* X 是黑白标：底色取正文色、字色取画布色 —— 浅色主题黑底白字，夜间主题自动反过来 */
+.share-tile.is-x { --tile: var(--ink); --tile-ink: var(--page-bg); }
+.share-tile.is-email { --tile: #6c6a64; }
+.share-tile.is-sms { --tile: #a9583e; }
+
+.share-tip { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--ink-faint); text-align: center; }
 .share-tip-wx { color: var(--accent-deep); }
 .share-close {
-  border: 1px solid var(--hairline); border-radius: 12px;
+  border: 1px solid var(--hairline); border-radius: 13px;
   padding: 11px 16px; font-size: 14px; color: var(--ink-soft);
   background: transparent; cursor: pointer; touch-action: manipulation;
 }
 @media (min-width: 720px) {
   .share-mask { align-items: center; }
-  .share-sheet { border-radius: 16px; padding-bottom: 18px; }
+  .share-sheet { border-radius: 20px; padding-bottom: 18px; animation: none; }
+  .share-grab { display: none; }
 }
 </style>

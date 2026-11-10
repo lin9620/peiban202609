@@ -1064,10 +1064,18 @@ export default {
     "brightDays": "dias luminosos",
     "sharePage": "Compartilhar",
     "shareText": "Um cantinho acolhedor na internet — venha dar uma olhada 💛",
+    "shareTitle": "Convide um amigo",
+    "shareSub": "Mande este cantinho acolhedor para alguém que vá gostar.",
+    "shareSubject": "Warm Paws — um lugar gentil",
+    "shareNative": "Compartilhar do sistema",
+    "shareDirect": "ou envie direto",
+    "shareWhatsapp": "WhatsApp", "shareTelegram": "Telegram",
+    "shareX": "X", "shareFacebook": "Facebook",
+    "shareEmail": "E-mail", "shareSms": "Mensagem",
     "shareCopy": "Copiar link",
-    "shareHowto": "Copie o link e cole no WeChat ou QQ.",
-    "shareWx": "No WeChat: toque em ··· (canto superior direito) → Compartilhar",
-    "shareCopied": "Link copiado",
-    "shareFail": "Não consegui copiar — segure a barra de endereço para copiar"
+    "shareCopied": "Copiado",
+    "shareFail": "Não consegui copiar o link",
+    "shareHint": "Abre a página inicial — grátis, sem app.",
+    "shareWx": "Não aconteceu nada? Toque em ··· no topo e abra esta página no navegador."
   }
 };
