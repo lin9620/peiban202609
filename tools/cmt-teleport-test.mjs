@@ -100,6 +100,10 @@ ok("Teleport 包裹的吸底条计数 ≥ 3", wrappedBars >= 3, "实际 " + wrap
 [
   { rel: "src/views/CommunityView.vue", close: "closeMainBar", move: "mainBarMaskMove", tap: "mainBarMaskTap" },
   { rel: "src/views/PostDetailView.vue", close: "closeDetailBar", move: "detailBarMaskMove", tap: "detailBarMaskTap" },
+  /* 轮 497：用户点名「我的」页与「我的帖子」页的评论输入 —— 这两页共用 PostComments，
+   * 它原来是一套残缺版：没有暗层、没有两级返回、没有返回键接管、不收 tabbar、
+   * 点开不聚焦，还多一颗「关闭」按钮。补成同一套之后必须一起盯住，别再掉队。 */
+  { rel: "src/components/PostComments.vue", close: "closeBar", move: "maskMove", tap: "maskTap" },
 ].forEach(({ rel, close, move, tap: tapFn }) => {
   const src = fs.readFileSync(path.join(ROOT, rel), "utf8");
 
@@ -138,6 +142,52 @@ ok("Teleport 包裹的吸底条计数 ≥ 3", wrappedBars >= 3, "实际 " + wrap
   const src = fs.readFileSync(path.join(ROOT, "src/views/PostDetailView.vue"), "utf8");
   const cs = src.slice(src.indexOf("const canSwipe = computed"), src.indexOf("const canSwipe = computed") + 320);
   ok("详情页 canSwipe 排除输入条开着（否则收条同时翻帖）", /detailBar\.value/.test(cs), cs.replace(/\s+/g, " ").slice(0, 160));
+}
+
+/* ── 轮 497 · 三处输入条必须同一套「外壳行为」───────────────
+ * 用户原话：「我的页面，帖子下面，输入的都没改，改成跟暖心墙保持一致啊，
+ * 然后我的帖子查看更多那一页也要改，点击我的页面帖子详细页面的输入也要改。」
+ *
+ * PostComments 当时只抄了「占位条 + 底部条」的形状，没抄外壳行为：
+ *   ① 点开不聚焦（键盘不弹，得再点一次输入框）
+ *   ② 没有暗层（不知道点哪儿能退出）
+ *   ③ 没有两级返回（键盘在屏上时一点就把条+草稿全收了）
+ *   ④ 系统返回键直接退页面，而不是先收条
+ *   ⑤ 条开着 tabbar 不收（被条压住一半）
+ *   ⑥ 多一颗「关闭」按钮 —— 暖心墙根本没有这颗
+ * 这六条逐条锁死，三处都要过。 */
+{
+  const SHELL = [
+    { rel: "src/views/CommunityView.vue", open: "openMainBar", label: "暖心墙" },
+    { rel: "src/views/PostDetailView.vue", open: "toggleDetailBar", label: "帖子详情" },
+    { rel: "src/components/PostComments.vue", open: "openBar", label: "我的页/我的帖子" },
+  ];
+  for (const { rel, open, label } of SHELL) {
+    const src = fs.readFileSync(path.join(ROOT, rel), "utf8");
+
+    /* ① 点开即聚焦：函数体内必须有聚焦动作，且要等一帧（Teleport 渲染完才有节点）
+     * 暖心墙把它抽成了 focusMainBar()（内部 nextTick + focus），两种写法都算数 */
+    const openBody = src.slice(src.indexOf(`function ${open}`), src.indexOf("\n}", src.indexOf(`function ${open}`)) + 2);
+    const focuses = /focus\(\)/.test(openBody) || /function focusMainBar[\s\S]{0,200}focus\(\)/.test(src);
+    ok(`${label}(${rel}) 点开即聚焦输入框`, focuses,
+      "不聚焦 = 点了占位条键盘不弹，用户得再点一次输入框");
+    ok(`${label}(${rel}) 聚焦前先等一帧（nextTick）`, /nextTick/.test(openBody) || /function focusMainBar[\s\S]{0,120}nextTick/.test(src));
+
+    /* ② 暗层存在 + ③ 点击走两级 */
+    ok(`${label}(${rel}) 输入态有暗层 .cmt-bar-mask`, /class="cmt-bar-mask"/.test(src));
+
+    /* ④ 系统返回键先收条 */
+    ok(`${label}(${rel}) 条开着时接管系统返回键（pushBack）`, /pushBack\(/.test(src)
+      && /popBack\(/.test(src), "不接管 = 返回键直接退页面，草稿跟着没");
+
+    /* ⑤ 条开着时 tabbar 收起 */
+    ok(`${label}(${rel}) 条开着 = tabbar 收起`, /tabbarSuppressed\.value\s*=/.test(src));
+
+    /* ⑥ 底部条里不许再有「关闭」按钮：出口统一是暗处 / 滑动 / 返回键 */
+    const barBlock = src.match(/class="cmt-main-bar"[\s\S]{0,420}?<\/div>/);
+    ok(`${label}(${rel}) 底部条内没有「关闭」按钮`, !!barBlock && !/common\.close/.test(barBlock[0]),
+      barBlock ? barBlock[0].replace(/\s+/g, " ").slice(-120) : "找不到 .cmt-main-bar 块");
+  }
 }
 
 console.log("\nTOTAL " + (pass + fail) + "  PASS " + pass + "  FAIL " + fail);

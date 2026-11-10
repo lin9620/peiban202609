@@ -13,11 +13,14 @@
      与暖心墙卡片完全同口径，避免一页帖子把几百条评论全铺出来。
 -->
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { t, i18n } from "../i18n.js";
 import { cloud } from "../utils/supabase.js";
-import { isMobileNav } from "../stores/uiStore.js";
+import { isMobileNav, tabbarSuppressed, pushBack, popBack } from "../stores/uiStore.js";
+/* 轮 497：底部条补齐「与暖心墙一致」的那几件 —— 点开即聚焦、输入态暗层、
+ * 两级返回（先落键盘再收条）、系统返回键先收条、滑动一步退出。 */
+import { barTapIsKbBack, resetBarReturn } from "../utils/barReturn.js";
 import { swr } from "../utils/cache.js";
 import {
   cmtCacheKey, cmtCacheSet, cloudFetchComments,
@@ -185,16 +188,95 @@ function sendReply(cm) {
 
 /* 手机底部条的文字：主评论与「回复某条」共用一条，切目标时换草稿、关闭时写回 */
 const barText = ref("");
-function openBar(cm = null) {
+const barEl = ref(null);          /* 底部条本体：document 点击判定「点的是不是条内」 */
+const MASK_SWIPE_PX = 10;         /* 位移超过这个数就算「滑动」而不是「点击」 */
+let maskSwipe = false;
+let maskX0 = 0;
+let maskY0 = 0;
+
+async function openBar(cm = null) {
   if (!signedIn.value) { err.value = t("community.commentSignIn"); open.value = true; return; }
+  /* 轮 497：再点同一条的占位条 = 收起；回复态下点占位条 = 切回主评论（暖心墙同款） */
+  if (barOpen.value && !cm && !repTarget.value) { closeBar(); return; }
   repTarget.value = cm ? { id: cm.id, dbId: cm.dbId, name: cm.name, at: cm.at || "" } : null;
   barText.value = cm ? repDraft.value : mainDraft.value;
   barOpen.value = true;
+  /* 轮 497：点开就聚焦（暖心墙 focusMainBar 同款）。原来只置 true 不聚焦，
+   * 点了占位条键盘不弹，用户得再点一次输入框 —— 这正是「跟暖心墙不一致」的一半。 */
+  await nextTick();
+  try { barEl.value?.querySelector("textarea, input")?.focus(); } catch (e) { /* 无焦点环境忽略 */ }
 }
 function closeBar() {
   if (repTarget.value) repDraft.value = barText.value; else mainDraft.value = barText.value;
   barOpen.value = false;
+  maskSwipe = false;   /* 清掉手势账，否则残留的 true 会吞掉下一次点击 */
+  resetBarReturn();
 }
+
+/* ── 轮 497 · 底部条的「返回」三件套，与暖心墙/详情页同一套 ──────────
+ * ① 条开着 = tabbar 收起（贴键盘），关掉再放回来；
+ * ② 系统返回键先收条，而不是直接退页面；
+ * ③ 点暗处 / 暗处滑动 = 退出，键盘在屏上时先落键盘（两级返回）。 */
+function barDocClose(e) {
+  const tgt = e.target;
+  if (barEl.value && barEl.value.contains(tgt)) return;          /* 条内（输入/发送）不关 */
+  if (tgt && tgt.closest && tgt.closest(".cmt-entry")) return;   /* 占位条点击归 openBar 管 */
+  if (barTapIsKbBack()) return;                                  /* 先落键盘，条和草稿留着 */
+  closeBar();
+}
+function maskTap(e) {
+  /* stopPropagation：document 上挂着 barDocClose，否则同一击连走两级 */
+  if (e) e.stopPropagation();
+  if (maskSwipe) { maskSwipe = false; return; }      /* 吞掉滑动补派的那次 click */
+  if (barTapIsKbBack()) return;
+  closeBar();
+}
+function maskDown(e) {
+  const tp = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
+  if (!tp) return;
+  maskSwipe = false;
+  maskX0 = tp.clientX;
+  maskY0 = tp.clientY;
+}
+function maskMove(e) {
+  if (maskSwipe) return;
+  const tp = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
+  if (!tp) return;
+  if (Math.abs(tp.clientX - maskX0) < MASK_SWIPE_PX && Math.abs(tp.clientY - maskY0) < MASK_SWIPE_PX) return;
+  /* 必须显式 blur：只靠元素被移除在部分内核里落不下键盘（小米浏览器实测过） */
+  try {
+    const inp = barEl.value && barEl.value.querySelector("textarea, input");
+    const ae = document.activeElement;
+    if (inp && typeof inp.blur === "function") inp.blur();
+    else if (ae && ae !== document.body && typeof ae.blur === "function") ae.blur();
+  } catch (err) { /* 收不了键盘也必须退得掉 */ }
+  closeBar();
+  /* 放在 closeBar 之后：它会清这个账（防上一轮残留），而这次滑动要留着，
+   * 好在同一手势末尾补派的 click 上认出来并吞掉。 */
+  maskSwipe = true;
+}
+const barBackFn = () => {
+  if (!barOpen.value) return false;
+  if (barTapIsKbBack()) return true;
+  closeBar();
+  return true;
+};
+let barBackArmed = false;
+watch(barOpen, (v) => {
+  tabbarSuppressed.value = v;   /* 条开着 = tabbar 收起（贴键盘），与暖心墙同口径 */
+  if (v && !barBackArmed) { pushBack(barBackFn); barBackArmed = true; }
+  else if (!v && barBackArmed) { popBack(barBackFn); barBackArmed = false; }
+  if (typeof document === "undefined") return;
+  if (v) document.addEventListener("click", barDocClose);
+  else document.removeEventListener("click", barDocClose);
+});
+onUnmounted(() => {
+  /* 「我的」页一屏多张卡 = 多个实例，tabbarSuppressed 是全局的：
+   * 只有自己开着条时才该把它放回去，否则一张卡被列表刷掉会把别人的 tabbar 也放出来 */
+  if (barOpen.value) tabbarSuppressed.value = false;
+  if (barBackArmed) { popBack(barBackFn); barBackArmed = false; }
+  if (typeof document !== "undefined") document.removeEventListener("click", barDocClose);
+});
 
 /* ── 回复框（桌面就地）────────────────────────────────────── */
 const replyBox = ref({});      /* 哪条评论下面开着回复框 */
@@ -366,12 +448,17 @@ function goProfile(cm) {
       </button>
     </div>
 
-    <!-- 手机底部输入条（与暖心墙同款：fixed 在底栏之上，Teleport 到 body 免受卡片/路由过渡的 transform 影响） -->
+    <!-- 手机底部输入条（与暖心墙同款：fixed 在底栏之上，Teleport 到 body 免受卡片/路由过渡的 transform 影响）
+         轮 497：补齐暗层 + 滑动分流 + 去掉「关闭」按钮 —— 暖心墙没有那颗按钮，
+         出口统一是「点暗处 / 滑动 / 系统返回键」，键盘在屏上时第一下只落键盘。 -->
     <Teleport to="body">
-      <div v-if="isMobileNav && barOpen" class="cmt-main-bar">
+      <div v-if="isMobileNav && barOpen" class="cmt-bar-mask"
+        @click="maskTap"
+        @touchstart.passive="maskDown"
+        @touchmove.passive="maskMove"></div>
+      <div v-if="isMobileNav && barOpen" ref="barEl" class="cmt-main-bar">
         <WpComposer v-model="barText" :placeholder="phMain" :maxlength="MAX_LEN"
           @send="repTarget ? sendReply(repTarget) : sendMain()" />
-        <button class="cmt-act" type="button" @click="closeBar">{{ t("common.close") }}</button>
       </div>
     </Teleport>
   </div>
@@ -383,8 +470,6 @@ function goProfile(cm) {
 /* 评论条在卡里跟浏览数同一行距，别把卡片撑太松 */
 .post-cmts .cmt-toggle { margin-top: 6px; }
 .post-cmts .cmt-toggle:hover { transform: none; }
-/* 卡内「关闭」按钮在底部条里靠右站立 */
-.cmt-main-bar .cmt-act { flex: none; align-self: center; padding: 6px 10px; }
 /* 卡内删除 × 与 ⋯ 同一枚小按钮口径 */
 .post-cmts .cmt-del { margin-left: auto; }
 </style>
