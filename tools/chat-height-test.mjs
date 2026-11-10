@@ -218,7 +218,11 @@ t("T23 --kb-h：闸门边界（80 不算、81 且无焦点算 0、81 且有焦�
 t("T24 keyboardInset.js 必须调用 kbInsetValue（不许留着内联的三元）", () => {
   const js = read("src/utils/keyboardInset.js");
   assert(/import \{[^}]*kbInsetValue[^}]*\} from "\.\/chatHeight\.js"/.test(js), "没 import");
-  assert(/kbInsetValue\(raw, editableFocused\(\)\)/.test(js), "没把 raw/focused 喂进纯函数");
+  /* 轮 496：焦点判据被提成局部变量（面板高度还要用它），两种写法都算数 ——
+     这条锁的是「必须喂进纯函数」，不是「必须写成内联一行」。 */
+  assert(/kbInsetValue\(raw,\s*focused\s*\)/.test(js) || /kbInsetValue\(raw, editableFocused\(\)\)/.test(js),
+    "没把 raw/focused 喂进纯函数");
+  assert(/editableFocused\(\)/.test(js), "没有焦点判据");
   assert(!/editableFocused\(\) \|\| raw > /.test(js), "还留着内联三元（两份口径迟早漂）");
 });
 

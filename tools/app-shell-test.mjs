@@ -209,7 +209,8 @@ ok("T36 发帖页有真正的排版样式（顶栏 / 卡片 / 大输入框 / 动
   && cv.includes(".compose-tool {")
   && cv.includes(".compose-page {")
   && cv.includes(".compose-back")
-  && cv.includes("min-height: 100dvh;")
+  /* 轮495：原先是 min-height: 100dvh，现在要减键盘高度，整张卡片才留在键盘上方 */
+  && cv.includes("calc(100dvh - var(--kb-h, 0px))")
   && cv.includes("env(safe-area-inset-bottom")
   && /\.compose-area \{[\s\S]*?flex: 1 1 auto/.test(cv)
   && cv.includes("html[data-theme=\"night\"] .compose-card"));

@@ -227,7 +227,10 @@ t("P6 轮 350：收面板时底条让位钉到键盘上来；面板里点表情�
   has(CSS, /\.cmt-main-bar\.wp-kb-swap \{\s*\n\s*bottom: var\(--kb-panel-h\);/, "没有 .wp-kb-swap 的钉住规则（底条会先掉到屏底）");
   has(WPC, /if \(isSheet\(\)\) holdForKeyboard\(\);/, "onDocClick 里没在收面板前钉住底条");
   has(WPC, /if \(v > 0\) endKbSwap\(\);/, "没等 --kb-h > 0 再摘钉");
-  has(WPC, /if \(!isApp\) return;/, "网页上也会钉住（底条会先悬空 1.2s）");
+  /* 轮 496：不再无条件「网页端不钉」——走 visualViewport 让位路线的浏览器里，收面板那刻
+     --kb-h 还是 0，底条会先掉 249px 再被键盘顶回来（393×852 实测）。改由 webSwapNeeded 判：
+     只有「浏览器自己缩布局视口」那批不钉（钉住会悬空）。 */
+  has(WPC, /if \(!isApp && !webSwapNeeded\(\)\) return;/, "交接条件没走 webSwapNeeded（缩布局视口型内核会先悬空 1.2s）");
   has(WPC, /if \(!isSheet\(\)\) \{\s*\n\s*try \{\s*\n\s*n\.focus\(\);/, "onEmoji 里手机也会 focus（输入法弹起来把面板顶掉）");
 });
 

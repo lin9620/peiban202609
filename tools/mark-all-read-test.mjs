@@ -48,9 +48,13 @@ ok("M2 不允许挂到「消息请求」那一行（那里只有计数）",
   !/t\("dm\.requests"\)[\s\S]{0,200}dm-sec-act/.test(view),
   "dm-sec-act 出现在消息请求那一行");
 
-ok("M3 有未读才出现（没未读时隐藏，不留一颗点了没反应的按钮）",
-  /v-if="pendingUnread\.length \|\| allReadNote"/.test(secSeg),
-  "缺少 v-if 门控");
+ok("M3 恒定渲染（轮495 反转：上一版「有未读才出现」导致用户在有未读时也找不到它）",
+  !/v-if="pendingUnread\.length \|\| allReadNote"/.test(secSeg)
+    && !/v-if="pendingUnread\.length"/.test(secSeg),
+  "又加回 v-if 门控了 —— 藏起来的入口等于没有入口");
+ok("M3b 没有未读时置灰禁用（不做一颗点了没反应的按钮）",
+  /:disabled="allReadBusy \|\| !pendingUnread\.length"/.test(secSeg),
+  "缺少「无未读则禁用」的门控");
 
 ok("M4 点击走 markAllRead，且 @click.stop（行本身是整行可点进会话）",
   /@click\.stop="markAllRead"/.test(secSeg),

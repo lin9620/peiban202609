@@ -303,8 +303,12 @@ ok("排行榜页 = 独立视图，回退用 storyBack",
 // 所以只能断言「没有实际调用」——即 router.back 后不接 .catch/() 的调用形态。
 ok("故事详情页返回不再 router.back()（会退到首页联）",
   detailVue.includes("useStoryBack") && !/router\.back\(\)\s*[.)]/.test(detailVue));
-ok("storyBack 用 replace 而非 push（连按返回不堆历史）",
-  backJs.includes("router.replace(to)"));
+// 轮495：storyBack 不再自己 replace 到 /story，改成 backOr（有上一页回上一页，没有才 replace）。
+// 不变的底线：**绝不能用 push** —— 连按返回不能一层层堆历史。
+ok("storyBack 走 backOr：有上一页就回上一页，没有才 replace 兜底（绝不用 push）",
+  backJs.includes("backOr(router, to)")
+  && !/router\s*\.\s*push\s*\(/.test(backJs)
+  && /router\s*\.\s*replace\(\s*fallback\s*\)/.test(read("src/utils/backNav.js")));
 // 轮 150：/story、/story/mine、/story/rank 是独立路由，不走 HomeView 的 .home3 容器，
 // 频道条与手势必须由共享壳补上，否则「点进子页顶栏没了 / 不能左滑」。
 ok("共享壳 StoryShell：手机端渲染四联频道条，桌面直出内容",

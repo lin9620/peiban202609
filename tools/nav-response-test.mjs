@@ -121,8 +121,24 @@ t("N12 滚动记忆的键必须统一（写 fullPath、读 path 会永远读不�
   assert(/getScroll\(to\.path\)/.test(rt), "router.scrollBehavior 不再按 to.path 取位置");
 });
 
-/* ─── ②（轮 483）再点「暖心墙」页签时，关注流是子状态，必须先退出 ─── */
-t("N9 关注流里点「暖心墙」页签 → 退出关注流（不是就地刷新关注流）", () => {
+/* 轮495 · 用户：「点击具体页面，来回切，位置不变，页面不变」。
+ * /story 这类页面不保活（每次进来重新拉列表），只调一次 scrollTo 会被文档高度钳住 ——
+ * 挂载那一瞬列表还没到，等于没回。必须「等文档长够再落位」。 */
+t("N13 /story 从详情返回后位置要还在（等到文档长够，不能只滚一次）", () => {
+  const sm = read("src/utils/scrollMem.js");
+  assert(/export function restoreWhenTall/.test(sm), "scrollMem 没有 restoreWhenTall");
+  const i = sm.indexOf("export function restoreWhenTall");
+  const seg = sm.slice(i, i + 900);
+  assert(/scrollHeight - window\.innerHeight/.test(seg), "restoreWhenTall 没算可滚动的上限 —— 没法判断文档够不够高");
+  assert(/requestAnimationFrame/.test(seg), "restoreWhenTall 没有逐帧重试（一次性 scrollTo 会被钳回顶部）");
+  assert(/timeout/.test(seg), "restoreWhenTall 没有兜底超时，文档永远长不够时会一直空转");
+
+  const sv = read("src/views/StoryView.vue");
+  assert(/restoreWhenTall\(route\.path\)/.test(sv), "StoryView 没接 restoreWhenTall（从详情返回会回到顶部）");
+  assert(/touchstart/.test(sv), "StoryView 没在用户一滚就取消回位（会跟手指抢滚动）");
+});
+
+/* ─── ②（轮 483）再点「暖心墙」页签时，关注流是子状态，必须先退出 ─── */t("N9 关注流里点「暖心墙」页签 → 退出关注流（不是就地刷新关注流）", () => {
   const i = cv.indexOf("watch([retapSeq, retapPath]");
   assert(i > 0, "CommunityView 没接 retap 信号");
   const seg = cv.slice(i, i + 1600);

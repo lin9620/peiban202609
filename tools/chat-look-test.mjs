@@ -72,7 +72,10 @@ t("L7 轮 350 面板→键盘交接：让位钉住 + 过渡同曲线（否则输
   has(BC, /const holdForKeyboard = \(\) => \{/, "没有 holdForKeyboard");
   has(BC, /holdForKeyboard\(\); {10,}\/\* 让位先钉住/, "closeKeepFocus 里没调 holdForKeyboard（或没在收面板之前调）");
   has(BC, /if \(v > 0\) endKbSwap\(\);/, "没有等 --kb-h > 0 再摘钉");
-  has(BC, /if \(!isApp\) return;/, "网页端也会钉住（输入框会先悬空 1.2s）");
+  /* 轮 496：原来这里锁的是「网页端一律不钉」—— 实测 393×852 网页端收面板那一刻
+     --kb-h 还是 0，输入框掉 249px 再被键盘顶回来。改成「按 webSwapNeeded 判」：
+     走 visualViewport 让位路线的设备要钉，缩布局视口型（浏览器自己缩）不钉、否则悬空。 */
+  has(BC, /if \(!isApp && !webSwapNeeded\(\)\) return;/, "面板→键盘交接没走 webSwapNeeded（缩布局视口型内核会先悬空 1.2s）");
 });
 
 t("L8 短消息气泡贴合文字（组件自带 min-width:100px 被归零）", () => {

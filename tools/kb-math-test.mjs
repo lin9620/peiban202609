@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { kbPageInset, kbWebInset } from "../src/utils/keyboardMath.js";
+import { kbPageInset, kbWebInset, kbShrinkInset } from "../src/utils/keyboardMath.js";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (rel) => fs.readFileSync(path.join(root, rel), "utf8");
@@ -156,6 +156,42 @@ t("T15 网页端：离谱值夹到「布局视口 − 120」，结果取整", ()
   assert.equal(kbWebInset(852, 100, 0), 732, "852 − 120 上限");
   assert.equal(kbWebInset(852, 5000, 0), 0, "算出负数 → 0");
   assert.equal(kbWebInset(393.4, 260.7, 0.2), 133, "132.5 → 取整成 133");
+});
+
+/* ══════════ ⑥ 轮 496 · 缩布局视口型内核的键盘本体高度 ══════════
+ * 用户：「手机浏览器输入的时候，表情跟文字输入高度不一致」。
+ * 一批浏览器弹键盘时直接把 innerHeight 缩掉（布局视口跟着缩），于是 kbWebInset 恒为 0
+ * —— 底条由浏览器自己顶上去，是对的；但表情面板要跟的「键盘本体高度」也因此永远拿不到，
+ * 只能退回 46vh/320px 死值 → 面板与键盘差一截，输入条跟着跳。
+ * 这里锁住反推式子的口径与兜底。 */
+
+t("T16 缩布局视口：852 → 536 的键盘，反推 316", () => {
+  assert.equal(kbShrinkInset(852, 536), 316);
+});
+
+t("T17 地址栏伸缩（差值 < 120）不认，绝不误判成键盘", () => {
+  assert.equal(kbShrinkInset(852, 795), 0, "57px = 地址栏，不是键盘");
+  assert.equal(kbShrinkInset(852, 733), 0, "119px 仍不认（闸门 120）");
+  assert.equal(kbShrinkInset(852, 732), 120, "刚好 120 才认");
+});
+
+t("T18 脏输入 / 离谱值一律 0 或夹住", () => {
+  assert.equal(kbShrinkInset(0, 536), 0, "无基线");
+  assert.equal(kbShrinkInset(852, 0), 0, "无当前值");
+  assert.equal(kbShrinkInset(852, 900), 0, "变大不是键盘");
+  assert.equal(kbShrinkInset(852, 20), 732, "夹到基线 − 120");
+});
+
+t("T19 接线：面板高度必须走独立来源，不能拿 --kb-h 顶替", () => {
+  const ki = read("src/utils/keyboardInset.js");
+  assert.match(ki, /kbShrinkInset/, "keyboardInset 没接 kbShrinkInset");
+  assert.match(ki, /writeVar\(h, \{[\s\S]{0,400}?\}, panelH\)/, "writeVar 没收到键盘本体高度");
+  assert.match(ki, /--kb-last/, "没有写 --kb-last");
+  assert.match(ki, /export function webSwapNeeded/, "没有导出 webSwapNeeded（面板→键盘交接要用）");
+  const wc = read("src/components/WpComposer.vue");
+  assert.match(wc, /if \(!isApp && !webSwapNeeded\(\)\) return;/, "WpComposer 的钉住仍然只认 App 壳");
+  const dc = read("src/components/DmVacChat.vue");
+  assert.match(dc, /if \(!isApp && !webSwapNeeded\(\)\) return;/, "DmVacChat 的钉住仍然只认 App 壳");
 });
 
 console.log(out.join("\n"));

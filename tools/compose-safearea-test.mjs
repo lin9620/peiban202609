@@ -132,6 +132,29 @@ t("C9 不该出现的替代做法：靠 transform / 负 top 把顶栏挪下去",
   assert.doesNotMatch(headRule, /top:\s*-\d/, "顶栏用了负 top");
 });
 
+/* ── 轮495 · 键盘态不能把内容顶到键盘底下（用户：「内容折叠了」）──
+ * 这页自动聚焦，一进来键盘就顶起约 300px。页面若仍按整屏高排，整张卡片会被推到
+ * 键盘后面，底部工具条够不着 —— 看起来就是内容被折起来了。
+ * 实测（_scratch/uiprobe，393×852，--kb-h=300）：修前 card 底 838（键盘线上方只剩 552），
+ * 修后 card 底 523 / 工具条底 510，全部在键盘线之上。 */
+t("C10 页面高度要减掉键盘高度（--kb-h），整张卡片留在键盘上方", () => {
+  const pageRule = (style.match(/\.compose-page\s*\{[\s\S]*?\}/) || [""])[0];
+  assert.ok(pageRule, "找不到 .compose-page 规则");
+  assert.match(pageRule, /min-height:\s*calc\(100vh\s*-\s*var\(--kb-h/,
+    "min-height 没减 --kb-h —— 键盘弹出后卡片会被顶到键盘底下");
+  const dvh = (style.match(/@supports\s*\(height:\s*100dvh\)[\s\S]{0,120}?\.compose-page\s*\{[^}]*\}/) || [""])[0];
+  assert.match(dvh, /calc\(100dvh\s*-\s*var\(--kb-h/, "@supports 里的 dvh 版也得减 --kb-h");
+});
+
+t("C11 输入框下限用像素、不用 vh（vh 在键盘态不会变，会把底栏挤出去）", () => {
+  const area = (style.match(/\.compose-area\s*\{[\s\S]*?\}/) || [""])[0];
+  assert.ok(area, "找不到 .compose-area 规则");
+  assert.match(area, /min-height:\s*\d+px/, "输入框下限不是像素值");
+  assert.doesNotMatch(area, /min-height:\s*\d+vh/, "输入框下限又用回 vh 了");
+  const narrow = (style.match(/@media\s*\(max-width:\s*560px\)[\s\S]*$/) || [""])[0];
+  assert.doesNotMatch(narrow, /\.compose-area\s*\{[^}]*min-height:\s*\d+vh/, "窄屏下输入框下限又用 vh 了");
+});
+
 console.log(out.join("\n"));
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

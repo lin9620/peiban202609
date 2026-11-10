@@ -109,6 +109,39 @@ t("P11 路径归一：/zh 别名、尾斜杠、query 都不影响判断", () => 
   assert.equal(r.to, "/");
 });
 
+/* ── 轮495 · 轮493 那版最致命的一条错（用户：「故事主页连续两次返回没有用」）──
+ * 实测（_scratch/backprobe 真路由探针）：replace 之后 history.state.back 会指回
+ * 刚离开的那一页 —— 在 /story 按返回 → replace("/") → state.back = "/story"。
+ * 若「有没有上一页」排在「Tab 根」前面，首页就会 router.back() 跳回 /story：
+ * 用户按两次 = 去了首页又弹回来，等于没动。这三条把这个顺序钉死。 */
+t("P13 首页即使 history 里有上一页，也只提示退出（不许被 history 抓走）", () => {
+  const r = planBack({ path: "/", back: "/story", backTo: "", now: 1000, lastHintAt: 0 });
+  assert.equal(r.action, "hint", "首页必须提示退出，不能 history back（那是乒乓的来源）");
+  const r2 = planBack({ path: "/", back: "/story", backTo: "", now: 1500, lastHintAt: 1000 });
+  assert.equal(r2.action, "minimize", "窗口内第二次按键才最小化");
+});
+
+t("P14 Tab 根一律回首页，哪怕历史里有别的上一页", () => {
+  for (const p of ["/community", "/messages", "/profile"]) {
+    const r = planBack({ path: p, back: "/story", backTo: "", now: 0, lastHintAt: 0 });
+    assert.equal(r.action, "replace", p + " 在 Tab 根时不该 history back");
+    assert.equal(r.to, "/");
+  }
+});
+
+t("P15 故事主页返回 = 回它来的地方（不是原地、也不是发现页）", () => {
+  const r = planBack({ path: "/story", back: "/", backTo: "/", now: 0, lastHintAt: 0 });
+  assert.equal(r.action, "history", "有上一页就该回上一页");
+});
+
+t("P16 故事详情返回 = 历史回退（从哪进去回哪，轮495 用户要求）", () => {
+  const fromHome = planBack({ path: "/story/12", back: "/?tab=story", backTo: "/story", now: 0, lastHintAt: 0 });
+  assert.equal(fromHome.action, "history", "从首页故事联进来要回首页，不能甩到 /story");
+  const deepLink = planBack({ path: "/story/12", back: null, backTo: "/story", now: 0, lastHintAt: 0 });
+  assert.equal(deepLink.action, "replace");
+  assert.equal(deepLink.to, "/story", "没有上一页才回发现页");
+});
+
 t("P12 聊天页无历史（通知直达 /messages/9）→ 回会话列表", () => {
   const r = planBack({ path: "/messages/9", back: null, backTo: "/messages" });
   assert.equal(r.action, "replace");
@@ -154,11 +187,19 @@ t("R3 backTo 指向的路径必须真实存在（不许指到一个已删除的�
   assert.deepEqual(bad, [], "backTo 指向了不存在的路由：" + bad.join(", "));
 });
 
-t("R4 故事详情必须是 replace 型（否则从首页今日联点进来，返回会回到今日）", () => {
+t("R4 故事详情**不能**是 replace 型（轮495 反转：从哪进去就回哪，不能一律甩到发现页）", () => {
   const line = routeLines.find((l) => /name:\s*"storyDetail"/.test(l));
   assert.ok(line, "找不到 storyDetail 路由");
-  assert.match(line, /backMode:\s*"replace"/, "storyDetail 没标 replace 型返回");
-  assert.match(line, /backTo:\s*"\/story"/, "storyDetail 的父页不是 /story");
+  assert.ok(!/backMode:\s*"replace"/.test(line), "storyDetail 又标成 replace 了 —— 会把从首页故事联进来的人甩到发现页");
+  assert.match(line, /backTo:\s*"\/story"/, "storyDetail 的父页不是 /story（深链兜底要用）");
+});
+
+t("R6 其它故事子页（我的/排行榜/写作）不能标 replace 型", () => {
+  for (const name of ["storyMine", "storyRank", "storyWrite"]) {
+    const line = routeLines.find((l) => new RegExp('name:\\s*"' + name + '"').test(l));
+    assert.ok(line, "找不到路由 " + name);
+    assert.ok(!/backMode:\s*"replace"/.test(line), name + " 标了 replace，会覆盖历史回退");
+  }
 });
 
 t("R5 每个 backTo 都必须以 / 开头（相对路径会让 router.replace 解析错）", () => {
@@ -217,6 +258,44 @@ t("A7 决策模块自身不依赖 router / Capacitor（纯函数才能在 Node �
   assert.ok(!/from\s+"vue-router"/.test(bp), "backPlan.js 不该 import vue-router");
   assert.ok(!/@capacitor/.test(bp), "backPlan.js 不该 import Capacitor");
   assert.ok(!/window\./.test(bp), "backPlan.js 不该直接摸 window");
+});
+
+/* 轮495：故事系曾经的「自己再挂一个 backButton 监听、一律 replace 回 /story」必须彻底消失。
+ * 双监听的后果是同一次按键被处理两遍，后到的 replace 覆盖先到的决策 —— 用户看到的就是
+ * 「返回没反应 / 跑错页」，而且从代码上根本看不出是谁干的。 */
+t("A8 页面自己不许再挂 backButton 监听（只有 App.vue 一处）", () => {
+  const story = read("src/utils/storyBack.js");
+  assert.ok(!/addListener\("backButton"/.test(story), "storyBack.js 又挂了一个返回键监听");
+  assert.ok(!/@capacitor/.test(story), "storyBack.js 不该再依赖 Capacitor");
+  const hits = [];
+  const walk = (dir) => {
+    for (const f of fs.readdirSync(dir)) {
+      const p = path.join(dir, f);
+      const st = fs.statSync(p);
+      if (st.isDirectory()) walk(p);
+      else if (/\.(vue|js)$/.test(f)) {
+        const s = fs.readFileSync(p, "utf8");
+        if (/addListener\("backButton"/.test(s) && !p.endsWith("App.vue")) hits.push(p);
+      }
+    }
+  };
+  walk(path.join(root, "src"));
+  assert.equal(hits.length, 0, "这些文件也挂了 backButton 监听：" + hits.join(", "));
+});
+
+t("A9 页面内 ← 钮走 backOr（有上一页就回上一页，没有才回兜底页）", () => {
+  const bn = read("src/utils/backNav.js");
+  assert.match(bn, /export function backOr/, "backNav.js 没有 backOr");
+  const story = read("src/utils/storyBack.js");
+  assert.match(story, /backOr\(router,\s*to\)/, "storyBack 没走 backOr");
+  const compose = read("src/views/ComposeView.vue");
+  assert.match(compose, /backOr\(router,\s*"\/community"\)/, "发帖页返回没走 backOr");
+  assert.ok(!/st\.back === "\/community"/.test(compose), "发帖页还留着写死的 st.back 判断");
+});
+
+t("A10 backOr 与决策表同源归一（/zh 别名、query 不会造成键对不上）", () => {
+  const bn = read("src/utils/backNav.js");
+  assert.match(bn, /normPath\(back\) !== cur/, "backOr 没用 normPath 比较，/?tab=story 会算成不同页");
 });
 
 console.log(out.join("\n"));
