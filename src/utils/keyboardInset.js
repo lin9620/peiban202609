@@ -27,7 +27,7 @@
  */
 import { Capacitor } from "@capacitor/core";
 import { Keyboard } from "@capacitor/keyboard";
-import { kbPageInset, kbWebInset, kbShrinkInset } from "./keyboardMath.js";
+import { kbPageInset, kbWebInset, kbShrinkInset, kbPanelFallback, kbScreenH } from "./keyboardMath.js";
 import { kbInsetValue } from "./chatHeight.js";
 
 const VAR = "--kb-h";
@@ -35,7 +35,7 @@ const SYS_BOTTOM_VAR = "--sys-bottom";
 /* 轮 498：表情面板的「兜底高度 / 上限」也由 JS 用 px 写，别让 CSS 的 vh 算。
  * 起因（用户第四次报同一件事）：有的内核会把 vh 算成「键盘剩下那点高度」，
  * 46vh 于是只有一百多像素 —— 面板矮成一条，输入条从上面掉下来，看着就是
- * 「表情和文字输入高度不一致」。用「见过的最高的正常视口 × 0.46」算成 px 就稳了。
+ * 「表情和文字输入高度不一致」。改成由 JS 按**页面坐标系**算成 px 写进来（轮 499）。
  * CSS 侧写法：--kb-panel-h: min(var(--kb-last, var(--kb-fallback, min(46vh,320px))), var(--kb-cap, 62vh)) */
 const FALLBACK_VAR = "--kb-fallback";
 const CAP_VAR = "--kb-cap";
@@ -88,6 +88,8 @@ function setInset(px) {
   /* App 壳里「让位高度」与「键盘本体高度」是同一个量（插件报的就是输入法真实高度），
      第三参显式传同一个值，别让两条口径在将来分叉。 */
   writeVar(h, { src: "native", raw, sysBottom: sys, kbH: h, innerHeight: vh, at: Date.now() }, h);
+  /* 轮 499：App 的真键盘高度也记一份比例，网页端/冷启动共用同一个兜底值 */
+  if (h > 0) { panelSeen = Math.max(panelSeen, h); savePanel(panelSeen, vh); }
   if (h <= 0) return;
   /* 长页面里的输入框可能被键盘盖住（窗口不再缩 ⇒ 系统不会替我们滚）：
      等让位生效后再把焦点元素滚进可视区。 */
@@ -140,21 +142,69 @@ let webKbSeen = 0;
  * 旧写法（每次没键盘就覆盖）会把这个矮值记成基线，之后反推出的键盘高度全是错的。 */
 let restH = 0;
 
-/* 轮 498：把「面板兜底高度 / 上限」写成 px（见文件头的 FALLBACK_VAR 说明）。
- * 兜底 = 见过的最高的正常视口 × 0.46（夹 240~320，与旧的 46vh/320 同量级）；
- * 上限 = 当前**可视**高度 × 0.62（夹不低于 200）—— 矮视口下面板不许吃掉整屏。
- * 只在数值真的变了才写（逐帧采样时别反复改样式触发重排）。 */
+/* 轮 499/500：面板兜底高度要按**页面坐标系**算（见 keyboardMath.js 的 kbPanelFallback）。
+ *
+ * 轮 500 改了两处「只对某台机器成立」的假设 —— 用户追问「别的手机呢」：
+ *   ① 不再按「键盘占屏高 36%」这一个比例推，改成先夹取键盘**绝对高度** 240~330
+ *      （各家输入法都在这个区间，与屏高不成比例：平板 1024 上真键盘只有 310 = 30%，
+ *      横屏 393 上却有 210 = 53%）。852 屏算出来仍是 307，用户那台一格没动。
+ *   ② 实测值改存**键盘本体绝对高度** { abs, screen }，不再存 (base, panel) 对。
+ *      浏览器底部工具栏一收一放 innerHeight 会差 120，旧格式一换坐标系就作废；
+ *      存绝对值之后，732 测到的 185 换成 852 也能正确折成 307。
+ * 只有屏幕尺寸对得上（±40，挡横竖屏互串）才复用实测值；从没测到过的机器走估计。 */
+const PAIR_KEY = "wp-kb-panel-px";
+let lastSaved = "";
+function screenNow() {
+  const win = typeof window !== "undefined" ? window : null;
+  if (!win || !win.screen) return 0;
+  return kbScreenH(win.screen.height, win.devicePixelRatio);
+}
+function readStored() {
+  try {
+    const o = JSON.parse(localStorage.getItem(PAIR_KEY) || "null");
+    if (o && o.abs > 0) return { abs: o.abs, screen: o.screen || 0 };
+  } catch (e) { /* 隐私模式 / 禁用存储：当没存过 */ }
+  return null;                      /* 老格式 { base, panel } 直接丢弃：换坐标系后已不成立 */
+}
+/* panel = 键盘在**当前页面**里占的高度；base = 当前页面高度。
+ * 键盘本体绝对高度 = panel + （屏幕底到页面底那段距离，即浏览器工具栏）。
+ * 工具栏只在「屏高 − 页面高 ∈ (0, 200]」时才算；分屏 / 桌面窗口差得更多，
+ * 那是窗口不占满屏幕，键盘整个落在窗口里，绝对高度就是 panel 本身。 */
+function savePanel(panel, base) {
+  if (!(panel > 0) || !(base > 0)) return;
+  const s = screenNow();
+  const d = s - base;
+  const toolbar = s > 0 && d > 0 && d <= 200 ? Math.round(d) : 0;
+  const pair = { abs: Math.round(panel + toolbar), screen: Math.round(s) };
+  const key = pair.abs + ":" + pair.screen;
+  if (key === lastSaved) return;
+  lastSaved = key;
+  try { localStorage.setItem(PAIR_KEY, JSON.stringify(pair)); } catch (e) { /* 忽略 */ }
+}
+/* 本会话真测到的最大面板高（键盘动画是分几步走的，取最大才不会把中间帧记成真值） */
+let panelSeen = 0;
+function panelFallback(base) {
+  return kbPanelFallback(base, screenNow(), readStored());
+}
+
 let lastFb = -1;
 let lastCap = -1;
-function writePanelRuler() {
+/* noKb = 当前确实没有键盘在屏上。
+ * 有键盘时布局视口可能被键盘缩掉（缩布局视口型内核），innerHeight 不是真实页面高度，
+ * 只能用「见过的最大 innerHeight」当基准；**没有键盘时就用当前 innerHeight** ——
+ * 否则浏览器底部工具栏一收一放（innerHeight 差 120），基准还停在旧值上，
+ * 面板会按更高的页面算，一开就把输入条顶上去一截。 */
+function writePanelRuler(noKb) {
   const win = typeof window !== "undefined" ? window : null;
   if (!win) return;
   const inner = win.innerHeight || 0;
   const vis = (win.visualViewport && win.visualViewport.height) || inner;
-  const base = restH > 0 ? restH : inner;
+  const base = noKb && inner > 0 ? inner : (restH > 0 ? restH : inner);
   if (!(base > 0) || !(vis > 0)) return;
-  const fb = Math.round(Math.min(Math.max(base * 0.46, 240), 320));
-  const cap = Math.round(Math.max(Math.min(base, vis) * 0.62, 200));
+  const fb = panelFallback(base);
+  /* 上限与 kbPanelFallback 里的 hi 同口径（min 80%, 380）：
+     分屏时窗口只有 400 高、键盘却占 305，按 62% 夹会把面板压矮一大截。 */
+  const cap = Math.min(Math.round(Math.min(base, vis) * 0.8), 380);
   if (fb === lastFb && cap === lastCap) return;
   lastFb = fb;
   lastCap = cap;
@@ -181,24 +231,35 @@ function applyWeb() {
   const focused = editableFocused();
   const h = kbInsetValue(raw, focused);
   const inner = (typeof window !== "undefined" && window.innerHeight) || 0;
-  /* 轮 498：可视高度变了（键盘起落 / 地址栏伸缩 / 旋屏）就重算面板尺子的上限，
-     面板高度才不会被一个「已经不成立」的视口尺寸钉死。内部有变化判据，不会每帧写样式。 */
-  writePanelRuler();
 
-  /* 轮 496：表情面板要跟的是「键盘本体占多高」，它跟「页面需要让多高」不是同一个量。
+  /* 轮 496/500：表情面板要跟的是「键盘本体占多高」，它跟「页面需要让多高」不是同一个量。
    * 缩可视视口型内核：让位就是键盘高，两者相等；
    * 缩布局视口型内核：让位恒为 0（浏览器自己缩），键盘高只能从 innerHeight 缩掉的量反推。
    * 不补这一段，--kb-last 在后者上永远拿不到值，面板就退回 46vh/320px 的死值 ——
-   * 用户看到的「表情跟文字输入高度不一致」。 */
+   * 用户看到的「表情跟文字输入高度不一致」。
+   * 轮 500：反推必须要求「输入框真的有焦点」。地址栏 / 底部工具栏伸缩同样会改
+   * innerHeight，没有焦点时把那 120px 当成键盘，还会被 savePanel 存进 localStorage，
+   * 之后面板永远矮一截（探针里改一次 iframe 高度就复现）。 */
   let panelH = h;
-  if (!(panelH > 0)) panelH = kbShrinkInset(restH, inner);
+  if (!(panelH > 0)) panelH = focused ? kbShrinkInset(restH, inner) : 0;
+
+  /* 轮 498/500：可视高度变了（键盘起落 / 地址栏伸缩 / 旋屏）就重算面板尺子，
+     面板高度才不会被一个「已经不成立」的视口尺寸钉死。内部有变化判据，不会每帧写样式。
+     第二参告诉它「现在没有键盘」——有键盘时页面高度不可信，得退回历史最大值。 */
+  writePanelRuler(!(panelH > 0));
+  /* 轮 499：真测到就记比例，下次冷启动（面板先于键盘打开）也能用真值。
+     取本会话最大值 —— 键盘起落动画是分几步走的，中间帧不是真高度。 */
+  if (panelH > 0) {
+    panelSeen = Math.max(panelSeen, panelH);
+    savePanel(panelSeen, restH > 0 ? restH : inner);
+  }
   if (h > 0) webKbSeen = Math.max(webKbSeen, h);
   /* 基线只在「确实没有键盘」时往上记：不然键盘弹起后的 innerHeight 会被记成基线，
    * 下一次就再也算不出差值；而弹完键盘布局视口没复原的机型，矮值也不能盖掉真基线
    * （旧写法每次覆盖 → 面板高度从头就错，用户看到的「矮成一条」）。 */
   if (!(panelH > 0) && !focused && inner > 0 && inner > restH) {
     restH = inner;
-    writePanelRuler();
+    writePanelRuler(true);
   }
 
   /* iOS 为了让光标可见会把**整个文档**往上滚（window.scrollY > 0）。整屏聊天页本来
@@ -251,7 +312,7 @@ function initWeb() {
      「基线 − 当前 innerHeight」反推键盘本体高度的，没有基线就永远是 0。
      轮 498：同时把面板兜底高度算成 px 写进 CSS（vh 在部分内核上不可信）。 */
   restH = (typeof window !== "undefined" && window.innerHeight) || 0;
-  writePanelRuler();
+  writePanelRuler(true);
   const vv = window.visualViewport;
   if (vv && typeof vv.addEventListener === "function") {
     vv.addEventListener("resize", applyWeb);
@@ -261,7 +322,7 @@ function initWeb() {
   window.addEventListener("orientationchange", () => {
     /* 旋屏后视口是真的换了：基线必须重取，否则「基线 − 当前」会算出个假键盘高度 */
     restH = window.innerHeight || 0;
-    writePanelRuler();
+    writePanelRuler(true);
     sampleFrames(600);
   });
   document.addEventListener("focusin", () => sampleFrames(900), true);
@@ -277,7 +338,7 @@ export function initKeyboardInset() {
   if (!Capacitor.isNativePlatform()) { initWeb(); return; }   /* 网页端走可视视口那套 */
   /* 轮 498：App 壳也把面板兜底高度算成 px（与网页端同一把尺子，别一边一个数） */
   restH = (typeof window !== "undefined" && window.innerHeight) || 0;
-  writePanelRuler();
+  writePanelRuler(true);
   try {
     Keyboard.addListener("keyboardWillShow", (i) => setInset(i && i.keyboardHeight));
     Keyboard.addListener("keyboardDidShow", (i) => setInset(i && i.keyboardHeight));

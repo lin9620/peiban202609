@@ -68,14 +68,99 @@ export function kbWebInset(layoutH, visualH, visualTop) {
  *   但 --kb-last 也跟着永远写不进去 → 表情面板只能退回 46vh/320px 的死值，
  *   和真键盘差一截。表现就是「表情面板高度跟键盘高度不一致」，输入条跟着跳。
  *
- * 闸门 120px：地址栏伸缩最多 60 上下，键盘最低也 ≥200，两边都不误判。
+ * 闸门 150px（轮 500 从 120 提到 150）：Chrome/国产浏览器的地址栏 + 底部工具栏
+ *   伸缩实测能到 110~130，而真键盘最低也 ≥200。原来卡 120，工具栏正好压进去时
+ *   会被当成键盘 —— 探针里一改 iframe 高度就复现了：面板尺子被写成 120 并存进
+ *   localStorage，之后再也回不去（用户看到的「面板矮成一条」的另一种成因）。
  * 兜底与 kbWebInset 同口径：非数/非正 → 0，大得离谱 → 夹到 rest − 120。 */
 export function kbShrinkInset(restH, innerH) {
   const rest = Number(restH) || 0;
   const now = Number(innerH) || 0;
   if (!(rest > 0) || !(now > 0)) return 0;
   let v = Math.round(rest - now);
-  if (!(v >= 120)) return 0;
+  if (!(v >= 150)) return 0;
   if (v > rest - 120) v = Math.max(0, Math.round(rest - 120));
   return v;
+}
+
+/* 轮 500 · 把 window.screen.height 归一到「与 innerHeight 同一个坐标系（CSS px）」。
+ *
+ * 为什么要这一步：个别 WebView 会把 screen.height 报成**物理像素**（2340），
+ * 拿它去减一个 CSS px 的 innerHeight 会算出负数 → 面板矮成一条。
+ * 判据只看屏幕尺寸是否落在一个「像手机/平板的 CSS px 屏高」区间（280~1500）：
+ *   · 直接在区间内 → 就是 CSS px，原样用（含横屏 393、平板 1024、老小屏 320）；
+ *   · 不在、但除以 devicePixelRatio 后落在区间内 → 是物理像素，折回来；
+ *   · 都不在 → 认不出来，当拿不到（0），调用方走比例兜底。
+ * 注意这里**不看**它跟 base 的差距：分屏 / 横屏时 screenH 本来就远大于可视区高度，
+ * 那是真信息（说明键盘整个落在窗口里），不能因为「差太多」就丢掉。 */
+export function kbScreenH(raw, dpr) {
+  const s = Number(raw) || 0;
+  if (!(s > 0)) return 0;
+  if (s >= 280 && s <= 1500) return s;
+  const d = Number(dpr) || 0;
+  if (d > 1) {
+    const v = s / d;
+    if (v >= 280 && v <= 1500) return v;
+  }
+  return 0;
+}
+
+/* 轮 499/500 · 表情面板的兜底高度（**页面坐标系**，与面板/底条的锚点同一量纲）
+ *
+ * 为什么不能按整屏 46% 算（旧写法 min(46vh,320px) 的等价物）：
+ *   面板 .wp-composer-picker 是 position:fixed;bottom:0 ⇒ 锚在布局视口底；
+ *   键盘是从**屏幕底**往上顶的。浏览器带底部工具栏时，工具栏那一条落在页面之外：
+ *   852 的屏 innerHeight 只有 732，真键盘屏幕高 305，落到页面里只剩 185。
+ *   按整屏算的 320 比页面里的真值高 130+ ⇒ 面板一开底条被顶上去一大截。
+ *
+ * 轮 499 先改成 base − screenH × 0.64（= 键盘占屏高 36%），用户机器上准到 2px。
+ * 但用户紧接着问「别的手机呢」——这条**比例**假设只在 852 高的屏上成立：
+ *   小屏 640（真键盘 250 = 39%）→ 按 36% 算 230，矮 20；
+ *   大屏 915（真键盘 300 = 33%）→ 算 329，高 29；
+ *   平板 1024（真键盘 310 = 30%）→ 算 369，高 59；
+ *   手机横屏 393（真键盘 210 = 53%）→ 算 141，矮 69。
+ * 真正稳定的是键盘的**绝对高度**（各家输入法都在 240~330，与屏高不成比例），
+ * 所以改成先夹取绝对值再反推：kb = clamp(screenH × 0.36, 240, 330)。
+ * 852 屏上算出来仍是 307（用户真机 303），老机器一格没动。
+ *
+ * 三种参照系分开处理（这是「换台手机就崩」的第二处根源）：
+ *   ① 屏高与页面同一参照系（差 ≤200，就是浏览器工具栏）→ 键盘上沿 = 屏高 − kb，
+ *      页面内占高 = base − (屏高 − kb)；
+ *   ② 差得更多（分屏 / 桌面窗口 / 平板浮窗）：屏幕比页面高一大截，键盘整个落在
+ *      窗口里 → 页面内占高就是 kb 本身；
+ *   ③ 什么都不知道 → 按可视区 34% 估，夹在 [14%, min(80%, 380)] 内。
+ *
+ * 真值优先：seen = { abs, screen } 是本机真测过的**键盘本体绝对高度**（含工具栏），
+ * 由 keyboardInset.js 在键盘弹起 / 面板打开时反推并持久化。存绝对值而不是存
+ * (base, panel) 对，是为了浏览器底部工具栏一收一放（innerHeight 差 120）时仍能复用。
+ * 只在屏幕尺寸对得上（±40，挡横竖屏互串）时才用。 */
+const KB_ABS_MIN = 240;      /* 键盘本体绝对高度下限：小屏机 / 精简输入法 */
+const KB_ABS_MAX = 330;      /* 上限：大屏机 / 带候选栏与工具栏的输入法 */
+export function kbPanelFallback(base, screenH, seen) {
+  const b = Number(base) || 0;
+  if (!(b > 0)) return 0;
+  const lo = Math.round(b * 0.14);
+  /* 上限按「键盘可能的最大高度」而不是按键盘比例：分屏时窗口只有 400 高、
+     键盘却有 305（占 76%），按 45% 夹会把面板压矮 120，输入条当场跳。 */
+  const hi = Math.min(Math.round(b * 0.8), 380);
+  const s = Number(screenH) || 0;
+  /* ① 屏高与页面同一参照系：屏幕底到页面底那段就是浏览器工具栏（≤200） */
+  const sameFrame = s > 0 && s >= b * 0.98 && s - b <= 200;
+
+  const abs = Number(seen && seen.abs) || 0;
+  if (abs > 0) {
+    const ss = Number(seen && seen.screen) || 0;
+    if (!(s > 0) || !(ss > 0) || Math.abs(ss - s) <= 40) {
+      const p = sameFrame ? Math.round(b - (s - abs)) : Math.round(abs);
+      if (p > 0) return Math.min(Math.max(p, lo), hi);
+    }
+  }
+
+  let kb = 0;
+  if (s > 0) kb = Math.min(Math.max(Math.round(s * 0.36), KB_ABS_MIN), KB_ABS_MAX);
+  let px = 0;
+  if (sameFrame) px = Math.round(b - (s - kb));      /* ① 扣掉工具栏那一段 */
+  else if (kb > 0 && b > kb + 80) px = kb;           /* ② 窗口/分屏：键盘整个在窗口里 */
+  if (!(px > 0)) px = Math.round(b * 0.34);          /* ③ 什么都不知道 */
+  return Math.min(Math.max(px, lo), hi);
 }

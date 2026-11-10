@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { kbPageInset, kbWebInset, kbShrinkInset } from "../src/utils/keyboardMath.js";
+import { kbPageInset, kbWebInset, kbShrinkInset, kbPanelFallback, kbScreenH } from "../src/utils/keyboardMath.js";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (rel) => fs.readFileSync(path.join(root, rel), "utf8");
@@ -122,7 +122,10 @@ t("T9 keyboardInset.js 必须调用 kbPageInset（不许再有内联减法）", 
 });
 
 t("T10 纯函数模块本身不含 DOM / Capacitor 依赖（Node 里能直接测）", () => {
-  const src = read("src/utils/keyboardMath.js");
+  /* 只查代码，不查注释 —— 注释里写「window.screen.height 会报物理像素」是说明，不是依赖 */
+  const src = read("src/utils/keyboardMath.js")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
   assert(!/document\.|window\.|getComputedStyle|@capacitor/.test(src), "纯函数里混进了环境依赖");
 });
 
@@ -169,10 +172,11 @@ t("T16 缩布局视口：852 → 536 的键盘，反推 316", () => {
   assert.equal(kbShrinkInset(852, 536), 316);
 });
 
-t("T17 地址栏伸缩（差值 < 120）不认，绝不误判成键盘", () => {
-  assert.equal(kbShrinkInset(852, 795), 0, "57px = 地址栏，不是键盘");
-  assert.equal(kbShrinkInset(852, 733), 0, "119px 仍不认（闸门 120）");
-  assert.equal(kbShrinkInset(852, 732), 120, "刚好 120 才认");
+t("T17 地址栏 / 底部工具栏伸缩（≤130px）不认，绝不误判成键盘", () => {
+  assert.equal(kbShrinkInset(852, 795), 0, "57px = 地址栏");
+  assert.equal(kbShrinkInset(852, 732), 0, "128 = Chrome 地址栏+工具栏，不是键盘（轮 500：原来卡 120 会中招）");
+  assert.equal(kbShrinkInset(852, 722), 0, "130 仍不认");
+  assert.equal(kbShrinkInset(852, 702), 150, "150 才认");
 });
 
 t("T18 脏输入 / 离谱值一律 0 或夹住", () => {
@@ -192,6 +196,136 @@ t("T19 接线：面板高度必须走独立来源，不能拿 --kb-h 顶替", ()
   assert.match(wc, /if \(!isApp && !webSwapNeeded\(\)\) return;/, "WpComposer 的钉住仍然只认 App 壳");
   const dc = read("src/components/DmVacChat.vue");
   assert.match(dc, /if \(!isApp && !webSwapNeeded\(\)\) return;/, "DmVacChat 的钉住仍然只认 App 壳");
+});
+
+/* ── 轮 499 · 表情面板兜底高度必须在「页面坐标系」里 ────────────────────
+ * 用户第四次报同一件事，四张截图（App 2 张 / 浏览器 2 张）。量出来的实情：
+ *   · 浏览器：页面可视区 732（底部工具栏占掉 120），真键盘落在页面里只占 185；
+ *     旧兜底 320 ⇒ 面板一开底条被顶上去 135，看着就是「表情和文字输入高度不一致」；
+ *   · App：852 全面屏，真键盘 303，旧兜底 320 ⇒ 差 17（用户截图里那一点点跳）。
+ * 新算式 = base − 屏高 × 0.64（键盘本体约占屏高 36%），命中过真键盘后改用实测比例。 */
+t("T20 页面坐标系：带底部工具栏的浏览器算出 187（真值 185）", () => {
+  assert.equal(kbPanelFallback(732, 852, 0), 187, "852 屏 / innerHeight 732 → 187");
+  assert.ok(Math.abs(kbPanelFallback(732, 852, 0) - 185) <= 3, "与真机 185 的偏差必须 ≤3");
+});
+
+t("T21 全面屏（App / 隐藏工具栏）算出 307（真值 303）,不再按 46% 给 320", () => {
+  assert.equal(kbPanelFallback(852, 852, 0), 307, "852/852 → 307");
+  assert.ok(Math.abs(kbPanelFallback(852, 852, 0) - 303) <= 5, "与真机 303 的偏差必须 ≤5");
+  assert.notEqual(kbPanelFallback(852, 852, 0), 320, "不许再退回旧兜底 320");
+});
+
+t("T22 本机实测值优先，且换工具栏 / 换页面高度都能折回去", () => {
+  /* 用户那台真测出来的：innerHeight 732 时键盘在页面里占 185 ——
+     存的是「键盘本体绝对高度」= 185 + 工具栏 120 = 305 */
+  const seen = { abs: 305, screen: 852 };
+  assert.equal(kbPanelFallback(732, 852, seen), 185, "有实测值就用它");
+  assert.equal(kbPanelFallback(852, 852, seen), 305, "工具栏收起 → 同一份实测值折成 305");
+  assert.equal(kbPanelFallback(736, 852, seen), 189, "页面高度差 4px 也按实测值折，不再整份作废");
+  /* 分屏：窗口 400 高，键盘整个落在窗口里 → 就是绝对高度 305 */
+  assert.equal(kbPanelFallback(400, 852, seen), 305, "分屏窗口里键盘占满自己那一块");
+  /* 横屏的屏幕尺寸差太多（±40 之外）→ 不许跨方向复用 */
+  assert.equal(kbPanelFallback(1024, 1024, seen), 330, "换了屏幕尺寸就不许套旧值");
+});
+
+t("T23 脏输入 / 离谱值一律夹住，绝不返回 0 或负数", () => {
+  assert.equal(kbPanelFallback(0, 852, 0), 0, "无 base");
+  assert.equal(kbPanelFallback(NaN, 852, 0), 0);
+  assert.ok(kbPanelFallback(732, 0, 0) > 0, "拿不到屏高也要给个正值（退回比例）");
+  assert.equal(kbPanelFallback(1000, 852, 9), 307, "离谱实测当没有，按键盘绝对高度估");
+  assert.ok(kbPanelFallback(852, 2340, 0) <= 380, "物理像素的屏高不许把面板算爆");
+  assert.ok(kbPanelFallback(300, 852, 0) >= Math.round(300 * 0.14), "矮视口不许小于 14%");
+  assert.ok(kbPanelFallback(2000, 2000, 0) <= 380, "高视口不许大于 380");
+});
+
+/* ── 轮 500 · 多机型矩阵：用户问「别的手机呢」 ─────────────────────────
+ * 轮 499 的算式是 base − screenH × 0.64，等价于「键盘占屏高 36%」。
+ * 那条比例假设只在 852 高的屏上成立：平板 1024 上真键盘只占 30%（多算 59），
+ * 手机横屏 393 上却占 53%（少算 69）。这里把各机型摆开，锁住三件事：
+ *   ① 用户那台（852）必须一格不动；
+ *   ② 任何机型的偏差都必须 ≤ 35px（键盘高度的品牌差本身就有 ±20，不追求更准）；
+ *   ③ 分屏 / 桌面窗口这些「屏幕比页面高一大截」的参照系不许按屏高硬推。 */
+const MACHINES = [
+  /* 机型, 屏高 CSS px, 页面可视高 innerHeight, 键盘本体绝对高（真机） */
+  { name: "iPhone SE3 竖（Safari 工具栏 114）", s: 667, b: 553, kb: 258 },
+  { name: "iPhone 15 竖（底部工具栏 120）", s: 852, b: 732, kb: 305 },
+  { name: "iPhone 15 竖（无工具栏 / App）", s: 852, b: 852, kb: 305 },
+  { name: "小屏 Android 360×640", s: 640, b: 640, kb: 250 },
+  { name: "大屏 Android 412×915", s: 915, b: 915, kb: 300 },
+  { name: "折叠屏展开 884", s: 884, b: 884, kb: 302 },
+  { name: "iPad 竖 1024（键盘只占 30%）", s: 1024, b: 1024, kb: 310 },
+  { name: "手机横屏（393 高，键盘占 53%）", s: 393, b: 393, kb: 210 },
+  { name: "Android 分屏（窗口 400 高）", s: 852, b: 400, kb: 305 },
+  { name: "桌面窗口 800 / 屏 1080", s: 1080, b: 800, kb: 330 },
+];
+/* 真面板高：屏幕比页面高 200 以上 ⇒ 窗口不占满屏，键盘整个在窗口里；否则扣掉工具栏那段 */
+function truthPanel(m) {
+  return m.s - m.b > 200 ? m.kb : Math.max(0, m.b - (m.s - m.kb));
+}
+
+t("T25 多机型矩阵：每种机器的估算偏差都必须 ≤35px，且平板/横屏/分屏不许再差上百像素", () => {
+  const bad = [];
+  for (const m of MACHINES) {
+    const got = kbPanelFallback(m.b, m.s, null);
+    const err = got - truthPanel(m);
+    if (Math.abs(err) > 35) bad.push(`${m.name}：算 ${got} / 真 ${truthPanel(m)}（差 ${err}）`);
+  }
+  assert.deepEqual(bad, [], "这些机型偏差过大：\n    " + bad.join("\n    "));
+});
+
+t("T26 用户那台（852）零退化：187 / 307，与轮 499 完全一致", () => {
+  assert.equal(kbPanelFallback(732, 852, null), 187, "带工具栏仍是 187");
+  assert.equal(kbPanelFallback(852, 852, null), 307, "全面屏仍是 307");
+});
+
+t("T27 键盘绝对高度必须有上下限，不许再是纯比例（纯比例在平板/横屏上偏得离谱）", () => {
+  const km = read("src/utils/keyboardMath.js");
+  assert.match(km, /KB_ABS_MIN = 240/, "没有键盘绝对高度下限（小屏机会算得比真键盘还矮）");
+  assert.match(km, /KB_ABS_MAX = 330/, "没有键盘绝对高度上限（大屏机会算得比真键盘还高）");
+  assert.match(km, /Math\.min\(Math\.max\(Math\.round\(s \* 0\.36\), KB_ABS_MIN\), KB_ABS_MAX\)/, "没有把屏高比例夹到绝对区间");
+  assert.doesNotMatch(km, /b - s \* 0\.64/, "还留着「按屏高 36% 直接推」的旧算式");
+  /* 上限不许是 45%：分屏时窗口 400 高、键盘 305（76%），按 45% 夹会把面板压矮 120 */
+  assert.match(km, /const hi = Math\.min\(Math\.round\(b \* 0\.8\), 380\)/, "上限还是按比例夹的（分屏会漏一截）");
+});
+
+t("T28 screen.height 归一：物理像素按 dpr 折回，认不出来就当没有（绝不拿 2340 去减 732）", () => {
+  assert.equal(kbScreenH(852, 3), 852, "CSS px 原样用");
+  assert.equal(kbScreenH(393, 3), 393, "横屏的 393 也是 CSS px");
+  assert.equal(kbScreenH(1024, 2), 1024, "平板 CSS px");
+  assert.equal(kbScreenH(2340, 3), 780, "物理像素按 dpr 折回");
+  assert.equal(kbScreenH(2556, 3), 852, "2556/3 = 852");
+  assert.equal(kbScreenH(100, 3), 0, "认不出来的当拿不到");
+  assert.equal(kbScreenH(2340, 1), 0, "dpr=1 时 2340 不可能折回来，当拿不到");
+  assert.equal(kbScreenH(0, 3), 0);
+  assert.equal(kbScreenH(NaN, 3), 0);
+});
+
+t("T24 接线：keyboardInset 必须用页面坐标系的兜底，且真值要留到下一次冷启动", () => {
+  const ki = read("src/utils/keyboardInset.js");
+  assert.match(ki, /return kbPanelFallback\(base, screenNow\(\), readStored\(\)\);/, "兜底没走 kbPanelFallback（写成常量就又会跳）");
+  assert.match(ki, /setProperty\(FALLBACK_VAR, fb \+ "px"\)/, "--kb-fallback 没写进 CSS");
+  assert.doesNotMatch(ki, /base \* 0\.46/, "还留着按整屏 46% 的旧兜底");
+  assert.match(ki, /wp-kb-panel-px/, "没有把实测值存下来（冷启动还得猜）");
+  assert.match(ki, /savePanel\(panelSeen, restH > 0 \? restH : inner\)/, "applyWeb 没记实测值");
+  assert.match(ki, /savePanel\(panelSeen, vh\)/, "App 壳没记实测值");
+});
+
+t("T29 接线：屏高要过 kbScreenH；实测值存绝对高度；面板尺子要跟工具栏", () => {
+  const ki = read("src/utils/keyboardInset.js");
+  assert.match(ki, /return kbScreenH\(win\.screen\.height, win\.devicePixelRatio\)/, "屏高没做物理像素归一");
+  assert.match(ki, /if \(o && o\.abs > 0\) return \{ abs: o\.abs/, "读的还是旧的 (base,panel) 格式");
+  assert.match(ki, /const toolbar = s > 0 && d > 0 && d <= 200 \? Math\.round\(d\) : 0;/, "存绝对高度时没扣工具栏那一段");
+  assert.match(ki, /const pair = \{ abs: Math\.round\(panel \+ toolbar\)/, "存的不是键盘本体绝对高度");
+  assert.match(ki, /writePanelRuler\(!\(panelH > 0\)\)/, "面板尺子没跟随「现在是否有键盘」");
+  assert.match(ki, /const base = noKb && inner > 0 \? inner : \(restH > 0 \? restH : inner\);/, "面板基准没跟随工具栏（无键盘时该用当前 innerHeight）");
+});
+
+t("T30 反推键盘高度必须要求焦点：没有焦点时 innerHeight 变小是工具栏，不是键盘", () => {
+  const ki = read("src/utils/keyboardInset.js");
+  assert.match(ki, /panelH = focused \? kbShrinkInset\(restH, inner\) : 0/,
+    "没有焦点也去反推，工具栏一动就被记成键盘高度并写进 localStorage");
+  /* 实测过的坏结果：iframe 852 → 732（工具栏出现）→ 面板尺子被写成 120，之后回 852 也是 120 */
+  assert.equal(kbShrinkInset(852, 732), 0, "128px 的工具栏变化不许算出键盘");
 });
 
 console.log(out.join("\n"));

@@ -221,16 +221,22 @@ t("E17 面板高度尺子：兜底与上限用 JS 的 px，vh 只当最后兜底
   const KI = fs.readFileSync("src/utils/keyboardInset.js", "utf8");
   has(KI, /const FALLBACK_VAR = "--kb-fallback"/, "没有 --kb-fallback");
   has(KI, /const CAP_VAR = "--kb-cap"/, "没有 --kb-cap");
-  has(KI, /function writePanelRuler\(\) \{/, "没有写尺子的函数");
-  has(KI, /Math\.min\(Math\.max\(base \* 0\.46, 240\), 320\)/, "兜底高度的算式变了（应与 46vh/320 同量级）");
-  has(KI, /Math\.min\(base, vis\) \* 0\.62/, "上限没跟「当前可视高度」走（矮视口下面板会吃掉整屏）");
-  /* 852 高的屏：兜底 320 / 上限 528，与改之前的 46vh、62vh 完全同值 */
-  has(KI, /restH = \(typeof window !== "undefined" && window\.innerHeight\) \|\| 0;\s*\n\s*writePanelRuler\(\);/, "initWeb 没算尺子");
+  /* 轮 500：尺子要知道「现在有没有键盘」——有键盘时页面高度不可信，得退回历史最大值 */
+  has(KI, /function writePanelRuler\(noKb\) \{/, "写尺子的函数没接「当前是否有键盘」");
+  /* 轮 499/500：兜底算式搬到 keyboardMath.kbPanelFallback（纯函数、Node 里测各机型），
+     这里只锁「接线对了没有」——面板高度必须来自那个函数，不能用常量顶替；
+     屏高还必须先过 kbScreenH（物理像素要按 dpr 折回，不然 2340 减 732 会算爆）。 */
+  has(KI, /return kbPanelFallback\(base, screenNow\(\), readStored\(\)\);/, "兜底没走 kbPanelFallback（写死常量就又会跳）");
+  has(KI, /return kbScreenH\(win\.screen\.height, win\.devicePixelRatio\)/, "屏高没做物理像素归一");
+  has(fs.readFileSync("src/utils/keyboardMath.js", "utf8"), /export function kbPanelFallback\(base, screenH, seen\)/,
+    "keyboardMath 里没有 kbPanelFallback");
+  has(KI, /Math\.min\(base, vis\) \* 0\.8/, "上限没跟「当前可视高度」走（矮视口下面板会吃掉整屏）");
+  has(KI, /restH = \(typeof window !== "undefined" && window\.innerHeight\) \|\| 0;\s*\n\s*writePanelRuler\(true\);/, "initWeb 没算尺子");
   /* 键盘起落会改可视高度，尺子必须跟着重算（只有变化时才写样式） */
-  has(KI, /writePanelRuler\(\);\s*\n\s*\n?\s*\/\* 轮 496：表情面板要跟的是/, "applyWeb 里没跟可视高度重算尺子");
+  has(KI, /writePanelRuler\(!\(panelH > 0\)\);/, "applyWeb 里没跟可视高度重算尺子");
   has(KI, /if \(fb === lastFb && cap === lastCap\) return;/, "没有变化判据（逐帧写样式会一直触发重排）");
   /* 基线只往上记：弹完键盘布局视口没复原的机型，矮值不能盖掉真基线 */
-  has(KI, /inner > restH\) \{\s*\n\s*restH = inner;\s*\n\s*writePanelRuler\(\);/, "基线还会被矮视口覆盖（面板高度会一直错）");
+  has(KI, /inner > restH\) \{\s*\n\s*restH = inner;\s*\n\s*writePanelRuler\(true\);/, "基线还会被矮视口覆盖（面板高度会一直错）");
   has(KI, /orientationchange[\s\S]{0,240}restH = window\.innerHeight \|\| 0;/, "旋屏没重取基线");
 });
 
