@@ -724,6 +724,23 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
   - **⚠️ 事故**：隔离 `src/views/NotificationsView.vue`（并行会话在改，144→171 行）时用 `git show HEAD:path > path` 覆盖，恢复用的 `cp` 备份抓到的是 HEAD 版（18664B/426 行），**并行版（24395B）未进备份、已丢失**。以后覆盖别人正在写的文件，必须先 `cp` 到带时间戳的独立文件并 `cmp` 校验字节数再动手。
 
 
+- **轮 510（改动完成、测试过了、待提交待部署）**：用户报切换序列的新症状 ——「点击键盘-点击表情-点击键盘，结果键盘折叠了」；暖心墙同一序列「中间出现了图片上这个问题，随后便又折叠了」（截图：输入行下方一条**空白带**，约一个输入条高，右侧只有表情/发送键，下面紧接 Safari 键盘工具栏）。
+  - **根因是一条链，全部从「Safari 工具栏 81px 被当成键盘」开始**（工装实测：`rest-toolbar vv=771 kb=81px kbb=81px panelH=min(119px,380px) stored={"abs":81,"screen":852}`）：
+    1. `--kb-h` 走 `kbInsetValue(raw, focused)`，闸门是 `TOOLBAR_GAP = 80` —— 真机工具栏**正好 81px**，大 1 像素就漏过去 → `--kb-h = 81`（页面平白缩 81px、吸底条抬 81px），而用户根本没在打字。
+    2. 同一次采样里 `panelH = h = 81` → `savePanel(81, 852)` 把「键盘本体高度 = 81」写进 localStorage。
+    3. 下次开面板读回来 → `--kb-fallback = 119px`（`lo = 14%` 兜底）→ `--kb-panel-h` 只有 119px → **面板只剩两排**（截图那条空白带就是这个 padding 撑的）。
+  - **改法（四处，`keyboardInset.js` 为主）**：
+    1. 新记 `barsSeen`（无键盘时 `inner − vv` 的基线，只在 ≤ `CHROME_UI_MAX` 时记录、取最大），`kbNet = rawGap − barsSeen`，`realKb = kbNet >= KB_MIN`；`--kb-h` 改成 `panelOpen || !realKb ? 0 : raw` —— 工具栏再也过不了这道闸。
+    2. `panelH` 用 `kbNet`（真键盘本体），不再用含工具栏的 `h`。
+    3. `savePanel` 要求 `panel >= KB_MIN`；`readStored` 丢弃 `abs < KB_MIN` 的存量 —— **用户机器上已经被写进去的 `{abs:81}` 从此不再生效**（光修算法救不回来，必须在这一层拦）。
+    4. `DmVacChat.vue`：表情键二次点击里的 `setTimeout(() => ta.focus(), 0)` 改成**同步 focus**。iOS 只在用户手势的同步栈里认 `focus()`，进 setTimeout 就已经出栈、键盘根本不弹 —— 这就是「点击键盘后折叠」的直接原因。另补一个 `setTimeout` 只做「焦点没落上时补一次」，不承担唤起键盘。
+  - **配套两处顺序修正**：`WpComposer.toggleEmoji` 与 `DmVacChat` 的 `holdForKeyboard` —— 摘钉判据从 `--kbb > 0` 改成 **`k >= holdKbb + 80`**（记下挂上那一刻的 `--kbb` 当基线）。轮 509 之后无键盘时 `--kbb` 就是 81px（不再恒为 0），旧判据**一挂上即成立** → swap 刚加就被摘 → 收面板那一下底条失去钉住（用户看到的「中间一块空白，随后折叠」）。`WpComposer` 的二次点击顺序同时改成「先同步 focus → 再收面板 → 再钉让位」（先改样式会触发重排，把刚拿到的焦点弄丢）。
+  - **新工装护栏**：`tools/wallbar-drive.mjs` 加 `toolbar-only` 场景（`__kbSim(H−81, 0)`，真机第一次打开就是这个状态）+ 两条断言（`--kb-h` 必须 0、`--kb-fallback` 不许掉到 250 以下）。**反向注入验证**：把四处改动退回旧写法 → 当场红两条「工具栏 81px 被当成键盘」「--kb-fallback=119px 掉到工具栏量级」；恢复后全过。
+  - **同步更新的既有护栏**（都是「锁住旧写法」的正则，改实现必须一起改，别放宽）：`chat-height-test` T24（从「必须调 kbInsetValue」改成「工具栏不许当键盘」的五条口径）· `kb-math-test` T29（读存量 `abs >= KB_MIN`）· `emoji-panel-test` E10/E19（同步 focus + `realKb` 闸门）· `wall-composer-test` P6/P7（`holdKbb + 80` 与新的 focus 顺序）· `chat-look-test` L7（同 P6）。
+  - **测试**：`wallbar-drive` 9 步全过（新增 toolbar-only）· `kb-matrix` 272/272 · `ios26-glass` 8/0 · `chat-height` 40/0 · `kb-math` 30/0 · `emoji-panel` 20/0 · `wall-composer` 24/0 · `chat-look` 8/0 · 全量 fast **116/118**（两个红都是别人的：`announcement-test` 公告弹层、`ios-compat-test` 的 `SettingsView.vue:634` 缺 safe-area fallback）。`npm run build` 通过。
+  - **真机验算**：工具栏态 `--kb-h` 81→**0**、`--kb-panel-h` 119→**307**、`stored` 从 `{abs:81}` → 只存 `{abs:330}`。
+  - **仍未动**：`--kb-cap` 的 380 上限（独立议题）；`viewport-fit=cover`；`NotificationsView.vue` 公告弹层；`SettingsView.vue:634` 的 safe-area fallback。
+
 - **轮 509（改动完成、测试过了、待提交待部署）**：用户第八次报同一件事：「多少轮了啊，苹果浏览器的问题依旧是没有解决……前面视频存在的问题依旧是存在。我刚刚测的」。
   - **先对齐一件事（这是八轮里最该早说而没说的）**：用户一直**在线上测**，而线上跑的是轮 507（`main-CqMZgybg.js`）；轮 508 那一整轮的改动只在本地，从未上线。所以「看不到变化」有一半是这个原因 —— 汇报时必须写明线上版本号，不能只说「待部署」。另外核对了时间线：视频录于 01:34，轮 507 是 02:17 才提交的 —— 用户录视频时看到的还是轮 506。
   - **真病根（有代码证据，不是猜）**：线上 `viewportVars.js` 无键盘分支写的是
