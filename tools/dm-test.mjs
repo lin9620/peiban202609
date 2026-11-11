@@ -378,7 +378,7 @@ ok("轮 344：私信页登录闸等 cloud.checking 落位（恢复中不画未�
   ok("轮454：空列表命中缓存时 same 钩子也标记已加载（否则空态永远不出现）",
     /same:\s*\(\)\s*=>[\s\S]{0,300}convsLoaded\.value\s*=\s*true/.test(lc));
   ok("轮454：cached 有行时立即标记已加载（搜索无结果也不空白）",
-    /cached:[\s\S]{0,500}if\s*\(Array\.isArray\(rows\)\s*&&\s*rows\.length\)\s*convsLoaded\.value\s*=\s*true/.test(lc));
+    /cached:[\s\S]{0,500}if\s*\(Array\.isArray\(rows\)\)\s*convsLoaded\.value\s*=\s*true/.test(lc));
 }
 const nv = fs.readFileSync("src/views/NotificationsView.vue", "utf8");
 /* #14 偏好开关移到设置页；通知页负责分栏 + 每页 20 条手动翻页 */
@@ -602,6 +602,13 @@ ok("/settings 路由已注册", mvRouter.includes('"/settings"'));
     const m = dmStoreMerge([{ id: 3 }, { id: 1 }], [{ id: 2 }, { id: 1, body: "dup" }]);
     return JSON.stringify(m.map((x) => x.id)) === "[1,2,3]";
   })());
+  dmStoreSave(U, C, [], false, { empty: true });
+  ok("本地消息库：明确空历史可落盘（避免每次进会话都等网络）", (() => {
+    const r = dmStoreLoad(U, C);
+    return r.msgs.length === 0 && r.more === false && r.empty === true;
+  })());
+  dmStoreSave(U, C, [{ id: 1, body: "hi" }], false);
+  ok("本地消息库：写入真实消息后清掉空库标记", dmStoreLoad(U, C).empty === false);
   dmStoreDrop(U, C);
   ok("本地消息库：删除→读回空库", dmStoreLoad(U, C).msgs.length === 0);
   dmStoreSave("ua", "c", [{ id: 1 }], true);

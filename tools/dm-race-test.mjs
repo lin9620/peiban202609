@@ -82,7 +82,7 @@ ok("R9 过期时不碰 loadingMsgs（新请求正在管它）",
 /* ══════════ openConv：await 后校验 ══════════ */
 const oc = fnBody(mv, "async function openConv(");
 ok("R10 openConv 等完消息后校验 activeId/分段/前台，才动滚动与已读",
-  /const smoothed = await loadMessages\(id\);/.test(oc)
+  /const smoothed = await loadMessages\(id(?:,\s*\{[^}]*\})?\);/.test(oc)
     && /if \(String\(activeId\.value\) !== String\(id\) \|\| seg\.value !== "dm"[\s\S]{0,120}?return;/.test(oc));
 
 /* ══════════ tick：轮询不能把旧会话数据并进来 ══════════ */

@@ -20,15 +20,29 @@ export function dmStoreLoad(me, conv) {
     if (m && m.id != null) byId.set(String(m.id), m);
   }
   const msgs = [...byId.values()];
-  return { msgs: msgs.sort((a, b) => (a.id || 0) - (b.id || 0)), more: v ? !!v.more : true };
+  return {
+    msgs: msgs.sort((a, b) => (a.id || 0) - (b.id || 0)),
+    more: v ? !!v.more : true,
+    /* 轮 500：显式空库。以前空数组不落盘，进一个「从没发过消息」的会话
+     * 每次都当成没缓存 → 每次都等一次网络 + 转圈。 */
+    empty: !!(v && v.empty),
+  };
 }
 
 /** 写本地消息库（全量替换，裁最旧）
  *  轮 376：裁剪前先按「正式行 id 升序、待发/失败行压尾」排 —— 直接 slice(-MAX)
  *  假设入参是时间序，但确认行晚回来/补拉历史会让 raw 数组暂时乱序；更糟的是
  *  负数失败行在 id 序最前，会被 400 条上限先裁掉。排序后裁，失败行和最新消息都保住。 */
-export function dmStoreSave(me, conv, msgs, more) {
-  if (!me || !conv || !Array.isArray(msgs) || !msgs.length) return;
+export function dmStoreSave(me, conv, msgs, more, opts = {}) {
+  if (!me || !conv || !Array.isArray(msgs)) return;
+  if (!msgs.length) {
+    /* 轮 500：只有调用方**明确知道**服务端返回了空历史时才落「空库」。
+     * 普通空数组仍不写（避免把「还没加载」误存成「确定没有消息」）。 */
+    if (opts.empty) {
+      try { setJSON(KEY(me, conv), { msgs: [], more: false, empty: true }); } catch (e) { /* 忽略 */ }
+    }
+    return;
+  }
   try {
     /* 轮 376：先按 id 去重（同一条被追加/确认/回填重复写进来时只留最新字段），
      * 再排序、裁剪。旧版不去重，旧版列表会看到同一句话出现两次。 */

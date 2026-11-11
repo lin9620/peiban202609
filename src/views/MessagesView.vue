@@ -875,9 +875,10 @@ async function loadConvs() {
         if (!mine()) return;
         convs.value = withBlockedTombstones(mergeLocalConvs(rows));
         loadingConvs.value = false;
-        /* 有缓存行时列表已经可信；空缓存仍等后台明确应答（same/fresh）再亮空态，
-         * 避免网络失败时把「缓存里恰好是空」误报成「没有会话」。 */
-        if (Array.isArray(rows) && rows.length) convsLoaded.value = true;
+        /* 缓存里有行，或缓存本身就是上一次服务端明确返回的空列表，都已经可信。
+         * 轮 500：以前空缓存仍等网络应答，弱网/冷启动时会一直空白或像在转圈；
+         * 现在先亮空态，后台 fresh 回来再校正（失败也有 failed 提示兜底）。 */
+        if (Array.isArray(rows)) convsLoaded.value = true;
       },
       fresh: (rows) => {
         if (!mine()) return;
@@ -961,7 +962,7 @@ async function loadMeta(id) {
   } catch (e) { /* 鐢ㄥ垪琛ㄩ噷鐨勮鍏滃簳 */ }
 }
 
-async function loadMessages(id, { before = null } = {}) {
+async function loadMessages(id, { before = null, knownEmpty = false } = {}) {
   if (!id) return false;
   /* 杞?225锛氭湰杞殑鍙?鈥斺€?await 鍥炴潵鍚庤嫢鍙疯椤舵帀銆佹垨鐢ㄦ埛宸插垏璧帮紝杩欎唤鏁版嵁鏁翠唤涓㈠純 */
   const mySeq = ++msgSeq;
@@ -970,6 +971,11 @@ async function loadMessages(id, { before = null } = {}) {
   if (!owner) return false;   /* 杞?376锛氭湭璁よ瘉涓嶈涓嶅啓浠讳綍鏈湴搴?*/
   /* 杞?376锛氶櫎浜嗗垏浼氳瘽/鏂板姞杞斤紝鐧诲嚭鎹㈠彿涔熺畻杩囨湡 鈥斺€?鏃у搷搴斾笉鑳藉啓杩涙柊璐﹀彿鐨勫簱銆?*/
   const stale = () => isStale(mySeq, cid) || (!!owner && meId.value !== owner);
+  /* 轮 500：这个会话是否已经明确知道没有消息。
+   * 来源：列表行 last_message_at 为空（从没发过），或上次网络已返回空历史并落了空库。
+   * 有它就别再开 loader —— 点进去应立刻看到「还没有消息」，而不是每次都转圈。 */
+  const local = dmStoreLoad(meId.value, cid);
+  const emptyKnown = before == null && (knownEmpty || local.empty);
   /* 杞?214锛氬垏浼氳瘽鍏堟竻灞忊€斺€斾笂涓€涓細璇濈殑娑堟伅鍙杩樼暀鍦?msgs 閲岋紝浠讳綍鏃跺簭绔炴€?
    * 锛堟湰鍦板簱涓虹┖鐨勪細璇濄€佺綉缁滄參銆佺‖涓婇檺鍏滃簳鎻ず锛夐兘浼氳瀹冮棯鍑烘潵
    * 锛堢敤鎴峰疄娴嬨€屾墦寮€鍙︿竴涓細璇濇湁鏃惰烦闂墠涓€涓細璇濈殑鍐呭銆嶏級銆傜粨鏋勪笂娓呴浂锛屾案缁濆悗鎮ｃ€?*/
@@ -1041,7 +1047,6 @@ async function loadMessages(id, { before = null } = {}) {
    * 193c 鍘绘帀缂撳瓨涓棿鎬佸悗棣栨杩涘叆瑕佺瓑缃戠粶锛堢敤鎴峰疄娴?~10s 绌虹櫧锛夆€斺€?
    * 姝ｈВ鏄井淇″紡鏈湴搴擄細localStorage 鎸佷箙瀛樻瘡浼氳瘽鍏ㄩ噺娑堟伅锛岃繘浼氳瘽鍚屾璇诲彇娓叉煋銆?*/
   if (before == null) {
-    const local = dmStoreLoad(meId.value, cid);
     if (local.msgs.length) {
       /* 杞?376锛氬悓浼氳瘽閲嶅紑鏃朵笉鑳芥嬁鏈湴搴撴暣绐楁浛鎹㈠綋鍓?msgs 鈥斺€?鐢ㄦ埛鍙兘宸茬粡涓婃粦
        * 缈昏繃鍑犻〉鍘嗗彶锛屾湰鍦板簱鍙瓨鏈€杩?400 鏉★紝鏁寸獥鏇挎崲浼氭妸缈昏繃鐨勬洿鏃╅〉涓㈡帀
@@ -1075,6 +1080,17 @@ async function loadMessages(id, { before = null } = {}) {
        * 鐢ㄦ埛瀹炴祴鍙嶉锛氭湰鍦板簱鏄庢槑宸茬粡璇诲嚭鏉ヤ簡锛岀偣杩涗細璇濆嵈杩樿妤炰竴涓?鈥斺€?灏辨槸琚繖閬撻棬鎸′綇鐨勩€?
        * 娉ㄦ剰蹇呴』璧?scrollBottom 鐨?reveal 鍙傛暟锛堥拤搴曚笌鎻ず鍚屼竴甯э級锛屼笉鑳藉湪杩欓噷鐩存帴缃?true锛?
        * 鍚﹀垯浼氬厛浜嚭鍒楄〃椤堕儴鍐嶈烦鍒板簳锛堢湡鏈哄疄娴嬮甯ц窛搴?4649px锛夈€?*/
+      scrollBottom(false, true);
+      loadingMsgs.value = false;
+    } else if (emptyKnown) {
+      /* 轮 500：明确空会话 —— 首帧直接空态，不再等网络。网络仍会在后面静默刷新，
+       * 新消息回来走 mergeTail；失败也不会把用户卡在 loader 里。 */
+      if (!msgs.value.length) {
+        msgsConv = cid;
+        hasMore.value = false;
+        oldestId.value = null;
+      }
+      entryReady.value = true;
       scrollBottom(false, true);
       loadingMsgs.value = false;
     }
@@ -1193,6 +1209,10 @@ async function loadMessages(id, { before = null } = {}) {
     /* 鏈湴搴撳悓姝ワ紙鍏ㄩ噺钀界洏锛?*/
     dmStoreSave(meId.value, cid, msgs.value, hasMore.value);
     idbMerge(cid, msgs.value);   /* 杞?204锛氶暅鍍忚繘鍏ㄩ噺搴?*/
+    /* 轮 500：服务端明确返回空历史 → 落一个显式空库，下次点进来直接空态。 */
+    if (before == null && !msgs.value.length && !rows.length) {
+      dmStoreSave(meId.value, cid, [], false, { empty: true });
+    }
     if (before == null) backfillOlder(cid);   /* 杞?204锛氶潤榛樺洖濉洿鏃╁巻鍙诧紙鍙啓搴撲笉杩?UI锛?*/
   } catch (e) {
     if (stale()) return false;   /* 杞?225 */
@@ -1396,8 +1416,11 @@ async function openConv(id) {
    * 涓嶇瓑 loadMessages/缃戠粶寰€杩旓紝鐢ㄦ埛銆岀偣杩涘幓椹笂杩斿洖銆嶇孩鐐逛篃宸茬粡娑堜簡銆?
    * 杞?268锛氳鏈鐨勪箰瑙傛潵婧愭湁涓や釜锛堝垪琛ㄨ鍊?+ badge 琛岀骇鏄犲皠锛夛紝鍙?max 鎵嶆槸銆岀敤鎴?
    * 鐪肩潧鐪嬪埌鐨勬湭璇汇€嶁€斺€斿彧鎸夎鍊煎噺浼氭紡鎺夈€屽揩鐓ф棫銆佹槧灏勬柊銆嶇殑鍦烘櫙锛涙槧灏勪竴骞舵竻鎺夐槻澶嶆椿銆?*/
+  const activeRow = convs.value.find((c) => String(c.conv_id) === String(id));
+  /* 轮 500：列表已明确告诉「这条会话从没发过消息」时，首帧直接空态，不转圈。 */
+  const knownEmpty = !!activeRow && !activeRow.last_message_at && !activeRow.last_preview;
   {
-    const row = convs.value.find((c) => String(c.conv_id) === String(id));
+    const row = activeRow;
     /* 静音会话的未读没算进 badge.dm（服务端已排除），这里不能拿它去减导航角标，
      * 否则会把别的会话的未读数减掉。行内清零点照旧。口径收在 dmRules.unreadToClear。 */
     const lost = unreadToClear(row, badge.dmConvs);
@@ -1441,7 +1464,7 @@ async function openConv(id) {
       listRevealed.value = true;
     }
   }, 2000);   /* 杞?180锛氬厹搴曞彧鎻ず宸茶惤瀹氱殑 */
-  const smoothed = await loadMessages(id);
+  const smoothed = await loadMessages(id, { knownEmpty });
   /* 杞?225锛氱瓑娑堟伅鏈熼棿鐢ㄦ埛鍙堢偣浜嗗埆鐨勪細璇?/ 杩斿洖浜嗗垪琛?鈫?鍒啀鍔ㄦ粴鍔ㄤ笌宸茶鏍囪
    * 锛堝惁鍒欎細鐢ㄦ棫浼氳瘽鐨勮惤鐐规妸鏂颁細璇濈殑灞忔粴涔憋紝杩欐槸銆屽垏瀹屼綅缃贡璺炽€嶇殑鍙︿竴鍗婏級銆?*/
   /* 轮380：等消息期间用户切到漂流瓶/通知段 → activeId 还在，但人已经不在聊天里，
