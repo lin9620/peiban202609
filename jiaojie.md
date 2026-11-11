@@ -666,6 +666,64 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
   - 全量 `--tier=fast,mount`：**脚本 119 / 119 通过，断言 1672 / 1672**，build EXIT=0。**未 commit、未 deploy、未打包**（轮 499 + 500 + 501 + 502 一起攒批）。
   - **待用户拍板**：要不要写 `viewport-fit=cover` 让 iPhone 真正吃满全屏（改了会动全站上下留白，且安卓那边 `env()` 常报 0，需要配 JS 兜底）—— 这是唯一一条我没敢自己动的。
 
+
+- **轮 503（改动完成、测试过了、待发话）**：用户四张 iPhone Safari 聊天页截图 ——「苹果浏览器聊天框，随便点几下，就出现这么多问题」。
+  - **看图定性**：①面板最后一排被切（图 1/2/3）②同一台机上面板一会儿 5 排一会儿 4 排、输入条跟着上下跳 ③图 4 最狠：输入条贴在地址栏底下、下面一大片空白、消息一条不见。
+  - **根因一：面板和页面的参照系不是同一个。** 页面盒子（.dm-page）无键盘时高度来自 `100dvh` = 动态可视高，有键盘时是脚本写的 `visualViewport.height` —— 两者都等于**可视区**；而表情面板是 `position: fixed; bottom: 0`，锚在**布局视口底**。iOS Safari 的底部工具栏浮在页面之上时，布局视口比可视区多出那一条（~44px），面板最后一排正好落在它底下 —— 切得干干净净，正是用户截到的那一行。键盘把可视视口顶开、页面跟着上移时更离谱：fixed 的面板留在原地，输入条和面板当场分家。
+  - **改法：把面板搬进 footer 的 padding 区。** `position: fixed` → `absolute; bottom: 0`，定位宿主是 `.vac-box-footer`（页面里唯一 `position: relative` 的那层）；padding-bottom 也落在它身上。从此只有**一个**参照系：padding 多高、面板就多高、输入条必然压在面板上沿。库里的 `.vac-emoji-wrapper` 自带 `position:relative` 必须摘成 static，否则 absolute 会锚在那个按钮大的小盒子上（实测面板飘到 180..516 的屏幕中间）。
+  - **根因二：面板高度会变。** `--kb-last` 以前每次覆写成「当前这一次算出来的键盘高」，地址栏一收一放就差一截 → 面板忽高忽矮、输入条跟着跳。改成**只增不减**（本会话最大值），真键盘高度是设备常量，见过一次就定住。
+  - **根因三（图 4）：页面比能看见的那块高。** iOS 为露出光标会把**可视视口上推**（offsetTop > 0），而旧代码只在「判定键盘态」时才用 `vv.height`。页面仍是整屏高 → iOS 一推，整页跑到屏幕上方：输入条贴在地址栏下、下面一大片空白、消息全不见。新增纯函数 `pickChatRect()`：只要 top > 0 且 vv 比容器矮，就把容器裁进 `[top, top+vv]` —— 这一块**按定义**就是此刻能看见的区域，怎么推都不会错位。
+  - **顺带修掉的四处**：①`setEmojiOpen` 直接写 `--kb-h=0` 会绕过 keyboardInset 的「值没变不重写」判据 → 下一次同样高度的键盘被吞掉、页面不缩 → 改成 `setPanelOpen()` 统一裁决（作废 lastWebKb 再重算，App 壳只归零不接管）；②`emojiPad` 不再拿 innerHeight 补「面板离屏底还差多少」那一段（那正是旧 fixed 锚点造成的假缝，补进去输入条整体抬高一条）；③`.wp-kb-swap` 兜底 1200→600ms（iOS 键盘动画 250~300ms，1.2s 全是残影），面板一开就撤钉；④`emojiPad` 的 padding 落点从外层 `#room-footer` 改到 `.vac-box-footer`（外层面板不跟着走）。
+  - **护栏**：`emoji-panel-test` 17→**20 条**（新增 E18 面板不许再 fixed / 定位宿主 / padding 落点 / 输入行不许被定位；E19 只走 setPanelOpen + 600ms；E20 --kb-last 只增不减）；`chat-height-test` 36→**39 条**（新增 T37 iOS 上推 300 / T38 面板态·vv 脏大·小米 31px 都不许变 / T39 裁决不许散回 if 分支）；`chat-look-test`、`dm-vac-test`（V20 放宽成「只许动 padding-bottom，别的不许碰」）、`keyboard-policy-test` 三处选择器随重构更新。
+  - **实测（假 visualViewport 的无头 Edge，真实 dist + 假登录态 + 真实点击）**：393×852 面板 516..852（底边 = 页面底边）、输入条 472..516 紧贴面板上沿、最后一行完整；375×667 同款；连点三次表情键 + 再点输入框，输入条 1720ms 内稳定在 465..516；模拟 iOS 上推（vv 516@300）→ 页面 300..816、输入条底 816 = 可视底，**图 4 那种「整页上跑」不再出现**。
+  - **已知局限**：App 壳这条路径（原生 Keyboard 插件）没在真机上验过；无头浏览器造不出真键盘动画，交接那 220ms 的手感只能靠真机。
+  - 全量 `--tier=fast,mount`：**脚本 119 / 120 通过（唯一红的是 `feed-virtual-live`，它要连线上抓帖子，本轮 0 张 → 走 SKIP 分支退出 1，与本次改动无关）、断言 1678 / 1679**，build EXIT=0。**未 commit、未 deploy、未打包**（轮 499~503 一起攒批）。
+
+- **轮 504（改动完成、测试过了、待发话）**：用户两张 iPhone Safari 暖心墙截图 ——「暖心墙也有问题啊」。图 1 输入条跑到地址栏下面、内容在它下面；图 2 表情面板整块铺到屏幕外，最后一排被切。
+  - **先量，不猜。** 写了 `tools/wallbar-harness/` + `tools/wallbar-drive.mjs`：把**真的** `.wall-scroller` 几何 + 真的 `WpComposer` + 真 `style.css` + 真 `initKeyboardInset/initFixedBar` 挂起来，用假 `visualViewport` 喂「键盘弹起 / iOS 上推」，读 rect。393×852 实测（键盘 330）：**输入条 437..522 是对的（可视底 522），表情面板却 522..852 —— 整块长在键盘底下，最后一排 emoji 在 524..557**。图 2 的「被切」不是差几像素，是整个面板都在屏幕外。
+  - **根因一：面板还锚在「布局视口底」。** 暖心墙这条线和聊天页不是一个写法 —— 面板是 `position: fixed; bottom: 0`，而条早就由 `utils/fixedBar.js` 按可视视口钉内联 top。**同一次点击里，条在可视区、面板在布局视口**，两个参照系。改法：把 `.wp-composer-picker` 加进 fixedBar 的 `SELECTOR`，交给同一个 `fixedBarTop()` 算；`place()` 里用 `getComputedStyle(el).position === "fixed"` 排除桌面那个 absolute 小浮窗（不能用 offsetParent，fixed 元素恒为 null）。
+  - **根因二：条用 padding 让位，不再用 bottom 抬。** 原来网页端写 `bottom: var(--kb-panel-h)`、App 壳也写同一条 —— 等于把面板位置又推导一遍，两套算法迟早对不上。现在网页端 `html.kb-web .cmt-main-bar.wp-emoji-open { padding-bottom: var(--kb-panel-h) }`：条把自己撑高、仍钉在可视底，输入行正好落在面板上沿（实测 148..522 = 44 输入行 + 330 面板 + 148 顶，严丝合缝）。App 壳那条 `bottom: var(--kb-panel-h)` **保留但只给 cap-app**（那边不跑 fixedBar）。
+  - **根因三（图 1）：网页端的条不许再吃 `bottom: var(--kb-h)`。** 那是**间接推导**：keyboardInset 链上任一道闸门（事件派发 / 焦点判据 / 缩放保护）在某台设备上不成立，这里就会拿到残留值，甚至被 `kbWebInset` 夹到 `layout-120` —— 条直接被顶到半空，正是图 1。改成 `bottom: 0` 兜底，位置由 fixedBar 的内联 top 决定：算不出来最多被键盘盖住，**不会飞走**。
+  - **根因四：面板开关还在手写 `--kb-h=0`。** `WpComposer.toggleEmoji` 里直接 `style.setProperty("--kb-h","0px")`，绕过 keyboardInset 的「值没变不重写」判据 —— 实测「面板收完回键盘」之后 `--kb-h` 一直停在 0，页面不再让位（正是轮 503 在 DmVacChat 修掉的同一个坑，暖心墙这条漏了）。改成 `watch(emojiOpen)` 里统一 `setPanelOpen(open)`（开/关都走）。
+  - **实测（393×852 / 375×667 两套）**：面板 192..522 / 67..337，全都贴可视底；条 148..522 / 23..337，输入行压在面板上沿；`back-to-kb` 的 `--kb-h` 从 0 变成 330；iOS 上推（vv 522@330）条 767..852 = 可视底。**反向注入**：把 `.wp-composer-picker` 从 SELECTOR 去掉 → 面板立刻回到 522..852，脚本按预期红。
+  - **护栏**：`emoji-panel-test` 20 条（E6/E8 改成新口径，「网页端条底不许吃 --kb-h」的判定**先剥注释** —— 注释里就写着「不再用 bottom: var(--kb-h)」，直接 match 会被骗，轮 502 的 I7 同一个坑）；`chat-height-test` T29 改成「面板必须进 SELECTOR + 按 computed position 排除浮窗 + 不许再有『面板打开就交回 CSS』」；`keyboard-policy-test` 那条「.kb-web 底条接 --kb-h」改成正反两条（必须 `bottom: 0`、不许 `bottom: var(--kb-h)`、且 fixedBar 必须真接管）。
+  - 全量 `--tier=fast,mount`：**脚本 120 / 120 通过、断言 1679 / 1679**，build EXIT=0。**未 commit、未 deploy、未打包**（轮 499~504 一起攒批）。
+  - **还要用户帮看一眼的**：①暖心墙点输入框，条是不是贴键盘上沿；②点表情，面板最后一排是否完整；③面板收掉回键盘时，页面有没有再缩一记。这三条无头浏览器只能模拟（真键盘动画造不出来）。
+- **轮 505（只补了护栏，改版本体不是这轮写的；待发话）**：用户一张故事页截图 ——「之前故事页，改版了，怎么现在又返回了」。截图是**旧版**：两枚等宽描边大钮 + 无头像的卡片列表。
+  - **先查，结论是「从没上线过」，不是「回退」。** 线上入口仍是 `main-xWsXM6B3.js` = 今天 04:56 那次部署（Worker `0f7945da`），此后没有任何部署。而那次我执行**部署隔离**时，把 `StoryFeed.vue` 判成并行会话的活、用 `git show HEAD:path` 覆盖回旧版才 build —— 所以线上故事页一直是旧的。用户看到的「改版」只在本地工作区/预览里。
+  - **改版本体是完整的**（不是半成品，别重写）：模板 = `st-hero` 页头（一句介绍 + 右上角两枚 `st-hero-quick` 图标入口）+ `st-searchbox` 搜索独占一行 + 卡片头像 `st-card-ava`（昵称首字 + 按 id 算的稳定色号 `tone()`）+ `st-empty` 空态 + `role=link/tabindex=0/Enter` 可键盘打开；样式在 `style.css` 3532~3666（32 行新增）+ `glass.css`；五语文案齐（`tabDiscover` / `rankLatest` / `clearSearch` 在 en/es/pt/fr 都存在）。
+  - **工作区真改动只有 `StoryFeed.vue` 96/32**；`StoryComments/StoryEditor/StoryMine/StoryRank/StoryShell/storyRules.js/Story*View.vue/story-b3-e2e.mjs` 的 M 全是 autocrlf 行尾假改动（`git diff --numstat` 为空）。
+  - **实渲染核过**（`dist` 15:11 新构建，393×852 打开 `/story`）：页头介绍语 + 右上角 Ranking/Mine 两枚；搜索框整行；卡片 36×36 圆头像（首字「山」、mint 色号）、作者名、日期·5 min read、标题、标签、赞数、右侧箭头；`NEWEST` 小节标题；**`rawKeys: []`（没有裸 key 露出来）、`overflowX: 0`（无横向溢出）**。
+  - **补了护栏（本轮唯一改动）**：`tools/story-test.mjs` 新增 7 条只钉结构不钉像素的断言 —— 页头必须是 `st-hero` 且 `st-feed-nav` 已退役 / 两枚快捷入口分别去 rank 与 mine / 搜索三段结构带 `clearSearch` aria / 头像有 `initialOf` + `tone` + 类名拼接 / 卡片 `role=link + tabindex=0 + Enter` ≥2 处 / 空态 `st-empty` 有样式 / 三个新类都落在 `style.css`。`story-test` 258 → **265 pass / 0 fail**；**反向注入**（`st-hero`→`st-feed-nav`、头像类改名、搜索类改名）→ 当场 3 条红，恢复后全绿。加它的理由写进注释了：这版改版躺了一整天没人发现，就是因为一条断言都没有。
+  - 全量 `--tier=fast,mount`：**脚本 120 / 120、断言 1669 / 1669**。**未 commit、未 deploy**。发车清单现在 = **轮 499~505**。
+
+- **轮 506（改动完成、测试过了、待发话；轮 503/504 的补丁没治到根，这轮是重做）**：用户在新上线版本上实测 ——「聊天框，跟暖心墙输入的部分的问题一个都没有解决，**表情框跟输入框高度依然不一致**，其他上面照片的问题也没有解决」。
+  - **先排除部署问题**：抓线上 `main-B74-d83G.css` 与本地 `dist` 逐字节比对 → **IDENTICAL**，`wp-emoji-open` / `--kb-panel-h` / `st-hero` 都在。新代码确实上线了，**是我改错了**。
+  - **真根因（第 496/498/499/503/504 轮全部绕过的那个）**：表情面板高度 = `--kb-panel-h` = `min(--kb-last, --kb-cap)`，而 `--kb-last` 是从 `kbWebInset(inner, vv.height, vv.offsetTop)` **推导**出来的。iOS Safari 为露出光标会把可视视口**上推**（`offsetTop ≈ 键盘高`），于是
+    `inner − vv.height − offsetTop ≈ 0` → `--kb-h` = 0 → `--kb-last` **永远是空** → 面板退回估计值（本机 307 / 或 `min(46vh,320px)`=320），真键盘 330/336 —— **用户第五次报的「表情框跟输入框高度不一致」就是这 20~30px**。而「键盘占多高」本来就跟 offsetTop 无关：`键盘高 = innerHeight − visualViewport.height`。
+  - **改法（换成「唯一事实来源」，不再推导）**：新增 `src/utils/viewportVars.js`，`main.js` 里第一个启动，现读 `visualViewport` 写两个变量：
+    `--kb-last` = `innerHeight − vv.height`（不扣 offsetTop，只增不减，`<120px` 一律当工具栏、`>70%` 屏高丢弃、缩放 `scale>1.05` 不算）；
+    `--kbb` = `inner − offsetTop − vv.height`（可视视口底离布局视口底多远；键盘态或 `offsetTop>0` 才给值，其余恒 0 —— 顺带吃掉小米浏览器那 31px 静态噪声）。**不加任何闸门**（不看焦点、不看 `--kb-h`、不看面板开关），事件漏派发靠 250ms 巡检兜。
+  - **CSS 侧改成吃同一个数**：`html.kb-web .cmt-main-bar { bottom: var(--kbb, 0px) }`、`WpComposer` 的 `.wp-composer-picker { bottom: var(--kbb, 0px); height: var(--kb-panel-h) }` —— 条和面板**共用同一个参照系**，值对两个都对。`fixedBar.js` 把 `.cmt-main-bar` / `.wp-composer-picker` **退出**接管（只留 `.reply-bar`）：它要自己量条高、写内联 top、跟 ResizeObserver 抢时序，而面板高度又来自另一条推导链，两条链一错位就分家。
+  - **`--kb-last` 只留一个写者**：`keyboardInset.writeVar` 里那段 `--kb-last` 改成只在 App 壳（`Capacitor.isNativePlatform()`）写；网页端由 viewportVars 独家写，否则互相压低。
+  - **交接补丁**：`holdForKeyboard` 的摘钉判据从「`--kb-h > 0`」扩成「`--kb-h > 0` **或 `--kbb > 0`**」—— iOS 上推时 `--kb-h` 恒 0，只盯它会让钉一直挂到 600ms 兜底，那段时间输入行悬在键盘上方一个面板高。面板→键盘两处（`DmVacChat` / `WpComposer`）都改。
+  - **开面板那一刻补测一次**：`toggleEmoji` / `setEmojiOpen(true)` 里先 `syncViewportVars()` —— 那时键盘还开着，是唯一还能量到它的时机，面板高度立刻等于刚收起的那个键盘，不靠之前某次采样碰运气。
+  - **断言（工装已改成能复现这个 bug 的样子）**：`tools/wallbar-drive.mjs` 的键盘步骤改成 **iOS 真机顺序 —— 第一次键盘就上推**（`__kbSim(H-330, 330)`，以前是 `offsetTop=0` 起手，把 bug 完全掩盖了），并新增三条：`--kb-last` 必须 = 330 / **面板高必须 = 键盘高 330** / 输入行下沿必须齐面板上沿。点表情后手工把 vv 还原（真机上键盘会跟着收，假工装没有真键盘）。
+  - **反向注入（关键证据）**：把 `kb = inner − vvH` 改回 `inner − vvH − vvT` → 工装当场三条红，其中一条原话就是 **`面板高 307 ≠ 键盘高 330 —— 面板和输入框对不上`**，与用户描述完全一致；恢复后全绿。393×852 与 375×667 两档全过。
+  - 测试：`emoji-panel 20/0`、`keyboard-policy 25/0`、`chat-height 39/0`、`chat-look 8/0`、`wall-composer 24/0`、`dm-vac 37/0`；全量 `--tier=fast,mount` **120/120、断言 1669/1669**；`npm run build` EXIT=0（入口 `main-ZPAKjIGT.js`）。**未 commit、未 deploy**。
+
+- **轮 507（已提交 `6cd7ba0`、已部署 Worker `ca6e46e0`，线上入口 `main-CqMZgybg.js` 逐字节一致）**：用户发来一段 14 秒真机录屏（拍屏）＋「你到底能不能改好…你好好看看视频里的问题」。
+  - **先看视频**：无头 Edge 播视频抽帧（本机 seek 失效，只能 play + 定时截图），12 帧网格 + 底部 4 倍放大。结论：**面板只在屏幕上露出 2 排，其余整块沉到屏幕外** —— 不是差几像素的错位。
+  - **真根因（轮 506 自己留的口子）**：`chatViewport.js` 的 `useInlineH = kbOpen || !supportsDvh` —— 无键盘且内核认 dvh 时写 `height: ""`，把高度交回 CSS `100dvh`。iOS Safari 的 dvh 在**大视口**状态下比当前可视区高（地址栏/工具栏收起时那个数），于是 `.dm-page` 比看得见的那块高一两百 px：顶对齐、底边沉到屏幕外，贴着盒底的表情面板只剩最上面两排。
+  - **改法一：永远由脚本写内联高度**（`const useInlineH = true`）—— 高度本来就该听 `visualViewport`，不该再让 CSS 猜一次。
+  - **改法二：新增 `--vph`（真实可视高）**。Safari 的底部工具栏是 **overlay**（盖在页面上、不缩视口），`innerHeight` / `visualViewport.height` 都不扣它。所以运行时用 `100svh` / `100dvh` 探针实测量，**取最小值**（各版本 Safari 实现不一致，谁扣掉了浏览器 UI 就取到谁）；量不出（老内核把 svh 算成 0）退回 `innerHeight`。容器高 = `min(innerHeight, --vph)`。
+  - **改法三：`--kbb` 按内核语义分流**（上一版一律取 min → 小米那 31px 静态噪声被当成工具栏，无键盘时整条吸底栏被平白抬起 31px，`kb-matrix` 当场 16 条红）：缩 inner 型（Chrome Android / 小米）用 `inner`；overlay 型（iOS）用 `offsetTop + vv.height`；只有 `vvH == inner`（说明谁都没缩）时才信探针。
+  - **配套**：探针在 `innerHeight` 变化时立刻重测（否则缓存键盘态小值，收键盘后 kbb 仍按小值算、条停在半空）；`--vph` 进 `?diag=1`。
+  - **测试**：`chat-height` 39 → **40**（新增 T40：availH 比 inner 小时容器取小的、键盘态仍听 vv、脏值忽略）；`kb-matrix` **28 组合 / 272 断言全过**（7 内核 × 4 尺寸，含小米 31px、iOS 上推、无 visualViewport、App 壳）—— 这条是这轮唯一抓到我回归的工装，以后动 `--kbb` / `--kb-h` 先跑它；全量 `fast,mount` **118/120**（红的两条：`feed-virtual-live` 要连线上抓帖子，本机网络；`NotificationsView` 是并行会话在改，已隔离出本次构建）。
+  - **待用户真机确认**：① 点表情，面板是不是完整四排、底部不被 Safari 工具栏切；② 键盘 ↔ 面板来回切，输入条是否原地不动；③ 若还不对，打开 `?diag=1` 点一次表情，把顶部「变量: …--kbb=…--vph=…」那一行截图发回，能直接定位。
+  - **⚠️ 事故**：隔离 `src/views/NotificationsView.vue`（并行会话在改，144→171 行）时用 `git show HEAD:path > path` 覆盖，恢复用的 `cp` 备份抓到的是 HEAD 版（18664B/426 行），**并行版（24395B）未进备份、已丢失**。以后覆盖别人正在写的文件，必须先 `cp` 到带时间戳的独立文件并 `cmp` 校验字节数再动手。
+
+
 - **⚠️ 环境坑（本轮踩到，记一笔）**：`git config core.autocrlf = true`。任何一次 `git stash` / `git checkout` 都会把工作区文件从 LF 转成 **CRLF**，而 `app-shell-test` T68 之类用 `\n` 精确匹配的断言会当场变红（且报错跟真因毫无关系）。本轮 stash 对照实验后 127 个文件被转成 CRLF，已全部转回 LF（`grep` 复查 0 个）。下次谁再 checkout，先跑一遍「CRLF → LF」再跑测试，别把假红当真回归。
 - **轮395（已打包，未提交）**：用户确认 `MIGRATION_story_draft_delete.sql` 已在 Supabase 执行；匿名 RPC 探针返回 `401 / 42501 permission denied for function story_delete_draft`，证明函数存在且未向 anon 开放（符合只授 authenticated 的设计），未删除任何真实草稿。代码无改动，重新 `build + cap:sync + assembleDebug` 后打 `apk/warm-paws-1.0.2-round395.apk`，与 round394 字节/SHA-256 相同（`A83A01B2CDD47201466FA44069952199D1B5C692590D6EA45EE86BA06D15A395`）；**未安装**。
 - **轮396（已部署，未提交）**：修「故事页加载更多点了没反应」——旧逻辑 `more = rows.length >= offset + PAGE` 且点击时先把 `offset += PAGE`，按钮在请求回来前当场消失；请求慢/失败/挂住时既没有新内容，也没有按钮可重试。现在改成 `hasMore` 状态机：只有成功拿到一页才推进 `offset`，请求中按钮保留并显示「加载中…」，失败保留「加载更多」并提示可重试，最后一页显示「没有更多了」。翻页请求加 20s 兜底超时（线上 `/sb` 代理实测第二页 9.4s，避免误杀）。`story-test` 232/0、`app-shell-test` 70/0、`i18n-test` 19/0、undef/tdz 0、build 成功、page-smoke 14/14；真实 DOM 探针：mock 12→14（加载中→没有更多了）、500 失败保留 12 篇+按钮+错误、真实 Supabase 只读数据 12→14。已部署 Worker Version `aeaf0e60-d065-4086-93e5-0be543988934`，入口 `main-C3Hi3Z0k.js`，故事分包 `StoryFeed-DleUGvMA.js`；本次未重打 APK，round395 不含此修复。
