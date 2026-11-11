@@ -18,7 +18,10 @@
     "test:list": "node tools/all.mjs --list",
     "backup": "node tools/backup.mjs",
     "backup:check": "node tools/backup.mjs --check",
-    "backup:drill": "node tools/backup.mjs --drill"
+    "backup:drill": "node tools/backup.mjs --drill",
+    "db:baseline": "node tools/schema-baseline.mjs dump",
+    "db:verify": "node tools/schema-baseline.mjs verify",
+    "db:apply": "node tools/schema-baseline.mjs apply"
   },
   "dependencies": {
     "@capacitor/android": "8.5.2",

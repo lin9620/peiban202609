@@ -41,7 +41,7 @@ const MANIFEST = [
   /* ── fast：纯 Node，无网络无浏览器 ───────────────────────── */
   ...[
     "admin-test", "admin-dau-test", "announcement-test", "api-contract-test", "app-download-test", "app-shell-test",
-    "daily-story-test",
+    "baseline-test", "daily-story-test",
     "app-version-test", "arity-test", "auth-test", "avatar-test", "back-nav-test", "back-stack-test",
     "bottle-autosize-test", "bottle-chat-test", "bottle-gap-test", "bottle-records-speed-test",
     "bottle-records-ui-test",
