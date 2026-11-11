@@ -222,6 +222,8 @@ const INSTALL = `(() => {
         vvH: vv ? Math.round(vv.height) : null,
         vvTop: vv ? Math.round(vv.offsetTop) : null,
         kbVar: getComputedStyle(document.documentElement).getPropertyValue("--kb-h").trim() || "0px",
+        kbb: getComputedStyle(document.documentElement).getPropertyValue("--kbb").trim(),
+        vph: getComputedStyle(document.documentElement).getPropertyValue("--vph").trim(),
         dvh: CSS.supports("height", "100dvh"),
         chat: chat ? Object.assign(R(chat), { pos: cs.position, inlineH: chat.style.height || "auto", inlineTop: chat.style.top || "auto" }) : null,
         bar: bar ? Object.assign(R(bar), { inlineTop: bar.style.top || "auto", inlineBottom: bar.style.bottom || "auto", cssBottom: getComputedStyle(bar).bottom }) : null,
@@ -380,7 +382,7 @@ async function main() {
         `${bad ? "FAIL" : " ok "}  ${p.id.padEnd(18)} ${d.id.padEnd(8)} ` +
         `inner=${String(open.inner).padStart(3)} vv=${String(open.vvH).padStart(3)}/${String(open.vvTop).padStart(2)} ` +
         `kbVar=${open.kbVar.padStart(5)} dvh=${closed.dvh ? "y" : "n"} | ` +
-        `chat b=${open.chat?.b} (期望 ${visBottom(open)})  bar b=${open.bar?.b}  ` +
+        `chat b=${open.chat?.b} (期望 ${visBottom(open)})  bar b=${open.bar?.b}  kbb=${open.kbb} vph=${open.vph} ` +
         `bar 内联 top=${open.bar?.inlineTop}`
       );
     }

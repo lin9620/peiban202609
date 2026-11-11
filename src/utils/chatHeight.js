@@ -72,15 +72,23 @@ export function pickChatTop(innerH, vvTop, h) {
  * 规则：只要 vvTop > 0 且 vvHeight 比容器矮，就把容器裁到 vvHeight。
  * 这不是「猜」，是把容器裁进**可证明可见**的那一段。
  */
-export function pickChatRect(innerH, vvH, vvTop, kbH) {
+export function pickChatRect(innerH, vvH, vvTop, kbH, availH) {
   const vv = pos(vvH);
   const t0 = pos(vvTop);
-  const picked = pickChatHeight(innerH, vv, kbH);
+  /* 轮 507 · 第 5 个参数「真实可视高」：Safari 的底部工具栏盖在页面之上，
+   * innerHeight / visualViewport 都不扣它（由 viewportVars 的 svh/dvh 探针量出来）。
+   * 容器高必须取这个更小的值，否则盒子底边落到工具栏下面 —— 贴着盒底的表情面板
+   * 最后一排正好被吃掉（用户视频里只露出 2 排）。
+   * 不传（老调用 / 单测）时行为与改之前完全一致。 */
+  const inner = pos(innerH);
+  const avail = pos(availH);
+  const effInner = avail > 0 && avail < inner ? avail : inner;
+  const picked = pickChatHeight(effInner, vv, kbH);
   if (!picked.h) return { h: 0, top: 0, kbOpen: false };
   let h = picked.h;
   let kbOpen = picked.kbOpen;
   if (t0 > 0 && vv > 0 && vv < h) { h = Math.round(vv); kbOpen = true; }
-  return { h, top: pickChatTop(innerH, t0, h), kbOpen };
+  return { h, top: pickChatTop(inner, t0, h), kbOpen };
 }
 
 /** 浏览器工具栏的量级上限。比它矮的「差值」一律当成工具栏，不当键盘。

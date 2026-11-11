@@ -106,6 +106,7 @@ export function installCompatDiag() {
           + " --sab=" + (cs.getPropertyValue("--sab") || "未定义").trim()
           + " --kb-h=" + (cs.getPropertyValue("--kb-h") || "未定义").trim()
           + " --kbb=" + (cs.getPropertyValue("--kbb") || "未定义").trim()
+          + " --vph=" + (cs.getPropertyValue("--vph") || "未定义").trim()
           + " --kb-last=" + (cs.getPropertyValue("--kb-last") || "未定义").trim()
           + " --kb-panel-h=" + (cs.getPropertyValue("--kb-panel-h") || "未定义").trim()
           /* --sat/--sab 只定义在 html.cap-app（原生壳）里。浏览器里读到「未定义」是**正常的**，
@@ -121,22 +122,35 @@ export function installCompatDiag() {
       ].join("\n");
     };
 
-    let copyLabel = "复制";
+    /* 轮 506：正文与按钮分开 —— 以前每次 paint 都 box.textContent = report()，
+       按钮跟着重建，所以只能「按需重绘」（原来只在 focusin 后刷一次）。
+       但键盘高度、--kbb、--kb-panel-h 恰恰是**随时变**的三个数：
+       用户点输入框 → 键盘弹起 → 点表情 → 键盘收起、面板出现，这三步里只有第一步会重绘，
+       面板那一步看不到 —— 而用户要报的就是「面板跟键盘对不上」。
+       现在正文放在 <pre> 里单独更新，按钮只建一次，可以放心定时刷。 */
+    const pre = document.createElement("pre");
+    pre.style.cssText = "margin:0;white-space:pre-wrap;word-break:break-word;font:inherit;color:inherit";
+    box.appendChild(pre);
+
+    const c = btn("复制", 34, async () => {
+      c.textContent = "…";
+      const ok = await copyText(report());
+      c.textContent = ok ? "已复制" : "复制失败";
+      setTimeout(() => { c.textContent = "复制"; }, 1800);
+    });
+    box.appendChild(c);
+    box.appendChild(btn("×", 6, () => box.remove()));
+
+    let lastText = "";
     const paint = () => {
-      box.textContent = report();
-      const c = btn(copyLabel, 34, async () => {
-        copyLabel = "…";
-        paint();
-        const ok = await copyText(report());
-        copyLabel = ok ? "已复制" : "复制失败";
-        paint();
-        setTimeout(() => { copyLabel = "复制"; paint(); }, 1800);
-      });
-      box.appendChild(c);
-      box.appendChild(btn("×", 6, () => box.remove()));
+      const t = report();
+      /* 内容没变就不碰 DOM：键盘动画期间每帧都在变，不比较会让面板一直闪 */
+      if (t !== lastText) { lastText = t; pre.textContent = t; }
     };
 
     document.body.appendChild(box);
     paint();
+    /* 键盘起落 / 面板开关都不会触发 focusin，定时刷才能看到实时值 */
+    setInterval(paint, 600);
   } catch (e) { /* 自检面板绝不影响正常使用 */ }
 }

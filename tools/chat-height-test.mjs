@@ -294,9 +294,12 @@ t("T31 chatViewport.js：键盘占位就必须写内联高度（不能只看 --k
      轮 503 起 kbOpen 由 pickChatRect 一并给出（它内部就是 pickChatHeight）。 */
   assert(/const kbOpen = rect\.kbOpen/.test(js) || /const \{ h, kbOpen \} = pickChatHeight/.test(js),
     "没接 pickChatRect / pickChatHeight 的 kbOpen");
-  assert(/const useInlineH = kbOpen \|\| !supportsDvh/.test(js),
-    "内联高度判据没走 kbOpen（overlay 且不派发事件的内核会在键盘底下留全屏高）");
-});
+  /* 轮 507：判据从「键盘态才写」扩成「永远写」—— iOS 的 100dvh 在大视口状态下
+     比能看见的那块高（用户视频里面板只剩 2 排，其余沉到屏幕外）。
+     高度只能听视觉视口的，不能再让 CSS 猜一次。 */
+  assert(/const useInlineH = true;/.test(js),
+    "又把高度交回 CSS 100dvh 了（iOS 上 dvh 可能大于可视区，整页会沉到屏幕外）");
+  assert(/el\.style\.height = useInlineH \? h \+ "px"/.test(js), "没把 h 写进内联高度");});
 
 t("T32 输入态暗层 · 轮 472（用户拍板）：条打开时整页压暗，点暗处返回", () => {
   const css = read("src/style.css");
@@ -469,6 +472,30 @@ t("T39 高度裁决不许再散落成 if 分支：chatViewport 只认 pickChatRe
   const js = read("src/utils/chatViewport.js");
   assert(/const rect = pickChatRect\(/.test(js), "chatViewport 没走 pickChatRect");
   assert(!/vvTop > 0 && vvH > 0 && vvH < h/.test(js), "又在内联写「上推就缩」的分支了（应该收进纯函数）");
+});
+
+t("T40 真实可视高（availH）比 inner 小时，容器必须取小的那个（轮507）", () => {
+  /* 病根：Safari 的底部工具栏是 overlay，innerHeight / visualViewport 都不扣它。
+     `.dm-page` 的底边一旦落到工具栏下面，贴着盒底的表情面板最后一排正好被吃掉
+     （用户视频：面板只露出 2 排，其余在屏幕外）。
+     availH 由 viewportVars 的 svh/dvh 探针量出（取两者与 inner 的最小值）。 */
+  const r = pickChatRect(852, 852, 0, 0, 808);   /* 852 的屏被工具栏吃掉 44 */
+  assert.equal(r.h, 808, "没把容器裁到工具栏上方（面板会少一排）");
+  assert.equal(r.top, 0, "无键盘时 top 必须是 0");
+  assert.equal(r.kbOpen, false);
+
+  /* 键盘态：vv 比 availH 更小，必须听 vv（键盘顶才是真的可视底） */
+  const k = pickChatRect(852, 522, 330, 330, 808);
+  assert.equal(k.h, 522, "键盘态没听 vv（用了工具栏高，页面会多缩一截）");
+  assert.equal(k.top, 330);
+
+  /* 不传 availH（老调用）→ 与改动前一致 */
+  const old = pickChatRect(852, 852, 0, 0);
+  assert.equal(old.h, 852);
+  /* 脏值（0 / 负数 / 比 inner 还大）一律忽略 */
+  assert.equal(pickChatRect(852, 852, 0, 0, 0).h, 852);
+  assert.equal(pickChatRect(852, 852, 0, 0, -20).h, 852);
+  assert.equal(pickChatRect(852, 852, 0, 0, 900).h, 852);
 });
 
 console.log(out.join("\n"));

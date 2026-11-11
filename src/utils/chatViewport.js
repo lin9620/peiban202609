@@ -63,6 +63,19 @@ function isNativeShell() {
   return !!document.documentElement && document.documentElement.classList.contains("cap-app");
 }
 
+/* 轮 507 · 真实可视高（--vph，由 utils/viewportVars.js 的 svh/dvh 探针写）。
+ * Safari 的底部工具栏是 overlay，innerHeight 不扣它；聊天盒子的底边一旦落在工具栏
+ * 下面，贴着盒底的表情面板就会少一整排（用户视频里只露出 2 排）。
+ * 读不到（老内核 / JS 没跑到）返回 0，pickChatRect 会退回 innerHeight，行为不变。 */
+function viewportHeight() {
+  try {
+    const v = parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue("--vph")
+    );
+    return Number.isFinite(v) && v > 0 ? v : 0;
+  } catch (e) { return 0; }
+}
+
 function lockDoc() {
   if (locked) return;
   locked = true;
@@ -120,7 +133,7 @@ function sync() {
    * 关键一条：可视视口被上推时（iOS 为露出光标会这么干）页面必须同时缩到可视高，
    * 否则 fixed 的页面比能看见的那块高 —— iOS 一推，整页跑到屏幕上方：输入条贴在
    * 地址栏底下、下面一大片空白、消息一条不见（用户四张截图里的第 4 张）。 */
-  const rect = pickChatRect(window.innerHeight, vvH, vvTop, kbRaw);
+  const rect = pickChatRect(window.innerHeight, vvH, vvTop, kbRaw, viewportHeight());
   const h = rect.h;
   const kbOpen = rect.kbOpen;
   const left = Math.round(vv ? vv.offsetLeft : 0);
@@ -154,7 +167,18 @@ function sync() {
    * 所以判据只能是「可视视口已经缩了」（pickChatHeight 给的 kbOpen），
    * 不能是「--kb-h 有值」（那只是某一条链路的结果）。
    * 无键盘 + 认 dvh 时才交回 CSS —— 那种情况浏览器自己算得比脚本准。 */
-  const useInlineH = kbOpen || !supportsDvh;
+  /* 轮 507 · **永远由脚本写内联高度**，不再「支持 dvh 就交回 CSS」。
+   *
+   * 病因（用户视频：表情面板只露出 2 排，其余全在屏幕外）：
+   * 这之前 `useInlineH = kbOpen || !supportsDvh` —— 键盘没弹起、内核又认 dvh 时，
+   * 这里写的是 `height: ""`，把高度交回 CSS 的 `100dvh`。而 iOS Safari 的 dvh
+   * 在「大视口」状态下**比当前内层高度大**（地址栏/工具栏收起时的那个数），
+   * 于是 .dm-page 比能看见的那块高一两百像素：页面顶对齐、底边沉到屏幕外，
+   * 贴着盒底的表情面板自然只剩最上面两排。
+   * 判据本来就是「此刻能看见多少」（visualViewport 给的），没有理由再让 CSS 猜一次。
+   *
+   * 高度来源：h ← pickChatRect（无键盘 = min(innerHeight, --vph)，键盘 = vv.height）。 */
+  const useInlineH = true;
 
   lockDoc();
   el.style.position = "fixed";
