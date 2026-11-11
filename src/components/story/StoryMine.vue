@@ -194,6 +194,24 @@ defineExpose({ load });
         <span class="st-stat"><b>{{ panel.comments }}</b>💬</span>
         <span class="st-stat"><b>{{ panel.saved }}</b>★</span>
       </div>
+      <!-- 手机端数据条：五项等宽、带标签，数字一眼能读懂；桌面端仍用上面那行紧凑统计 -->
+      <div class="st-stats-mobile">
+        <span class="st-mstat st-mstat--pub">
+          <em>📖</em><b>{{ panel.pub }}</b><small>{{ t("story.myPublished") }}</small>
+        </span>
+        <span class="st-mstat st-mstat--like">
+          <em>♥</em><b>{{ panel.likes }}</b><small>{{ t("story.statLikes") }}</small>
+        </span>
+        <span class="st-mstat st-mstat--view">
+          <em>👀</em><b>{{ panel.views }}</b><small>{{ t("story.statViews") }}</small>
+        </span>
+        <span class="st-mstat st-mstat--comment">
+          <em>💬</em><b>{{ panel.comments }}</b><small>{{ t("story.comments") }}</small>
+        </span>
+        <span class="st-mstat st-mstat--saved">
+          <em>★</em><b>{{ panel.saved }}</b><small>{{ t("story.statSaved") }}</small>
+        </span>
+      </div>
       <p v-if="panel.bestTitle" class="st-hint st-mine-best">
         {{ t("story.myBest", { title: panel.bestTitle, n: panel.bestLikes }) }}
       </p>
@@ -227,27 +245,29 @@ defineExpose({ load });
               </template>
             </span>
           </span>
-          <span v-if="tab === 'draft'" class="st-mine-go">{{ t("story.continueWrite") }}</span>
-          <!-- 已发布 / 书架：把原来的「阅读」位置换成删除 / 取消收藏；点按钮不冒泡到整行阅读。 -->
-          <button
-            v-else-if="tab === 'published'" class="st-btn st-btn--ghost st-btn--mark st-mine-del st-mine-act"
-            type="button" :disabled="deleting === r.id" :title="t('story.deleteStoryConfirm')"
-            @click.stop="removePublished(r)">{{ t("story.deleteStory") }}</button>
-          <button
-            v-else class="st-btn st-btn--ghost st-btn--mark st-mine-act" type="button"
-            :disabled="unbookmarking === r.id" :title="t('story.unbookmark')"
-            @click.stop="removeShelf(r)">{{ t("story.unbookmark") }}</button>
-          <!-- 轮 391：草稿行补删除入口；点按钮不冒泡到整行的“继续写”。 -->
-          <button
-            v-if="tab === 'draft'" class="st-btn st-btn--ghost st-btn--mark st-mine-del st-mine-act" type="button"
-            :disabled="deleting === r.id" :title="t('story.deleteDraftConfirm')"
-            @click.stop="removeDraft(r)">{{ t("story.deleteDraft") }}</button>
-          <!-- 轮 150：已发布的故事也要能改。服务端 story_publish 的 else 分支本来就允许改已发布的
-               （status <> 'removed'，且 published_at 用 coalesce 保住原发布时间），这里只补 UI 入口。
-               草稿行点整行就已进编辑器，所以只给它挂“删除”，不再重复挂“修改”。 -->
-          <button
-            v-if="tab === 'published'" class="st-btn st-btn--ghost st-btn--mark st-mine-act" type="button"
-            @click.stop="emit('edit', r)">{{ t("story.editStory") }}</button>
+          <span class="st-mine-tail">
+            <span v-if="tab === 'draft'" class="st-mine-go">{{ t("story.continueWrite") }}</span>
+            <!-- 已发布 / 书架：把原来的「阅读」位置换成删除 / 取消收藏；点按钮不冒泡到整行阅读。 -->
+            <button
+              v-else-if="tab === 'published'" class="st-btn st-btn--ghost st-btn--mark st-mine-del st-mine-act"
+              type="button" :disabled="deleting === r.id" :title="t('story.deleteStoryConfirm')"
+              @click.stop="removePublished(r)">{{ t("story.deleteStory") }}</button>
+            <button
+              v-else class="st-btn st-btn--ghost st-btn--mark st-mine-act" type="button"
+              :disabled="unbookmarking === r.id" :title="t('story.unbookmark')"
+              @click.stop="removeShelf(r)">{{ t("story.unbookmark") }}</button>
+            <!-- 轮 391：草稿行补删除入口；点按钮不冒泡到整行的“继续写”。 -->
+            <button
+              v-if="tab === 'draft'" class="st-btn st-btn--ghost st-btn--mark st-mine-del st-mine-act" type="button"
+              :disabled="deleting === r.id" :title="t('story.deleteDraftConfirm')"
+              @click.stop="removeDraft(r)">{{ t("story.deleteDraft") }}</button>
+            <!-- 轮 150：已发布的故事也要能改。服务端 story_publish 的 else 分支本来就允许改已发布的
+                 （status <> 'removed'，且 published_at 用 coalesce 保住原发布时间），这里只补 UI 入口。
+                 草稿行点整行就已进编辑器，所以只给它挂“删除”，不再重复挂“修改”。 -->
+            <button
+              v-if="tab === 'published'" class="st-btn st-btn--ghost st-btn--mark st-mine-edit st-mine-act" type="button"
+              @click.stop="emit('edit', r)">{{ t("story.editStory") }}</button>
+          </span>
         </li>
         <li v-if="!rows.length && !loading" class="st-hint">
           {{ tab === "shelf" ? t("story.shelfEmpty") : t("story.mineEmpty") }}

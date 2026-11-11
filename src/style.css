@@ -3680,8 +3680,10 @@ html.kb-web .reply-bar {
 .st-stats { display: flex; gap: 16px; margin-bottom: 10px; }
 .st-stat { font-size: 12px; color: var(--ink-soft); display: flex; flex-direction: column; }
 .st-stat b { font-family: var(--font-display); font-size: 20px; color: var(--ink); }
+.st-stats-mobile { display: none; }
 .st-mine-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
 .st-mine-row { display: flex; align-items: center; gap: 10px; border: 1px solid var(--hairline); border-radius: 12px; padding: 8px 10px; cursor: pointer; transition: border-color .18s ease; }
+.st-mine-tail { display: contents; }
 .st-mine-row:hover { border-color: var(--accent); }
 .st-mine-body { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .st-mine-name { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -3732,6 +3734,379 @@ html.kb-web .reply-bar {
 /* 轮 443：换一批翻到底的提示（原来是把同一批内容本地打乱冒充新的，现在直说没内容了） */
 .st-no-more { margin-top: 8px; text-align: center; animation: st-fade-in 0.18s ease-out; }
 @keyframes st-fade-in { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
+
+/* ══════════ 手机端故事子页（排行榜 / 我的）══════════
+   只在手机宽度生效：桌面端仍走上面那套紧凑版，不参与重排。
+   目标：页头暖一点、页签变成拇指友好的分段控件、列表从「细行」变成可点卡片；
+   数据面板拆成五个带标签的小格，前三名给领奖台质感。 */
+@media (max-width: 640px) {
+  .story-shell .story-page--rank .story-head,
+  .story-shell .story-page--mine .story-head {
+    margin-bottom: 12px;
+    padding: 17px 18px 15px;
+    border-color: rgba(204, 120, 92, .14);
+    border-radius: 22px;
+    background:
+      radial-gradient(120% 100% at 100% 0%, rgba(255, 255, 255, .72), transparent 58%),
+      linear-gradient(135deg, #fff6ee 0%, #ffe9dc 100%);
+    box-shadow: 0 8px 22px rgba(160, 110, 60, .07);
+  }
+  .story-shell .story-page--rank .story-head::after,
+  .story-shell .story-page--mine .story-head::after {
+    top: -54px; right: -24px;
+    width: 132px; height: 132px;
+    background: rgba(255, 255, 255, .28);
+  }
+  .story-shell .story-page--rank .story-head .story-title,
+  .story-shell .story-page--mine .story-head .story-title {
+    font-size: 24px; line-height: 1.22; letter-spacing: .01em;
+  }
+  .story-shell .story-page--rank .story-head .st-sub,
+  .story-shell .story-page--mine .story-head .st-sub {
+    margin-top: 5px; font-size: 12.5px; line-height: 1.55; color: var(--ink-soft);
+  }
+
+  /* 排行榜：四等分胶囊页签 */
+  .story-page--rank .st-rank-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+    margin: 0 0 12px;
+    padding: 4px;
+    border: 1px solid var(--hairline);
+    border-radius: 999px;
+    background: var(--wash);
+  }
+  .story-page--rank .st-rank-tab {
+    min-width: 0;
+    min-height: 40px;
+    padding: 0 3px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    font-size: 12px;
+    line-height: 1.2;
+    font-weight: 500;
+    white-space: normal;
+  }
+  .story-page--rank .st-rank-tab.on {
+    background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+    color: #fff;
+    box-shadow: 0 4px 10px rgba(169, 88, 62, .22);
+  }
+
+  /* 榜单行：卡片化；前三名给一点领奖台的分量 */
+  .story-page--rank .st-rank-list { gap: 8px; }
+  .story-page--rank .st-rank-row {
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid var(--hairline);
+    border-radius: 16px;
+    background: var(--card, #fffdf9);
+    box-shadow: 0 3px 10px rgba(160, 110, 60, .045);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .story-page--rank .st-rank-row:active { background: var(--wash); transform: scale(.995); }
+  .story-page--rank .st-rank-row--top {
+    border-color: rgba(217, 164, 65, .28);
+    background: linear-gradient(135deg, #fffaf1, #fffdf9);
+    box-shadow: 0 5px 14px rgba(160, 110, 60, .07);
+  }
+  .story-page--rank .st-rank-row--top:nth-child(2) {
+    border-color: rgba(160, 168, 178, .28);
+    background: linear-gradient(135deg, #fbfcfd, #fffdf9);
+  }
+  .story-page--rank .st-rank-row--top:nth-child(3) {
+    border-color: rgba(190, 132, 92, .26);
+    background: linear-gradient(135deg, #fff8f3, #fffdf9);
+  }
+  .story-page--rank .st-rank-no {
+    flex: 0 0 34px;
+    width: 34px; height: 34px;
+    display: grid; place-items: center;
+    border-radius: 50%;
+    background: var(--wash);
+    color: var(--ink-soft);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1;
+  }
+  .story-page--rank .st-rank-row--top .st-rank-no {
+    font-size: 18px;
+    background: #fff4d8;
+    box-shadow: inset 0 0 0 1px rgba(217, 164, 65, .18);
+  }
+  .story-page--rank .st-rank-row--top:nth-child(2) .st-rank-no {
+    background: #f2f4f7;
+    box-shadow: inset 0 0 0 1px rgba(160, 168, 178, .18);
+  }
+  .story-page--rank .st-rank-row--top:nth-child(3) .st-rank-no {
+    background: #fbeee6;
+    box-shadow: inset 0 0 0 1px rgba(190, 132, 92, .16);
+  }
+  .story-page--rank .st-rank-body { gap: 3px; }
+  .story-page--rank .st-rank-name {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    white-space: normal;
+    font-size: 14.5px;
+    font-weight: 600;
+    line-height: 1.45;
+  }
+  .story-page--rank .st-rank-meta { font-size: 11px; line-height: 1.5; }
+  .story-page--rank .st-rank-like {
+    flex: none;
+    align-self: flex-start;
+    margin-top: 1px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent-deep);
+    font-size: 11px;
+    line-height: 1.35;
+    font-variant-numeric: tabular-nums;
+  }
+  .story-page--rank .st-rank-list > .st-hint,
+  .story-page--mine .st-mine-list > .st-hint {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 132px;
+    margin: 0;
+    padding: 28px 18px;
+    border: 1px dashed var(--hairline);
+    border-radius: 18px;
+    background: var(--wash);
+    text-align: center;
+    line-height: 1.7;
+  }
+  .story-page--rank .st-shuffle {
+    min-height: 46px;
+    margin-top: 14px;
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent-deep);
+    font-size: 14px;
+    font-weight: 600;
+    box-shadow: none;
+  }
+  .story-page--rank .st-shuffle:active { background: var(--accent); color: #fff; }
+  .story-page--rank .st-no-more {
+    width: max-content;
+    max-width: 100%;
+    margin: 12px auto 0;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent-deep);
+  }
+
+  /* 标签云：手机端两列，搜索框和标签行都加大到可点尺寸 */
+  .story-page--rank .st-tag-panel {
+    gap: 10px;
+    margin-bottom: 12px;
+    padding: 12px;
+    border-radius: 18px;
+    background: var(--card, #fffdf9);
+    box-shadow: 0 4px 12px rgba(160, 110, 60, .05);
+  }
+  .story-page--rank .st-tag-head { gap: 8px; }
+  .story-page--rank .st-tag-search-in {
+    height: 38px;
+    border-radius: 12px;
+    font-size: 13px;
+  }
+  .story-page--rank .st-tag-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    max-height: 46vh;
+    padding-right: 2px;
+  }
+  .story-page--rank .st-tag-row {
+    min-height: 38px;
+    padding: 8px 10px;
+    border-radius: 12px;
+    background: var(--wash);
+    font-size: 12.5px;
+    line-height: 1.3;
+  }
+  .story-page--rank .st-tag-row.on {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .story-page--rank .st-tag-name { line-height: 1.3; }
+
+  /* 我的：五格数据条、三页签、卡片式行 */
+  .story-page--mine .st-stats { display: none; }
+  .story-page--mine .st-stats-mobile {
+    display: flex;
+    margin: 0 0 12px;
+    padding: 12px 4px;
+    border: 1px solid var(--hairline);
+    border-radius: 20px;
+    background: var(--card, #fffdf9);
+    box-shadow: 0 4px 12px rgba(160, 110, 60, .05);
+  }
+  .story-page--mine .st-mstat {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 0 2px;
+    border-right: 1px solid var(--hairline);
+  }
+  .story-page--mine .st-mstat:last-child { border-right: 0; }
+  .story-page--mine .st-mstat em {
+    font-style: normal;
+    font-size: 14px;
+    line-height: 1.2;
+  }
+  .story-page--mine .st-mstat b {
+    font-family: var(--font-display);
+    font-size: 20px;
+    line-height: 1.15;
+    font-weight: 600;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .story-page--mine .st-mstat small {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 10px;
+    line-height: 1.4;
+    color: var(--ink-soft);
+  }
+  .story-page--mine .st-mstat--like em { color: var(--accent-deep); }
+  .story-page--mine .st-mstat--saved em { color: #c79a3d; }
+
+  .story-page--mine .st-mine-best {
+    margin: 0 0 12px;
+    padding: 10px 12px;
+    border: 1px solid rgba(204, 120, 92, .12);
+    border-radius: 14px;
+    background: var(--accent-soft);
+    color: var(--accent-deep);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  .story-page--mine .st-modes {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+    margin: 0 0 12px;
+    padding: 4px;
+    border: 1px solid var(--hairline);
+    border-radius: 999px;
+    background: var(--wash);
+  }
+  .story-page--mine .st-mode {
+    min-width: 0;
+    min-height: 40px;
+    padding: 0 5px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+  .story-page--mine .st-mode.on {
+    background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+    color: #fff;
+    box-shadow: 0 4px 10px rgba(169, 88, 62, .20);
+  }
+
+  .story-page--mine .st-mine-list { gap: 10px; }
+  .story-page--mine .st-mine-row {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 8px 10px;
+    padding: 14px;
+    border-radius: 18px;
+    background: var(--card, #fffdf9);
+    box-shadow: 0 4px 12px rgba(160, 110, 60, .05);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .story-page--mine .st-mine-row:active { background: var(--wash); }
+  .story-page--mine .st-badge {
+    flex: none;
+    margin-top: 1px;
+    padding: 2px 8px;
+    font-size: 10px;
+    line-height: 1.5;
+  }
+  .story-page--mine .st-mine-body {
+    flex: 1 1 0;
+    min-width: 0;
+    gap: 4px;
+  }
+  .story-page--mine .st-mine-name {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    white-space: normal;
+    font-size: 14.5px;
+    font-weight: 600;
+    line-height: 1.45;
+  }
+  .story-page--mine .st-mine-body .st-hint {
+    font-size: 11px;
+    line-height: 1.55;
+  }
+  .story-page--mine .st-mine-tail {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    width: 100%;
+    margin-top: 2px;
+  }
+  .story-page--mine .st-mine-tail .st-mine-go {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+    padding: 0 12px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+    color: #fff;
+    font-size: 12.5px;
+    font-weight: 600;
+    text-align: center;
+    line-height: 1.2;
+  }
+  .story-page--mine .st-mine-tail .st-mine-act {
+    flex: none;
+    min-height: 40px;
+    padding: 0 12px;
+    border-radius: 999px;
+    background: var(--wash);
+    font-size: 12px;
+    line-height: 1.2;
+  }
+  .story-page--mine .st-mine-tail .st-mine-edit {
+    flex: 1 1 auto;
+    background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+    border-color: var(--accent);
+    color: #fff;
+    font-weight: 600;
+  }
+  .story-page--mine .st-mine-tail .st-mine-del { color: var(--low); }
+  .story-page--mine .st-mine-tail .st-mine-act:only-child { flex: 1 1 auto; }
+}
+@media (max-width: 380px) {
+  .story-page--rank .st-tag-list { grid-template-columns: 1fr; max-height: 42vh; }
+  .story-page--mine .st-mstat small { font-size: 9.5px; }
+}
 
 /* ── 全屏写作 / 阅读页 ── */
 .story-write { max-width: 860px; margin: 0 auto; }

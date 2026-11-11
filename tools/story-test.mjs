@@ -222,6 +222,20 @@ ok("标签页改为可搜索、限高滚动的列表（标签再多也不撑爆�
   && !css.includes(".st-cloud { display: flex; flex-wrap: wrap;"));
 ok("我的页签：草稿/已发布 + 数据面板", has(mineVue, 'storyMine("draft")', 'storyMine("published")', "storyMyStats")
   && mineVue.includes("total_likes") && mineVue.includes("bookmark_count"));
+/* 手机端故事子页重设计：只在 ≤640px 生效，桌面端仍走原来的紧凑行。 */
+ok("手机端故事子页有独立断点（桌面不参与）",
+  css.includes("@media (max-width: 640px)") && css.includes(".st-stats-mobile"));
+ok("排行榜手机端：四等分页签 + 前三名领奖台 + 卡片行",
+  rankVue.includes("st-rank-row--top")
+  && has(css, ".story-page--rank .st-rank-tabs", "grid-template-columns: repeat(4",
+    ".story-page--rank .st-rank-row--top", "border-radius: 16px"));
+ok("我的手机端：五格数据条 + 三页签 + 卡片式操作行",
+  mineVue.includes("st-stats-mobile") && mineVue.includes("st-mine-tail")
+  && has(css, ".story-page--mine .st-stats-mobile", ".story-page--mine .st-modes",
+    ".story-page--mine .st-mine-tail"));
+ok("手机端五项统计标签五语言齐全",
+  ["en", "zh", "es", "pt", "fr"].every((l) => messages[l]?.story?.statLikes
+    && messages[l].story.statViews && messages[l].story.statSaved));
 ok("发现页签：搜索 + 载入更多", has(feedVue, "story.searchPh", "loadMore"));
 // 轮 148 追加：/story 已废除页签壳，改成纯阅读发现页；投稿/我的/排行榜 拆成独立路由。
 ok("发现页：纯阅读，无页签壳", viewVue.includes("StoryFeed")

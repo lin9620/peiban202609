@@ -14,7 +14,7 @@ const { storyBack } = useStoryBack(router);
 
 <template>
   <StoryShell active="rank">
-    <div class="story-page">
+    <div class="story-page story-page--rank">
       <header class="story-head">
         <div class="story-head-row">
           <h1 class="story-title">{{ t("story.tabRank") }}</h1>

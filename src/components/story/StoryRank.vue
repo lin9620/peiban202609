@@ -164,7 +164,8 @@ load();
     </div>
 
     <ol v-if="mode !== 'tag'" class="st-rank-list">
-      <li v-for="(r, i) in rows" :key="r.id" class="st-rank-row" @click="open(r)">
+      <li v-for="(r, i) in rows" :key="r.id" class="st-rank-row"
+        :class="{ 'st-rank-row--top': i < 3 }" @click="open(r)">
         <span class="st-rank-no">{{ medal(i) }}</span>
         <span class="st-rank-body">
           <span class="st-rank-name">{{ r.title }}</span>
@@ -176,7 +177,8 @@ load();
     </ol>
 
     <ol v-else-if="activeTag" class="st-rank-list">
-      <li v-for="(r, i) in tagRows" :key="r.id" class="st-rank-row" @click="open(r)">
+      <li v-for="(r, i) in tagRows" :key="r.id" class="st-rank-row"
+        :class="{ 'st-rank-row--top': i < 3 }" @click="open(r)">
         <span class="st-rank-no">{{ medal(i) }}</span>
         <span class="st-rank-body">
           <span class="st-rank-name">{{ r.title }}</span>

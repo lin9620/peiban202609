@@ -544,6 +544,7 @@ export default {
     "myPublished": "Publiées",
     "myShelf": "Bibliothèque",
     "shelfEmpty": "Aucune histoire gardée — touche ★ pendant la lecture.",
+    "statLikes": "J’aime", "statViews": "Lectures", "statSaved": "Gardées",
     "shelfSavedAt": "Gardée le {d}",
     "myBest": "La plus aimée : {title} ({n} j’aime)",
     "mineEmpty": "Rien pour l’instant — tes brouillons t’attendent ici.",

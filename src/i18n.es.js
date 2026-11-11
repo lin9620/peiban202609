@@ -543,6 +543,7 @@ export default {
     "myPublished": "Publicadas",
     "myShelf": "Estantería",
     "shelfEmpty": "Aún no guardaste historias — toca ★ mientras lees.",
+    "statLikes": "Me gusta", "statViews": "Lecturas", "statSaved": "Guardadas",
     "shelfSavedAt": "Guardada {d}",
     "myBest": "La más querida: {title} ({n} me gusta)",
     "mineEmpty": "Aún nada — tus borradores esperarán aquí.",
