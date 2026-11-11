@@ -315,7 +315,7 @@ watch(cloudSigned, (v) => {
     </header>
 
     <!-- 用户卡：Soul 式顶部身份区 -->
-    <section class="card set-user">
+    <section class="card set-user" :class="{ 'set-user--guest': !cloudSigned }">
       <div class="set-avatar" :class="{ paw: !cloudSigned }">
         <img v-if="cloudSigned && avatarUrlFor(cloud.user && cloud.user.id)" class="set-avatar-img" :src="avatarUrlFor(cloud.user && cloud.user.id)" alt="" />
         <span v-else>{{ cloudSigned ? (userNick || "?").slice(0, 1).toUpperCase() : "\u{1F43E}" }}</span>
@@ -625,4 +625,241 @@ watch(cloudSigned, (v) => {
 }
 .set-check:not(:disabled):hover { background: var(--glass, rgba(255, 240, 226, .6)); color: var(--accent, #e58a3a); }
 .set-check:disabled { opacity: .55; cursor: default; }
+
+/* ═════════ 手机端设置页（≤640）═════════
+ * 桌面端保持原来的「顶部身份卡 + 分组行」不动；这里只重排窄屏：
+ * 身份卡变成暖色主视觉，分组用独立卡片和分隔线，选项改成两列网格，
+ * 行高、开关、输入框都按 44px 以上的触控目标放大。 */
+@media (max-width: 640px) {
+  .set-page { padding-bottom: max(10px, env(safe-area-inset-bottom, 0px)); }
+
+  /* 顶栏：大标题 + 圆角返回键 */
+  .set-top { align-items: center; gap: 12px; margin: 4px 2px 14px; }
+  .set-back {
+    width: 42px; height: 42px; min-width: 42px; min-height: 42px;
+    border-radius: 15px; border: 1px solid var(--hairline);
+    background: var(--glass-strong); color: var(--ink);
+    box-shadow: 0 4px 12px rgba(83, 51, 30, .07);
+    font-size: 18px; line-height: 1;
+  }
+  .set-top-t { min-width: 0; }
+  .set-top-t h1 {
+    font-family: var(--font-display); font-size: 26px;
+    line-height: 1.2; letter-spacing: -.4px;
+  }
+  .set-top-t .sub {
+    margin-top: 4px; font-size: 12.5px; line-height: 1.45;
+    color: var(--ink-faint);
+  }
+
+  /* 身份卡：暖色渐变主视觉，不再是普通白卡 */
+  .set-user {
+    position: relative; overflow: hidden;
+    padding: 20px 18px;
+    color: #fff;
+    /* glass.css 给 .card 的 background / border / radius 都是 !important，
+       手机端身份卡要盖过它，否则会退回普通白卡、白字直接看不见。 */
+    border: 0 !important;
+    border-radius: 24px !important;
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, .15), rgba(0, 0, 0, .06)),
+      linear-gradient(135deg, var(--accent) 0%, var(--accent-deep) 100%) !important;
+    box-shadow: 0 14px 30px rgba(150, 82, 48, .22) !important;
+  }
+  .set-user::before {
+    content: ""; position: absolute; top: -72px; right: -44px;
+    width: 160px; height: 160px; border-radius: 50%;
+    background: rgba(255, 255, 255, .16); pointer-events: none;
+  }
+  .set-user::after {
+    content: "\1F43E"; position: absolute; right: 16px; bottom: -10px;
+    font-size: 66px; line-height: 1; opacity: .10;
+    transform: rotate(-15deg); pointer-events: none;
+  }
+  .set-avatar {
+    width: 62px; height: 62px; font-size: 26px;
+    background: rgba(255, 255, 255, .20); color: #fff;
+    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .40), 0 6px 16px rgba(80, 40, 20, .16);
+  }
+  .set-avatar.paw { background: rgba(255, 255, 255, .18); color: #fff; }
+  .set-user-body { gap: 4px; }
+  .set-user-name {
+    font-size: 18px; font-weight: 600; letter-spacing: -.2px;
+    overflow-wrap: anywhere;
+  }
+  .set-user-mail, .set-user .sub {
+    color: rgba(255, 255, 255, .80) !important;
+    font-size: 12px; line-height: 1.45;
+  }
+  .set-go {
+    min-height: 40px; padding: 0 16px; border-radius: 13px;
+    background: #fff; color: var(--accent-deep);
+    font-size: 13px; font-weight: 600;
+    box-shadow: 0 6px 14px rgba(70, 35, 20, .14);
+  }
+  /* 游客态：昵称/提示和按钮挤在一行时「Not signed in」会被压成两行，
+     手机端改成第一行头像+文案、第二行整宽按钮。 */
+  .set-user--guest { flex-wrap: wrap; }
+  .set-user--guest .set-user-body { flex: 1 1 160px; }
+  .set-user--guest .set-go { flex: 0 0 100%; width: 100%; margin-top: 4px; }
+
+  /* 分组卡片与小标题 */
+  .set-group {
+    padding: 0 0 8px; margin-bottom: 14px;
+    border-radius: 22px !important; border-color: rgba(160, 110, 60, .13) !important;
+    background: var(--g-bg-card, var(--wash-strong)) !important;
+    box-shadow: 0 8px 22px rgba(83, 51, 30, .055), inset 0 1px 0 rgba(255, 255, 255, .88) !important;
+  }
+  .set-group.danger {
+    background: rgba(255, 246, 243, .88) !important;
+    border-color: rgba(198, 69, 69, .16) !important;
+  }
+  .set-cap {
+    display: flex; align-items: center; gap: 10px;
+    padding: 14px 18px 6px;
+    font-size: 10.5px; letter-spacing: .18em;
+    color: var(--ink-faint); opacity: 1;
+  }
+  .set-cap::after {
+    content: ""; flex: 1; height: 1px; border-radius: 1px;
+    background: var(--hairline);
+  }
+  .danger-cap { color: var(--low); }
+  .danger-cap::after { background: rgba(198, 69, 69, .16); }
+
+  /* 行：更大的触控高度、圆角图标、发丝分隔线 */
+  .set-row {
+    min-height: 56px; padding: 10px 14px; gap: 12px;
+    border-radius: 14px; -webkit-tap-highlight-color: transparent;
+  }
+  .set-row:hover { background: transparent; }
+  .set-row:active { background: var(--accent-soft); }
+  .set-row + .set-row { position: relative; }
+  .set-row + .set-row::before {
+    content: ""; position: absolute; top: 0; left: 60px; right: 16px;
+    height: 1px; background: var(--hairline); opacity: .8;
+    pointer-events: none;
+  }
+  .set-ico {
+    width: 34px; height: 34px; border-radius: 11px; font-size: 16px;
+    background: linear-gradient(135deg, var(--accent-soft), var(--wash-strong));
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .55);
+  }
+  .set-label { font-size: 14.5px; line-height: 1.35; }
+  .set-val { max-width: 40%; font-size: 12px; line-height: 1.4; }
+  .set-arrow {
+    width: 26px; height: 26px; display: inline-flex;
+    align-items: center; justify-content: center;
+    border-radius: 50%; background: var(--wash-mid);
+    font-size: 12px; color: var(--ink-faint);
+  }
+  .set-row.link .set-arrow.on { transform: none; }
+  .set-row.sub-row {
+    min-height: 50px; padding-top: 8px; padding-bottom: 8px;
+    padding-left: 60px;
+  }
+  .set-row.sub-row .set-label { font-size: 13.5px; color: var(--ink-soft); }
+  .set-row.sub-row.dim { opacity: .45; }
+
+  /* 开关放大，和 56px 行高匹配 */
+  .set-switch { width: 46px; height: 26px; }
+  .set-switch .knob { width: 22px; height: 22px; }
+  .set-switch.on .knob { transform: translateX(20px); }
+  .set-switch.sm { width: 42px; height: 24px; }
+  .set-switch.sm .knob { width: 20px; height: 20px; }
+  .set-switch.sm.on .knob { transform: translateX(18px); }
+
+  /* 主题 / 语言：两列选项卡片，选中态用主题色填满 */
+  .set-group > .set-opts {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px; margin: 4px 14px 10px; padding: 8px;
+    border-radius: 16px; background: var(--accent-soft);
+  }
+  .set-group > .set-opts .set-opt {
+    width: 100%; min-height: 42px; padding: 0 10px;
+    border: 1.5px solid transparent; border-radius: 11px;
+    background: var(--wash-strong); color: var(--ink-soft);
+    font-size: 13px; white-space: nowrap;
+  }
+  .set-group > .set-opts .set-opt.on {
+    background: var(--accent); border-color: var(--accent);
+    color: #fff; font-weight: 600;
+    box-shadow: 0 4px 10px rgba(150, 82, 48, .16);
+  }
+  /* 语言有 5 项：最后一项独占一行，避免右下角留一个空网格 */
+  .set-group > .set-opts > .set-opt:last-of-type:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+  .lang-pref {
+    grid-column: 1 / -1; margin-top: 0; padding: 12px;
+    border: 1px solid var(--hairline); border-radius: 13px;
+    background: var(--wash-strong);
+  }
+  .lang-pref :deep(.van-switch) { flex: 0 0 auto; }
+  .lang-pref-title { font-size: 13.5px; }
+  .lang-pref-hint { font-size: 11.5px; line-height: 1.5; }
+
+  /* 展开面板：去掉桌面端的 56px 左缩进，字段与按钮铺满 */
+  .set-panel { padding: 2px 14px 14px; gap: 10px; }
+  .set-panel .set-opts.wrap {
+    display: flex; flex-direction: column; gap: 8px;
+    margin: 0; width: 100%;
+  }
+  .set-panel .set-opt {
+    width: 100%; min-height: 44px; border-radius: 12px;
+    font-size: 13.5px;
+  }
+  .set-panel .set-opts.nick-row { flex-direction: row; align-items: center; }
+  .set-panel .nick-row :deep(.van-field) { flex: 1; min-width: 0; }
+  .set-panel .nick-row .set-opt { width: auto; flex: none; padding: 0 16px; }
+  .set-panel :deep(.van-field) {
+    min-height: 44px; padding: 8px 12px;
+    border-radius: 12px; background: var(--wash-mid);
+  }
+  .set-panel :deep(.van-field__control) { font-size: 14px; color: var(--ink); }
+  .set-panel :deep(.van-field__control::placeholder) { color: var(--ink-faint); }
+  .set-panel .sub {
+    margin: 0 2px; font-size: 12px; line-height: 1.55;
+    color: var(--ink-faint);
+  }
+  .set-panel .streak-note { margin: 0 2px; font-size: 12px; }
+
+  /* 未登录通知提示：做成轻量空状态 */
+  .set-group .notice {
+    margin: 4px 14px 10px; padding: 16px 14px;
+    border-radius: 14px; background: var(--wash-mid);
+    font-size: 12.5px; line-height: 1.6; text-align: center;
+  }
+  .set-group .notice::before {
+    content: "\1F514"; display: block; margin-bottom: 6px;
+    font-size: 20px; filter: grayscale(.15);
+  }
+
+  /* 危险区：整组浅红底，按钮保留红调 */
+  .set-group.danger .set-ico {
+    background: rgba(198, 69, 69, .10);
+    box-shadow: inset 0 0 0 1px rgba(198, 69, 69, .08);
+  }
+  .set-group.danger .set-opt.danger {
+    background: rgba(198, 69, 69, .10);
+    border-color: rgba(198, 69, 69, .24);
+    color: var(--low);
+  }
+  .set-group.danger .set-opt.danger:active { background: rgba(198, 69, 69, .17); }
+  .set-group.danger .set-panel .sub { color: var(--low); opacity: .85; }
+
+  /* App 版本行的手动检查按钮也放到触控尺寸 */
+  .set-check {
+    min-height: 34px; padding: 0 12px; border-radius: 10px;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 360px) {
+  .set-top-t h1 { font-size: 23px; }
+  .set-user { padding: 18px 14px; gap: 12px; }
+  .set-user-name { font-size: 16px; }
+  .set-go { padding: 0 12px; }
+  .set-group > .set-opts { grid-template-columns: 1fr; }
+}
 </style>
