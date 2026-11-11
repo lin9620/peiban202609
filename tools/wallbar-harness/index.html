@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>wallbar harness</title>
+  <style>
+    html, body { margin: 0; padding: 0; background: #faf9f5; }
+    /* 暖心墙手机形态的滚动层：CommunityView 里是**内联** style（fixed + inset:0 + overflowY:auto），
+       这里同款复刻，量出来的几何才和真机同一套。 */
+    .wall-scroller { position: fixed; inset: 0; overflow-y: auto; z-index: 1; }
+    .fake-card { margin: 12px; padding: 14px; background: #fffdf9; border: 1px solid #e6dfd8; border-radius: 14px; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

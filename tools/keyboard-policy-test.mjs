@@ -123,12 +123,23 @@ t("style.css：.kb-web 三处让位与 .cap-app 一一对应（改一份就要�
    * 必须补一行 100vh 的同一算式当垫底。 */
   assert(/html\.kb-web \.shell--mobile-nav\.shell--chat \.dm-page\s*\{[^}]*height:\s*calc\(100vh - var\(--kb-h/.test(css),
     "聊天页高度缺 100vh 垫底（旧内核不认 dvh → 整条失效 → 按内容撑高）");
-  assert(/html\.kb-web \.cmt-main-bar\s*\{[^}]*bottom:\s*var\(--kb-h\)/.test(css),
-    "评论底条 bottom 没接 --kb-h");
+  /* 轮 504：网页端的评论底条**不再**用 bottom: var(--kb-h) 这条间接推导。
+   * 真机（iPhone Safari）上它会把条顶到页面顶部 —— --kb-h 链上任一道闸门失效就会拿到
+   * 残留值 / 被夹到 layout-120。现在改由 utils/fixedBar.js 按可视视口钉内联 top，
+   * CSS 只留 bottom: 0 当「算不出来就贴布局视口底」的兜底。 */
+  assert(/html\.kb-web \.cmt-main-bar\s*\{[^}]*bottom:\s*0;/.test(css),
+    "网页端评论底条没有 bottom: 0 兜底（不许再拿 --kb-h 推导）");
+  assert(!/html\.kb-web \.cmt-main-bar\s*\{[^}]*bottom:\s*var\(--kb-h\)/.test(css),
+    "网页端评论底条又回到 --kb-h 间接推导（真机上会把条顶到半空）");
+  const fb = read("src/utils/fixedBar.js");
+  assert(/\.cmt-main-bar/.test(fb) && /fixedBarTop\(/.test(fb),
+    "fixedBar 没接管评论底条（bottom:0 会在键盘底下）");
+  assert(/html\.cap-app \.cmt-main-bar\s*\{[^}]*bottom:\s*var\(--kb-h\)/.test(css),
+    "App 壳评论条没接 --kb-h（那边不跑 fixedBar）");
   assert(/html\.kb-web \.reply-bar\s*\{[^}]*bottom:\s*calc\(var\(--kb-h\) \+ 64px/.test(css),
     "详情页回复条没接 --kb-h");
-  assert(/html\.kb-web \.cmt-main-bar\.wp-emoji-open/.test(css),
-    "表情面板打开时底条没跟着抬（3 段规则缺了会被 2 段的 bottom:var(--kb-h) 压掉）");
+  assert(/html\.kb-web \.cmt-main-bar\.wp-emoji-open[\s\S]{0,200}padding-bottom:\s*var\(--kb-panel-h\)/.test(css),
+    "表情面板打开时底条没让位（轮 504 起是 padding-bottom 撑开，不再是 bottom 抬升）");
 });
 t("keyboardInset：异常一律归零 + 切后台归零（绝不带一条永久空白回来）", () => {
   const js = read("src/utils/keyboardInset.js");
@@ -265,14 +276,15 @@ t("chatViewport：fixed 接管存在且被 main.js 调用", () => {
 });
 t("chatViewport：高度决策交给纯函数（轮 468：不再在脚本里按单一内核语义取值）", () => {
   const js = read("src/utils/chatViewport.js");
-  assert(/pickChatHeight\(window\.innerHeight/.test(js),
-    "没把 innerHeight / vv.height / --kb-h 喂给 pickChatHeight");
-  assert(/pickChatTop\(/.test(js), "没调用 pickChatTop");
+  /* 轮 503：height + top 一起由 pickChatRect 裁决（它内部就是 pickChatHeight + 裁到可视区） */
+  assert(/pickChatRect\(window\.innerHeight/.test(js),
+    "没把 innerHeight / vv.height / vvTop / --kb-h 喂给 pickChatRect");
+  assert(/from "\.\/chatHeight\.js"/.test(js), "没从 chatHeight 引纯函数");
   /* 轮 470：判据从「--kb-h 有值」改成「可视视口缩了」(kbOpen)。原因是多内核矩阵实测：
      部分国产内核键盘弹起时不派发 visualViewport 事件，--kb-h 恒为 0；而 overlay 键盘下
      100dvh 根本不变 → 容器仍全屏高，底边落到键盘底下，输入条被整个盖住。
      真正的理由是「键盘占到地方了」，不是「某条链路算出值了」。 */
-  assert(/const \{ h, kbOpen \} = pickChatHeight/.test(js), "没接 pickChatHeight 的 kbOpen");
+  assert(/const kbOpen = rect\.kbOpen/.test(js), "没接 pickChatRect 的 kbOpen");
   assert(/useInlineH = kbOpen \|\| !supportsDvh/.test(js),
     "内联高度判据没走 kbOpen（overlay 且不派发事件的内核会在键盘底下留全屏高）");
   assert(/supportsDvh/.test(js), "没有 dvh 能力探测（老内核要退回写死）");

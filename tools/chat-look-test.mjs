@@ -63,12 +63,12 @@ t("L4 手机聊天底栏：顶部只让状态栏、底部只让安全区（不�
 
 t("L5 表情面板打开时底栏让位仍然归零（轮 347 那条不能被顶掉；轮 350 面板→键盘交接同款）", () => {
   has(CSS, /\.dm-thread\.wp-emoji-open,\s*\n\s*\.shell--mobile-nav\.shell--chat \.dm-thread\.wp-kb-swap \{ padding-bottom: 0; \}/, "面板打开时底栏让位没了（输入条会被顶到半空）");
-  has(BC, /:host\(\.wp-emoji-open\) \.vac-room-footer \{\s*\n\s*padding-bottom: var\(--wp-emoji-h\)/, "组件内 footer 让位没了");
+  has(BC, /:host\(\.wp-emoji-open\) \.vac-box-footer \{\s*\n\s*padding-bottom: var\(--wp-emoji-h\)/, "组件内 footer 让位没了");
 });
 
 t("L7 轮 350 面板→键盘交接：让位钉住 + 过渡同曲线（否则输入框先掉屏底再被顶回来）", () => {
-  has(BC, /:host\(\.wp-kb-swap\) \.vac-room-footer \{\s*\n\s*padding-bottom: var\(--wp-emoji-h\) !important;\s*\n\s*transition: none !important;/, "没有 .wp-kb-swap 的钉住规则（输入框会先掉屏底）");
-  has(BC, /\.vac-room-footer \{ transition: padding-bottom \.22s cubic-bezier\(\.2, \.8, \.2, 1\); \}/, "footer 过渡不是常驻/曲线与 .dm-page 不一致（交接时会抖）");
+  has(BC, /:host\(\.wp-kb-swap\) \.vac-box-footer \{\s*\n\s*padding-bottom: var\(--wp-emoji-h\) !important;\s*\n\s*transition: none !important;/, "没有 .wp-kb-swap 的钉住规则（输入框会先掉屏底）");
+  has(BC, /\.vac-box-footer \{ transition: padding-bottom \.22s cubic-bezier\(\.2, \.8, \.2, 1\); \}/, "footer 过渡不是常驻/曲线与 .dm-page 不一致（交接时会抖）");
   has(BC, /const holdForKeyboard = \(\) => \{/, "没有 holdForKeyboard");
   has(BC, /holdForKeyboard\(\); {10,}\/\* 让位先钉住/, "closeKeepFocus 里没调 holdForKeyboard（或没在收面板之前调）");
   has(BC, /if \(v > 0\) endKbSwap\(\);/, "没有等 --kb-h > 0 再摘钉");

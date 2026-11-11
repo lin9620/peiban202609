@@ -21,7 +21,7 @@
  * 只认「移动形态 + 聊天面板真的渲染了」这一条事实。
  */
 
-import { pickChatHeight, pickChatTop } from "./chatHeight.js";
+import { pickChatRect } from "./chatHeight.js";
 
 const MOBILE_QUERY = "(max-width: 899px)";
 const MOBILE = typeof window !== "undefined" && window.matchMedia
@@ -114,12 +114,18 @@ function sync() {
   const kbRaw = parseFloat(
     getComputedStyle(document.documentElement).getPropertyValue("--kb-h")
   ) || 0;
-  const { h, kbOpen } = pickChatHeight(window.innerHeight, vv ? vv.height : 0, kbRaw);
+  const vvH = vv && vv.height > 0 ? vv.height : 0;
+  const vvTop = vv ? Math.max(0, Math.round(vv.offsetTop || 0)) : 0;
+  /* 轮 503：整块「能看见哪一段」的裁决收进 pickChatRect（纯函数、有单测）。
+   * 关键一条：可视视口被上推时（iOS 为露出光标会这么干）页面必须同时缩到可视高，
+   * 否则 fixed 的页面比能看见的那块高 —— iOS 一推，整页跑到屏幕上方：输入条贴在
+   * 地址栏底下、下面一大片空白、消息一条不见（用户四张截图里的第 4 张）。 */
+  const rect = pickChatRect(window.innerHeight, vvH, vvTop, kbRaw);
+  const h = rect.h;
+  const kbOpen = rect.kbOpen;
   const left = Math.round(vv ? vv.offsetLeft : 0);
   const w = Math.round(document.documentElement.clientWidth || window.innerWidth);
-  /* offsetTop 是「可视视口相对布局视口的位移」——iOS 为了让光标可见会把可视视口往上推，
-   * fixed 元素却钉在布局视口上，不补这一下就会错位。补偿上限由 pickChatTop 夹住。 */
-  const top = pickChatTop(window.innerHeight, vv ? vv.offsetTop : 0, h);
+  const top = rect.top;
   if (!(h > 0) || !(w > 0)) return;
 
   if (page !== el) {

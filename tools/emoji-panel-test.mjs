@@ -48,7 +48,10 @@ t("E3 暖心墙：picker ref + 打开时去搜索框", () => {
   has(WC, /import \{ hideEmojiSearch \} from "\.\.\/utils\/emojiPanel\.js"/, "WpComposer 没引工具");
   has(WC, /const picker = ref\(null\)/, "没有 picker ref");
   has(WC, /<emoji-picker data-source="\/emoji\/data\.json" ref="picker"/, "模板没挂 ref");
-  has(WC, /watch\(emojiOpen, async \(open\) => \{[\s\S]{0,420}hideEmojiSearch\(picker\.value\)/, "打开时没去搜索框");
+  /* 别用「多少个字符以内必须有 X」这种窗口判据：注释稍微写长一点就假红（轮 504 踩过）。
+     直接取 watch 块本体判断。 */
+  const watchBlk = (WC.match(/watch\(emojiOpen,[\s\S]*?\n\}\);/) || [""])[0];
+  has(watchBlk, /hideEmojiSearch\(picker\.value\)/, "打开时没去搜索框");
   has(WC, /setTimeout\(\(\) => hideEmojiSearch\(picker\.value\), 80\)/, "没有晚一帧的补刀（shadow 未就绪时）");
 });
 
@@ -77,7 +80,9 @@ t("E5 暖心墙：pointerdown 只记标记，click 才收面板（否则底条�
 t("E6 暖心墙：面板打开先收键盘（跟会话同一套）", () => {
   has(WC, /const isSheet = \(\) =>[\s\S]{0,200}matchMedia\("\(max-width: 899px\)"\)/, "没有 sheet 判据");
   has(WC, /if \(isSheet\(\)\) \{[\s\S]{0,260}ta\.value\.blur\(\)/, "打开面板没 blur（键盘会压在面板上）");
-  has(WC, /document\.documentElement\.style\.setProperty\("--kb-h", "0px"\)/, "没把键盘让位归零");
+  /* 轮 504：让位归零改成走 setPanelOpen（写 --kb-h=0 + 作废变化判据 + 重算），
+     手写 --kb-h=0 会把「上次写过的值」留在缓存里，面板收完回键盘时被吞掉。 */
+  has(WC, /setPanelOpen\(!!open && isSheet\(\)\);/, "打开/关闭面板没走 setPanelOpen");
 });
 
 /* ── ③ 暖心墙面板与会话同款（贴底整宽） ── */
@@ -100,10 +105,20 @@ t("E7 暖心墙：≤899px 面板贴底整宽 + 高度与会话同一条", () =>
     ":root 里 --kb-panel-h 不是「键盘高 → JS px 兜底 → vh 末位兜底」这条链");
 });
 
-t("E8 底条抬到面板上沿（暖心墙手机主评论条）", () => {
-  has(CSS, /\.cmt-main-bar\.wp-emoji-open,[\s\S]{0,200}bottom: var\(--kb-panel-h\);/, "底条没抬起来（会被面板盖住）");
-  has(CSS, /html\.kb-web \.cmt-main-bar\.wp-emoji-open,[\s\S]{0,80}bottom: var\(--kb-panel-h\);/, "网页端那条没跟同一个变量");
-  has(CSS, /html\.cap-app \.cmt-main-bar\.wp-emoji-open/, "App 壳那条没覆盖（bottom 仍是 --kb-h）");
+t("E8 底条与面板共用一个参照系（轮 504：网页端 padding 让位 / App 壳 bottom 抬升）", () => {
+  /* 网页端：条不再写 bottom: var(--kb-panel-h)（那是把面板位置又推导一遍），
+     改为 padding-bottom 把条撑高 —— 条和面板都由 fixedBar 钉在可视底。 */
+  has(CSS, /html\.kb-web \.cmt-main-bar\.wp-emoji-open,[\s\S]{0,160}padding-bottom: var\(--kb-panel-h\);/,
+    "网页端没改成 padding 让位（bottom 会和 fixedBar 的内联 top 打架）");
+  has(CSS, /html\.cap-app \.cmt-main-bar\.wp-emoji-open,[\s\S]{0,120}bottom: var\(--kb-panel-h\);/,
+    "App 壳那条没了（那边不跑 fixedBar，仍要靠 bottom 抬）");
+  /* 网页端的条不许再拿 --kb-h 当 bottom：那是间接推导，任一道闸门失效就会把条顶到半空。
+     ⚠ 必须先把注释剥掉再断言 —— 注释里就写着「不再用 bottom: var(--kb-h)」，
+     直接 match 会被这句解释骗过去（轮 502 的 I7 就是这么假绿的）。 */
+  const kbWebBar = CSS.match(/html\.kb-web \.cmt-main-bar \{([\s\S]{0,400}?)\}/);
+  const kbWebBody = kbWebBar ? kbWebBar[1].replace(/\/\*[\s\S]*?\*\//g, "") : "";
+  assert.ok(kbWebBar && /bottom: 0;/.test(kbWebBody), "网页端条底不是 0（还在用 --kb-h 间接推导）");
+  assert.ok(kbWebBar && !/bottom: var\(--kb-h\)/.test(kbWebBody), "网页端条底还在吃 --kb-h");
   has(WC, /bar\.classList\.toggle\("wp-emoji-open", !!open && isSheet\(\)\)/, "没给底条挂类");
   has(WC, /root\.value\.closest\("\.cmt-main-bar"\)/, "找不到底条");
 });
@@ -185,13 +200,18 @@ t("E14 emojiPanel.js 保持纯 DOM（不许 import 库，否则 Node 单测崩�
  * 两条同时失效 → footer 的 padding-bottom 归零 → 面板把输入条整条盖住。
  * Edge/Chrome 上两条都通，本机怎么测都是好的；用户机器上是一条白板。
  * 现在的做法：面板一出现就「量」它实际占掉多少，写 footer 的内联 padding-bottom
- * （内联压过一切选择器），并且盯着面板尺寸变化重量。 */
+ * （内联压过一切选择器），并且盯着面板尺寸变化重量。
+ * 轮 503：量的是**面板自己的高度**（面板已改成 footer 内的绝对定位块，底边=页面底边），
+ * 而 padding 必须落在 .vac-box-footer 上 —— 它是 position:relative 的那一层，
+ * 也是面板的定位宿主；写在外层 #room-footer 上面板根本不跟着走。 */
 t("E15 会话页让位不赌选择器：量出来的内联 padding（:has 不支持、类没挂上也不塌）", () => {
   has(BC, /const emojiPad = \(open\) => \{/, "没有「量出来」的让位函数");
-  has(BC, /querySelector\("\.vac-emoji-picker"\)[\s\S]{0,400}getBoundingClientRect\(\)/, "没有量面板的真实矩形");
-  has(BC, /f\.style\.paddingBottom = covered \+ "px"/, "没写内联 padding-bottom（选择器一失效就白给）");
-  /* 面板底下到屏底的缝也要算进去，否则面板没贴底时会少补一条 */
-  has(BC, /Math\.round\(b\.height\) \+ Math\.max\(0, Math\.round\(vh - b\.bottom\)\)/, "只算了面板高度，没算它离屏底的缝");
+  has(BC, /querySelector\("\.vac-emoji-picker"\)[\s\S]{0,500}getBoundingClientRect\(\)/, "没有量面板的真实矩形");
+  has(BC, /f\.style\.paddingBottom = h \+ "px"/, "没写内联 padding-bottom（选择器一失效就白给）");
+  /* 面板现在锚在页面底边上，「离屏底还有多少」那一段是旧 fixed 锚点造成的假缝，
+     再补进去就会把输入条整体抬高一条（iOS 底部工具栏那 ~44px） */
+  has(BC, /getBoundingClientRect\(\)\.height\);\s*\n\s*if \(h > 0\) f\.style\.paddingBottom/, "让位高度不是取面板自身高度");
+  has(BC, /const footOf = \(\)[\s\S]{0,220}vac-box-footer/, "让位没落在 .vac-box-footer（面板的定位宿主）上");
   /* 收起时必须清掉内联值，否则关掉面板后输入条永远悬在半空 */
   has(BC, /if \(!open \|\| !sheetMode\(\)\) \{ stopPadRO\(\); foot\.style\.paddingBottom = ""; return; \}/,
     "收起面板没清内联让位（输入条会一直悬空）");
@@ -238,6 +258,50 @@ t("E17 面板高度尺子：兜底与上限用 JS 的 px，vh 只当最后兜底
   /* 基线只往上记：弹完键盘布局视口没复原的机型，矮值不能盖掉真基线 */
   has(KI, /inner > restH\) \{\s*\n\s*restH = inner;\s*\n\s*writePanelRuler\(true\);/, "基线还会被矮视口覆盖（面板高度会一直错）");
   has(KI, /orientationchange[\s\S]{0,240}restH = window\.innerHeight \|\| 0;/, "旋屏没重取基线");
+});
+
+t("E18 面板不许再 fixed 到布局视口底：锚点必须是页面盒子（轮 503 用户四张截图）", () => {
+  /* 病根：footer 的位置由 .dm-page（页面盒子，= 可视视口）决定，面板却锚在布局视口底。
+     iOS Safari 的底部工具栏浮在页面之上时，面板最后一排正好被它吃掉；键盘把可视视口
+     顶开、页面跟着上移时，fixed 的面板留在原地 —— 输入条和面板当场分家。 */
+  const css = BC;
+  has(css, /\.vac-emoji-wrapper \.vac-emoji-picker \{[^}]*position: absolute !important/, "面板还不是 absolute（fixed 会锚在布局视口底）");
+  no(css, /\.vac-emoji-wrapper \.vac-emoji-picker \{[^}]*position: fixed/, "面板又回 fixed 了");
+  /* 定位宿主：库里的 wrapper 自带 relative，必须摘掉，否则 absolute 锚在那个按钮大的小盒子上 */
+  has(css, /:host\(\.wp-emoji-open\) \.vac-emoji-wrapper \{\s*\n\s*position: static !important;/,
+    "没把库里的 .vac-emoji-wrapper 摘成 static（面板会飘到屏幕中间）");
+  /* padding 必须落在 .vac-box-footer：内层才是 relative 的那一层（= 面板的定位宿主） */
+  has(css, /\.vac-room-footer:has\(\.vac-emoji-picker\) \.vac-box-footer,\s*\n\s*:host\(\.wp-emoji-open\) \.vac-box-footer \{/,
+    "让位 padding 没落在 .vac-box-footer（写在外层面板不跟着走）");
+  /* 输入行不许被 position/transform 抬高：那会抢走面板的定位宿主
+     （实测：给 .vac-icon-textarea 加 position:relative 后，面板立刻锚回到输入行底边，
+     变成 180..516 悬在聊天记录中间）。层级问题用 z-index 之外的办法解决。 */
+  no(css, /\.vac-box-footer > \.vac-icon-textarea \{\s*\n\s*position: relative/, "输入行被定位了（会抢走面板的包含块）");
+});
+
+t("E19 面板开关只走 setPanelOpen：手写 --kb-h 会把「值没变不重写」的判据骗死", () => {
+  const KI = fs.readFileSync("src/utils/keyboardInset.js", "utf8");
+  has(KI, /export function setPanelOpen\(open\)/, "keyboardInset 没有 setPanelOpen");
+  has(KI, /lastWebKb = -1;\s*\n\s*lastPanelKb = -1;/, "setPanelOpen 没把「上次写过的值」作废（同一高度第二次会被吞）");
+  has(KI, /const h = panelOpen \? 0 : kbInsetValue\(raw, focused\);/, "applyWeb 没认面板态（键盘收起动画期间会抖一记）");
+  has(BC, /setPanelOpen\(open\);/, "DmVacChat 没接 setPanelOpen");
+  no(BC, /document\.documentElement\.style\.setProperty\("--kb-h", "0px"\)/, "还在手写 --kb-h（和变化判据打架，输入条会留在键盘底下）");
+  /* 面板开着时「收起→键盘」的钉住时间：1.2s 太长，用户这 1.2s 里看到的就是残影 */
+  has(BC, /kbSwapTimer = setTimeout\(endKbSwap, 600\);/, "kb-swap 兜底还是 1.2s 级的（残影太久）");
+  /* 面板一开就该撤掉 swap（否则 padding 被 !important 钉住） */
+  has(BC, /if \(open && !emojiWasOpen\) \{[\s\S]{0,400}endKbSwap\(\);/, "面板重新打开时没撤掉 kb-swap");
+  /* 轮 504：暖心墙的 WpComposer 走同一道门。它原来是 toggleEmoji 里手写 --kb-h=0，
+     真机实测「面板收完回键盘」之后 --kb-h 一直停在 0，页面不再让位。 */
+  has(WC, /import \{[^}]*setPanelOpen[^}]*\} from "\.\.\/utils\/keyboardInset\.js"/, "WpComposer 没引 setPanelOpen");
+  has(WC, /setPanelOpen\(!!open && isSheet\(\)\);/, "WpComposer 的面板开关没走 setPanelOpen");
+  no(WC, /document\.documentElement\.style\.setProperty\("--kb-h"/, "WpComposer 还在手写 --kb-h");
+});
+
+t("E20 --kb-last 只增不减：同一台机的面板高度不许随地址栏伸缩变来变去", () => {
+  const KI = fs.readFileSync("src/utils/keyboardInset.js", "utf8");
+  has(KI, /let panelMax = 0;/, "没有 panelMax");
+  has(KI, /panelMax = Math\.max\(panelMax, Math\.round\(panel\)\);/, "--kb-last 还是每次覆写（面板高度会跳）");
+  has(KI, /panelMax = Math\.max\(panelMax, Math\.round\(px\)\);/, "px 支路没取最大值");
 });
 
 console.log(`emoji-panel-test: ${pass} pass, ${fails.length} fail`);

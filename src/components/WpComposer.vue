@@ -12,7 +12,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import "emoji-picker-element";
 import { t } from "../i18n.js";
 import { isMobileNav, isApp } from "../stores/uiStore.js";
-import { webSwapNeeded } from "../utils/keyboardInset.js";
+import { webSwapNeeded, setPanelOpen } from "../utils/keyboardInset.js";
 import { enterSends, insertText, pickerOpensUp } from "../utils/composer.js";
 import { hideEmojiSearch } from "../utils/emojiPanel.js";
 import { scheduleEmojiWarm } from "../utils/emojiWarm.js";
@@ -105,7 +105,9 @@ const toggleEmoji = () => {
      否则面板会被输入法压在后面。收键盘 = blur + 让位归零，与会话同一套。 */
   if (isSheet()) {
     try { if (ta.value) ta.value.blur(); } catch (e) { /* 无焦点环境 */ }
-    try { document.documentElement.style.setProperty("--kb-h", "0px"); } catch (e) { /* 忽略 */ }
+    /* 轮 504：让位归零由下方 watch(emojiOpen) 里的 setPanelOpen 统一做。
+       原来这里直接 style.setProperty("--kb-h","0px")，绕过了 keyboardInset 的
+       缓存判据 —— 面板关掉后同一个键盘高度被当成「没变化」，页面停在不让位。 */
   }
 };
 
@@ -131,6 +133,10 @@ function watchPickerReady() {
 }
 watch(emojiOpen, async (open) => {
   syncBar(open);
+  /* 轮 504：开关统一走 setPanelOpen（开=整屏，关=作废缓存后重算）。
+   * 以前只有「开」这一半，而且是 toggleEmoji 手写 --kb-h=0 绕过去的。
+   * 桌面也照传 false：转桌面/拖宽之后 panelOpen 不许留在 true（否则 --kb-h 永远归零）。 */
+  setPanelOpen(!!open && isSheet());
   if (!open) { clearTimeout(readyTimer); pickerReady.value = false; return; }
   await nextTick();
   hideEmojiSearch(picker.value);

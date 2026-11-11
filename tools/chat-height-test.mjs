@@ -18,7 +18,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { pickChatHeight, pickChatTop, kbInsetValue, fixedBarTop, KB_GAP, TOOLBAR_GAP } from "../src/utils/chatHeight.js";
+import { pickChatHeight, pickChatTop, pickChatRect, kbInsetValue, fixedBarTop, KB_GAP, TOOLBAR_GAP } from "../src/utils/chatHeight.js";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (rel) => fs.readFileSync(path.join(root, rel), "utf8");
@@ -172,12 +172,12 @@ t("T17 top 恒为非负、且不超过 inner−h", () => {
 
 /* ══════════ ⑦ 运行时确实走这套判据（防回退） ══════════ */
 
-t("T18 chatViewport.js 必须调用 pickChatHeight / pickChatTop，不许再内联三元", () => {
+t("T18 chatViewport.js 的高度裁决必须走纯函数（pickChatRect 包住 height/top），不许内联三元", () => {
   const js = read("src/utils/chatViewport.js");
-  assert(/import \{[^}]*pickChatHeight[^}]*\} from "\.\/chatHeight\.js"/.test(js),
-    "没 import 纯函数");
-  assert(/pickChatHeight\(window\.innerHeight/.test(js), "没把 innerHeight 喂给 pickChatHeight");
-  assert(/pickChatTop\(/.test(js), "没调用 pickChatTop");
+  assert(/import \{[^}]*pickChatRect[^}]*\} from "\.\/chatHeight\.js"/.test(js),
+    "没 import 纯函数（轮 503 起高度+偏移一起由 pickChatRect 裁决）");
+  assert(/pickChatRect\(window\.innerHeight/.test(js), "没把 innerHeight 喂给 pickChatRect");
+  assert(/pickChatHeight/.test(read("src/utils/chatHeight.js")), "pickChatHeight 不见了");
   assert(!/kbRaw > 0 \? \(vv \? vv\.height/.test(js), "还留着内联三元（两份口径迟早漂）");
 });
 
@@ -267,12 +267,15 @@ t("T28 吸底条：脏数据 / 条高为 0 → 返回 0，调用方放弃定位�
   assert.equal(fixedBarTop(40, 40, 0, 0, 200), 0);
 });
 
-t("T29 fixedBar.js：App 壳早退、不碰 bottom 残留、面板打开时让回 CSS", () => {
+t("T29 fixedBar.js：App 壳早退、不碰 bottom 残留、表情面板同一套定位（轮504）", () => {
   const js = read("src/utils/fixedBar.js");
   assert(/if \(isNativeShell\(\)\) return;/.test(js), "没有 App 壳守卫（会与原生 --kb-h 打架）");
   assert(/el\.style\.bottom = "auto"/.test(js), "没清掉 CSS 的 bottom（两个都生效会互相顶）");
-  assert(/wp-emoji-open/.test(js) && /release\(el\)/.test(js),
-    "表情面板打开时没让回 CSS（内联 top 会把条压到面板上）");
+  /* 轮 504：面板原来是 fixed 锚布局视口底，键盘/工具栏一压就整块跑到屏幕外
+     （393×852 实测：可视底 522，面板 522~852）。交给同一个函数钉 top。 */
+  assert(/\.wp-composer-picker/.test(js), "表情面板没进 SELECTOR（仍锚布局视口底，会被键盘切）");
+  assert(/getComputedStyle\(el\)\.position/.test(js), "没按 computed position 排除桌面的 absolute 浮窗");
+  assert(!/PANEL_CLASSES/.test(js), "还留着「面板打开就交回 CSS」的分支（条会退回布局视口参照系）");
   assert(!/\.offsetParent/.test(js), "又用 offsetParent 判可见（fixed 元素恒为 null，会全部跳过）");
 });
 
@@ -287,8 +290,10 @@ t("T31 chatViewport.js：键盘占位就必须写内联高度（不能只看 --k
   /* 轮 470 多内核矩阵抓到的真 bug：某些国产内核键盘弹起时不派发 visualViewport 事件，
      --kb-h 一直是 0；而 overlay 键盘下 100dvh 根本不变（布局视口没动）→ 容器仍全屏高，
      底边落到键盘底下，输入条被整个盖住（用户「打字看不见」）。
-     判据必须是「可视视口缩了」(kbOpen)，不能是「--kb-h 有值」(那只是某条链路的结果)。 */
-  assert(/const \{ h, kbOpen \} = pickChatHeight/.test(js), "没接 pickChatHeight 的 kbOpen");
+     判据必须是「可视视口缩了」(kbOpen)，不能是「--kb-h 有值」(那只是某条链路的结果)。
+     轮 503 起 kbOpen 由 pickChatRect 一并给出（它内部就是 pickChatHeight）。 */
+  assert(/const kbOpen = rect\.kbOpen/.test(js) || /const \{ h, kbOpen \} = pickChatHeight/.test(js),
+    "没接 pickChatRect / pickChatHeight 的 kbOpen");
   assert(/const useInlineH = kbOpen \|\| !supportsDvh/.test(js),
     "内联高度判据没走 kbOpen（overlay 且不派发事件的内核会在键盘底下留全屏高）");
 });
@@ -421,6 +426,49 @@ t("T36 100dvh 不允许裸写（扫 src 下全部 .css / .vue，不认 dvh 的�
   const styleCss = read("src/style.css").replace(/\/\*[\s\S]*?\*\//g, (s) => s.replace(/[^\n]/g, " "));
   assert(/\.dm-page\s*\{[^}]*height:\s*100vh/.test(styleCss) || /dm-page[^{}]*\{[^}]*height:\s*100vh/.test(styleCss),
     ".dm-page 没有 100vh 兜底");
+});
+
+t("T37 iOS 把可视视口上推时（offsetTop>0），页面必须裁进 [top, top+vvH]（用户第 4 张截图）", () => {
+  /* 现场：输入条贴在地址栏底下、下面一大片空白、消息一条不见。
+     机理：页面仍是整屏高，iOS 为露出光标把可视视口一推，fixed 的页面跟着跑到上方。 */
+  /* ① 键盘态 + 上推 300：即使 --kb-h 已经写对，也要跟着 top 走 */
+  let r = pickChatRect(852, 516, 300, 336);
+  assert.equal(r.h, 516, `页面没缩到可视高（得到 ${r.h}）`);
+  assert.equal(r.top, 300, `页面没跟到可视视口位移（得到 ${r.top}）`);
+  assert.equal(r.kbOpen, true, "被上推时应当按键盘态处理（内联写高度）");
+  /* ② 键盘态但 --kb-h 是 0（链路断掉的那种）：靠差值也要缩 */
+  r = pickChatRect(852, 516, 300, 0);
+  assert.equal(r.h, 516, "没靠差值识别被上推的键盘态");
+  assert.equal(r.top, 300);
+  /* ③ 视口几乎满、只上推了一点点（差值不到 KB_GAP，差异判据救不了）——
+     这正是 pickChatRect 那条裁剪存在的理由 */
+  r = pickChatRect(852, 800, 52, 0);
+  assert.equal(r.h, 800, "没裁进可视高（页面会比能看见的那块高 52px）");
+  assert.equal(r.top, 52, "没跟可视视口位移");
+  assert.equal(r.kbOpen, true, "裁过之后必须走内联高度");
+});
+
+t("T38 pickChatRect 的其它形态：面板态 / vv 脏大 / 小米 31px 都不许变", () => {
+  /* 无键盘、没上推：整屏，top 0 */
+  let r = pickChatRect(852, 852, 0, 0);
+  assert.equal(r.h, 852); assert.equal(r.top, 0); assert.equal(r.kbOpen, false);
+  /* vv 比 inner 还大（脏内核）且被上推：不许把页面拉高，top 仍为 0 */
+  r = pickChatRect(852, 900, 300, 0);
+  assert.equal(r.h, 852, "vv 脏大时把页面拉高了");
+  assert.equal(r.top, 0, "vv 脏大时不该位移");
+  /* 小米浏览器：无键盘 vv 比 inner 少 31（工具栏重复扣），页面仍取 inner */
+  r = pickChatRect(768, 737, 0, 0);
+  assert.equal(r.h, 768, "小米那 31px 空白回来了");
+  /* 上推但 vv 没缩（页面滚动而已）：不许缩页面，也不许位移 */
+  r = pickChatRect(852, 852, 120, 0);
+  assert.equal(r.h, 852);
+  assert.equal(r.top, 0);
+});
+
+t("T39 高度裁决不许再散落成 if 分支：chatViewport 只认 pickChatRect 的返回值", () => {
+  const js = read("src/utils/chatViewport.js");
+  assert(/const rect = pickChatRect\(/.test(js), "chatViewport 没走 pickChatRect");
+  assert(!/vvTop > 0 && vvH > 0 && vvH < h/.test(js), "又在内联写「上推就缩」的分支了（应该收进纯函数）");
 });
 
 console.log(out.join("\n"));

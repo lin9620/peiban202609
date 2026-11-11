@@ -284,7 +284,15 @@ t("V20 组件按旧版设计上色（头部 / 气泡 / 时间 / 日期 / 头像 
      只留组件自己的 textarea + 纸飞机发送键；颜色走 styles 的官方变量。 */
   hasNot(VAC, /content: "发送"/, "又用 CSS 画了个假「发送」键");
   hasNot(VAC, /\.vac-textarea \{/, "又在改组件输入框的结构 / 皮肤");
-  hasNot(VAC, /\.vac-box-footer \{/, "又在改组件输入条的排版");
+  /* 轮 503 起允许**只动 padding-bottom**：表情面板改成 footer 内的绝对定位块，
+     让位必须加在 .vac-box-footer（position:relative 的那一层 = 面板的定位宿主）上。
+     别的排版/皮肤（display / padding 其它方向 / height / border / background）照旧不许碰。 */
+  for (const m of VAC.matchAll(/\.vac-box-footer \{[^}]*\}/g)) {
+    const body = m[0];
+    if (!/padding-bottom|transition/.test(body)) continue;
+    const cleaned = body.replace(/padding-bottom:[^;]*;?/g, "").replace(/transition:[^;]*;?/g, "").replace(/[.\w\-:()\s{}]/g, "");
+    if (cleaned) throw new Error("又在改组件输入条的排版：" + body.slice(0, 120));
+  }
   hasNot(VAC, /\.vac-icon-textarea[\s\S]{0,300}svg \{ display: none/, "又把组件的发送图标藏了");
   has(VAC, /backgroundInput: "var\(--wash-strong/, "输入框底色要走组件 styles.backgroundInput");
   has(VAC, /send: "var\(--accent/, "发送键颜色要走组件 styles.icons.send");

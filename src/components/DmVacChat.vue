@@ -21,7 +21,7 @@ import { avatarUrlFor } from "../utils/avatar.js";
 import { hideEmojiSearchIn } from "../utils/emojiPanel.js";
 import { scheduleEmojiWarm } from "../utils/emojiWarm.js";
 import { isApp } from "../stores/uiStore.js";
-import { webSwapNeeded } from "../utils/keyboardInset.js";
+import { webSwapNeeded, setPanelOpen } from "../utils/keyboardInset.js";
 import { t } from "../i18n.js";
 
 register();
@@ -636,28 +636,45 @@ emoji-picker {
 }
 
 /* 9) 轮 347 · 手机表情面板 = 贴底整宽（微信式），输入条落在面板上沿。
-   面板高用 --wp-emoji-h（≈键盘高），footer 的 padding-bottom 同步撑到同高；
-   面板本身 fixed 到屏底，safe-area 用 padding-bottom 让开手势条。 */
+   面板高用 --wp-emoji-h（≈键盘高），footer 的 padding-bottom 同步撑到同高。
+
+   轮 503 · 面板从「fixed 到布局视口底」改成「absolute 到 footer 的 padding 区」。
+   病根（用户四张 iPhone 截图）：footer 的位置由 .dm-page 这个**页面盒子**决定，
+   面板却锚在**布局视口**底 —— 两个参照系。iOS Safari 的底部工具栏浮在页面之上时，
+   面板最后一排正好被它吃掉；键盘把可视视口顶开、页面跟着上移时更离谱：
+   fixed 的面板留在原地，输入条和面板当场分家。
+   改完只剩一个参照系：padding 有多高，面板就有多高，输入条必然压在面板上沿；
+   页面盒子本身在可视区内，safe-area 也不用再单独让。 */
 :host { --wp-emoji-h: var(--kb-panel-h, min(46vh, 320px)); }
 @media (max-width: 899px) {
   /* 轮 350：过渡常驻在 footer 上 —— 面板→键盘交接时，padding 和 .dm-page 的 height
-     同曲线同时长（.22s）各走 --wp-emoji-h，输入框原地不动（详见脚本里的 holdForKeyboard）。 */
-  .vac-room-footer { transition: padding-bottom .22s cubic-bezier(.2, .8, .2, 1); }
-  .vac-room-footer:has(.vac-emoji-picker),
-  :host(.wp-emoji-open) .vac-room-footer {
+     同曲线同时长（.22s）各走 --wp-emoji-h，输入框原地不动（详见脚本里的 holdForKeyboard）。
+     轮 503：padding 落在 .vac-box-footer 而不是外层 .vac-room-footer —— 内层才是
+     position:relative 的那一个（= 面板的定位宿主），padding 加在外层面板根本不动，
+     会锚在「输入条下沿」往上长，反而盖住聊天记录。 */
+  .vac-box-footer { transition: padding-bottom .22s cubic-bezier(.2, .8, .2, 1); }
+  /* 定位宿主必须是 footer：库里的 .vac-emoji-wrapper 自带 position:relative，
+     不摘掉的话 absolute 会锚在那个按钮大的小盒子上（面板会飘到屏幕中间）。 */
+  .vac-emoji-wrapper:has(.vac-emoji-picker),
+  :host(.wp-emoji-open) .vac-emoji-wrapper {
+    position: static !important;
+  }
+  .vac-room-footer:has(.vac-emoji-picker) .vac-box-footer,
+  :host(.wp-emoji-open) .vac-box-footer {
     padding-bottom: var(--wp-emoji-h);
   }
   /* 面板已收、键盘还没到：让位先钉住（关掉过渡，别提前塌下去） */
-  :host(.wp-kb-swap) .vac-room-footer {
+  :host(.wp-kb-swap) .vac-box-footer {
     padding-bottom: var(--wp-emoji-h) !important;
     transition: none !important;
   }
   .vac-emoji-wrapper .vac-emoji-picker {
-    position: fixed !important;
+    position: absolute !important;
     left: 0 !important;
     right: 0 !important;
     top: auto !important;
     bottom: 0 !important;
+    z-index: 1 !important;
     width: 100% !important;
     height: var(--wp-emoji-h) !important;
     max-height: none !important;
@@ -748,19 +765,28 @@ const emojiPad = (open) => {
   clearTimeout(emojiPadTimer);
   const n = el.value;
   const sr = n && n.shadowRoot;
-  const foot = sr && sr.querySelector("#room-footer");
+  /* 轮 503：padding 必须加在 .vac-box-footer（position:relative 的那一层）上，
+     它才是面板的定位宿主。加在外层 #room-footer 上面板不会跟着走。 */
+  const footOf = () => {
+    const s = n && n.shadowRoot;
+    if (!s) return null;
+    return s.querySelector("#room-footer .vac-box-footer") || s.querySelector(".vac-box-footer") || s.querySelector("#room-footer");
+  };
+  const foot = footOf();
   if (!foot) return;
   if (!open || !sheetMode()) { stopPadRO(); foot.style.paddingBottom = ""; return; }
   const put = () => {
     const s = n.shadowRoot;
-    const f = s && s.querySelector("#room-footer");
+    const f = s && (s.querySelector("#room-footer .vac-box-footer") || s.querySelector(".vac-box-footer") || s.querySelector("#room-footer"));
     const p = s && s.querySelector(".vac-emoji-picker");
     if (!f) return;
     if (!p || !sheetMode()) { f.style.paddingBottom = ""; return; }
-    const b = p.getBoundingClientRect();
-    const vh = window.innerHeight || 0;
-    const covered = Math.round(b.height) + Math.max(0, Math.round(vh - b.bottom));
-    if (covered > 0) f.style.paddingBottom = covered + "px";
+    /* 轮 503：面板现在是 footer 里的绝对定位块（底边 = footer 底边 = 页面底边），
+       所以「要留多高」就是面板自己有多高 —— 不用再拿 innerHeight 去补
+       「面板底离屏底还差多少」。那一段差值正是旧的 fixed 锚点造成的
+       （iOS 底部工具栏浮在页面之上，差值 ~44px，补进去输入条就整体抬高一条）。 */
+    const h = Math.round(p.getBoundingClientRect().height);
+    if (h > 0) f.style.paddingBottom = h + "px";
   };
   put();
   /* 面板高度走着 .22s 过渡，落定后再量一次（量早了会少补一截）；
@@ -782,15 +808,19 @@ const setEmojiOpen = (open) => {
   const n = el.value;
   if (!n) return;
   n.classList.toggle("wp-emoji-open", open);
+  /* 轮 503：面板开着 = 键盘让位必须为 0（页面要展开到整屏，面板才铺得满）。
+     交给 keyboardInset 统一裁决：它会把 --kb-h 归零、并清掉「上次写过的值」，
+     关面板时再按可视视口重算一次 —— 手动写变量会让那边的变化判据失灵。 */
+  setPanelOpen(open);
   /* 聊天页底部那条 10px + safe-area 的让位，面板打开时归零：
      面板自己带 safe-area 内边距，否则输入条和面板之间会多出 34px 空条。 */
   const thread = n.closest(".dm-thread");
   if (thread) thread.classList.toggle("wp-emoji-open", open);
   if (open && !emojiWasOpen) {
     /* 键盘可能还开着：立刻把让位归零，页面在键盘下滑的同时展开，
-       面板 fixed 在屏底等它。等 keyboardWillHide 再归零会晚 200ms，
+       面板贴在页面底等它。等 keyboardWillHide 再归零会晚 200ms，
        那 200ms 里输入条会被 320px 的 footer padding 顶到半空。 */
-    try { document.documentElement.style.setProperty("--kb-h", "0px"); } catch (e) { /* 忽略 */ }
+    endKbSwap();
     try {
       /* 只收「组件内部当前焦点」——不 query 具体输入框、不抢焦点。
          点表情按钮时若键盘还开着，这一下让它收起；组件自己的 addEmoji 在手机上
@@ -886,7 +916,10 @@ const holdForKeyboard = () => {
   });
   kbSwapMO.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
   clearTimeout(kbSwapTimer);
-  kbSwapTimer = setTimeout(endKbSwap, 1200);
+  /* 轮 503：1200 → 600ms。iOS 的键盘动画约 250~300ms，等 1.2s 意味着
+     用户只要在这段时间里截图/继续点，看到的就是「输入条悬在半空、下面一大片空白」。
+     等不到键盘（外接键盘 / 焦点没落上）就尽快退回旧行为，宁可掉一下也不留残影。 */
+  kbSwapTimer = setTimeout(endKbSwap, 600);
 };
 
 let footerTapBound = false;
@@ -1304,6 +1337,7 @@ onBeforeUnmount(() => {
   gateTimer = 0;
   clearPin();
   endKbSwap();
+  setPanelOpen(false);          /* 轮 503：卸载时撤掉「面板开」标记，别把 --kb-h 钉死在 0 */
   if (emojiMO) { emojiMO.disconnect(); emojiMO = null; }
   clearTimeout(emojiPadTimer);
   stopPadRO();

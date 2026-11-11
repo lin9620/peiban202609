@@ -2788,13 +2788,21 @@ html.wp-chat-fix .shell--mobile-nav.shell--chat .dm-thread:not(.wp-emoji-open):n
  * 正是前几轮的事故形态 —— 这里把壳整体提到 tabbar 之上，少一个依赖。 */
 html.wp-chat-fix .shell { z-index: 200; }
 html.kb-web .cmt-main-bar {
-  bottom: var(--kb-h);
-  transition: bottom .22s cubic-bezier(.2, .8, .2, 1), padding-bottom .22s cubic-bezier(.2, .8, .2, 1);
+  /* 轮 504：网页端不再用 bottom: var(--kb-h) 这条**间接推导**。
+   * 真机（iPhone Safari）反馈：条会跑到页面顶部 —— --kb-h 是 keyboardInset 一路推出来的，
+   * 任何一道闸门（事件派发 / 焦点判据 / 缩放保护）在某台设备上不成立，这里就会拿到
+   * 一个残留值甚至被夹到 layout-120，条直接被顶到半空。
+   * 现在条由 utils/fixedBar.js 按 visualViewport 钉成内联 top（可视区底 − 条高），
+   * CSS 只留一个「算不出来就贴布局视口底」的兜底，宁可被键盘盖住也不会飞走。 */
+  bottom: 0;
+  transition: padding-bottom .22s cubic-bezier(.2, .8, .2, 1);
 }
-/* 表情面板开着时底条抬到面板上沿：3 段选择器压过上面 2 段那条（同 cap-app 的口径）。
-   轮 482：跟着 --kb-panel-h 走，与面板高度同一个来源，不再各写一个 320。 */
+/* 表情面板开着时条**用内边距让出面板的位置**（与会话页 .vac-box-footer 同一套）：
+ * 面板是 fixed、由 fixedBar 钉在可视底，条把自己撑高同样钉在可视底，
+ * 输入行就正好落在面板上沿 —— 两者共用一个参照系，不会再一个贴键盘、一个钻到屏幕外。
+ * 轮 482 之前写的是 bottom: var(--kb-panel-h)，那是把面板位置又推导了一遍。 */
 html.kb-web .cmt-main-bar.wp-emoji-open,
-html.kb-web .cmt-main-bar.wp-kb-swap { bottom: var(--kb-panel-h); }
+html.kb-web .cmt-main-bar.wp-kb-swap { padding-bottom: var(--kb-panel-h); }
 html.kb-web .reply-bar {
   bottom: calc(var(--kb-h) + 64px + var(--sab, env(safe-area-inset-bottom, 0px)));
   transition: bottom .22s cubic-bezier(.2, .8, .2, 1), padding-bottom .22s cubic-bezier(.2, .8, .2, 1);
@@ -3567,8 +3575,12 @@ html.kb-web .reply-bar {
 /* 轮 321：点赞/收藏失败提示就近显示（跟在操作条下面，不丢到页面底部）。 */
 .st-err--near { margin-top: 6px; }
 
-/* 每日精选：同一张卡，用左侧金边 + 顶部一行小标区分 */
-.st-card--featured { border-left: 3px solid #d9a441; background: linear-gradient(180deg, rgba(217, 164, 65, .10), rgba(217, 164, 65, 0) 55%); }
+/* 每日精选：同一张卡，用暖金描边 + 顶部一行小标区分。
+   （旧版左侧 3px 暗金竖边在玻璃底上像一条黑边，轮 411 已确认要撤掉。） */
+.st-card--featured {
+  border-color: rgba(217, 164, 65, .30);
+  background: linear-gradient(180deg, rgba(217, 164, 65, .10), rgba(217, 164, 65, 0) 55%);
+}
 .st-card-flag { margin: 0 0 4px; font-size: 12px; color: #a97c25; letter-spacing: .04em; }
 
 /* 我的：最高赞一行 + 书架行金标 */
@@ -3608,11 +3620,11 @@ html.kb-web .reply-bar {
 }
 /* 轮 348 · 暖心墙手机表情面板贴底（与会话同款）：底条整体抬到面板上沿。
    轮 482：高度不再写死 320 —— 用 --kb-panel-h（= 上一次真实键盘高度），
-   否则「收键盘弹面板」与「面板收键盘」两次切换的条位置差一截，看着像跳。 */
+   否则「收键盘弹面板」与「面板收键盘」两次切换的条位置差一截，看着像跳。
+   轮 504：只留给 App 壳。网页端改由 fixedBar 钉 top（见 2815 行那一段），
+   这里再用 bottom 抬一次会和内联 top 打架；App 壳不跑 fixedBar，仍按 --kb-panel-h 抬。 */
 html.cap-app .cmt-main-bar.wp-emoji-open,
-.cmt-main-bar.wp-emoji-open,
-html.cap-app .cmt-main-bar.wp-kb-swap,
-.cmt-main-bar.wp-kb-swap {
+html.cap-app .cmt-main-bar.wp-kb-swap {
   bottom: var(--kb-panel-h);
 }
 

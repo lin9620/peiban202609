@@ -60,6 +60,29 @@ export function pickChatTop(innerH, vvTop, h) {
   return Math.min(top, maxTop);
 }
 
+/**
+ * 轮 503 · 聊天页那一块 fixed 盒子该占哪一段：{h, top, kbOpen}。
+ *
+ * 唯一权威的判据是「此刻能看见哪一块」= [vvTop, vvTop + vvHeight]。
+ * 单独抽出来是因为踩过一次：iOS 为露出光标会把可视视口**上推**（vvTop > 0），
+ * 而旧代码只在「判定键盘态」时才用 vv.height —— 于是页面仍是整屏高，
+ * iOS 一推，整页跟着跑到屏幕上方：输入条贴在地址栏底下、下面一大片空白、
+ * 消息一条不见（用户四张截图里的第 4 张）。
+ *
+ * 规则：只要 vvTop > 0 且 vvHeight 比容器矮，就把容器裁到 vvHeight。
+ * 这不是「猜」，是把容器裁进**可证明可见**的那一段。
+ */
+export function pickChatRect(innerH, vvH, vvTop, kbH) {
+  const vv = pos(vvH);
+  const t0 = pos(vvTop);
+  const picked = pickChatHeight(innerH, vv, kbH);
+  if (!picked.h) return { h: 0, top: 0, kbOpen: false };
+  let h = picked.h;
+  let kbOpen = picked.kbOpen;
+  if (t0 > 0 && vv > 0 && vv < h) { h = Math.round(vv); kbOpen = true; }
+  return { h, top: pickChatTop(innerH, t0, h), kbOpen };
+}
+
 /** 浏览器工具栏的量级上限。比它矮的「差值」一律当成工具栏，不当键盘。
  *  真键盘最低也 ≥ 200px，80 两边都不误伤。 */
 export const TOOLBAR_GAP = 80;

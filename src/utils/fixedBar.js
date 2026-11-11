@@ -20,10 +20,12 @@
  */
 import { fixedBarTop } from "./chatHeight.js";
 
-const SELECTOR = ".cmt-main-bar, .reply-bar";
-/* 表情面板打开时条要抬到面板上沿，那个位置由 CSS（min(46vh,320px)）算，
- * 这里必须让开，否则内联 top 会把它压回底部、盖在面板上。 */
-const PANEL_CLASSES = ["wp-emoji-open", "wp-kb-swap"];
+/* 轮 504：表情面板也进来。
+ * 它原来是 `position: fixed; bottom: 0` —— 锚的是**布局视口**底，而键盘 / iOS 底部工具栏
+ * 压在页面之上。真机实测（393×852，键盘 330）：可视底 522，面板却从 522 铺到 852，
+ * 整个面板长在键盘底下，最后一排 emoji 在 524~557 —— 用户看到的就是「面板被切了」。
+ * 面板和条是同一件事（都要贴可视底），交给同一个函数算，别再两套算法各错一边。 */
+const SELECTOR = ".cmt-main-bar, .reply-bar, .wp-composer-picker";
 
 let booted = false;
 let timer = 0;
@@ -56,10 +58,15 @@ function release(el) {
 }
 
 function place(el) {
-  /* 面板打开 / 条已隐藏 → 交回 CSS，不许留内联值。
+  /* 只接管**真正 fixed** 的元素：桌面上 .wp-composer-picker 是 absolute 小浮窗
+   * （跟着输入框往上弹），把它算进来会凭空写一个 top 把它挪走。
+   * 轮 504 起不再用「面板打开就把条交回 CSS」—— 条改成用 padding-bottom 让出面板的位置，
+   * 两者一起钉在可视底；交回 CSS 等于让它回到「锚布局视口」那个错误参照系。
    * 注意不能用 offsetParent 判可见：position:fixed 元素的 offsetParent 恒为 null。 */
   if (!el.isConnected) return;
-  if (PANEL_CLASSES.some((c) => el.classList.contains(c))) { release(el); return; }
+  let posValue = "";
+  try { posValue = getComputedStyle(el).position; } catch (e) { posValue = "fixed"; }
+  if (posValue !== "fixed") { release(el); return; }
 
   const vv = window.visualViewport;
   const barH = el.getBoundingClientRect().height;

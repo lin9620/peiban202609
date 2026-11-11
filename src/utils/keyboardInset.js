@@ -39,6 +39,13 @@ const SYS_BOTTOM_VAR = "--sys-bottom";
  * CSS 侧写法：--kb-panel-h: min(var(--kb-last, var(--kb-fallback, min(46vh,320px))), var(--kb-cap, 62vh)) */
 const FALLBACK_VAR = "--kb-fallback";
 const CAP_VAR = "--kb-cap";
+/* 轮 503：本会话见过的最大键盘本体高度。--kb-last 只增不减，面板高度才不会
+   随地址栏伸缩来回变（用户：「随便点几下就出现这么多问题」里那几种高度）。 */
+let panelMax = 0;
+/* 轮 503：表情面板是否开着。面板一开，页面必须回到整屏（否则面板铺不满、输入条
+   被顶到半空）。以前是 DmVacChat 直接写 --kb-h=0，绕过下面「值没变就不重写」的判据，
+   结果下一次同样的键盘高度被当成「没变化」吞掉 —— 页面不缩，输入条钻到键盘底下。 */
+let panelOpen = false;
 /* 网页端打这个类，style.css 里三条 .kb-web 规则才生效（与 cap-app 三条一一对应）。
    默认 --kb-h: 0px ⇒ 老内核 / 读不到可视视口时表现与改之前完全一致。 */
 const WEB_CLASS = "kb-web";
@@ -72,8 +79,17 @@ function writeVar(px, info, panelPx) {
      * 不需要我们让位，--kb-h 恒为 0，但键盘实际压住了屏底一大截）——面板要跟的是
      * **键盘本体**，所以单独传 panelPx 进来，别再拿 --kb-h 顶替。 */
     const panel = Number(panelPx);
-    if (panel > 0) document.documentElement.style.setProperty("--kb-last", Math.round(panel) + "px");
-    else if (px > 0) document.documentElement.style.setProperty("--kb-last", px + "px");
+    /* 轮 503：改成**只增不减**（本会话最大值）。旧写法每次都覆写，同一个面板在
+     * 「地址栏收起 / 展开」两种状态下高度会差一截 —— 用户四张截图里面板一会儿 5 排、
+     * 一会儿 4 排，输入条跟着上下跳，就是这个。真键盘高度是设备常量，见过一次就该定住；
+     * 偶尔测大的由 --kb-cap 兜住（min(80%, 380)）。 */
+    if (panel > 0) {
+      panelMax = Math.max(panelMax, Math.round(panel));
+      document.documentElement.style.setProperty("--kb-last", panelMax + "px");
+    } else if (px > 0) {
+      panelMax = Math.max(panelMax, Math.round(px));
+      document.documentElement.style.setProperty("--kb-last", panelMax + "px");
+    }
   } catch (e) { /* 极端环境忽略：样式变量设不上也不能抛错 */ }
   /* 现场诊断（只写全局、不改行为）：别的机型若报「还是有缝/被压住」，一句
      JSON.stringify(window.__kbInfo) 就能看清是哪个输入没对，不用连 logcat。 */
@@ -229,7 +245,9 @@ function applyWeb() {
      回复栏整体抬 31px，下方平白多一条空白。而真键盘最低也 ≥ 200px，80 这道闸门
      两边都不误伤。判据抽到 chatHeight.js，与聊天容器高度共用同一份口径。 */
   const focused = editableFocused();
-  const h = kbInsetValue(raw, focused);
+  /* 轮 503：面板开着就必须整屏 —— 键盘收起动画还没走完的那一两帧里，
+     可视视口仍是矮的，不拦住的话页面会先缩一下再弹回整屏（输入条抖一记）。 */
+  const h = panelOpen ? 0 : kbInsetValue(raw, focused);
   const inner = (typeof window !== "undefined" && window.innerHeight) || 0;
 
   /* 轮 496/500：表情面板要跟的是「键盘本体占多高」，它跟「页面需要让多高」不是同一个量。
@@ -288,6 +306,26 @@ function applyWeb() {
  * 判据 = 本会话见过 --kb-h > 0。 */
 export function webSwapNeeded() {
   return !Capacitor.isNativePlatform() && webKbSeen > 0;
+}
+
+/* 轮 503 · 表情面板开关的唯一入口（见 DmVacChat 的 setEmojiOpen）。
+ * 面板开着时不让位（页面整屏铺开，面板才铺得满）；一关立刻按可视视口重算。
+ * 关键是 lastWebKb = -1：把「上次写过的值」作废，否则同一高度第二次出现会被
+ * 「值没变就不重写」的判据吞掉，--kb-h 停在 0。 */
+export function setPanelOpen(open) {
+  const v = !!open;
+  if (v === panelOpen) return;
+  panelOpen = v;
+  lastWebKb = -1;
+  lastPanelKb = -1;
+  if (v) {
+    try { document.documentElement.style.setProperty(VAR, "0px"); } catch (e) { /* 忽略 */ }
+  }
+  /* App 壳：让位由 Keyboard 插件的回调驱动，别拿 WebView 的 visualViewport 去算
+     （两套语义不一样，混用会把输入条顶穿，轮 322 踩过）。开面板时归零照旧，
+     关面板后等键盘事件回来接管。 */
+  if (Capacitor.isNativePlatform()) return;
+  applyWeb();
 }
 
 let sampleRaf = 0;
