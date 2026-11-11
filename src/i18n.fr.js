@@ -558,6 +558,7 @@ export default {
     "loadingBody": "Chargement des mots…",
     "notFound": "Cette histoire n’est pas ici — elle a peut-être été retirée.",
     "searchPh": "Chercher des titres et étiquettes…",
+    "clearSearch": "Effacer la recherche",
     "loginNeeded": "Connecte-toi pour écrire et aimer des histoires.",
     "related": "Dans le même esprit",
     "continueWrite": "Continuer d’écrire",

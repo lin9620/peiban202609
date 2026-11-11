@@ -1006,6 +1006,33 @@ html[data-theme="night"] .st-btn--on:hover {
 }
 .st-search::placeholder { color: var(--ink-44) !important; }
 
+/* 轮 5xx · 发现页头（.st-hero）落到玻璃皮肤上的收口。
+ * 旧的两枚大钮 / 搜索框规则留在上面，供旧缓存页面兜底；新模板走 .st-hero 这一套。 */
+.st-empty {
+  background: var(--g-bg-card) !important;
+  border-color: rgba(120, 102, 88, 0.10) !important;
+}
+html[data-theme="night"] .st-hero-quick {
+  background: var(--g-bg-card) !important;
+  border-color: var(--g-line) !important;
+}
+html[data-theme="night"] .st-hero-blob { background: rgba(255, 255, 255, 0.05) !important; }
+html[data-theme="night"] .st-hero-blob--b { background: rgba(255, 255, 255, 0.035) !important; }
+html[data-theme="night"] .story-shell .story-head::after { background: rgba(255, 255, 255, 0.05) !important; }
+html[data-theme="night"] .st-feature::before { background: rgba(255, 255, 255, 0.05) !important; }
+html[data-theme="night"] .st-feature::after { background: rgba(255, 255, 255, 0.035) !important; }
+html[data-theme="night"] .st-feature-go {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: var(--p-yellow-ink) !important;
+}
+html[data-theme="night"] .st-card-flag { color: var(--p-yellow-ink) !important; }
+html[data-theme="night"] .st-card-arrow,
+html[data-theme="night"] .st-search-clear {
+  background: rgba(255, 255, 255, 0.10) !important;
+  color: var(--accent-deep) !important;
+}
+html[data-theme="night"] .st-empty { border-color: var(--g-line) !important; }
+
 /* 宠物页：这条 92px 是照抄来的一句谎话 —— 「该页自带滚动容器，不吃 main 的 padding」
  * 实测 PetsView 根节点 .pet-page 就是普通内容流（没有 overflow:auto 的子滚动层），
  * main 的让位对它完全有效。轮 410 归零：原来它让宠物页滚到底时正文离胶囊 148px。 */

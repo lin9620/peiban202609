@@ -557,6 +557,7 @@ export default {
     "loadingBody": "Cargando las palabras…",
     "notFound": "Esta historia no está — puede que la hayan quitado.",
     "searchPh": "Buscar títulos y etiquetas…",
+    "clearSearch": "Borrar búsqueda",
     "loginNeeded": "Entra para escribir y dar me gusta.",
     "related": "Más como esta",
     "continueWrite": "Seguir escribiendo",

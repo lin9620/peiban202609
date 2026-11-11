@@ -113,6 +113,18 @@ function openStory(r) {
   router.push(`/story/${r.id}`);
 }
 const day = (s) => String(s || "").slice(0, 10);
+/* 列表头像：昵称首字 + 稳定色号（按 id 计数，翻页/搜索时同一篇不会换色）。
+   昵称空时用「一位温柔的写作者」的首字，仍有一个人味，不留空白圆圈。 */
+function initialOf(r) {
+  const name = String((r && r.nickname) || t("story.anonAuthor") || "").trim();
+  return name ? Array.from(name)[0].toUpperCase() : "·";
+}
+function tone(r) {
+  const s = String((r && r.id) || "");
+  let n = 0;
+  for (let i = 0; i < s.length; i++) n = (n + s.charCodeAt(i)) % 5;
+  return "st-card-ava--" + n;
+}
 load();
 loadFeatured();
 defineExpose({ load, loadFeatured });
@@ -120,56 +132,108 @@ defineExpose({ load, loadFeatured });
 
 <template>
   <section class="st-feed">
-    <!-- 轮 149（用户截图定稿）：联内顶部两枚大钮 —— 排行榜 / 我的。
-         轮 148 曾把联尾按钮整个撤掉（认为与底部 ＋ 和故事页重复），用户截图明确要这两枚，按截图恢复。 -->
-    <nav v-if="isMobileNav" class="st-feed-nav">
-      <button type="button" class="st-feed-navbtn" @click="router.push('/story/rank')">
-        {{ t("story.tabRank") }}
-      </button>
-      <button type="button" class="st-feed-navbtn" @click="router.push('/story/mine')">
-        {{ t("story.tabMine") }}
-      </button>
-    </nav>
+    <!-- 发现页头：一句轻介绍 + 两枚快捷入口 + 搜索。
+         原来是两枚等宽描边大钮，压在玻璃上像两个空药丸（用户圈图反馈「太丑」）。
+         现在收成右上角的「快捷入口」：图标 + 小字，体积让给故事本身；搜索单独占一行，不再被挤到出框。 -->
+    <header class="st-hero">
+      <span class="st-hero-blob st-hero-blob--a" aria-hidden="true"></span>
+      <span class="st-hero-blob st-hero-blob--b" aria-hidden="true"></span>
 
-    <header class="st-feed-head">
-      <p class="st-sub">{{ t("story.discoverSub") }}</p>
-      <input v-model="kw" class="st-search" type="search" :placeholder="t('story.searchPh')" />
+      <div class="st-hero-top">
+        <p class="st-hero-sub">
+          <span class="st-hero-quote" aria-hidden="true">“</span>{{ t("story.discoverSub") }}
+        </p>
+        <nav v-if="isMobileNav" class="st-hero-nav" :aria-label="t('story.tabDiscover')">
+          <button type="button" class="st-hero-quick" @click="router.push('/story/rank')">
+            <svg class="st-hero-quick-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4Z" />
+              <path d="M7 6H4v1a4 4 0 0 0 4 4M17 6h3v1a4 4 0 0 1-4 4" />
+            </svg>
+            <span>{{ t("story.tabRank") }}</span>
+          </button>
+          <button type="button" class="st-hero-quick" @click="router.push('/story/mine')">
+            <svg class="st-hero-quick-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="8" r="3.4" />
+              <path d="M5 20c0-3.6 3.1-6.1 7-6.1s7 2.5 7 6.1" />
+            </svg>
+            <span>{{ t("story.tabMine") }}</span>
+          </button>
+        </nav>
+      </div>
+
+      <label class="st-searchbox">
+        <svg class="st-search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="1.9" stroke-linecap="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="6.5" />
+          <path d="m16 16 4.5 4.5" />
+        </svg>
+        <input v-model="kw" class="st-search" type="search" :placeholder="t('story.searchPh')"
+          enterkeyhint="search" />
+        <button v-if="kw" type="button" class="st-search-clear" :aria-label="t('story.clearSearch')"
+          @click="kw = ''">×</button>
+      </label>
     </header>
 
     <article
-      v-if="featured" class="st-card st-card--featured" @click="openStory(featured)"
+      v-if="featured" class="st-card st-card--featured st-feature"
+      role="link" tabindex="0" @click="openStory(featured)" @keydown.enter.prevent="openStory(featured)"
     >
-      <p class="st-card-flag">★ {{ t("story.featuredBadge") }}</p>
-      <h3 class="st-card-title">{{ featured.title }}</h3>
+      <div class="st-feature-head">
+        <p class="st-card-flag">★ {{ t("story.featuredBadge") }}</p>
+        <span class="st-feature-go" aria-hidden="true">→</span>
+      </div>
+      <h3 class="st-card-title st-feature-title">{{ featured.title }}</h3>
       <p class="st-card-meta">
         {{ t("story.by", { name: featured.nickname || t("story.anonAuthor") }) }}
         · {{ day(featured.published_at) }} · {{ t("story.readTime", { n: featured.read_minutes }) }}
       </p>
-      <p class="st-card-tags">
-        <span v-for="tg in (featured.tags || [])" :key="tg" class="st-tag-sm">#{{ tg }}</span>
-      </p>
-      <p class="st-card-stats">{{ t("story.stats", { likes: featured.like_count, views: featured.view_count }) }}</p>
+      <div class="st-feature-foot">
+        <p class="st-card-tags">
+          <span v-for="tg in (featured.tags || [])" :key="tg" class="st-tag-sm">#{{ tg }}</span>
+        </p>
+        <p class="st-card-stats">{{ t("story.stats", { likes: featured.like_count, views: featured.view_count }) }}</p>
+      </div>
     </article>
 
-    <article v-for="r in shown" :key="r.id" class="st-card" @click="openStory(r)">
+    <div v-if="shown.length" class="st-feed-sec">
+      <h2 class="st-feed-sec-title">{{ t("story.rankLatest") }}</h2>
+      <span class="st-feed-sec-line" aria-hidden="true"></span>
+    </div>
+
+    <article v-for="r in shown" :key="r.id" class="st-card" role="link" tabindex="0"
+      @click="openStory(r)" @keydown.enter.prevent="openStory(r)">
+      <div class="st-card-head">
+        <span class="st-card-ava" :class="tone(r)" aria-hidden="true">{{ initialOf(r) }}</span>
+        <span class="st-card-by">
+          <span class="st-card-name">{{ r.nickname || t("story.anonAuthor") }}</span>
+          <span class="st-card-time">
+            {{ day(r.published_at) }} · {{ t("story.readTime", { n: r.read_minutes }) }}
+            <span v-if="langBadge(r.lang)" class="lang-tag">{{ langBadge(r.lang) }}</span>
+          </span>
+        </span>
+        <span class="st-card-arrow" aria-hidden="true">›</span>
+      </div>
       <h3 class="st-card-title">{{ r.title }}</h3>
-      <p class="st-card-meta">
-        {{ t("story.by", { name: r.nickname || t("story.anonAuthor") }) }} · {{ day(r.published_at) }}
-        · {{ t("story.readTime", { n: r.read_minutes }) }}<span v-if="langBadge(r.lang)" class="lang-tag">{{ langBadge(r.lang) }}</span>
-      </p>
-      <p class="st-card-tags">
-        <span v-for="tg in (r.tags || [])" :key="tg" class="st-tag-sm">#{{ tg }}</span>
-      </p>
-      <p class="st-card-stats">{{ t("story.stats", { likes: r.like_count, views: r.view_count }) }}</p>
+      <div class="st-card-foot">
+        <p class="st-card-tags">
+          <span v-for="tg in (r.tags || [])" :key="tg" class="st-tag-sm">#{{ tg }}</span>
+        </p>
+        <p class="st-card-stats">{{ t("story.stats", { likes: r.like_count, views: r.view_count }) }}</p>
+      </div>
     </article>
 
     <!-- 轮 277（用户拍板）：首访骨架退役（与暖心墙/消息同口径：去展示留机制）——
          数据不变（缓存秒出、无缓存等网络回来直接出）。 -->
-    <p v-if="!shown.length && !loading" class="st-hint">{{ t("story.rankEmpty") }}</p>
-    <button v-if="more" class="st-btn st-btn--ghost" type="button" :disabled="loading" @click="loadMore">
+    <div v-if="!shown.length && !loading" class="st-empty">
+      <span class="st-empty-ico" aria-hidden="true">🐾</span>
+      <p class="st-empty-text">{{ t("story.rankEmpty") }}</p>
+    </div>
+    <button v-if="more" class="st-btn st-btn--ghost st-load-more" type="button" :disabled="loading" @click="loadMore">
       {{ loading ? t("story.loadingMore") : t("story.loadMore") }}
     </button>
-    <p v-else-if="rows.length && !hasMore" class="st-hint">{{ t("story.noMore") }}</p>
+    <p v-else-if="rows.length && !hasMore" class="st-hint st-feed-end">{{ t("story.noMore") }}</p>
     <p v-if="err" class="st-err">{{ err }}</p>
   </section>
 </template>

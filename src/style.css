@@ -3244,6 +3244,25 @@ html.kb-web .reply-bar {
 .story-head { padding: 2px 2px 12px; }
 .story-title { font-family: var(--font-display); font-size: 26px; font-weight: 600; }
 .st-sub { color: var(--ink-soft); font-size: 13px; }
+/* 故事子页（排行榜 / 我的）在 App 里也收成一张小彩头，跟发现页的 .st-hero 同一套语言；
+   桌面端不受影响（.story-shell 只在 isMobileNav 时存在）。 */
+@media (max-width: 899px) {
+  .story-shell .story-head {
+    position: relative; overflow: hidden;
+    margin-bottom: 12px; padding: 16px 18px;
+    border: 1px solid var(--g-line, rgba(255, 255, 255, .72));
+    border-radius: 24px;
+    background: linear-gradient(135deg, var(--p-blue-a, rgba(217, 228, 250, .80)), var(--p-lilac-a, rgba(225, 216, 251, .80)));
+  }
+  .story-shell .story-head::after {
+    content: ""; position: absolute; top: -46px; right: -28px;
+    width: 118px; height: 118px; border-radius: 50%;
+    background: rgba(255, 255, 255, .25); pointer-events: none;
+  }
+  .story-shell .story-head-row { position: relative; z-index: 1; }
+  .story-shell .story-head .story-title { font-size: 23px; line-height: 1.25; }
+  .story-shell .story-head .st-sub { position: relative; z-index: 1; margin-top: 4px; font-size: 13.5px; line-height: 1.55; }
+}
 .st-hint { color: var(--ink-faint); font-size: 12px; }
 /* 轮 277：故事流骨架退役（st-skel 系只在 StoryFeed 首访骨架里用过），规则删除 */
 /* 轮 168/189：表情按钮嵌进输入框右缘（微信式）——相对定位壳叠放；
@@ -3376,6 +3395,19 @@ html.kb-web .reply-bar {
    排行榜不再是右栏，改为独立页 /story/rank（<1100px 时右栏会被挤到主栏下方，滑到底才看见）。 ── */
 .story-main { background: var(--card); border: 1px solid var(--hairline); border-radius: 20px; padding: 14px; }
 .story-main--solo { margin-top: 2px; }
+/* App / 窄屏：故事页不再套一层大白卡（首页故事联本来就没有）。
+   外层卡 + 内层卡在 390px 上会变成「白卡里再放一张白卡」，还把内容挤窄 28px；
+   去框后头图与故事卡直接落在页面柔光上，跟首页故事联完全一致。桌面保留原卡片容器。 */
+@media (max-width: 899px) {
+  .story-page .story-main {
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+  .story-page .story-main--solo { margin-top: 0; }
+}
 @media (min-width: 1100px) { .story-page--read, .story-page { max-width: 860px; margin: 0 auto; } }
 
 /* 标题行 + 右侧操作条（手机纵向堆叠，不挤在一行） */
@@ -3453,7 +3485,9 @@ html.kb-web .reply-bar {
 .st-link { background: none; border: 0; cursor: pointer; color: var(--accent-deep); font-size: 13px; padding: 2px 0; }
 /* ── 发现流 / 我的 ── */
 .st-feed-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
-/* 轮 149（用户手机端截图定稿）：联内顶部两枚大钮（排行榜 / 我的）—— 描边胶囊、暖橘字、两列等宽。 */
+/* 轮 149（用户手机端截图定稿）：联内顶部两枚大钮（排行榜 / 我的）—— 描边胶囊、暖橘字、两列等宽。
+   ⚠️ 轮 5xx 已把发现页头换成 .st-hero（图标快捷入口 + 整行搜索），下面两条保留给旧缓存/旧页面兜底，
+   新模板不再渲染 .st-feed-nav。 */
 .st-feed-nav { display: flex; gap: 10px; margin-bottom: 8px; }
 .st-feed-navbtn {
   flex: 1; min-width: 0; cursor: pointer;
@@ -3464,13 +3498,149 @@ html.kb-web .reply-bar {
 }
 .st-feed-navbtn:hover { background: var(--wash-strong); }
 .st-feed-navbtn:active { background: var(--accent-soft); }
+/* ── 轮 5xx · 发现页头重做 ─────────────────────────────────────────────
+   旧版是「两枚等宽描边大钮 + 一句副标题 + 一条被挤扁的搜索框」，
+   在手机上像一块填不满的白板。新版：
+     ① 一句带引号的轻介绍（故事页唯一一处 discoverSub）；
+     ② 右上角两枚「图标 + 小字」快捷入口（排行榜 / 我的），体积小、识别快；
+     ③ 搜索框单独整行，有放大镜与清空键，不再和副标题抢宽度。 */
+.st-hero { position: relative; margin-bottom: 14px; }
+.st-hero-top { position: relative; z-index: 1; display: flex; align-items: flex-start; gap: 12px; }
+.st-hero-sub { flex: 1 1 auto; min-width: 0; margin: 0; color: var(--ink-soft); font-size: 13px; line-height: 1.55; }
+.st-hero-quote { display: none; }
+.st-hero-nav { display: flex; flex: none; align-items: center; gap: 7px; }
+.st-hero-quick {
+  display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  min-width: 58px; height: 46px; padding: 4px 8px; cursor: pointer; font: inherit;
+  color: var(--accent-deep); border: 1px solid var(--hairline); border-radius: 14px;
+  background: var(--wash-strong);
+  transition: background-color .18s ease, transform .18s ease;
+}
+.st-hero-quick:hover { background: var(--accent-soft); }
+.st-hero-quick:active { transform: scale(.96); }
+.st-hero-quick-ico { width: 17px; height: 17px; }
+.st-hero-quick span { font-size: 11px; font-weight: 600; line-height: 1; white-space: nowrap; }
+.st-hero-blob { display: none; }
+.st-searchbox { position: relative; z-index: 1; display: flex; align-items: center; margin-top: 10px; }
+.st-search-ico {
+  position: absolute; left: 14px; width: 18px; height: 18px;
+  color: var(--ink-faint); pointer-events: none;
+}
+.st-hero .st-search {
+  width: 100%; height: 44px; min-height: 44px;
+  padding: 0 42px; font: inherit; font-size: 14px; color: var(--ink);
+  border: 1px solid var(--hairline); border-radius: 14px;
+  background: var(--wash-strong); outline: none;
+  transition: border-color .18s ease, box-shadow .18s ease, background-color .18s ease;
+}
+.st-hero .st-search::placeholder { color: var(--ink-faint); }
+.st-hero .st-search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.st-hero .st-search::-webkit-search-cancel-button { -webkit-appearance: none; }
+.st-search-clear {
+  position: absolute; right: 8px; display: grid; place-items: center;
+  width: 28px; height: 28px; padding: 0 0 2px; border: 0; border-radius: 50%;
+  color: var(--accent-deep); background: var(--accent-soft);
+  font: inherit; font-size: 18px; line-height: 1; cursor: pointer;
+}
+.st-search-clear:active { transform: scale(.92); }
+@media (max-width: 899px) {
+  .st-hero {
+    padding: 17px 16px 15px; overflow: hidden;
+    border: 1px solid var(--g-line, rgba(255, 255, 255, .72));
+    border-radius: 24px;
+    background:
+      radial-gradient(120% 130% at 100% 0%, var(--p-yellow-a, rgba(250, 240, 197, .80)) 0%, transparent 58%),
+      linear-gradient(135deg, var(--p-peach-a, rgba(251, 217, 192, .80)), var(--p-pink-a, rgba(251, 214, 226, .80)));
+    box-shadow: 0 1px 2px rgba(58, 46, 42, .04);
+  }
+  .st-hero-sub { color: var(--ink); font-size: 14.5px; font-weight: 600; line-height: 1.6; }
+  .st-hero-quote {
+    display: inline; margin-right: 2px; vertical-align: -4px;
+    color: var(--accent-deep); font-family: var(--font-display); font-size: 24px; line-height: 0;
+  }
+  .st-hero-blob {
+    display: block; position: absolute; border-radius: 50%; pointer-events: none;
+    background: rgba(255, 255, 255, .28);
+  }
+  .st-hero-blob--a { width: 108px; height: 108px; top: -48px; right: -24px; }
+  .st-hero-blob--b { width: 54px; height: 54px; right: 34px; bottom: -28px; background: rgba(255, 255, 255, .18); }
+  .st-hero .st-search {
+    height: 46px; min-height: 46px !important;
+    background: var(--g-bg-strong, rgba(255, 255, 255, .78)) !important;
+    border: 1px solid var(--g-line, rgba(255, 255, 255, .82)) !important;
+    box-shadow: var(--g-hi, inset 0 1px 0 rgba(255, 255, 255, .8));
+  }
+  .st-hero .st-searchbox { margin-top: 12px; }
+  /* 卡片：内容结构换成「作者行 → 标题 → 标签/数据」，让列表有呼吸，不再是一块白板上堆四行字。 */
+  .st-feed .st-card {
+    padding: 15px 16px 14px !important;
+    border-radius: 22px !important;
+    margin-bottom: 11px !important;
+  }
+}
 .st-search { flex: 1; min-width: 160px; border: 1px solid var(--hairline); border-radius: 999px; background: var(--wash); padding: 6px 12px; font-size: 13px; outline: none; }
-.st-card { border: 1px solid var(--hairline); border-radius: 14px; background: var(--wash); padding: 12px 14px; margin-bottom: 8px; cursor: pointer; transition: transform .18s ease, border-color .18s ease; }
+.st-card { border: 1px solid var(--hairline); border-radius: 20px; background: var(--wash); padding: 15px 16px 14px; margin-bottom: 10px; cursor: pointer; transition: transform .18s ease, border-color .18s ease; }
 .st-card:hover { transform: translateY(-1px); border-color: var(--accent); }
-.st-card-title { font-family: var(--font-display); font-size: 17px; font-weight: 600; }
+.st-card-head { display: flex; align-items: center; gap: 10px; }
+.st-card-ava {
+  display: grid; place-items: center; flex: none;
+  width: 36px; height: 36px; border-radius: 50%;
+  font-family: var(--font-display); font-size: 15px; font-weight: 700; line-height: 1;
+}
+.st-card-ava--0 { background: var(--p-peach-a, rgba(251, 217, 192, .8)); color: var(--p-peach-ink, #8a5330); }
+.st-card-ava--1 { background: var(--p-blue-a, rgba(217, 228, 250, .8)); color: var(--p-blue-ink, #47598a); }
+.st-card-ava--2 { background: var(--p-mint-a, rgba(211, 239, 219, .8)); color: var(--p-mint-ink, #376a4b); }
+.st-card-ava--3 { background: var(--p-pink-a, rgba(251, 214, 226, .8)); color: var(--p-pink-ink, #8b4761); }
+.st-card-ava--4 { background: var(--p-lilac-a, rgba(225, 216, 251, .8)); color: var(--p-lilac-ink, #574986); }
+.st-card-by { display: flex; flex: 1 1 auto; flex-direction: column; gap: 2px; min-width: 0; }
+.st-card-name { overflow: hidden; color: var(--ink); font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.st-card-time { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; color: var(--ink-faint); font-size: 11.5px; line-height: 1.4; }
+.st-card-arrow {
+  display: grid; place-items: center; flex: none;
+  width: 26px; height: 26px; padding-bottom: 2px; border-radius: 50%;
+  color: var(--accent-deep); background: var(--accent-soft);
+  font-size: 18px; line-height: 1;
+}
+.st-card-title { margin-top: 0; font-family: var(--font-display); font-size: 17px; font-weight: 600; }
+.st-card .st-card-title { margin-top: 10px; font-size: 18.5px; line-height: 1.45; }
 .st-card-meta, .st-card-stats { font-size: 12px; color: var(--ink-faint); }
 .st-card-tags { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0; }
+.st-card-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 10px; margin-top: 10px; }
+.st-card-foot .st-card-tags { margin: 0; }
+.st-card-foot .st-card-stats { margin: 0; white-space: nowrap; }
 .st-tag-sm { font-size: 11px; color: var(--accent-deep); background: var(--accent-soft); border-radius: 999px; padding: 1px 8px; }
+/* 精选卡：保留 st-card / st-card--featured 两个旧类（皮肤与测试都认），叠一层 .st-feature 做编辑感。 */
+.st-feature { position: relative; overflow: hidden; }
+.st-feature::before,
+.st-feature::after {
+  content: ""; position: absolute; border-radius: 50%; pointer-events: none;
+  background: rgba(255, 255, 255, .34);
+}
+.st-feature::before { width: 128px; height: 128px; top: -56px; right: -34px; }
+.st-feature::after { width: 58px; height: 58px; top: 22px; right: 34px; background: rgba(255, 255, 255, .20); }
+.st-feature-head { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.st-feature-go {
+  display: grid; place-items: center; width: 28px; height: 28px; padding-bottom: 2px;
+  border-radius: 50%; color: #a97c25; background: rgba(255, 255, 255, .48);
+  font-size: 17px; line-height: 1;
+}
+.st-card.st-feature .st-feature-title { position: relative; z-index: 1; margin-top: 7px; font-size: 20.5px; line-height: 1.38; }
+.st-feature-foot { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 10px; margin-top: 10px; }
+.st-feature-foot .st-card-tags, .st-feature-foot .st-card-stats { margin: 0; }
+.st-feature-foot .st-card-stats { white-space: nowrap; }
+/* 列表段落标：把「精选」和「最新流」分开，不再是两坨卡片直接挨着。 */
+.st-feed-sec { display: flex; align-items: center; gap: 10px; margin: 4px 2px 10px; }
+.st-feed-sec-title { color: var(--ink-soft); font-size: 12.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.st-feed-sec-line { flex: 1; height: 1px; background: var(--hairline); }
+.st-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 34px 20px; border: 1px dashed var(--hairline); border-radius: 22px;
+  background: var(--wash); text-align: center;
+}
+.st-empty-ico { font-size: 30px; line-height: 1; opacity: .8; }
+.st-empty-text { color: var(--ink-soft); font-size: 13.5px; line-height: 1.6; }
+.st-load-more { width: 100%; min-height: 42px; margin-top: 6px; border-radius: 999px; }
+.st-feed-end { margin-top: 12px; text-align: center; }
 .st-stats { display: flex; gap: 16px; margin-bottom: 10px; }
 .st-stat { font-size: 12px; color: var(--ink-soft); display: flex; flex-direction: column; }
 .st-stat b { font-family: var(--font-display); font-size: 20px; color: var(--ink); }

@@ -776,6 +776,32 @@ ok("storyPublish 把 too-short 映射成 story-too-short（漏映射会误报 st
     /export function appendPage\(prev, page, sortFn\)/.test(rules));
 }
 
+/* ---------- 发现页改版（轮 505）：把结构钉死 ----------
+ * 这版改版在工作区躺了整整一天、一次都没上线，而且没人发现 —— 因为它一条断言都没有。
+ * 下面只钉「结构在不在」，不钉像素：以后谁把这些类名改回旧版，测试立刻红。 */
+{
+  const STY = read("src/style.css");
+  ok("发现页页头是 st-hero（旧的两枚等宽大钮 st-feed-nav 已退役）",
+    /class="st-hero"/.test(feedVue) && !/class="st-feed-nav"/.test(feedVue));
+  ok("快捷入口是「图标 + 小字」两枚，分别去排行榜 / 我的",
+    (feedVue.match(/class="st-hero-quick"/g) || []).length === 2
+    && /router\.push\(["']\/story\/rank["']\)/.test(feedVue)
+    && /router\.push\(["']\/story\/mine["']\)/.test(feedVue));
+  ok("搜索独占一行：st-searchbox 包住图标 + 输入 + 清除键",
+    /class="st-searchbox"/.test(feedVue) && /class="st-search-clear"/.test(feedVue)
+    && /:aria-label="t\('story\.clearSearch'\)"/.test(feedVue));
+  ok("列表卡有头像：昵称首字 + 按 id 算的稳定色号（翻页不换色）",
+    /class="st-card-ava"/.test(feedVue) && /function initialOf/.test(feedVue)
+    && /function tone\(r\)/.test(feedVue) && /"st-card-ava--" \+ n/.test(feedVue));
+  ok("卡片能键盘打开（role=link + tabindex=0 + Enter）",
+    (feedVue.match(/role="link" tabindex="0"/g) || []).length >= 2
+    && (feedVue.match(/@keydown\.enter\.prevent="openStory/g) || []).length >= 2);
+  ok("空态有专用样式（st-empty），不再是一行灰字",
+    /class="st-empty"/.test(feedVue) && /\.st-empty\s*\{/.test(STY));
+  ok("改版样式都落在 style.css（st-hero / st-card-ava / st-searchbox）",
+    /\.st-hero\s*\{/.test(STY) && /\.st-card-ava\s*\{/.test(STY) && /\.st-searchbox\s*\{/.test(STY));
+}
+
 if (fails.length) {
   console.log(`story-test: ${pass} pass, ${fails.length} FAIL`);
   for (const f of fails) console.log("  ✗ " + f);
