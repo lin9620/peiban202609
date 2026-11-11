@@ -56,6 +56,7 @@ writeFileSync(expr, `(async () => {
       inner: window.innerHeight,
       visBottom: Math.round((vv.offsetTop || 0) + (vv.height || window.innerHeight)),
       kb: cssv("--kb-h"), kbb: cssv("--kbb"), panelH: cssv("--kb-panel-h"), kbLast: cssv("--kb-last"),
+      fb: cssv("--kb-fallback"),
       bar: R(bar), picker: R(pk),
       inlineTop: bar ? bar.style.top : "",
       barCls: bar ? bar.className : "",
@@ -73,6 +74,17 @@ writeFileSync(expr, `(async () => {
      与真键盘 330 差一截 —— 用户第五次报的「表情框跟输入框高度不一致」。
      所以这一步必须**先上推、后**走面板，顺序不能反过来（反了就被「只增不减」掩盖）。 */
   const H = window.innerHeight;
+
+  /* 轮 510 · 工具栏态：真机第一次打开就是这个状态（Safari 底部工具栏 81px 让
+     vv 比 inner 矮），而它**不是键盘**。旧代码把它当键盘：--kb-h 变 81（页面平白缩
+     81px、吸底条抬 81px），随后又把这个 81 当成「键盘本体高度」存进 localStorage，
+     --kb-fallback 于是掉到 119px —— 表情面板只剩两排（用户视频里那个）。 */
+  __kbSim(H - 81, 0);
+  await sleep(500);
+  snap("toolbar-only");
+  __kbSim(H, 0);
+  await sleep(300);
+
   __kbSim(H - 330, 330);
   await sleep(700);
   snap("kb-pan");
@@ -172,6 +184,18 @@ for (const s of data.steps) {
   if (s.bar.top < -1) fails.push(`${s.name}: 条越过屏幕顶部（top=${s.bar.top}）`);
   if (!near(s.bar.bottom, s.visBottom)) fails.push(`${s.name}: 条没贴可视区底（bar.bottom=${s.bar.bottom} visBottom=${s.visBottom}）`);
 }
+const tb = step("toolbar-only");
+if (!tb) fails.push("toolbar-only: 没走到「只有 Safari 工具栏」那一步");
+else {
+  if (!near(parseFloat(tb.kb || 0), 0)) {
+    fails.push(`toolbar-only: 工具栏 81px 被当成键盘（--kb-h=${tb.kb}，应为 0）—— 页面会平白缩 81px`);
+  }
+  const fbPx = parseFloat(String(tb.fb || "").replace(/[^0-9.]/g, ""));
+  if (tb.fb && fbPx > 0 && fbPx < 250) {
+    fails.push(`toolbar-only: --kb-fallback=${tb.fb} 掉到工具栏量级（面板只会有两排）`);
+  }
+}
+
 const pan = step("kb-pan");
 if (!pan) fails.push("kb-pan: 没走到「iOS 首次键盘就上推」那一步");
 else {

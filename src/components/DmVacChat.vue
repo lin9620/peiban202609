@@ -916,14 +916,19 @@ const holdForKeyboard = () => {
   const thread = n.closest(".dm-thread");
   if (thread) thread.classList.add("wp-kb-swap");
   if (kbSwapMO) kbSwapMO.disconnect();
+  /* 轮 510：与 WpComposer 同一处修正 —— 记下挂上时的 --kbb 当基线。
+     轮 509 之后无键盘时 --kbb 就是 Safari 工具栏高（81px，不再恒为 0），
+     旧判据 `k > 0` 一挂上即成立 → swap 立刻被摘 → 收面板那一下输入框失去钉住，
+     先塌到底再等键盘顶回来（用户看到的「中间一块空白，随后折叠」）。 */
+  const holdKbb = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--kbb")) || 0;
   kbSwapMO = new MutationObserver(() => {
     /* 轮 506：也要看 --kbb —— iOS 上推可视视口时 --kb-h 恒为 0（那是「页面要不要缩」的量，
-       跟「键盘回来了没有」不是一回事）。--kbb > 0 才代表可视视口真的被键盘顶起来了。
+       跟「键盘回来了没有」不是一回事）。--kbb 明显变大才代表可视视口真的被键盘顶起来了。
        只盯 --kb-h 的话，swap 会一直钉到 600ms 兜底，那段时间输入行悬在键盘上方约一个面板高。 */
     const de = getComputedStyle(document.documentElement);
     const v = parseFloat(de.getPropertyValue("--kb-h")) || 0;
     const k = parseFloat(de.getPropertyValue("--kbb")) || 0;
-    if (v > 0 || k > 0) endKbSwap();
+    if (v > 0 || k >= holdKbb + 80) endKbSwap();
   });
   kbSwapMO.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
   clearTimeout(kbSwapTimer);
@@ -998,11 +1003,18 @@ const bindFooterTap = () => {
     const path = e.composedPath ? e.composedPath() : [];
     if (!path.includes(btn)) return;                       /* 只接表情/键盘键本身 */
     holdForKeyboard();                                     /* 让位先钉住 */
-    /* 组件在同一个 click 里同步 toggle；等它把面板从 DOM 摘掉后再 focus，
-       否则焦点会落在正在消失的节点上，键盘仍旧不弹。 */
+    /* 轮 510 · 键盘弹不起来的真因就是这里的 setTimeout。
+     * iOS Safari 只在**用户手势的同步调用栈**里认 focus()；塞进 setTimeout(…, 0)
+     * 就已经出栈，系统直接拒绝 → 面板收起、焦点没回去 = 用户说的「键盘折叠了」。
+     * 当初加延时是想等面板从 DOM 摘掉，但消失的是 picker，textarea 一直没动过。 */
+    const taNow = sr.querySelector("textarea.vac-textarea");
+    try { if (taNow) taNow.focus(); } catch (err) { /* 无焦点环境 */ }
+    /* 组件在同一个 click 里还会 toggle 一次，可能把焦点挪到按钮上。
+       这里只做「补焦点」，不再依赖它唤起键盘（键盘已由上面那次同步 focus 拉起）。 */
     setTimeout(() => {
-      const ta = sr.querySelector("textarea.vac-textarea");
-      try { if (ta) ta.focus(); } catch (err) { /* 无焦点环境 */ }
+      const ta2 = sr.querySelector("textarea.vac-textarea");
+      if (!ta2 || sr.activeElement === ta2) return;
+      try { ta2.focus(); } catch (err) { /* 无焦点环境 */ }
     }, 0);
   }, true);
 };

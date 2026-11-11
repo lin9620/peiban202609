@@ -147,10 +147,13 @@ t("E10 轮400 表情键二次点击 = 键盘键（换图标 + 回焦点 + 让位
      先 holdForKeyboard，收完再把焦点还给 textarea。 */
   const at = BC.indexOf('footer.addEventListener("click", (e) => {\n    const picker = sr.querySelector(".vac-emoji-picker");');
   assert.ok(at > 0, "找不到表情键的二次点击监听");
-  const b = BC.slice(at, at + 900);
+  const b = BC.slice(at, at + 1200);   /* 轮 510：这段要覆盖到同步 focus（注释也占字符） */
   has(b, /if \(!path\.includes\(btn\)\) return;/, "没限定只接表情/键盘键");
   has(b, /holdForKeyboard\(\);/, "收面板前没钉住让位");
-  has(b, /ta\.focus\(\)/, "收面板后没把焦点还给输入框");
+  /* 轮 510：焦点必须**同步**还回去 —— iOS 只在用户手势的同步栈里认 focus()，
+     以前这里写的是 setTimeout(…, 0)，键盘根本不会弹，用户看到的就是「折叠」。 */
+  has(b, /try \{ if \(taNow\) taNow\.focus\(\); \} catch/, "收面板后没同步把焦点还给输入框");
+  has(b, /try \{ if \(taNow\) taNow\.focus\(\); \}/, "focus 没走同步路径");
 });
 
 /* ═══ 轮 478 · 「点表情等半天」的修法护栏 ═══
@@ -288,7 +291,9 @@ t("E19 面板开关只走 setPanelOpen：手写 --kb-h 会把「值没变不重�
   const KI = fs.readFileSync("src/utils/keyboardInset.js", "utf8");
   has(KI, /export function setPanelOpen\(open\)/, "keyboardInset 没有 setPanelOpen");
   has(KI, /lastWebKb = -1;\s*\n\s*lastPanelKb = -1;/, "setPanelOpen 没把「上次写过的值」作废（同一高度第二次会被吞）");
-  has(KI, /const h = panelOpen \? 0 : kbInsetValue\(raw, focused\);/, "applyWeb 没认面板态（键盘收起动画期间会抖一记）");
+  /* 轮 510：面板态归零照旧，但多了一道「这是不是真键盘」的闸 —— Safari 工具栏 81px
+     不再被当成键盘（旧写法 kbInsetValue 的 80px 闸门正好放过它）。 */
+  has(KI, /const h = panelOpen \|\| !realKb \? 0 : raw;/, "applyWeb 没认面板态（键盘收起动画期间会抖一记）或没挡工具栏");
   has(BC, /setPanelOpen\(open\);/, "DmVacChat 没接 setPanelOpen");
   no(BC, /document\.documentElement\.style\.setProperty\("--kb-h", "0px"\)/, "还在手写 --kb-h（和变化判据打架，输入条会留在键盘底下）");
   /* 面板开着时「收起→键盘」的钉住时间：1.2s 太长，用户这 1.2s 里看到的就是残影 */

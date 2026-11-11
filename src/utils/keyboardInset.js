@@ -28,7 +28,10 @@
 import { Capacitor } from "@capacitor/core";
 import { Keyboard } from "@capacitor/keyboard";
 import { kbPageInset, kbWebInset, kbShrinkInset, kbPanelFallback, kbScreenH } from "./keyboardMath.js";
-import { kbInsetValue } from "./chatHeight.js";
+import { KB_MIN, CHROME_UI_MAX } from "./viewportMath.js";
+/* 轮 510：--kb-h 不再走 chatHeight 的 kbInsetValue —— 它的 80px 闸门正好放过
+ * 81px 的 Safari 工具栏（真机就中这个）。改用本文件里的「减 UI 基线」判据。
+ * kbInsetValue 本身留在 chatHeight.js 里，chat-height-test 还在测它的边界。 */
 
 const VAR = "--kb-h";
 const SYS_BOTTOM_VAR = "--sys-bottom";
@@ -163,6 +166,17 @@ let webKbSeen = 0;
  * 轮 498：只往上记（取见过的最大值）—— 有些内核弹完键盘会把布局视口留在矮的那一档，
  * 旧写法（每次没键盘就覆盖）会把这个矮值记成基线，之后反推出的键盘高度全是错的。 */
 let restH = 0;
+/* 轮 510 · 无键盘时「inner − vv」的基线 = 浏览器 UI（Safari 工具栏 / iOS 26 玻璃栏）。
+ *
+ * 不记这一条会连出三个错（真机 393×852、工具栏 81px 全中）：
+ *   ① `--kb-h` 把 81px 工具栏当成键盘 → 页面平白缩 81px；
+ *   ② `panelH` 跟着变 81 → savePanel 把「键盘本体高 = 81」写进 localStorage；
+ *   ③ 下次开面板读回来，--kb-fallback 变成 119px（lo = 14%）→ 面板只有两排。
+ * 用户这轮报的「中间出现一块空白、随后折叠」就是 ① 的 81px 加 ② 撑出来的。
+ *
+ * 与 viewportMath.js 的 bars 同口径：只在小差值（≤ CHROME_UI_MAX）时记录，取最大值
+ * （工具栏会随滚动收放，取最大才不会键盘高多算几十像素）。 */
+let barsSeen = 0;
 
 /* 轮 499/500：面板兜底高度要按**页面坐标系**算（见 keyboardMath.js 的 kbPanelFallback）。
  *
@@ -184,7 +198,11 @@ function screenNow() {
 function readStored() {
   try {
     const o = JSON.parse(localStorage.getItem(PAIR_KEY) || "null");
-    if (o && o.abs > 0) return { abs: o.abs, screen: o.screen || 0 };
+    /* 轮 510：abs 低于 KB_MIN 的一律当脏数据丢弃。
+     * 老版本把「Safari 工具栏 81px」当成键盘本体存过一份（abs:81），读回来会让
+     * --kb-fallback 变成 119px（lo 兜底），表情面板从此只有两排 —— 而且会跨会话
+     * 一直坏下去，光修算法救不回来，必须在这里拦。真键盘最低 ≥ 200。 */
+    if (o && o.abs >= KB_MIN) return { abs: o.abs, screen: o.screen || 0 };
   } catch (e) { /* 隐私模式 / 禁用存储：当没存过 */ }
   return null;                      /* 老格式 { base, panel } 直接丢弃：换坐标系后已不成立 */
 }
@@ -193,7 +211,7 @@ function readStored() {
  * 工具栏只在「屏高 − 页面高 ∈ (0, 200]」时才算；分屏 / 桌面窗口差得更多，
  * 那是窗口不占满屏幕，键盘整个落在窗口里，绝对高度就是 panel 本身。 */
 function savePanel(panel, base) {
-  if (!(panel > 0) || !(base > 0)) return;
+  if (!(panel >= KB_MIN) || !(base > 0)) return;   /* 轮 510：工具栏不是键盘，别存 */
   const s = screenNow();
   const d = s - base;
   const toolbar = s > 0 && d > 0 && d <= 200 ? Math.round(d) : 0;
@@ -251,10 +269,26 @@ function applyWeb() {
      回复栏整体抬 31px，下方平白多一条空白。而真键盘最低也 ≥ 200px，80 这道闸门
      两边都不误伤。判据抽到 chatHeight.js，与聊天容器高度共用同一份口径。 */
   const focused = editableFocused();
-  /* 轮 503：面板开着就必须整屏 —— 键盘收起动画还没走完的那一两帧里，
-     可视视口仍是矮的，不拦住的话页面会先缩一下再弹回整屏（输入条抖一记）。 */
-  const h = panelOpen ? 0 : kbInsetValue(raw, focused);
   const inner = (typeof window !== "undefined" && window.innerHeight) || 0;
+  const vvNow = (typeof window !== "undefined" && window.visualViewport) || null;
+  const vvH = vvNow && vvNow.height > 0 ? Math.round(vvNow.height) : 0;
+  const zoomed = !!(vvNow && vvNow.scale > 1.05);
+  /* 轮 510 · 底部被吃掉多少（inner − 可视高）**包含**浏览器 UI，而 --kb-h 只能算键盘。
+   *
+   * 只有 81px 的 Safari 工具栏和 330px 的键盘，在这一步长得一样；旧代码靠
+   * `kbInsetValue(raw, focused)` 的 80px 闸门区分，81 刚好漏过去（真机就中这个）：
+   * 一聚焦输入框，`--kb-h` 立刻变 81px，页面缩 81、条抬 81，而用户根本没打字。
+   *
+   * 现在先把「无键盘时的那段」量成基线（工具栏 / 玻璃栏），从差值里减掉，
+   * 剩下的才算键盘。与 viewportMath.js 同一口径，不另立一套阈值。 */
+  const rawGap = !zoomed && vvH > 0 && inner > vvH ? inner - vvH : 0;
+  if (rawGap > 0 && rawGap <= CHROME_UI_MAX) barsSeen = Math.max(barsSeen, rawGap);
+  const kbNet = rawGap > barsSeen ? rawGap - barsSeen : 0;
+  const realKb = kbNet >= KB_MIN;                 /* 减掉 UI 之后还够高，才是真键盘 */
+  /* 轮 503：面板开着就必须整屏 —— 键盘收起动画还没走完的那一两帧里，
+     可视视口仍是矮的，不拦住的话页面会先缩一下再弹回整屏（输入条抖一记）。
+     轮 510：没认出真键盘时一律 0 —— 这条是「工具栏被当键盘」的直接开关。 */
+  const h = panelOpen || !realKb ? 0 : raw;
 
   /* 轮 496/500：表情面板要跟的是「键盘本体占多高」，它跟「页面需要让多高」不是同一个量。
    * 缩可视视口型内核：让位就是键盘高，两者相等；
@@ -263,8 +297,10 @@ function applyWeb() {
    * 用户看到的「表情跟文字输入高度不一致」。
    * 轮 500：反推必须要求「输入框真的有焦点」。地址栏 / 底部工具栏伸缩同样会改
    * innerHeight，没有焦点时把那 120px 当成键盘，还会被 savePanel 存进 localStorage，
-   * 之后面板永远矮一截（探针里改一次 iframe 高度就复现）。 */
-  let panelH = h;
+   * 之后面板永远矮一截（探针里改一次 iframe 高度就复现）。
+   * 轮 510：直接用减掉 UI 基线的 kbNet —— 之前用 h（= 含工具栏的 raw），
+   * 真机把 81px 工具栏当键盘本体存了下去，面板从此矮成两排。 */
+  let panelH = realKb ? kbNet : 0;
   if (!(panelH > 0)) panelH = focused ? kbShrinkInset(restH, inner) : 0;
 
   /* 轮 498/500：可视高度变了（键盘起落 / 地址栏伸缩 / 旋屏）就重算面板尺子，

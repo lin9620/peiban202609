@@ -73,8 +73,12 @@ t("L7 轮 350 面板→键盘交接：让位钉住 + 过渡同曲线（否则输
   has(BC, /holdForKeyboard\(\); {10,}\/\* 让位先钉住/, "closeKeepFocus 里没调 holdForKeyboard（或没在收面板之前调）");
   /* 轮 506：摘钉的判据从「--kb-h > 0」扩成「--kb-h > 0 或 --kbb > 0」——
      iOS 上推可视视口时 --kb-h 恒为 0，只盯它会让钉一直挂到 600ms 兜底。 */
+  /* 轮 510：无键盘时 --kbb 已经等于 Safari 工具栏高（81px），旧判据「k > 0」一挂上
+     就成立、swap 立刻被摘 → 收面板那一下失去钉住（用户：「中间一块空白，随后折叠」）。
+     改成「比挂上时的基线涨 ≥80」才算键盘真的接上。 */
   has(BC, /const k = parseFloat\(de\.getPropertyValue\("--kbb"\)\) \|\| 0;/, "没有把 --kbb 纳入摘钉判据");
-  has(BC, /if \(v > 0 \|\| k > 0\) endKbSwap\(\);/, "没有等 --kb-h/--kbb > 0 再摘钉");
+  has(BC, /const holdKbb = parseFloat\(getComputedStyle\(document\.documentElement\)\.getPropertyValue\("--kbb"\)\) \|\| 0;/, "没记挂上时的 --kbb 基线");
+  has(BC, /if \(v > 0 \|\| k >= holdKbb \+ 80\) endKbSwap\(\);/, "没等「键盘真的比基线高了 80」再摘钉");
   /* 轮 496：原来这里锁的是「网页端一律不钉」—— 实测 393×852 网页端收面板那一刻
      --kb-h 还是 0，输入框掉 249px 再被键盘顶回来。改成「按 webSwapNeeded 判」：
      走 visualViewport 让位路线的设备要钉，缩布局视口型（浏览器自己缩）不钉、否则悬空。 */

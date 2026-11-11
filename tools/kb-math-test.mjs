@@ -313,7 +313,9 @@ t("T24 接线：keyboardInset 必须用页面坐标系的兜底，且真值要�
 t("T29 接线：屏高要过 kbScreenH；实测值存绝对高度；面板尺子要跟工具栏", () => {
   const ki = read("src/utils/keyboardInset.js");
   assert.match(ki, /return kbScreenH\(win\.screen\.height, win\.devicePixelRatio\)/, "屏高没做物理像素归一");
-  assert.match(ki, /if \(o && o\.abs > 0\) return \{ abs: o\.abs/, "读的还是旧的 (base,panel) 格式");
+  /* 轮 510：abs 低于 KB_MIN 的存量一律丢弃 —— 老版本把 Safari 工具栏 81px 存成过
+     「键盘本体高度」，读回来会让 --kb-fallback 掉到 119px（面板只剩两排）。 */
+  assert.match(ki, /if \(o && o\.abs >= KB_MIN\) return \{ abs: o\.abs/, "读的还是旧的 (base,panel) 格式，或没挡工具栏级别的脏数据");
   assert.match(ki, /const toolbar = s > 0 && d > 0 && d <= 200 \? Math\.round\(d\) : 0;/, "存绝对高度时没扣工具栏那一段");
   assert.match(ki, /const pair = \{ abs: Math\.round\(panel \+ toolbar\)/, "存的不是键盘本体绝对高度");
   assert.match(ki, /writePanelRuler\(!\(panelH > 0\)\)/, "面板尺子没跟随「现在是否有键盘」");

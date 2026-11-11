@@ -229,7 +229,12 @@ t("P6 轮 350：收面板时底条让位钉到键盘上来；面板里点表情�
   /* 轮 506：摘钉判据扩成「--kb-h 或 --kbb > 0」—— iOS 上推可视视口时 --kb-h 恒为 0，
      只盯它会让钉一直挂到 600ms 兜底，那段时间输入行悬在键盘上方一个面板高。 */
   has(WPC, /const k = parseFloat\(de\.getPropertyValue\("--kbb"\)\) \|\| 0;/, "没把 --kbb 纳入摘钉判据");
-  has(WPC, /if \(v > 0 \|\| k > 0\) endKbSwap\(\);/, "没等 --kb-h/--kbb > 0 再摘钉");
+  /* 轮 510：判据从「--kbb > 0」改成「比挂上时涨了 ≥80」。
+     轮 509 之后无键盘的 --kbb 就是 Safari 工具栏高（81px，不再恒为 0），
+     旧判据一挂上即成立 → swap 立刻被摘 → 收面板那一下失去钉住，
+     用户看到的「中间一块空白，随后折叠」就是这一下。 */
+  has(WPC, /const holdKbb = parseFloat\(getComputedStyle\(document\.documentElement\)\.getPropertyValue\("--kbb"\)\) \|\| 0;/, "没记挂上时的 --kbb 基线");
+  has(WPC, /if \(v > 0 \|\| k >= holdKbb \+ 80\) endKbSwap\(\);/, "没等「键盘真的比基线高了 80」再摘钉");
   /* 轮 496：不再无条件「网页端不钉」——走 visualViewport 让位路线的浏览器里，收面板那刻
      --kb-h 还是 0，底条会先掉 249px 再被键盘顶回来（393×852 实测）。改由 webSwapNeeded 判：
      只有「浏览器自己缩布局视口」那批不钉（钉住会悬空）。 */
@@ -240,7 +245,10 @@ t("P6 轮 350：收面板时底条让位钉到键盘上来；面板里点表情�
 /* 轮401：用户指出暖心墙评论输入也有「再点表情直接折叠」——不是只修私信。 */
 t("P7 轮401 评论输入：表情键二次点击 = 键盘键（换图标 + 回焦点 + 让位钉住）", () => {
   has(WPC, /const emojiLabel = computed\(\(\) => emojiOpen\.value \? t\("comment\.keyboard"\) : t\("comment\.emoji"\)\)/, "没有按开关切换按钮语义");
-  has(WPC, /if \(emojiOpen\.value\) \{[\s\S]{0,300}if \(isSheet\(\)\) holdForKeyboard\(\);[\s\S]{0,120}emojiOpen\.value = false;[\s\S]{0,160}ta\.value\.focus\(\)/, "二次点击没钉住让位并回焦点");
+  /* 轮 510：顺序改成「先同步 focus → 再收面板 → 再钉让位」。
+     iOS 只在用户手势的同步栈里认 focus()，而 holdForKeyboard / 面板消失都会改布局；
+     先改样式再 focus 等于把刚拿到的焦点交给一次重排。 */
+  has(WPC, /if \(emojiOpen\.value\) \{[\s\S]{0,400}ta\.value\.focus\(\);[\s\S]{0,120}emojiOpen\.value = false;[\s\S]{0,120}if \(isSheet\(\)\) holdForKeyboard\(\)/, "二次点击没「先同步回焦点、再钉让位」");
   has(WPC, /v-if="emojiOpen"[\s\S]{0,520}M20 5H4/, "面板打开时没换成键盘图标");
   has(WPC, /:title="emojiLabel"/, "按钮 title 没跟开关走");
   has(I18N, /keyboard:\s*"Keyboard"/, "英文 comment.keyboard 丢了");

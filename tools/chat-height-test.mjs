@@ -215,15 +215,19 @@ t("T23 --kb-h：闸门边界（80 不算、81 且无焦点算 0、81 且有焦�
   assert.equal(kbInsetValue(KB_GAP + 1, false), KB_GAP + 1, "过了 100 就该让位");
 });
 
-t("T24 keyboardInset.js 必须调用 kbInsetValue（不许留着内联的三元）", () => {
+t("T24 工具栏不许被当成键盘（80px 闸门放过 81px 的真机 Safari）", () => {
   const js = read("src/utils/keyboardInset.js");
-  assert(/import \{[^}]*kbInsetValue[^}]*\} from "\.\/chatHeight\.js"/.test(js), "没 import");
-  /* 轮 496：焦点判据被提成局部变量（面板高度还要用它），两种写法都算数 ——
-     这条锁的是「必须喂进纯函数」，不是「必须写成内联一行」。 */
-  assert(/kbInsetValue\(raw,\s*focused\s*\)/.test(js) || /kbInsetValue\(raw, editableFocused\(\)\)/.test(js),
-    "没把 raw/focused 喂进纯函数");
-  assert(/editableFocused\(\)/.test(js), "没有焦点判据");
-  assert(!/editableFocused\(\) \|\| raw > /.test(js), "还留着内联三元（两份口径迟早漂）");
+  /* 轮 510 重写。原来这条锁的是「必须调 kbInsetValue」，而 kbInsetValue 的闸门是
+     TOOLBAR_GAP = 80 —— 真机 Safari 工具栏实测 81px，大 1px 就漏过去：
+     --kb-h 被写成 81（页面平白缩 81px、吸底条抬 81px），随后这个 81 又被当成
+     「键盘本体高度」存进 localStorage，--kb-fallback 掉到 119px（面板只剩两排）。
+     现在锁的是新口径：先量「无键盘时的 UI 遮挡基线」，减掉它才叫键盘。 */
+  assert(/import \{[^}]*KB_MIN[^}]*\} from "\.\/viewportMath\.js"/.test(js), "没从 viewportMath 引入 KB_MIN");
+  assert(/barsSeen = Math\.max\(barsSeen, rawGap\)/.test(js), "没有记录「无键盘时的 UI 遮挡基线」");
+  assert(/const kbNet = rawGap > barsSeen \? rawGap - barsSeen : 0;/.test(js), "键盘高没减掉 UI 基线");
+  assert(/const realKb = kbNet >= KB_MIN;/.test(js), "没按 KB_MIN 判「这是不是真键盘」");
+  assert(/const h = panelOpen \|\| !realKb \? 0 : raw;/.test(js), "让位没先过「是不是真键盘」这道闸");
+  assert(/editableFocused\(\)/.test(js), "没有焦点判据（面板高反推还要用）");
 });
 
 /* ══════════ ⑨ 评论条 / 回复栏：必须贴在「可见区底 − 条高」 ══════════ */
