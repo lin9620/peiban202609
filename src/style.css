@@ -1216,6 +1216,31 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 .bt-head { padding-bottom: 12px; margin-bottom: 4px; border-bottom: 1px solid var(--hairline); }
 .bt-title { font-family: var(--font-display); font-size: 24px; font-weight: 600; margin: 0; }
 .mail-card { border: 1px solid var(--hairline); background: var(--wash); }
+/* 桌面端：漂流瓶是「标题 + 发布框 + 记录」的功能页，和暖心墙同构；
+   但此前 .mail-card 把背景压成半透白，在一排米色卡片里像贴了另一张白纸。
+   这里只改桌面（手机端由玻璃皮肤接管，保持原样）：
+     ① 外卡回到全站米色卡（var(--card)），和暖心墙 / 故事栏同一张纸；
+     ② 页头去掉那条生硬的整宽分隔线，靠留白分层；
+     ③ 标题降到 20px，和卡内标题的尺度对齐，不再比暖心墙大一圈。 */
+@media (min-width: 900px) {
+  .mail-card {
+    background: var(--card);
+    border-color: var(--hairline);
+  }
+  .mail-card .bt-head {
+    padding-bottom: 0;
+    margin-bottom: 16px;
+    border-bottom: 0;
+  }
+  .mail-card .bt-title {
+    font-size: 20px;
+    line-height: 1.35;
+    letter-spacing: .2px;
+  }
+  .mail-card .bt-head .sub {
+    margin: 4px 0 0;
+  }
+}
 .mail-send { display: flex; justify-content: flex-end; margin-top: 10px; }
 .mail-list { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--hairline); }
 .mail-item { border-radius: 14px; padding: 12px 14px; background: var(--wash); border: 1px solid var(--hairline); transition: border-color .18s ease; }
