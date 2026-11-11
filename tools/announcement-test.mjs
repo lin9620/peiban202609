@@ -88,6 +88,20 @@ ok("系统公告点击进入详情（不是只标已读就返回）",
   /if \(n\.kind === "system" && systemBody\(n\)\)[\s\S]{0,80}openAnnouncement\(n\)[\s\S]{0,20}return;/.test(view));
 ok("详情弹层 Teleport 到 body（避开 transform 包含块）",
   view.includes('<Teleport to="body">') && view.includes('class="announce-mask"'));
+ok("详情弹层有标题/正文无障碍关联",
+  view.includes('aria-labelledby="announce-title"') && view.includes('aria-describedby="announce-body"'));
+ok("手机端公告也居中，不是底部抽屉",
+  /@media \(max-width: 640px\)[\s\S]{0,240}\.announce-mask\s*\{[^}]*align-items:\s*center/s.test(view)
+  && !view.includes("align-items: flex-end"));
+ok("详情弹层有底部主按钮", view.includes('class="announce-cta"'));
+ok("详情弹层正文按当前语言取 bodyFor",
+  /const detailBody[\s\S]{0,240}bodyFor\(detail\.value\.n\)/.test(view));
+ok("翻译中先显示骨架，不先闪原文",
+  /trBusy\[detailKey\.value\]\) return ""/.test(view) && view.includes("announce-skeleton"));
+ok("弹层开着切语言也会重新翻译",
+  /watch\(detail,[\s\S]{0,140}ensureBody\(d\.n\)/.test(view));
+ok("Esc 可关闭公告",
+  view.includes('e.key === "Escape"') && view.includes('window.addEventListener("keydown"'));
 ok("列表正文走 bodyFor(n)（按当前语言取译文）", view.includes("{{ bodyFor(n) }}"));
 ok("弹层正文走 detailBody", view.includes("{{ detailBody }}"));
 ok("翻译中 / 原文回退都有提示",
