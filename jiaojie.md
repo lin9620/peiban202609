@@ -724,7 +724,7 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
   - **⚠️ 事故**：隔离 `src/views/NotificationsView.vue`（并行会话在改，144→171 行）时用 `git show HEAD:path > path` 覆盖，恢复用的 `cp` 备份抓到的是 HEAD 版（18664B/426 行），**并行版（24395B）未进备份、已丢失**。以后覆盖别人正在写的文件，必须先 `cp` 到带时间戳的独立文件并 `cmp` 校验字节数再动手。
 
 
-- **轮 510（改动完成、测试过了、待提交待部署）**：用户报切换序列的新症状 ——「点击键盘-点击表情-点击键盘，结果键盘折叠了」；暖心墙同一序列「中间出现了图片上这个问题，随后便又折叠了」（截图：输入行下方一条**空白带**，约一个输入条高，右侧只有表情/发送键，下面紧接 Safari 键盘工具栏）。
+- **轮 510（已提交已部署：`b92be19` → 版本 `2c4157c9`，线上入口 `main-TtjOQywa.js`）**：用户报切换序列的新症状 ——「点击键盘-点击表情-点击键盘，结果键盘折叠了」；暖心墙同一序列「中间出现了图片上这个问题，随后便又折叠了」（截图：输入行下方一条**空白带**，约一个输入条高，右侧只有表情/发送键，下面紧接 Safari 键盘工具栏）。
   - **根因是一条链，全部从「Safari 工具栏 81px 被当成键盘」开始**（工装实测：`rest-toolbar vv=771 kb=81px kbb=81px panelH=min(119px,380px) stored={"abs":81,"screen":852}`）：
     1. `--kb-h` 走 `kbInsetValue(raw, focused)`，闸门是 `TOOLBAR_GAP = 80` —— 真机工具栏**正好 81px**，大 1 像素就漏过去 → `--kb-h = 81`（页面平白缩 81px、吸底条抬 81px），而用户根本没在打字。
     2. 同一次采样里 `panelH = h = 81` → `savePanel(81, 852)` 把「键盘本体高度 = 81」写进 localStorage。
@@ -739,7 +739,10 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
   - **同步更新的既有护栏**（都是「锁住旧写法」的正则，改实现必须一起改，别放宽）：`chat-height-test` T24（从「必须调 kbInsetValue」改成「工具栏不许当键盘」的五条口径）· `kb-math-test` T29（读存量 `abs >= KB_MIN`）· `emoji-panel-test` E10/E19（同步 focus + `realKb` 闸门）· `wall-composer-test` P6/P7（`holdKbb + 80` 与新的 focus 顺序）· `chat-look-test` L7（同 P6）。
   - **测试**：`wallbar-drive` 9 步全过（新增 toolbar-only）· `kb-matrix` 272/272 · `ios26-glass` 8/0 · `chat-height` 40/0 · `kb-math` 30/0 · `emoji-panel` 20/0 · `wall-composer` 24/0 · `chat-look` 8/0 · 全量 fast **116/118**（两个红都是别人的：`announcement-test` 公告弹层、`ios-compat-test` 的 `SettingsView.vue:634` 缺 safe-area fallback）。`npm run build` 通过。
   - **真机验算**：工具栏态 `--kb-h` 81→**0**、`--kb-panel-h` 119→**307**、`stored` 从 `{abs:81}` → 只存 `{abs:330}`。
-  - **仍未动**：`--kb-cap` 的 380 上限（独立议题）；`viewport-fit=cover`；`NotificationsView.vue` 公告弹层；`SettingsView.vue:634` 的 safe-area fallback。
+  - **同时发车的其他会话改动**（用户：「别的会话做完了，你一起部署」）：故事页手机端重设计 `9fba698`（排行榜四等分页签 + 前三名领奖台、我的页五格数据条、五项统计标签五语言，只在 ≤640 生效）、设置页手机端重排 `1877cf0`（身份卡暖色主视觉 + 分组独立卡片、触控目标 44px）、公告弹层规格断言 `63bef2d`。
+  - **上线核验**：`live-check` **15/15**、`live-bundle-check` **5/5**（`main-TtjOQywa.js` local=live 逐字节 SAME，1032659 字节）、线上入口已指向该文件。版本 `2c4157c9-d116-43fc-a2ad-77e0ac0623a0`。
+  - **顺手修了一处别人的 bug**：`SettingsView.vue` 的 `.set-page` 写 `max(10px, env(safe-area-inset-bottom))` 缺第二参数 —— 老 iOS 上整条声明失效（不是取 0，是整条丢），设置页底部内容会贴到 home 条下面。补成 `env(safe-area-inset-bottom, 0px)`，`ios-compat` 从 6/1 转 **7/7**。
+  - **仍未动**：`--kb-cap` 的 380 上限（独立议题）；`viewport-fit=cover`；`NotificationsView.vue` 公告弹层 —— **仍未实现**，`announcement-test` 现在是 63 pass / **6 fail**，测的是从未进过仓库的那套规格（`aria-labelledby="announce-title"` / `.announce-cta` / `bodyFor(detail.n)` / `announce-skeleton` / `watch(detail)` 重译 / Esc 关闭）。这次先把规格 add 进仓库（`63bef2d`）防止再丢一次，实现待补。
 
 - **轮 509（改动完成、测试过了、待提交待部署）**：用户第八次报同一件事：「多少轮了啊，苹果浏览器的问题依旧是没有解决……前面视频存在的问题依旧是存在。我刚刚测的」。
   - **先对齐一件事（这是八轮里最该早说而没说的）**：用户一直**在线上测**，而线上跑的是轮 507（`main-CqMZgybg.js`）；轮 508 那一整轮的改动只在本地，从未上线。所以「看不到变化」有一半是这个原因 —— 汇报时必须写明线上版本号，不能只说「待部署」。另外核对了时间线：视频录于 01:34，轮 507 是 02:17 才提交的 —— 用户录视频时看到的还是轮 506。
