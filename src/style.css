@@ -45,6 +45,11 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
    * （--kb-fallback / --kb-cap），命中过一次真键盘后改用本机实测比例。
    * 读不到时才退回 46vh/320：老内核、桌面缩放、JS 没跑到，表现与改之前完全一致。 */
   --kb-panel-h: min(var(--kb-last, var(--kb-fallback, min(46vh, 320px))), var(--kb-cap, 62vh));
+  /* 轮 506：吸底条 / 表情面板离**布局视口底**的距离，由 utils/viewportVars.js 现读
+     visualViewport 写成 px。0 = 贴布局视口底（没键盘）；键盘弹起时 ≈ 键盘高。
+     这一条替掉了 fixedBar 逐帧写内联 top 的做法 —— 位置和面板高度来自同一次测量，
+     不可能再出现「条在键盘上沿、面板在键盘底下」这种两个参照系。 */
+  --kbb: 0px;
 
   /* 轮 120 · DESIGN.md（Claude 体系）换肤：暖奶油画布 + 陶珊瑚 + 发丝线，阴影退役 */
   --ink: #141413;
@@ -2813,19 +2818,25 @@ html.wp-chat-fix .shell--mobile-nav.shell--chat .dm-thread:not(.wp-emoji-open):n
  * 正是前几轮的事故形态 —— 这里把壳整体提到 tabbar 之上，少一个依赖。 */
 html.wp-chat-fix .shell { z-index: 200; }
 html.kb-web .cmt-main-bar {
-  /* 轮 504：网页端不再用 bottom: var(--kb-h) 这条**间接推导**。
-   * 真机（iPhone Safari）反馈：条会跑到页面顶部 —— --kb-h 是 keyboardInset 一路推出来的，
-   * 任何一道闸门（事件派发 / 焦点判据 / 缩放保护）在某台设备上不成立，这里就会拿到
-   * 一个残留值甚至被夹到 layout-120，条直接被顶到半空。
-   * 现在条由 utils/fixedBar.js 按 visualViewport 钉成内联 top（可视区底 − 条高），
-   * CSS 只留一个「算不出来就贴布局视口底」的兜底，宁可被键盘盖住也不会飞走。 */
-  bottom: 0;
+  /* 轮 504：网页端不再用 bottom: var(--kb-h) 这条**间接推导**（--kb-h 被夹到
+   *   layout-120 时条会被顶到半空，图 1 就是）。
+   * 轮 506：改成吃 --kbb —— 由 utils/viewportVars.js 从 visualViewport 现读出
+   *   「可视视口底离布局视口底多远」，与表情面板**同一个值**。不再由 fixedBar 逐帧
+   *   写内联 top：那个方案要自己量条高、自己跟 ResizeObserver 抢时序，而面板高度
+   *   又来自 --kb-last 这条独立推导链 —— 两条链一错位，条和面板就分家。
+   * 现在条和面板共用一个数：值对两个都对，值错两个一起错（且看得出是 0）。 */
+  bottom: var(--kbb, 0px);
+  /* 轮 506：只让「撑起面板」那一下有过渡，撤掉必须是瞬时的 ——
+     键盘回来那一帧 --kbb 一步跳到键盘高，padding 若还慢慢收，输入行会先被顶上去再落回来
+     （一记可见的弹跳）。 */
+  transition: none;
+}
+html.kb-web .cmt-main-bar.wp-emoji-open {
   transition: padding-bottom .22s cubic-bezier(.2, .8, .2, 1);
 }
 /* 表情面板开着时条**用内边距让出面板的位置**（与会话页 .vac-box-footer 同一套）：
- * 面板是 fixed、由 fixedBar 钉在可视底，条把自己撑高同样钉在可视底，
- * 输入行就正好落在面板上沿 —— 两者共用一个参照系，不会再一个贴键盘、一个钻到屏幕外。
- * 轮 482 之前写的是 bottom: var(--kb-panel-h)，那是把面板位置又推导了一遍。 */
+ * 面板 bottom 也是 --kbb、高度 = --kb-panel-h，条把自己撑高同样钉在 --kbb，
+ * 输入行就正好落在面板上沿 —— 两者共用一个参照系。 */
 html.kb-web .cmt-main-bar.wp-emoji-open,
 html.kb-web .cmt-main-bar.wp-kb-swap { padding-bottom: var(--kb-panel-h); }
 html.kb-web .reply-bar {

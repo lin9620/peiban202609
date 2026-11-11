@@ -226,7 +226,10 @@ t("P6 轮 350：收面板时底条让位钉到键盘上来；面板里点表情�
   /* 轮 482：钉住的高度从写死 320 改成 --kb-panel-h（上一次真实键盘高） */
   has(CSS, /\.cmt-main-bar\.wp-kb-swap \{\s*\n\s*bottom: var\(--kb-panel-h\);/, "没有 .wp-kb-swap 的钉住规则（底条会先掉到屏底）");
   has(WPC, /if \(isSheet\(\)\) holdForKeyboard\(\);/, "onDocClick 里没在收面板前钉住底条");
-  has(WPC, /if \(v > 0\) endKbSwap\(\);/, "没等 --kb-h > 0 再摘钉");
+  /* 轮 506：摘钉判据扩成「--kb-h 或 --kbb > 0」—— iOS 上推可视视口时 --kb-h 恒为 0，
+     只盯它会让钉一直挂到 600ms 兜底，那段时间输入行悬在键盘上方一个面板高。 */
+  has(WPC, /const k = parseFloat\(de\.getPropertyValue\("--kbb"\)\) \|\| 0;/, "没把 --kbb 纳入摘钉判据");
+  has(WPC, /if \(v > 0 \|\| k > 0\) endKbSwap\(\);/, "没等 --kb-h/--kbb > 0 再摘钉");
   /* 轮 496：不再无条件「网页端不钉」——走 visualViewport 让位路线的浏览器里，收面板那刻
      --kb-h 还是 0，底条会先掉 249px 再被键盘顶回来（393×852 实测）。改由 webSwapNeeded 判：
      只有「浏览器自己缩布局视口」那批不钉（钉住会悬空）。 */

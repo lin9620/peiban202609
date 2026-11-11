@@ -20,12 +20,12 @@
  */
 import { fixedBarTop } from "./chatHeight.js";
 
-/* 轮 504：表情面板也进来。
- * 它原来是 `position: fixed; bottom: 0` —— 锚的是**布局视口**底，而键盘 / iOS 底部工具栏
- * 压在页面之上。真机实测（393×852，键盘 330）：可视底 522，面板却从 522 铺到 852，
- * 整个面板长在键盘底下，最后一排 emoji 在 524~557 —— 用户看到的就是「面板被切了」。
- * 面板和条是同一件事（都要贴可视底），交给同一个函数算，别再两套算法各错一边。 */
-const SELECTOR = ".cmt-main-bar, .reply-bar, .wp-composer-picker";
+/* 轮 506：评论底条与表情面板**退出**这里，改由 CSS 吃 --kbb（utils/viewportVars.js
+ * 现读 visualViewport 写成 px）。原因：fixedBar 要自己量条高、写内联 top、再跟
+ * ResizeObserver 抢时序；而面板高度来自 --kb-last 另一条推导链 —— 两条链一错位，
+ * 条在键盘上沿、面板在键盘底下（用户「表情框跟输入框高度不一致 / 最后一排看不见」）。
+ * 现在两者共用同一个 --kbb：值对两个都对，值错两个一起错。这里只留详情页回复栏。 */
+const SELECTOR = ".reply-bar";
 
 let booted = false;
 let timer = 0;

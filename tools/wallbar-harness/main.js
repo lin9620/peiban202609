@@ -16,6 +16,7 @@ import "../../src/style.css";
 import WpComposer from "../../src/components/WpComposer.vue";
 import { initKeyboardInset } from "../../src/utils/keyboardInset.js";
 import { initFixedBar } from "../../src/utils/fixedBar.js";
+import { initViewportVars } from "../../src/utils/viewportVars.js";
 
 /* ── 假 visualViewport ─────────────────────────────────────────────
  * Chromium 的 visualViewport 是只读对象，但它挂在 window 上可重定义。
@@ -91,6 +92,9 @@ const App = {
 };
 
 createApp(App).mount("#app");
+/* 轮 506：条/面板的 bottom 现在吃 --kbb，必须先把「视口唯一事实来源」跑起来
+   （顺序与 src/main.js 一致：viewportVars → keyboardInset → fixedBar）。 */
+initViewportVars();
 initKeyboardInset();
 initFixedBar();
 window.__ready = true;

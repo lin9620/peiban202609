@@ -9,6 +9,7 @@ import { initPet, tickPet, savePet, tickAdventure } from "./stores/petStore.js";
 import { isMobileNav } from "./stores/uiStore.js";
 import { initUserScope } from "./utils/userScope.js";
 import { installErrorBeacon } from "./utils/beacon.js";
+import { initViewportVars } from "./utils/viewportVars.js";      /* 轮 506：视口唯一事实来源（--kbb / --kb-last） */
 import { initKeyboardInset } from "./utils/keyboardInset.js";   /* 轮 322：键盘让位（App 壳） */
 import { initChatViewport } from "./utils/chatViewport.js";      /* 轮 465：聊天页 fixed 接管（网页端） */
 import { initFixedBar } from "./utils/fixedBar.js";             /* 轮 469：评论条/回复栏钉到可视视口底 */
@@ -83,6 +84,9 @@ watch(isMobileNav, (v) => applyGlassSkin(forceGlassSkin || v));
 /* 轮 322：键盘让位。窗口已不再随输入法缩放（adjustNothing + SystemBars 不吞输入法），
  * 输入法高度改由 CSS 变量 --kb-h 驱动 —— 否则键盘弹起那一瞬会露一条空区。
  * 网页端在函数内部直接 return，零影响。 */
+/* 轮 506：先跑「视口唯一事实来源」—— 后面三个模块都读它写的 CSS 变量，
+ * 必须比它们早一步（--kbb 决定吸底条/表情面板离底多远，--kb-last 决定面板多高）。 */
+initViewportVars();
 initKeyboardInset();
 /* 轮 465：聊天页在浏览器里改用 fixed 精确覆盖可视视口（见 utils/chatViewport.js）。
  * 前三轮「算高度」的路子在真机上都失败：iOS 会把整个文档往上推、小米键盘是 overlay，

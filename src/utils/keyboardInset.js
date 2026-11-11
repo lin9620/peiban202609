@@ -82,13 +82,19 @@ function writeVar(px, info, panelPx) {
     /* 轮 503：改成**只增不减**（本会话最大值）。旧写法每次都覆写，同一个面板在
      * 「地址栏收起 / 展开」两种状态下高度会差一截 —— 用户四张截图里面板一会儿 5 排、
      * 一会儿 4 排，输入条跟着上下跳，就是这个。真键盘高度是设备常量，见过一次就该定住；
-     * 偶尔测大的由 --kb-cap 兜住（min(80%, 380)）。 */
-    if (panel > 0) {
-      panelMax = Math.max(panelMax, Math.round(panel));
-      document.documentElement.style.setProperty("--kb-last", panelMax + "px");
-    } else if (px > 0) {
-      panelMax = Math.max(panelMax, Math.round(px));
-      document.documentElement.style.setProperty("--kb-last", panelMax + "px");
+     * 偶尔测大的由 --kb-cap 兜住（min(80%, 380)）。
+     * 轮 506：网页端的 --kb-last 交给 utils/viewportVars.js 独家写（它用
+     * innerHeight − visualViewport.height，**不扣 offsetTop**）。这里再写一份会互相压低：
+     * iOS 上推可视视口时 kbWebInset 算出来是 0，一写就把面板高度打回估计值。
+     * App 壳不跑 viewportVars（那边没有可视视口语义），仍由这里写。 */
+    if (Capacitor.isNativePlatform()) {
+      if (panel > 0) {
+        panelMax = Math.max(panelMax, Math.round(panel));
+        document.documentElement.style.setProperty("--kb-last", panelMax + "px");
+      } else if (px > 0) {
+        panelMax = Math.max(panelMax, Math.round(px));
+        document.documentElement.style.setProperty("--kb-last", panelMax + "px");
+      }
     }
   } catch (e) { /* 极端环境忽略：样式变量设不上也不能抛错 */ }
   /* 现场诊断（只写全局、不改行为）：别的机型若报「还是有缝/被压住」，一句

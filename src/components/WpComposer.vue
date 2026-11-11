@@ -13,6 +13,7 @@ import "emoji-picker-element";
 import { t } from "../i18n.js";
 import { isMobileNav, isApp } from "../stores/uiStore.js";
 import { webSwapNeeded, setPanelOpen } from "../utils/keyboardInset.js";
+import { syncViewportVars } from "../utils/viewportVars.js";
 import { enterSends, insertText, pickerOpensUp } from "../utils/composer.js";
 import { hideEmojiSearch } from "../utils/emojiPanel.js";
 import { scheduleEmojiWarm } from "../utils/emojiWarm.js";
@@ -92,6 +93,10 @@ const toggleEmoji = () => {
     return;
   }
   /* 上方放不下就往下弹：暖心墙桌面主评论框离页面顶很近，旧版往上弹会被视口裁掉半截。 */
+  /* 轮 506：开面板的这一刻是「键盘高度」唯一还能量到的时机（键盘马上就要收起来了）。
+     先现读一次视口把 --kb-last 定住，面板高度立刻就等于刚才那个键盘 —— 不再依赖
+     之前某次采样有没有成功。用户第五次报「表情框跟输入框高度不一致」就靠这一句兜住。 */
+  syncViewportVars();
   const el = root.value;
   if (el) {
     const r = el.getBoundingClientRect();
@@ -210,8 +215,12 @@ const holdForKeyboard = () => {
   bar.classList.add("wp-kb-swap");
   if (kbSwapMO) kbSwapMO.disconnect();
   kbSwapMO = new MutationObserver(() => {
-    const v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--kb-h")) || 0;
-    if (v > 0) endKbSwap();
+    /* 轮 506：--kbb 也要看 —— iOS 上推可视视口时 --kb-h 恒为 0，只盯它会让 swap 一直钉到
+       600ms 兜底，那段时间输入行就悬在键盘上方约一个面板高（用户看到的「条和键盘不贴」）。 */
+    const de = getComputedStyle(document.documentElement);
+    const v = parseFloat(de.getPropertyValue("--kb-h")) || 0;
+    const k = parseFloat(de.getPropertyValue("--kbb")) || 0;
+    if (v > 0 || k > 0) endKbSwap();
   });
   kbSwapMO.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
   clearTimeout(kbSwapTimer);
@@ -470,11 +479,14 @@ defineExpose({
     left: 0;
     right: 0;
     top: auto;
-    bottom: 0;
     width: 100%;
     /* 轮 482：与底条 .cmt-main-bar 的 bottom 用同一个变量 —— 面板高 = 上一次真实键盘高，
        「收键盘弹面板 / 面板收键盘」两次切换的位置完全对齐（原来写死 min(46vh,320px)，
-       和真机键盘 280~310 差一截，用户看到输入条跳一下）。 */
+       和真机键盘 280~310 差一截，用户看到输入条跳一下）。
+       轮 506：bottom 也换成 --kbb（可视视口底离布局视口底多远），与底条同一个数。
+       以前是 `bottom: 0` = 布局视口底 —— 键盘弹起 / iOS 底部工具栏浮起时，
+       面板会整块落在键盘下方（用户截图：最后一排 emoji 看不见）。 */
+    bottom: var(--kbb, 0px);
     height: var(--kb-panel-h);
     max-height: none;
     border: 0;

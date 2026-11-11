@@ -55,7 +55,7 @@ writeFileSync(expr, `(async () => {
       vv: [Math.round(vv.height || 0), Math.round(vv.offsetTop || 0)],
       inner: window.innerHeight,
       visBottom: Math.round((vv.offsetTop || 0) + (vv.height || window.innerHeight)),
-      kb: cssv("--kb-h"), panelH: cssv("--kb-panel-h"), kbLast: cssv("--kb-last"),
+      kb: cssv("--kb-h"), kbb: cssv("--kbb"), panelH: cssv("--kb-panel-h"), kbLast: cssv("--kb-last"),
       bar: R(bar), picker: R(pk),
       inlineTop: bar ? bar.style.top : "",
       barCls: bar ? bar.className : "",
@@ -67,14 +67,22 @@ writeFileSync(expr, `(async () => {
   await sleep(500);
   snap("bar-open");
 
-  /* iOS：键盘 330，可视视口缩到 522，布局视口不动 */
+  /* iOS 真机的**第一次**键盘状态就是「上推」的：输入条在页面底部，Safari 为了露出
+     光标会把可视视口整个推上去（vv.offsetTop ≈ 键盘高）。旧代码在这里算 kbWebInset
+     = inner − vv.height − offsetTop = 0，于是 --kb-last 永远是空、面板退回估计值 320，
+     与真键盘 330 差一截 —— 用户第五次报的「表情框跟输入框高度不一致」。
+     所以这一步必须**先上推、后**走面板，顺序不能反过来（反了就被「只增不减」掩盖）。 */
   const H = window.innerHeight;
-  __kbSim(H - 330, 0);
+  __kbSim(H - 330, 330);
   await sleep(700);
-  snap("kb330");
+  snap("kb-pan");
 
-  /* 点表情：面板贴底（组件会 blur + 归零让位） */
+  /* 点表情：面板贴底（组件会 blur + 归零让位）
+     真机上键盘会跟着收起来 —— 假工装里没有真键盘，这里手工把可视视口还原，
+     否则测的是「键盘还在、面板又开」这个真机上不存在的状态。 */
   document.querySelector(".cmt-main-bar .wp-composer-ico.is-emoji").click();
+  await sleep(60);
+  __kbSim(H, 0);
   await sleep(900);
   snap("panel");
 
@@ -91,8 +99,10 @@ writeFileSync(expr, `(async () => {
   } catch (e) { /* shadow 结构变了就跳过 */ }
   steps[steps.length - 1].lastEmoji = lastEmoji;
 
-  /* 面板 → 键盘 */
+  /* 面板 → 键盘（同样：真机上键盘会重新弹起并上推可视视口） */
   document.querySelector(".cmt-main-bar .wp-composer-ico.is-emoji").click();
+  await sleep(120);
+  __kbSim(H - 330, 330);
   await sleep(1400);
   snap("back-to-kb");
 
@@ -101,10 +111,11 @@ writeFileSync(expr, `(async () => {
   await sleep(600);
   snap("kb-hide");
 
-  /* iOS 把可视视口整个上推（vv.offsetTop > 0） */
-  __kbSim(H - 330, 330);
+  /* 键盘弹起但**没有**上推（安卓 / 桌面浏览器 / iOS 光标本来就露着）：条也要贴住。
+     这一档与 kb-pan 的算式不同（kbb = 键盘高），两条都得过。 */
+  __kbSim(H - 330, 0);
   await sleep(700);
-  snap("pushed");
+  snap("kb-plain");
 
   return {
     dpr: window.devicePixelRatio,
@@ -140,7 +151,7 @@ for (const s of data.steps) {
   const b = s.bar, p = s.picker;
   console.log(
     `${s.name.padEnd(12)} vv=${String(s.vv[0]).padStart(3)}+${String(s.vv[1]).padStart(3)} visB=${String(s.visBottom).padStart(3)}`
-    + ` kb=${(s.kb || "-").padEnd(6)} panelH=${(s.panelH || "-").padEnd(6)} kbLast=${(s.kbLast || "-").padEnd(6)}`
+    + ` kb=${(s.kb || "-").padEnd(6)} kbb=${(s.kbb || "-").padEnd(6)} panelH=${(s.panelH || "-").padEnd(6)} kbLast=${(s.kbLast || "-").padEnd(6)}`
     + ` bar=${b ? b.top + ".." + b.bottom + "(" + b.h + ")" : "-"}`
     + ` picker=${p ? p.top + ".." + p.bottom + "(" + p.h + ")" : "-"}`
     + (s.lastEmoji ? ` lastEmoji=${s.lastEmoji.top}..${s.lastEmoji.bottom}` : "")
@@ -161,8 +172,13 @@ for (const s of data.steps) {
   if (s.bar.top < -1) fails.push(`${s.name}: 条越过屏幕顶部（top=${s.bar.top}）`);
   if (!near(s.bar.bottom, s.visBottom)) fails.push(`${s.name}: 条没贴可视区底（bar.bottom=${s.bar.bottom} visBottom=${s.visBottom}）`);
 }
-const kb = step("kb330");
-if (kb && !near(kb.bar.bottom, kb.visBottom)) fails.push("kb330: 键盘弹起后条没跟着上移");
+const pan = step("kb-pan");
+if (!pan) fails.push("kb-pan: 没走到「iOS 首次键盘就上推」那一步");
+else {
+  if (!near(parseFloat(pan.kbLast || 0), 330)) {
+    fails.push(`kb-pan: 键盘上推时 --kb-last = ${pan.kbLast}（应为 330）—— 面板高度会退回估计值`);
+  }
+}
 const panel = step("panel");
 if (!panel) fails.push("panel: 没走到面板那一步");
 else if (!panel.picker) fails.push("panel: 面板没出现");
@@ -172,13 +188,30 @@ else {
   }
   if (panel.picker.top < 0) fails.push(`panel: 面板顶部在屏幕外（top=${panel.picker.top}）`);
   if (panel.bar.bottom > panel.visBottom + 2) fails.push("panel: 条压在面板下沿之外");
+  /* 本轮的核心断言：面板高度必须等于刚才那个键盘的高度（用户：「表情框跟输入框高度不一致」） */
+  if (!near(panel.picker.h, 330, 2)) {
+    fails.push(`panel: 面板高 ${panel.picker.h} ≠ 键盘高 330 —— 面板和输入框对不上`);
+  }
+  /* 条把面板顶上去之后，输入行下沿要正好压在面板上沿
+     （--kb-panel-h 的 computed value 是 `min(330px, 380px)` 这种表达式，读不出 px，
+       所以用面板自己的高度当基准 —— 两者本来就是同一个变量） */
+  if (!near(panel.bar.bottom - panel.picker.h, panel.picker.top, 4)) {
+    fails.push(`panel: 输入行下沿 ${panel.bar.bottom - panel.picker.h} 与面板上沿 ${panel.picker.top} 不齐`);
+  }
 }
 const back = step("back-to-kb");
-if (back && !(parseFloat(back.kb) > 0)) {
-  fails.push(`back-to-kb: 面板收完回键盘后 --kb-h 还是 ${back.kb}（页面不让位）`);
+if (back) {
+  if (!near(back.bar.bottom, back.visBottom)) {
+    fails.push(`back-to-kb: 回键盘后条没贴可视底（bar.bottom=${back.bar.bottom} visBottom=${back.visBottom}）`);
+  }
+  if (!near(parseFloat(back.kbLast || 0), 330)) {
+    fails.push(`back-to-kb: --kb-last 掉回 ${back.kbLast}（应为 330）`);
+  }
 }
-const pushed = step("pushed");
-if (pushed && !near(pushed.bar.bottom, pushed.visBottom)) fails.push("pushed: iOS 上推可视视口后条没贴住可见底");
+const plain = step("kb-plain");
+if (plain && !near(plain.bar.bottom, plain.visBottom)) {
+  fails.push(`kb-plain: 键盘没上推时条没贴可视底（bar.bottom=${plain.bar.bottom} visBottom=${plain.visBottom}）`);
+}
 
 if (fails.length) {
   console.error("\nWALLBAR FAIL");

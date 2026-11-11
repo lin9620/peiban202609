@@ -105,6 +105,8 @@ export function installCompatDiag() {
         "变量: --sat=" + (cs.getPropertyValue("--sat") || "未定义").trim()
           + " --sab=" + (cs.getPropertyValue("--sab") || "未定义").trim()
           + " --kb-h=" + (cs.getPropertyValue("--kb-h") || "未定义").trim()
+          + " --kbb=" + (cs.getPropertyValue("--kbb") || "未定义").trim()
+          + " --kb-last=" + (cs.getPropertyValue("--kb-last") || "未定义").trim()
           + " --kb-panel-h=" + (cs.getPropertyValue("--kb-panel-h") || "未定义").trim()
           /* --sat/--sab 只定义在 html.cap-app（原生壳）里。浏览器里读到「未定义」是**正常的**，
              不是变量丢了 —— 这句写出来，免得下一轮把正常现象当 bug 查。 */

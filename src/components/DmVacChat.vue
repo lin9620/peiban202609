@@ -22,6 +22,7 @@ import { hideEmojiSearchIn } from "../utils/emojiPanel.js";
 import { scheduleEmojiWarm } from "../utils/emojiWarm.js";
 import { isApp } from "../stores/uiStore.js";
 import { webSwapNeeded, setPanelOpen } from "../utils/keyboardInset.js";
+import { syncViewportVars } from "../utils/viewportVars.js";
 import { t } from "../i18n.js";
 
 register();
@@ -817,6 +818,11 @@ const setEmojiOpen = (open) => {
   const thread = n.closest(".dm-thread");
   if (thread) thread.classList.toggle("wp-emoji-open", open);
   if (open && !emojiWasOpen) {
+    /* 轮 506：开面板这一刻是「键盘高度」唯一还能量到的时机（键盘马上要收）。
+       先现读一次视口把 --kb-last 定住 —— 面板高 = --kb-panel-h = --kb-last，
+       立刻就等于刚收起的那个键盘，不再等某次采样碰运气。
+       用户第五次报「表情框跟输入框高度不一致」就是 --kb-last 一直是空、退回估计值 320。 */
+    syncViewportVars();
     /* 键盘可能还开着：立刻把让位归零，页面在键盘下滑的同时展开，
        面板贴在页面底等它。等 keyboardWillHide 再归零会晚 200ms，
        那 200ms 里输入条会被 320px 的 footer padding 顶到半空。 */
@@ -911,8 +917,13 @@ const holdForKeyboard = () => {
   if (thread) thread.classList.add("wp-kb-swap");
   if (kbSwapMO) kbSwapMO.disconnect();
   kbSwapMO = new MutationObserver(() => {
-    const v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--kb-h")) || 0;
-    if (v > 0) endKbSwap();
+    /* 轮 506：也要看 --kbb —— iOS 上推可视视口时 --kb-h 恒为 0（那是「页面要不要缩」的量，
+       跟「键盘回来了没有」不是一回事）。--kbb > 0 才代表可视视口真的被键盘顶起来了。
+       只盯 --kb-h 的话，swap 会一直钉到 600ms 兜底，那段时间输入行悬在键盘上方约一个面板高。 */
+    const de = getComputedStyle(document.documentElement);
+    const v = parseFloat(de.getPropertyValue("--kb-h")) || 0;
+    const k = parseFloat(de.getPropertyValue("--kbb")) || 0;
+    if (v > 0 || k > 0) endKbSwap();
   });
   kbSwapMO.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
   clearTimeout(kbSwapTimer);

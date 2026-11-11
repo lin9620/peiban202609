@@ -92,7 +92,10 @@ t("E7 暖心墙：≤899px 面板贴底整宽 + 高度与会话同一条", () =>
   const block = m[1];
   has(block, /position: fixed;/, "不是 fixed");
   has(block, /left: 0;[\s\S]{0,40}right: 0;/, "没整宽");
-  has(block, /bottom: 0;/, "没贴底");
+  /* 轮 506：bottom 不再是写死的 0（那是布局视口底，键盘/工具栏浮起时面板整块跑到屏外），
+     改成 --kbb（可视视口底离布局视口底多远，由 utils/viewportVars.js 现读）。 */
+  has(block, /bottom: var\(--kbb, 0px\);/, "没贴可视视口底（还在用布局视口底）");
+  has(block, /top: auto;/, "top: auto 没了，会和 bottom 打架");
   /* 轮 482：高度从写死 320 改成 --kb-panel-h（= 上一次真实键盘高），
    * 否则收键盘弹面板时输入条会跳一截（用户报「表情包跟打字的上拉框高度不一致」）。 */
   has(block, /height: var\(--kb-panel-h\);/, "面板高度没跟 --kb-panel-h 走（会和键盘不一致）");
@@ -115,10 +118,12 @@ t("E8 底条与面板共用一个参照系（轮 504：网页端 padding 让位 
   /* 网页端的条不许再拿 --kb-h 当 bottom：那是间接推导，任一道闸门失效就会把条顶到半空。
      ⚠ 必须先把注释剥掉再断言 —— 注释里就写着「不再用 bottom: var(--kb-h)」，
      直接 match 会被这句解释骗过去（轮 502 的 I7 就是这么假绿的）。 */
-  const kbWebBar = CSS.match(/html\.kb-web \.cmt-main-bar \{([\s\S]{0,400}?)\}/);
+  const kbWebBar = CSS.match(/html\.kb-web \.cmt-main-bar \{([\s\S]{0,900}?)\}/);
   const kbWebBody = kbWebBar ? kbWebBar[1].replace(/\/\*[\s\S]*?\*\//g, "") : "";
-  assert.ok(kbWebBar && /bottom: 0;/.test(kbWebBody), "网页端条底不是 0（还在用 --kb-h 间接推导）");
+  assert.ok(kbWebBar && /bottom: var\(--kbb, 0px\);/.test(kbWebBody), "网页端条底没接 --kbb（还在用布局视口底 / --kb-h 推导）");
   assert.ok(kbWebBar && !/bottom: var\(--kb-h\)/.test(kbWebBody), "网页端条底还在吃 --kb-h");
+  /* 轮 506：条底与面板底必须是**同一个变量**，否则两个参照系一错位就分家 */
+  has(WC, /bottom: var\(--kbb, 0px\);/, "面板 bottom 没接 --kbb（与条不同源）");
   has(WC, /bar\.classList\.toggle\("wp-emoji-open", !!open && isSheet\(\)\)/, "没给底条挂类");
   has(WC, /root\.value\.closest\("\.cmt-main-bar"\)/, "找不到底条");
 });

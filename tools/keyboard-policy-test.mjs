@@ -125,15 +125,23 @@ t("style.css：.kb-web 三处让位与 .cap-app 一一对应（改一份就要�
     "聊天页高度缺 100vh 垫底（旧内核不认 dvh → 整条失效 → 按内容撑高）");
   /* 轮 504：网页端的评论底条**不再**用 bottom: var(--kb-h) 这条间接推导。
    * 真机（iPhone Safari）上它会把条顶到页面顶部 —— --kb-h 链上任一道闸门失效就会拿到
-   * 残留值 / 被夹到 layout-120。现在改由 utils/fixedBar.js 按可视视口钉内联 top，
-   * CSS 只留 bottom: 0 当「算不出来就贴布局视口底」的兜底。 */
-  assert(/html\.kb-web \.cmt-main-bar\s*\{[^}]*bottom:\s*0;/.test(css),
-    "网页端评论底条没有 bottom: 0 兜底（不许再拿 --kb-h 推导）");
-  assert(!/html\.kb-web \.cmt-main-bar\s*\{[^}]*bottom:\s*var\(--kb-h\)/.test(css),
-    "网页端评论底条又回到 --kb-h 间接推导（真机上会把条顶到半空）");
-  const fb = read("src/utils/fixedBar.js");
-  assert(/\.cmt-main-bar/.test(fb) && /fixedBarTop\(/.test(fb),
-    "fixedBar 没接管评论底条（bottom:0 会在键盘底下）");
+   * 残留值 / 被夹到 layout-120。
+   * 轮 506：改成吃 --kbb（utils/viewportVars.js 从 visualViewport 现读，与表情面板同源）。 */
+  const webBar = (css.replace(/\/\*[\s\S]*?\*\//g, "").match(/html\.kb-web \.cmt-main-bar\s*\{([\s\S]*?)\}/) || [])[1] || "";
+  assert(/bottom:\s*var\(--kbb, 0px\);/.test(webBar),
+    "网页端评论底条没接 --kbb（不许再拿 --kb-h 推导，也不许贴布局视口底）");
+  assert(!/bottom:\s*var\(--kb-h\)/.test(webBar), "网页端评论底条还在吃 --kb-h");
+  const fb = read("src/utils/fixedBar.js").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  /* 轮 506：评论底条与表情面板**退出** fixedBar（它要自己量条高、写内联 top、跟
+   * ResizeObserver 抢时序），改由 CSS 吃 --kbb。所以这里反过来断言「不许再接管」——
+   * 两边同时定位会互相覆盖（内联 top 赢，CSS bottom 被 over-constrained 忽略）。 */
+  assert(!/\.cmt-main-bar/.test(fb), "fixedBar 又接管评论底条了（会和 CSS 的 --kbb 打架）");
+  assert(!/\.wp-composer-picker/.test(fb), "fixedBar 又接管表情面板了（两个参照系会分家）");
+  /* --kbb 必须有唯一来源，否则又是「推导链」 */
+  const vv = read("src/utils/viewportVars.js");
+  assert(/--kbb/.test(vv) && /--kb-last/.test(vv), "viewportVars 不产出 --kbb / --kb-last");
+  assert(/inner\s*-\s*vvH/.test(vv), "键盘高没用 innerHeight − visualViewport.height（扣了 offsetTop 就永远是 0）");
+  assert(/initViewportVars\(\)/.test(read("src/main.js")), "main.js 没启动 viewportVars");
   assert(/html\.cap-app \.cmt-main-bar\s*\{[^}]*bottom:\s*var\(--kb-h\)/.test(css),
     "App 壳评论条没接 --kb-h（那边不跑 fixedBar）");
   assert(/html\.kb-web \.reply-bar\s*\{[^}]*bottom:\s*calc\(var\(--kb-h\) \+ 64px/.test(css),
