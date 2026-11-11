@@ -59,7 +59,7 @@ const MANIFEST = [
     "seo-test", "snack-test", "splash-test", "share-page-test", "status-counts-test", "status-test", "story-test",
     "maintenance-test", "owner-delete-test", "follow-test", "follow-feed-test", "follow-refresh-test", "mark-all-read-test", "menu-close-test", "mypost-comments-test", "scoped-class-test",
     "tabbar-copy-test", "tap-guard-test", "teleport-test", "uifix-test", "undef-check",
-    "userScope-test", "wall-addviews-test", "wall-composer-test", "wall-reaction-test",
+    "userScope-test", "viewport-matrix-test", "wall-addviews-test", "wall-composer-test", "wall-reaction-test",
     "wall-refresh-test", "wall-empty-test", "wall-end-test", "wall-rules-test", "wall-test", "web-refresh-test", "worker-test",
     "tdz-check",
   ].map((n) => ({ file: `${n}.mjs`, tier: "fast" })),
@@ -72,6 +72,10 @@ const MANIFEST = [
   /* 轮 470：多内核矩阵 —— 6 种浏览器语义 × 4 种屏幕，真实排版量「输入条/聊天页」的几何。
      不需要网络也不写真数据（注入 DOM + 伪造视口读数），只要求 dist/ 是最新的。约 100s。 */
   { file: "kb-matrix.mjs", tier: "mount", note: "需 dist/（先 npm run build），约 100s" },
+  /* 轮 508：iOS 26「玻璃栏」语义的真实渲染（inner = 大视口、vv = 栏杆之间）。
+     Chromium 自己造不出这种语义，所以 visualViewport 与 svh/dvh 探针读数都是伪造的，
+     但排版、CSS、DOM 全是真的 —— 补的是「换一台苹果手机」里最难覆盖的那台。约 15s。 */
+  { file: "ios26-glass-test.mjs", tier: "mount", note: "需 dist/（先 npm run build），约 15s" },
 
   /* 备份脚本的自检（--self-test 不连库、不碰网络，纯逻辑：脱敏/占位符/轮转/还原清单解析） */
   { file: "backup.mjs", tier: "fast", args: ["--self-test"], note: "备份脚本自检" },

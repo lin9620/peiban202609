@@ -137,10 +137,15 @@ t("style.css：.kb-web 三处让位与 .cap-app 一一对应（改一份就要�
    * 两边同时定位会互相覆盖（内联 top 赢，CSS bottom 被 over-constrained 忽略）。 */
   assert(!/\.cmt-main-bar/.test(fb), "fixedBar 又接管评论底条了（会和 CSS 的 --kbb 打架）");
   assert(!/\.wp-composer-picker/.test(fb), "fixedBar 又接管表情面板了（两个参照系会分家）");
-  /* --kbb 必须有唯一来源，否则又是「推导链」 */
+  /* --kbb 必须有唯一来源，否则又是「推导链」。
+   * 轮 508：算式搬进纯函数 viewportMath.js（为了能用真实机型读数做跨版本矩阵，见
+   * tools/viewport-matrix-test.mjs）—— 两处都要查，别只查 DOM 那层。 */
   const vv = read("src/utils/viewportVars.js");
+  const vmath = read("src/utils/viewportMath.js");
   assert(/--kbb/.test(vv) && /--kb-last/.test(vv), "viewportVars 不产出 --kbb / --kb-last");
-  assert(/inner\s*-\s*vvH/.test(vv), "键盘高没用 innerHeight − visualViewport.height（扣了 offsetTop 就永远是 0）");
+  assert(/computeViewportVars/.test(vv), "viewportVars 没走 viewportMath 的纯函数（判定又散回 DOM 代码，换台机就测不了）");
+  assert(/inner\s*-\s*vh/.test(vmath), "键盘高没用 innerHeight − visualViewport.height（扣了 offsetTop 就永远是 0）");
+  assert(/barsBase/.test(vmath), "没有浏览器 UI 遮挡基线：iOS 26 无键盘时那段差会被当成键盘");
   assert(/initViewportVars\(\)/.test(read("src/main.js")), "main.js 没启动 viewportVars");
   assert(/html\.cap-app \.cmt-main-bar\s*\{[^}]*bottom:\s*var\(--kb-h\)/.test(css),
     "App 壳评论条没接 --kb-h（那边不跑 fixedBar）");

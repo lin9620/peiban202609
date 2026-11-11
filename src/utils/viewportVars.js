@@ -1,5 +1,12 @@
 /* ═══ 轮 506 · 视口唯一事实来源（吸底条 / 表情面板的定位与高度）═══
  *
+ * 轮 508（用户：「你不要只看我这台手机的，别的苹果手机浏览器呢」）：
+ *   本文件只负责**读原始数字 + 写 CSS 变量**，所有判据都搬进了 viewportMath.js。
+ *   原因还是那句话：iOS 各版本上报的视口语义不是一回事 —— iOS 15–18 的 inner 是
+ *   小视口，iOS 26 的 inner 是**含玻璃栏的大视口**且键盘弹起也不变，X 内置浏览器把
+ *   100svh 报成 100lvh。把这些当输入跑纯函数，才能一次覆盖十几台机；
+ *   真机一台台点做不到（iOS 没有 adb，见 tools/ios-compat-test.mjs 开头）。
+ *
  * 用户第五次报同一件事：「表情框跟输入框高度依然不一致」。前四轮（496~504）都在这条
  * 链上打补丁，没有一个治到根 —— 因为**面板高度和面板位置一直是「推导」出来的**：
  *
@@ -27,16 +34,18 @@
  * 时 vv 就比 inner 矮 31px），不让它冒充键盘。真键盘最低也 ≥ 200，120 这个界两边都安全。
  */
 
+import { computeViewportVars } from "./viewportMath.js";
+
 const KBB = "--kbb";        /* 条/面板离布局视口底 */
 const KBL = "--kb-last";    /* 键盘本体高度（面板高度就用它） */
 const VPH = "--vph";        /* 真实可视高（浏览器 UI 占用后的那一块） */
 const WEB_CLASS = "kb-web";
-const MIN_KB = 120;         /* 低于它一律当工具栏，不当键盘 */
-const MAX_RATIO = 0.7;      /* 键盘不可能占掉七成屏高（缩放到 1.05 以内时兜底） */
 
 let kbMax = 0;              /* 本会话见过的最大键盘高度 */
 let restH = 0;              /* 无键盘时的 innerHeight 基线（缩布局视口型内核要用） */
-let vphH = 0;               /* 探针测出的真实可视高（见 readViewportHeight） */
+let barsBase = -1;          /* 无键盘时的「浏览器 UI 遮挡高」基线（iOS 26 玻璃栏 / 小米噪声） */
+let svhH = 0;               /* 100svh 探针读数（0 = 量不出来） */
+let dvhH = 0;               /* 100dvh 探针读数（0 = 量不出来） */
 let lastProbeAt = 0;        /* 上次测探针的时间（节流用） */
 let lastProbeInner = 0;     /* 上次测探针时的 innerHeight（变了就立刻重测） */
 let lastKey = "";
@@ -85,16 +94,13 @@ function probeHeight(css) {
   } catch (e) { return 0; }
 }
 
-function readViewportHeight(inner) {
-  let best = inner;
-  for (let i = 0; i < 2; i++) {
-    const css = i === 0 ? "100svh" : "100dvh";
-    const h = probeHeight(css);
-    if (h > 0 && h < best) best = h;
-  }
-  /* 探针读到比屏还高的值（个别内核把 svh 当 lvh 算）→ 弃用，避免把容器撑爆 */
-  if (!(best > 0) || best > inner + 1) return inner;
-  return best;
+/* 轮 508：两个读数**分别**留下，不再当场取 min。
+ * 取 min 让「iOS 26 玻璃栏收起后 dvh 长大」这件事永远体现不出来（吸底条悬空），
+ * 而且掩盖不了 svh 在 X 内置浏览器里被报成 lvh 的错（737 vs 691）。
+ * 该选哪个由 viewportMath 按语义决定（dvh 优先），这里只负责量。 */
+function readProbes() {
+  svhH = probeHeight("100svh");
+  dvhH = probeHeight("100dvh");
 }
 
 /** 现读一次视口，把变量写到 :root。幂等，值没变就不碰样式。 */
@@ -117,66 +123,49 @@ export function syncViewportVars() {
    * 小值缓存下来，键盘收起后 kbb 仍按小值算，整条吸底栏被抬到半空（kb-matrix 抓到过）。 */
   const nowMs = Date.now();
   const innerMoved = Math.abs(inner - lastProbeInner) > 2;
-  if (!(vphH > 0) || innerMoved || nowMs - lastProbeAt > 900) {
+  if (!(svhH > 0) || !(dvhH > 0) || innerMoved || nowMs - lastProbeAt > 900) {
     lastProbeAt = nowMs;
     lastProbeInner = inner;
-    vphH = readViewportHeight(inner);
+    readProbes();
   }
   const vv = window.visualViewport;
-  const zoomed = !!(vv && vv.scale > 1.05);
-  /* 双指放大也会缩可视视口，但那不是键盘；缩放态一律按「没有键盘」处理 */
-  const vvH = vv && vv.height > 0 && !zoomed ? Math.round(vv.height) : 0;
-  const vvT = vv && !zoomed ? Math.max(0, Math.round(vv.offsetTop || 0)) : 0;
 
-  /* ① 键盘本体高度 —— 只跟 inner 与 vv.height 有关，**不扣 offsetTop** */
-  let kb = vvH > 0 ? inner - vvH : 0;
-  if (!(kb >= MIN_KB)) {
-    /* 缩布局视口型内核（Chrome Android / 部分国产浏览器）：键盘把 innerHeight 自己缩了，
-       此时 inner - vv.height ≈ 0，只能拿基线反推 */
-    const shrink = restH - inner;
-    kb = shrink >= MIN_KB ? shrink : 0;
-  }
-  if (!(kb >= MIN_KB) || kb > inner * MAX_RATIO) kb = 0;
+  /* 轮 508：算式整块搬进 viewportMath.js（纯函数），因为「换一台苹果手机就换一种错法」
+   * 这件事只能靠矩阵单测挡住 —— 真机一台台去点是不现实的。见 tools/viewport-matrix-test.mjs */
+  const r = computeViewportVars({
+    inner,
+    vvH: vv && vv.height > 0 ? vv.height : 0,
+    vvT: vv ? vv.offsetTop || 0 : 0,
+    scale: vv ? vv.scale : 1,
+    svh: svhH,
+    dvh: dvhH,
+    restH,
+    barsBase,
+    kbMax,
+  });
+  if (!r.ok) return;
 
-  if (!(kb > 0) && inner > restH) restH = inner;   /* 基线只在真没键盘时抬高 */
+  /* 基线只在「确实没有键盘」时抬高：不然键盘弹起后的 innerHeight 会被记成基线，
+   * 下一次就再也算不出差值（历史坑，见 keyboardInset.js 的 restH）。 */
+  if (!(r.kb > 0) && inner > restH) restH = inner;
+  barsBase = r.bars;
 
-  /* ② 吸底条 / 面板该离布局视口底多远
-   *
-   * 三个来源各说各话，必须按**内核语义**分流，不能一把抓：
-   *   · 缩 inner 型（Chrome Android / 小米自带）：键盘弹起时 innerHeight 自己缩了，
-   *     此时 inner 就是可视底；而 vv 还会再少 31px（工具栏被重复扣一次），信它就多抬 31。
-   *   · 不缩 inner 型（iOS Safari）：inner 不动，只有 vv 缩 —— 可视底 = offsetTop + vv.height。
-   *   · 谁都没缩（没键盘）：inner / vv 都不扣 Safari 那个**浮在页面上**的底部工具栏，
-   *     只有 svh/dvh 探针（vph）能给到工具栏上方那条线。
-   *
-   * 上一版把三者一律取 min，结果小米那 31px 静态噪声被当成工具栏，
-   * 无键盘时条被平白抬起 31px（kb-matrix 当场抓到 16 条红）。 */
-  const vph = vphH > 0 ? vphH : inner;
-  const shrunk = restH - inner >= MIN_KB;
-  let visBottom;
-  if (shrunk) visBottom = inner;
-  else if (kb > 0 || vvT > 0) visBottom = vvT + (vvH > 0 ? vvH : inner);
-  /* vv 静态偏小（小米那 31px）时不信探针：那不是工具栏，是内核把工具栏重复扣了一次。
-     只有 vvH 与 inner 一致（Safari）才说明「谁都没缩」，此时探针是唯一能给出
-     工具栏上方那条线的来源。 */
-  else visBottom = vvH > 0 && vvH < inner - 2 ? inner : vph;
-  let kbb = 0;
-  if (visBottom > 0 && visBottom < inner) kbb = inner - visBottom;
-
-  if (kb > kbMax) {
-    kbMax = kb;
+  if (r.kbMax > kbMax) {
+    kbMax = r.kbMax;
     setVar(KBL, kbMax + "px");
   }
-  const key = inner + "|" + vvH + "|" + vvT + "|" + kbb + "|" + vph;
+  const key = inner + "|" + r.vph + "|" + r.kbb + "|" + barsBase;
   if (key !== lastKey) {
     lastKey = key;
-    setVar(KBB, kbb + "px");
-    setVar(VPH, vph + "px");
+    setVar(KBB, r.kbb + "px");
+    setVar(VPH, r.vph + "px");
   }
   /* 现场诊断（只写全局、不改行为）：控制台一句 JSON.stringify(window.__wpVars) */
   try {
     window.__wpVars = {
-      inner, vvH, vvT, kbb, kb, kbMax, restH, vph,
+      inner, vvH: Math.round(vv && vv.height || 0), vvT: Math.round(vv && vv.offsetTop || 0),
+      kbb: r.kbb, kb: r.kb, kbMax, restH, vph: r.vph, vphSrc: r.src,
+      bars: r.bars, svh: svhH, dvh: dvhH, visBottom: r.visBottom,
       panel: kbMax || null, scale: vv ? vv.scale : null, at: Date.now(),
     };
   } catch (e) { /* 忽略 */ }
@@ -210,7 +199,11 @@ export function initViewportVars() {
     vv.addEventListener("scroll", syncViewportVars);
   }
   window.addEventListener("resize", () => { syncViewportVars(); sample(360); }, { passive: true });
-  window.addEventListener("orientationchange", () => { restH = 0; syncViewportVars(); sample(900); }, { passive: true });
+  /* 旋屏后浏览器 UI 的排布整个换了（玻璃栏横竖不同、状态栏消失），基线必须全部重来 */
+  window.addEventListener("orientationchange", () => {
+    restH = 0; barsBase = -1; svhH = 0; dvhH = 0;
+    syncViewportVars(); sample(900);
+  }, { passive: true });
   document.addEventListener("focusin", () => sample(900), true);
   document.addEventListener("focusout", () => sample(420), true);
   document.addEventListener("visibilitychange", syncViewportVars);

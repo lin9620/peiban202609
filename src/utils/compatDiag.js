@@ -52,6 +52,18 @@ export function installCompatDiag() {
       return { t: px(cs.paddingTop), r: px(cs.paddingRight), b: px(cs.paddingBottom), l: px(cs.paddingLeft) };
     };
 
+    /* 轮 508 · 视口单位探针（现场量，不是查支持表）。
+     * 这三个数就是「这台机/这个系统认哪个单位」的全部证据：
+     *   iOS 15–18：svh == dvh == inner（工具栏已在 inner 里扣掉）
+     *   iOS 26   ：inner > svh == dvh（inner 是含玻璃栏的大视口，栏收放时 dvh 会变）
+     *   X 内置   ：svh > dvh（svh 被报成 lvh，是错的）
+     * 用户报「这台不对」时，有这三行就能立刻判断该走哪条分支，不用再猜。 */
+    const vhProbe = document.createElement("div");
+    vhProbe.style.cssText = "position:fixed;left:-9999px;top:0;width:1px;height:0;visibility:hidden;pointer-events:none";
+    document.body.appendChild(vhProbe);
+    const mh = (css) => { vhProbe.style.height = css; return px(vhProbe.getBoundingClientRect().height); };
+    const unitProbe = () => ({ svh: mh("100svh"), dvh: mh("100dvh"), lvh: mh("100lvh") });
+
     /* 键盘态：记下没有输入框聚焦时的可视视口高，聚焦后再取一次 —— 差值就是键盘真实高度。
        这一行能直接判定「iOS 只改 visualViewport、不改 innerHeight」到底成不成立。 */
     let baseline = null;
@@ -91,12 +103,16 @@ export function installCompatDiag() {
          从 html 读就对了 —— 之前试着读 .shell--mobile-nav 是读错了宿主。 */
       const cs = getComputedStyle(html);
       const safeNow = safe();
+      const up = unitProbe();
+      /* viewportVars 的判定结果（只读，不改行为）。它才是「吸底条/面板为什么在那」的答案：
+         kb=键盘本体高 · kbb=让位量 · bars=浏览器 UI 遮挡基线 · src=--vph 取自哪个单位 */
+      const wv = window.__wpVars || null;
       const caps = PROBES.map(([name, prop]) => {
         const v = supports(prop);
         return name + (v === true ? "=✓" : v === false ? "=✗" : "=?");
       });
       return [
-        "—— Warm Paws 兼容自检 · 轮 502 ——",
+        "—— Warm Paws 兼容自检 · 轮 508 ——",
         "UA: " + (navigator.userAgent || "-"),
         "屏: " + px(screen.width) + "×" + px(screen.height) + "  dpr=" + (window.devicePixelRatio || 1),
         "inner: " + px(window.innerWidth) + "×" + px(window.innerHeight)
@@ -114,9 +130,18 @@ export function installCompatDiag() {
           + (html.classList.contains("cap-app") ? "  [App 壳]" : "  [浏览器：--sat/--sab 本就未定义]"),
         "class: " + (html.className || "-") + "  theme=" + (html.dataset.theme || "-"),
         "独立窗口(PWA): " + (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches ? "是" : "否"),
-        "键盘实测: " + (kbSeen
-          ? "vvH " + kbSeen.vvH + " 掉了 " + kbSeen.drop + "px  innerH=" + kbSeen.innerH
-          : "（还没点过输入框）"),
+        /* 轮 508：这三行是「换一台苹果手机还会不会坏」的判据，比截图有用 */
+        "单位探针: svh=" + up.svh + "  dvh=" + up.dvh + "  lvh=" + up.lvh
+          + "   inner=" + px(window.innerHeight)
+          + "  → " + (wv ? "vph 取 " + wv.vphSrc + "=" + wv.vph : "（viewportVars 未跑）"),
+        "判定: " + (wv
+          ? "kb=" + wv.kb + "  kbb=" + wv.kbb + "  bars=" + wv.bars + "  kbMax=" + wv.kbMax + "  restH=" + wv.restH
+          : "（未跑：可能是 App 壳，原生路径不写这些变量）"),
+        "键盘实测: " + (wv && wv.kb > 0
+          ? "kb=" + wv.kb + "  kbb=" + wv.kbb + "（viewportVars 实时值）"
+          : kbSeen
+            ? "vvH " + kbSeen.vvH + " 掉了 " + kbSeen.drop + "px  innerH=" + kbSeen.innerH
+            : "（还没点过输入框）"),
         "能力:",
         "  " + caps.join("  "),
       ].join("\n");
