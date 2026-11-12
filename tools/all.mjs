@@ -59,7 +59,7 @@ const MANIFEST = [
     "seo-test", "settings-mobile-test", "dialog-mobile-test", "snack-test", "splash-test", "share-page-test", "status-counts-test", "status-test", "story-test",
     "maintenance-test", "owner-delete-test", "follow-test", "follow-feed-test", "follow-refresh-test", "mark-all-read-test", "menu-close-test", "mypost-comments-test", "scoped-class-test",
     "tabbar-copy-test", "tap-guard-test", "teleport-test", "uifix-test", "undef-check",
-    "userScope-test", "viewport-matrix-test", "wall-addviews-test", "wall-composer-test", "wall-reaction-test",
+    "userScope-test", "vendor-check", "viewport-matrix-test", "wall-addviews-test", "wall-composer-test", "wall-reaction-test",
     "wall-refresh-test", "wall-empty-test", "wall-end-test", "wall-rules-test", "wall-test", "web-refresh-test", "worker-test",
     "tdz-check",
   ].map((n) => ({ file: `${n}.mjs`, tier: "fast" })),
