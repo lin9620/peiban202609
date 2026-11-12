@@ -49,10 +49,55 @@ const VPH = "--vph";        /* 真实可视高（浏览器 UI 占用后的那一
  * 再叠上 iOS 的上推，输入条反而悬在键盘上方 81px。 */
 const VLH = "--vlh";
 const WEB_CLASS = "kb-web";
+/* 轮 512 · 键盘/视口关系分流（用户：「安卓本来好好的，你改苹果之后全是问题」）
+ *
+ * 轮 511 把「页面盒子高 = --vlh − --kbb」这一套无条件套给了所有网页端，但它是为
+ * **overlay 型**（iOS Safari：键盘浮在页面上、布局视口不缩）推导的。安卓是 resize 型
+ * ——键盘一弹窗口自己就缩了，innerHeight 随地址栏/键盘实时变，于是：
+ *   · 页面高度跟着 inner 一帧一帧变，`.dm-page` 又带 .22s 的 height 过渡
+ *     → 退出会话、切表情时看到的「缩放 / 一闪」；
+ *   · 键盘弹起时盒子 = inner − 0，和原来 `100dvh − --kb-h` 的落点对不齐，
+ *     表情面板与输入条交接那一瞬错位。
+ * 所以这里只做一件事：**判定内核属于哪一型，打在 html 上**，CSS 按类型选式子。
+ *   html.kb-overlay → 用 --vlh − --kbb（iOS 那套，轮 511）
+ *   html.kb-resize  → 用原来的 100dvh − --kb-h（安卓那套，轮 511 之前，行为一字不改）
+ * 初值按 UA 猜（iOS 的 UA 在移动端足够可靠），**第一次弹出键盘就以实测为准**并锁定：
+ * 键盘弹了而 inner 没缩 = overlay；inner 被缩了 ≥120 = resize。以后不再翻。 */
+const OVERLAY_CLS = "kb-overlay";
+const RESIZE_CLS = "kb-resize";
+
+function guessOverlayByUA() {
+  try {
+    const ua = navigator.userAgent || "";
+    if (/iP(hone|ad|od)/.test(ua)) return true;
+    /* iPadOS 13+ 的 UA 伪装成 Macintosh，用触点数区分 */
+    return /Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1;
+  } catch (e) { return false; }
+}
+
+let overlayLocked = false;   /* 已经由实测锁定（弹过一次键盘） */
+let isOverlay = guessOverlayByUA();
+
+function applyKbKind(de) {
+  if (!de) return;
+  try {
+    de.classList.toggle(OVERLAY_CLS, isOverlay);
+    de.classList.toggle(RESIZE_CLS, !isOverlay);
+  } catch (e) { /* 忽略 */ }
+}
 
 let kbMax = 0;              /* 本会话见过的最大键盘高度 */
 let restH = 0;              /* 无键盘时的 innerHeight 基线（缩布局视口型内核要用） */
 let barsBase = -1;          /* 无键盘时的「浏览器 UI 遮挡高」基线（iOS 26 玻璃栏 / 小米噪声） */
+/* 轮 513 · 闭环校正量（见 utils/bottomPin.js）。
+ * 上面那一整套是**推导**：拿浏览器上报的数字算「可视区底在哪」。推导依赖每一台机器
+ * 上报的数字都对 —— iOS 26 的玻璃栏、X 内置浏览器的 svh、小米的 31px 噪声，每个都
+ * 能让它错一次；错了就表现成「表情面板沉到屏幕外 / 只露两排」。
+ * 这里留一个**实测**的补正量：由 bottomPin.js 直接量「该贴住的元素」离可视区底多远，
+ * 差多少就补多少。方向与 --kbb 相反（--kbb 越大越往上），所以消费者不用改式子 ——
+ * 写进 --kbb 的就是 kbb + fix，几个消费者（页面高 / 吸底条 / 面板）自动一起动。 */
+let kbbFix = 0;
+const FIX_LIMIT = 260;      /* 兜底上限：真错了也不会把界面推到屏幕外 */
 let svhH = 0;               /* 100svh 探针读数（0 = 量不出来） */
 let dvhH = 0;               /* 100dvh 探针读数（0 = 量不出来） */
 let lastProbeAt = 0;        /* 上次测探针的时间（节流用） */
@@ -122,6 +167,7 @@ export function syncViewportVars() {
   if (de && !de.classList.contains(WEB_CLASS)) {
     try { de.classList.add(WEB_CLASS); } catch (e) { /* 忽略 */ }
   }
+  applyKbKind(de);
 
   const inner = Math.round(window.innerHeight || 0);
   if (!(inner > 0)) return;
@@ -154,6 +200,16 @@ export function syncViewportVars() {
   });
   if (!r.ok) return;
 
+  /* 轮 512 · 弹过键盘就以实测锁定内核类型（UA 只是初值；分屏 / 桌面模式会骗人）。
+   * 只锁一次：键盘动画中途读数会抖，反复改类会让页面高度来回跳。 */
+  if (!overlayLocked && r.kb > 0) {
+    overlayLocked = true;
+    if (r.overlay !== isOverlay) {
+      isOverlay = r.overlay;
+      applyKbKind(de);
+    }
+  }
+
   /* 基线只在「确实没有键盘」时抬高：不然键盘弹起后的 innerHeight 会被记成基线，
    * 下一次就再也算不出差值（历史坑，见 keyboardInset.js 的 restH）。 */
   if (!(r.kb > 0) && inner > restH) restH = inner;
@@ -163,10 +219,10 @@ export function syncViewportVars() {
     kbMax = r.kbMax;
     setVar(KBL, kbMax + "px");
   }
-  const key = inner + "|" + r.vph + "|" + r.kbb + "|" + barsBase;
+  const key = inner + "|" + r.vph + "|" + r.kbb + "|" + barsBase + "|" + kbbFix;
   if (key !== lastKey) {
     lastKey = key;
-    setVar(KBB, r.kbb + "px");
+    setVar(KBB, (r.kbb + kbbFix) + "px");
     setVar(VPH, r.vph + "px");
     setVar(VLH, inner + "px");
   }
@@ -174,11 +230,30 @@ export function syncViewportVars() {
   try {
     window.__wpVars = {
       inner, vvH: Math.round(vv && vv.height || 0), vvT: Math.round(vv && vv.offsetTop || 0),
-      kbb: r.kbb, kb: r.kb, kbMax, restH, vph: r.vph, vphSrc: r.src,
+      kbb: r.kbb, kbbFix, kbbUsed: r.kbb + kbbFix, kb: r.kb, kbMax, restH, vph: r.vph, vphSrc: r.src,
       bars: r.bars, svh: svhH, dvh: dvhH, visBottom: r.visBottom,
       panel: kbMax || null, scale: vv ? vv.scale : null, at: Date.now(),
     };
   } catch (e) { /* 忽略 */ }
+}
+
+/** 闭环校正：把「该贴住可视区底」的元素位置误差补进 --kbb（正数 = 往下挪）。 */
+export function nudgeKbbFix(delta) {
+  if (typeof delta !== "number" || !isFinite(delta)) return 0;
+  const next = Math.max(-FIX_LIMIT, Math.min(FIX_LIMIT, Math.round(kbbFix + delta)));
+  if (next === kbbFix) return kbbFix;
+  kbbFix = next;
+  lastKey = "";               /* 强制重写一次 --kbb */
+  syncViewportVars();
+  return kbbFix;
+}
+
+/** 换页面 / 旋屏时把校正量归零，别把上一页的误差带过去。 */
+export function resetKbbFix() {
+  if (!kbbFix) return;
+  kbbFix = 0;
+  lastKey = "";
+  syncViewportVars();
 }
 
 let raf = 0;
@@ -211,7 +286,7 @@ export function initViewportVars() {
   window.addEventListener("resize", () => { syncViewportVars(); sample(360); }, { passive: true });
   /* 旋屏后浏览器 UI 的排布整个换了（玻璃栏横竖不同、状态栏消失），基线必须全部重来 */
   window.addEventListener("orientationchange", () => {
-    restH = 0; barsBase = -1; svhH = 0; dvhH = 0;
+    restH = 0; barsBase = -1; svhH = 0; dvhH = 0; kbbFix = 0;
     syncViewportVars(); sample(900);
   }, { passive: true });
   document.addEventListener("focusin", () => sample(900), true);

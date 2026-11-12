@@ -347,7 +347,22 @@ function applyWeb() {
  * 键盘几百毫秒后才把它顶回来）；缩布局视口型内核本来就跟着视口走，钉住反而悬空。
  * 判据 = 本会话见过 --kb-h > 0。 */
 export function webSwapNeeded() {
-  return !Capacitor.isNativePlatform() && webKbSeen > 0;
+  if (Capacitor.isNativePlatform()) return false;
+  if (webKbSeen > 0) return true;
+  /* 轮 512 · resize 型（安卓 / 小米）也要钉。
+   *
+   * 这类内核 --kb-h 与 --kbb 恒为 0（窗口自己缩，可视底就是布局视口底），
+   * 于是 webKbSeen 永远起不来 —— 原来它就靠这一行被判成「不用钉」。
+   * 可是工装实测（安卓模型 393×852 / 键盘 300）关面板那一下：
+   *   kb-press+10   pad 300 → 41（一帧内塌光），而面板还在淡出、键盘还没起来
+   * 输入条当场掉到屏底，屏幕底部露出 300px —— 用户说的「表情跟键盘切换有一闪」。
+   *
+   * 钉住之后必须有判据能摘：resize 型没有 --kb-h / --kbb 可看，
+   * 所以 holdForKeyboard 里补了一条「innerHeight 比挂上时缩了 ≥ KB_MIN」。
+   * 类名由 viewportVars 的实测判定给出（见 kb-overlay / kb-resize）。 */
+  try {
+    return document.documentElement.classList.contains("kb-resize");
+  } catch (e) { return false; }
 }
 
 /* 轮 503 · 表情面板开关的唯一入口（见 DmVacChat 的 setEmojiOpen）。

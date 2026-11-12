@@ -224,5 +224,12 @@ export function computeViewportVars(i = {}) {
     kbMax,
     panel: kbMax || 0,
     src,
+    /* 轮 512 · 键盘与视口的关系（决定「页面盒子高度」该用哪套式子，见 style.css）：
+     *   overlay = 键盘浮在页面之上，布局视口**不缩**（iOS Safari / iOS 26 玻璃栏 / X 内置）
+     *   resize  = 窗口自己被键盘缩小（Chromium Android / 小米浏览器）
+     * 只有弹出过键盘（kb > 0）时才说得准；shrunk 就是「窗口真的被缩了」那个判据。
+     * 历史教训：轮 511 拿 iOS 的 overlay 语义去套安卓，安卓页面跟着 inner 抖 → 缩放感。 */
+    overlay: kb > 0 && !shrunk,
+    shrunk,
   };
 }

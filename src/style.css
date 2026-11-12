@@ -2736,16 +2736,31 @@ html.kb-web .shell--mobile-nav.shell--chat .dm-page {
   /* 轮 511：100vh / 100dvh 都是**布局视口**，iOS Safari 的底部工具栏是浮层 ——
      这两个值都不扣它，页面盒子因此比可视区高 80~90px：私信页底栏和表情面板
      整个沉到工具栏下面，用户看到的「面板最后一排被压住 / 下面空一大片」就是这个。
-     --vlh 是 viewportVars 写的布局视口高（innerHeight），--kbb 是让位量：
-       无键盘 852 − 81(工具栏) = 771 = 工具栏上方那条线 ✓
-       键盘上推 852 − 0 = 852，iOS 已把可视区上推，页面底正好落在键盘上沿 ✓
-     不用 --vph：那是「含键盘」的可视高（522），页面缩到 522 再叠上 iOS 的上推，
-     输入条反而会悬在键盘上方 81px。老内核没写变量时回退到原值。 */
-  height: calc(var(--vlh, 100vh) - var(--kbb, 0px));
-  transition: height .22s cubic-bezier(.2, .8, .2, 1);
+     轮 512：这套式子只属于 **overlay 型内核**（键盘浮在页面上、布局视口不缩，
+     见下方 html.kb-overlay 那两条）。安卓 / 小米是 resize 型（窗口自己缩），
+     无条件套它会随 inner 抖 → 用户报的「退出会话缩放、切表情一闪」，所以默认这条
+     恢复轮 511 之前的 `100dvh − --kb-h`，一个字节没动。 */
+  height: calc(100vh - var(--kb-h, 0px));
+  /* 轮 513：这里原来有一条 `transition: height .22s`，删掉。
+   * 页面盒子的高度**就是可视区高度**，浏览器报多少它就必须是多少 —— 中间插一段过渡，
+   * 等于让盒子永远慢半拍：键盘/工具栏动画那 250ms 里盒子比可视区高或矮几十 px，
+   * 用户看到的就是「一缩一放」「闪一下」；iOS 的 visualViewport 还是分步上报的，
+   * 过渡曲线根本追不上，追不上就留一条白带。
+   * 面板 ↔ 键盘的交接由 .wp-kb-swap 钉住（那边本来就是 transition: none），不靠这条。 */
+  transition: none;
 }
 @supports (height: 100dvh) {
   html.kb-web .shell--mobile-nav.shell--chat .dm-page {
+    height: calc(100dvh - var(--kb-h, 0px));
+  }
+}
+/* overlay 型（iOS Safari / iOS 26 玻璃栏 / X·微博内置）：布局视口不随键盘缩，
+   只能自己算「布局视口高 − 让位量」： --vlh(innerHeight) − --kbb（工具栏/玻璃栏那一截） */
+html.kb-web.kb-overlay .shell--mobile-nav.shell--chat .dm-page {
+  height: calc(var(--vlh, 100vh) - var(--kbb, 0px));
+}
+@supports (height: 100dvh) {
+  html.kb-web.kb-overlay .shell--mobile-nav.shell--chat .dm-page {
     height: calc(var(--vlh, 100dvh) - var(--kbb, 0px));
   }
 }
@@ -2774,23 +2789,34 @@ html.cap-app .dm-page--chat {
    * 这条是「面板自己兜底」的主路径：不加壳类也要整屏，一旦它算成 auto，
    * 进会话首帧就是 377.8px 的塌缩（输入条在屏幕中间）。
    * 轮 511：网页端用「--vlh(布局视口高) − --kbb(让位量)」替代 100vh
-   * （100vh 是布局视口，不扣 Safari 那两条浮动工具栏）。 */
-  height: calc(var(--vlh, 100vh) - var(--kbb, 0px));
-  transition: height .22s cubic-bezier(.2, .8, .2, 1);
+   * （100vh 是布局视口，不扣 Safari 那两条浮动工具栏）。
+   * 轮 512：拆成两型 —— 默认（resize 型：安卓/小米，窗口自己缩）保持原式子，
+   * overlay 型（iOS）才用 --vlh − --kbb，见下面 html.kb-overlay 那组。 */
+  height: calc(100vh - var(--kb-h, 0px));
+  /* 轮 513：height 过渡同样去掉，理由见上面 .shell--chat .dm-page 那条 ——
+     页面盒子必须逐帧等于可视区，慢半拍就是「一缩一放」。 */
+  transition: none;
 }
 html.cap-app .dm-page--chat {
   /* App 壳没有浮动工具栏，保持原来的视口语义 */
   height: calc(100vh - var(--kb-h, 0px));
 }
 @supports (height: 100dvh) {
-  /* 轮 511：网页端改用「--vlh − --kbb」，理由同上一条 —— dvh 不扣 Safari 工具栏。
-     App 壳不适用：那里 --kb-h 由原生 Keyboard 插件给最终值，没有工具栏浮层问题。 */
   html.kb-web .dm-page--chat {
-    height: calc(var(--vlh, 100dvh) - var(--kbb, 0px));
+    height: calc(100dvh - var(--kb-h, 0px));
   }
   html.cap-app .dm-page--chat {
     height: calc(100dvh - var(--kb-h, 0px));
   }
+}
+@supports (height: 100dvh) {
+  html.kb-web.kb-overlay .dm-page--chat {
+    height: calc(var(--vlh, 100dvh) - var(--kbb, 0px));
+  }
+}
+/* overlay 型（iOS）的 100vh 垫底：老内核不认 dvh 时也能落到同一算式 */
+html.kb-web.kb-overlay .dm-page--chat {
+  height: calc(var(--vlh, 100vh) - var(--kbb, 0px));
 }
 .dm-page--chat .dm-wrap {
   display: flex; flex-direction: column; align-items: stretch;
@@ -2849,9 +2875,16 @@ html.kb-web .cmt-main-bar {
      （一记可见的弹跳）。 */
   transition: none;
 }
-html.kb-web .cmt-main-bar.wp-emoji-open {
-  transition: padding-bottom .22s cubic-bezier(.2, .8, .2, 1);
-}
+/* 轮 512 · 面板撑起**必须瞬时**，这里原先有一条 padding-bottom 的 .22s 过渡，已删。
+ *
+ * 工装实测（安卓模型，393×852，键盘 300）：
+ *   to-panel+20   picker 已铺到 552..852，而条还在 767..852、pad 仅 41
+ *   to-panel+60   pad 才涨到 272，条被推到 536
+ *   to-panel+120  pad 到 300，条落定 508
+ * 也就是说面板 20ms 就出现了，输入条却要花 0.22s 才从屏底滑上来 ——
+ * 中间那 200ms 输入条是被面板盖住的，用户看到的就是「一闪」（面板先糊上去、条再爬）。
+ * 面板本身是瞬现（v-if，没有过渡），让位就没有理由慢半拍：同一帧到位才不露馅。
+ * 「面板 → 键盘」的交接靠 .wp-kb-swap 钉住（那边本来就 transition: none），不依赖这条。 */
 /* 表情面板开着时条**用内边距让出面板的位置**（与会话页 .vac-box-footer 同一套）：
  * 面板 bottom 也是 --kbb、高度 = --kb-panel-h，条把自己撑高同样钉在 --kbb，
  * 输入行就正好落在面板上沿 —— 两者共用一个参照系。 */
@@ -4651,4 +4684,129 @@ html[data-theme="night"][data-theme-variant="midnight"] .login-page .n-input { b
 .wp-page-enter-active { animation: wp-page-in .2s cubic-bezier(.2, .8, .2, 1) backwards; }
 @keyframes wp-page-in { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .wp-page-enter-active { animation: none; } }
+
+/* ══════════ 轮 511 · 手机端确认弹窗（≤640） ══════════
+ * Naive UI 的 dialog 是 teleport 到 body 的，组件的 scoped 样式够不到；
+ * 默认 446px 宽、28px 左右内边距、右下角两颗小按钮，在手机上就是缩小版桌面弹窗。
+ * 这里统一改成居中暖色卡片：图标在上、标题居中、正文左对齐、两枚 48px 竖排按钮。
+ * 只影响 ≤640；桌面仍走 Naive 默认布局。 */
+@media (max-width: 640px) {
+  html body .n-modal-container .n-dialog {
+    width: calc(100vw - 40px) !important;
+    max-width: 358px !important;
+    min-width: 0 !important;
+    max-height: calc(100vh - 40px);
+    /* 轮 512：100dvh 那行原来直接裸写在这里 —— T36 的红就是它。
+       Xiaomi/国产内核 CSS.supports("height","100dvh") === false 时整条声明作废，
+       连上面 100vh 的兜底一起被吃掉，弹窗会变成没有高度约束。
+       所以把 dvh 版本挪进块内的 @supports（见本媒体查询末尾），外层只留 vh。 */
+    padding: 24px 20px 18px !important;
+    border: 1px solid var(--g-line, var(--hairline)) !important;
+    border-radius: 26px !important;
+    background: var(--g-bg-strong, var(--glass-strong, #faf9f5)) !important;
+    box-shadow: 0 24px 64px rgba(45, 36, 32, .22), var(--g-hi, 0 1px 0 rgba(255, 255, 255, .7) inset) !important;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  html body .n-modal-container .n-dialog__title {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 0 16px;
+    font-family: var(--font-display, "LXGW WenKai", "PingFang SC", sans-serif);
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1.3;
+    text-align: center;
+    color: var(--ink);
+  }
+  html body .n-modal-container .n-dialog__icon {
+    width: 42px;
+    height: 42px;
+    margin: 0 !important;
+    padding: 9px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: var(--accent-soft);
+    color: var(--accent-deep) !important;
+    font-size: 24px;
+  }
+  html body .n-modal-container .n-dialog__close {
+    --n-close-size: 38px !important;
+    --n-close-icon-size: 20px !important;
+    --n-close-border-radius: 50% !important;
+    top: 8px !important;
+    right: 8px !important;
+    margin: 0 !important;
+    color: var(--ink-faint) !important;
+  }
+  html body .n-modal-container .n-dialog__content {
+    margin: 12px 0 0 !important;
+    font-size: 14.5px;
+    line-height: 1.66;
+    color: var(--ink-soft);
+    text-align: left;
+  }
+  html body .n-modal-container .n-dialog__action {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px;
+    margin-top: 22px;
+    justify-content: stretch !important;
+  }
+  html body .n-modal-container .n-dialog__action > * {
+    width: 100% !important;
+    margin-right: 0 !important;
+  }
+  html body .n-modal-container .n-dialog__action .n-button {
+    --n-height: 48px !important;
+    --n-border-radius: 15px !important;
+    --n-font-size: 15px !important;
+    width: 100% !important;
+    height: 48px !important;
+    min-height: 48px !important;
+    border-radius: 15px !important;
+    font-size: 15px !important;
+    font-weight: 700 !important;
+  }
+  html body .n-modal-container .n-dialog__action .n-button--ghost {
+    --n-color: var(--wash-mid) !important;
+    --n-color-hover: var(--accent-soft) !important;
+    --n-color-pressed: var(--accent-soft) !important;
+    --n-text-color: var(--ink) !important;
+    --n-text-color-hover: var(--accent-deep) !important;
+    --n-text-color-pressed: var(--accent-deep) !important;
+    --n-border: 1px solid var(--hairline) !important;
+    --n-border-hover: 1px solid var(--accent) !important;
+    --n-border-pressed: 1px solid var(--accent) !important;
+    background: var(--wash-mid) !important;
+    color: var(--ink) !important;
+    box-shadow: none !important;
+  }
+  html body .n-modal-container .n-dialog__action .n-button:not(.n-button--ghost) {
+    --n-border: 0 !important;
+    --n-border-hover: 0 !important;
+    --n-border-pressed: 0 !important;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-deep) 100%) !important;
+    color: #fff !important;
+    box-shadow: 0 8px 18px rgba(150, 82, 48, .18) !important;
+  }
+  html body .n-modal-container .n-dialog__action .n-button--ghost .n-button__border,
+  html body .n-modal-container .n-dialog__action .n-button--ghost .n-button__state-border {
+    border-color: var(--hairline) !important;
+  }
+  html body .n-modal-container .n-dialog__action .n-button:not(.n-button--ghost) .n-button__border,
+  html body .n-modal-container .n-dialog__action .n-button:not(.n-button--ghost) .n-button__state-border {
+    border-color: transparent !important;
+  }
+  /* 轮 512：认 dvh 的内核用动态视口高当上限（地址栏收放时弹窗跟着长）
+     —— 必须留在 @supports 里，否则它会连带作废上面那条 100vh 兜底。 */
+  @supports (height: 100dvh) {
+    html body .n-modal-container .n-dialog {
+      max-height: calc(100dvh - 40px);
+    }
+  }
+}
 
