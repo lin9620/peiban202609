@@ -724,6 +724,17 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
   - **⚠️ 事故**：隔离 `src/views/NotificationsView.vue`（并行会话在改，144→171 行）时用 `git show HEAD:path > path` 覆盖，恢复用的 `cp` 备份抓到的是 HEAD 版（18664B/426 行），**并行版（24395B）未进备份、已丢失**。以后覆盖别人正在写的文件，必须先 `cp` 到带时间戳的独立文件并 `cmp` 校验字节数再动手。
 
 
+- **轮 514（改动完成、测试过了、待提交待部署）**：用户问「聊天组件是不是用别人的」，随后拍板「**b，选 b**」—— 把库 fork 进仓库改。
+  - **先回答事实**：会话页 = `vue-advanced-chat@2.1.2`（MIT），表情面板是它内置的 `emoji-picker-element`；暖心墙的输入条是我们自己写的。问题的权重不在「聊天功能」上，而在库里三条我们够不到的地方：库把 DOM 塞进 shadowRoot（宿主只能内联 `!important`）、`.vac-emoji-wrapper` 自带 `position:relative`（面板 100% 宽 = 按钮宽 40px，就是那条竖线）、手机端 JS 直接往面板写内联几何（`height = innerHeight − 200`，所以高度跟着窗口变）。
+  - **fork 的做法**：npm 包只有 35523 行的未压缩 `dist/vue-advanced-chat.es.js`（零 import，连 Vue runtime 都内联），所以不需要构建链 —— 直接搬进 `vendor/vue-advanced-chat/`，依赖改 `file:vendor/…`，`npm install` 装成 symlink。六处定点改动写在 `vendor/vue-advanced-chat/PATCHES.md`，每处都有可 grep 的锚点；升级时锚点 MISS 就停下来人看，不静默漏改。
+  - **六处改动**：① wrapper `relative → static`；② 手机端面板 `fixed + left/right:0 + bottom:var(--kbb) + height:var(--kb-panel-h)`（`!important` 是作者样式表内部的，压的是库自己写的内联值）；③ 手机端普通输入框不写内联几何（reaction 保持上游）；④⑤ `height/top` 为 0 时不输出；⑥ `positionTop` 为真但 `height=0` 时不写 `top`。
+  - **宿主删除的东西**（这才是关键）：`pinPicker / unpinPicker` 整个函数、THEME_CSS 里面板的 `position/left/right/top/bottom/width/height` 全套 `!important`、`:has()` 两条。**轮 512 那句 `p.style.setProperty("bottom","0","important")` 正是把 `--kbb` 钉死成 0 的元凶**（iOS 面板沉到工具栏下面 81px）。留下的只有量高让位（`emojiPad`）与皮肤。
+  - **工装抓出来的真 bug（第六处改动）**：`positionTop` 是布尔 prop，而 web component 传的 `"false"` 也是 truthy；配合「height=0 表示交给 CSS」，渲染出来就是 `top: 0px` —— 面板整宽、高度全对，**位置却跑到屏幕顶部**（实测 rect `0..320`，本该 `532..852`）。这种错肉眼只能看出「面板在上面」，极难定位。
+  - **工装自己又骗了一次**：第一版 `vac-sheet-drive` 在没点进房间时量，`.vac-col-messages` 是 `display:none`，面板 rect 全 0 却「全部通过」。现在先断言房间真的打开，量不到直接 `room-not-opened`。
+  - **真渲染实测（手机 393×852）**：`open` = `0..393 × 532..852`（整宽、贴屏底）· `--kbb=81` = `451..771`（让开 iOS 工具栏）· `--kb-panel-h=300` = 高 300；桌面 1280×800 仍是 `300×320 absolute` 浮层（上游行为没被改坏）。
+  - **新增护栏**：`vendor-check`（10 条：依赖必须指向 file:、lockfile 必须是 link、六处改动逐条在不在、宿主不许再内联钉）；`vac-sheet-drive`（9 条真渲染几何）。
+  - **一个入库事故（自己抓住）**：`vendor/.../dist/` 被根 `.gitignore` 的 `dist/` 吃掉，第一条提交只提了 LICENSE 与 PATCHES.md —— clone 下来等于没 fork。补 `!vendor/*/dist/` 并 `git check-ignore` 验证。
+
 - **轮 513（改动完成、测试过了、待提交待部署）**：用户第 9 次点这件事 ——「就算是苹果，我之前说的问题，就是那个视频里的问题，你也没有修好啊，我 12 点刚测的，最新的。苹果的你到底能不能做好」。
   - **先对齐事实（不找借口）**：核了提交时间线，轮 511 是 10:59 提交、随后就上线了，线上现在跑的是 `main-BE8gFWso.js`。所以他 12:00 测的**就是 511 那一版**，这不是「测到旧版」，就是 511 没解决问题。前八轮的问题在结构上：整套位置都是**推导**出来的。
   - **开环 → 闭环（本轮唯一真正的改动）**：`--kbb = inner − (vv.offsetTop + vv.height)` 这条推导要求每台机器上报的四个数字**全对**。而 iOS 26 玻璃栏、X/微博内置的 svh、小米的 31px 噪声，每台错的方式都不一样 —— 这就是「我这台好了、他那台还是沉的」反复发生的机制。新增 `utils/bottomPin.js`：**直接量**那个本该贴住可视区底的元素（会话页 = `.dm-page--chat`，暖心墙 = `.cmt-main-bar`）离可视区底差多少，差多少就往 `--kbb` 里补多少（`viewportVars` 内部一个累加量 `kbbFix`，写 CSS 变量时直接写 `--kbb = r.kbb + kbbFix`，所以页面高/吸底条/面板三个消费者自动一起吃，没有新增变量）。误差与 `--kbb` 是 1:1 线性，1~2 帧收敛；「同一个误差连着两帧」才动手，动画过渡态不追。
