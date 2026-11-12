@@ -1,6 +1,9 @@
 # 依赖与构建产物
 node_modules/
 dist/
+# 轮 514：vendored 的库产物必须入库 —— fork 的全部意义就是这份改过的 dist，
+# 漏了它 clone 下来等于没 fork（vendor-check 会红）
+!vendor/*/dist/
 
 # 私密配置：Supabase 密钥，绝不能提交
 .env
