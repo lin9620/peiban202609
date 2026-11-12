@@ -121,8 +121,12 @@ t("S11 会话列表自己记位置（@scroll 实时存），不能只靠浏览�
 });
 
 t("S12 返回列表时两层都回位（内层 scrollTop + 外层 window）", () => {
-  has(VIEW, /watch\(activeId, \(v, old\) => \{ if \(!v && old\) restoreListScroll\(\); \}\)/,
+  /* 轮 517：回位改成 nextTick 里「先拆 fixed 接管、再恢复」—— 原来同步写，
+   * 那时 .dm-page 还带着内联 fixed/overflow:hidden，写进去的值会被裁掉。 */
+  has(VIEW, /watch\(activeId, \(v, old\) => \{[\s\S]{0,320}?restoreListScroll\(\)/,
     "activeId 清空时没恢复滚动位置（返回列表不会回位）");
+  has(VIEW, /watch\(activeId, \(v, old\) => \{[\s\S]{0,200}?releaseChatViewport\(\);[\s\S]{0,80}?restoreListScroll\(\)/,
+    "没先拆 fixed 接管就恢复位置（scrollTop 会写进一个裁切框里）");
   const rl = fnBody(VIEW, "function restoreListScroll()", "function ");
   has(rl, /restoreConvList\(\)/, "restoreListScroll 没恢复会话列表");
   has(rl, /restorePageScroll\(\)/, "restoreListScroll 没恢复页面（window）位置");

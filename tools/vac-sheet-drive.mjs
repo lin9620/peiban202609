@@ -76,6 +76,11 @@ writeFileSync(expr, `(async () => {
   const rows = [];
   const snap = (name) => {
     const p = sr.querySelector(".vac-emoji-picker");
+    /* 轮 516：连输入行一起量。面板是 fixed、输入行在页面流里 —— 面板一出现，
+       输入行如果不让位就会被面板整个盖住（用户看到的「输入框没了」）。 */
+    const foot = sr.querySelector(".vac-box-footer");
+    const ta = sr.querySelector(".vac-textarea");
+    const footPad = foot ? getComputedStyle(foot).paddingBottom : "-";
     rows.push({
       name,
       vw: window.innerWidth, vh: window.innerHeight,
@@ -83,6 +88,9 @@ writeFileSync(expr, `(async () => {
       rect: p ? R(p) : null,
       cs: p ? C(p) : null,
       inline: p ? String(p.getAttribute("style") || "") : "",
+      foot: foot ? R(foot) : null,
+      footPad,
+      ta: ta ? R(ta) : null,
     });
   };
 
@@ -138,7 +146,9 @@ const fmt = (s) => {
   const r = s.rect, c = s.cs;
   return `wrap=${String(s.wrapPos).padEnd(8)} pos=${String(c && c.pos).padEnd(8)}`
     + ` rect=${r ? r.l + ".." + r.r + " × " + r.t + ".." + r.b : "-"}`
-    + ` w=${r ? r.w : "-"} h=${r ? r.h : "-"}`;
+    + ` w=${r ? r.w : "-"} h=${r ? r.h : "-"}`
+    + ` | foot=${s.foot ? s.foot.t + ".." + s.foot.b : "-"}(pad=${s.footPad})`
+    + ` ta=${s.ta ? s.ta.t + ".." + s.ta.b : "-"}`;
 };
 
 console.log(`手机 ${phone.w}x${phone.h}`);

@@ -110,6 +110,13 @@ writeFileSync(expr, `(async () => {
      否则测的是「键盘还在、面板又开」这个真机上不存在的状态。 */
   document.querySelector(".cmt-main-bar .wp-composer-ico.is-emoji").click();
   await sleep(60);
+  /* 轮 516 · 上推态下**先采一次**再还原。
+   * 上一版这里点完表情立刻 __kbSim(H-81) 还原，理由是「真机上键盘会跟着收起来，
+   * 测的是不存在的状态」—— 这句话是错的：键盘收起要 250ms，这 250ms 里
+   * 可视视口仍是上推的，而用户看见的恰恰就是这 250ms。
+   * 组装级工装（dm-sheet-drive）在私信页量到：不扣上推量时输入行会窜到屏幕 146
+   * （本该 469）。暖心墙是同一套面板 + 同一条让位公式，必须在这里也有采样点。 */
+  snap("panel-press-60");
   /* 轮 511：键盘收起后 Safari 的底部工具栏还在（vv = inner − 81），不能还原成整屏。
      还原成整屏会让 --kbb 变 0，之后「点键盘键」那一刻记下的基线 holdKbb 也是 0，
      键盘回来时 --kbb 还是 0（上推态）→ 判据永远不成立，测出来的是个假现场。 */
@@ -253,6 +260,32 @@ if (!pan) fails.push("kb-pan: 没走到「iOS 首次键盘就上推」那一步"
 else {
   if (!near(parseFloat(pan.kbLast || 0), 330)) {
     fails.push(`kb-pan: 键盘上推时 --kb-last = ${pan.kbLast}（应为 330）—— 面板高度会退回估计值`);
+  }
+}
+const press60 = step("panel-press-60");
+if (!press60) fails.push("panel-press-60: 没采到「键盘还在时点表情」那一帧");
+else {
+  /* 轮 516 · 这一帧是用户真正看见的：键盘还在收起，可视视口仍是上推的。
+   * 面板必须已经**藏在键盘所在的位置**（底边 = 可视区底 852），不许横在可视区中间。
+   * 不扣 --vtop 时实测：面板 202..532、底条被顶到屏幕 152 —— 半屏都是面板。 */
+  /* 坐标换成屏幕坐标：键盘态可视视口上推，布局坐标要减掉 offsetTop（见 snap 的 vv）。 */
+  const vt = (press60.vv && press60.vv[1]) || 0;
+  if (press60.picker) {
+    const pt = press60.picker.top - vt;
+    const pb = press60.picker.bottom - vt;
+    if (pt < 500) {
+      fails.push(`panel-press-60: 面板顶在屏幕 ${pt}（该 ≥500，藏在键盘后面）—— 键盘还没收就把面板亮出来`);
+    }
+    if (pb > press60.visBottom + 2) {
+      fails.push(`panel-press-60: 面板底越过可视区（${pb} > ${press60.visBottom}）`);
+    }
+  }
+  /* 底条不许被顶到屏幕上半部（不扣 --vtop 时屏幕 148，扣了之后贴可视区底 ~437） */
+  if (press60.bar) {
+    const bt = press60.bar.top - vt;
+    if (bt < 400) {
+      fails.push(`panel-press-60: 底条被顶到屏幕 ${bt}（该留在下部）—— 让位把上推量和面板高叠了一次`);
+    }
   }
 }
 const panel = step("panel");

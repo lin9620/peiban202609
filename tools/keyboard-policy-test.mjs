@@ -210,7 +210,17 @@ t("style.css：--kb-h 变量 + 正文底部让位", () => {
   assert(/html\.cap-app body\s*\{[^}]*padding-bottom:\s*var\(--kb-h\)/.test(css),
     "body 没有 padding-bottom: var(--kb-h)（长页面滚不到输入框）");
 });
-t("style.css：聊天整屏页高度跟着 --kb-h 缩，且带过渡（dvh 关在 @supports 里）", () => {
+/* 轮 515：过渡改成「按窗口」之后，窗口本身成了命门 —— kbAnimOn 一旦被删或漏挂，
+ * style.css 里那几条 kb-anim 规则永远不命中，键盘弹起时页面硬跳 300px。
+ * 这条是纯静态护栏，跑不了原生键盘，只能锁住「四个事件都开窗口 + 会自己摘」。 */
+t("keyboardInset：App 壳键盘动画窗口四个事件都开，且会自己摘掉", () => {
+  const js = read("src/utils/keyboardInset.js");
+  assert(/classList\.add\(KB_ANIM_CLS\)/.test(js), "缺 html.kb-anim 的挂载");
+  assert(/setTimeout\([\s\S]{0,160}?340/.test(js), "缺 340ms 自动摘除（否则过渡永久开启 = 又是常驻）");
+  assert((js.match(/kbAnimOn\(\);/g) || []).length >= 4,
+    "keyboardWillShow / DidShow / WillHide / DidHide 四个事件都要开窗口");
+});
+t("style.css：聊天整屏页高度跟着 --kb-h 缩，过渡只在键盘窗口内（dvh 关在 @supports 里）", () => {
   const css = readCss("src/style.css");
   const at = css.indexOf("html.cap-app .shell--mobile-nav.shell--chat .dm-page {");
   assert(at > 0, "缺「聊天整屏页高度跟着键盘缩」的规则");
@@ -219,25 +229,42 @@ t("style.css：聊天整屏页高度跟着 --kb-h 缩，且带过渡（dvh 关�
    * 同一规则里写两条声明是错的 —— dvh 解析期合法、计算期作废，会把 100vh 一起吃掉。 */
   assert(/height:\s*calc\(100vh - var\(--kb-h\)\)/.test(base),
     "基线高度没用 calc(100vh - var(--kb-h))（旧内核只有这一条能兜住）");
-  assert(/transition:\s*height\s/.test(base), "高度没有过渡（会硬跳、与输入法错位）");
+  /* 轮 515：过渡从常驻改成「只在键盘动画窗口内」。
+   * 常驻的话，退出会话时高度从 100dvh 变回内容高也要走 220ms —— 用户报的「一缩一放」。 */
+  assert(!/transition:/.test(base),
+    "基础规则里不该有常驻过渡（退出会话会一缩一放）");
+  const anim = css.match(/html\.cap-app\.kb-anim \.shell--mobile-nav\.shell--chat \.dm-page\s*\{[^}]*\}/);
+  assert(anim && /transition:\s*height\s/.test(anim[0]),
+    "键盘窗口（html.cap-app.kb-anim）内必须有 height 过渡，否则整页瞬跳露白");
   const sup = css.indexOf("@supports (height: 100dvh)", at);
   assert(sup > at, "缺 dvh 的 @supports 覆盖块");
   assert(/height:\s*calc\(100dvh - var\(--kb-h\)\)/.test(css.slice(sup, sup + 400)),
     "dvh 版高度没关进 @supports（旧内核会把整条 height 算成 auto）");
 });
-t("style.css：暖心墙吸底评论条 bottom 跟着 --kb-h 抬，且带过渡", () => {
+t("style.css：暖心墙吸底评论条 bottom 跟着 --kb-h 抬，过渡只在键盘窗口内", () => {
   const css = readCss("src/style.css");
   const m = css.match(/html\.cap-app \.cmt-main-bar\s*\{[^}]*\}/);
   assert(!!m, "缺「吸底评论条跟着键盘抬」的规则");
   assert(/bottom:\s*var\(--kb-h\)/.test(m[0]), "bottom 没接 --kb-h");
-  assert(/transition:\s*bottom\s/.test(m[0]), "bottom 没有过渡");
+  /* 轮 515：常驻 padding-bottom .22s 就是「点表情时输入行被面板盖住再爬上来」那个闪。 */
+  assert(!/transition:/.test(m[0]),
+    "基础规则里不该有常驻过渡（切表情时条会爬 220ms）");
+  const anim = css.match(/html\.cap-app\.kb-anim \.cmt-main-bar[^{]*\{[^}]*\}/);
+  assert(anim && /transition:\s*bottom\s/.test(anim[0]),
+    "键盘窗口内必须有 bottom 过渡（跟系统输入法动画咬合）");
+  /* 面板态必须被排除：面板是瞬现的，条不能花 220ms 爬上来 */
+  assert(anim && /:not\(\.wp-emoji-open\)/.test(anim[0]),
+    "键盘窗口那条没排除 .wp-emoji-open（面板打开时条还是会爬）");
 });
 t("style.css：详情页固定回复条 .reply-bar 也要跟着抬", () => {
   const css = readCss("src/style.css");
   const m = css.match(/html\.cap-app \.reply-bar\s*\{[^}]*\}/);
   assert(!!m, "缺 .reply-bar 的键盘让位规则（详情页回复条会被键盘盖住）");
   assert(/bottom:\s*calc\(var\(--kb-h\) \+ 64px/.test(m[0]), "bottom 没接 --kb-h + 64px");
-  assert(/transition:\s*bottom\s/.test(m[0]), "bottom 没有过渡");
+  /* 轮 515：同 .cmt-main-bar，过渡只在键盘窗口内 */
+  assert(!/transition:/.test(m[0]), "基础规则里不该有常驻过渡");
+  const anim = css.match(/html\.cap-app\.kb-anim \.reply-bar\s*\{[^}]*\}/);
+  assert(anim && /transition:\s*bottom\s/.test(anim[0]), "键盘窗口内必须有 bottom 过渡");
 });
 
 /* —— ⑥ 视口策略 + 已被证伪的写法 —— */

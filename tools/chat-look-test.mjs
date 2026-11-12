@@ -67,7 +67,13 @@ t("L5 表情面板打开时底栏让位仍然归零（轮 347 那条不能被顶
 });
 
 t("L7 轮 350 面板→键盘交接：让位钉住 + 过渡同曲线（否则输入框先掉屏底再被顶回来）", () => {
-  has(BC, /:host\(\.wp-kb-swap\) \.vac-box-footer \{\s*\n\s*padding-bottom: var\(--wp-emoji-h\) !important;\s*\n\s*transition: none !important;/, "没有 .wp-kb-swap 的钉住规则（输入框会先掉屏底）");
+  has(BC, /:host\(\.wp-kb-swap\) \.vac-box-footer \{\s*\n\s*padding-bottom: var\(--wp-emoji-h\) !important;[\s\S]{0,90}?transition: none !important;/, "没有 .wp-kb-swap 的钉住规则（输入框会先掉屏底）");
+  /* 轮 516 · 钉住量必须扣掉可视视口上推量 --vtop。
+   * iOS 键盘态会把可视视口上推（offsetTop = 键盘高），页面底**已经**是键盘上沿；
+   * 整份让位等于让两次。组装级工装（dm-sheet-drive）实测「键盘 → 表情」：
+   * 输入行屏幕 469 → 146 → 405。扣掉之后全程稳定在 469~486，不再窜到上半屏。 */
+  has(BC, /:host\(\.wp-kb-swap\) \.vac-box-footer \{[\s\S]{0,200}?max\(0px, var\(--wp-emoji-h\) - var\(--vtop, 0px\)\)/,
+    "钉住量没扣 --vtop（键盘还在上推时会让位两次，输入条窜到屏幕上半部）");
   /* 轮 512 · 这条原来要求「footer 上常驻 padding-bottom 的 .22s 过渡」，
    * 工装实测把它推翻了（安卓模型 393×852 / 键盘 300）：
    *   to-panel+20   picker 已铺到 552..852，条还在 767..852、pad 仅 41
@@ -78,7 +84,7 @@ t("L7 轮 350 面板→键盘交接：让位钉住 + 过渡同曲线（否则输
    * 「面板 → 键盘」那半段由 :host(.wp-kb-swap) 的 transition: none 负责。 */
   assert.doesNotMatch(BC, /\.vac-box-footer \{ transition: padding-bottom/,
     "footer 又挂回常驻的 padding 过渡（开面板时输入条会被面板盖住再爬上来）");
-  has(BC, /:host\(\.wp-kb-swap\) \.vac-box-footer \{[\s\S]{0,120}?transition: none !important;/,
+  has(BC, /:host\(\.wp-kb-swap\) \.vac-box-footer \{[\s\S]{0,320}?transition: none !important;/,
     ".wp-kb-swap 没把过渡关掉（钉住那一刻会被 .22s 拖成滑动）");
   has(BC, /const holdForKeyboard = \(\) => \{/, "没有 holdForKeyboard");
   has(BC, /holdForKeyboard\(\); {10,}\/\* 让位先钉住/, "closeKeepFocus 里没调 holdForKeyboard（或没在收面板之前调）");
@@ -145,6 +151,34 @@ t("L8 页面盒子按内核分流：安卓 resize 型保持 100dvh−kb-h，iOS 
     "overlay 型 .dm-page--chat 没接「--vlh − --kbb」");
   assert.match(CSS, /html\.kb-web\.kb-overlay \.shell--mobile-nav\.shell--chat \.dm-page[^{]*\{[^}]*height: calc\(var\(--vlh, \S+\) - var\(--kbb/,
     "overlay 型外壳那条没接「--vlh − --kbb」");
+});
+
+/* ═══ 轮 517：退出会话 / 切表情 两条「一闪一缩」的接线锁 ═══
+ * 行为层由 tools/chat-exit-drive.mjs（真渲染）与 tools/androidbar-drive.mjs 量，
+ * 这里只锁「接线别被删掉」—— 那两个函数一断，真渲染工装也不会红（它直接调 release）。 */
+
+t("L9 退出会话必须同帧拆掉 fixed 接管（不许只靠 250ms 巡检）", () => {
+  const MV = fs.readFileSync("src/views/MessagesView.vue", "utf8");
+  has(MV, /import \{[^}]*releaseChatViewport[^}]*\} from "\.\.\/utils\/chatViewport\.js"/,
+    "MessagesView 没引 releaseChatViewport");
+  assert.match(MV, /watch\(chatOpen,[\s\S]{0,420}?releaseChatViewport\(\)/,
+    "chatOpen 变 false 时没调 releaseChatViewport（退出那一刻页面会被钉在 fixed 框里）");
+  /* 顺序：恢复列表位置必须在拆接管之后（否则 scrollTop 写进一个裁切框里） */
+  assert.match(MV, /watch\(activeId,[\s\S]{0,300}?releaseChatViewport\(\);[\s\S]{0,80}?restoreListScroll\(\)/,
+    "restoreListScroll 没排在 releaseChatViewport 之后（写进去的滚动位置会被裁掉）");
+});
+
+t("L10 表情面板必须保活（v-if 每次重建 = 用户说的「一闪」）", () => {
+  const WPC = fs.readFileSync("src/components/WpComposer.vue", "utf8");
+  has(WPC, /v-if="pickerMounted"[\s\S]{0,200}?class="wp-composer-picker"/,
+    "面板还是 v-if=\"emojiOpen\"（每次切键盘都卸载，再点表情重建 emoji-picker）");
+  has(WPC, /:class="\{ 'is-open': emojiOpen \}"/,
+    "面板没有 is-open 类开关（收起后要能隐藏）");
+  /* 关面板时不许把就绪态置 false：实例还在，置 false 会让下次打开先渲染一帧骨架。
+     只认真正的代码行（注释里也写着这句话，别被自己的注释骗了）。 */
+  const close = WPC.slice(WPC.indexOf("if (!open)"), WPC.indexOf("if (!open)") + 520);
+  no(close, /^\s*pickerReady\.value = false;/m,
+    "关面板还把 pickerReady 置 false（下次打开会先闪一帧骨架）");
 });
 
 console.log(`chat-look-test: ${pass} pass, ${fails.length} fail`);

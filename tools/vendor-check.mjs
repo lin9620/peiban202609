@@ -77,8 +77,15 @@ t("V8 宿主不再内联改面板几何（两套机制并存必然打架）", ()
   const BC = readFileSync("src/components/DmVacChat.vue", "utf8");
   no(BC, /const pinPicker = /, "pinPicker 又回来了");
   no(BC, /p\.style\.setProperty\("(position|bottom|width|height)"/, "宿主又给面板写内联几何");
-  /* 让位那一半必须还在：面板不能盖住输入行 */
-  has(BC, /f\.style\.paddingBottom = h \+ "px"/, "让位 padding 不见了（面板会盖住输入行）");
+  /* 让位那一半必须还在：面板不能盖住输入行。
+   * 轮 516：内联值从 `h + "px"` 改成 `max(0px, ${h}px - var(--vtop, 0px))` ——
+   * 必须扣可视视口上推量，否则 iOS 键盘态下页面底已经是键盘上沿，整份让位会让两次
+   * （工装实测输入条屏幕 469 → 146 → 405）。老内核兜底 `: h + "px"` 也要在。 */
+  has(BC, /f\.style\.paddingBottom = CAN_MAX/, "让位 padding 不见了（面板会盖住输入行）");
+  has(BC, /max\(0px, \$\{h\}px - var\(--vtop, 0px\)\)/, "内联让位没扣 --vtop（键盘上推时输入条会窜到上半屏）");
+  has(BC, /: h \+ "px"/, "不支持 max() 的内核没有兜底（让位会归零）");
+  /* 面板自己也要扣：键盘还在收起时藏在键盘后面、随键盘升起 */
+  has(LIB, /transform:translateY\(var\(--vtop,0px\)\)/, "面板没扣 --vtop 位移（键盘收起前会横在屏幕中间）");
 });
 
 t("V9 dist 与 node_modules 解析到的是同一份（防止装了两份）", () => {

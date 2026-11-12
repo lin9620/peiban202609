@@ -221,10 +221,15 @@ t("E14 emojiPanel.js 保持纯 DOM（不许 import 库，否则 Node 单测崩�
 t("E15 会话页让位不赌选择器：量出来的内联 padding（:has 不支持、类没挂上也不塌）", () => {
   has(BC, /const emojiPad = \(open\) => \{/, "没有「量出来」的让位函数");
   has(BC, /querySelector\("\.vac-emoji-picker"\)[\s\S]{0,500}getBoundingClientRect\(\)/, "没有量面板的真实矩形");
-  has(BC, /f\.style\.paddingBottom = h \+ "px"/, "没写内联 padding-bottom（选择器一失效就白给）");
+  /* 轮 516：内联值改成 calc 表达式（让 --vtop 变化由浏览器自己重算），
+     不再是一句 h + "px"。两条写法都必须扣 --vtop —— 键盘还在上推时页面底已经是
+     键盘上沿，整份让位会让两次（工装实测输入条 469 → 146 → 405）。 */
+  has(BC, /f\.style\.paddingBottom = CAN_MAX/, "没写内联 padding-bottom（选择器一失效就白给）");
+  has(BC, /max\(0px, \$\{h\}px - var\(--vtop, 0px\)\)/, "内联让位没扣 --vtop（键盘上推时输入条会窜到上半屏）");
+  has(BC, /: h \+ "px"/, "老内核兜底没了（不支持 max() 的内核会让位归零、面板盖住输入条）");
   /* 面板现在锚在页面底边上，「离屏底还有多少」那一段是旧 fixed 锚点造成的假缝，
      再补进去就会把输入条整体抬高一条（iOS 底部工具栏那 ~44px） */
-  has(BC, /getBoundingClientRect\(\)\.height\);\s*\n\s*if \(h > 0\) f\.style\.paddingBottom/, "让位高度不是取面板自身高度");
+  has(BC, /getBoundingClientRect\(\)\.height\);\s*\n\s*if \(h > 0\) \{/, "让位高度不是取面板自身高度");
   has(BC, /const footOf = \(\)[\s\S]{0,220}vac-box-footer/, "让位没落在 .vac-box-footer（面板的定位宿主）上");
   /* 收起时必须清掉内联值，否则关掉面板后输入条永远悬在半空。 */
   has(BC, /if \(!open \|\| !sheetMode\(\)\) \{ stopPadRO\(\); foot\.style\.paddingBottom = ""; return; \}/,

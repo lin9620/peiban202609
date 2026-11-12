@@ -213,10 +213,14 @@ t("P4 中英都有「表情」按钮文案", () => {
  * .post-card 的 content-visibility:auto 隐含 paint containment，面板伸到卡顶以上的
  * 导航行 + 第一排表情会被整块裁掉（用户截图：面板从卡顶开始、上面缺一块）。 */
 t("P5 表情面板打开时帖子卡必须让路（不裁、不压在上一张卡下）", () => {
-  has(CSS, /\.post-card:has\(\.wp-composer-picker\)\s*\{[^}]*content-visibility:\s*visible/, "卡片还留着 paint containment（面板上半截会被裁）");
-  has(CSS, /\.post-card:has\(\.wp-composer-picker\)\s*\{[^}]*z-index:\s*2/, "卡片没抬到上一张卡之上");
-  /* 面板必须 v-if（收起即移出 DOM），:has 才能只命中「正打开的那张卡」 */
-  has(WPC, /v-if="emojiOpen"\s+class="wp-composer-picker"/, "面板不是 v-if 渲染（:has 会一直命中所有卡）");
+  has(CSS, /\.post-card:has\(\.wp-composer-picker\.is-open\)\s*\{[^}]*content-visibility:\s*visible/, "卡片还留着 paint containment（面板上半截会被裁）");
+  has(CSS, /\.post-card:has\(\.wp-composer-picker\.is-open\)\s*\{[^}]*z-index:\s*2/, "卡片没抬到上一张卡之上");
+  /* 轮 517：面板改「保活 + is-open 类」（v-if 卸载重建 = 用户说的「一闪」）。
+   * :has 必须认 .is-open，否则面板 DOM 常驻会让每一张卡都命中。 */
+  has(WPC, /:class="\{ 'is-open': emojiOpen \}"/,
+    "面板没有 is-open 类开关（:has 会一直命中所有卡）");
+  has(WPC, /\.wp-composer-picker\.is-open\s*\{\s*display:\s*block/,
+    "is-open 没有把面板显示出来");
 });
 
 /* ── 轮 350：面板 → 键盘交接（底条先掉屏底再被顶回来）+ 面板里点表情抢焦点 ──
@@ -265,8 +269,14 @@ t("P7 轮401 评论输入：表情键二次点击 = 键盘键（换图标 + 回�
  * .wp-emoji-open 没挂上、App 壳走别的分支），面板就整个盖在输入行和发送键上。
  * 内联 padding 不看任何选择器，量多少让多少，盖不住。 */
 t("P8 轮513 面板占位走实测内联 padding（不靠 CSS 规则，别再盖住发送键）", () => {
-  has(WPC, /const syncPad = \(\) => \{[\s\S]{0,400}getBoundingClientRect\(\)\.height[\s\S]{0,120}paddingBottom = h \+ "px"/,
+  /* 轮 516：内联值改成 calc 表达式（--vtop 变化由浏览器自己重算），不再是 h + "px"。
+     必须扣可视视口上推量：iOS 键盘态页面底已经是键盘上沿，整份让位等于让两次
+     （工装 panel-press-60 实测底条被顶到屏幕 148，该 ~437）。 */
+  has(WPC, /const syncPad = \(\) => \{[\s\S]{0,400}getBoundingClientRect\(\)\.height[\s\S]{0,160}paddingBottom = CAN_MAX/,
     "没有按实测高度写内联让位（面板会盖住输入行/发送键）");
+  has(WPC, /max\(0px, \$\{h\}px - var\(--vtop, 0px\)\)/,
+    "内联让位没扣 --vtop（键盘上推时底条会被顶到屏幕上半部）");
+  has(WPC, /: h \+ "px"/, "不支持 max() 的内核没有兜底（让位会归零、面板盖住输入条）");
   has(WPC, /if \(!emojiOpen\.value \|\| !isSheet\(\) \|\| !el\) \{ clearPad\(\); return; \}/,
     "面板收起/桌面形态没清内联让位（条会一直悬着一条空白）");
   has(WPC, /padRO = new ResizeObserver\(\(\) => syncPad\(\)\)/, "没盯面板自身高度（数据晚到时让位会少一截）");

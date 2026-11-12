@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <!-- 与真站一致（index.html）：interactive-widget=resizes-content 决定安卓是 resize 型内核 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
+  <title>chat-exit harness</title>
+  <style>
+    html, body { margin: 0; padding: 0; background: #faf9f5; }
+    /* 真站手机端 .dm-list 是页面里的普通 card，靠 window/文档滚动；
+       这里只要保证列表内容比一屏高，好看出「被裁」还是「能滚」。 */
+    .dm-list { display: block; }
+    .dm-item { padding: 18px 14px; border-bottom: 1px solid #ece5da; }
+  </style>
+</head>
+<body>
+  <!-- 结构与 MessagesView.vue 一致：.dm-page（长期存在）挂 dm-page--chat 类；
+       列表 aside 与 thread section 互斥显示。 -->
+  <div class="shell shell--mobile-nav shell--chat" id="shell">
+    <div class="dm-page dm-page--chat" id="page">
+      <div class="dm-wrap">
+        <aside class="card dm-list" id="list" style="display:none"></aside>
+        <section class="card dm-thread" id="thread">
+          <div class="dm-scroll" style="height:100%;overflow:auto">
+            <div style="height:1600px"></div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
