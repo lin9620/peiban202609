@@ -37,6 +37,9 @@ _*.txt
 _*.ps1
 _*.png
 tools/_*.js
+# 真渲染工装（wallbar-drive / androidbar-drive）每跑一次都临时构建一份，用完自己删；
+# 中断时可能留下目录，别让它进提交
+tools/_*-harness-dist/
 
 # Android / Capacitor（App 轨道红线：密钥与本地构建产物绝不提交）
 *.keystore
