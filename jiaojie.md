@@ -724,6 +724,73 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
   - **⚠️ 事故**：隔离 `src/views/NotificationsView.vue`（并行会话在改，144→171 行）时用 `git show HEAD:path > path` 覆盖，恢复用的 `cp` 备份抓到的是 HEAD 版（18664B/426 行），**并行版（24395B）未进备份、已丢失**。以后覆盖别人正在写的文件，必须先 `cp` 到带时间戳的独立文件并 `cmp` 校验字节数再动手。
 
 
+- **轮 516（改动完成、测试过了、待提交待部署）**：用户问「**那苹果端的问题呢，你之前是一个都没修好啊，不检查一下啊**」。
+  - **先承认：确实一条都没验过。** 前九轮所有 iOS 工作都停在「推导 + 静态断言」，从没有一次把**私信会话页组装起来真跑**过。`vac-sheet-drive` 只挂库本体（量的是库自己的面板几何），`wallbar-drive` 只测暖心墙，而且它在点表情前**先把上推态还原成工具栏态**才继续 —— 注释里写的理由是「真机上键盘会跟着收起来，测的是不存在的状态」。**这句话是错的**：键盘收起要 250ms，那 250ms 里可视视口仍然上推，而用户看见的恰恰就是这 250ms。工装把问题所在的时段跳过去了。
+  - **补的第一个工装（`tools/dm-sheet-drive.mjs` + `tools/dm-sheet-harness/`）**：真挂 `DmVacChat`（含宿主注入影子树的 THEME_CSS），伪造 iOS overlay 型 visualViewport，走「点输入框 → 键盘上推 → 点表情 → 键盘收起 → 点键盘键 → 键盘回来」，每一步量输入行/面板/让位的**屏幕坐标**（布局坐标要减 `vv.offsetTop`，上一版工装就是没换这个）。第一次跑就把两个 bug 顶出来了：
+    ```
+    键盘→表情：输入行屏幕 469 → 146(+16ms) → 405(键盘收完)
+    表情→键盘：输入行屏幕 405 → 725(+20ms) → 469   pad 330→7（一帧塌光）
+    ```
+  - **bug ①（表情 → 键盘 掉 320px）**：`webSwapNeeded()` 在 iOS 上恒返回 false。它只看 `webKbSeen > 0` 和 `kb-resize`，而 overlay 型的 `--kb-h` 恒 0（键盘是浮层），`webKbSeen` 永远起不来 —— 轮 512 补判据时**只补了 resize 型**，把最需要钉的 iOS 漏了。于是 `.wp-kb-swap` 从上线那天起就没挂过。修法：判据加 `kb-overlay`。
+  - **bug ②（键盘 → 表情 窜 320px）**：面板让位按「面板高」整份加。iOS 键盘态页面底**已经**是键盘上沿（可视视口上推 330），再让 330 就是让两次。修法：新增 CSS 变量 `--vtop`（= `visualViewport.offsetTop`，由 `viewportVars` 写入），让位改成 `max(0px, 面板高 − var(--vtop, 0px))`。
+    - 三处消费者全部改：`style.css` 的 `html.kb-web .cmt-main-bar.wp-emoji-open/.wp-kb-swap`、`DmVacChat` THEME_CSS 的两条 `:host(...) .vac-box-footer`、以及**两处内联让位**（`DmVacChat.emojiPad` 与 `WpComposer.syncPad`）—— 内联优先级高于作者样式，只改 CSS 等于没改（第一次就是只改了 CSS，工装纹丝不动）。
+    - 内联值写成 `max(0px, ${h}px - var(--vtop, 0px))` 这种 **calc 表达式**，让 `--vtop` 一变浏览器自己重算，不再赌 260ms 定时器正好赶上键盘动画（过去九轮反复栽在「赌一次采样」上）。老内核不认 `max()` ⇒ `CAN_MAX` 探测 + 退回纯像素。
+  - **bug ③（面板出现在键盘上方）**：面板 `bottom: var(--kbb)` 在上推态 = 0，`fixed` 相对可视视口 ⇒ 面板落在**键盘上方**（屏幕 202..532），一块 330px 高的面板横在屏幕中间。修法：fork 库的媒体规则加 `transform: translateY(var(--vtop, 0px))`（第七处 fork 改动），上推态面板正好压在**键盘所在的位置**（522..852，被系统键盘盖住），键盘收起时 `--vtop` 归零、面板从底下升起 —— 就是「键盘换成表情面板」。`WpComposer` 的 `emoji-picker` 同款。
+  - **改后实测（393×852，键盘 330，工具栏 81）**：
+    ```
+    键盘→表情：输入行 469 → 476 → 486 → 405     面板 522..852（藏键盘后）→ 441..771
+    表情→键盘：输入行 405 → 405（不动）           pad 330 保持，cls=wp-kb-swap
+    ```
+  - **反向验证（三条，注入 → 红 → 恢复 → 绿）**：`dm-sheet-drive` 注入后 5 条红（`输入行窜到屏幕 146`、`405 跳到 725`、`宿主没挂 .wp-kb-swap`、`让位只剩 7px`）；`wallbar-drive` 注入后 2 条红（`面板顶在屏幕 192`、`底条被顶到屏幕 148`）。
+  - **旧护栏更新（收紧不是放宽）**：`chat-look-test L7`、`emoji-panel-test E15`、`vendor-check V8`、`wall-composer-test P8` 原来锁的是 `paddingBottom = h + "px"` 字面量。全部改成锁 `CAN_MAX` + `max(0px, ${h}px - var(--vtop, 0px))` + 老内核兜底 `: h + "px"`，并额外锁 fork 库的 `transform:translateY(var(--vtop,0px))`。
+  - **顺手发现的死代码**：`html.cap-app/.kb-web .reply-bar` 两条规则已退役（模板里没有任何 `class="reply-bar"` 元素，`fixedBar.js` 的 SELECTOR 指着它等于空转）。轮 515 我还在给它加 `kb-anim` 过渡，白费功夫。没删（怕别处还有引用），在原地写了退役说明 + 警告（它用 `--kb-h` 做让位，iOS 上恒 0；常驻 `.22s` 正是这轮删掉的那类「一闪」）。
+  - **测试**：全量 `all.mjs` **121/122**、断言 1653/1659（唯一红 = 既有 `announcement-test`）；`dm-sheet-drive`、`wallbar-drive`、`androidbar-drive`（网页 + `--cap`）、`vac-sheet-drive`、`kb-matrix` 272/272、`viewport-matrix 636/0`、`emoji-panel 23/0`、`vendor-check 10/0`、`wall-composer 25/0`。
+
+- **轮 517（改动完成、测试过了、待提交待部署）**：用户纠正「**老子在安卓浏览器上测到的，管 apk 什么事**」+「那两条根本就没改好」。
+  - **我错在哪**：轮 515 我把「两条没修好」归因成「他装的是 APK，走 `html.cap-app`，我改的是 `kb-web`」。这个归因本身站不住 —— 他明确说是**安卓浏览器**，走的就是 `kb-web` + `kb-resize`，正是我"以为已经修好"的那条。上一轮那些 `transition` 改动（512/513/515）在浏览器侧确实存在，但它们**不是这两个现象的真因**。教训：不要用「你测的环境不对」来解释「还有问题」。
+  - **② 暖心墙切键盘/表情「一闪」的真因：面板每次都被销毁重建。**
+    模板是 `v-if="emojiOpen"` 包着 `.wp-composer-picker`（内层还有 `<emoji-picker>` 自定义元素）。切一次键盘 → 整块移出 DOM；再点表情 → **重新造一个 web component**，库要重新灌 `/emoji/data.json`、重渲染上百个格子，这几十~几百毫秒里面板是空的/只有骨架。
+    证据（`androidbar-drive` 新增逐帧采样，给 `emoji-picker` 打 uid）：第一次点表情 `uid=1` → 切键盘 `面板不在` → 第二次点表情 **`uid=2`**。
+    修法：`v-if="pickerMounted"` + `:class="{ 'is-open': emojiOpen }"`（**保活**，只隐藏不卸载）+ 关面板时不再把 `pickerReady` 置 false。
+    **不能用 `v-show`**：`style.css` 里 `.post-card:has(.wp-composer-picker)` 靠「面板在不在 DOM 里」让当前那张卡让路，`display:none` 它照样命中 → 所有带输入条的帖子卡都会常驻 `content-visibility:visible + z-index:2`。改成认 `.is-open`。修后 `uid=1` 恒定。
+  - **③ 退出会话「缩放」的真因：退出那一刻没人拆 fixed 接管，要等 0~250ms 巡检。**
+    `utils/chatViewport.js` 在进会话时给 `.dm-page` 写内联 `position:fixed / width / height / overflow:hidden`，并给 html 挂 `wp-chat-fix`（CSS 里带 `height:100%;overflow:hidden`）。退出只是把 `dm-page--chat` 这个**类**摘掉，内联样式不会自己消失；以前只有 250ms 巡检会收摊。
+    新工装 `tools/chat-exit-drive.mjs`（真渲染，同 tick 采样）实测：
+    | 步骤 | wp-chat-fix | .dm-page 内联 | 文档高/视口 |
+    |---|---|---|---|
+    | 进会话 | on | fixed 852×393 hidden | 852/852（不能滚） |
+    | 退出（旧） | **on** | **fixed 852×393 hidden** | **852/852（不能滚）** |
+    | 巡检兜底后 | off | 清空 | 4156/852 |
+    | 退出（新） | **off** | 清空 | **4156/852** |
+    即：退出后列表页被钉在「全屏 fixed + 裁切」的框里，0~250ms 后才弹回文档流 = 那一下缩放。
+    修法：`chatViewport` 新增 `releaseChatViewport()`（谁锁的谁放，不查 `findChatPage`）；`MessagesView` 的 `watch(chatOpen)` 补上「false 就 `nextTick` 拆」这一半；`restoreListScroll` 改成「先拆接管再回位」，否则 scrollTop 写进一个裁切框里。
+  - **反向验证（都做了 注入→红→恢复→绿）**：`releaseChatViewport` 改空 → `chat-exit-drive` 3 条红（fix=on / pos=fixed h=852 / 852-852）；面板改回 `v-if="emojiOpen"` → `androidbar-drive` A3 红（uid 1→2）。
+  - **新增工装**：`tools/chat-exit-drive.mjs` + `tools/chat-exit-harness/`（6 条断言）；`androidbar-drive` 加 A3/A3b/A4（实例复用 / shadow 就绪 / 全程无骨架）。
+  - **旧护栏收紧**：`chat-look-test` 新增 L9（退出必须同帧 release，且 restore 排在 release 之后）、L10（面板必须保活、关面板不许置 false）；`dm-scroll-test` S12、`wall-composer-test` P5 按新写法改口径（不是删掉）。
+  - **测试**：全量 `all.mjs` **121/122**、断言 1653/1659（唯一红 = 既有 `announcement-test`）；`androidbar-drive` 网页 + `--cap` 双模式、`wallbar-drive`、`chat-exit-drive`、`chat-look 11/0`、`wall-composer 25/0`、`dm-scroll 13/0`、`emoji-panel 23/0` 全过。
+
+- **轮 515（改动完成、测试过了、待提交待部署）**：用户直问「**部署之后安卓跟苹果的问题能解决吗，前面说的 2. 安卓端暖心墙表情跟键盘切换有一闪、3. 从会话退出到列表有缩放，一个都没改好**」。
+  - **先承认事实：这两条在 APK 上确实一条都没改。** 轮 512/513 改的全是**网页端分支**（`html.kb-web`）；用户装的是 APK，走 `html.cap-app`，而 `style.css` 里这两套规则是**一一对应写了两份**的（2650 行附近那段注释自己就写着「改一份就要改另一份」）。我就只改了网页那份。他装上 APK 一测，原封不动 —— 不是他测得不准，是我改错了地方。
+  - **②的真因（APK 侧）**：`html.cap-app .cmt-main-bar { transition: bottom .22s, padding-bottom .22s }` 是**常驻**的。面板是瞬现的（组件直插节点、无过渡），底条却要花 220ms 从屏底爬到面板上沿 → 中间这一段时间输入行一直躲在面板后面，面板上下沿之间露一条随过渡变化的空隙 = 「一闪的东西」。另有第二条同源：`html.cap-app body { padding-bottom: var(--kb-h) }`，暖心墙没有 `.dm-page`，整页高度只由这条 padding 决定，面板打开时键盘收起、320px 让位在 220ms 里收回去 → 屏幕底部「抽出一条空白再填上」。
+  - **③的真因（APK 侧）**：`html.cap-app .shell--mobile-nav.shell--chat .dm-page { transition: height .22s }` 也是常驻。退出会话时高度从 `100dvh − --kb-h` 变回内容高，这 220ms 的过渡就是「一缩一放」。进会话方向同理。
+  - **改法：过渡从「常驻」改成「按窗口」**（不是删掉 —— 删了键盘弹起时页面会瞬间缩 300px、输入法还在半路，露一大片背景，这正是轮 322 当初加它的原因）。
+    - `keyboardInset.js` 新增 `kbAnimOn()`：`keyboardWillShow / DidShow / WillHide / DidHide` 四个事件给 `<html>` 挂 `kb-anim`，340ms 后自动摘（比 CSS 的 220ms 多留 120ms 尾量）。
+    - `style.css` 三条几何量的过渡全部挪进 `html.cap-app.kb-anim` 作用域：`.dm-page` 高度、`.dm-page--chat` 高度、`.cmt-main-bar` 与 `.reply-bar` 的 bottom/padding、`body` 的 padding-bottom。
+    - **面板态必须排除**：`.cmt-main-bar` 那条写成 `:not(.wp-emoji-open):not(.wp-kb-swap)` —— 点表情那一刻 `keyboardWillHide` 会把 kb-anim 打开，不排除的话条还是带着 220ms；`body` 那条用 `:not(.wp-panel)`，`html.wp-panel` 由 `WpComposer.syncBar` 在面板开合时挂 / 摘（卸载时也摘，否则之后每次弹键盘 body 都不过渡）。
+    - `WpComposer` 另外把「骨架就绪」改成先同步查一次 shadowRoot：预热过就直接算 ready，不再先渲染一帧 48 格灰块再换成真表情（那是「闪」的第三个可能来源，能省则省）。
+  - **工装补上 APK 模型（这轮的真正教训）**：`androidbar-drive.mjs` 新增 `--cap`，把页面伪装成 App 壳并**摘掉 kb-web 类**（真实 App 壳里 `viewportVars` 一进来就 `isNativeShell()` 早退，不会挂 kb-web；不摘的话网页端那条 `transition: none` 会压住 cap-app 规则，测出来永远「没有过渡」—— 第一版就是这么把 C1 测绿的，又是工装骗自己）。新增 7 条断言，全部读到 computed transition：
+    ```
+    改前（反向注入）  idle=bottom,padding-bottom/0.22s   animPanel=bottom,padding-bottom/0.22s
+                      body=padding-bottom/0.22s          会话页 idle=height/0.22s        → C1 C3 C4 C7 四条红
+    改后              idle=all/0s                        animPanel=all/0s
+                      anim=bottom,padding-bottom/0.22s   bodyAnim=padding-bottom/0.22s
+                      会话页 idle=none/0s  anim=height/0.22s                            → 全绿
+    ```
+    四条断言都做了**反向注入**（把改前的写法塞回去，确认当场红）再恢复。工装里顺带踩到一个真坑：注释里写了反引号，把外层模板字符串提前截断，整个脚本语法错误 —— 已在注释里留警告。
+  - **旧护栏更新（不是放宽）**：`keyboard-policy-test` 原来三条断言要求「必须带过渡」，那正是这次要修的 bug。改成「基础规则不许有过渡 **且** kb-anim 里有过渡 **且** 面板态被 `:not()` 排除」，另加一条静态拦：`kbAnimOn` 必须在四个键盘事件里都调用、且会自己摘（一旦被删，所有 kb-anim 规则永不命中，键盘弹起时页面硬跳 300px）。
+  - **测试**：全量 `all.mjs` **121/122**、断言 1653/1659（唯一红 = 既有的 `announcement-test` 公告弹层未实现）；`androidbar-drive` 网页端 + `--cap` 双模式全过、`wallbar-drive`、`kb-matrix` 272/272、`emoji-panel 23/0`、`vac-sheet-drive`、`vendor-check 10/0`。
+  - **回答用户的「部署能不能解决」**：不能。他装的是 APK，网页部署不会进安装包 —— 这两条的修复必须**重新打包装机**才看得到。已按规矩停在「改动完成、测试过了」，等他说提交 / 部署 / 打包。
+
 - **轮 514（改动完成、测试过了、待提交待部署）**：用户问「聊天组件是不是用别人的」，随后拍板「**b，选 b**」—— 把库 fork 进仓库改。
   - **先回答事实**：会话页 = `vue-advanced-chat@2.1.2`（MIT），表情面板是它内置的 `emoji-picker-element`；暖心墙的输入条是我们自己写的。问题的权重不在「聊天功能」上，而在库里三条我们够不到的地方：库把 DOM 塞进 shadowRoot（宿主只能内联 `!important`）、`.vac-emoji-wrapper` 自带 `position:relative`（面板 100% 宽 = 按钮宽 40px，就是那条竖线）、手机端 JS 直接往面板写内联几何（`height = innerHeight − 200`，所以高度跟着窗口变）。
   - **fork 的做法**：npm 包只有 35523 行的未压缩 `dist/vue-advanced-chat.es.js`（零 import，连 Vue runtime 都内联），所以不需要构建链 —— 直接搬进 `vendor/vue-advanced-chat/`，依赖改 `file:vendor/…`，`npm install` 装成 symlink。六处定点改动写在 `vendor/vue-advanced-chat/PATCHES.md`，每处都有可 grep 的锚点；升级时锚点 MISS 就停下来人看，不静默漏改。
