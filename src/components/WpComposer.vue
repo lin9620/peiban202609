@@ -11,10 +11,9 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import "emoji-picker-element";
 import { t } from "../i18n.js";
-import { isMobileNav, isApp } from "../stores/uiStore.js";
-import { webSwapNeeded, setPanelOpen } from "../utils/keyboardInset.js";
+import { isMobileNav } from "../stores/uiStore.js";
+import { setPanelOpen } from "../utils/keyboardInset.js";
 import { syncViewportVars } from "../utils/viewportVars.js";
-import { startBottomPin, stopBottomPin } from "../utils/bottomPin.js";
 import { enterSends, insertText, pickerOpensUp } from "../utils/composer.js";
 import { hideEmojiSearch } from "../utils/emojiPanel.js";
 import { scheduleEmojiWarm } from "../utils/emojiWarm.js";
@@ -42,9 +41,34 @@ const isSheet = () => typeof window !== "undefined"
   && typeof window.matchMedia === "function"
   && window.matchMedia("(max-width: 899px)").matches;/* 底条（暖心墙手机主评论条）——面板打开时把整条抬到面板上沿 */
 const barOf = () => (root.value && root.value.closest(".cmt-main-bar")) || null;
+let barDropTimer = 0;
+/* 面板 → 键盘：把 .wp-emoji-open 摘掉的时机。
+ *
+ * 不能按时间摘 —— 真机逐帧：固定 280ms 到点时系统键盘才起到一半（inner 还 539），
+ * 摘掉类那一刻 bottom 从 55 掉回 0，输入行跳 55px，然后键盘到位又跳回来。
+ * 改成等「键盘真正占到面板高度」再摘：那时抬升量本来就是 0，摘不摘都一样，零跳变。
+ * 键盘压根没起来（用户点了别处）就一直等到帧数用完，然后摘掉、条自然落回屏底。
+ *
+ * ⚠ 不要用 getComputedStyle 读这两个数：它每帧强制同步重排，而这段正好跑在
+ * 键盘弹出动画的第一个 100ms 里 —— 真机上会把系统键盘的弹出打断（实测 inner 停在 744）。
+ * utils/viewportVars.js 每帧已经把值算好放在 window.__wpVars 里，直接读，零开销。 */
+const dropBarWhenReady = (bar, frames) => {
+  if (!bar || emojiOpen.value) return;
+  const wv = (typeof window !== "undefined" && window.__wpVars) || null;
+  if (wv && wv.panel > 0 && wv.kbNow < wv.panel - 6 && frames > 0) {
+    requestAnimationFrame(() => dropBarWhenReady(bar, frames - 1));
+    return;
+  }
+  bar.classList.remove("wp-emoji-open");
+};
 const syncBar = (open) => {
   const bar = barOf();
-  if (bar) bar.classList.toggle("wp-emoji-open", !!open && isSheet());
+  clearTimeout(barDropTimer);
+  if (open && isSheet()) {
+    if (bar) bar.classList.add("wp-emoji-open");
+  } else if (bar) {
+    barDropTimer = setTimeout(() => dropBarWhenReady(bar, 40), 60);
+  }
   /* 轮 515：面板态还要打到 html 上。
    * App 壳里暖心墙没有 .dm-page，整页高度只由 `body { padding-bottom: var(--kb-h) }`
    * 决定；面板打开会让键盘收起（--kb-h → 0），那 320px 的让位要是也走 220ms 过渡，
@@ -93,20 +117,19 @@ const onKeydown = (e) => {
 
 const toggleEmoji = () => {
   if (emojiOpen.value) {
-    /* 轮401 · 微信式交接：面板开着再点 = 收面板 + 回键盘，不能只把面板关掉。
-       轮 510 · 顺序必须先是 focus：iOS 只在用户手势的同步栈里认 focus()，
-       而 holdForKeyboard() 会改 padding（触发重排）、emojiOpen 会让面板消失，
-       这些都在同一帧里动布局 —— 先动样式再 focus，等于把刚拿到的焦点交给一次重排。
-       先 focus（键盘立刻开始起）→ 再收面板 → 再钉让位。 */
+    /* 面板开着再点 = 收面板 + 回键盘（微信式交接）。
+     * 顺序必须先是 focus：iOS 只在用户手势的同步栈里认 focus()。
+     * 轮 519：这里原来还有一句 holdForKeyboard() 去把底条钉在面板高度上等键盘接住。
+     * 现在不需要了 —— 条的抬升量是 calc(面板高 − --kb-now)，键盘一起来 --kb-now
+     * 就跟着涨、抬升量跟着减，两边自然咬合，没有任何需要「等」的窗口。 */
     try { if (ta.value) ta.value.focus(); } catch (e) { /* 无焦点环境 */ }
     emojiOpen.value = false;
-    if (isSheet()) holdForKeyboard();
     return;
   }
   /* 上方放不下就往下弹：暖心墙桌面主评论框离页面顶很近，旧版往上弹会被视口裁掉半截。 */
-  /* 轮 506：开面板的这一刻是「键盘高度」唯一还能量到的时机（键盘马上就要收起来了）。
-     先现读一次视口把 --kb-last 定住，面板高度立刻就等于刚才那个键盘 —— 不再依赖
-     之前某次采样有没有成功。用户第五次报「表情框跟输入框高度不一致」就靠这一句兜住。 */
+  /* 轮 519：开面板这一刻先现读一次视口。以前是为了「抢在键盘收起前把 --kb-last 定住」，
+   * 现在面板高是锁定的常量，这次同步只为了让 --kb-now 处于最新值，
+   * 免得面板出现的第一帧按上一帧的键盘高度去 drop。 */
   syncViewportVars();
   const el = root.value;
   if (el) {
@@ -117,13 +140,10 @@ const toggleEmoji = () => {
     pickerUp.value = pickerOpensUp(r.top, r.bottom, vh, h);
   }
   emojiOpen.value = true;
-  /* 轮 348：手机上跟会话一致 —— 面板贴底时先把键盘收起来（面板要占屏底 320），
-     否则面板会被输入法压在后面。收键盘 = blur + 让位归零，与会话同一套。 */
+  /* 手机上跟会话一致 —— 面板贴底，先把键盘收起来，否则面板会被输入法压在后面。
+   * 收键盘 = blur。让位不用管：--kb-now 会随 inner 回升自己减到 0。 */
   if (isSheet()) {
     try { if (ta.value) ta.value.blur(); } catch (e) { /* 无焦点环境 */ }
-    /* 轮 504：让位归零由下方 watch(emojiOpen) 里的 setPanelOpen 统一做。
-       原来这里直接 style.setProperty("--kb-h","0px")，绕过了 keyboardInset 的
-       缓存判据 —— 面板关掉后同一个键盘高度被当成「没变化」，页面停在不让位。 */
   }
 };
 
@@ -155,52 +175,13 @@ const pickerReady = ref(false);
  * 保活之后 shadowRoot 一直在，watchPickerReady 的同步探测第一帧就命中，骨架不再出现。 */
 const pickerMounted = ref(false);
 let readyTimer = 0;
-/* 轮 513 · 面板占位改成**量出来的内联 padding**（与会话页 emojiPad 同一套）。
- *
- * 用户报「切换键盘跟发送按钮没效果」「按上面的空白处也能选表情」—— 这两条是同一个原因：
- * 面板是 `position: fixed; bottom: var(--kbb); height: var(--kb-panel-h); z-index: 170`，
- * 而条本身的 z-index 只有 150。只要「把条撑高的那条规则」没命中（html.kb-web 被漏掉、
- * .wp-emoji-open 没挂上、App 壳走了另一条分支……），面板就会直接盖在输入行和发送键上：
- * 点发送 → 打到面板；点条上方的空白 → 打到面板里的表情格。
- * 所以不再靠选择器：面板一出现就量它多高，直接写进条的内联 padding-bottom（内联压过
- * 普通规则，又不影响 .wp-kb-swap 那条 !important 的交接钉）。 */
-let padRO = null;
-let padTimer = 0;
-/* 轮 516：老内核不认 max()（Chromium <79）。不支持时内联退回纯像素，与改动前一致。 */
-const CAN_MAX = (() => {
-  try { return typeof CSS !== "undefined" && !!CSS.supports && CSS.supports("padding-bottom", "max(0px, 1px)"); }
-  catch (e) { return false; }
-})();
-const clearPad = () => {
-  const bar = barOf();
-  if (bar) bar.style.paddingBottom = "";
-};
-/* 量的必须是**外层容器** .wp-composer-picker，不是 <emoji-picker> 本体。
-   两个数不一样：容器是定高（--kb-panel-h），而自定义元素自己只有内容高
-   （实测 265 vs 300）—— 拿本体那个数会让条少让 35px，输入行正好压进面板顶边。 */
-const padEl = () => {
-  const el = picker.value;
-  if (!el) return null;
-  try { return el.closest(".wp-composer-picker") || el.parentElement || el; }
-  catch (e) { return el; }
-};
-const syncPad = () => {
-  const bar = barOf();
-  const el = padEl();
-  if (!bar) return;
-  if (!emojiOpen.value || !isSheet() || !el) { clearPad(); return; }
-  const h = Math.round(el.getBoundingClientRect().height);
-  if (h > 0) {
-    /* 轮 516 · 与会话页（DmVacChat 的 emojiPad）同一条账：让位要扣掉可视视口上推量。
-     * iOS 键盘弹起时可视视口整个上推，页面底**已经**是键盘上沿；再按面板高整份让位
-     * 等于让两次，底条被顶到屏幕上半部（工装 panel-press-60 实测底条 148，该 ~478）。
-     * 写成 calc 表达式让 --vtop 变化由浏览器自己重算，不赌定时器。
-     * 不支持 max() 的老内核退回纯像素（= 改动前行为）。 */
-    bar.style.paddingBottom = CAN_MAX
-      ? `max(0px, ${h}px - var(--vtop, 0px))`
-      : h + "px";
-  }
-};
+/* 轮 519：这里原来有一整套「量面板实际高度 → 写进底条内联 padding-bottom」，
+ * 还配了 ResizeObserver + 260ms 复核。删掉的理由：
+ *   ① 面板高度现在就是 CSS 的 var(--kb-panel-h)（锁定的键盘高），量出来必然等于它；
+ *   ② 让位改成了 transform（位移），不再改 padding —— 改布局会在键盘收起那一帧
+ *      把输入行顶到上半屏，那正是「一闪」的主体；
+ *   ③ 内联样式和 CSS 规则抢同一件事，出了偏差只能靠 ResizeObserver 反复纠正。
+ * 现在条的位置完全由 style.css 里那一条 calc 决定，一处定义、一处生效。 */
 function watchPickerReady() {
   clearTimeout(readyTimer);
   /* 轮 515：预热过的话 shadowRoot 里此刻就已经有格子 —— 先同步查一次，
@@ -226,9 +207,6 @@ watch(emojiOpen, async (open) => {
   setPanelOpen(!!open && isSheet());
   if (!open) {
     clearTimeout(readyTimer);
-    clearTimeout(padTimer);
-    if (padRO) { try { padRO.disconnect(); } catch (e) { /* 忽略 */ } padRO = null; }
-    clearPad();
     /* 轮 517：这里原来有 `pickerReady.value = false` —— 只对「面板会被销毁」成立。
      * 现在面板保活（pickerMounted），置 false 会让下次打开先渲染一帧骨架，等于
      * 自己造出那「一闪」。就绪状态跟着实例走，实例还在就必须保持 true。 */
@@ -236,16 +214,6 @@ watch(emojiOpen, async (open) => {
   }
   pickerMounted.value = true;
   await nextTick();
-  /* 面板刚插进 DOM 时高度可能还没有（emoji-picker 是自定义元素，要等它升级），
-     所以立刻量一次 + 260ms 再量一次 + 用 ResizeObserver 盯住它的实际高度。
-     量出来的值就是条要让出的高度 —— 与面板严丝合缝，不会盖住输入行。 */
-  syncPad();
-  padTimer = setTimeout(syncPad, 260);
-  if (typeof ResizeObserver === "function" && padEl()) {
-    if (padRO) { try { padRO.disconnect(); } catch (e) { /* 忽略 */ } }
-    padRO = new ResizeObserver(() => syncPad());
-    try { padRO.observe(padEl()); } catch (e) { /* 忽略 */ }
-  }
   hideEmojiSearch(picker.value);
   watchPickerReady();
   /* emoji-picker 的 shadow 可能晚一帧才挂好，再补一次（幂等） */
@@ -299,61 +267,17 @@ const onEmoji = async (e) => {
  * 整条落到屏底（barY 518→781，掉 256px）；键盘 ~300ms 后才弹起又把它顶回 525。
  * 做法：收面板时先给底条挂 .wp-kb-swap（bottom 钉在面板高），等 --kb-h > 0 再摘掉
  * —— 面板高与键盘高同为 320，摘掉时几乎不动。1.2s 等不到键盘就兜底摘掉。 */
-let kbSwapMO = null;
-let kbSwapTimer = 0;
-let kbSwapOnResize = null;
-const endKbSwap = () => {
-  clearTimeout(kbSwapTimer);
-  if (kbSwapMO) { kbSwapMO.disconnect(); kbSwapMO = null; }
-  if (kbSwapOnResize) {
-    try { window.removeEventListener("resize", kbSwapOnResize); } catch (e) { /* 忽略 */ }
-    kbSwapOnResize = null;
-  }
-  const bar = barOf();
-  if (bar) bar.classList.remove("wp-kb-swap");
-};
-const holdForKeyboard = () => {
-  /* 轮 496：网页端一样会掉 —— 走 visualViewport 让位路线的浏览器里，收面板那一刻
-     --kb-h 还是 0，底条先落回屏底、键盘 200~350ms 后才把它顶回来（393×852 实测掉 249px）。
-     只有「浏览器自己缩布局视口」那批不需要钉（钉住反而让底条悬空），判据由 keyboardInset 给。 */
-  if (!isApp && !webSwapNeeded()) return;
-  const bar = barOf();
-  if (!bar) return;
-  bar.classList.add("wp-kb-swap");
-  if (kbSwapMO) kbSwapMO.disconnect();
-  /* 轮 510 · 记下挂上这一刻的 --kbb 当基线。
-   *
-   * 轮 509 之后，无键盘时的 --kbb 已经等于「浏览器工具栏高度」（Safari 实测 81px），
-   * 不再恒为 0。于是旧判据 `k > 0` 在**挂上的那一刻就成立**：
-   * swap 刚加就被摘 → 面板收起那一下底条失去钉住、padding 先塌回 0，
-   * 用户看到的就是「中间一块空白，随后又折叠」。
-   *
-   * 轮 511：判据改成「--kbb 明显变化」，不再要求变大 —— iOS 上推可视视口时
-   * offsetTop ≈ 键盘高，键盘态 --kbb 反而从 81 掉到 0（变小）。要求「变大 80」
-   * 在上推态永远不成立，swap 只能等 1200ms 兜底，那一整秒多里底条被
-   * padding-bottom 顶在屏幕中部、下面一大片空白（用户截图红框 + 「点了没反应」）。 */
-  const holdKbb = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--kbb")) || 0;
-  kbSwapMO = new MutationObserver(() => {
-    /* 轮 506：--kbb 也要看 —— iOS 上推可视视口时 --kb-h 恒为 0，只盯它会让 swap 一直钉到
-       600ms 兜底，那段时间输入行就悬在键盘上方约一个面板高（用户看到的「条和键盘不贴」）。 */
-    const de = getComputedStyle(document.documentElement);
-    const v = parseFloat(de.getPropertyValue("--kb-h")) || 0;
-    const k = parseFloat(de.getPropertyValue("--kbb")) || 0;
-    if (v > 0 || Math.abs(k - holdKbb) >= 60) endKbSwap();
-  });
-  kbSwapMO.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
-  /* 轮 512 · resize 型（安卓/小米）没有 --kb-h / --kbb 可看：窗口自己缩，两个变量恒 0。
-   * 这类内核上「键盘真的起来了」只有一个信号 —— innerHeight 变小了。
-   * 不补这条，上面那个 MutationObserver 永远不触发，swap 只能等 1200ms 兜底，
-   * 那 1.2 秒里输入条一直悬在面板高度上（键盘早起来了，底下空一条）。 */
-  const holdInner = typeof window !== "undefined" ? window.innerHeight : 0;
-  kbSwapOnResize = () => {
-    if (holdInner > 0 && holdInner - window.innerHeight >= 120) endKbSwap();
-  };
-  try { window.addEventListener("resize", kbSwapOnResize); } catch (e) { /* 忽略 */ }
-  clearTimeout(kbSwapTimer);
-  kbSwapTimer = setTimeout(endKbSwap, 1200);
-};
+/* 轮 519 · 这一整段（endKbSwap / holdForKeyboard / MutationObserver / resize 监听 /
+ * 1200ms 兜底定时器）已删除。
+ *
+ * 它存在的唯一理由是：收面板那一刻 --kb-h 还是 0，底条会先落回屏底、等键盘 200~350ms
+ * 后才被顶回来，所以要「先把条钉在面板高度上，等键盘信号到了再摘」。三套判断叠在一起
+ * （--kb-h > 0 / --kbb 变化 ≥60 / innerHeight 缩小 ≥120），还得配 1.2s 兜底 —— 因为
+ * 只要有一台机器三条都不命中，条就会在那 1.2 秒里悬在半空。
+ *
+ * 现在没有「等」这件事了：条的抬升量 = calc(面板高 − --kb-now)，而 --kb-now 就是键盘
+ * 当前占高。键盘一起来它就涨、抬升量同步减少，两边逐帧咬合。开关面板只改一个类名，
+ * 位置由 CSS 自己算完。 */
 
 let tapClosePending = false;
 const onDocDown = (e) => {
@@ -368,7 +292,6 @@ const onDocDown = (e) => {
 const onDocClick = () => {
   if (!tapClosePending) return;
   tapClosePending = false;
-  if (isSheet()) holdForKeyboard();     /* 让位先钉住，等键盘接上再撤 */
   emojiOpen.value = false;
   try { if (ta.value) ta.value.focus(); } catch (err) { /* 无焦点环境 */ }
 };
@@ -377,20 +300,13 @@ onMounted(() => {
   document.addEventListener("pointerdown", onDocDown, true);
   document.addEventListener("click", onDocClick);
   grow();
-  /* 轮 513：评论条 bottom 吃的是 --kbb，这里用实测把它钉在可视区底边上 ——
-     iOS 玻璃栏/内置浏览器把数字报错时也不会悬空或沉到屏幕外（见 utils/bottomPin.js）。 */
-  startBottomPin(() => barOf());
   /* 轮 478：输入组件一出现就在空闲时把表情数据备好（幂等，全站只跑一次）——
      首次点开表情要等 500~800ms 就是这段数据现拉现写造成的。 */
   scheduleEmojiWarm();
 });
 onBeforeUnmount(() => {
-  endKbSwap();
-  stopBottomPin();
   clearTimeout(readyTimer);
-  clearTimeout(padTimer);
-  if (padRO) { try { padRO.disconnect(); } catch (e) { /* 忽略 */ } padRO = null; }
-  clearPad();
+  clearTimeout(barDropTimer);
   /* 轮 515：面板开着就被卸载时 html.wp-panel 必须摘掉，
      否则 body 的键盘让位永远不走过渡（按钮场景里那一跳） */
   try { document.documentElement.classList.remove("wp-panel"); } catch (e) { /* 忽略 */ }
@@ -637,21 +553,19 @@ defineExpose({
        轮 506：bottom 也换成 --kbb（可视视口底离布局视口底多远），与底条同一个数。
        以前是 `bottom: 0` = 布局视口底 —— 键盘弹起 / iOS 底部工具栏浮起时，
        面板会整块落在键盘下方（用户截图：最后一排 emoji 看不见）。 */
-    bottom: var(--kbb, 0px);
+    bottom: calc(var(--kbb, 0px) + var(--kb-over, 0px));
     height: var(--kb-panel-h);
-    /* 轮 516 · 键盘还在收起时，面板要**藏在键盘后面**、随键盘一起升上来。
+    /* 轮 519 · 键盘还在时把面板压在键盘**正下方**，等键盘收起它就从底下升上来。
      *
-     * iOS 键盘态会把可视视口上推 --vtop（= 键盘高），此时 fixed 元素相对可视视口定位：
-     * 面板 bottom:0 就落在「键盘上方」—— 一块 330px 高的面板横在屏幕中间，输入行只能
-     * 让到它上面（屏幕 y≈150）。键盘 250ms 后收起，面板和输入行再一起掉下来。
-     * 用户从轮 512 起说的「切表情一闪」，苹果端的真身就是这个。
+     * fixed 的 bottom 是相对布局视口底，键盘弹起时布局视口只剩 484，
+     * 面板 bottom:0 就会落在 224~484 —— 键盘上方、正好盖住聊天内容（用户看到的「面板
+     * 先糊到屏幕中间，然后掉下去」）。translateY(--kb-now) 把面板往下推一个「键盘当前
+     * 占高」，它就始终停在屏幕底部那一块：键盘在时被键盘盖住看不见，键盘收完自然露出。
      *
-     * translateY(--vtop) 把面板往下推一个上推量：上推态面板正好落在**键盘所在的位置**
-     * （被系统键盘盖住、看不见），键盘收起时 --vtop 归零，面板从底下自然升上来。
-     * 与底条让位 max(0, 面板高 − --vtop) 是同一条账：两边都扣掉上推量，
-     * 输入行在整段动画里几乎不动，看起来就是「键盘换成了表情面板」。
-     * App 壳没有 --vtop ⇒ 0 ⇒ 行为与改动前完全一致。 */
-    transform: translateY(var(--vtop, 0px));
+     * 键盘收多少 --kb-now 就减多少，面板跟着升多少，两者同一个数驱动，不会错位。
+     * iOS（overlay 型）的 --kb-now 就是可视视口上推量，与原 --vtop 是同一个数，
+     * 所以这条规则两型通用，不再是两份。 */
+    transform: translateY(var(--kb-now, 0px));
     max-height: none;
     border: 0;
     border-top: 1px solid var(--hairline, #e6dfd8);

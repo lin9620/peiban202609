@@ -226,37 +226,27 @@ t("P5 表情面板打开时帖子卡必须让路（不裁、不压在上一张�
 /* ── 轮 350：面板 → 键盘交接（底条先掉屏底再被顶回来）+ 面板里点表情抢焦点 ──
  * 真机 393×895 实测：面板开着点输入框，barY 518→781→525（掉 256px）；
  * 面板里点一个表情，输入法立刻弹起（看着像「选一个就自动切回文字输入」）。 */
-t("P6 轮 350：收面板时底条让位钉到键盘上来；面板里点表情不抢焦点", () => {
-  /* 轮 482：钉住的高度从写死 320 改成 --kb-panel-h（上一次真实键盘高） */
-  has(CSS, /\.cmt-main-bar\.wp-kb-swap \{\s*\n\s*bottom: var\(--kb-panel-h\);/, "没有 .wp-kb-swap 的钉住规则（底条会先掉到屏底）");
-  has(WPC, /if \(isSheet\(\)\) holdForKeyboard\(\);/, "onDocClick 里没在收面板前钉住底条");
-  /* 轮 506：摘钉判据扩成「--kb-h 或 --kbb > 0」—— iOS 上推可视视口时 --kb-h 恒为 0，
-     只盯它会让钉一直挂到 600ms 兜底，那段时间输入行悬在键盘上方一个面板高。 */
-  has(WPC, /const k = parseFloat\(de\.getPropertyValue\("--kbb"\)\) \|\| 0;/, "没把 --kbb 纳入摘钉判据");
-  /* 轮 510：判据从「--kbb > 0」改成「比挂上时涨了 ≥80」。
-     轮 509 之后无键盘的 --kbb 就是 Safari 工具栏高（81px，不再恒为 0），
-     旧判据一挂上即成立 → swap 立刻被摘 → 收面板那一下失去钉住，
-     用户看到的「中间一块空白，随后折叠」就是这一下。 */
-  has(WPC, /const holdKbb = parseFloat\(getComputedStyle\(document\.documentElement\)\.getPropertyValue\("--kbb"\)\) \|\| 0;/, "没记挂上时的 --kbb 基线");
-  /* 轮 511：判据从「比基线高 80」改成「跟基线差 80」——
-     iOS 上推可视视口时键盘态 --kbb 是 **变小**（工具栏 81 → 键盘态 0），
-     要求「变大」永远不成立，swap 只能等 1200ms 兜底，那一整秒多里底条被
-     padding 顶在屏幕中部、下面一大片空白（用户截图红框 + 「点了没反应」）。 */
-  has(WPC, /if \(v > 0 \|\| Math\.abs\(k - holdKbb\) >= 60\) endKbSwap\(\);/, "没按「--kbb 相对基线明显变化」摘钉（只认变大 = iOS 上推态永不成立）");
-  /* 轮 496：不再无条件「网页端不钉」——走 visualViewport 让位路线的浏览器里，收面板那刻
-     --kb-h 还是 0，底条会先掉 249px 再被键盘顶回来（393×852 实测）。改由 webSwapNeeded 判：
-     只有「浏览器自己缩布局视口」那批不钉（钉住会悬空）。 */
-  has(WPC, /if \(!isApp && !webSwapNeeded\(\)\) return;/, "交接条件没走 webSwapNeeded（缩布局视口型内核会先悬空 1.2s）");
+t("P6 轮 519：交接不再靠「钉住 + 等键盘信号」，位置由 --kb-now 一条式子驱动", () => {
+  /* 旧做法：收面板时给底条挂 .wp-kb-swap 把 bottom 钉在面板高，再用 MutationObserver 盯
+   * --kb-h / --kbb、用 resize 盯 innerHeight，最后配 1.2s 兜底 —— 三套判据任一不命中，
+   * 条就在那 1.2 秒里悬在半空。现在抬升量 = calc(面板高 − --kb-now)，键盘抬多少它减多少，
+   * 同源、同帧，没有「等」这件事。这里反过来守：钉位逻辑不许长回来。 */
+  /* 注意：类名本身在会话页（DmVacChat）还在用 —— 那边本轮不动，所以只针对暖心墙。 */
+  assert.ok(!/classList\.add\("wp-kb-swap"\)|classList\.add\('wp-kb-swap'\)/.test(WPC),
+    "WpComposer 还在给底条挂 wp-kb-swap 钉位");
+  assert.ok(!/holdForKeyboard|holdForPanel|pinBarTop|kbSwapMO|endKbSwap/.test(WPC),
+    "WpComposer 还有旧的钉住逻辑（应该由 --kb-now 驱动）");
+  has(CSS, /html\.kb-resize \.cmt-main-bar\.wp-emoji-open \{[\s\S]{0,260}bottom: calc\(var\(--kbb, 0px\) \+ var\(--kb-panel-h\) - var\(--kb-now, 0px\) \+ var\(--kb-over, 0px\)\)/, "resize 型的让位规则没了");
+  /* 面板里点表情不许抢焦点 —— 一 focus 输入法就弹起来把面板顶掉（这条不能丢） */
   has(WPC, /if \(!isSheet\(\)\) \{\s*\n\s*try \{\s*\n\s*n\.focus\(\);/, "onEmoji 里手机也会 focus（输入法弹起来把面板顶掉）");
 });
 
 /* 轮401：用户指出暖心墙评论输入也有「再点表情直接折叠」——不是只修私信。 */
 t("P7 轮401 评论输入：表情键二次点击 = 键盘键（换图标 + 回焦点 + 让位钉住）", () => {
   has(WPC, /const emojiLabel = computed\(\(\) => emojiOpen\.value \? t\("comment\.keyboard"\) : t\("comment\.emoji"\)\)/, "没有按开关切换按钮语义");
-  /* 轮 510：顺序改成「先同步 focus → 再收面板 → 再钉让位」。
-     iOS 只在用户手势的同步栈里认 focus()，而 holdForKeyboard / 面板消失都会改布局；
-     先改样式再 focus 等于把刚拿到的焦点交给一次重排。 */
-  has(WPC, /if \(emojiOpen\.value\) \{[\s\S]{0,400}ta\.value\.focus\(\);[\s\S]{0,120}emojiOpen\.value = false;[\s\S]{0,120}if \(isSheet\(\)\) holdForKeyboard\(\)/, "二次点击没「先同步回焦点、再钉让位」");
+  /* 轮 519：顺序仍然是「先同步 focus → 再收面板」，只是后面那步 holdForKeyboard 已删除
+     （位置不再需要钉）。iOS 只在用户手势的同步栈里认 focus()，这条顺序不能变。 */
+  has(WPC, /if \(emojiOpen\.value\) \{[\s\S]{0,420}ta\.value\.focus\(\);[\s\S]{0,140}emojiOpen\.value = false;/, "二次点击没「先同步回焦点、再收面板」");
   has(WPC, /v-if="emojiOpen"[\s\S]{0,520}M20 5H4/, "面板打开时没换成键盘图标");
   has(WPC, /:title="emojiLabel"/, "按钮 title 没跟开关走");
   has(I18N, /keyboard:\s*"Keyboard"/, "英文 comment.keyboard 丢了");
@@ -268,25 +258,22 @@ t("P7 轮401 评论输入：表情键二次点击 = 键盘键（换图标 + 回�
  * 面板是 fixed + z-index 170，条只有 150；只要撑高条的那条规则没命中（kb-web 漏了、
  * .wp-emoji-open 没挂上、App 壳走别的分支），面板就整个盖在输入行和发送键上。
  * 内联 padding 不看任何选择器，量多少让多少，盖不住。 */
-t("P8 轮513 面板占位走实测内联 padding（不靠 CSS 规则，别再盖住发送键）", () => {
-  /* 轮 516：内联值改成 calc 表达式（--vtop 变化由浏览器自己重算），不再是 h + "px"。
-     必须扣可视视口上推量：iOS 键盘态页面底已经是键盘上沿，整份让位等于让两次
-     （工装 panel-press-60 实测底条被顶到屏幕 148，该 ~437）。 */
-  has(WPC, /const syncPad = \(\) => \{[\s\S]{0,400}getBoundingClientRect\(\)\.height[\s\S]{0,160}paddingBottom = CAN_MAX/,
-    "没有按实测高度写内联让位（面板会盖住输入行/发送键）");
-  has(WPC, /max\(0px, \$\{h\}px - var\(--vtop, 0px\)\)/,
-    "内联让位没扣 --vtop（键盘上推时底条会被顶到屏幕上半部）");
-  has(WPC, /: h \+ "px"/, "不支持 max() 的内核没有兜底（让位会归零、面板盖住输入条）");
-  has(WPC, /if \(!emojiOpen\.value \|\| !isSheet\(\) \|\| !el\) \{ clearPad\(\); return; \}/,
-    "面板收起/桌面形态没清内联让位（条会一直悬着一条空白）");
-  has(WPC, /padRO = new ResizeObserver\(\(\) => syncPad\(\)\)/, "没盯面板自身高度（数据晚到时让位会少一截）");
-  has(WPC, /clearTimeout\(padTimer\)/, "卸载没清补量定时器");
-  /* 轮 513 · 量的必须是外层容器 `.wp-composer-picker`（定高 = --kb-panel-h），
-     不是 <emoji-picker> 本体（内容高，实测 265 vs 容器 300 —— 差 35px 会让输入行
-     压进面板顶边）。工装实测抓到的：改前 pad=265、面板 300。 */
-  has(WPC, /closest\("\.wp-composer-picker"\)/,
-    "让位量的是自定义元素本体而不是外层容器（差一条面板内边距，输入行会压进面板）");
-  has(WPC, /padRO\.observe\(padEl\(\)\)/, "ResizeObserver 没盯外层容器（容器变高时让位不跟）");
+t("P8 轮519 让位改由 CSS 一条 calc 决定（不再写内联 padding）", () => {
+  /* 旧做法：面板一出现就量它多高，把 `padding-bottom: max(0, h − --vtop)` 写进底条内联样式，
+   * 还配 ResizeObserver 反复纠。问题有两个：
+   *   ① 内联值和 CSS 规则抢同一件事，出偏差只能靠观察者追；
+   *   ② padding 会改布局、把输入行顶上去，而「让位」和「键盘收起」不在同一帧完成 ——
+   *      中间那几帧输入行被顶到上半屏，就是用户说的「一闪」。
+   * 现在条的位置只由 style.css 的 transform 决定，位移量吃 --kb-now（键盘当前占高），
+   * 键盘收多少它减多少，两边同一个数，逐帧咬合。 */
+  assert.ok(!/syncPad|clearPad|CAN_MAX|padRO/.test(WPC),
+    "WpComposer 还在写内联让位（会和 CSS 规则抢同一件事）");
+  has(WPC, /transform: translateY\(var\(--kb-now, 0px\)\)/,
+    "面板没跟随 --kb-now（键盘还在时面板会糊在屏幕中间）");
+  has(CSS, /html\.kb-resize \.cmt-main-bar\.wp-emoji-open \{[\s\S]{0,260}bottom: calc\(var\(--kbb, 0px\) \+ var\(--kb-panel-h\) - var\(--kb-now, 0px\) \+ var\(--kb-over, 0px\)\)/,
+    "底条的落点不是「kbb + 面板高 − 键盘当前占高 + 过冲」（不同源就会错位）");
+  /* 面板高度必须与底条同一个变量，否则两个参照系一错位就分家 */
+  has(WPC, /height: var\(--kb-panel-h\)/, "面板高度没跟 --kb-panel-h");
 });
 
 console.log(out.join("\n"));
