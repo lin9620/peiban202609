@@ -724,6 +724,24 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
   - **⚠️ 事故**：隔离 `src/views/NotificationsView.vue`（并行会话在改，144→171 行）时用 `git show HEAD:path > path` 覆盖，恢复用的 `cp` 备份抓到的是 HEAD 版（18664B/426 行），**并行版（24395B）未进备份、已丢失**。以后覆盖别人正在写的文件，必须先 `cp` 到带时间戳的独立文件并 `cmp` 校验字节数再动手。
 
 
+- **轮 511（改动完成、测试过了、待提交待部署）**：轮 510 上线后用户再报三条 ——「问题更多了」＋「切换表情之后，按上面的空白处也能选择表情了」＋「切换键盘跟发送按钮没效果了」（两张图：①私信会话页面板只铺 4 排、下方一大片空白；②输入条下方红框空白带，条停在屏幕中部，下面才是键盘）。
+  - **真病根（有工装证据，反向注入能红）**：轮 510 我把两处 `holdForKeyboard` 的摘钉判据改成 `k >= holdKbb + 80`（要求 `--kbb` **变大**）。但 iOS 为了让光标露出来会把可视视口整个上推，`offsetTop ≈ 键盘高` → 键盘态 `--kbb = inner − (offsetTop + vvH) ≈ 0`，是**从工具栏的 81 变小**。要求「变大 80」在上推态永不成立 → swap 只能等 600ms / **1200ms** 兜底。那一整秒多里 `.vac-box-footer` 的 `padding-bottom` 还是面板高：输入条被顶在屏幕中部、下面一大片空白（图②红框），点发送/键盘都像没反应。
+  - **改法 ①**：两处判据都改成 `Math.abs(k - holdKbb) >= 60`（变小 / 变大两种语义都认）。
+  - **改法 ②（图①那条）**：私信页页面盒子高度原来是 `calc(100dvh - var(--kb-h))` —— `100dvh` 和 `100vh` 都是**布局视口**，而 iOS Safari 的底部工具栏是**浮层**，两者都不扣它。于是页面盒子 = 852（整屏）而可视区只有 771：底栏和表情面板整个沉到工具栏下面 81px。改成 `calc(var(--vlh, 100dvh) - var(--kbb, 0px))`，新增 `--vlh`（= innerHeight，键盘弹起也不变）：
+    - 无键盘 `852 − 81(工具栏) = 771` ✓ = 工具栏上方那条线
+    - 键盘上推 `852 − 0 = 852` ✓（iOS 已把可视区上推，页面底正好落在键盘上沿）
+    - **不能用 `--vph`**：那是「含键盘」的可视高（键盘态 522），页面缩到 522 再叠上 iOS 上推，输入条会悬在键盘上方 81px。
+    改动 4 处：`.shell--mobile-nav.shell--chat .dm-page` 与 `.dm-page--chat` 各两条（`100vh` 垫底 + `@supports` 里的 `100dvh`）；**App 壳那两条保持原样**（原生壳没有浮动工具栏，`--kb-h` 是系统给的最终值）。
+  - **改法 ③**：`?diag=1` 加一行「表情面板: 容器 X picker Y 网格 Z（滚动高 W）emoji N 个」——逐层钻进 `vue-advanced-chat` 与 `emoji-picker` 的 shadowRoot 量三段高度。用户下次报「面板空一大片」时，哪一段小一目了然，不用再猜。
+  - **⚠️ 顺手发现两个工装自己就是假数据（记下来免得再被它误导）**：
+    1. `wallbar-drive` 的 `lastEmoji` 取 `querySelectorAll("button.emoji")` 的**最后一个** —— 那枚是库里用来量字号的 `.baseline-emoji`（absolute + hidden），一直停在 `443..476` 这个死值。这条断言从写下来那天起就没测过真东西，已改成过滤 `.baseline-emoji / .hidden / .skintone-list`。
+    2. 工装里 `webKbSeen` 一直是 0（`kbWebInset` 扣 offsetTop 后上推态恒 0）→ `webSwapNeeded()` 为假 → **`holdForKeyboard` 整条分支根本不执行**。上一轮新加的断言是空转的假绿。已补前置步骤「先让它见过一次键盘」（`__kbSim(H−330, 0)` → `__kbSim(H, 0)`），并加 `kb-arrived-350` 采样点：键盘回来 350ms 就必须摘钉（兜底是 1200ms，只测 1400ms 那一刻等于把缺陷全跳过去）。
+  - **反向注入验证**：把判据退回 `k >= holdKbb + 80` → `kb-arrived-350` 当场红：「swap 仍钉着（cls=cmt-main-bar wp-kb-swap）」，且 `bar=478..852(374)` 就是用户图②那条空白带；恢复后全过。
+  - **测试**：`wallbar-drive` 11 步全过（新增 `kb-press-20` / `kb-arrived-350`）· `kb-matrix` 272/272 · `ios26-glass` 8/0 · `viewport-matrix` 566/0 · `chat-height` 40/0 · `kb-math` 30/0 · `emoji-panel` 21/0（新增 E21）· `wall-composer` 24/0 · `chat-look` 9/0（新增 L8）· `keyboard-policy` 全过 · 全量 fast **118/119**（唯一红仍是 `announcement-test` 的公告弹层实现缺失）。
+  - **同步改口径的既有护栏**：`wall-composer-test` P6 · `chat-look-test` L7（摘钉判据）· `keyboard-policy-test`（聊天页高度从「接 --kb-h」改成「`--vlh` − `--kbb`」，并保留 App 壳那条 `--kb-h`）。
+  - **仍待确认**：用户图①的「面板只铺 4 排、下面一大片空白」是否随页面盒子修正而消失。若仍在，用新增的「表情面板」那行读数定位（容器 / picker / 网格三段谁矮）。
+  - **仍未动**：`--kb-cap` 的 380 上限；`viewport-fit=cover`；`NotificationsView.vue` 公告弹层。
+
 - **轮 510（已提交已部署：`b92be19` → 版本 `2c4157c9`，线上入口 `main-TtjOQywa.js`）**：用户报切换序列的新症状 ——「点击键盘-点击表情-点击键盘，结果键盘折叠了」；暖心墙同一序列「中间出现了图片上这个问题，随后便又折叠了」（截图：输入行下方一条**空白带**，约一个输入条高，右侧只有表情/发送键，下面紧接 Safari 键盘工具栏）。
   - **根因是一条链，全部从「Safari 工具栏 81px 被当成键盘」开始**（工装实测：`rest-toolbar vv=771 kb=81px kbb=81px panelH=min(119px,380px) stored={"abs":81,"screen":852}`）：
     1. `--kb-h` 走 `kbInsetValue(raw, focused)`，闸门是 `TOOLBAR_GAP = 80` —— 真机工具栏**正好 81px**，大 1 像素就漏过去 → `--kb-h = 81`（页面平白缩 81px、吸底条抬 81px），而用户根本没在打字。
