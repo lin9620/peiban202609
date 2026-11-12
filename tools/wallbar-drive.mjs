@@ -75,6 +75,15 @@ writeFileSync(expr, `(async () => {
      所以这一步必须**先上推、后**走面板，顺序不能反过来（反了就被「只增不减」掩盖）。 */
   const H = window.innerHeight;
 
+  /* 轮 511 · 先让它「见过」一次键盘（正常缩可视视口、不上推）。
+     真机第一次点输入框就是这一下，webKbSeen 记上值之后，
+     后面的「面板 → 键盘」才会走 holdForKeyboard 的 swap 分支。
+     不补这一步，整条 swap 路径在工装里根本不执行 —— 上一版那条断言就是空转的假绿。 */
+  __kbSim(H - 330, 0);
+  await sleep(500);
+  __kbSim(H, 0);
+  await sleep(400);
+
   /* 轮 510 · 工具栏态：真机第一次打开就是这个状态（Safari 底部工具栏 81px 让
      vv 比 inner 矮），而它**不是键盘**。旧代码把它当键盘：--kb-h 变 81（页面平白缩
      81px、吸底条抬 81px），随后又把这个 81 当成「键盘本体高度」存进 localStorage，
@@ -94,7 +103,10 @@ writeFileSync(expr, `(async () => {
      否则测的是「键盘还在、面板又开」这个真机上不存在的状态。 */
   document.querySelector(".cmt-main-bar .wp-composer-ico.is-emoji").click();
   await sleep(60);
-  __kbSim(H, 0);
+  /* 轮 511：键盘收起后 Safari 的底部工具栏还在（vv = inner − 81），不能还原成整屏。
+     还原成整屏会让 --kbb 变 0，之后「点键盘键」那一刻记下的基线 holdKbb 也是 0，
+     键盘回来时 --kbb 还是 0（上推态）→ 判据永远不成立，测出来的是个假现场。 */
+  __kbSim(H - 81, 0);
   await sleep(900);
   snap("panel");
 
@@ -103,19 +115,49 @@ writeFileSync(expr, `(async () => {
   try {
     const host = document.querySelector(".wp-composer-picker emoji-picker");
     const sr = host && host.shadowRoot;
-    const btns = sr ? sr.querySelectorAll("button.emoji") : [];
+    /* 轮 511：必须排掉 .baseline-emoji —— 那是库里用来量字号的一枚 absolute 隐藏按钮，
+       一直在 section 末尾。上一版直接取 querySelectorAll 的最后一个，量到的永远是它
+       （每轮都是 443..476 这个死值），等于这个断言从写下来那天起就没测过真东西。 */
+    const all = sr ? [...sr.querySelectorAll("button.emoji")] : [];
+    const btns = all.filter((b) => !b.classList.contains("baseline-emoji")
+      && !b.classList.contains("hidden") && !b.closest(".skintone-list"));
     if (btns.length) {
       const r = btns[btns.length - 1].getBoundingClientRect();
-      lastEmoji = { bottom: Math.round(r.bottom), top: Math.round(r.top) };
+      lastEmoji = { bottom: Math.round(r.bottom), top: Math.round(r.top), n: btns.length };
+    }
+    /* 轮 511：网格（.tabpanel）比面板矮多少 = 那块能点却什么都没有的空白。
+       用户报「面板下面空一大片、按空白处也能选表情」，这一行就是判据。 */
+    /* 网格容器：这版库里没有 .tabpanel，改成「含 ≥30 个 emoji 按钮的最小 div」 */
+    let grid = sr && sr.querySelector(".tabpanel");
+    if (!grid && sr) {
+      for (const el of sr.querySelectorAll("div")) {
+        const n = el.querySelectorAll("button.emoji").length;
+        if (n >= 30 && (!grid || n < grid.querySelectorAll("button.emoji").length)) grid = el;
+      }
+    }
+    if (grid && lastEmoji) {
+      const g = grid.getBoundingClientRect();
+      const hostR = host.getBoundingClientRect();
+      lastEmoji.grid = {
+        h: Math.round(g.height), top: Math.round(g.top), bottom: Math.round(g.bottom),
+        scrollH: grid.scrollHeight, hostH: Math.round(hostR.height),
+        rows: Math.round(g.height / 33), padToBottom: Math.round(hostR.bottom - g.bottom),
+      };
     }
   } catch (e) { /* shadow 结构变了就跳过 */ }
   steps[steps.length - 1].lastEmoji = lastEmoji;
 
   /* 面板 → 键盘（同样：真机上键盘会重新弹起并上推可视视口） */
   document.querySelector(".cmt-main-bar .wp-composer-ico.is-emoji").click();
-  await sleep(120);
+  await sleep(20);
+  snap("kb-press-20");
+  await sleep(100);
   __kbSim(H - 330, 330);
-  await sleep(1400);
+  /* 轮 511：键盘回来 350ms 就要采样 —— 兜底是 1200ms，只测 1400ms 那一刻
+     等于把「swap 一直钉着」这个缺陷完全跳过去（上一版就是这么假绿的）。 */
+  await sleep(350);
+  snap("kb-arrived-350");
+  await sleep(1050);
   snap("back-to-kb");
 
   /* 收键盘 */
@@ -167,6 +209,9 @@ for (const s of data.steps) {
     + ` bar=${b ? b.top + ".." + b.bottom + "(" + b.h + ")" : "-"}`
     + ` picker=${p ? p.top + ".." + p.bottom + "(" + p.h + ")" : "-"}`
     + (s.lastEmoji ? ` lastEmoji=${s.lastEmoji.top}..${s.lastEmoji.bottom}` : "")
+    + (s.lastEmoji && s.lastEmoji.grid
+      ? `  grid=${s.lastEmoji.grid.top}..${s.lastEmoji.grid.bottom}(${s.lastEmoji.grid.h}) scroll=${s.lastEmoji.grid.scrollH} 排≈${s.lastEmoji.grid.rows} 空隙=${s.lastEmoji.grid.padToBottom}`
+      : "")
     + (s.inlineTop ? ` inlineTop=${s.inlineTop}` : "")
     + (s.barCls && s.barCls !== "cmt-main-bar" ? ` cls=${s.barCls}` : "")
   );
@@ -223,6 +268,18 @@ else {
     fails.push(`panel: 输入行下沿 ${panel.bar.bottom - panel.picker.h} 与面板上沿 ${panel.picker.top} 不齐`);
   }
 }
+/* 轮 511 · 核心：键盘一回来，swap 必须立刻摘掉。
+   旧判据写 `k >= holdKbb + 80`（要求 --kbb **变大**），但 iOS 上推可视视口时
+   键盘态 --kbb 是从 81 掉到 0（变小）→ 判据永不成立 → 只能等 1200ms 兜底。
+   那一整秒多里底条被 padding-bottom 顶在屏幕中部、下面一大片空白：
+   用户发的截图红框 + 「切换键盘跟发送按钮没效果」就是这个。 */
+const arrived = step("kb-arrived-350");
+if (arrived) {
+  if (String(arrived.barCls || "").includes("wp-kb-swap")) {
+    fails.push(`kb-arrived-350: 键盘已回来 350ms，swap 仍钉着（cls=${arrived.barCls}）—— 条悬在半空、下面一大片空白`);
+  }
+}
+
 const back = step("back-to-kb");
 if (back) {
   if (!near(back.bar.bottom, back.visBottom)) {
