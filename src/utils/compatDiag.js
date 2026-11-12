@@ -142,6 +142,29 @@ export function installCompatDiag() {
           : kbSeen
             ? "vvH " + kbSeen.vvH + " 掉了 " + kbSeen.drop + "px  innerH=" + kbSeen.innerH
             : "（还没点过输入框）"),
+        /* 轮 511 · 表情面板实测：用户报「面板下面空一大片、点空白也能选表情」。
+           这三段（容器 / picker / 网格）任意一段比别的小，就能直接看出面板高度被谁吃了。
+           面板在 vue-advanced-chat 的 shadowRoot 里，主文档查不到，所以逐层往下探。 */
+        "表情面板: " + (() => {
+          try {
+            const host = document.querySelector("vue-advanced-chat");
+            const sr = host && host.shadowRoot;
+            const wrap = sr && sr.querySelector(".vac-emoji-picker");
+            if (!wrap) return "（没开面板 / 当前不是会话页）";
+            const er = wrap.getBoundingClientRect();
+            const ep = wrap.querySelector("emoji-picker");
+            const epr = ep && ep.getBoundingClientRect();
+            const epsr = ep && ep.shadowRoot;
+            const grid = epsr && epsr.querySelector(".tabpanel");
+            const gr = grid && grid.getBoundingClientRect();
+            const n = epsr ? epsr.querySelectorAll("button.emoji").length : 0;
+            return "容器 " + px(er.height)
+              + "  picker " + (epr ? px(epr.height) : "?")
+              + "  网格 " + (gr ? px(gr.height) : "?")
+              + "（滚动高 " + (grid ? px(grid.scrollHeight) : "?") + "）"
+              + "  emoji " + n + " 个";
+          } catch (e) { return "读取失败：" + (e && e.message); }
+        })(),
         "能力:",
         "  " + caps.join("  "),
       ].join("\n");

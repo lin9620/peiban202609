@@ -314,5 +314,16 @@ t("E20 --kb-last 只增不减：同一台机的面板高度不许随地址栏伸
   has(KI, /panelMax = Math\.max\(panelMax, Math\.round\(px\)\);/, "px 支路没取最大值");
 });
 
+/* 轮 511 · 会话页的摘钉判据同样不能只认「--kbb 变大」。
+ * iOS 为了让光标露出来会把可视视口整体上推，于是 offsetTop ≈ 键盘高，
+ * 键盘态 --kbb = inner − (offsetTop + vvH) ≈ 0 —— 它是从工具栏的 81 **变小**。
+ * 要求「变大 80」在上推态永远不成立，swap 只能等 1200ms 兜底，
+ * 那一整秒多里 .vac-box-footer 的 padding-bottom 还是面板高：
+ * 输入条被顶在屏幕中部、下面一大片空白，点发送/键盘都像没反应（用户截图红框）。 */
+t("E21 会话页摘钉按 --kbb 相对基线变化（不是只认变大）", () => {
+  has(BC, /if \(v > 0 \|\| Math\.abs\(k - holdKbb\) >= 60\) endKbSwap\(\);/, "还是会话页只认「变大」→ iOS 上推态钉到 1200ms 兜底");
+  no(BC, /k >= holdKbb \+ 80/, "还留着旧的「只认变大」判据");
+});
+
 console.log(`emoji-panel-test: ${pass} pass, ${fails.length} fail`);
 if (fails.length) { for (const f of fails) console.log("  FAIL " + f); process.exit(1); }

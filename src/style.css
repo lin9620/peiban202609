@@ -2733,12 +2733,20 @@ html.kb-web .shell--mobile-nav.shell--chat .dm-page {
    * （真机实测 .dm-page = 2401px，屏高 744）＝ 输入条被推到文档末尾。
    * 轮 474：光「补一条 100vh 在前面」不够 —— 详见下方 @supports 那段注释，
    * dvh 那条必须彻底关进去，否则它计算期作废时会把 100vh 一起吃掉。 */
-  height: calc(100vh - var(--kb-h, 0px));
+  /* 轮 511：100vh / 100dvh 都是**布局视口**，iOS Safari 的底部工具栏是浮层 ——
+     这两个值都不扣它，页面盒子因此比可视区高 80~90px：私信页底栏和表情面板
+     整个沉到工具栏下面，用户看到的「面板最后一排被压住 / 下面空一大片」就是这个。
+     --vlh 是 viewportVars 写的布局视口高（innerHeight），--kbb 是让位量：
+       无键盘 852 − 81(工具栏) = 771 = 工具栏上方那条线 ✓
+       键盘上推 852 − 0 = 852，iOS 已把可视区上推，页面底正好落在键盘上沿 ✓
+     不用 --vph：那是「含键盘」的可视高（522），页面缩到 522 再叠上 iOS 的上推，
+     输入条反而会悬在键盘上方 81px。老内核没写变量时回退到原值。 */
+  height: calc(var(--vlh, 100vh) - var(--kbb, 0px));
   transition: height .22s cubic-bezier(.2, .8, .2, 1);
 }
 @supports (height: 100dvh) {
   html.kb-web .shell--mobile-nav.shell--chat .dm-page {
-    height: calc(100dvh - var(--kb-h, 0px));
+    height: calc(var(--vlh, 100dvh) - var(--kbb, 0px));
   }
 }
 /* 轮 463：底部保底 10px。安卓浏览器的 env(safe-area-inset-bottom) 恒为 0（Chromium 不返回
@@ -2764,12 +2772,22 @@ html.kb-web .dm-page--chat,
 html.cap-app .dm-page--chat {
   /* 轮 474：同上 —— dvh 那条关进 @supports，别写成同规则的第二条声明。
    * 这条是「面板自己兜底」的主路径：不加壳类也要整屏，一旦它算成 auto，
-   * 进会话首帧就是 377.8px 的塌缩（输入条在屏幕中间）。 */
-  height: calc(100vh - var(--kb-h, 0px));
+   * 进会话首帧就是 377.8px 的塌缩（输入条在屏幕中间）。
+   * 轮 511：网页端用「--vlh(布局视口高) − --kbb(让位量)」替代 100vh
+   * （100vh 是布局视口，不扣 Safari 那两条浮动工具栏）。 */
+  height: calc(var(--vlh, 100vh) - var(--kbb, 0px));
   transition: height .22s cubic-bezier(.2, .8, .2, 1);
 }
+html.cap-app .dm-page--chat {
+  /* App 壳没有浮动工具栏，保持原来的视口语义 */
+  height: calc(100vh - var(--kb-h, 0px));
+}
 @supports (height: 100dvh) {
-  html.kb-web .dm-page--chat,
+  /* 轮 511：网页端改用「--vlh − --kbb」，理由同上一条 —— dvh 不扣 Safari 工具栏。
+     App 壳不适用：那里 --kb-h 由原生 Keyboard 插件给最终值，没有工具栏浮层问题。 */
+  html.kb-web .dm-page--chat {
+    height: calc(var(--vlh, 100dvh) - var(--kbb, 0px));
+  }
   html.cap-app .dm-page--chat {
     height: calc(100dvh - var(--kb-h, 0px));
   }

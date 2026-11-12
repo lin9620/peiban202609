@@ -75,10 +75,12 @@ t("L7 轮 350 面板→键盘交接：让位钉住 + 过渡同曲线（否则输
      iOS 上推可视视口时 --kb-h 恒为 0，只盯它会让钉一直挂到 600ms 兜底。 */
   /* 轮 510：无键盘时 --kbb 已经等于 Safari 工具栏高（81px），旧判据「k > 0」一挂上
      就成立、swap 立刻被摘 → 收面板那一下失去钉住（用户：「中间一块空白，随后折叠」）。
-     改成「比挂上时的基线涨 ≥80」才算键盘真的接上。 */
+     轮 511：判据改成「跟基线差 ≥60」，不再要求「涨」——
+     iOS 上推可视视口时键盘态 --kbb 是 81 → 0（变小），要求涨 80 永远不成立，
+     swap 只能等兜底，那一整秒多里条被 padding 顶在屏幕中部（用户截图红框）。 */
   has(BC, /const k = parseFloat\(de\.getPropertyValue\("--kbb"\)\) \|\| 0;/, "没有把 --kbb 纳入摘钉判据");
   has(BC, /const holdKbb = parseFloat\(getComputedStyle\(document\.documentElement\)\.getPropertyValue\("--kbb"\)\) \|\| 0;/, "没记挂上时的 --kbb 基线");
-  has(BC, /if \(v > 0 \|\| k >= holdKbb \+ 80\) endKbSwap\(\);/, "没等「键盘真的比基线高了 80」再摘钉");
+  has(BC, /if \(v > 0 \|\| Math\.abs\(k - holdKbb\) >= 60\) endKbSwap\(\);/, "没按「--kbb 相对基线明显变化」摘钉（只认变大 = iOS 上推态永不成立）");
   /* 轮 496：原来这里锁的是「网页端一律不钉」—— 实测 393×852 网页端收面板那一刻
      --kb-h 还是 0，输入框掉 249px 再被键盘顶回来。改成「按 webSwapNeeded 判」：
      走 visualViewport 让位路线的设备要钉，缩布局视口型（浏览器自己缩）不钉、否则悬空。 */
@@ -96,6 +98,25 @@ t("L6 桌面不受影响：这两条只动 App/手机壳（≥900 的布局规�
   has(CSS, /\.dm-thread \{ display: flex; flex-direction: column; min-height: 60vh; padding: 14px; \}/, "桌面 .dm-thread 被改了");
   /* 头部分隔线只在组件 shadow 里，桌面/手机同一份 —— 断言没有第二处 dashed 头部规则复活 */
   no(BC, /\.vac-room-header[^{]*\{[^}]*dashed/, "又出现一条带虚线的头部规则");
+});
+
+/* 轮 511 · 私信页页面盒子必须用「布局视口高(--vlh) − 让位量(--kbb)」，不能用裸 100vh / 100dvh。
+ *
+ * iOS Safari 的底部工具栏是**浮层**：既不缩布局视口，也不改 100dvh。所以
+ * `height: calc(100dvh - var(--kb-h))` 算出来是整屏 852，而可视区只有 771 ——
+ * 页面盒子底边沉到工具栏下面 81px，底栏和表情面板跟着一起沉：
+ * 用户发来的两张图（面板最后一排被工具栏压住、输入条下方一大片空白）就是这个。
+ * 正确式子 = 布局视口高(--vlh) − 让位量(--kbb)：
+ *   无键盘 852 − 81(工具栏) = 771 ✓；键盘上推 852 − 0 = 852（iOS 已把可视区上推）✓
+ * 不能用 --vph：那是「含键盘」的可视高（键盘态 522），页面缩到 522 再叠上 iOS 的
+ * 上推，输入条会悬在键盘上方一条工具栏。 */
+t("L8 私信页页面盒子 = 布局视口高 − 让位量（裸 100dvh 不扣 Safari 浮动工具栏）", () => {
+  assert.match(CSS, /html\.kb-web \.dm-page--chat \{[^}]*height: calc\(var\(--vlh, \S+\) - var\(--kbb/,
+    "网页端 .dm-page--chat 的高度不是「布局视口高 − 让位量」");
+  assert.doesNotMatch(CSS, /html\.kb-web \.dm-page--chat \{[^}]*height: calc\(100dvh/,
+    "网页端 .dm-page--chat 还在用裸 100dvh（页面会比可视区高一条工具栏）");
+  assert.match(CSS, /html\.kb-web \.shell--mobile-nav\.shell--chat \.dm-page \{[\s\S]{0,900}?height: calc\(var\(--vlh, \S+\) - var\(--kbb/,
+    "外壳那条 .shell--chat .dm-page 也不是「布局视口高 − 让位量」");
 });
 
 console.log(`chat-look-test: ${pass} pass, ${fails.length} fail`);

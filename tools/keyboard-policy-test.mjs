@@ -116,12 +116,20 @@ t("轮 462：网页端用 visualViewport 量键盘，且只在真的在输入时
 t("style.css：.kb-web 三处让位与 .cap-app 一一对应（改一份就要改另一份）", () => {
   const css = readCss("src/style.css");
   assert(/html\.kb-web \{[^}]*--kb-h:\s*0px/.test(css), "kb-web 没定义 --kb-h 初值");
-  assert(/html\.kb-web \.shell--mobile-nav\.shell--chat \.dm-page\s*\{[^}]*height:\s*calc\(100dvh - var\(--kb-h/.test(css),
-    "聊天页高度没接 --kb-h");
+  /* 轮 511：聊天页高度改成「布局视口高 − 让位量」，不再直接吃 --kb-h。
+     --kb-h 是「页面要不要缩」（iOS 恒 0、小米是键盘高），而 iOS 真正要减掉的是
+     工具栏那 81px —— 那是 --kbb 的口径。两个量互补，所以式子两头都得在：
+     布局视口高用 --vlh（innerHeight，键盘弹起也不变），让位量用 --kbb。 */
+  assert(/html\.kb-web \.shell--mobile-nav\.shell--chat \.dm-page\s*\{[^}]*height:\s*calc\(var\(--vlh, \S+\) - var\(--kbb/.test(css),
+    "聊天页高度没接「布局视口高 − 让位量」（--vlh / --kbb）");
+  assert(/html\.cap-app \.shell--mobile-nav\.shell--chat \.dm-page[\s\S]{0,400}?var\(--kb-h/.test(css),
+    "App 壳那条让位没接 --kb-h（原生壳的键盘高只从这条来）");
   /* 轮 464：这条规则是 100dvh 单写 —— 内核不认 dvh 时整条失效，而它又压掉了上面
    * 那条 100vh/100dvh，height 直接落回 auto（真机 .dm-page=2401，屏高 744）。
-   * 必须补一行 100vh 的同一算式当垫底。 */
-  assert(/html\.kb-web \.shell--mobile-nav\.shell--chat \.dm-page\s*\{[^}]*height:\s*calc\(100vh - var\(--kb-h/.test(css),
+   * 必须补一行 100vh 的同一算式当垫底。
+   * 轮 511：改成 var(--vlh, 100vh) 之后，100vh 就是 var() 的兜底值 —— 等价垫底，
+   * 两种写法都认。 */
+  assert(/html\.kb-web \.shell--mobile-nav\.shell--chat \.dm-page\s*\{[^}]*height:\s*calc\((var\(--vlh, 100vh\)|100vh) - var\(--(kbb|kb-h)/.test(css),
     "聊天页高度缺 100vh 垫底（旧内核不认 dvh → 整条失效 → 按内容撑高）");
   /* 轮 504：网页端的评论底条**不再**用 bottom: var(--kb-h) 这条间接推导。
    * 真机（iPhone Safari）上它会把条顶到页面顶部 —— --kb-h 链上任一道闸门失效就会拿到

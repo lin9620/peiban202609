@@ -921,14 +921,18 @@ const holdForKeyboard = () => {
      旧判据 `k > 0` 一挂上即成立 → swap 立刻被摘 → 收面板那一下输入框失去钉住，
      先塌到底再等键盘顶回来（用户看到的「中间一块空白，随后折叠」）。 */
   const holdKbb = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--kbb")) || 0;
+  /* 轮 511：判据改成「--kbb 明显变化」，不再要求「变大」。
+     iOS 为了让光标露出来会把可视视口整个上推，此时 offsetTop ≈ 键盘高，
+     于是 --kbb = inner − (offsetTop + vvH) ≈ **0** —— 键盘弹起后它是从 81 变成 0，
+     是**变小**。上一版要求「比基线大 80 才算键盘接上」，在上推态永远不成立，
+     swap 一直钉到 600ms 兜底：那 600ms 里 footer 的 padding-bottom 还是面板高，
+     输入条被顶在屏幕中部、下面一大片空白（用户截图红框），点发送/键盘也像没反应。
+     两种语义（变小 / 变大）都要认，所以取绝对值差。 */
   kbSwapMO = new MutationObserver(() => {
-    /* 轮 506：也要看 --kbb —— iOS 上推可视视口时 --kb-h 恒为 0（那是「页面要不要缩」的量，
-       跟「键盘回来了没有」不是一回事）。--kbb 明显变大才代表可视视口真的被键盘顶起来了。
-       只盯 --kb-h 的话，swap 会一直钉到 600ms 兜底，那段时间输入行悬在键盘上方约一个面板高。 */
     const de = getComputedStyle(document.documentElement);
     const v = parseFloat(de.getPropertyValue("--kb-h")) || 0;
     const k = parseFloat(de.getPropertyValue("--kbb")) || 0;
-    if (v > 0 || k >= holdKbb + 80) endKbSwap();
+    if (v > 0 || Math.abs(k - holdKbb) >= 60) endKbSwap();
   });
   kbSwapMO.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
   clearTimeout(kbSwapTimer);

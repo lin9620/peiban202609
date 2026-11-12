@@ -219,10 +219,14 @@ const holdForKeyboard = () => {
   /* 轮 510 · 记下挂上这一刻的 --kbb 当基线。
    *
    * 轮 509 之后，无键盘时的 --kbb 已经等于「浏览器工具栏高度」（Safari 实测 81px），
-   * 不再恒为 0。于是旧判据 `k > 0`（见下一条注释）在**挂上的那一刻就成立**：
+   * 不再恒为 0。于是旧判据 `k > 0` 在**挂上的那一刻就成立**：
    * swap 刚加就被摘 → 面板收起那一下底条失去钉住、padding 先塌回 0，
    * 用户看到的就是「中间一块空白，随后又折叠」。
-   * 现在要求「比挂上时明显变大（≥80）」才算键盘真的接上。 */
+   *
+   * 轮 511：判据改成「--kbb 明显变化」，不再要求变大 —— iOS 上推可视视口时
+   * offsetTop ≈ 键盘高，键盘态 --kbb 反而从 81 掉到 0（变小）。要求「变大 80」
+   * 在上推态永远不成立，swap 只能等 1200ms 兜底，那一整秒多里底条被
+   * padding-bottom 顶在屏幕中部、下面一大片空白（用户截图红框 + 「点了没反应」）。 */
   const holdKbb = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--kbb")) || 0;
   kbSwapMO = new MutationObserver(() => {
     /* 轮 506：--kbb 也要看 —— iOS 上推可视视口时 --kb-h 恒为 0，只盯它会让 swap 一直钉到
@@ -230,7 +234,7 @@ const holdForKeyboard = () => {
     const de = getComputedStyle(document.documentElement);
     const v = parseFloat(de.getPropertyValue("--kb-h")) || 0;
     const k = parseFloat(de.getPropertyValue("--kbb")) || 0;
-    if (v > 0 || k >= holdKbb + 80) endKbSwap();
+    if (v > 0 || Math.abs(k - holdKbb) >= 60) endKbSwap();
   });
   kbSwapMO.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
   clearTimeout(kbSwapTimer);

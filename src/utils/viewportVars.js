@@ -38,7 +38,16 @@ import { computeViewportVars } from "./viewportMath.js";
 
 const KBB = "--kbb";        /* 条/面板离布局视口底 */
 const KBL = "--kb-last";    /* 键盘本体高度（面板高度就用它） */
-const VPH = "--vph";        /* 真实可视高（浏览器 UI 占用后的那一块） */
+const VPH = "--vph";        /* 真实可视高（浏览器 UI 占用后的那一块，**含键盘**） */
+/* 轮 511 · 布局视口高（innerHeight）。
+ *
+ * 页面盒子（私信页 .dm-page）要的是这个，不是 --vph：
+ *   高度 = 布局视口高 − 让位量(--kbb)
+ *     · 无键盘：852 − 81(工具栏) = 771 = 工具栏上方那条线 ✓
+ *     · 键盘上推：852 − 0 = 852，iOS 自己把可视区上推了，页面底正好落在键盘上沿 ✓
+ * 换用 --vph 会算错键盘态：它是「含键盘」的可视高（522），页面缩到 522 之后
+ * 再叠上 iOS 的上推，输入条反而悬在键盘上方 81px。 */
+const VLH = "--vlh";
 const WEB_CLASS = "kb-web";
 
 let kbMax = 0;              /* 本会话见过的最大键盘高度 */
@@ -159,6 +168,7 @@ export function syncViewportVars() {
     lastKey = key;
     setVar(KBB, r.kbb + "px");
     setVar(VPH, r.vph + "px");
+    setVar(VLH, inner + "px");
   }
   /* 现场诊断（只写全局、不改行为）：控制台一句 JSON.stringify(window.__wpVars) */
   try {
