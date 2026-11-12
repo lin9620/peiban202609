@@ -226,17 +226,14 @@ t("E15 会话页让位不赌选择器：量出来的内联 padding（:has 不支
      再补进去就会把输入条整体抬高一条（iOS 底部工具栏那 ~44px） */
   has(BC, /getBoundingClientRect\(\)\.height\);\s*\n\s*if \(h > 0\) f\.style\.paddingBottom/, "让位高度不是取面板自身高度");
   has(BC, /const footOf = \(\)[\s\S]{0,220}vac-box-footer/, "让位没落在 .vac-box-footer（面板的定位宿主）上");
-  /* 收起时必须清掉内联值，否则关掉面板后输入条永远悬在半空。
-   * 轮 512：同时要撤销 wrapper 的 position 内联（pinPicker 钉的那一下）。 */
-  has(BC, /if \(!open \|\| !sheetMode\(\)\) \{ stopPadRO\(\); unpinPicker\(\); foot\.style\.paddingBottom = ""; return; \}/,
+  /* 收起时必须清掉内联值，否则关掉面板后输入条永远悬在半空。 */
+  has(BC, /if \(!open \|\| !sheetMode\(\)\) \{ stopPadRO\(\); foot\.style\.paddingBottom = ""; return; \}/,
     "收起面板没清内联让位（输入条会一直悬空）");
-  /* 轮 512 · 面板几何也要内联钉（用户截图：面板只剩按钮宽、贴右竖一条）。
-   * 病根是库给 .vac-emoji-wrapper 的 position:relative —— 面板 width:100% 变成按钮宽。
-   * THEME_CSS 的 :has() / :host() 两条命在国产内核上会同时漏，只能内联压。 */
-  has(BC, /const pinPicker = \(f, p\) => \{[\s\S]{0,400}closest\("\.vac-emoji-wrapper"\)[\s\S]{0,200}position", "static", "important"/,
-    "没有内联把 .vac-emoji-wrapper 改成 static（面板会缩成按钮宽）");
-  has(BC, /p\.style\.setProperty\("width", "100%", "important"\)/, "面板宽度没内联钉死");
-  has(BC, /pinPicker\(f, p\);/, "量让位前没先钉几何（面板先被画成一条）");
+  /* 轮 514：面板几何已经搬进 vendored 库（wrapper static + fixed/--kbb），宿主这边
+     不许再内联改几何 —— 两套机制并存时，内联 !important 会把 --kbb 压成固定的 0，
+     iOS 上面板就又沉到工具栏下面 81px（轮 512 的坑就踩在这里）。 */
+  no(BC, /const pinPicker = /, "宿主还在内联钉面板几何（和库的 fixed/--kbb 打架）");
+  no(BC, /p\.style\.setProperty\("(position|bottom|width|height)"/, "宿主还在给面板写内联几何");
   /* 桌面浮窗不能套这条（否则桌面 footer 也被顶起来 300） */
   has(BC, /const sheetMode = \(\) =>[\s\S]{0,200}matchMedia\("\(max-width: 899px\)"\)/, "没有 sheet 判据");
   /* 面板高度会随 --kb-last / 视口变化，必须跟着重量 */
@@ -282,23 +279,29 @@ t("E17 面板高度尺子：兜底与上限用 JS 的 px，vh 只当最后兜底
   has(KI, /orientationchange[\s\S]{0,240}restH = window\.innerHeight \|\| 0;/, "旋屏没重取基线");
 });
 
-t("E18 面板不许再 fixed 到布局视口底：锚点必须是页面盒子（轮 503 用户四张截图）", () => {
-  /* 病根：footer 的位置由 .dm-page（页面盒子，= 可视视口）决定，面板却锚在布局视口底。
-     iOS Safari 的底部工具栏浮在页面之上时，面板最后一排正好被它吃掉；键盘把可视视口
-     顶开、页面跟着上移时，fixed 的面板留在原地 —— 输入条和面板当场分家。 */
-  const css = BC;
-  has(css, /\.vac-emoji-wrapper \.vac-emoji-picker \{[^}]*position: absolute !important/, "面板还不是 absolute（fixed 会锚在布局视口底）");
-  no(css, /\.vac-emoji-wrapper \.vac-emoji-picker \{[^}]*position: fixed/, "面板又回 fixed 了");
-  /* 定位宿主：库里的 wrapper 自带 relative，必须摘掉，否则 absolute 锚在那个按钮大的小盒子上 */
-  has(css, /:host\(\.wp-emoji-open\) \.vac-emoji-wrapper \{\s*\n\s*position: static !important;/,
-    "没把库里的 .vac-emoji-wrapper 摘成 static（面板会飘到屏幕中间）");
-  /* padding 必须落在 .vac-box-footer：内层才是 relative 的那一层（= 面板的定位宿主） */
-  has(css, /\.vac-room-footer:has\(\.vac-emoji-picker\) \.vac-box-footer,\s*\n\s*:host\(\.wp-emoji-open\) \.vac-box-footer \{/,
+t("E18 面板几何由 vendored 库负责（fixed + bottom:--kbb），宿主不再抢优先级", () => {
+  /* 轮 514：库已 fork 进 vendor/（见 PATCHES.md）。轮 503 那套「面板 absolute 到
+     footer 的 padding 区」不再使用 —— 它要求页面盒子高度也正确，两个参照系；
+     现在面板直接 fixed 到可视区底（bottom:--kbb），与 footer 位置解耦，
+     而 --kbb 本身有闭环校正兜底。 */
+  const LIB = fs.readFileSync("vendor/vue-advanced-chat/dist/vue-advanced-chat.es.js", "utf8");
+  has(LIB, /\.vac-emoji-wrapper\{position:static;display:flex\}/,
+    "库里的 wrapper 不是 static（面板会锚到按钮那个小盒子 → 缩成一条竖线）");
+  has(LIB, /@media \(max-width:899px\)\{\.vac-emoji-wrapper \.vac-emoji-picker:not\(\.vac-picker-reaction\)\{position:fixed!important;left:0!important;right:0!important;bottom:var\(--kbb,0px\)!important/,
+    "库里的手机端面板不是「fixed + 贴 --kbb」（会沉到工具栏下面）");
+  has(LIB, /height:var\(--kb-panel-h,320px\)/,
+    "库里的手机端面板高度没吃 --kb-panel-h（高度又会随 innerHeight 变来变去）");
+  /* 宿主不许再给面板写几何 !important：两套机制并存必然打架（轮 512 的教训） */
+  no(BC, /\.vac-emoji-wrapper \.vac-emoji-picker \{[^}]*(position|bottom|width|height):[^}]*!important/,
+    "宿主还在给面板写几何 !important（会和库的 fixed/--kbb 打架）");
+  no(BC, /\.vac-emoji-wrapper:has\(/, "宿主还在用 :has() 改 wrapper（库已处理，国产内核也不认）");
+  /* 让位 padding 仍必须落在 .vac-box-footer：内层才是 relative 的那一层 */
+  has(BC, /:host\(\.wp-emoji-open\) \.vac-box-footer \{\s*\n\s*padding-bottom: var\(--wp-emoji-h\);/,
     "让位 padding 没落在 .vac-box-footer（写在外层面板不跟着走）");
-  /* 输入行不许被 position/transform 抬高：那会抢走面板的定位宿主
+  /* 输入行不许被 position/transform 抬高：那会抢走面板的包含块
      （实测：给 .vac-icon-textarea 加 position:relative 后，面板立刻锚回到输入行底边，
      变成 180..516 悬在聊天记录中间）。层级问题用 z-index 之外的办法解决。 */
-  no(css, /\.vac-box-footer > \.vac-icon-textarea \{\s*\n\s*position: relative/, "输入行被定位了（会抢走面板的包含块）");
+  no(BC, /\.vac-box-footer > \.vac-icon-textarea \{\s*\n\s*position: relative/, "输入行被定位了（会抢走面板的包含块）");
 });
 
 t("E19 面板开关只走 setPanelOpen：手写 --kb-h 会把「值没变不重写」的判据骗死", () => {
@@ -358,8 +361,10 @@ t("E22 影子样式的注释必须配平（裸文本会吃掉下一条规则）"
   }
   assert.equal(open, false, "THEME_CSS 里有没闭合的 /*");
   assert.equal(stray, 0, `THEME_CSS 里有 ${stray} 处野 */（会把下一条规则吃掉）`);
-  /* 被吃掉过的那条必须真的还在，且带 !important */
-  assert.match(css, /\.vac-emoji-wrapper:has\(\.vac-emoji-picker\)[\s\S]{0,120}position: static !important;/,
+  /* 轮 514：原先这条查的是「被吃掉的那条 wrapper static 规则还在」，那条规则已经
+     搬进 vendored 库，所以改查库 —— 同一类事故（注释没配平把下一条吃掉）会让它消失。 */
+  const LIB = fs.readFileSync("vendor/vue-advanced-chat/dist/vue-advanced-chat.es.js", "utf8");
+  assert.match(LIB, /\.vac-emoji-wrapper\{position:static/,
     "把 wrapper 改成 static 的规则不在了（面板会缩成按钮宽）");
 });
 

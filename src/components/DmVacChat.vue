@@ -659,13 +659,10 @@ emoji-picker {
      padding 要 120ms 才涨满，中间 100ms 条被压住）。
      关面板那一侧由 :host(.wp-kb-swap) 钉住（下面那条 transition: none），
      所以这里不再需要常驻过渡：瞬时到位才不会露馅。 */
-  /* 定位宿主必须是 footer：库里的 .vac-emoji-wrapper 自带 position:relative，
-     不摘掉的话 absolute 会锚在那个按钮大的小盒子上（面板会飘到屏幕中间）。 */
-  .vac-emoji-wrapper:has(.vac-emoji-picker),
-  :host(.wp-emoji-open) .vac-emoji-wrapper {
-    position: static !important;
-  }
-  .vac-room-footer:has(.vac-emoji-picker) .vac-box-footer,
+  /* 轮 514：wrapper 的 position 已由 vendored 库改成 static（见
+     vendor/vue-advanced-chat/PATCHES.md 改动 1）—— 这里不再需要 :has() 去猜它。
+     原文：库给 .vac-emoji-wrapper 自带 position:relative，absolute 会锚在那个
+     按钮大的小盒子上（面板飘成一条竖线就是它）。 */
   :host(.wp-emoji-open) .vac-box-footer {
     padding-bottom: var(--wp-emoji-h);
   }
@@ -674,16 +671,12 @@ emoji-picker {
     padding-bottom: var(--wp-emoji-h) !important;
     transition: none !important;
   }
+  /* 轮 514：几何全部交给 vendored 库（vendor/vue-advanced-chat 的 media 规则：
+     position:fixed · left/right:0 · bottom:var(--kbb) · height:var(--kb-panel-h)）。
+     以前这一大段 !important 是在跟库比优先级 —— 比不过就得内联钉，钉住又跟 --kbb
+     打架（iOS 上面板沉到工具栏下面 81px 就是这么来的）。现在库自己就是对的，
+     这里只留皮肤。 */
   .vac-emoji-wrapper .vac-emoji-picker {
-    position: absolute !important;
-    left: 0 !important;
-    right: 0 !important;
-    top: auto !important;
-    bottom: 0 !important;
-    z-index: 1 !important;
-    width: 100% !important;
-    height: var(--wp-emoji-h) !important;
-    max-height: none !important;
     /* 安全区不放在 picker 的 padding 上：库里的 emoji-picker 会撑满 padding box，
        手势条会压住最后一排。改成子元素矮一条 --sab，底部留白由面板背景补。 */
     padding: 0 !important;
@@ -759,7 +752,6 @@ const syncEmojiIcon = (open) => {
 let emojiPadTimer = 0;
 let padRO = null;
 let padPick = null;
-let padWrap = null;
 const sheetMode = () => typeof window !== "undefined"
   && typeof window.matchMedia === "function"
   && window.matchMedia("(max-width: 899px)").matches;
@@ -768,40 +760,15 @@ const stopPadRO = () => {
   padRO = null;
   padPick = null;
 };
-/* 轮 512 · 面板定位改「内联直钉」，不再靠选择器匹配（用户截图：面板只剩按钮那么宽、
- * 贴着屏幕右边往上竖一条，emoji 单列排）。
+/* 轮 514 · 面板定位不再内联钉 ─────────────────────────────────────
+ * 轮 512 在这里用内联 !important 把 wrapper 钉成 static、把面板钉成整宽 —— 那是在
+ * 跟库抢优先级（库的样式在 shadowRoot 里，只能内联）。代价是这套内联值把 bottom
+ * 写死成 0，iOS 上正好把「让位到工具栏上方」那条覆盖掉。
  *
- * 病根：库给 .vac-emoji-wrapper 自带 position:relative。面板在这条规则下 width:100%
- * = **按钮宽**（≈40px），right:0 又把它贴在按钮右缘 —— 截图那个竖条就是它。
- * THEME_CSS 里本来有两条命把它改成 static：
- *   ① .vac-emoji-wrapper:has(.vac-emoji-picker) —— Chromium<105 / X5 / 国产内核不认；
- *   ② :host(.wp-emoji-open) .vac-emoji-wrapper —— 依赖宿主类，还得跟库的样式比特异性。
- * 两条同时漏，面板就缩成一条（轮 498 的 padding 那条已经吃过一次同样的亏，
- * 所以那里也是内联。同一个坑第二次踩，这次一起钉死）。
- *
- * 内联 !important 压过库的普通声明，且与会话页是否重建、observer 挂没挂上无关。
- * 收起时只撤销 wrapper 的 position（面板节点本身会被库移除）。 */
-const unpinPicker = () => {
-  if (!padWrap) return;
-  try { padWrap.style.removeProperty("position"); } catch (e) { /* 忽略 */ }
-  padWrap = null;
-};
-const pinPicker = (f, p) => {
-  if (!f || !p) return;
-  const wrap = p.closest ? p.closest(".vac-emoji-wrapper") : null;
-  if (wrap) { wrap.style.setProperty("position", "static", "important"); padWrap = wrap; }
-  /* 定位宿主必须是 footer（轮 503 的口径）。库若没给 relative，这里补上，
-     否则面板会一路往上锚到 shadowRoot 的根盒。 */
-  try {
-    if (getComputedStyle(f).position === "static") f.style.setProperty("position", "relative", "important");
-  } catch (e) { /* 忽略 */ }
-  p.style.setProperty("position", "absolute", "important");
-  p.style.setProperty("left", "0", "important");
-  p.style.setProperty("right", "0", "important");
-  p.style.setProperty("top", "auto", "important");
-  p.style.setProperty("bottom", "0", "important");
-  p.style.setProperty("width", "100%", "important");
-};
+ * 现已把库 fork 进 vendor/（见 vendor/vue-advanced-chat/PATCHES.md）：源码里 wrapper
+ * 就是 static、手机端面板就是 fixed + bottom:var(--kbb)，所以整套内联钉全部删除，
+ * 只保留 emojiPad 的量高让位。
+ */
 const emojiPad = (open) => {
   clearTimeout(emojiPadTimer);
   const n = el.value;
@@ -815,16 +782,15 @@ const emojiPad = (open) => {
   };
   const foot = footOf();
   if (!foot) return;
-  if (!open || !sheetMode()) { stopPadRO(); unpinPicker(); foot.style.paddingBottom = ""; return; }
+  if (!open || !sheetMode()) { stopPadRO(); foot.style.paddingBottom = ""; return; }
   const put = () => {
     const s = n.shadowRoot;
     const f = s && (s.querySelector("#room-footer .vac-box-footer") || s.querySelector(".vac-box-footer") || s.querySelector("#room-footer"));
     const p = s && s.querySelector(".vac-emoji-picker");
     if (!f) return;
     if (!p || !sheetMode()) { f.style.paddingBottom = ""; return; }
-    /* 轮 512：先把几何钉死（整宽 + 贴 footer 底），再量高度补 padding。
-       顺序不能反 —— 宽度塌着量出来的高度虽然没错，但面板已经被画成一条了。 */
-    pinPicker(f, p);
+    /* 轮 514：几何由库负责（fixed + bottom:var(--kbb) + height:var(--kb-panel-h)），
+       这里只负责「条要让开多高」= 面板实测高度。 */
     /* 轮 503：面板现在是 footer 里的绝对定位块（底边 = footer 底边 = 页面底边），
        所以「要留多高」就是面板自己有多高 —— 不用再拿 innerHeight 去补
        「面板底离屏底还差多少」。那一段差值正是旧的 fixed 锚点造成的
