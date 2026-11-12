@@ -768,6 +768,8 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
   - **新增工装**：`tools/chat-exit-drive.mjs` + `tools/chat-exit-harness/`（6 条断言）；`androidbar-drive` 加 A3/A3b/A4（实例复用 / shadow 就绪 / 全程无骨架）。
   - **旧护栏收紧**：`chat-look-test` 新增 L9（退出必须同帧 release，且 restore 排在 release 之后）、L10（面板必须保活、关面板不许置 false）；`dm-scroll-test` S12、`wall-composer-test` P5 按新写法改口径（不是删掉）。
   - **测试**：全量 `all.mjs` **121/122**、断言 1653/1659（唯一红 = 既有 `announcement-test`）；`androidbar-drive` 网页 + `--cap` 双模式、`wallbar-drive`、`chat-exit-drive`、`chat-look 11/0`、`wall-composer 25/0`、`dm-scroll 13/0`、`emoji-panel 23/0` 全过。
+  - **已提交（3 个）**：`c4bf3d0` 修复（src + fork dist）· `9bf87d9` 工装 · `825304a` 文档。
+  - **已部署**：Version ID **`ef1602e6-d29c-41f9-bcab-b871f2b959d3`**，入口 `main-3sGd46Dd.js`(1034462 B) + `main-tOw2D79i.css`(368536 B)。校验：5 个关键产物 sha256 与本地**逐字节 SAME**（main js/css、WpComposer css、MessagesView js、dmIdb js）；线上抽到四处关键规则——`position:fixed!important…transform:translateY(var(--vtop,0px))`、`padding-bottom:max(0px,var(--kb-panel-h) - var(--vtop, 0px))`、`html.cap-app.kb-anim … :not(.wp-emoji-open):not(.wp-kb-swap)`、WpComposer 的 `translateY(var(--vtop, 0px))`；15 项冒烟全过（`immutable` 与 404 首轮因网络超时误报，HEAD 复测均通过）。
 
 - **轮 515（改动完成、测试过了、待提交待部署）**：用户直问「**部署之后安卓跟苹果的问题能解决吗，前面说的 2. 安卓端暖心墙表情跟键盘切换有一闪、3. 从会话退出到列表有缩放，一个都没改好**」。
   - **先承认事实：这两条在 APK 上确实一条都没改。** 轮 512/513 改的全是**网页端分支**（`html.kb-web`）；用户装的是 APK，走 `html.cap-app`，而 `style.css` 里这两套规则是**一一对应写了两份**的（2650 行附近那段注释自己就写着「改一份就要改另一份」）。我就只改了网页那份。他装上 APK 一测，原封不动 —— 不是他测得不准，是我改错了地方。
