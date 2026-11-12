@@ -1,0 +1,15 @@
+{
+  "name": "vue-advanced-chat",
+  "version": "2.1.2-warmpaws.1",
+  "description": "会话页外壳（vendored fork）：上游 vue-advanced-chat@2.1.2 dist，本地只做手机端表情面板几何的定点修改。改动清单见 PATCHES.md。",
+  "license": "MIT",
+  "main": "./dist/vue-advanced-chat.es.js",
+  "module": "./dist/vue-advanced-chat.es.js",
+  "exports": {
+    ".": "./dist/vue-advanced-chat.es.js"
+  },
+  "files": [
+    "dist/*"
+  ],
+  "private": true
+}

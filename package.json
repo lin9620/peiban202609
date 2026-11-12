@@ -38,7 +38,7 @@
     "qrcode": "^1.5.4",
     "vant": "^4.10.2",
     "vue": "^3.5.0",
-    "vue-advanced-chat": "^2.1.2",
+    "vue-advanced-chat": "file:vendor/vue-advanced-chat",
     "vue-router": "^4.4.0"
   },
   "devDependencies": {
