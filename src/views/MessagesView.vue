@@ -129,6 +129,12 @@ watch(chatOpen, (v) => {
    * 要等 chatViewport 的 250ms 巡检才被清，这段时间列表页被钉在一个裁切框里，
    * 巡检一过再弹回文档流 = 用户报的「退出会话有一个缩放」。同帧拆掉。 */
   if (v) { nextTick(() => kickChatViewport()); return; }
+  /* 轮 519：这里的触发条件（chatOpen=false）曾经**比退场动画还早** —— 真机逐帧
+   * （_scratch/real/v519-msg.json）拍到点返回后 .dm-page 立刻从 fixed 393×744
+   * 变回 18,14,357×769 的流式布局，会话卡被甩到列表底部只剩 34px 高，动画才开播。
+   * 那等于先把硬切做一遍、再在破碎的布局上补个淡出。
+   * 现在退场期间 activeId 不清（见 beginThreadOut），chatOpen 要等
+   * finishThreadOut 清态时才会翻 false，收摊顺序天然就是对的，这里不用再加闸。 */
   nextTick(() => releaseChatViewport());
 });
 
@@ -142,9 +148,139 @@ watch(chatOpen, (v) => {
  * 所以动画类跑完就摘，transform 在动画结束瞬间回到 none。 */
 const threadIn = ref(false);
 let threadInTimer = 0;
+/* 轮 519 · 退出会话的「滑出」。
+ *
+ * 用户第 3 条（安卓浏览器）：「从某一条会话退出到会话列表有一个缩放」。
+ * 真机逐帧（_scratch/real/probe-c.json）拍到的不是曲线难看，而是**一帧内的硬切**：
+ *   进入态 .dm-page 是 fixed 393×744（贴满屏），退出那一帧直接变成
+ *   static 357×728（左右 18、上下 14 的卡片边距），中间没有任何过渡。
+ * 进入有 dm-thread--in（从右 14px 滑入 + 淡入），退出什么都没有 ——
+ * 两边的动画不对称，眼睛看到的就是「整块缩了一下」。
+ *
+ * 做法：退出时反过来演一遍 —— dm-thread 向右 14px 滑出并淡出，180ms 后才真正
+ * 拆掉 fixed 接管、切回列表布局。这 180ms 里布局一点没变，只有那张卡片在动，
+ * 底下直接露出列表，所以看不到任何尺寸突变。
+ * 注意：这段时间 .dm-page--chat 与 v-show 都必须还认它（见模板里的 threadOut），
+ * 否则卡片会先跳到列表里的位置再播动画，等于把硬切放大一遍。
+ *
+ * ⚠ 光挂类还不够 —— 真机 screencast 逐帧（_scratch/real/cast/）推翻了我的第一版：
+ * 点返回后 0~423ms 画面**完全静止**（帧哈希一模一样），+480ms 直接跳到列表，
+ * 中间一帧淡出都没有。原因不是动画没跑，而是**跑在一个空壳上**：
+ * 路由一回到列表就调了 resetConv()，activeId/msgs/meta 当场清空，
+ * 模板 `<template v-if="activeId && paneReady">` 把整个聊天体卸载了 ——
+ * 剩下那张空卡片，背景色和列表背景一样，淡它等于没淡；用户看到的还是硬切，
+ * 只是从「缩一下」变成了「内容瞬间消失再换页」。
+ * 所以退场改成两段：**先留状态播动画，动画结束（finishThreadOut）才 resetConv()**。 */
+const threadOut = ref(false);
+let threadOutTimer = 0;
+/* finishThreadOut 清态期间置 true：watch(activeId) 会看到 activeId 被清，
+ * 但它不是「用户又点了一次返回」，不能当成新的退场再开一轮（会永远退不出去）。 */
+let threadExitLock = false;
+/* 退场的收尾。必须等**动画真正结束**再拆 fixed ——
+ * 真机逐帧（_scratch/real/v519-msg.json）第一版用的是固定 180ms 定时器：
+ * 动画 t8155 才开始，t8222 就被切了布局（只播了 67ms），卡片缩到一半硬跳回列表，
+ * 「缩放」一点没少。原因是 setTimeout 从 watch 触发时算起，而 Vue 把类写进 DOM、
+ * 浏览器真正开始播动画还要晚几十到三百毫秒（真机这次晚了 317ms）。
+ * 所以改成听 animationend，定时器只当兜底。
+ * 这里同时也是**唯一**清会话态的地方 —— 动画播完了才卸内容（见上面那段）。 */
+const finishThreadOut = () => {
+  if (!threadOut.value) return;
+  clearTimeout(threadOutTimer);
+  threadOut.value = false;
+  threadExitLock = true;
+  resetConv();
+  nextTick(() => {
+    releaseChatViewport();
+    restoreListScroll();
+    /* 轮 522：覆盖层这时候已经被 v-show 收起来了，内联的冻结几何一起清 ——
+       留着的话下一轮进会话会钉在上一次的矩形上（宽度还是旧屏宽）。
+       放在 nextTick 里而不是 resetConv 之前：摘显示和摘几何必须同一帧落地。 */
+    unfreezeOutLayer();
+    /* 轮 522：退场期那个「把外壳内边距补回来」的标记到这里才摘。
+       必须晚于 resetConv 的那一帧 —— 摘早了列表会先缩 18px 再消失。
+       再晚一帧更稳：这几条规则都带 .shell--chat 前缀，外壳类摘掉之后它们自动失效，
+       多留一帧只会变空转，不会反过来改布局。 */
+    requestAnimationFrame(() => {
+      try { document.documentElement.classList.remove("dm-exiting"); } catch (e) { /* 忽略 */ }
+    });
+    threadExitLock = false;
+  });
+};
+const onThreadOutEnd = (e) => {
+  if (e && e.animationName && e.animationName !== "dm-thread-out") return;   /* 子元素动画冒上来的不算 */
+  finishThreadOut();
+};
+const THREAD_OUT_FALLBACK_MS = 420;
+/* 轮 522 · 退场层钉在「它此刻的矩形」上，再开始淡。
+ *
+ * 不钉会怎样：退出那一帧 releaseChatViewport() 清掉 .dm-page 的内联高度，
+ * 而聊天卡还是 position:relative，于是它从「键盘态 484」直接长到「整屏 852」——
+ * 消息区当场重排、输入条跳到底部，然后才开始淡。键盘开着退出时最明显，
+ * 看起来就是整块内容「缩/放了一下」，这才是用户第 3 条里最难说清的那一半。
+ *
+ * 钉住之后高度是常量，元素只做 opacity + translateX，不再参与任何重排；
+ * 键盘此刻还在屏幕上，下面那块（484~852）由键盘自己盖着，等它收完，淡出也播完了。
+ * 量不出来（元素不在）就什么都不做，CSS 里 .dm-page--exit 的 inset:0 仍是兜底。 */
+const FREEZE_PROPS = ["position", "top", "left", "width", "height", "margin", "zIndex"];
+const freezeOutLayer = () => {
+  const node = document.querySelector(".dm-thread");
+  if (!node) return;
+  const r = node.getBoundingClientRect();
+  if (!(r.width > 0) || !(r.height > 0)) return;
+  node.style.position = "fixed";
+  node.style.top = Math.round(r.top) + "px";
+  node.style.left = Math.round(r.left) + "px";
+  node.style.width = Math.round(r.width) + "px";
+  node.style.height = Math.round(r.height) + "px";
+  node.style.margin = "0";
+  node.style.zIndex = "40";
+};
+const unfreezeOutLayer = () => {
+  const node = document.querySelector(".dm-thread");
+  if (!node) return;
+  for (const k of FREEZE_PROPS) node.style[k] = "";
+};
+/* 退出流程的唯一入口。返回按钮、路由回到列表、点会话行以外的清态路径都走这里，
+ * 别再各自调 resetConv() —— 那会在动画开始前把内容卸掉。 */
+function beginThreadOut() {
+  if (threadOut.value) return;
+  /* 桌面双栏没有「退出去」这个动作；没有当前会话也没什么可淡的 → 直接清。 */
+  if (!isMobileNav.value || !activeId.value) { resetConv(); return; }
+  threadOut.value = true;
+  /* 轮 522：把「外壳补回列表页内边距」的标记挂到 html 上，和 threadOut 同一帧。
+   * 病根见 style.css 里 html.dm-exiting 那段：聊天态把 .shell 左右 padding 归零，
+   * 而外壳类要等淡出播完才摘，于是整段淡出里列表比最终宽 36px，收尾一帧缩回去。
+   * 挂在这里（而不是等 nextTick）是为了让列表的最终位置和覆盖层同帧落地。 */
+  try { document.documentElement.classList.add("dm-exiting"); } catch (e) { /* 忽略 */ }
+  /* 先钉住再撒手：这一行的顺序就是全部 —— 先量（此刻还是键盘态的 393×484），
+     再 release（把 fixed 接管还给文档流）。反了就只能量到已经变形的盒子。 */
+  freezeOutLayer();
+  /* 轮 519：**整屏接管要在这里就交还**，不能等收尾。
+   * 提前摘掉之后 .dm-page 回到文档流，列表按它最终的位置排好（左右 18、上下 14 的卡片边距
+   * 全部由 .shell/main 的 padding 自己算出来），聊天卡 meanwhile 变成整屏 fixed 覆盖层
+   * （见 style.css 的 .dm-page--exit）。淡出时露出来的是**列表本身**。
+   * 第一版等到收尾才 release：淡到一半底下还是空的，真机 screencast 拍到
+   * +462ms 整屏几乎全白、+594ms 列表才出现 —— 约 130ms 白闪，比原来的硬切还难看。 */
+  releaseChatViewport();
+  nextTick(() => {
+    /* 列表这一刻才 display 回来，位置就在同一帧补对（内部自带三拍重试）。
+       放到收尾再补的话，淡出过程中露出的是停在顶部的列表，最后再跳一下。 */
+    restoreListScroll();
+    const el = document.querySelector(".dm-thread");
+    /* once：动画结束就摘监听；animationend 也可能因为 reduced-motion 不来，
+       所以下面再挂一个兜底定时器（真机实测动画启动最晚 320ms，留到 420）。 */
+    if (el) el.addEventListener("animationend", onThreadOutEnd, { once: true });
+    clearTimeout(threadOutTimer);
+    threadOutTimer = setTimeout(finishThreadOut, THREAD_OUT_FALLBACK_MS);
+  });
+}
 watch(chatOpen, (v) => {
   clearTimeout(threadInTimer);
   if (!v) { threadIn.value = false; return; }
+  /* 轮 522：上一次退场还没播完就又进了会话（连点/系统返回键抖动）时，
+   * chatViewport 的「退场期不接管」必须立刻解除，否则新会话没有 fixed 接管，
+   * 输入条会落在文档末尾。正常路径下这个类早已被 finishThreadOut 摘掉，这里是空转。 */
+  try { document.documentElement.classList.remove("dm-exiting"); } catch (e) { /* 忽略 */ }
   if (!isMobileNav.value) return;
   nextTick(() => {
     threadIn.value = true;
@@ -152,6 +288,13 @@ watch(chatOpen, (v) => {
   });
 });
 onBeforeUnmount(() => clearTimeout(threadInTimer));
+onBeforeUnmount(() => clearTimeout(threadOutTimer));
+/* 轮 522：退场没播完就离开本页（切页签 / 杀进程重建）时，html 上的标记必须跟着走，
+ * 否则外壳会一直是「补了内边距」的形态 —— 虽然规则都带 .shell--chat 前缀、
+ * 真正生效只在聊天态，但残留的类迟早会被下一轮的规则误命中。 */
+onBeforeUnmount(() => {
+  try { document.documentElement.classList.remove("dm-exiting"); } catch (e) { /* 忽略 */ }
+});
 const msgs = ref([]);        // 褰撳墠浼氳瘽娑堟伅锛堟棫鈫掓柊锛?
 let msgsConv = "";           // msgs 鐜板湪瑁呯殑鏄摢涓細璇濓紙杞?157b锛氶槻璺ㄤ細璇濊鍚堝苟锛?
 /* 杞?225 路 浼氳瘽鍒囨崲绔炴€佸畧鍗細姣忔銆屾寜浼氳瘽鎷夋秷鎭€嶅彂鍙凤紙msgSeq锛夛紝鍝嶅簲鍥炴潵鏃舵牎楠屽彿涓庡綋鍓嶄細璇濄€?
@@ -301,9 +444,13 @@ function restoreListScroll() {
  * 于是「返回 = 回到最上面」。 */
 watch(activeId, (v, old) => {
   if (!v && old) {
-    /* 轮 517：退出时序改成「先拆 fixed 接管 → 再恢复列表位置」，且都等 DOM 更新完。
-     * 原来这是同步调用：那一刻 .dm-page 还带着内联 position:fixed/overflow:hidden，
-     * 列表 aside 也还是隐藏的，写进去的 scrollTop 会被裁掉/算错。 */
+    clearTimeout(threadOutTimer);
+    /* 轮 519：退场动画现在由 beginThreadOut 负责，activeId 要等动画播完才被
+     * finishThreadOut 清掉。所以走到这里只剩两种可能：
+     *   ① finishThreadOut 自己清的 → threadExitLock 为 true，收摊它已经做了；
+     *   ② 别的路径直接把 activeId 清空（例如隐藏会话）→ 内容当场没了，
+     *      没有东西可淡，按老口径立刻收摊，不假装播动画。 */
+    if (threadExitLock) return;
     nextTick(() => {
       releaseChatViewport();
       restoreListScroll();
@@ -1502,7 +1649,9 @@ function backToList() {
   const onConvRoute = route.name === "messages" && !!route.params.id;
   if (!onConvRoute) {
     fromList.value = false;
-    resetConv();
+    /* 轮 519：这条分支不经过路由，所以必须自己走退场流程；
+     * 直接 resetConv() 会在动画开始前把聊天体卸掉，淡出就白做了。 */
+    beginThreadOut();
     return;
   }
   if (fromList.value) {
@@ -2404,8 +2553,10 @@ watch(() => route.params.id, (v) => {
     if (id !== activeId.value) openConv(id);
     return;
   }
-  /* 鍥炲埌鍒楄〃锛氭竻绌哄綋鍓嶄細璇濓紙鎵嬫満褰㈡€佷笅 .dm-list 绔嬪埢鎺ョ鏁村睆锛? 鍥炵淇℃ */
-  resetConv();
+  /* 路由回到列表（返回键 / 安卓系统返回 / 手势返回都走这条）：先播退场，
+   * 动画播完才由 finishThreadOut 真正清态 —— 见 beginThreadOut 的说明。 */
+  /* 轮 519：先播退场动画，播完才清当前会话（见 beginThreadOut 的说明） */
+  beginThreadOut();
 });
 
 /* 杞?245锛氭竻浼氳瘽鎬佹娊鎴愪竴澶勶紙watch 鐨勪袱涓嚭鍙ｅ叡鐢紱涓庡師銆屽洖鍒板垪琛ㄣ€嶅垎鏀€愬瓧娈靛悓鍙ｅ緞锛?*/
@@ -2461,7 +2612,7 @@ function goSignIn() {
 </script>
 
 <template>
-  <div class="dm-page" :class="{ 'dm-page--chat': isMobileNav && !!activeId && paneReady }">
+  <div class="dm-page" :class="{ 'dm-page--chat': isMobileNav && ((!!activeId && paneReady) || threadOut), 'dm-page--exit': threadOut }">
     <!-- 杞?344锛氬喎鍚姩鍏堢瓑鐧诲綍鎬佹仮澶嶏紝鍒妸銆屾鍦ㄦ仮澶嶃€嶇敾鎴愩€屾湭鐧诲綍銆?-->
     <div v-if="!signedIn && cloud.checking" class="dm-wrap">
       <section
@@ -2482,7 +2633,7 @@ function goSignIn() {
     <div v-else class="dm-wrap">
       <!-- 宸﹀垪锛氫細璇濆垪琛紙鎵嬫満褰㈡€?= 寰俊寮忓垪琛ㄩ〉锛涜繘鍏ヤ細璇濆悗鏁撮〉璁╃粰鑱婂ぉ鍖猴級 -->
       <aside
-        v-show="!isMobileNav || !activeId || !paneReady"
+        v-show="!isMobileNav || !activeId || !paneReady || threadOut"
         ref="convListEl"
         class="card dm-list"
         :class="{ 'dm-list--seg': isMobileNav && seg === 'notif' }"
@@ -2647,7 +2798,7 @@ function goSignIn() {
       </BottleChat>
 
       <!-- 涓垪锛氬綋鍓嶄細璇濓紙鎵嬫満褰㈡€?= 寰俊寮忕嫭绔嬭亰澶╅〉锛屽甫杩斿洖锛?-->
-      <section v-else v-show="!isMobileNav || (!!activeId && paneReady)" class="card dm-thread" :class="{ 'dm-thread--in': threadIn }">
+      <section v-else v-show="!isMobileNav || (!!activeId && paneReady) || threadOut" class="card dm-thread" :class="{ 'dm-thread--in': threadIn, 'dm-thread--out': threadOut }">
         <template v-if="activeId && paneReady">
           <!-- 杞?334锛堢敤鎴锋媿鏉匡級锛氫細璇濇銆岃亰澶╁ご + 娑堟伅娴?+ 杈撳叆鍖恒€嶆暣娈典氦缁欑粍浠讹紝
                杩炲ご閮ㄥ拰杈撳叆妗嗕篃鐢ㄧ粍浠惰嚜宸辩殑锛堜笉鍐嶆墜鍐欓偅涓ゅ潹锛夈€傛棫鐗堥偅濂楀彧鍦ㄩ潪 vac 鏃跺厹搴曘€?
