@@ -22,6 +22,7 @@ import { hideEmojiSearchIn } from "../utils/emojiPanel.js";
 import { scheduleEmojiWarm } from "../utils/emojiWarm.js";
 import { isApp } from "../stores/uiStore.js";
 import { webSwapNeeded, setPanelOpen } from "../utils/keyboardInset.js";
+import { startBottomPin, stopBottomPin } from "../utils/bottomPin.js";
 import { syncViewportVars } from "../utils/viewportVars.js";
 import { t } from "../i18n.js";
 
@@ -648,12 +649,16 @@ emoji-picker {
    页面盒子本身在可视区内，safe-area 也不用再单独让。 */
 :host { --wp-emoji-h: var(--kb-panel-h, min(46vh, 320px)); }
 @media (max-width: 899px) {
-  /* 轮 350：过渡常驻在 footer 上 —— 面板→键盘交接时，padding 和 .dm-page 的 height
-     同曲线同时长（.22s）各走 --wp-emoji-h，输入框原地不动（详见脚本里的 holdForKeyboard）。
-     轮 503：padding 落在 .vac-box-footer 而不是外层 .vac-room-footer —— 内层才是
+  /* 轮 503：padding 必须落在 .vac-box-footer 而不是外层 .vac-room-footer —— 内层才是
      position:relative 的那一个（= 面板的定位宿主），padding 加在外层面板根本不动，
-     会锚在「输入条下沿」往上长，反而盖住聊天记录。 */
-  .vac-box-footer { transition: padding-bottom .22s cubic-bezier(.2, .8, .2, 1); }
+     会锚在「输入条下沿」往上长，反而盖住聊天记录。
+     轮 350：原先是「过渡常驻在 footer 上 —— 面板→键盘交接时 padding 和 .dm-page 的
+     height 同曲线同时长（.22s）各走 --wp-emoji-h，输入框原地不动」。
+     轮 512：这条过渡在**打开面板**时反而制造闪烁 —— 面板是瞬现的（组件直接插节点），
+     让位却慢 .22s，输入条会先被面板盖住、再从屏底爬上来（工装实测：面板 20ms 到位，
+     padding 要 120ms 才涨满，中间 100ms 条被压住）。
+     关面板那一侧由 :host(.wp-kb-swap) 钉住（下面那条 transition: none），
+     所以这里不再需要常驻过渡：瞬时到位才不会露馅。 */
   /* 定位宿主必须是 footer：库里的 .vac-emoji-wrapper 自带 position:relative，
      不摘掉的话 absolute 会锚在那个按钮大的小盒子上（面板会飘到屏幕中间）。 */
   .vac-emoji-wrapper:has(.vac-emoji-picker),
@@ -754,6 +759,7 @@ const syncEmojiIcon = (open) => {
 let emojiPadTimer = 0;
 let padRO = null;
 let padPick = null;
+let padWrap = null;
 const sheetMode = () => typeof window !== "undefined"
   && typeof window.matchMedia === "function"
   && window.matchMedia("(max-width: 899px)").matches;
@@ -761,6 +767,40 @@ const stopPadRO = () => {
   if (padRO) { try { padRO.disconnect(); } catch (e) { /* 忽略 */ } }
   padRO = null;
   padPick = null;
+};
+/* 轮 512 · 面板定位改「内联直钉」，不再靠选择器匹配（用户截图：面板只剩按钮那么宽、
+ * 贴着屏幕右边往上竖一条，emoji 单列排）。
+ *
+ * 病根：库给 .vac-emoji-wrapper 自带 position:relative。面板在这条规则下 width:100%
+ * = **按钮宽**（≈40px），right:0 又把它贴在按钮右缘 —— 截图那个竖条就是它。
+ * THEME_CSS 里本来有两条命把它改成 static：
+ *   ① .vac-emoji-wrapper:has(.vac-emoji-picker) —— Chromium<105 / X5 / 国产内核不认；
+ *   ② :host(.wp-emoji-open) .vac-emoji-wrapper —— 依赖宿主类，还得跟库的样式比特异性。
+ * 两条同时漏，面板就缩成一条（轮 498 的 padding 那条已经吃过一次同样的亏，
+ * 所以那里也是内联。同一个坑第二次踩，这次一起钉死）。
+ *
+ * 内联 !important 压过库的普通声明，且与会话页是否重建、observer 挂没挂上无关。
+ * 收起时只撤销 wrapper 的 position（面板节点本身会被库移除）。 */
+const unpinPicker = () => {
+  if (!padWrap) return;
+  try { padWrap.style.removeProperty("position"); } catch (e) { /* 忽略 */ }
+  padWrap = null;
+};
+const pinPicker = (f, p) => {
+  if (!f || !p) return;
+  const wrap = p.closest ? p.closest(".vac-emoji-wrapper") : null;
+  if (wrap) { wrap.style.setProperty("position", "static", "important"); padWrap = wrap; }
+  /* 定位宿主必须是 footer（轮 503 的口径）。库若没给 relative，这里补上，
+     否则面板会一路往上锚到 shadowRoot 的根盒。 */
+  try {
+    if (getComputedStyle(f).position === "static") f.style.setProperty("position", "relative", "important");
+  } catch (e) { /* 忽略 */ }
+  p.style.setProperty("position", "absolute", "important");
+  p.style.setProperty("left", "0", "important");
+  p.style.setProperty("right", "0", "important");
+  p.style.setProperty("top", "auto", "important");
+  p.style.setProperty("bottom", "0", "important");
+  p.style.setProperty("width", "100%", "important");
 };
 const emojiPad = (open) => {
   clearTimeout(emojiPadTimer);
@@ -775,13 +815,16 @@ const emojiPad = (open) => {
   };
   const foot = footOf();
   if (!foot) return;
-  if (!open || !sheetMode()) { stopPadRO(); foot.style.paddingBottom = ""; return; }
+  if (!open || !sheetMode()) { stopPadRO(); unpinPicker(); foot.style.paddingBottom = ""; return; }
   const put = () => {
     const s = n.shadowRoot;
     const f = s && (s.querySelector("#room-footer .vac-box-footer") || s.querySelector(".vac-box-footer") || s.querySelector("#room-footer"));
     const p = s && s.querySelector(".vac-emoji-picker");
     if (!f) return;
     if (!p || !sheetMode()) { f.style.paddingBottom = ""; return; }
+    /* 轮 512：先把几何钉死（整宽 + 贴 footer 底），再量高度补 padding。
+       顺序不能反 —— 宽度塌着量出来的高度虽然没错，但面板已经被画成一条了。 */
+    pinPicker(f, p);
     /* 轮 503：面板现在是 footer 里的绝对定位块（底边 = footer 底边 = 页面底边），
        所以「要留多高」就是面板自己有多高 —— 不用再拿 innerHeight 去补
        「面板底离屏底还差多少」。那一段差值正是旧的 fixed 锚点造成的
@@ -897,9 +940,14 @@ const observeEmoji = () => {
  * 1.2s 等不到键盘（外接键盘 / 焦点没落上）就兜底摘掉，退回旧行为。 */
 let kbSwapMO = null;
 let kbSwapTimer = 0;
+let kbSwapOnResize = null;
 const endKbSwap = () => {
   clearTimeout(kbSwapTimer);
   if (kbSwapMO) { kbSwapMO.disconnect(); kbSwapMO = null; }
+  if (kbSwapOnResize) {
+    try { window.removeEventListener("resize", kbSwapOnResize); } catch (e) { /* 忽略 */ }
+    kbSwapOnResize = null;
+  }
   const n = el.value;
   if (n) n.classList.remove("wp-kb-swap");
   const thread = n && n.closest(".dm-thread");
@@ -935,6 +983,15 @@ const holdForKeyboard = () => {
     if (v > 0 || Math.abs(k - holdKbb) >= 60) endKbSwap();
   });
   kbSwapMO.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
+  /* 轮 512 · resize 型（安卓/小米）没有 --kb-h / --kbb 可看：窗口自己缩，两个变量恒 0。
+   * 这类内核上「键盘真的起来了」只有一个信号 —— innerHeight 变小了。
+   * 不补这条，上面那个 MutationObserver 永远不触发，swap 只能等 600ms 兜底，
+   * 那段时间 footer 的 padding-bottom 还是面板高（键盘其实早起来了，底下空一条）。 */
+  const holdInner = typeof window !== "undefined" ? window.innerHeight : 0;
+  kbSwapOnResize = () => {
+    if (holdInner > 0 && holdInner - window.innerHeight >= 120) endKbSwap();
+  };
+  try { window.addEventListener("resize", kbSwapOnResize); } catch (e) { /* 忽略 */ }
   clearTimeout(kbSwapTimer);
   /* 轮 503：1200 → 600ms。iOS 的键盘动画约 250~300ms，等 1.2s 意味着
      用户只要在这段时间里截图/继续点，看到的就是「输入条悬在半空、下面一大片空白」。
@@ -1012,14 +1069,31 @@ const bindFooterTap = () => {
      * 就已经出栈，系统直接拒绝 → 面板收起、焦点没回去 = 用户说的「键盘折叠了」。
      * 当初加延时是想等面板从 DOM 摘掉，但消失的是 picker，textarea 一直没动过。 */
     const taNow = sr.querySelector("textarea.vac-textarea");
-    try { if (taNow) taNow.focus(); } catch (err) { /* 无焦点环境 */ }
+    try {
+      if (taNow) {
+        /* 轮 513：先 blur 再 focus。
+         * iOS 对一个**已经是 activeElement** 的输入框调 focus() 是空操作 —— 键盘不会起来。
+         * 而「面板收起」这条路上，textarea 可能仍然拿着焦点（组件自己切状态时不一定移交，
+         * 观察者的 blur 也可能晚一拍），于是 focus() 什么都没发生：面板收掉了、键盘没回来，
+         * 就是用户说的「切换键盘没效果」。blur() + focus() 在同一个手势栈里，等于重新申请
+         * 一次键盘，iOS 认这个。 */
+        if (sr.activeElement === taNow) {
+          try { taNow.blur(); } catch (e) { /* 忽略 */ }
+        }
+        taNow.focus();
+      }
+    } catch (err) { /* 无焦点环境 */ }
     /* 组件在同一个 click 里还会 toggle 一次，可能把焦点挪到按钮上。
-       这里只做「补焦点」，不再依赖它唤起键盘（键盘已由上面那次同步 focus 拉起）。 */
-    setTimeout(() => {
-      const ta2 = sr.querySelector("textarea.vac-textarea");
-      if (!ta2 || sr.activeElement === ta2) return;
-      try { ta2.focus(); } catch (err) { /* 无焦点环境 */ }
-    }, 0);
+       补焦点只在**有 hover 的设备**上做：手机上补的这一次已经出栈，iOS 只会把焦点
+       挪过去而不弹键盘，反而留下「有焦点、没键盘」的死状态；桌面点了按钮会丢焦点，
+       才需要这一下。 */
+    if (typeof window.matchMedia === "function" && window.matchMedia("(hover: hover)").matches) {
+      setTimeout(() => {
+        const ta2 = sr.querySelector("textarea.vac-textarea");
+        if (!ta2 || sr.activeElement === ta2) return;
+        try { ta2.focus(); } catch (err) { /* 无焦点环境 */ }
+      }, 0);
+    }
   }, true);
 };
 
@@ -1330,6 +1404,15 @@ watch(() => [curRoom.value, props.showBack], () => nextTick(() => { injectTheme(
 watch(() => props.hideHeader, () => nextTick(injectHead));
 /* 轮 353：失败原因随 sendErr 变化重画（清空时把注入的那行摘掉） */
 watch(() => props.err, () => nextTick(syncErr));
+
+/* 轮 513 · 可视区底部的闭环校正（单独一条钩子，避免扰动 onMounted 里的首帧时序）。
+ * 推的是 --kbb，页面高 / 吸底条 / 表情面板一起跟着走，见 utils/bottomPin.js。 */
+onMounted(() => startBottomPin(() => {
+  const n = el.value;
+  if (!n) return null;
+  return n.closest(".dm-page--chat") || n.closest(".dm-page") || n;
+}));
+onBeforeUnmount(() => stopBottomPin());
 
 onMounted(() => {
   bind();

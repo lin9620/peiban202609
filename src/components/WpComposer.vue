@@ -14,6 +14,7 @@ import { t } from "../i18n.js";
 import { isMobileNav, isApp } from "../stores/uiStore.js";
 import { webSwapNeeded, setPanelOpen } from "../utils/keyboardInset.js";
 import { syncViewportVars } from "../utils/viewportVars.js";
+import { startBottomPin, stopBottomPin } from "../utils/bottomPin.js";
 import { enterSends, insertText, pickerOpensUp } from "../utils/composer.js";
 import { hideEmojiSearch } from "../utils/emojiPanel.js";
 import { scheduleEmojiWarm } from "../utils/emojiWarm.js";
@@ -124,6 +125,38 @@ const toggleEmoji = () => {
  * 先铺一层骨架占位，别让面板是一片空白 —— 用户说的「点了很慢、卡顿」就是这段空白。 */
 const pickerReady = ref(false);
 let readyTimer = 0;
+/* 轮 513 · 面板占位改成**量出来的内联 padding**（与会话页 emojiPad 同一套）。
+ *
+ * 用户报「切换键盘跟发送按钮没效果」「按上面的空白处也能选表情」—— 这两条是同一个原因：
+ * 面板是 `position: fixed; bottom: var(--kbb); height: var(--kb-panel-h); z-index: 170`，
+ * 而条本身的 z-index 只有 150。只要「把条撑高的那条规则」没命中（html.kb-web 被漏掉、
+ * .wp-emoji-open 没挂上、App 壳走了另一条分支……），面板就会直接盖在输入行和发送键上：
+ * 点发送 → 打到面板；点条上方的空白 → 打到面板里的表情格。
+ * 所以不再靠选择器：面板一出现就量它多高，直接写进条的内联 padding-bottom（内联压过
+ * 普通规则，又不影响 .wp-kb-swap 那条 !important 的交接钉）。 */
+let padRO = null;
+let padTimer = 0;
+const clearPad = () => {
+  const bar = barOf();
+  if (bar) bar.style.paddingBottom = "";
+};
+/* 量的必须是**外层容器** .wp-composer-picker，不是 <emoji-picker> 本体。
+   两个数不一样：容器是定高（--kb-panel-h），而自定义元素自己只有内容高
+   （实测 265 vs 300）—— 拿本体那个数会让条少让 35px，输入行正好压进面板顶边。 */
+const padEl = () => {
+  const el = picker.value;
+  if (!el) return null;
+  try { return el.closest(".wp-composer-picker") || el.parentElement || el; }
+  catch (e) { return el; }
+};
+const syncPad = () => {
+  const bar = barOf();
+  const el = padEl();
+  if (!bar) return;
+  if (!emojiOpen.value || !isSheet() || !el) { clearPad(); return; }
+  const h = Math.round(el.getBoundingClientRect().height);
+  if (h > 0) bar.style.paddingBottom = h + "px";
+};
 function watchPickerReady() {
   clearTimeout(readyTimer);
   pickerReady.value = false;
@@ -144,8 +177,25 @@ watch(emojiOpen, async (open) => {
    * 以前只有「开」这一半，而且是 toggleEmoji 手写 --kb-h=0 绕过去的。
    * 桌面也照传 false：转桌面/拖宽之后 panelOpen 不许留在 true（否则 --kb-h 永远归零）。 */
   setPanelOpen(!!open && isSheet());
-  if (!open) { clearTimeout(readyTimer); pickerReady.value = false; return; }
+  if (!open) {
+    clearTimeout(readyTimer);
+    clearTimeout(padTimer);
+    if (padRO) { try { padRO.disconnect(); } catch (e) { /* 忽略 */ } padRO = null; }
+    clearPad();
+    pickerReady.value = false;
+    return;
+  }
   await nextTick();
+  /* 面板刚插进 DOM 时高度可能还没有（emoji-picker 是自定义元素，要等它升级），
+     所以立刻量一次 + 260ms 再量一次 + 用 ResizeObserver 盯住它的实际高度。
+     量出来的值就是条要让出的高度 —— 与面板严丝合缝，不会盖住输入行。 */
+  syncPad();
+  padTimer = setTimeout(syncPad, 260);
+  if (typeof ResizeObserver === "function" && padEl()) {
+    if (padRO) { try { padRO.disconnect(); } catch (e) { /* 忽略 */ } }
+    padRO = new ResizeObserver(() => syncPad());
+    try { padRO.observe(padEl()); } catch (e) { /* 忽略 */ }
+  }
   hideEmojiSearch(picker.value);
   watchPickerReady();
   /* emoji-picker 的 shadow 可能晚一帧才挂好，再补一次（幂等） */
@@ -201,9 +251,14 @@ const onEmoji = async (e) => {
  * —— 面板高与键盘高同为 320，摘掉时几乎不动。1.2s 等不到键盘就兜底摘掉。 */
 let kbSwapMO = null;
 let kbSwapTimer = 0;
+let kbSwapOnResize = null;
 const endKbSwap = () => {
   clearTimeout(kbSwapTimer);
   if (kbSwapMO) { kbSwapMO.disconnect(); kbSwapMO = null; }
+  if (kbSwapOnResize) {
+    try { window.removeEventListener("resize", kbSwapOnResize); } catch (e) { /* 忽略 */ }
+    kbSwapOnResize = null;
+  }
   const bar = barOf();
   if (bar) bar.classList.remove("wp-kb-swap");
 };
@@ -237,6 +292,15 @@ const holdForKeyboard = () => {
     if (v > 0 || Math.abs(k - holdKbb) >= 60) endKbSwap();
   });
   kbSwapMO.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
+  /* 轮 512 · resize 型（安卓/小米）没有 --kb-h / --kbb 可看：窗口自己缩，两个变量恒 0。
+   * 这类内核上「键盘真的起来了」只有一个信号 —— innerHeight 变小了。
+   * 不补这条，上面那个 MutationObserver 永远不触发，swap 只能等 1200ms 兜底，
+   * 那 1.2 秒里输入条一直悬在面板高度上（键盘早起来了，底下空一条）。 */
+  const holdInner = typeof window !== "undefined" ? window.innerHeight : 0;
+  kbSwapOnResize = () => {
+    if (holdInner > 0 && holdInner - window.innerHeight >= 120) endKbSwap();
+  };
+  try { window.addEventListener("resize", kbSwapOnResize); } catch (e) { /* 忽略 */ }
   clearTimeout(kbSwapTimer);
   kbSwapTimer = setTimeout(endKbSwap, 1200);
 };
@@ -263,13 +327,20 @@ onMounted(() => {
   document.addEventListener("pointerdown", onDocDown, true);
   document.addEventListener("click", onDocClick);
   grow();
+  /* 轮 513：评论条 bottom 吃的是 --kbb，这里用实测把它钉在可视区底边上 ——
+     iOS 玻璃栏/内置浏览器把数字报错时也不会悬空或沉到屏幕外（见 utils/bottomPin.js）。 */
+  startBottomPin(() => barOf());
   /* 轮 478：输入组件一出现就在空闲时把表情数据备好（幂等，全站只跑一次）——
      首次点开表情要等 500~800ms 就是这段数据现拉现写造成的。 */
   scheduleEmojiWarm();
 });
 onBeforeUnmount(() => {
   endKbSwap();
+  stopBottomPin();
   clearTimeout(readyTimer);
+  clearTimeout(padTimer);
+  if (padRO) { try { padRO.disconnect(); } catch (e) { /* 忽略 */ } padRO = null; }
+  clearPad();
   document.removeEventListener("pointerdown", onDocDown, true);
   document.removeEventListener("click", onDocClick);
 });
