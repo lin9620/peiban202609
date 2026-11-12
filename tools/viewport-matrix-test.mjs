@@ -177,6 +177,19 @@ for (const m of MODELS) {
     const tag = `${m.id}@${d.id}`;
     const detail = (r) => `inner=${r.vph}/${r.bars}bars kb=${r.kb} kbb=${r.kbb} src=${r.src}`;
 
+    /* 轮 512 · 内核类型判定（决定页面盒子该用哪套高度式子，见 style.css）
+     *
+     * 用户原话：「安卓本来好好的，你改苹果之后全是问题」。根因是轮 511 把为 iOS
+     * 推导的「页面高 = --vlh − --kbb」无条件套给了所有网页端；安卓是 resize 型，
+     * innerHeight 随键盘/地址栏实时变，页面高度跟着抖 → 缩放感、切换一闪。
+     * 现在 CSS 按 html.kb-overlay 分流，这里锁死「判定本身」：
+     *   键盘弹起而 inner 没缩 = overlay（iOS）；inner 被缩 ≥120 = resize（安卓/小米）。
+     * 任何模型判错，都意味着安卓会被套上 iOS 的式子 —— 所以这条必须红。 */
+    t(`${tag} · V0 内核类型：键盘态 overlay 判定 = ${!!m.ov ? "overlay" : "resize"}`, () => {
+      assert.equal(open.overlay, !!m.ov,
+        `判成了 ${open.overlay ? "overlay" : "resize"}，应为 ${m.ov ? "overlay" : "resize"}（${detail(open)}）`);
+    });
+
     t(`${tag} · V1 无键盘时 kb=0（UI 遮挡不许当键盘）`, () => {
       assert.equal(closed.kb, 0, `把浏览器 UI 当成键盘了：kb=${closed.kb}（${detail(closed)}）`);
     });

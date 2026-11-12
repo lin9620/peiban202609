@@ -91,6 +91,13 @@ writeFileSync(expr, `(async () => {
   __kbSim(H - 81, 0);
   await sleep(500);
   snap("toolbar-only");
+  /* 轮 513 · 自愈验证：把 --kbb 故意写成 0（= 内核把工具栏高度漏报成 0，iOS 26 玻璃栏
+     和 X 内置浏览器都会这样）。闭环校正（utils/bottomPin.js）必须在这之后把条拉回
+     可视区底 —— 这正是「面板沉到屏幕外 / 只露两排」那类问题的总开关。
+     下面那条通用断言（每一步 bar.bottom 都必须 ≈ visBottom）就是它的判据。 */
+  document.documentElement.style.setProperty("--kbb", "0px");
+  await sleep(900);
+  snap("kbb-broken");
   __kbSim(H, 0);
   await sleep(300);
 

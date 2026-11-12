@@ -259,6 +259,26 @@ t("P7 轮401 评论输入：表情键二次点击 = 键盘键（换图标 + 回�
   has(I18N, /keyboard:\s*"键盘"/, "中文 comment.keyboard 丢了");
 });
 
+/* 轮 513 · 面板占位必须是**量出来的内联 padding**，不能只靠 CSS 规则。
+ * 用户报「切换键盘跟发送按钮没效果」「按上面的空白处也能选表情」—— 同一个原因：
+ * 面板是 fixed + z-index 170，条只有 150；只要撑高条的那条规则没命中（kb-web 漏了、
+ * .wp-emoji-open 没挂上、App 壳走别的分支），面板就整个盖在输入行和发送键上。
+ * 内联 padding 不看任何选择器，量多少让多少，盖不住。 */
+t("P8 轮513 面板占位走实测内联 padding（不靠 CSS 规则，别再盖住发送键）", () => {
+  has(WPC, /const syncPad = \(\) => \{[\s\S]{0,400}getBoundingClientRect\(\)\.height[\s\S]{0,120}paddingBottom = h \+ "px"/,
+    "没有按实测高度写内联让位（面板会盖住输入行/发送键）");
+  has(WPC, /if \(!emojiOpen\.value \|\| !isSheet\(\) \|\| !el\) \{ clearPad\(\); return; \}/,
+    "面板收起/桌面形态没清内联让位（条会一直悬着一条空白）");
+  has(WPC, /padRO = new ResizeObserver\(\(\) => syncPad\(\)\)/, "没盯面板自身高度（数据晚到时让位会少一截）");
+  has(WPC, /clearTimeout\(padTimer\)/, "卸载没清补量定时器");
+  /* 轮 513 · 量的必须是外层容器 `.wp-composer-picker`（定高 = --kb-panel-h），
+     不是 <emoji-picker> 本体（内容高，实测 265 vs 容器 300 —— 差 35px 会让输入行
+     压进面板顶边）。工装实测抓到的：改前 pad=265、面板 300。 */
+  has(WPC, /closest\("\.wp-composer-picker"\)/,
+    "让位量的是自定义元素本体而不是外层容器（差一条面板内边距，输入行会压进面板）");
+  has(WPC, /padRO\.observe\(padEl\(\)\)/, "ResizeObserver 没盯外层容器（容器变高时让位不跟）");
+});
+
 console.log(out.join("\n"));
 console.log(`\n${pass} 通过 / ${fail} 失败`);
 process.exit(fail ? 1 : 0);

@@ -119,9 +119,13 @@ t("style.css：.kb-web 三处让位与 .cap-app 一一对应（改一份就要�
   /* 轮 511：聊天页高度改成「布局视口高 − 让位量」，不再直接吃 --kb-h。
      --kb-h 是「页面要不要缩」（iOS 恒 0、小米是键盘高），而 iOS 真正要减掉的是
      工具栏那 81px —— 那是 --kbb 的口径。两个量互补，所以式子两头都得在：
-     布局视口高用 --vlh（innerHeight，键盘弹起也不变），让位量用 --kbb。 */
-  assert(/html\.kb-web \.shell--mobile-nav\.shell--chat \.dm-page\s*\{[^}]*height:\s*calc\(var\(--vlh, \S+\) - var\(--kbb/.test(css),
-    "聊天页高度没接「布局视口高 − 让位量」（--vlh / --kbb）");
+     布局视口高用 --vlh（innerHeight，键盘弹起也不变），让位量用 --kbb。
+     轮 512：这套只许挂在 .kb-overlay（iOS 那种「键盘不缩布局视口」的内核）上；
+     安卓 / 小米是 resize 型，必须留在 `100dvh − --kb-h`（用户：安卓本来好好的）。 */
+  assert(/html\.kb-web\.kb-overlay \.shell--mobile-nav\.shell--chat \.dm-page[\s\S]{0,200}?height:\s*calc\(var\(--vlh, \S+\) - var\(--kbb/.test(css),
+    "overlay 型聊天页高度没接「布局视口高 − 让位量」（--vlh / --kbb）");
+  assert(/html\.kb-web \.shell--mobile-nav\.shell--chat \.dm-page\s*\{[^}]*height:\s*calc\(100dvh - var\(--kb-h/.test(css),
+    "resize 型（安卓/小米）聊天页没回到 100dvh − --kb-h");
   assert(/html\.cap-app \.shell--mobile-nav\.shell--chat \.dm-page[\s\S]{0,400}?var\(--kb-h/.test(css),
     "App 壳那条让位没接 --kb-h（原生壳的键盘高只从这条来）");
   /* 轮 464：这条规则是 100dvh 单写 —— 内核不认 dvh 时整条失效，而它又压掉了上面
@@ -129,7 +133,7 @@ t("style.css：.kb-web 三处让位与 .cap-app 一一对应（改一份就要�
    * 必须补一行 100vh 的同一算式当垫底。
    * 轮 511：改成 var(--vlh, 100vh) 之后，100vh 就是 var() 的兜底值 —— 等价垫底，
    * 两种写法都认。 */
-  assert(/html\.kb-web \.shell--mobile-nav\.shell--chat \.dm-page\s*\{[^}]*height:\s*calc\((var\(--vlh, 100vh\)|100vh) - var\(--(kbb|kb-h)/.test(css),
+  assert(/html\.kb-web(\.kb-overlay)? \.shell--mobile-nav\.shell--chat \.dm-page\s*\{[^}]*height:\s*calc\((var\(--vlh, 100vh\)|100vh) - var\(--(kbb|kb-h)/.test(css),
     "聊天页高度缺 100vh 垫底（旧内核不认 dvh → 整条失效 → 按内容撑高）");
   /* 轮 504：网页端的评论底条**不再**用 bottom: var(--kb-h) 这条间接推导。
    * 真机（iPhone Safari）上它会把条顶到页面顶部 —— --kb-h 链上任一道闸门失效就会拿到
@@ -338,6 +342,19 @@ t("style.css：wp-chat-fix 锁滚动，且底部不再垫底", () => {
     "wp-chat-fix 又把 .dm-page 的底部垫底加回来了（真机实测就是这条留白）");
   assert(/html\.wp-chat-fix \.shell--mobile-nav\.shell--chat \.dm-thread[\s\S]{0,90}padding-bottom:\s*0/.test(css),
     "thread 的 10px 底部保底没在网页端归零");
+});
+
+/* 轮 513 · 网页端聊天页盒子**不许有 height 过渡**。
+ * 页面盒子的高度等于可视区高度本身 —— 中间插一段 .22s 过渡等于让盒子永远慢半拍：
+ * 键盘/工具栏动画那 250ms 里盒子比可视区高或矮几十 px，用户看到的就是「一缩一放」；
+ * iOS 的 visualViewport 还是分步上报的，曲线追不上就留一条白带。
+ * App 壳那条（html.cap-app）保留过渡：那边 --kb-h 由原生插件给，和系统动画同步。 */
+t("style.css：网页端聊天页高度不做过渡（盒子必须逐帧等于可视区）", () => {
+  const css = readCss("src/style.css");
+  assert(/html\.kb-web[^{]*\.dm-page\s*\{[^}]*transition:\s*none/.test(css),
+    "网页端 .dm-page 还有 height 过渡（键盘动画期间盒子会跟不上可视区）");
+  assert(!/html\.kb-web[^{]*\.dm-page\s*\{[^}]*transition:\s*height/.test(css),
+    "网页端 .dm-page 又挂上了 height 过渡");
 });
 
 console.log(`\nkeyboard-policy-test (${ROOT}) :: ${ok.length}/${ok.length + bad.length}`);

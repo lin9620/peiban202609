@@ -68,7 +68,18 @@ t("L5 表情面板打开时底栏让位仍然归零（轮 347 那条不能被顶
 
 t("L7 轮 350 面板→键盘交接：让位钉住 + 过渡同曲线（否则输入框先掉屏底再被顶回来）", () => {
   has(BC, /:host\(\.wp-kb-swap\) \.vac-box-footer \{\s*\n\s*padding-bottom: var\(--wp-emoji-h\) !important;\s*\n\s*transition: none !important;/, "没有 .wp-kb-swap 的钉住规则（输入框会先掉屏底）");
-  has(BC, /\.vac-box-footer \{ transition: padding-bottom \.22s cubic-bezier\(\.2, \.8, \.2, 1\); \}/, "footer 过渡不是常驻/曲线与 .dm-page 不一致（交接时会抖）");
+  /* 轮 512 · 这条原来要求「footer 上常驻 padding-bottom 的 .22s 过渡」，
+   * 工装实测把它推翻了（安卓模型 393×852 / 键盘 300）：
+   *   to-panel+20   picker 已铺到 552..852，条还在 767..852、pad 仅 41
+   *   to-panel+120  pad 才到 300，条落定 508
+   * 面板是**瞬现**的（组件直接插节点，没有过渡），让位却慢 .22s ——
+   * 中间 200ms 输入条被面板盖住，然后从屏底爬上来，这就是用户说的「有一闪的东西」。
+   * 所以口径反过来：不许有常驻过渡，撑起必须同帧到位；
+   * 「面板 → 键盘」那半段由 :host(.wp-kb-swap) 的 transition: none 负责。 */
+  assert.doesNotMatch(BC, /\.vac-box-footer \{ transition: padding-bottom/,
+    "footer 又挂回常驻的 padding 过渡（开面板时输入条会被面板盖住再爬上来）");
+  has(BC, /:host\(\.wp-kb-swap\) \.vac-box-footer \{[\s\S]{0,120}?transition: none !important;/,
+    ".wp-kb-swap 没把过渡关掉（钉住那一刻会被 .22s 拖成滑动）");
   has(BC, /const holdForKeyboard = \(\) => \{/, "没有 holdForKeyboard");
   has(BC, /holdForKeyboard\(\); {10,}\/\* 让位先钉住/, "closeKeepFocus 里没调 holdForKeyboard（或没在收面板之前调）");
   /* 轮 506：摘钉的判据从「--kb-h > 0」扩成「--kb-h > 0 或 --kbb > 0」——
@@ -100,23 +111,40 @@ t("L6 桌面不受影响：这两条只动 App/手机壳（≥900 的布局规�
   no(BC, /\.vac-room-header[^{]*\{[^}]*dashed/, "又出现一条带虚线的头部规则");
 });
 
-/* 轮 511 · 私信页页面盒子必须用「布局视口高(--vlh) − 让位量(--kbb)」，不能用裸 100vh / 100dvh。
+/* 轮 511 · 私信页页面盒子在 iOS 上必须用「布局视口高(--vlh) − 让位量(--kbb)」。
  *
  * iOS Safari 的底部工具栏是**浮层**：既不缩布局视口，也不改 100dvh。所以
  * `height: calc(100dvh - var(--kb-h))` 算出来是整屏 852，而可视区只有 771 ——
- * 页面盒子底边沉到工具栏下面 81px，底栏和表情面板跟着一起沉：
- * 用户发来的两张图（面板最后一排被工具栏压住、输入条下方一大片空白）就是这个。
+ * 页面盒子底边沉到工具栏下面 81px，底栏和表情面板跟着一起沉。
  * 正确式子 = 布局视口高(--vlh) − 让位量(--kbb)：
  *   无键盘 852 − 81(工具栏) = 771 ✓；键盘上推 852 − 0 = 852（iOS 已把可视区上推）✓
  * 不能用 --vph：那是「含键盘」的可视高（键盘态 522），页面缩到 522 再叠上 iOS 的
- * 上推，输入条会悬在键盘上方一条工具栏。 */
-t("L8 私信页页面盒子 = 布局视口高 − 让位量（裸 100dvh 不扣 Safari 浮动工具栏）", () => {
-  assert.match(CSS, /html\.kb-web \.dm-page--chat \{[^}]*height: calc\(var\(--vlh, \S+\) - var\(--kbb/,
-    "网页端 .dm-page--chat 的高度不是「布局视口高 − 让位量」");
-  assert.doesNotMatch(CSS, /html\.kb-web \.dm-page--chat \{[^}]*height: calc\(100dvh/,
-    "网页端 .dm-page--chat 还在用裸 100dvh（页面会比可视区高一条工具栏）");
-  assert.match(CSS, /html\.kb-web \.shell--mobile-nav\.shell--chat \.dm-page \{[\s\S]{0,900}?height: calc\(var\(--vlh, \S+\) - var\(--kbb/,
-    "外壳那条 .shell--chat .dm-page 也不是「布局视口高 − 让位量」");
+ * 上推，输入条会悬在键盘上方一条工具栏。
+ *
+ * 轮 512 · **这套式子只许挂在 overlay 型内核上**（html.kb-overlay）。
+ * 用户原话：「安卓本来好好的，你改苹果之后全是问题」。安卓/小米是 resize 型：
+ * 键盘一弹窗口自己就缩，innerHeight 随地址栏实时变，套上 --vlh 会让页面高度
+ * 一帧一帧改（还带 .22s 过渡）→ 退出会话的缩放感、切表情的一闪。
+ * 所以这条断言改成三段，任何一段不满足都红：
+ *   ① 默认（resize 型）必须是 `100dvh − --kb-h` —— 轮 511 之前那套，原样；
+ *   ② 默认这条里**不许出现 --vlh**（防止有人图省事又合并回去）；
+ *   ③ overlay 型才允许 `--vlh − --kbb`。 */
+t("L8 页面盒子按内核分流：安卓 resize 型保持 100dvh−kb-h，iOS overlay 型才用 --vlh−--kbb", () => {
+  /* ① resize 型：原式子 */
+  assert.match(CSS, /html\.kb-web \.dm-page--chat[^{]*\{[^}]*height: calc\(100dvh - var\(--kb-h/,
+    "默认（resize 型）.dm-page--chat 没回到 100dvh − --kb-h");
+  assert.match(CSS, /html\.kb-web \.shell--mobile-nav\.shell--chat \.dm-page \{[^}]*height: calc\(100dvh - var\(--kb-h/,
+    "默认（resize 型）外壳 .shell--chat .dm-page 没回到 100dvh − --kb-h");
+  /* ② 默认那条里不许混进 --vlh：CSS 里 --vlh 只应出现在 .kb-overlay 选择器下 */
+  const vlhRules = CSS.match(/[^{}]*\{[^}]*var\(--vlh/g) || [];
+  assert.ok(vlhRules.length > 0, "一条 --vlh 规则都没有（iOS 那边会退回裸 100dvh）");
+  const bad = vlhRules.filter((r) => !/kb-overlay/.test(r));
+  assert.equal(bad.length, 0, "有规则用了 --vlh 却没限定 .kb-overlay（安卓会被一起套上）");
+  /* ③ overlay 型 */
+  assert.match(CSS, /html\.kb-web\.kb-overlay \.dm-page--chat[^{]*\{[^}]*height: calc\(var\(--vlh, \S+\) - var\(--kbb/,
+    "overlay 型 .dm-page--chat 没接「--vlh − --kbb」");
+  assert.match(CSS, /html\.kb-web\.kb-overlay \.shell--mobile-nav\.shell--chat \.dm-page[^{]*\{[^}]*height: calc\(var\(--vlh, \S+\) - var\(--kbb/,
+    "overlay 型外壳那条没接「--vlh − --kbb」");
 });
 
 console.log(`chat-look-test: ${pass} pass, ${fails.length} fail`);

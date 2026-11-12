@@ -147,13 +147,19 @@ t("E10 轮400 表情键二次点击 = 键盘键（换图标 + 回焦点 + 让位
      先 holdForKeyboard，收完再把焦点还给 textarea。 */
   const at = BC.indexOf('footer.addEventListener("click", (e) => {\n    const picker = sr.querySelector(".vac-emoji-picker");');
   assert.ok(at > 0, "找不到表情键的二次点击监听");
-  const b = BC.slice(at, at + 1200);   /* 轮 510：这段要覆盖到同步 focus（注释也占字符） */
+  const b = BC.slice(at, at + 2400);   /* 轮 510：这段要覆盖到同步 focus（注释也占字符） */
   has(b, /if \(!path\.includes\(btn\)\) return;/, "没限定只接表情/键盘键");
   has(b, /holdForKeyboard\(\);/, "收面板前没钉住让位");
   /* 轮 510：焦点必须**同步**还回去 —— iOS 只在用户手势的同步栈里认 focus()，
      以前这里写的是 setTimeout(…, 0)，键盘根本不会弹，用户看到的就是「折叠」。 */
-  has(b, /try \{ if \(taNow\) taNow\.focus\(\); \} catch/, "收面板后没同步把焦点还给输入框");
-  has(b, /try \{ if \(taNow\) taNow\.focus\(\); \}/, "focus 没走同步路径");
+  has(b, /taNow\.focus\(\);/, "收面板后没同步把焦点还给输入框");
+  has(b, /try \{[\s\S]{0,200}taNow\.focus\(\);[\s\S]{0,40}\} catch/, "focus 没包在 try 里（无焦点环境会抛）");
+  /* 轮 513：iOS 对「已经是 activeElement」的输入框调 focus() 是**空操作**，键盘不会起来。
+     面板收起时 textarea 可能还拿着焦点 → 必须先 blur 再 focus（用户报的「切换键盘没效果」）。 */
+  has(b, /activeElement === taNow[\s\S]{0,120}taNow\.blur\(\)/, "已是激活态时没先 blur（iOS 上 focus 会变成空操作）");
+  /* 轮 513：补焦点那一次 setTimeout 只能给有 hover 的设备（桌面）。手机上它已经出栈，
+     iOS 只会把焦点挪过去而不弹键盘 —— 留下「有焦点、没键盘」的死状态。 */
+  has(b, /matchMedia\("\(hover: hover\)"\)[\s\S]{0,400}setTimeout/, "手机上也补焦点了（会留下有焦点没键盘的死状态）");
 });
 
 /* ═══ 轮 478 · 「点表情等半天」的修法护栏 ═══
@@ -220,9 +226,17 @@ t("E15 会话页让位不赌选择器：量出来的内联 padding（:has 不支
      再补进去就会把输入条整体抬高一条（iOS 底部工具栏那 ~44px） */
   has(BC, /getBoundingClientRect\(\)\.height\);\s*\n\s*if \(h > 0\) f\.style\.paddingBottom/, "让位高度不是取面板自身高度");
   has(BC, /const footOf = \(\)[\s\S]{0,220}vac-box-footer/, "让位没落在 .vac-box-footer（面板的定位宿主）上");
-  /* 收起时必须清掉内联值，否则关掉面板后输入条永远悬在半空 */
-  has(BC, /if \(!open \|\| !sheetMode\(\)\) \{ stopPadRO\(\); foot\.style\.paddingBottom = ""; return; \}/,
+  /* 收起时必须清掉内联值，否则关掉面板后输入条永远悬在半空。
+   * 轮 512：同时要撤销 wrapper 的 position 内联（pinPicker 钉的那一下）。 */
+  has(BC, /if \(!open \|\| !sheetMode\(\)\) \{ stopPadRO\(\); unpinPicker\(\); foot\.style\.paddingBottom = ""; return; \}/,
     "收起面板没清内联让位（输入条会一直悬空）");
+  /* 轮 512 · 面板几何也要内联钉（用户截图：面板只剩按钮宽、贴右竖一条）。
+   * 病根是库给 .vac-emoji-wrapper 的 position:relative —— 面板 width:100% 变成按钮宽。
+   * THEME_CSS 的 :has() / :host() 两条命在国产内核上会同时漏，只能内联压。 */
+  has(BC, /const pinPicker = \(f, p\) => \{[\s\S]{0,400}closest\("\.vac-emoji-wrapper"\)[\s\S]{0,200}position", "static", "important"/,
+    "没有内联把 .vac-emoji-wrapper 改成 static（面板会缩成按钮宽）");
+  has(BC, /p\.style\.setProperty\("width", "100%", "important"\)/, "面板宽度没内联钉死");
+  has(BC, /pinPicker\(f, p\);/, "量让位前没先钉几何（面板先被画成一条）");
   /* 桌面浮窗不能套这条（否则桌面 footer 也被顶起来 300） */
   has(BC, /const sheetMode = \(\) =>[\s\S]{0,200}matchMedia\("\(max-width: 899px\)"\)/, "没有 sheet 判据");
   /* 面板高度会随 --kb-last / 视口变化，必须跟着重量 */
@@ -323,6 +337,42 @@ t("E20 --kb-last 只增不减：同一台机的面板高度不许随地址栏伸
 t("E21 会话页摘钉按 --kbb 相对基线变化（不是只认变大）", () => {
   has(BC, /if \(v > 0 \|\| Math\.abs\(k - holdKbb\) >= 60\) endKbSwap\(\);/, "还是会话页只认「变大」→ iOS 上推态钉到 1200ms 兜底");
   no(BC, /k >= holdKbb \+ 80/, "还留着旧的「只认变大」判据");
+});
+
+/* 轮 513 · 影子样式里的**注释必须配平**。
+ * 事故（我自己踩的）：删一条 transition 时把注释的收尾符留在了后面，于是
+ * 「轮 512：…」那几行变成了裸 CSS 文本，浏览器按错误恢复规则把**下一条规则整块吃掉**
+ * —— 被吃掉的正好是把 .vac-emoji-wrapper 改成 static 的那条，
+ * 面板就又锚回按钮那个小盒子（用户截图：面板贴着右边竖成一条）。
+ * 这种错编译不报、测试全绿、只有在真机上看得见，所以静态拦一道。 */
+t("E22 影子样式的注释必须配平（裸文本会吃掉下一条规则）", () => {
+  const m = BC.match(/const THEME_CSS = `([\s\S]*?)`;/);
+  assert.ok(m, "找不到 THEME_CSS 模板");
+  const css = m[1];
+  let open = false;
+  let stray = 0;
+  for (let i = 0; i < css.length - 1; i++) {
+    if (!open && css[i] === "/" && css[i + 1] === "*") { open = true; i++; continue; }
+    if (open && css[i] === "*" && css[i + 1] === "/") { open = false; i++; continue; }
+    if (!open && css[i] === "*" && css[i + 1] === "/") { stray++; i++; }
+  }
+  assert.equal(open, false, "THEME_CSS 里有没闭合的 /*");
+  assert.equal(stray, 0, `THEME_CSS 里有 ${stray} 处野 */（会把下一条规则吃掉）`);
+  /* 被吃掉过的那条必须真的还在，且带 !important */
+  assert.match(css, /\.vac-emoji-wrapper:has\(\.vac-emoji-picker\)[\s\S]{0,120}position: static !important;/,
+    "把 wrapper 改成 static 的规则不在了（面板会缩成按钮宽）");
+});
+
+/* 轮 513 · 位置不再只靠「推导」，--kbb 要把实测补正量一起写进去。
+ * 三个消费者（页面高 / 吸底条 / 面板 bottom）都吃 --kbb，补正量必须落在同一处。 */
+t("E23 --kbb 写入时叠加实测补正量，且两个页面都接了闭环校正", () => {
+  const VV = fs.readFileSync("src/utils/viewportVars.js", "utf8");
+  has(VV, /setVar\(KBB, \(r\.kbb \+ kbbFix\) \+ "px"\)/, "--kbb 没叠加 kbbFix（补正量白算）");
+  has(VV, /kbbFix, kbbUsed:/, "诊断里看不到 kbbFix");
+  has(VV, /export function nudgeKbbFix/, "没有 nudgeKbbFix 出口");
+  has(BC, /startBottomPin\(\(\) => \{[\s\S]{0,200}dm-page--chat/, "会话页没接 startBottomPin");
+  has(BC, /onBeforeUnmount\(\(\) => stopBottomPin\(\)\)/, "会话页卸载没停闭环（会带误差到下一页）");
+  has(WC, /startBottomPin\(\(\) => barOf\(\)\)/, "暖心墙评论条没接 startBottomPin");
 });
 
 console.log(`emoji-panel-test: ${pass} pass, ${fails.length} fail`);
