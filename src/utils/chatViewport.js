@@ -46,6 +46,19 @@ function findChatPage() {
    * 两套混用会把输入条顶穿（轮 322 踩过）。 */
   if (isNativeShell()) return null;
   if (!MOBILE || !MOBILE.matches) return null;
+  /* 轮 522 · 退场期一律不接管。
+   *
+   * 病根（无头 Edge 逐帧抓到的，393×852，真 style.css + 真 chatViewport）：
+   * 退出时 `dm-page--chat` 这个类要等淡出播完才摘（聊天体得活着才能淡），于是
+   * releaseChatViewport() 之后的那一次巡检 / resize 又把它认成「还在聊天页」——
+   * 当场重新写回 position:fixed + 393 宽 + 锁文档。逐帧看得很清楚：
+   *   t3002 已交还（list 18/357）→ t3050 又被接管（list 0/393）→ t3184 再次交还。
+   * 也就是说用户在淡出的那 180ms 里看到列表先宽、再窄、再宽，最后才是收尾那次缩。
+   * 这正是「退出会话有一个缩放」一直没治好的原因 —— 轮 517/519 只做了「退的那一下
+   * 交还」，没人保证「交还之后不再抢回去」。
+   *
+   * 标记由 MessagesView.beginThreadOut 挂、finishThreadOut 摘，与 threadOut 同一帧。 */
+  if (document.documentElement.classList.contains("dm-exiting")) return null;
   const page = document.querySelector(".dm-page");
   if (!page) return null;
   if (page.classList.contains("dm-page--chat")) return page;
@@ -74,6 +87,25 @@ function viewportHeight() {
     );
     return Number.isFinite(v) && v > 0 ? v : 0;
   } catch (e) { return 0; }
+}
+
+/* 轮 521 · 键盘弹起时盒子有多高（--kb-pageh，由 viewportVars 在键盘锁高后写）。
+ * 读不到（还没弹过键盘 / App 壳）返回 0，调用方退回原行为。 */
+function kbPageHeight() {
+  try {
+    const v = parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue("--kb-pageh")
+    );
+    return Number.isFinite(v) && v > 0 ? v : 0;
+  } catch (e) { return 0; }
+}
+
+/* 表情面板是不是开着（宿主 DmVacChat 挂在 html 上）。
+ * 不用查 DOM：面板在 shadow tree 里，querySelector 根本找不到。 */
+function emojiSheetOpen() {
+  try {
+    return document.documentElement.classList.contains("wp-emoji-open");
+  } catch (e) { return false; }
 }
 
 function lockDoc() {
@@ -134,7 +166,25 @@ function sync() {
    * 否则 fixed 的页面比能看见的那块高 —— iOS 一推，整页跑到屏幕上方：输入条贴在
    * 地址栏底下、下面一大片空白、消息一条不见（用户四张截图里的第 4 张）。 */
   const rect = pickChatRect(window.innerHeight, vvH, vvTop, kbRaw, viewportHeight());
-  const h = rect.h;
+  let h = rect.h;
+  /* 轮 521 · 表情面板开着时，盒子高度**沿用键盘态的盒子高**，不跟着当前视口走。
+   *
+   * 用户第六次报（原话）：「别的软件都是键盘跟表情固定一个高度」「以键盘高度为准是
+   * 做不到吗」。真机逐帧量到的差就是 55px，而且不是算错：
+   *   · 键盘态 inner 744（浏览器工具栏展开）、键盘 260 → 盒子 484
+   *   · 面板态 inner 799（键盘收起时工具栏也收了）→ 盒子 799 − 260 = 539
+   * 输入条贴盒子底，于是每切一次摆 55px。
+   *
+   * 钉成同一个盒子高之后：键盘态 484、面板态也 484，条一动不动；面板从 484 铺到
+   * 视口底（799 − 484 = 315），多吃掉的那 55px 正是工具栏腾出来的那块，
+   * 视觉上跟「键盘换成面板」完全等价 —— B站/微信那种手感。
+   *
+   * 只在面板真的开着时钉：平时盒子必须跟着视口（工具栏伸缩、滚动都靠它）。
+   * 键盘态下 rect.h 本来就等于 --kb-pageh，取 min 不产生任何变化。 */
+  if (emojiSheetOpen()) {
+    const kp = kbPageHeight();
+    if (kp > 0 && kp < h) h = kp;
+  }
   const kbOpen = rect.kbOpen;
   const left = Math.round(vv ? vv.offsetLeft : 0);
   const w = Math.round(document.documentElement.clientWidth || window.innerWidth);
@@ -194,6 +244,20 @@ function sync() {
    * 那边键盘高度是「预先告知的最终值」）。网页端 visualViewport 是实时的，留着过渡
    * 会让输入条在键盘动画整段期间都落后半拍 —— 手感上就是「键盘上来了，条还在下面」。 */
   el.style.transition = "none";
+
+  /* 轮 520 · 把「页面此刻实际有多高」也导出去，给表情面板的让位当参照系。
+   *
+   * 为什么必须共用这一个数：会话页的整屏高度是**这里写的内联像素**，快捷键收起时
+   * 它只能靠 resize 事件 + 250ms 巡检更新，跟不上键盘动画 —— 真机逐帧
+   * （_scratch/real/v520-vac.json）拍到 inner 已经 799 了，这个盒子还停在 484
+   * 整整 258ms（正好一个巡检周期）。而 footer 的让位吃的是逐帧算的 --kb-now，
+   * 两者一错位，输入条就被算到屏幕上半部再弹回来（日志里那条 ±315px）。
+   * 让位改吃 --chat-h 之后：盒子没动，让位也不动 —— 无论它什么时候更新，
+   * 条都停在同一个位置（见 DmVacChat 的 THEME_CSS）。 */
+  const de = document.documentElement;
+  if (de && de.style.getPropertyValue("--chat-h") !== h + "px") {
+    de.style.setProperty("--chat-h", h + "px");
+  }
 
   if (stick && sc) sc.scrollTop = sc.scrollHeight;
 }

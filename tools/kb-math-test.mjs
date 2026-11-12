@@ -192,8 +192,17 @@ t("T19 接线：面板高度必须走独立来源，不能拿 --kb-h 顶替", ()
   assert.match(ki, /writeVar\(h, \{[\s\S]{0,400}?\}, panelH\)/, "writeVar 没收到键盘本体高度");
   assert.match(ki, /--kb-last/, "没有写 --kb-last");
   assert.match(ki, /export function webSwapNeeded/, "没有导出 webSwapNeeded（面板→键盘交接要用）");
-  const wc = read("src/components/WpComposer.vue");
-  assert.match(wc, /if \(!isApp && !webSwapNeeded\(\)\) return;/, "WpComposer 的钉住仍然只认 App 壳");
+  /* 注释里会写「这里原来是 holdForKeyboard」，所以断言前必须剥注释。 */
+  const wc = read("src/components/WpComposer.vue")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+  /* 轮 519 · 暖心墙不再有「钉住」这套东西。
+   * 位置由 style.css 的一条 calc 算完（抬升量 = 面板高 − --kb-now），
+   * 键盘收多少就抬多少，同源驱动，不存在「等键盘信号」的窗口 ——
+   * 所以 swap 类、MutationObserver、1.2s 兜底定时器全部删除。
+   * 这里反过来守：它们要是被重新加回来，说明又退回到「猜键盘收完没有」的老路。 */
+  assert.ok(!/wp-kb-swap|holdForKeyboard|holdForPanel|pinBarTop|MutationObserver/.test(wc),
+    "WpComposer 又长回了钉位逻辑（现在应该由 --kb-now 一条式子驱动）");
   const dc = read("src/components/DmVacChat.vue");
   assert.match(dc, /if \(!isApp && !webSwapNeeded\(\)\) return;/, "DmVacChat 的钉住仍然只认 App 壳");
 });

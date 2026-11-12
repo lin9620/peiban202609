@@ -154,8 +154,13 @@ t("style.css：.kb-web 三处让位与 .cap-app 一一对应（改一份就要�
    * tools/viewport-matrix-test.mjs）—— 两处都要查，别只查 DOM 那层。 */
   const vv = read("src/utils/viewportVars.js");
   const vmath = read("src/utils/viewportMath.js");
-  assert(/--kbb/.test(vv) && /--kb-last/.test(vv), "viewportVars 不产出 --kbb / --kb-last");
-  assert(/computeViewportVars/.test(vv), "viewportVars 没走 viewportMath 的纯函数（判定又散回 DOM 代码，换台机就测不了）");
+  assert(/--kbb/.test(vv) && /--kb-panel/.test(vv), "viewportVars 不产出 --kbb / --kb-panel");
+  /* 轮 519：不再拿 DOM 读数去跑 viewportMath 的推导链。
+   * 真机逐帧证明那套在 resize 型内核（安卓/小米）上恒为 0（vv.height 永远等于 inner），
+   * 而在 overlay 型上又被过冲帧污染基线。现在只做两件事：读三个属性、锁一个常量。 */
+  assert(/visualViewport/.test(vv) && /panelH/.test(vv),
+    "viewportVars 没直接读 visualViewport，或者面板高度没有锁定量");
+  assert(/schedulePanelLock/.test(vv), "面板高度没有「停稳后锁一次」的入口（会退回每帧重算）");
   assert(/inner\s*-\s*vh/.test(vmath), "键盘高没用 innerHeight − visualViewport.height（扣了 offsetTop 就永远是 0）");
   assert(/barsBase/.test(vmath), "没有浏览器 UI 遮挡基线：iOS 26 无键盘时那段差会被当成键盘");
   assert(/initViewportVars\(\)/.test(read("src/main.js")), "main.js 没启动 viewportVars");
@@ -163,8 +168,10 @@ t("style.css：.kb-web 三处让位与 .cap-app 一一对应（改一份就要�
     "App 壳评论条没接 --kb-h（那边不跑 fixedBar）");
   assert(/html\.kb-web \.reply-bar\s*\{[^}]*bottom:\s*calc\(var\(--kb-h\) \+ 64px/.test(css),
     "详情页回复条没接 --kb-h");
-  assert(/html\.kb-web \.cmt-main-bar\.wp-emoji-open[\s\S]{0,200}padding-bottom:\s*var\(--kb-panel-h\)/.test(css),
-    "表情面板打开时底条没让位（轮 504 起是 padding-bottom 撑开，不再是 bottom 抬升）");
+  assert(/html\.kb-resize \.cmt-main-bar\.wp-emoji-open[\s\S]{0,260}bottom:\s*calc\(var\(--kbb, 0px\) \+ var\(--kb-panel-h\) - var\(--kb-now/.test(css),
+    "resize 型面板打开时底条没让位（轮 519 起是 bottom 按「面板高 − 键盘当前占高」算）");
+  assert(/html\.kb-overlay \.cmt-main-bar\.wp-emoji-open[\s\S]{0,200}padding-bottom:\s*max\(0px, var\(--kb-panel-h\)/.test(css),
+    "overlay 型（iOS）的 padding 让位没了");
 });
 t("keyboardInset：异常一律归零 + 切后台归零（绝不带一条永久空白回来）", () => {
   const js = read("src/utils/keyboardInset.js");

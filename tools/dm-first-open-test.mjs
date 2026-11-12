@@ -114,9 +114,12 @@ t("F10 手机形态：路由 :id 没对齐前不渲染聊天面板", () => {
   has(PAGE, /const paneReady = computed\(/, "没有 paneReady");
   has(PAGE, /route\.name === "messages" && String\(route\.params\.id \|\| ""\) === id/, "paneReady 没认路由 :id");
   has(PAGE, /if \(!isMobileNav\.value\) return true;/, "桌面双列也被挡住了");
-  has(PAGE, /v-show="!isMobileNav \|\| \(!!activeId && paneReady\)"/, "面板 v-show 没挂 paneReady");
+  /* 轮 519：退出动画期间（threadOut）面板还要留在 DOM 里，否则动画根本没机会播。 */
+  has(PAGE, /v-show="!isMobileNav \|\| \(!!activeId && paneReady\) \|\| threadOut"/, "面板 v-show 没挂 paneReady / threadOut");
   has(PAGE, /<template v-if="activeId && paneReady">/, "面板内容没挂 paneReady");
-  has(PAGE, /v-show="!isMobileNav \|\| !activeId \|\| !paneReady"/, "列表页没在等待期继续显示（会出现两边都藏的空白帧）");
+  /* 轮 519：退场动画期间（threadOut）列表和面板**都要在**：列表铺在底下当背景，
+   * 面板在上面淡出。只留面板 = 淡到一半露出白底（真机 screencast +462ms 全白）。 */
+  has(PAGE, /v-show="!isMobileNav \|\| !activeId \|\| !paneReady \|\| threadOut"/, "列表页没在等待期继续显示（会出现两边都藏的空白帧）");
   const openBody = fnBody(PAGE, "async function openConv(id) {", "/* ← 返回会话列表");
   has(openBody, /routeSettledFallback\.value = false/, "openConv 没重置兜底");
   has(openBody, /\}, 400\)/, "openConv 没有 400ms 放行兜底");

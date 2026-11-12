@@ -31,20 +31,23 @@
 html { scrollbar-width: none; -ms-overflow-style: none; }
 html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display: none; }
 
-  /* 轮 482 · 表情面板与键盘共用一把尺子。
-   * 用户报「暖心墙评论，表情包跟打字的上拉框高度不一致」：面板写死 min(46vh, 320px)，
-   * 键盘态却是 --kb-h（真机多在 280~310），所以收键盘弹面板时输入条会明显跳一截。
-   * --kb-last 由 keyboardInset.js 在键盘「有效高度」时写入、键盘收起时**不清零**，
-   * 于是面板永远复现上一次键盘的高度。
-   * 轮 498：不再用 CSS 的 vh 兜底 —— 有的内核（键盘缩布局视口那批 / 部分国产 WebView）
-   * 会把 vh 算成「键盘剩下那点高度」，46vh 于是只有一百多像素，面板矮成一条，
-   * 收键盘弹面板时输入条又从上面掉下来（用户第四次报的「高度不一致」就是这个）。
-   * 轮 499：兜底值还必须跟面板**同一量纲**：面板锚在布局视口底，键盘是从屏幕底往上顶的，
-   * 浏览器底部工具栏那条落在页外 —— 852 的屏 innerHeight 只有 732，真键盘在页面里只占 185，
-   * 旧兜底 320 高一截，面板一开底条被顶上天。改由 JS 按「键屏高 64% 起点」算成 px
-   * （--kb-fallback / --kb-cap），命中过一次真键盘后改用本机实测比例。
-   * 读不到时才退回 46vh/320：老内核、桌面缩放、JS 没跑到，表现与改之前完全一致。 */
-  --kb-panel-h: min(var(--kb-last, var(--kb-fallback, min(46vh, 320px))), var(--kb-cap, 62vh));
+  /* 轮 519 · 面板高 = 键盘高，一个数，锁死。
+   *
+   * --kb-panel 由 utils/viewportVars.js 在键盘第一次停稳时写一次，之后**永不更新**。
+   * 以前这里是 min(--kb-last, --kb-cap)，两个都是「每帧重算」：
+   *   · --kb-last 取 inner 的缩小量，键盘动画中间帧 539 会算出 205；
+   *   · --kb-cap 是 62vh，而 vh 在键盘态和面板态不一样 —— 同一个封顶值两态算出两个数。
+   * 于是面板高每切一次就变一截。现在它是常量，用户说的「不要变来变去」就是这一行。
+   * 上限用固定 420px 而不是 vh：任何手机的键盘都到不了 420，写死就不会随视口漂。
+   * 没测到过键盘时（用户进门直接点表情）退回 320px，弹过一次键盘就准了。 */
+  --kb-panel-h: min(var(--kb-panel, 320px), 420px);
+  /* 轮 519 · 当前键盘占了多高（0 ~ 面板高）。由 viewportVars 每帧写。
+   * resize 型 = 无键盘基线 − 当前 inner（键盘收起时趋于 0）；
+   * overlay 型 = 可视视口的上推量。
+   * 它是**唯一**驱动「面板从键盘后面升起来 / 输入条跟着让位」的量：
+   * 键盘收一点它减一点，输入条就跟着升一点，两者的相对位置逐帧锁死，不可能错位。
+   * 以前靠定时器 + MutationObserver + 内联钉位去猜「键盘到底收完没有」，就是在补这个。 */
+  --kb-now: 0px;
   /* 轮 506：吸底条 / 表情面板离**布局视口底**的距离，由 utils/viewportVars.js 现读
      visualViewport 写成 px。0 = 贴布局视口底（没键盘）；键盘弹起时 ≈ 键盘高。
      这一条替掉了 fixedBar 逐帧写内联 top 的做法 —— 位置和面板高度来自同一次测量，
@@ -2370,7 +2373,19 @@ html[data-theme="night"] .dm-menu-sep { background: rgba(255, 255, 255, .12); }
   from { opacity: 0; transform: translateX(14px); }
   to { opacity: 1; }
 }
-@media (prefers-reduced-motion: reduce) { .dm-thread--in { animation: none; } }
+/* 轮 519 · 退出与进入对称：原路滑回去（右 14px）并淡出。
+ * 时长 180ms，必须与 MessagesView 里的 THREAD_OUT_MS 一致 —— 那边到点才拆 fixed 接管。
+ * 动画没跑完就拆，卡片会先跳到列表里的位置再播，等于把那次硬切放大一遍。
+ * forwards：结束时停在 opacity 0，随后摘类、切布局，屏幕上看不到任何突变。 */
+.dm-thread--out { animation: dm-thread-out .18s cubic-bezier(.2, .8, .2, 1) forwards; }
+@keyframes dm-thread-out {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(14px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dm-thread--in { animation: none; }
+  .dm-thread--out { animation: dm-thread-out .01s linear forwards; }
+}
 .dm-thread-head {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   padding-bottom: 10px;
@@ -2854,6 +2869,26 @@ html.cap-app.kb-anim .dm-page--chat {
 html.kb-web.kb-overlay .dm-page--chat {
   height: calc(var(--vlh, 100vh) - var(--kbb, 0px));
 }
+/* 轮 520 · resize 型（安卓/小米）的页面高度也必须用 --vlh，不能用 100dvh。
+ *
+ * 症状（会话页表情/键盘切换，真机逐帧 _scratch/real/v520-vac.json）：
+ *   t10191  inner 已经 799、dvh 还是 484 → .dm-page 高 484
+ *   t10207  .dm-page 才长到 799
+ * 这一帧里 footer 的让位（吃 --kb-now，逐帧准）已经先跳了，页面盒子却还停在键盘态，
+ * 于是输入条被算到 169 再弹回 484（日志里那两条 ±315px）。
+ *
+ * dvh 是浏览器自己维护的，键盘收起时它更新得比 innerHeight 慢一拍；--vlh 就是
+ * viewportVars 每帧从 innerHeight 抄下来的数，两者永远同一帧。
+ *
+ * 但这里**不能再加一条 height: var(--vlh) 的 CSS**：
+ *   · 会话页 .dm-page--chat 的高度是 chatViewport.js **内联写像素**的，
+ *     内联样式压过一切选择器 —— 现场 getComputedStyle 查出来就是 `height: 484px`，
+ *     CSS 里写什么都轮不到生效（轮 520 加过一版，真机两帧对比毫无变化，已删）。
+ *   · 而且安卓 resize 型套 --vlh 正是轮 512 被用户骂回来的那套（页高一帧一帧改，
+ *     退出会话有缩放感、切表情有一闪），守卫 L8 专门拦这个。
+ * 盒子滞后那一拍改在**让位表达式**里补：DmVacChat 的 PAD_EXPR 带了
+ * `+ var(--chat-h) - var(--vlh)`，盒子停在旧高时条也不动（--chat-h 由
+ * chatViewport.js 在写完内联高度后同步导出，与盒子永远同源）。 */
 .dm-page--chat .dm-wrap {
   display: flex; flex-direction: column; align-items: stretch;
   width: 100%; gap: 0; flex: 1; min-height: 0;
@@ -2864,6 +2899,24 @@ html.kb-web.kb-overlay .dm-page--chat {
 }
 .dm-page--chat .dm-scroll {
   flex: 1; min-height: 0; width: 100%; max-height: none; overscroll-behavior: contain;
+}
+
+/* ═══ 轮 519 · 退出会话（threadOut 期间）═══
+ * 这 180ms 里聊天的整屏接管已经交还文档流（见 MessagesView 的 beginThreadOut），
+ * .dm-page 回到正常排版 → 下面的列表按**它最终的位置**排好（左右 18、上下 14 的
+ * 卡片边距是 .shell / main 的 padding 自己算的，不用在这里抄一份数字）。
+ * 聊天卡 meanwhile 变成整屏 fixed 覆盖层，淡出时露出来的是列表本身。
+ *
+ * 为什么非要这样：第一版只是给卡片加了个淡出，底下什么都没有 ——
+ * 真机 screencast 逐帧（_scratch/real/cast/）拍到 +407ms 卡片淡到半透明、
+ * +462ms 整屏几乎全白、+594ms 列表才出现，中间约 130ms 白闪，比原来的硬切还难看。
+ *
+ * 注意：这段只在退场期存在，收尾时 .dm-thread 被 v-show 摘掉、.dm-page--exit 一起去掉，
+ * 所以它不会残留成「常驻 fixed」（那会劫持内部表情面板的包含块）。 */
+.dm-page--exit .dm-thread {
+  position: fixed; inset: 0; z-index: 5;
+  margin: 0; border: none; border-radius: 0; box-shadow: none;
+  background: var(--page-bg);
 }
 
 /* ═══ 轮 465 · 网页端聊天页 fixed 接管（类由 utils/chatViewport.js 打）═══
@@ -2931,9 +2984,29 @@ html.kb-web .cmt-main-bar {
  * 组装级工装实测（393×852 / 键盘 330）：输入行 469 → 146 → 405。
  * 扣掉 --vtop 之后：上推态 330−330=0（面板正好顶替键盘，输入行原地不动），
  * 键盘收起后 330−0=330（原来的值）。老内核不认 max() ⇒ 第一条声明兜底。 */
-html.kb-web .cmt-main-bar.wp-emoji-open,
-html.kb-web .cmt-main-bar.wp-kb-swap {
-  padding-bottom: var(--kb-panel-h);
+/* ═══ 轮 519 · 表情面板与输入条的交接（重写）═══
+ *
+ * 旧做法：面板开 → 给条加 padding-bottom（面板高）→ 条变高、底边上移。
+ * 问题是「让位」和「键盘收起」是两件事：
+ *   · 键盘还在（inner 484）时让位已经加上 → 条底 = 484 − 260 = 224，输入行窜到上半屏；
+ *   · 250ms 后键盘收完（inner 744），条底才落回 484。
+ * 真机逐帧就是这个轨迹：433 → 180 → 495 → 440。
+ *
+ * 新做法不改布局高度，只改 bottom，而且量由三个同源的数算出来：
+ *     bottom = --kbb + 面板高 − --kb-now + --kb-over
+ *   键盘态  --kb-now = 260 = 面板高 ⇒ 0       条底 484（键盘上沿）
+ *   无键盘  --kb-now = 0          ⇒ 260       条底 484（面板上沿）
+ *   过冲帧  --kb-over = 55        ⇒ 315       条底 799−315 = 484
+ * 三种情况落点完全相同，所以切换过程中条一格都不动 —— 这就是「不闪」。
+ *
+ * ⚠ 这里刻意**不用 transform**：.cmt-main-bar 内部挂着 position:fixed 的表情面板，
+ * 一旦祖先有 transform，fixed 的包含块就从视口变成这根条 —— 面板会被压到条上面
+ * （真机实测：应该 484~744，实际 224~484）。位移交给 bottom，面板的坐标系才不变。
+ * resize 型（安卓/小米）走这条；overlay 型（iOS）布局视口不缩，仍用内边距让位。 */
+html.kb-resize .cmt-main-bar.wp-emoji-open {
+  bottom: calc(var(--kbb, 0px) + var(--kb-panel-h) - var(--kb-now, 0px) + var(--kb-over, 0px));
+}
+html.kb-overlay .cmt-main-bar.wp-emoji-open {
   padding-bottom: max(0px, var(--kb-panel-h) - var(--vtop, 0px));
 }
 /* 轮 516 · ⚠ 以下两条 `.reply-bar` 规则**已退役**（轮 108 续5：手机端回复统一走
@@ -3040,6 +3113,26 @@ html.kb-web .reply-bar {
    聊天铺满整屏；表情 sheet（fixed 全屏宽）与聊天对齐，不再一边一条白边 */
 .shell--mobile-nav.shell--chat { padding-left: 0; padding-right: 0; }
 .shell--mobile-nav.shell--chat main { padding-left: 0; padding-right: 0; }
+
+/* ═══ 轮 522 · 退场期把列表摆到最终位置（用户第 3 条「退出会话有一个缩放」的真因）═══
+ *
+ * 上面两条把聊天态的左右内边距归零，聊天才满幅。可是退出时外壳的 `.shell--chat`
+ * 要等淡出播完才摘（聊天体必须还活着才能淡），于是**整段淡出里列表是按聊天态的宽度
+ * 排的**：393 宽、x=0。淡出结束、类一摘，同一帧变成 357 宽、x=18 —— 两侧各缩 18px。
+ * 无头 Edge 逐帧（真 style.css + 真 chatViewport，393×852）：
+ *   淡出中  .dm-page [0,0 393x852]  .dm-list [0,0 393x746]  行 [15,17 363x45]
+ *   收尾后  .dm-page [18,0 357x758] .dm-list [18,0 357x746]  行 [33,17 327x45]
+ * 一帧内整张列表横向缩 36px，就是用户说的「缩放」。轮 519 的注释里写过「列表已按最终
+ * 位置排好」，这句是错的 —— 当时没有量过横向，只量了 fixed 接管。
+ *
+ * 改法：退场一开始（html.dm-exiting）就把外壳的内边距补回来、页面盒子回到按内容撑高，
+ * 列表当场就在最终位置；淡出底下露出的就是收尾后那张列表，收尾只剩「摘掉覆盖层」。
+ * 用 html 上的类而不是 :has()：老内核（X5 / Chromium<105）不认 :has。
+ * 数值与 `.shell { padding: 0 18px 48px }` 同一口径，改那边要一起改。 */
+html.dm-exiting .shell--mobile-nav.shell--chat { padding: 0 18px 48px; }
+/* 覆盖层（.dm-page--exit .dm-thread）是 fixed，不参与这层排版；页面盒子按列表撑高，
+   与收尾后（没有 shell--chat 时）逐像素一致。 */
+html.dm-exiting .shell--mobile-nav.shell--chat .dm-page { height: auto; }
 .shell--mobile-nav.shell--chat .dm-thread-head { padding: 0 14px; }
 .shell--mobile-nav.shell--chat .dm-scroll { padding: 12px 14px; }
 .shell--mobile-nav.shell--chat .dm-compose { padding-left: 12px; padding-right: 12px; }

@@ -160,7 +160,8 @@ t("N10 退出关注流要回顶（换数据源 = 从头看）", () => {
 
 /* ─── ① 表情面板与键盘同一把尺子（详见 emoji-panel-test E7/E8） ─── */
 t("N7 面板高度 / 底条让位 / 会话段 三处都走 --kb-panel-h", () => {
-  assert(/--kb-panel-h:\s*min\(var\(--kb-last/.test(css), ":root 没有 --kb-panel-h");
+  /* 轮 519：面板高改成「锁定的键盘高 → 320 兜底 → 420 固定上限」，不再有 --kb-last 推导。 */
+  assert(/--kb-panel-h:\s*min\(var\(--kb-panel,\s*320px\),\s*420px\)/.test(css), ":root 没有 --kb-panel-h 的锁定式");
   const hits = css.match(/var\(--kb-panel-h\)/g) || [];
   assert(hits.length >= 2, `style.css 只找到 ${hits.length} 处 var(--kb-panel-h)，预期 2（网页端 + App 壳的底条让位）`);
   assert(/height:\s*var\(--kb-panel-h\)/.test(read("src/components/WpComposer.vue")),

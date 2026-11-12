@@ -116,26 +116,53 @@ t("A7 页面过渡有 prefers-reduced-motion 降级", () => {
 });
 
 /* ───────── C. 聊天面板过渡 ───────── */
-t("C1 聊天面板绑定了 dm-thread--in，且由 threadIn 驱动", () => {
-  assert(/class="card dm-thread" :class="\{ 'dm-thread--in': threadIn \}"/.test(msgView),
-    "模板里没有把 dm-thread--in 绑到 threadIn");
+t("C1 聊天面板绑定了 dm-thread--in / --out，且由 threadIn、threadOut 驱动", () => {
+  assert(/class="card dm-thread" :class="\{ 'dm-thread--in': threadIn, 'dm-thread--out': threadOut \}"/.test(msgView),
+    "模板里没有把 dm-thread--in / --out 绑到 threadIn / threadOut");
+  /* 轮 519：退出必须和进入对称。只加 --in 不加 --out，退出就是一次硬切
+     （真机逐帧：fixed 393×744 → static 357×728，中间零过渡 = 用户说的「缩放」）。 */
+  assert(/v-show="!isMobileNav \|\| \(!!activeId && paneReady\) \|\| threadOut"/.test(msgView),
+    "退出动画期间 dm-thread 被 v-show 藏掉了（动画根本播不出来）");
+  assert(/dm-page--chat': isMobileNav && \(\(!!activeId && paneReady\) \|\| threadOut\)/.test(msgView),
+    ".dm-page--chat 没跟着 threadOut 延后摘（卡片会先跳到列表位置再播动画）");
 });
 
 t("C2 只在手机形态加动画（桌面双栏是同时可见，没有「进入」动作）", () => {
   const i = msgView.indexOf("const threadIn = ref(false)");
   assert(i > 0, "没有 threadIn 定义");
-  const seg = msgView.slice(i, i + 900);
+  /* 轮 519：原本是 `slice(i, i + 2600)` 的固定字符窗口。退场那一段加了说明注释之后，
+   * 这个窗口把 `if (!isMobileNav.value) return;` 挤出去了，假红。改成切到语义边界
+   * （threadIn 的收尾清理那一行）为止，注释再长也不会误判。 */
+  const end = msgView.indexOf("onBeforeUnmount(() => clearTimeout(threadInTimer))");
+  assert(end > i, "找不到 threadIn 的收尾清理，切片边界失效");
+  const seg = msgView.slice(i, end);
   assert(/if \(!isMobileNav\.value\) return;/.test(seg), "threadIn 没有 isMobileNav 早退 —— 桌面双栏也会跑动画");
 });
 
 t("C3 动画类必须定时摘掉，并在卸载时清定时器", () => {
   const i = msgView.indexOf("let threadInTimer = 0");
   assert(i > 0, "没有 threadInTimer");
-  const seg = msgView.slice(i, i + 500);
+  /* 轮 519：原来是 `slice(i, i + 3000)` 的固定字符窗口 —— 退场那段加说明之后
+   * `setTimeout(... threadIn.value = false ..., 320)` 被挤出窗口，假红。
+   * 改成切到 threadIn 的收尾清理那一行为止（语义边界，注释再长也不会漂）。
+   * 注意顺序：threadIn 的 watch 排在 threadOut 定义**之后**，所以不能用 threadOut 当边界。 */
+  const end = msgView.indexOf("onBeforeUnmount(() => clearTimeout(threadInTimer))");
+  assert(end > i, "找不到 threadIn 的收尾清理，切片边界失效");
+  const seg = msgView.slice(i, end);
   assert(/setTimeout\(\(\)\s*=>\s*\{\s*threadIn\.value = false; \},\s*\d+\)/.test(seg),
     "没有把 threadIn 摘掉的定时器 —— transform 会常驻并劫持 fixed 表情面板");
+  /* 轮 519：退场收尾从「固定定时器」改成「听 animationend + 定时器兜底」——
+   * 固定 180ms 会在动画只播了 67ms 时就切布局（真机 t8155 → t8222 实测）。 */
+  assert(/const finishThreadOut = \(\) => \{[\s\S]{0,200}threadOut\.value = false;/.test(msgView),
+    "没有 threadOut 的收尾函数");
+  assert(/addEventListener\("animationend", onThreadOutEnd/.test(msgView),
+    "退场没有听 animationend（固定定时器会在动画播完前就切布局）");
+  assert(/setTimeout\(finishThreadOut, THREAD_OUT_FALLBACK_MS\)/.test(msgView),
+    "没有兜底定时器（reduced-motion 或无动画时收不了尾）");
   assert(/onBeforeUnmount\(\(\) => clearTimeout\(threadInTimer\)\)/.test(msgView),
     "组件卸载时没清 threadInTimer（切页后定时器仍会写已卸载组件的 ref）");
+  assert(/onBeforeUnmount\(\(\) => clearTimeout\(threadOutTimer\)\)/.test(msgView),
+    "组件卸载时没清 threadOutTimer");
 });
 
 t("C4 .dm-thread--in 的动画不许带 fill-mode both/forwards", () => {
@@ -157,6 +184,26 @@ t("C5 dm-thread-in 末帧不带 transform（只有 from 里可以出现）", () 
 t("C6 聊天面板过渡也有 reduced-motion 降级", () => {
   assert(/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.dm-thread--in\s*\{\s*animation:\s*none/.test(css),
     "缺少 reduced-motion 降级");
+});
+
+t("C7 退场动画期间不许清会话态（否则淡的是空壳，等于没动画）", () => {
+  /* 轮 519 真机事故：路由一回到列表就 resetConv()，activeId/msgs/meta 当场清空，
+   * 模板 `v-if="activeId && paneReady"` 把聊天体卸载 → dm-thread--out 跑在一张空卡片上。
+   * screencast 逐帧：点返回后 0~423ms 画面完全静止（帧哈希一致），+480ms 直接跳列表，
+   * 中间一帧淡出都没有。所以清态必须发生在 finishThreadOut 里。 */
+  assert(/function beginThreadOut\(\)/.test(msgView), "没有 beginThreadOut（退场唯一入口）");
+  assert(/const finishThreadOut = \(\) => \{[\s\S]{0,400}?resetConv\(\)/.test(msgView),
+    "finishThreadOut 里没有 resetConv() —— 退场结束后没人清会话态");
+  /* 路由回列表那一支必须是 beginThreadOut，不能直连 resetConv */
+  const routeBranch = msgView.slice(msgView.indexOf("const id = String(v || \"\")"));
+  const exitPart = routeBranch.slice(0, routeBranch.indexOf("});"));
+  assert(/beginThreadOut\(\)/.test(exitPart),
+    "路由回到列表时没走 beginThreadOut（直接 resetConv 会在动画开始前卸掉内容）");
+  assert(!/^\s*resetConv\(\);/m.test(exitPart),
+    "路由回到列表那一支还在直接 resetConv()");
+  /* 清态时要点上锁，否则 watch(activeId) 会把「自己清的」当成「用户又退了一次」 */
+  assert(/threadExitLock = true;/.test(msgView) && /if \(threadExitLock\) return;/.test(msgView),
+    "缺 threadExitLock —— finishThreadOut 清态会再触发一轮退场，永远退不出去");
 });
 
 console.log(out.join("\n"));

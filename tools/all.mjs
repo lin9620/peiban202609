@@ -50,7 +50,7 @@ const MANIFEST = [
     "card-tap-test", "comment-test", "community-safe-area-test", "compose-safearea-test", "dm-entry-fail-test", "dm-first-open-test",
     "dm-map-test", "dm-race-test", "dm-recall-menu-test", "dm-scroll-test", "dm-search-test",
     "dm-send-jump-test", "dm-send-ux-test", "dm-tail-cache-test", "dm-test", "dm-vac-test", "dm-mute-test",
-    "emoji-panel-test", "feed-archive-test", "feed-autoload-test", "feed-perf-test", "feed-window-test", "font-test", "nav-response-test",
+    "emoji-panel-test", "emoji-skel-test", "feed-archive-test", "feed-autoload-test", "feed-perf-test", "feed-window-test", "font-test", "nav-response-test",
     "fold-text-test", "food-painter-test", "gateway-contract-test", "home-panes-test",
     "i18n-test", "i18n-usage-test", "icon-test", "ios-compat-test", "skin-gate-test", "kb-math-test", "keyboard-policy-test", "lang-detect-test", "content-lang-test", "template-scope-test", "messages-gap-test",
     "migration-check-test", "mood-test", "notify-test", "notif-prefs-test", "pet-home-test", "pet-visual-test",

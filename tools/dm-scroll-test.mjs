@@ -123,9 +123,18 @@ t("S11 会话列表自己记位置（@scroll 实时存），不能只靠浏览�
 t("S12 返回列表时两层都回位（内层 scrollTop + 外层 window）", () => {
   /* 轮 517：回位改成 nextTick 里「先拆 fixed 接管、再恢复」—— 原来同步写，
    * 那时 .dm-page 还带着内联 fixed/overflow:hidden，写进去的值会被裁掉。 */
-  has(VIEW, /watch\(activeId, \(v, old\) => \{[\s\S]{0,320}?restoreListScroll\(\)/,
-    "activeId 清空时没恢复滚动位置（返回列表不会回位）");
-  has(VIEW, /watch\(activeId, \(v, old\) => \{[\s\S]{0,200}?releaseChatViewport\(\);[\s\S]{0,80}?restoreListScroll\(\)/,
+  /* 轮 519：手机端退出先播动画，回位动作在 beginThreadOut 里（下面第二条守顺序）。
+   * 退出入口统一收进 beginThreadOut，watch(activeId) 只剩兜底收尾。 */
+  has(VIEW, /function beginThreadOut\(\) \{[\s\S]{0,120}?threadOut\.value = true/,
+    "没有退场入口 beginThreadOut（返回列表既没有过渡，也不会触发回位）");
+  has(VIEW, /beginThreadOut\(\);/, "路由回到列表那一支没走退场入口");
+  /* 轮 519：回位必须在**淡出开始前**做完 —— 列表这时才 display 回来，
+   * 放到收尾补的话，淡出过程中露出的是停在顶部的列表，最后再跳一下。 */
+  has(VIEW, /function beginThreadOut\(\) \{[\s\S]{0,1400}?restoreListScroll\(\)/,
+    "退场入口里没恢复列表位置（淡出时会露出停在顶部的列表）");
+  /* 轮 519：手机端退场改成「等动画播完再拆」，收尾在 finishThreadOut 里，
+   * 那里必须是先拆 fixed、再恢复滚动位置。 */
+  has(VIEW, /const finishThreadOut = \(\) => \{[\s\S]{0,400}?releaseChatViewport\(\);[\s\S]{0,80}?restoreListScroll\(\)/,
     "没先拆 fixed 接管就恢复位置（scrollTop 会写进一个裁切框里）");
   const rl = fnBody(VIEW, "function restoreListScroll()", "function ");
   has(rl, /restoreConvList\(\)/, "restoreListScroll 没恢复会话列表");

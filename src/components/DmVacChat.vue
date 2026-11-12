@@ -24,6 +24,8 @@ import { isApp } from "../stores/uiStore.js";
 import { webSwapNeeded, setPanelOpen } from "../utils/keyboardInset.js";
 import { startBottomPin, stopBottomPin } from "../utils/bottomPin.js";
 import { syncViewportVars } from "../utils/viewportVars.js";
+import { kickChatViewport } from "../utils/chatViewport.js";
+import { createEmojiSkel } from "../utils/emojiSkel.js";
 import { t } from "../i18n.js";
 
 register();
@@ -648,6 +650,27 @@ emoji-picker {
    改完只剩一个参照系：padding 有多高，面板就有多高，输入条必然压在面板上沿；
    页面盒子本身在可视区内，safe-area 也不用再单独让。 */
 :host { --wp-emoji-h: var(--kb-panel-h, min(46vh, 320px)); }
+/* 轮 521 · 面板的高度**不是固定值，而是「盒子底到视口底」那一段**。
+ *
+ * 用户原话：「别的软件都是键盘跟表情固定一个高度」「以键盘高度为准是做不到吗」。
+ * 之前的错在于把「面板高」当成一个独立常量（= 键盘高 260），而页面盒子在两种状态下
+ * 高度不同（键盘态 484 / 面板态 539，差的就是浏览器工具栏那条 55px）——
+ * 两个各自正确的常量凑在一起，结果是输入条每切一次摆 55px。
+ *
+ * 现在反过来：页面盒子在面板态由 chatViewport 钉成键盘态的高度（--kb-pageh），
+ * 面板高度取「视口底 − 盒子底」，两者永远严丝合缝，输入条一动不动。
+ * 面板因此会随着工具栏在不在而 260 / 315 变一次 —— 但那是**面板去适应键盘占地**，
+ * 不是输入条跟着跳；用户看到的是「键盘那块地方换成了表情」。
+ * --kb-panel-h 也要一起给：vendored 库的面板 height 读的就是它。 */
+:host(.wp-emoji-open) {
+  /* 双声明：老内核不认 max() / calc 里的变量嵌套时，后一条整条失效，
+     退回前一条「跟键盘一样高」—— 面板不会塌成 0（塌了就是整块没了）。
+     能算的内核走第二条：= 视口底 − 盒子底，键盘收起过程中它是连续变化的，
+     面板顶因此始终贴着输入条底，一帧都不分家。 */
+  --wp-emoji-h: var(--kb-panel, min(46vh, 320px));
+  --wp-emoji-h: max(0px, calc(var(--vlh, 0px) - var(--chat-h, var(--kb-pageh, var(--vlh, 0px)))));
+  --kb-panel-h: var(--wp-emoji-h);
+}
 @media (max-width: 899px) {
   /* 轮 503：padding 必须落在 .vac-box-footer 而不是外层 .vac-room-footer —— 内层才是
      position:relative 的那一个（= 面板的定位宿主），padding 加在外层面板根本不动，
@@ -663,20 +686,47 @@ emoji-picker {
      vendor/vue-advanced-chat/PATCHES.md 改动 1）—— 这里不再需要 :has() 去猜它。
      原文：库给 .vac-emoji-wrapper 自带 position:relative，absolute 会锚在那个
      按钮大的小盒子上（面板飘成一条竖线就是它）。 */
-  /* 轮 516 · 让位 = max(0, 面板高 − 可视视口上推量 --vtop)。
-     不扣这一份会让让位发生两次：iOS 键盘弹起时可视视口整个上推，页面底**已经**是
-     键盘上沿，再整份让 330 就把输入行顶到屏幕上半部。
-     组装级工装（tools/dm-sheet-drive.mjs）实测「键盘 → 表情」：输入行屏幕
-     469 → 146（+16ms）→ 405（键盘收完）—— 用户说的「切表情一闪」就是这一下。
-     老内核不认 max() ⇒ 第一条声明兜底，退化成改动前的行为。 */
+  /* 轮 520 · 让位 = 面板高 − 「键盘当前还占多高」+ 「视口过冲量」。
+   *
+   * 老式子 max(0, 面板高 − --vtop) 只在 overlay 型（iOS：布局视口不缩）上成立。
+   * 在 resize 型（安卓/小米：innerHeight 自己缩）上 --vtop 恒为 0 ⇒ 让位整份 260
+   * 跟键盘自身的收缩叠了两次。真机逐帧（_scratch/real/v520-vac.json）：
+   *   点表情：输入条 433 → 180（−253px，窜到屏幕上半部）→ 495（+315px）→ 440
+   *   点键盘：输入条 440 → 693（+253px）→ 488 → 433
+   * 一次切换跳三下。用户说的「会话框表情/键盘切换也有问题」就是这个。
+   *
+   * 改用 --kb-now（键盘此刻实际占了多高，viewportVars 每帧写）：
+   *   键盘全开  kb-now = 面板高 ⇒ padding 0，条在视口底 = 键盘上沿
+   *   键盘全收  kb-now = 0      ⇒ padding 满，条仍在同一处
+   *   动画中途  两者线性互补     ⇒ 条原地不动
+   *
+   * 三项修正，缺一项就分家：
+   *   ① --kbb：面板是 fixed 贴**可视视口**底（库的 bottom:var(--kbb)），而输入条在
+   *      页面盒子底。两者差着浏览器工具栏那 31px —— 真机逐帧里面板顶 477、条底 508，
+   *      面板直接把输入条盖住一条。让位必须补上同一个 kbb。
+   *   ② --kb-over：键盘收起时浏览器底部工具栏临时收一下，布局视口先报大 55px。
+   *      面板与条一起抵掉，才不会跟着掉下去再弹回来。
+   *   ③ --chat-h − --vlh：页面盒子是 chatViewport 写的内联像素高，靠 250ms 巡检更新，
+   *      键盘动画期间会落后整整一拍（真机拍到 inner 已 799、盒子还停在 484 达 258ms）。
+   *      让位是逐帧算的 —— 不补这一项，盒子还没长高条却先让位，条被算到屏幕上半部
+   *      再弹回来（日志那条 ±315px）。盒子没动让位也不动，等它追上来再一起走。
+   * --chat-h 未定义时退回 --vlh，修正项恒为 0。
+   *
+   * 与暖心墙那条吸底条同一套口径 —— 两页不再各推各的。 */
   :host(.wp-emoji-open) .vac-box-footer {
     padding-bottom: var(--wp-emoji-h);
-    padding-bottom: max(0px, var(--wp-emoji-h) - var(--vtop, 0px));
+    padding-bottom: calc(
+      var(--wp-emoji-h) + var(--kb-kbb, var(--kbb, 0px)) - var(--kb-now, 0px)
+      + var(--chat-h, var(--vlh, 0px)) - var(--vlh, 0px)
+    );
   }
-  /* 面板已收、键盘还没到：让位先钉住（关掉过渡，别提前塌下去） */
+  /* 面板已收、键盘还没到：让位先钉住（同一个式子，只是关掉过渡别提前塌下去） */
   :host(.wp-kb-swap) .vac-box-footer {
     padding-bottom: var(--wp-emoji-h) !important;
-    padding-bottom: max(0px, var(--wp-emoji-h) - var(--vtop, 0px)) !important;
+    padding-bottom: calc(
+      var(--wp-emoji-h) + var(--kb-kbb, var(--kbb, 0px)) - var(--kb-now, 0px)
+      + var(--chat-h, var(--vlh, 0px)) - var(--vlh, 0px)
+    ) !important;
     transition: none !important;
   }
   /* 轮 514：几何全部交给 vendored 库（vendor/vue-advanced-chat 的 media 规则：
@@ -684,7 +734,9 @@ emoji-picker {
      以前这一大段 !important 是在跟库比优先级 —— 比不过就得内联钉，钉住又跟 --kbb
      打架（iOS 上面板沉到工具栏下面 81px 就是这么来的）。现在库自己就是对的，
      这里只留皮肤。 */
-  .vac-emoji-wrapper .vac-emoji-picker {
+  /* 轮 520：选择器必须带 :not(.vac-picker-reaction) —— 库那条 media 规则就是这么写的，
+     少一个伪类就少一分特异度，!important 也打不过它（改了半天以为是变量没值）。 */
+  .vac-emoji-wrapper .vac-emoji-picker:not(.vac-picker-reaction) {
     /* 安全区不放在 picker 的 padding 上：库里的 emoji-picker 会撑满 padding box，
        手势条会压住最后一排。改成子元素矮一条 --sab，底部留白由面板背景补。 */
     padding: 0 !important;
@@ -693,12 +745,86 @@ emoji-picker {
     box-shadow: none !important;
     background: var(--wash-strong, #fffdf9) !important;
     overflow: hidden !important;
+    /* 轮 520 · 面板自己也得扣掉「键盘此刻还占多高」。
+     *
+     * 库写的是 bottom:var(--kbb)，键盘还开着时那 260px 一点没扣 —— 真机逐帧
+     * （_scratch/real/v520-vac.json t9892）拍到点表情那一瞬间面板顶冲到 217，
+     * 也就是屏幕中部凭空冒出一块 260px 的面板，键盘还在下面顶着。这就是用户说的
+     * 「一闪的东西」最直接的那一下。
+     * 扣掉之后：键盘开着 ⇒ 面板整体沉到键盘后面（看不见，不打扰），
+     * 键盘收起 ⇒ 它随 --kb-kbb/--kb-now 的比例平滑升上来，顶部始终等于输入条底。
+     * 用 --kb-kbb 而不是 --kbb：那个是按键盘收起进度打过折的数（见 viewportVars），
+     * 和输入条的让位算式吃的是同一个，两边永远不会分家。 */
+    bottom: calc(var(--kb-kbb, var(--kbb, 0px)) - var(--kb-now, 0px)) !important;
+    /* 轮 520b · 过渡必须关掉，否则上面那条 bottom 被库的 300ms 缓动吃掉。
+     *
+     * 库里面板是包在 Vue 的 transition（name=vac-slide-up）里的，
+     * enter-active 那条规则是 transition: all .3s ease —— 连 bottom 一起缓动。
+     * 【注意】这一段是模板字符串，注释里绝对不能出现反引号，否则提前闭合、
+     * 剩下半行被当成 JS 表达式（「main is not defined」整页崩就是这么来的）。
+     * 真机逐帧（_scratch/real/pk.json）：键盘收起后 --kb-now 已经 0，
+     * 面板的 bottom 却还在 -260 → -20.4 → -13.7 → 0 里爬，比键盘晚整整 300ms。
+     * 那 300ms 里输入条已经贴到页面底，面板还在屏幕外面 —— 底部空一条 260px 的带子，
+     * 然后面板才"啪"地升上来。这就是「切换时有一闪」剩下的那一半。
+     *
+     * 关掉之后面板位置=纯函数(--kb-now)，键盘收多少它就升多少，逐帧跟着；
+     * 不再有第二条时间线跟它赛跑。（面板本来就是瞬现的，库并没有位移动画要保留。） */
+    transition: none !important;
+    /* 轮 520c · 页面盒子还没跟上 innerHeight 的那一两帧，让位算式会被 CSS 截成 0
+     * （padding 不能为负），输入条就停在「旧页面底」，而面板已经贴到「新视口底」——
+     * 两者最多差出浏览器工具栏那一条。真机逐帧 _scratch/real/v520-vac.json：
+     *   t10101  inner 已 799、页面盒子还是 484 → 条内容底 484、面板顶 539，裂开 55px
+     * 这条裂口不能靠让位补（负数补不了），只能让面板跟着「截断后的实际让位」走：
+     * 把同一个截断写进面板位置 —— 取两根式子里大的那根，正好在截断开始那一帧换分支。
+     *   · 未截断：kb-kbb 减 kb-now（面板贴着条，随键盘一起走）
+     *   · 已截断：vlh 减 chat-h 再减面板高（面板退回旧页面底，跟着条一起等盒子）
+     * max() 写在第二条、旧式子留第一条 —— 不认 max() 的老内核整条无效、退回前者。 */
+    bottom: max(
+      calc(var(--kb-kbb, var(--kbb, 0px)) - var(--kb-now, 0px)),
+      calc(var(--vlh, 0px) - var(--chat-h, var(--vlh, 0px)) - var(--wp-emoji-h, 320px))
+    ) !important;
   }
   .vac-emoji-wrapper .vac-emoji-picker emoji-picker {
     width: 100% !important;
     height: calc(100% - var(--sab, env(safe-area-inset-bottom, 0px))) !important;
     --emoji-size: 1.35rem;
     --emoji-padding: .35rem;
+  }
+  /* 轮 521 · 打开瞬间的骨架（配方照抄 WpComposer 的 .wp-picker-skel）。
+   *
+   * 真机逐帧：格子是 17 → 179 → 187 长起来的，中间空 0.6 秒。面板位置第一帧就对，
+   * 里面却是白的 —— 用户看到的就是「点了没反应」。
+   * 8 列 × 34px 行高，跟真实网格同一套尺寸，真格子接上时不会跳。
+   * 注意这一段在模板字符串里，注释中不许出现反引号。 */
+  .wp-picker-skel {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    grid-auto-rows: 34px;
+    gap: 4px;
+    padding: 10px 8px;
+    background: var(--wash-strong, #fffdf9);
+    pointer-events: none;
+  }
+  .wp-picker-skel i {
+    border-radius: 8px;
+    background: var(--hairline, #e6dfd8);
+    opacity: .45;
+    animation: wp-skel-pulse 1.1s ease-in-out infinite;
+  }
+  .wp-picker-skel i:nth-child(8n+2) { animation-delay: .08s; }
+  .wp-picker-skel i:nth-child(8n+3) { animation-delay: .16s; }
+  .wp-picker-skel i:nth-child(8n+4) { animation-delay: .24s; }
+  .wp-picker-skel i:nth-child(8n+5) { animation-delay: .32s; }
+  .wp-picker-skel i:nth-child(8n+6) { animation-delay: .4s; }
+  @keyframes wp-skel-pulse {
+    0%, 100% { opacity: .32; }
+    50% { opacity: .62; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .wp-picker-skel i { animation: none; opacity: .45; }
   }
 }
 `;
@@ -757,96 +883,70 @@ const syncEmojiIcon = (open) => {
  * 现在不看选择器、也不看变量：面板一出现就量它实际占掉多少（自身高度 + 底下到屏底的缝），
  * 直接写 footer 的内联 padding-bottom（内联压过一切规则），收起时清掉回落给 CSS。
  * 顺带兜住「面板比键盘矮一截」的机型：条永远落在面板上沿，差多少补多少。 */
-let emojiPadTimer = 0;
-let padRO = null;
-let padPick = null;
-/* 轮 516：老内核不认 max()（Chromium <79 等）。不支持时内联退回纯像素 —— 也就是
- * 改动前的行为，不会更差；支持时用 calc 表达式让 --vtop 变化自动重算。 */
-const CAN_MAX = (() => {
-  try { return typeof CSS !== "undefined" && !!CSS.supports && CSS.supports("padding-bottom", "max(0px, 1px)"); }
-  catch (e) { return false; }
-})();
+/* 轮 520 · 让位只写一条表达式，不再量面板几何。
+ *
+ * 旧实现是「面板 DOM 出现后量它的 rect，写内联 padding」，还要 260ms 定时器补量一次、
+ * 再挂 ResizeObserver 跟着面板换高矮重量。三个采样点全在赌时机；而且量出来的是
+ * 面板自己有多高，跟「键盘此刻还占多高」是两件事 —— 安卓 resize 型内核上这两件事
+ * 会同时发生，让位就被算了两次（逐帧数据见 THEME_CSS 那条规则上方的说明）。
+ *
+ * 现在式子里的每个量都由 viewportVars 每帧算好：面板高锁一次（--wp-emoji-h），
+ * 键盘当前占高（--kb-now）与过冲量（--kb-over）逐帧更新。这里只负责把表达式挂上，
+ * 浏览器自己会在每一帧重算 —— 一个采样点都不剩。 */
+let emojiPadOn = false;
 const sheetMode = () => typeof window !== "undefined"
   && typeof window.matchMedia === "function"
   && window.matchMedia("(max-width: 899px)").matches;
-const stopPadRO = () => {
-  if (padRO) { try { padRO.disconnect(); } catch (e) { /* 忽略 */ } }
-  padRO = null;
-  padPick = null;
-};
-/* 轮 514 · 面板定位不再内联钉 ─────────────────────────────────────
- * 轮 512 在这里用内联 !important 把 wrapper 钉成 static、把面板钉成整宽 —— 那是在
- * 跟库抢优先级（库的样式在 shadowRoot 里，只能内联）。代价是这套内联值把 bottom
- * 写死成 0，iOS 上正好把「让位到工具栏上方」那条覆盖掉。
- *
- * 现已把库 fork 进 vendor/（见 vendor/vue-advanced-chat/PATCHES.md）：源码里 wrapper
- * 就是 static、手机端面板就是 fixed + bottom:var(--kbb)，所以整套内联钉全部删除，
- * 只保留 emojiPad 的量高让位。
- */
+const PAD_EXPR = "calc(var(--wp-emoji-h, 320px) + var(--kb-kbb, var(--kbb, 0px))"
+  + " - var(--kb-now, 0px) + var(--chat-h, var(--vlh, 0px)) - var(--vlh, 0px))";
 const emojiPad = (open) => {
-  clearTimeout(emojiPadTimer);
   const n = el.value;
   const sr = n && n.shadowRoot;
+  if (!sr) return;
   /* 轮 503：padding 必须加在 .vac-box-footer（position:relative 的那一层）上，
      它才是面板的定位宿主。加在外层 #room-footer 上面板不会跟着走。 */
-  const footOf = () => {
-    const s = n && n.shadowRoot;
-    if (!s) return null;
-    return s.querySelector("#room-footer .vac-box-footer") || s.querySelector(".vac-box-footer") || s.querySelector("#room-footer");
-  };
-  const foot = footOf();
+  const foot = sr.querySelector("#room-footer .vac-box-footer")
+    || sr.querySelector(".vac-box-footer")
+    || sr.querySelector("#room-footer");
   if (!foot) return;
-  if (!open || !sheetMode()) { stopPadRO(); foot.style.paddingBottom = ""; return; }
-  const put = () => {
-    const s = n.shadowRoot;
-    const f = s && (s.querySelector("#room-footer .vac-box-footer") || s.querySelector(".vac-box-footer") || s.querySelector("#room-footer"));
-    const p = s && s.querySelector(".vac-emoji-picker");
-    if (!f) return;
-    if (!p || !sheetMode()) { f.style.paddingBottom = ""; return; }
-    /* 轮 514：几何由库负责（fixed + bottom:var(--kbb) + height:var(--kb-panel-h)），
-       这里只负责「条要让开多高」= 面板实测高度。 */
-    /* 轮 503：面板现在是 footer 里的绝对定位块（底边 = footer 底边 = 页面底边），
-       所以「要留多高」就是面板自己有多高 —— 不用再拿 innerHeight 去补
-       「面板底离屏底还差多少」。那一段差值正是旧的 fixed 锚点造成的
-       （iOS 底部工具栏浮在页面之上，差值 ~44px，补进去输入条就整体抬高一条）。 */
-    const h = Math.round(p.getBoundingClientRect().height);
-    if (h > 0) {
-      /* 轮 516 · 让位要扣掉「可视视口上推量」——不能整份加。
-       *
-       * iOS 键盘弹起时可视视口整个上推（offsetTop = 键盘高），此刻页面底**已经**是
-       * 键盘上沿；再按面板高整份让位，等于让两次，输入行窜到屏幕上半部。
-       * 组装级工装（tools/dm-sheet-drive.mjs，真挂本组件 + iOS 模型）实测
-       * 「键盘 → 表情」这一下：输入行屏幕 469 → 146（+16ms）→ 405（键盘收完）。
-       *
-       * 写成 calc 表达式而不是具体像素，是为了让 --vtop 一变（键盘收起那一帧）
-       * 浏览器自己重算。否则还得在这里挂 vv 监听、或者赌 260ms 定时器正好赶上
-       * 键盘动画 —— 过去九轮反复栽在「赌一次采样」上。
-       * 不支持 max() 的老内核退回纯像素（= 改动前的行为，不会更差）。 */
-      f.style.paddingBottom = CAN_MAX
-        ? `max(0px, ${h}px - var(--vtop, 0px))`
-        : h + "px";
+  emojiPadOn = !!open && sheetMode();
+  foot.style.paddingBottom = emojiPadOn ? PAD_EXPR : "";
+};
+
+/* 轮 521 · 面板打开瞬间的骨架层（用户：「要照暖心墙那样补个骨架」）。
+ *
+ * 库每次点表情都重建 <emoji-picker>，格子要 0.6 秒才铺满（17 → 179 → 187），
+ * 这期间面板位置已经对了、里面是白的 —— 看着像「点了没反应」。
+ * 实现搬进 utils/emojiSkel.js（那段有三个边界要单独测：面板晚一帧才插入、
+ * 面板被重建、数据拉不下来要收手），这里只负责开关。 */
+const emojiSkel = createEmojiSkel(() => el.value);
+
+/* 轮 521 · 面板开合的「唯一真源」标记，挂在 html 上。
+ *
+ * chatViewport 看不到 shadow tree，读这个类来判「面板是不是占着屏底」，
+ * 然后把页面盒子钉成键盘态高度（--kb-pageh）。盒子不动 = 输入条不动。
+ *
+ * 为什么收起时不一律立刻摘：**点键盘键**那一下，面板先收、键盘后到（约 300ms）。
+ * 这期间要是一并放开盒子，它会先从 484 弹回 744，键盘上来再回到 484 ——
+ * 条先掉 260 再弹回，比原来的 55px 摆难看得多。所以只要宿主还挂着 wp-kb-swap
+ * （= 正在交接给键盘），这里就先留着，等 endKbSwap 统一摘。 */
+const setHtmlEmojiOpen = (v) => {
+  try {
+    const de = document.documentElement;
+    if (de.classList.contains("wp-emoji-open") !== !!v) {
+      de.classList.toggle("wp-emoji-open", !!v);
     }
-  };
-  put();
-  /* 面板高度走着 .22s 过渡，落定后再量一次（量早了会少补一截）；
-     另外盯着面板本身 —— --kb-last / 视口高度一变它就会换高矮，
-     跟着重量才不会留下一条缝（表情和输入条必须严丝合缝）。 */
-  emojiPadTimer = setTimeout(put, 260);
-  if (typeof ResizeObserver === "function") {
-    const p = sr.querySelector(".vac-emoji-picker");
-    if (p && p !== padPick) {
-      stopPadRO();
-      padPick = p;
-      padRO = new ResizeObserver(put);
-      try { padRO.observe(p); } catch (e) { /* 忽略 */ }
-    }
-  }
+  } catch (e) { /* 忽略 */ }
+  /* 立刻同步一次：等 250ms 巡检的话，面板已经按旧盒子高画出来了 —— 第一帧就是错的 */
+  try { kickChatViewport(); } catch (e) { /* 非聊天页 */ }
 };
 
 const setEmojiOpen = (open) => {
   const n = el.value;
   if (!n) return;
   n.classList.toggle("wp-emoji-open", open);
+  if (open) setHtmlEmojiOpen(true);
+  else if (!n.classList.contains("wp-kb-swap")) setHtmlEmojiOpen(false);
   /* 轮 503：面板开着 = 键盘让位必须为 0（页面要展开到整屏，面板才铺得满）。
      交给 keyboardInset 统一裁决：它会把 --kb-h 归零、并清掉「上次写过的值」，
      关面板时再按可视视口重算一次 —— 手动写变量会让那边的变化判据失灵。 */
@@ -884,6 +984,9 @@ const setEmojiOpen = (open) => {
   }
   syncEmojiIcon(open);
   emojiPad(open);
+  /* 轮 521：面板刚打开 → 铺骨架；收起来 → 立刻摘（别让它跟着面板一起被记住） */
+  if (open && !emojiWasOpen) emojiSkel.mount();
+  else if (!open) emojiSkel.drop();
   emojiWasOpen = open;
 };
 const syncEmoji = () => {
@@ -933,68 +1036,74 @@ const observeEmoji = () => {
  * 等 --kb-h > 0 的那一帧再摘掉 —— 页面高度和 padding 同曲线同时长地各走 320px，
  * 输入框原地不动，看起来就是「面板换成键盘」。
  * 1.2s 等不到键盘（外接键盘 / 焦点没落上）就兜底摘掉，退回旧行为。 */
-let kbSwapMO = null;
-let kbSwapTimer = 0;
-let kbSwapOnResize = null;
+/* 轮 520 · 交接期（面板已收、键盘还没到位）的唯一判据：--kb-now 追上 --wp-emoji-h。
+ *
+ * 旧版看的是「键盘开始动的信号」—— --kb-h > 0 / innerHeight 缩 120 / --kbb 变 60。
+ * 于是键盘动画刚起头就把 .wp-kb-swap 摘了，那一刻 --kb-now 才一百多，让位式子里的
+ * 「面板高 − kb-now」从已扣掉一半直接跳成全扣，输入条往下砸一截再被键盘顶回来。
+ * 真机逐帧（_scratch/real/v520-vac.json）里那条 输入条跳 +253px 就是它。
+ *
+ * 现在只在**键盘真到位**（kb-now ≥ 面板高 − 6）时才摘类 —— 那时让位式子算出来正好是 0，
+ * 摘掉不会有任何位移。读的是 window.__wpVars（viewportVars 每帧算好的快照），
+ * 不是 getComputedStyle：这段跑在键盘弹出动画里，读样式会强制同步重排、把系统键盘
+ * 的弹出打断（暖心墙那边实测过，条会直接从 DOM 消失）。
+ * 40 帧约 660ms 还等不到（外接键盘 / 焦点没落上）就摘，宁可掉一下也不留残影。 */
+let kbSwapRaf = 0;
+let kbSwapFrames = 0;
 const endKbSwap = () => {
-  clearTimeout(kbSwapTimer);
-  if (kbSwapMO) { kbSwapMO.disconnect(); kbSwapMO = null; }
-  if (kbSwapOnResize) {
-    try { window.removeEventListener("resize", kbSwapOnResize); } catch (e) { /* 忽略 */ }
-    kbSwapOnResize = null;
-  }
+  if (kbSwapRaf) { try { cancelAnimationFrame(kbSwapRaf); } catch (e) { /* 忽略 */ } kbSwapRaf = 0; }
+  kbSwapFrames = 0;
   const n = el.value;
-  if (n) n.classList.remove("wp-kb-swap");
+  if (n) {
+    n.classList.remove("wp-kb-swap");
+    /* 轮 521：交接结束 = 键盘真的到位了，这时候才放开页面盒子。
+     * 面板若还开着（理论上不该，但外接键盘这类边界会撞上）就继续钉着。 */
+    if (!n.classList.contains("wp-emoji-open")) setHtmlEmojiOpen(false);
+  }
   const thread = n && n.closest(".dm-thread");
   if (thread) thread.classList.remove("wp-kb-swap");
 };
+const swapReady = () => {
+  const wv = (typeof window !== "undefined" && window.__wpVars) || null;
+  if (!wv) return true;                       /* 读不到就按到位处理，别把类永远挂着 */
+  if (!(wv.panel > 0)) return true;
+  return wv.kbNow >= wv.panel - 6;
+};
 const holdForKeyboard = () => {
-  /* 轮 496：网页端一样会掉 —— 走 visualViewport 让位路线的浏览器，收面板那刻 --kb-h 还是 0，
-     输入框先落回屏底、键盘 200~350ms 后才顶回来。缩布局视口型内核不需要钉（会悬空），
-     判据由 keyboardInset 给。 */
+  /* 判据沿用旧版：App 壳与 visualViewport 让位路线都要钉；
+     webSwapNeeded 现在对 kb-resize / kb-overlay 都返回 true。 */
   if (!isApp && !webSwapNeeded()) return;
   const n = el.value;
   if (!n) return;
   n.classList.add("wp-kb-swap");
   const thread = n.closest(".dm-thread");
   if (thread) thread.classList.add("wp-kb-swap");
-  if (kbSwapMO) kbSwapMO.disconnect();
-  /* 轮 510：与 WpComposer 同一处修正 —— 记下挂上时的 --kbb 当基线。
-     轮 509 之后无键盘时 --kbb 就是 Safari 工具栏高（81px，不再恒为 0），
-     旧判据 `k > 0` 一挂上即成立 → swap 立刻被摘 → 收面板那一下输入框失去钉住，
-     先塌到底再等键盘顶回来（用户看到的「中间一块空白，随后折叠」）。 */
-  const holdKbb = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--kbb")) || 0;
-  /* 轮 511：判据改成「--kbb 明显变化」，不再要求「变大」。
-     iOS 为了让光标露出来会把可视视口整个上推，此时 offsetTop ≈ 键盘高，
-     于是 --kbb = inner − (offsetTop + vvH) ≈ **0** —— 键盘弹起后它是从 81 变成 0，
-     是**变小**。上一版要求「比基线大 80 才算键盘接上」，在上推态永远不成立，
-     swap 一直钉到 600ms 兜底：那 600ms 里 footer 的 padding-bottom 还是面板高，
-     输入条被顶在屏幕中部、下面一大片空白（用户截图红框），点发送/键盘也像没反应。
-     两种语义（变小 / 变大）都要认，所以取绝对值差。 */
-  kbSwapMO = new MutationObserver(() => {
-    const de = getComputedStyle(document.documentElement);
-    const v = parseFloat(de.getPropertyValue("--kb-h")) || 0;
-    const k = parseFloat(de.getPropertyValue("--kbb")) || 0;
-    if (v > 0 || Math.abs(k - holdKbb) >= 60) endKbSwap();
-  });
-  kbSwapMO.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
-  /* 轮 512 · resize 型（安卓/小米）没有 --kb-h / --kbb 可看：窗口自己缩，两个变量恒 0。
-   * 这类内核上「键盘真的起来了」只有一个信号 —— innerHeight 变小了。
-   * 不补这条，上面那个 MutationObserver 永远不触发，swap 只能等 600ms 兜底，
-   * 那段时间 footer 的 padding-bottom 还是面板高（键盘其实早起来了，底下空一条）。 */
-  const holdInner = typeof window !== "undefined" ? window.innerHeight : 0;
-  kbSwapOnResize = () => {
-    if (holdInner > 0 && holdInner - window.innerHeight >= 120) endKbSwap();
+  if (kbSwapRaf) { try { cancelAnimationFrame(kbSwapRaf); } catch (e) { /* 忽略 */ } }
+  kbSwapFrames = 40;
+  const tick = () => {
+    kbSwapRaf = 0;
+    const nn = el.value;
+    if (!nn) return;
+    /* 轮 520：面板还开着 ≠ 「交接结束」。延迟收面板之后（见 bindFooterTap 里那次
+     * 拦下的点击），holdForKeyboard 挂上时面板仍在，旧写法在这里直接 return，
+     * 轮询从此断掉 —— 面板收完 .wp-kb-swap 却永远挂着（真机日志最后一次切换停在
+     * wp-kb-swap，让位算式还按钉住的值在跑）。改成：等它关，关掉之后再判键盘。 */
+    if (nn.classList.contains("wp-emoji-open")) {
+      if (kbSwapFrames-- > 0) kbSwapRaf = requestAnimationFrame(tick);
+      else endKbSwap();
+      return;
+    }
+    if (swapReady() || kbSwapFrames <= 0) { endKbSwap(); return; }
+    kbSwapFrames--;
+    kbSwapRaf = requestAnimationFrame(tick);
   };
-  try { window.addEventListener("resize", kbSwapOnResize); } catch (e) { /* 忽略 */ }
-  clearTimeout(kbSwapTimer);
-  /* 轮 503：1200 → 600ms。iOS 的键盘动画约 250~300ms，等 1.2s 意味着
-     用户只要在这段时间里截图/继续点，看到的就是「输入条悬在半空、下面一大片空白」。
-     等不到键盘（外接键盘 / 焦点没落上）就尽快退回旧行为，宁可掉一下也不留残影。 */
-  kbSwapTimer = setTimeout(endKbSwap, 600);
+  kbSwapRaf = requestAnimationFrame(tick);
 };
 
 let footerTapBound = false;
+/* 轮 520：「替用户收面板」那一次 btn.click() 会再次触发同一个 capture 监听，
+ * 用这个标志放它过去（否则自己拦自己，面板永远收不掉）。 */
+let closingPanel = false;
 let footerTapNode = null;
 let tapClosePending = false;
 const bindFooterTap = () => {
@@ -1047,9 +1156,18 @@ const bindFooterTap = () => {
   }, true);
   /* 轮 400 · 面板开着时点「键盘键」：组件自己的 click 会把面板收掉，但它
    * 不会把焦点还回输入框；焦点不回来 → 系统键盘不弹 → footer 让位一收，
-   * 用户看到的就是「再点一下直接折叠」。这里先钉住让位，等组件收完面板
-   * 再把焦点落回 textarea，键盘从面板原来的高度接上。 */
+   * 用户看到的就是「再点一下直接折叠」。
+   *
+   * 轮 520 · 另外**别让它当场收**。真机 screencast（_scratch/real/cast-vac/f037）
+   * 拍到：面板一摘、键盘要约 400ms 才从屏底上来，中间 260px 全是空白 —— 用户说的
+   * 「一闪的东西」有一半就是这块白。面板多留一会儿不花任何代价：系统键盘是浮在
+   * 网页之上的一层，它一到就把面板整块盖住，这时再收谁也看不见。
+   * 所以这次点击先 stopImmediatePropagation 拦下，自己申请键盘，等 --kb-now 追上
+   * --wp-emoji-h（键盘真到位）再替用户把按钮点下去。40 帧约 660ms 等不到
+   * （外接键盘 / 焦点没落上）就直接收，不把面板永久吊着。 */
   footer.addEventListener("click", (e) => {
+    /* 下面那次「替用户点」会再一次触发本监听 —— 放行给它，别自己拦自己。 */
+    if (closingPanel) return;
     const picker = sr.querySelector(".vac-emoji-picker");
     /* 面板关闭时 Transition 里还会短暂留着节点，所以不能只看 picker；
        用宿主类确认真处于「面板打开」这一态。 */
@@ -1058,6 +1176,8 @@ const bindFooterTap = () => {
     if (!btn) return;
     const path = e.composedPath ? e.composedPath() : [];
     if (!path.includes(btn)) return;                       /* 只接表情/键盘键本身 */
+    e.stopImmediatePropagation();
+    e.preventDefault();
     holdForKeyboard();                                     /* 让位先钉住 */
     /* 轮 510 · 键盘弹不起来的真因就是这里的 setTimeout。
      * iOS Safari 只在**用户手势的同步调用栈**里认 focus()；塞进 setTimeout(…, 0)
@@ -1073,11 +1193,28 @@ const bindFooterTap = () => {
          * 就是用户说的「切换键盘没效果」。blur() + focus() 在同一个手势栈里，等于重新申请
          * 一次键盘，iOS 认这个。 */
         if (sr.activeElement === taNow) {
-          try { taNow.blur(); } catch (e) { /* 忽略 */ }
+          try { taNow.blur(); } catch (e2) { /* 忽略 */ }
         }
         taNow.focus();
       }
     } catch (err) { /* 无焦点环境 */ }
+    /* 键盘到位了再收面板（判据与 .wp-kb-swap 的摘除完全一致：--kb-now ≥ 面板高 − 6） */
+    let wait = 40;
+    const closeWhenKb = () => {
+      const nn = el.value;
+      if (!nn) { closingPanel = false; return; }
+      if (!nn.classList.contains("wp-emoji-open")) { closingPanel = false; return; }
+      const wv = (typeof window !== "undefined" && window.__wpVars) || null;
+      const ready = !wv || !(wv.panel > 0) || wv.kbNow >= wv.panel - 6;
+      if (ready || wait-- <= 0) {
+        closingPanel = true;
+        try { btn.click(); } catch (e3) { /* 无 DOM 环境 */ }
+        closingPanel = false;
+        return;
+      }
+      requestAnimationFrame(closeWhenKb);
+    };
+    requestAnimationFrame(closeWhenKb);
     /* 组件在同一个 click 里还会 toggle 一次，可能把焦点挪到按钮上。
        补焦点只在**有 hover 的设备**上做：手机上补的这一次已经出栈，iOS 只会把焦点
        挪过去而不弹键盘，反而留下「有焦点、没键盘」的死状态；桌面点了按钮会丢焦点，
@@ -1407,7 +1544,15 @@ onMounted(() => startBottomPin(() => {
   if (!n) return null;
   return n.closest(".dm-page--chat") || n.closest(".dm-page") || n;
 }));
-onBeforeUnmount(() => stopBottomPin());
+onBeforeUnmount(() => {
+  stopBottomPin();
+  /* 骨架的 rAF 循环要跟着停，否则组件没了还在每帧查 shadowRoot */
+  emojiSkel.drop();
+  /* 轮 521：面板的 html 标记必须跟着组件一起走。
+     留在 html 上的话，退出会话后 chatViewport 仍然认为「面板开着」，
+     会把列表页的盒子也钉成键盘态高度 —— 整页矮一截。 */
+  try { document.documentElement.classList.remove("wp-emoji-open"); } catch (e) { /* 忽略 */ }
+});
 
 onMounted(() => {
   bind();
@@ -1444,8 +1589,6 @@ onBeforeUnmount(() => {
   endKbSwap();
   setPanelOpen(false);          /* 轮 503：卸载时撤掉「面板开」标记，别把 --kb-h 钉死在 0 */
   if (emojiMO) { emojiMO.disconnect(); emojiMO = null; }
-  clearTimeout(emojiPadTimer);
-  stopPadRO();
   emojiWasOpen = false;
   /* 轮379：组件可能因切到漂流瓶/通知段而卸载；把每个会话的草稿交给父级保管。 */
   if (curRoom.value) {

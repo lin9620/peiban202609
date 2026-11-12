@@ -461,7 +461,9 @@ ok("T63 轮232：再点当前页签 = **回到顶部 + 刷新**（retapTab 信�
     && /function syncConvRoute\(id, same\)/.test(mv));
   ok("T69 backToList：路由不在会话上时不许 router.back()（否则直接退出消息页）",
     /const onConvRoute = route\.name === "messages" && !!route\.params\.id;/.test(mv)
-    && /if \(!onConvRoute\) \{[\s\S]{0,120}resetConv\(\);/.test(mv));
+    /* 轮 519：这一支清态改成走 beginThreadOut（先播退场、播完才清），
+       所以这里认入口名，不再认 resetConv 字面量。 */
+    && /if \(!onConvRoute\) \{[\s\S]{0,160}beginThreadOut\(\);/.test(mv));
 }
 
 out.push("");

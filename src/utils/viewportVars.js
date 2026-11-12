@@ -1,112 +1,103 @@
-/* ═══ 轮 506 · 视口唯一事实来源（吸底条 / 表情面板的定位与高度）═══
+/* ═══ 视口变量（轮 519 重写）═══
  *
- * 轮 508（用户：「你不要只看我这台手机的，别的苹果手机浏览器呢」）：
- *   本文件只负责**读原始数字 + 写 CSS 变量**，所有判据都搬进了 viewportMath.js。
- *   原因还是那句话：iOS 各版本上报的视口语义不是一回事 —— iOS 15–18 的 inner 是
- *   小视口，iOS 26 的 inner 是**含玻璃栏的大视口**且键盘弹起也不变，X 内置浏览器把
- *   100svh 报成 100lvh。把这些当输入跑纯函数，才能一次覆盖十几台机；
- *   真机一台台点做不到（iOS 没有 adb，见 tools/ios-compat-test.mjs 开头）。
+ * 为什么整篇推翻重写（用户：「清掉那个 ai 写的，你重新改」）：
  *
- * 用户第五次报同一件事：「表情框跟输入框高度依然不一致」。前四轮（496~504）都在这条
- * 链上打补丁，没有一个治到根 —— 因为**面板高度和面板位置一直是「推导」出来的**：
+ * 旧的这版是五层叠起来的：
+ *     ① --kbb 推导        = inner − (vv.offsetTop + vv.height)
+ *     ② --kb-last 推导    = 每帧拿 inner 的缩小量当键盘高，取历史最大
+ *     ③ --vtop 修正       = 给 ② 算错时打补丁
+ *     ④ bottomPin 闭环    = ③ 还错，就直接量元素位置往回推 --kbb
+ *     ⑤ wp-kb-swap 钉位   = ④ 推的过程中位置在跳，再钉一手
  *
- *     面板高 = --kb-panel-h = min(--kb-last, --kb-cap)
- *                --kb-last ← writeVar(panelH)
- *                panelH   ← h = kbInsetValue(kbWebInset(inner, vv.height, vv.offsetTop))
+ * 真机逐帧（小米浏览器 / 安卓 13 / CDP 注入，_scratch/real/probe-b.json）把 ① 和 ②
+ * 直接否掉了：
+ *   · 安卓是 resize 型内核，vv.height 每一帧都等于 inner，① 的结果**恒为 0px**。
+ *     也就是说吸底条 bottom / 面板 bottom 全部吃的是一个常量 0 —— 五层里有一层空转。
+ *   · ② 更糟：键盘动画是 744 → 539 → 484，539 那一帧被算成「键盘高 205」并写进
+ *     --kb-last；收起时浏览器先报 799（工具栏临时收起）再报 744，而旧代码
+ *     `if (inner > restH) restH = inner` 只增不减，799 被永久当成无键盘基线，
+ *     下一次键盘高就成了 799−484 = 315（真值 260）。
+ *   用户报的「表情框高度变来变去」「有一闪」就是 ② 自己造出来的，不是浏览器报错。
  *
- * 这条链有三个独立的失效点，任一个断掉，面板就退回「估计值」（320 或 307），
- * 与真键盘（iPhone 336 / 291）差一截 —— 用户看到的就是「表情框跟输入框高度不一致」。
+ * 重写之后只保留两个**测得准**的量，没有一个是从别的量推出来的：
  *
- * 最致命的是 kbWebInset 里的 **减 offsetTop**：
- *   iOS 为了让光标露出来，会把可视视口**上推**（offsetTop ≈ 键盘高）。
- *   于是 inner - vv.height - offsetTop ≈ 0 → --kb-h = 0 → --kb-last 永远写不进去。
- *   而「键盘占多高」这个量本来就跟 offsetTop 无关：
- *       键盘高 = innerHeight − visualViewport.height      （上推不上推都成立）
+ *   --kb-panel   表情面板高度 = 键盘高度。**只锁一次，永不更新。**
+ *                同一台设备上键盘高度是常量，所以它就该是常量 —— 这是「不要变来变去」
+ *                在代码里的直接写法，而不是再调一次阈值让它变得没那么明显。
  *
- * 所以这里不再推导，直接读三个原始数字：
- *   --kb-last : 键盘本体高度（本会话最大值，设备常量；只增不减）
- *   --kbb     : 吸底条 / 表情面板离**布局视口底**的距离（= 可视视口底在哪）
+ *   --kbb        可视区底离布局视口底多远。只服务 overlay 型（iOS：键盘浮层、
+ *                布局视口不缩）。resize 型（安卓）上它恒为 0，这是**正确值**，不是
+ *                兜底 —— 布局视口本身就是可视区。
  *
- * 两个值都不加任何闸门（不看焦点、不看 --kb-h、不看面板开关状态）。
- * 事件漏派发就靠 250ms 巡检补 —— 读两个只读属性，命中缓存，不触发重排。
+ * 顺带删掉的：--kb-last / --kb-fallback / --kb-cap / kbbFix / nudgeKbbFix /
+ * resetKbbFix / 两套探针的取舍逻辑（现在只取最小，语义单一）。
  *
- * 「静态噪声」只在一处挡：inner 与 vv 差 < 120 一律当浏览器工具栏（小米浏览器无键盘
- * 时 vv 就比 inner 矮 31px），不让它冒充键盘。真键盘最低也 ≥ 200，120 这个界两边都安全。
+ * --vtop（可视视口上推量）与 --vph（浏览器 UI 展开后的可视高）保留：它们是
+ * 「读一个属性」，不是推导，而且 iOS 的让位公式和聊天盒子高度确实要用。
  */
 
-import { computeViewportVars } from "./viewportMath.js";
+const KBB = "--kbb";         /* 吸底条 / 面板离布局视口底的距离 */
+const KPANEL = "--kb-panel"; /* 表情面板高度 = 锁定的键盘高 */
+const VTOP = "--vtop";       /* 可视视口上推量（iOS 键盘态） */
+const VPH = "--vph";         /* 浏览器 UI 展开后的可视高（svh/dvh/inner 取最小） */
+const VLH = "--vlh";         /* 布局视口高（innerHeight） */
+const VLH_BASE = "--vlh-base"; /* 无键盘时的布局视口高（开机锁定的基线） */
+const KBPAGEH = "--kb-pageh";  /* 键盘弹起时聊天页盒子有多高（= base − 键盘高） */
 
-const KBB = "--kbb";        /* 条/面板离布局视口底 */
-const KBL = "--kb-last";    /* 键盘本体高度（面板高度就用它） */
-const VPH = "--vph";        /* 真实可视高（浏览器 UI 占用后的那一块，**含键盘**） */
-/* 轮 511 · 布局视口高（innerHeight）。
- *
- * 页面盒子（私信页 .dm-page）要的是这个，不是 --vph：
- *   高度 = 布局视口高 − 让位量(--kbb)
- *     · 无键盘：852 − 81(工具栏) = 771 = 工具栏上方那条线 ✓
- *     · 键盘上推：852 − 0 = 852，iOS 自己把可视区上推了，页面底正好落在键盘上沿 ✓
- * 换用 --vph 会算错键盘态：它是「含键盘」的可视高（522），页面缩到 522 之后
- * 再叠上 iOS 的上推，输入条反而悬在键盘上方 81px。 */
-const VLH = "--vlh";
-/* 轮 516 · 可视视口上推量（iOS 键盘态 = 可视区顶离布局视口顶多远）。
- * 只给表情面板的让位用：让位 = max(0, 面板高 − 上推量)。见 syncViewportVars 里那段。 */
-const VTOP = "--vtop";
 const WEB_CLASS = "kb-web";
-/* 轮 512 · 键盘/视口关系分流（用户：「安卓本来好好的，你改苹果之后全是问题」）
- *
- * 轮 511 把「页面盒子高 = --vlh − --kbb」这一套无条件套给了所有网页端，但它是为
- * **overlay 型**（iOS Safari：键盘浮在页面上、布局视口不缩）推导的。安卓是 resize 型
- * ——键盘一弹窗口自己就缩了，innerHeight 随地址栏/键盘实时变，于是：
- *   · 页面高度跟着 inner 一帧一帧变，`.dm-page` 又带 .22s 的 height 过渡
- *     → 退出会话、切表情时看到的「缩放 / 一闪」；
- *   · 键盘弹起时盒子 = inner − 0，和原来 `100dvh − --kb-h` 的落点对不齐，
- *     表情面板与输入条交接那一瞬错位。
- * 所以这里只做一件事：**判定内核属于哪一型，打在 html 上**，CSS 按类型选式子。
- *   html.kb-overlay → 用 --vlh − --kbb（iOS 那套，轮 511）
- *   html.kb-resize  → 用原来的 100dvh − --kb-h（安卓那套，轮 511 之前，行为一字不改）
- * 初值按 UA 猜（iOS 的 UA 在移动端足够可靠），**第一次弹出键盘就以实测为准**并锁定：
- * 键盘弹了而 inner 没缩 = overlay；inner 被缩了 ≥120 = resize。以后不再翻。 */
 const OVERLAY_CLS = "kb-overlay";
 const RESIZE_CLS = "kb-resize";
+
+/* 键盘高度的合法区间。真键盘 200~360；低于 180 是动画中间帧，
+ * 高于 420 是旋屏 / 分屏 / 读数错了 —— 两个边界都不锁。 */
+const KB_MIN = 180;
+const KB_MAX = 420;
+/* 键盘从弹起到停稳约 250ms。停稳后再等这么久才认，中间帧（539 那种）自然被滤掉。 */
+const LOCK_SETTLE_MS = 180;
 
 function guessOverlayByUA() {
   try {
     const ua = navigator.userAgent || "";
     if (/iP(hone|ad|od)/.test(ua)) return true;
-    /* iPadOS 13+ 的 UA 伪装成 Macintosh，用触点数区分 */
     return /Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1;
   } catch (e) { return false; }
 }
 
-let overlayLocked = false;   /* 已经由实测锁定（弹过一次键盘） */
+let overlayLocked = false;
 let isOverlay = guessOverlayByUA();
 
-function applyKbKind(de) {
-  if (!de) return;
-  try {
-    de.classList.toggle(OVERLAY_CLS, isOverlay);
-    de.classList.toggle(RESIZE_CLS, !isOverlay);
-  } catch (e) { /* 忽略 */ }
-}
-
-let kbMax = 0;              /* 本会话见过的最大键盘高度 */
-let restH = 0;              /* 无键盘时的 innerHeight 基线（缩布局视口型内核要用） */
-let barsBase = -1;          /* 无键盘时的「浏览器 UI 遮挡高」基线（iOS 26 玻璃栏 / 小米噪声） */
-/* 轮 513 · 闭环校正量（见 utils/bottomPin.js）。
- * 上面那一整套是**推导**：拿浏览器上报的数字算「可视区底在哪」。推导依赖每一台机器
- * 上报的数字都对 —— iOS 26 的玻璃栏、X 内置浏览器的 svh、小米的 31px 噪声，每个都
- * 能让它错一次；错了就表现成「表情面板沉到屏幕外 / 只露两排」。
- * 这里留一个**实测**的补正量：由 bottomPin.js 直接量「该贴住的元素」离可视区底多远，
- * 差多少就补多少。方向与 --kbb 相反（--kbb 越大越往上），所以消费者不用改式子 ——
- * 写进 --kbb 的就是 kbb + fix，几个消费者（页面高 / 吸底条 / 面板）自动一起动。 */
-let kbbFix = 0;
-const FIX_LIMIT = 260;      /* 兜底上限：真错了也不会把界面推到屏幕外 */
-let svhH = 0;               /* 100svh 探针读数（0 = 量不出来） */
-let dvhH = 0;               /* 100dvh 探针读数（0 = 量不出来） */
-let lastProbeAt = 0;        /* 上次测探针的时间（节流用） */
-let lastProbeInner = 0;     /* 上次测探针时的 innerHeight（变了就立刻重测） */
-let lastKey = "";
+/* 锁定的键盘高。0 = 还没测到（面板用 CSS 兜底高度）。 */
+let panelH = 0;
+/* 无键盘基线：**开机取一次就冻结**。
+ *
+ * 这是整件事的锚点，取错了后面全错：
+ *   base 744 → 键盘态 484 → 面板高 260 ✓
+ *   base 799 → 键盘态 484 → 面板高 315 ✗（面板比键盘高 55px，条会差一截）
+ *
+ * 为什么不能「跟着当前视口走」：用户一滚动，浏览器底部工具栏就收起，inner 从 744 变 799。
+ * 799 也会在某些时刻稳定存在，所以「等它稳定」这类闸门挡不住它 —— 上一版就是这么被带偏的
+ * （同一段操作，第一次锁 260、第二次锁 315）。
+ *
+ * 为什么开机那一帧可信：页面刚加载完、还没滚动过，工具栏一定是展开状态，inner 就是 744。
+ * 给 1.5s 的窗口取最小值，是为了躲开首帧还没算好工具栏的那一两帧；窗口一过就冻结，
+ * 之后页面怎么滚、工具栏怎么收放，都不再影响它。 */
+let base = 0;
+let bootAt = 0;
+const BASE_WINDOW_MS = 1500;
+/* 探针读数（100svh / 100dvh），量不出来是 0 */
+let svhH = 0;
+let dvhH = 0;
+let lockTimer = 0;
 let booted = false;
+let probeEl = null;
+let lastKey = "";
+
+/* --kbb 的闭环修正量。只有会话页（DmVacChat / iOS overlay 型）还在用：
+ * 那边沿用「量元素离可视区底差多少，就往回推多少」的老做法，本轮不动它。
+ * 暖心墙已经不用了 —— 它的问题是面板高度漂移，跟 --kbb 无关。
+ * 安卓 resize 型上 --kbb 恒 0，这个值也恒 0，不影响本次修复。 */
+let kbbFix = 0;
+const FIX_LIMIT = 260;
 
 function isNativeShell() {
   const c = typeof window !== "undefined" ? window.Capacitor : null;
@@ -120,24 +111,15 @@ function setVar(k, v) {
   try { document.documentElement.style.setProperty(k, v); } catch (e) { /* 忽略 */ }
 }
 
-/* ═══ 真实可视高探针（轮 507）═══
- *
- * 用户第五次报同一个问题后，真相比前几轮更难缠：Safari 的**底部工具栏是 overlay**
- * —— 它盖在页面之上，而 window.innerHeight / visualViewport.height 都**不扣它**。
- * 于是 `.dm-page { height: 100dvh }` 的底边落在工具栏下面那一截，表情面板贴着这个底，
- * 最后一排正好被工具栏吃掉（视频里只露出 2 排表情，其余全在屏幕外）。
- *
- * 没有任何一个 JS 属性会说「工具栏多高」，但**视口单位会**：
- *   svh = 小视口 = 永远取「浏览器 UI 全展开」时的高度（最保守，最可能扣掉工具栏）
- *   dvh = 动态视口 = 随 UI 伸缩
- * 各版本 Safari 的实现并不一致，所以不押宝某一个 —— 直接量，**取三者最小**：
- * 谁扣掉了浏览器 UI，就取到谁。量不出来（老内核把 svh 算成 0）就退回 innerHeight，
- * 与改动前完全一致，不会更差。
- *
- * 探针用持久元素、只在 resize / 方向变化 / 可见性变化时重测（改 height 会重排），
- * 250ms 巡检只复用缓存值。
- */
-let probeEl = null;
+function applyKbKind(de) {
+  if (!de) return;
+  try {
+    de.classList.toggle(OVERLAY_CLS, isOverlay);
+    de.classList.toggle(RESIZE_CLS, !isOverlay);
+  } catch (e) { /* 忽略 */ }
+}
+
+/* 视口单位探针：改 height 会触发重排，所以只在 resize / 方向变化时重测。 */
 function probeHeight(css) {
   try {
     if (!probeEl) {
@@ -151,19 +133,33 @@ function probeHeight(css) {
   } catch (e) { return 0; }
 }
 
-/* 轮 508：两个读数**分别**留下，不再当场取 min。
- * 取 min 让「iOS 26 玻璃栏收起后 dvh 长大」这件事永远体现不出来（吸底条悬空），
- * 而且掩盖不了 svh 在 X 内置浏览器里被报成 lvh 的错（737 vs 691）。
- * 该选哪个由 viewportMath 按语义决定（dvh 优先），这里只负责量。 */
 function readProbes() {
   svhH = probeHeight("100svh");
   dvhH = probeHeight("100dvh");
 }
 
-/** 现读一次视口，把变量写到 :root。幂等，值没变就不碰样式。 */
+/* 键盘停稳后锁一次面板高度。
+ * 用「稳定 180ms」而不是「取最大值」来辨认：键盘动画中间帧只存在几十毫秒，
+ * 停稳后的那个值才是键盘本身。锁完就再也不会变 —— 面板高度从此是常量。 */
+function schedulePanelLock() {
+  if (panelH > 0) return;
+  clearTimeout(lockTimer);
+  lockTimer = setTimeout(() => {
+    if (panelH > 0) return;
+    const inner = Math.round(window.innerHeight || 0);
+    const kb = base - inner;
+    if (kb < KB_MIN || kb > KB_MAX) return;
+    panelH = kb;
+    setVar(KPANEL, kb + "px");
+    lastKey = "";             /* 让下一帧把其余变量重写一遍（幂等） */
+    syncViewportVars();
+  }, LOCK_SETTLE_MS);
+}
+
+/** 现读一次视口，把变量写到 :root。幂等：值没变就不碰样式。 */
 export function syncViewportVars() {
   if (typeof window === "undefined" || typeof document === "undefined") return;
-  /* App 壳走原生 Keyboard 插件（那边 --kb-h 是系统给的最终值），两套语义不能混用 */
+  /* App 壳走原生 Keyboard 插件（--kb-h 是系统给的最终值），两套语义不能混用 */
   if (isNativeShell()) return;
 
   const de = document.documentElement;
@@ -174,103 +170,128 @@ export function syncViewportVars() {
 
   const inner = Math.round(window.innerHeight || 0);
   if (!(inner > 0)) return;
-  if (!(restH > 0)) restH = inner;
 
-  /* 真实可视高探针：量 height 会触发重排，所以节流。
-   * 注意 innerHeight 一变（键盘缩窗口 / 地址栏收放）就必须重测 —— 否则会把键盘态的
-   * 小值缓存下来，键盘收起后 kbb 仍按小值算，整条吸底栏被抬到半空（kb-matrix 抓到过）。 */
-  const nowMs = Date.now();
-  const innerMoved = Math.abs(inner - lastProbeInner) > 2;
-  if (!(svhH > 0) || !(dvhH > 0) || innerMoved || nowMs - lastProbeAt > 900) {
-    lastProbeAt = nowMs;
-    lastProbeInner = inner;
-    readProbes();
-  }
+  /* 基线：开机 1.5s 内只减不增（等浏览器把工具栏算稳），窗口一过就冻结。 */
+  if (!base) { base = inner; bootAt = Date.now(); }
+  else if (Date.now() - bootAt < BASE_WINDOW_MS && inner < base) base = inner;
+
   const vv = window.visualViewport;
-  /* 轮 516 · 可视视口上推量（iOS 键盘态）。面板让位要用它扣掉「已经让过的」那一份，
-   * 详见下面 setVar(VTOP) 那段。 */
-  const vtop = Math.round((vv && vv.offsetTop) || 0);
+  const vvH = vv && vv.height > 0 ? Math.round(vv.height) : 0;
+  const vtop = vv ? Math.round(vv.offsetTop || 0) : 0;
 
-  /* 轮 508：算式整块搬进 viewportMath.js（纯函数），因为「换一台苹果手机就换一种错法」
-   * 这件事只能靠矩阵单测挡住 —— 真机一台台去点是不现实的。见 tools/viewport-matrix-test.mjs */
-  const r = computeViewportVars({
-    inner,
-    vvH: vv && vv.height > 0 ? vv.height : 0,
-    vvT: vv ? vv.offsetTop || 0 : 0,
-    scale: vv ? vv.scale : 1,
-    svh: svhH,
-    dvh: dvhH,
-    restH,
-    barsBase,
-    kbMax,
-  });
-  if (!r.ok) return;
+  readProbes();
+  /* 「键盘真的在」的判据：可视区比基线矮 150 以上。
+   * 150 这个界把浏览器工具栏那 55px 挡在外面（真键盘最低 200）。 */
+  const kbUp = vvH > 0 && base - vvH >= 150;
 
-  /* 轮 512 · 弹过键盘就以实测锁定内核类型（UA 只是初值；分屏 / 桌面模式会骗人）。
-   * 只锁一次：键盘动画中途读数会抖，反复改类会让页面高度来回跳。 */
-  if (!overlayLocked && r.kb > 0) {
+  /* 内核分流：第一次确认键盘弹起时，用 inner 有没有跟着缩来判定。
+   * 缩了 = resize 型（安卓/小米，浏览器自己把窗口压小）；
+   * 没缩 = overlay 型（iOS，键盘浮在上面）。只判一次。 */
+  if (!overlayLocked && kbUp) {
     overlayLocked = true;
-    if (r.overlay !== isOverlay) {
-      isOverlay = r.overlay;
-      applyKbKind(de);
-    }
+    isOverlay = !(base - inner >= 150);
+    applyKbKind(de);
   }
 
-  /* 基线只在「确实没有键盘」时抬高：不然键盘弹起后的 innerHeight 会被记成基线，
-   * 下一次就再也算不出差值（历史坑，见 keyboardInset.js 的 restH）。 */
-  if (!(r.kb > 0) && inner > restH) restH = inner;
-  barsBase = r.bars;
+  /* --kbb：可视区底离布局视口底多远。
+   * resize 型键盘态：inner 484 / vv 484 → 0（布局视口就是可视区，条贴底即贴键盘沿）
+   * overlay 型无键盘：inner 852 / vv 771 → 81（Safari 底部工具栏那一截）
+   * overlay 型键盘态：inner 852 / offsetTop 330 + vv 522 → 0（可视区已被上推，条贴底即贴键盘沿） */
+  const visBottom = vvH > 0 ? Math.min(inner, vtop + vvH) : inner;
+  const kbb = Math.max(0, inner - visBottom) + kbbFix;
 
-  if (r.kbMax > kbMax) {
-    kbMax = r.kbMax;
-    setVar(KBL, kbMax + "px");
-  }
-  const key = inner + "|" + r.vph + "|" + r.kbb + "|" + barsBase + "|" + kbbFix + "|" + vtop;
-  if (key !== lastKey) {
-    lastKey = key;
-    setVar(KBB, (r.kbb + kbbFix) + "px");
-    setVar(VPH, r.vph + "px");
-    setVar(VLH, inner + "px");
-    /* 轮 516 · 上推量单独给一份，**只给「面板让位」用**。
-     *
-     * iOS 键盘弹起时为了让光标露出来，会把可视视口整个推到 offsetTop 处。此时
-     * 页面底在屏幕上的位置 = inner − offsetTop（852−330=522，正好是键盘上沿）。
-     * 表情面板的让位若仍然按「面板高」整份加，就等于**多让了一次**：
-     *   页面底已经是键盘上沿 522，再让 330 → 输入行跑到屏幕 192（上半屏）。
-     * 组装级工装（tools/dm-sheet-drive.mjs）实测「键盘 → 表情」这一下：
-     *   键盘态 输入行屏幕 469..505 → 点表情 +16ms 窜到 146..182 → 键盘收完才回 405..441。
-     * 这就是用户从轮 512 起说的「切表情一闪」在苹果端的真身。
-     *
-     * 让位公式因此改成 max(0, 面板高 − 上推量)：
-     *   上推态 330−330=0（面板正好顶替键盘，输入行原地不动）
-     *   工具栏态 330−0=330（原来的值）
-     * 公式写在 CSS（style.css / DmVacChat 的 THEME_CSS），这里只提供数字。
-     * App 壳不跑本文件 ⇒ --vtop 未定义 ⇒ var(--vtop, 0px)=0 ⇒ 行为与改动前一致。 */
-    setVar(VTOP, vtop + "px");
-  }
+  /* --vph：浏览器 UI 展开后还剩多少。三个读数取最小 —— 谁扣掉了工具栏就取到谁。
+   * 老内核把 svh 报成 0 时自动跳过；全量不出来就退回 inner，与改造前一致。 */
+  const vph = Math.min(inner, ...[svhH, dvhH].filter((x) => x > 0));
+
+  /* --kb-now：当前键盘占了多高（0 ~ 面板高）。整个切换动画就靠这一个数驱动。
+   *
+   * resize 型 = 基线 − 当前 inner（键盘弹起时布局视口被压小了多少，收起时回到 0）
+   * overlay 型 = 可视视口的上推量（inner 不变，iOS 靠上推露出输入框）
+   *
+   * 只有「弹过键盘」（panelH 已锁定、base 已确定）才算 —— 否则基线与当前值不可比，
+   * 会算出「键盘还占着 55px」这种假的占位。 */
+  const over = isOverlay ? 0 : Math.max(0, inner - base);
+  const kbNow = panelH > 0 && (kbUp || over === 0)
+    ? Math.max(0, Math.min(panelH, isOverlay ? vtop : base - inner))
+    : 0;
+
+  if (kbUp) schedulePanelLock();
+
+  const key = [inner, kbb, vtop, vph, kbNow, over, panelH, isOverlay, base].join("|");
+  if (key === lastKey) return;
+  lastKey = key;
+  setVar(KBB, kbb + "px");
+  setVar(VTOP, vtop + "px");
+  setVar(VPH, vph + "px");
+  setVar(VLH, inner + "px");
+  /* 轮 520 · 无键盘基线也导出：会话页的让位要拿「页面底该在哪」当参照系，
+   * 而那个数就是 base − 面板高（见 DmVacChat 的 THEME_CSS）。 */
+  if (base > 0) setVar(VLH_BASE, base + "px");
+  /* --kb-pageh：**键盘弹起时聊天页盒子有多高**（base − 键盘高）。
+   *
+   * 轮 521 · 用户第六次报「键盘↔表情切换跳来跳去」，原话：「就不看别的软件吗？
+   * 都是键盘跟表情固定一个高度」「以键盘高度为准是做不到吗」。
+   *
+   * 真机逐帧把最后那 55px 的来源说清楚了（这条不是算错，是**参照系选错**）：
+   *   · 键盘态：浏览器工具栏是展开的，inner 744，键盘 260 → 页面盒子 484。
+   *   · 面板态：键盘收起后工具栏**也**收起了（小米浏览器就是这样），inner 799，
+   *     而面板高仍是 260 → 页面盒子 799 − 260 = 539，比键盘态高 55。
+   *   输入条贴着盒子底，于是每切一次就上下摆那 55px。
+   *
+   * 别的 App 之所以稳，是因为它们的面板占的就是「键盘那一块」，高度跟着键盘走、
+   * 不跟着视口走。所以这里把键盘态盒子高单独导出来，面板态直接沿用它 ——
+   * 两种状态的页面盒子变成同一个数，条自然一动不动（面板多吃掉工具栏那 55px）。 */
+  if (base > 0 && panelH > 0) setVar(KBPAGEH, base - panelH + "px");
+  setVar("--kb-now", kbNow + "px");
+  /* --kb-kbb：**按键盘收起进度打折的 --kbb**（会话页让位专用）。
+   *
+   * 会话页的输入条贴在页面盒子底，而表情面板是 fixed 贴「可视视口底」，两者差着
+   * 浏览器工具栏那一条（真机 31px）。面板接管屏底之后，让位必须补上这一条，
+   * 条才不会压在面板上。
+   *
+   * 但不能一开面板就补：那一帧键盘还在（--kb-now 260），补上 31px 会把条提前顶离
+   * 键盘顶，条底 508 → 477，底下露出 31px 空隙（真机逐帧 t9988 那条 -24px）。
+   * 所以要跟 --kb-now 反向走：键盘全开 ⇒ 0（条贴键盘顶），键盘全收 ⇒ kbb（条贴面板顶），
+   * 中间线性 —— 条的屏幕位置全程连续，没有一帧是跳的。
+   *
+   * 除法放在 JS 里算，不写进 CSS：calc 带单位变量相除在国产内核上兼容性不齐。 */
+  const kbbEff = panelH > 0
+    ? kbb * Math.max(0, 1 - kbNow / panelH)
+    : kbb;
+  setVar("--kb-kbb", Math.round(kbbEff) + "px");
+  /* --kb-over：布局视口比无键盘基线**还高**出来的那一截。
+   *
+   * 真机实测：键盘收起不是 484 → 744 一步到位，而是 484 → **799** → 744 ——
+   * 浏览器底部工具栏临时收起，多报 55px，约 140ms 后又还回来。
+   * 那 140ms 里 fixed 的吸底条会跟着 799 往下掉 55px 再弹回，就是用户说的「一闪」。
+   * 把这一截单独给出来，让 CSS 在算位置时减掉它，条就钉在 484 不动。 */
+  setVar("--kb-over", over + "px");
+
   /* 现场诊断（只写全局、不改行为）：控制台一句 JSON.stringify(window.__wpVars) */
   try {
     window.__wpVars = {
-      inner, vvH: Math.round(vv && vv.height || 0), vvT: Math.round(vv && vv.offsetTop || 0),
-      kbb: r.kbb, kbbFix, kbbUsed: r.kbb + kbbFix, kb: r.kb, kbMax, restH, vph: r.vph, vphSrc: r.src,
-      bars: r.bars, svh: svhH, dvh: dvhH, visBottom: r.visBottom,
-      panel: kbMax || null, scale: vv ? vv.scale : null, at: Date.now(),
+      inner, vvH, vtop, kbb, vph, svh: svhH, dvh: dvhH,
+      base, kbUp, kbNow, over, panel: panelH || null,
+      kind: isOverlay ? "overlay" : "resize",
+      at: Date.now(),
     };
   } catch (e) { /* 忽略 */ }
 }
 
-/** 闭环校正：把「该贴住可视区底」的元素位置误差补进 --kbb（正数 = 往下挪）。 */
+let raf = 0;
+let until = 0;
+/* 会话页专用（见上面 kbbFix 的说明）。暖心墙已不再调用这两个函数。 */
 export function nudgeKbbFix(delta) {
   if (typeof delta !== "number" || !isFinite(delta)) return 0;
   const next = Math.max(-FIX_LIMIT, Math.min(FIX_LIMIT, Math.round(kbbFix + delta)));
   if (next === kbbFix) return kbbFix;
   kbbFix = next;
-  lastKey = "";               /* 强制重写一次 --kbb */
+  lastKey = "";
   syncViewportVars();
   return kbbFix;
 }
 
-/** 换页面 / 旋屏时把校正量归零，别把上一页的误差带过去。 */
 export function resetKbbFix() {
   if (!kbbFix) return;
   kbbFix = 0;
@@ -278,9 +299,6 @@ export function resetKbbFix() {
   syncViewportVars();
 }
 
-let raf = 0;
-let until = 0;
-/* 键盘起落是分几步动画走的，逐帧采一小段最稳（读两个只读属性很便宜） */
 function sample(ms) {
   if (typeof requestAnimationFrame !== "function") return;
   const now = () => (typeof performance !== "undefined" && performance.now ? performance.now() : Date.now());
@@ -295,7 +313,7 @@ function sample(ms) {
 
 export function initViewportVars() {
   if (booted || typeof window === "undefined") return;
-  if (isNativeShell()) return;   /* App 壳零开销 */
+  if (isNativeShell()) return;
   booted = true;
 
   syncViewportVars();
@@ -306,9 +324,11 @@ export function initViewportVars() {
     vv.addEventListener("scroll", syncViewportVars);
   }
   window.addEventListener("resize", () => { syncViewportVars(); sample(360); }, { passive: true });
-  /* 旋屏后浏览器 UI 的排布整个换了（玻璃栏横竖不同、状态栏消失），基线必须全部重来 */
+  /* 旋屏后浏览器 UI 的排布整个换了（玻璃栏横竖不同、状态栏消失），基线必须重来。
+   * 面板高度**不重置**：同一台设备横竖屏的键盘高不同，但用户是在竖屏下看的，
+   * 重置只会让他在切回竖屏时又看到一次「面板变高了」。 */
   window.addEventListener("orientationchange", () => {
-    restH = 0; barsBase = -1; svhH = 0; dvhH = 0; kbbFix = 0;
+    base = 0; bootAt = 0; svhH = 0; dvhH = 0;
     syncViewportVars(); sample(900);
   }, { passive: true });
   document.addEventListener("focusin", () => sample(900), true);
