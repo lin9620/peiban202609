@@ -41,7 +41,7 @@ import BottleChat from "../components/BottleChat.vue";
 import DmVacChat from "../components/DmVacChat.vue";
 import { readDmUi } from "../utils/dmUiFlag.js";
 import { isMobileNav, chatOpen, pushBack, popBack } from "../stores/uiStore.js";
-import { kickChatViewport } from "../utils/chatViewport.js";
+import { kickChatViewport, releaseChatViewport } from "../utils/chatViewport.js";
 /* T7 娑堟伅 Tab 鍐呭垎鏍忥紙绉佷俊 | 閫氱煡锛夛細閫氱煡娈电洿鎺ュ鐢?NotificationsView
  * 锛堟暟鎹眰闆堕噸鍐欙紱寮傛 chunk 涓嶆嫋鎱㈤灞忥紱鎸傝浇鍗虫媺绗?0 椤碉紝閰?SWR 缂撳瓨绉掑紑锛?*/
 const NotificationsView = defineAsyncComponent(() => import("./NotificationsView.vue"));
@@ -124,7 +124,12 @@ watch([isMobileNav, activeId, paneReady], () => {
  * nextTick = DOM 更新完、浏览器还没绘制 → 内联高度与面板同帧落地，
  * 用户看不到「输入条先在屏幕中间闪一下再掉下去」。 */
 watch(chatOpen, (v) => {
-  if (v) nextTick(() => kickChatViewport());
+  /* 轮 517：**退出这一半以前是空的** —— 只有进门有人校正几何，出门没人收摊。
+   * 退出后 .dm-page 的内联 fixed/width/height/overflow:hidden 和 html 上的 wp-chat-fix
+   * 要等 chatViewport 的 250ms 巡检才被清，这段时间列表页被钉在一个裁切框里，
+   * 巡检一过再弹回文档流 = 用户报的「退出会话有一个缩放」。同帧拆掉。 */
+  if (v) { nextTick(() => kickChatViewport()); return; }
+  nextTick(() => releaseChatViewport());
 });
 
 /* 轮 481 · 进会话过渡（用户：「进入聊天框搞点过渡动画，现在这啥都没有」）。
@@ -294,7 +299,17 @@ function restoreListScroll() {
  * .dm-page--chat 改成 100dvh，文档当场变短 → 浏览器把 window.scrollY 钳到 0；
  * 返回时文档虽然有变高，但没人再滚回去。列表很长时用户往往已经滚过页面，
  * 于是「返回 = 回到最上面」。 */
-watch(activeId, (v, old) => { if (!v && old) restoreListScroll(); });
+watch(activeId, (v, old) => {
+  if (!v && old) {
+    /* 轮 517：退出时序改成「先拆 fixed 接管 → 再恢复列表位置」，且都等 DOM 更新完。
+     * 原来这是同步调用：那一刻 .dm-page 还带着内联 position:fixed/overflow:hidden，
+     * 列表 aside 也还是隐藏的，写进去的 scrollTop 会被裁掉/算错。 */
+    nextTick(() => {
+      releaseChatViewport();
+      restoreListScroll();
+    });
+  }
+});
 const userScrolling = ref(false);   /* 杞?173锛氱敤鎴锋墜鍔ㄤ笂婊戞爣璁扳€斺€旇拷搴曞仠鎵?*/
 const listRevealed = ref(true);     /* 杞?176锛氳繘浼氳瘽鍏堥殣钘忔秷鎭尯锛岄拤搴曠ǔ瀹氬悗鍐嶆樉绀衡€斺€?
     棣栧抚 fallback 瀛椾綋鎺掔増 鈫?webfont 鎹㈣鎾戦珮鍐呭 = 钀界偣閿欎綅闂幇锛堢敤鎴峰疄娴嬭烦闂級 */

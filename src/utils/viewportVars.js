@@ -48,6 +48,9 @@ const VPH = "--vph";        /* 真实可视高（浏览器 UI 占用后的那一
  * 换用 --vph 会算错键盘态：它是「含键盘」的可视高（522），页面缩到 522 之后
  * 再叠上 iOS 的上推，输入条反而悬在键盘上方 81px。 */
 const VLH = "--vlh";
+/* 轮 516 · 可视视口上推量（iOS 键盘态 = 可视区顶离布局视口顶多远）。
+ * 只给表情面板的让位用：让位 = max(0, 面板高 − 上推量)。见 syncViewportVars 里那段。 */
+const VTOP = "--vtop";
 const WEB_CLASS = "kb-web";
 /* 轮 512 · 键盘/视口关系分流（用户：「安卓本来好好的，你改苹果之后全是问题」）
  *
@@ -184,6 +187,9 @@ export function syncViewportVars() {
     readProbes();
   }
   const vv = window.visualViewport;
+  /* 轮 516 · 可视视口上推量（iOS 键盘态）。面板让位要用它扣掉「已经让过的」那一份，
+   * 详见下面 setVar(VTOP) 那段。 */
+  const vtop = Math.round((vv && vv.offsetTop) || 0);
 
   /* 轮 508：算式整块搬进 viewportMath.js（纯函数），因为「换一台苹果手机就换一种错法」
    * 这件事只能靠矩阵单测挡住 —— 真机一台台去点是不现实的。见 tools/viewport-matrix-test.mjs */
@@ -219,12 +225,28 @@ export function syncViewportVars() {
     kbMax = r.kbMax;
     setVar(KBL, kbMax + "px");
   }
-  const key = inner + "|" + r.vph + "|" + r.kbb + "|" + barsBase + "|" + kbbFix;
+  const key = inner + "|" + r.vph + "|" + r.kbb + "|" + barsBase + "|" + kbbFix + "|" + vtop;
   if (key !== lastKey) {
     lastKey = key;
     setVar(KBB, (r.kbb + kbbFix) + "px");
     setVar(VPH, r.vph + "px");
     setVar(VLH, inner + "px");
+    /* 轮 516 · 上推量单独给一份，**只给「面板让位」用**。
+     *
+     * iOS 键盘弹起时为了让光标露出来，会把可视视口整个推到 offsetTop 处。此时
+     * 页面底在屏幕上的位置 = inner − offsetTop（852−330=522，正好是键盘上沿）。
+     * 表情面板的让位若仍然按「面板高」整份加，就等于**多让了一次**：
+     *   页面底已经是键盘上沿 522，再让 330 → 输入行跑到屏幕 192（上半屏）。
+     * 组装级工装（tools/dm-sheet-drive.mjs）实测「键盘 → 表情」这一下：
+     *   键盘态 输入行屏幕 469..505 → 点表情 +16ms 窜到 146..182 → 键盘收完才回 405..441。
+     * 这就是用户从轮 512 起说的「切表情一闪」在苹果端的真身。
+     *
+     * 让位公式因此改成 max(0, 面板高 − 上推量)：
+     *   上推态 330−330=0（面板正好顶替键盘，输入行原地不动）
+     *   工具栏态 330−0=330（原来的值）
+     * 公式写在 CSS（style.css / DmVacChat 的 THEME_CSS），这里只提供数字。
+     * App 壳不跑本文件 ⇒ --vtop 未定义 ⇒ var(--vtop, 0px)=0 ⇒ 行为与改动前一致。 */
+    setVar(VTOP, vtop + "px");
   }
   /* 现场诊断（只写全局、不改行为）：控制台一句 JSON.stringify(window.__wpVars) */
   try {

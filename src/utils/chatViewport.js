@@ -235,6 +235,24 @@ export function kickChatViewport() {
   sync();
 }
 
+/* 轮 517 · 退出会话时**同步拆掉接管**，不许等 250ms 巡检。
+ *
+ * 用户第 3 条（安卓浏览器）：「从某一条会话退出到会话列表有一个缩放」。
+ * 真凶不在过渡曲线 —— 是这段时间没人回来收摊：
+ *   · .dm-page 上的内联还挂着 position:fixed / width / height / overflow:hidden
+ *   · html/body 还带着 `wp-chat-fix { height:100%; overflow:hidden }`
+ * 退出只是把 `dm-page--chat` 这个**类**摘掉，内联样式照样生效，于是列表页被钉在
+ * 「393×812 的 fixed 框 + 裁切」里；等巡检的 sync 发现 findChatPage() 已经不是聊天页、
+ * 才 clearInline + unlockDoc —— 用户在 0~250ms 后看到内容「弹」回文档流，就是那个缩放。
+ *
+ * 这里刻意**不查** findChatPage：退出那一帧 Vue 还没 patch 完、路由也还没退回来，
+ * 查出来的结论不可靠。谁锁的谁放，最不容易错。 */
+export function releaseChatViewport() {
+  if (el) { clearInline(el); el = null; }
+  lastKey = "";
+  unlockDoc();
+}
+
 export function initChatViewport() {
   if (booted || typeof window === "undefined") return;
   /* App 壳连监听都不装、定时器都不起 —— 那边完全走原生路径，这里零开销。 */

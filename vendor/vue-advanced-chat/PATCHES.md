@@ -17,7 +17,7 @@
 
 fork 之后这些改成「源码里本来就对」，宿主不再需要内联钉。
 
-## 五处改动
+## 七处改动
 
 改的都是 `dist/vue-advanced-chat.es.js`，每处都在下文给了可 grep 的锚点。
 
@@ -76,11 +76,36 @@ fork 之后这些改成「源码里本来就对」，宿主不再需要内联钉
 面板被顶到**屏幕顶部**（工装实测 rect `0..320`，本该 `532..852`）。整宽和高度都对，
 只有位置错，肉眼就是「面板跑到上面去了」。
 
+### 7. 手机面板扣掉可视视口上推量（轮 516）
+
+在改动 2 那条规则里加一个 `transform`：
+
+```css
+height: var(--kb-panel-h, 320px) !important;
+transform: translateY(var(--vtop, 0px));      /* ← 新增 */
+padding-top: 0;
+```
+
+**为什么**：iOS 键盘弹起时，Safari 会把**可视视口整个上推**（`visualViewport.offsetTop`
+= 键盘高）。`position: fixed` 的元素相对可视视口定位，于是 `bottom: 0` 的面板落在
+「键盘上方」—— 一块 330px 高的面板横在屏幕中间（屏幕 `202..532`），输入行只能让到
+它上面（屏幕 `146`）；键盘 250ms 后收起，面板和输入行再一起掉下来。
+用户从轮 512 起反复说的「切表情一闪」，苹果端的真身就是这个。
+
+`--vtop` 由宿主 `src/utils/viewportVars.js` 写入（= `visualViewport.offsetTop`）。
+上推态下面板被推到**键盘所在的位置**（屏幕 `522..852`，被系统键盘盖住、看不见），
+键盘收起时 `--vtop` 归零，面板从底下自然升上来 —— 看起来就是「键盘换成了表情面板」。
+`App 壳` 不跑 viewportVars ⇒ `--vtop` 未定义 ⇒ `0` ⇒ 行为与改动前完全一致。
+
+与宿主侧让位的 `max(0px, 面板高 − var(--vtop))` 是同一条账：两边都扣掉上推量，
+输入行在整段动画里几乎不动。
+
 ## 怎么核对改动还在
 
 ```bash
-node tools/vendor-check.mjs     # 依赖接线 + 六处改动是否都在
+node tools/vendor-check.mjs     # 依赖接线 + 七处改动是否都在
 node tools/vac-sheet-drive.mjs  # 真渲染量面板：整宽 / 贴屏底 / 让开 --kbb / 高度吃 --kb-panel-h
+node tools/dm-sheet-drive.mjs   # 组装级：真挂 DmVacChat，走「键盘 → 表情 → 键盘」量输入行
 ```
 
 `vac-sheet-drive` 实测（393×852）：

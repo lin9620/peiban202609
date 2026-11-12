@@ -45,6 +45,14 @@ const barOf = () => (root.value && root.value.closest(".cmt-main-bar")) || null;
 const syncBar = (open) => {
   const bar = barOf();
   if (bar) bar.classList.toggle("wp-emoji-open", !!open && isSheet());
+  /* 轮 515：面板态还要打到 html 上。
+   * App 壳里暖心墙没有 .dm-page，整页高度只由 `body { padding-bottom: var(--kb-h) }`
+   * 决定；面板打开会让键盘收起（--kb-h → 0），那 320px 的让位要是也走 220ms 过渡，
+   * 屏幕上就是「底部抽出一条空白再填上」—— 第 2 条那个闪的另一半。
+   * 见 style.css 的 `html.cap-app.kb-anim:not(.wp-panel) body`。 */
+  try {
+    document.documentElement.classList.toggle("wp-panel", !!open && isSheet());
+  } catch (e) { /* 无 DOM 环境 */ }
 };
 
 const grow = () => {
@@ -123,7 +131,29 @@ const toggleEmoji = () => {
  * 轮 478：数据已在空闲时预热过（见 emojiWarm.js 的 scheduleEmojiWarm），
  * 正常情况下面板一打开就是满的；预热没赶上（刚装/弱网/存储被清）时，
  * 先铺一层骨架占位，别让面板是一片空白 —— 用户说的「点了很慢、卡顿」就是这段空白。 */
+/* 轮 515 · 首帧就查一次：预热过的话 shadowRoot 里已经有 `.emoji`，
+ * 不必先渲染一帧骨架再换成真表情（那一帧就是用户说的「一闪」）。
+ * picker.value 此刻是 null（面板还没插进 DOM），只有上次留着的老节点才查得到，
+ * 所以这一步只是「省掉能省的那次」，查不到就走原来的定时器，行为不变。 */
+const pickerLooksReady = () => {
+  try {
+    const el = picker.value;
+    const sr = el && el.shadowRoot;
+    return !!(sr && sr.querySelector(".emoji"));
+  } catch (e) { return false; }
+};
 const pickerReady = ref(false);
+/* 轮 517 · 面板**只挂一次，之后只隐藏**（v-show），不再 v-if 卸载。
+ *
+ * 用户第 2 条（安卓浏览器，反复切键盘/表情）「有一闪的东西」，工装量到的就是这个：
+ *   v-if="emojiOpen" ⇒ 切一次键盘就把 .wp-composer-picker 连同 <emoji-picker>
+ *   一起从 DOM 摘掉，再点表情时**重新造一个自定义元素**。
+ *   androidbar-drive 逐帧采实例 uid：第一次 1、切走 0、第二次 2 —— 每次都重建。
+ * 重建的代价在真机上不在几何（几何是同帧到位的），而在格子：
+ * 库要把 /emoji/data.json 重新灌一遍、上百个格子重新渲染，这几十到几百毫秒里
+ * 面板是空的/只有骨架 —— 肉眼看到的就是「一闪」。
+ * 保活之后 shadowRoot 一直在，watchPickerReady 的同步探测第一帧就命中，骨架不再出现。 */
+const pickerMounted = ref(false);
 let readyTimer = 0;
 /* 轮 513 · 面板占位改成**量出来的内联 padding**（与会话页 emojiPad 同一套）。
  *
@@ -136,6 +166,11 @@ let readyTimer = 0;
  * 普通规则，又不影响 .wp-kb-swap 那条 !important 的交接钉）。 */
 let padRO = null;
 let padTimer = 0;
+/* 轮 516：老内核不认 max()（Chromium <79）。不支持时内联退回纯像素，与改动前一致。 */
+const CAN_MAX = (() => {
+  try { return typeof CSS !== "undefined" && !!CSS.supports && CSS.supports("padding-bottom", "max(0px, 1px)"); }
+  catch (e) { return false; }
+})();
 const clearPad = () => {
   const bar = barOf();
   if (bar) bar.style.paddingBottom = "";
@@ -155,10 +190,22 @@ const syncPad = () => {
   if (!bar) return;
   if (!emojiOpen.value || !isSheet() || !el) { clearPad(); return; }
   const h = Math.round(el.getBoundingClientRect().height);
-  if (h > 0) bar.style.paddingBottom = h + "px";
+  if (h > 0) {
+    /* 轮 516 · 与会话页（DmVacChat 的 emojiPad）同一条账：让位要扣掉可视视口上推量。
+     * iOS 键盘弹起时可视视口整个上推，页面底**已经**是键盘上沿；再按面板高整份让位
+     * 等于让两次，底条被顶到屏幕上半部（工装 panel-press-60 实测底条 148，该 ~478）。
+     * 写成 calc 表达式让 --vtop 变化由浏览器自己重算，不赌定时器。
+     * 不支持 max() 的老内核退回纯像素（= 改动前行为）。 */
+    bar.style.paddingBottom = CAN_MAX
+      ? `max(0px, ${h}px - var(--vtop, 0px))`
+      : h + "px";
+  }
 };
 function watchPickerReady() {
   clearTimeout(readyTimer);
+  /* 轮 515：预热过的话 shadowRoot 里此刻就已经有格子 —— 先同步查一次，
+   * 查到就直接算就绪，别先渲染一帧骨架再换成真表情（那一帧就是「一闪」）。 */
+  if (pickerLooksReady()) { pickerReady.value = true; return; }
   pickerReady.value = false;
   const started = Date.now();
   const tick = () => {
@@ -182,9 +229,12 @@ watch(emojiOpen, async (open) => {
     clearTimeout(padTimer);
     if (padRO) { try { padRO.disconnect(); } catch (e) { /* 忽略 */ } padRO = null; }
     clearPad();
-    pickerReady.value = false;
+    /* 轮 517：这里原来有 `pickerReady.value = false` —— 只对「面板会被销毁」成立。
+     * 现在面板保活（pickerMounted），置 false 会让下次打开先渲染一帧骨架，等于
+     * 自己造出那「一闪」。就绪状态跟着实例走，实例还在就必须保持 true。 */
     return;
   }
+  pickerMounted.value = true;
   await nextTick();
   /* 面板刚插进 DOM 时高度可能还没有（emoji-picker 是自定义元素，要等它升级），
      所以立刻量一次 + 260ms 再量一次 + 用 ResizeObserver 盯住它的实际高度。
@@ -341,6 +391,9 @@ onBeforeUnmount(() => {
   clearTimeout(padTimer);
   if (padRO) { try { padRO.disconnect(); } catch (e) { /* 忽略 */ } padRO = null; }
   clearPad();
+  /* 轮 515：面板开着就被卸载时 html.wp-panel 必须摘掉，
+     否则 body 的键盘让位永远不走过渡（按钮场景里那一跳） */
+  try { document.documentElement.classList.remove("wp-panel"); } catch (e) { /* 忽略 */ }
   document.removeEventListener("pointerdown", onDocDown, true);
   document.removeEventListener("click", onDocClick);
 });
@@ -403,7 +456,17 @@ defineExpose({
       </svg>
     </button>
 
-    <div v-if="emojiOpen" class="wp-composer-picker" @click.stop>
+    <!-- 轮 517：保活（v-if 只决定「有没有造过」，开关走 is-open 类）。
+         不能用 v-show —— style.css 里 `.post-card:has(.wp-composer-picker)` 靠
+         「面板在不在 DOM 里」让当前那张卡让路，v-show 的 display:none 它照样命中，
+         于是所有带输入条的帖子卡都会 常驻 content-visibility:visible + z-index:2。
+         用类名后 :has 只认真正打开的那一个。 -->
+    <div
+      v-if="pickerMounted"
+      class="wp-composer-picker"
+      :class="{ 'is-open': emojiOpen }"
+      @click.stop
+    >
       <!-- 轮 478：数据没到位时铺一层占位（面板原本这段是纯空白，看着像点坏了） -->
       <div v-if="!pickerReady" class="wp-picker-skel" aria-hidden="true">
         <i v-for="n in 48" :key="n"></i>
@@ -495,6 +558,8 @@ defineExpose({
   right: 0;
   bottom: calc(100% + 8px);
   z-index: 80;
+  /* 轮 517：默认不占位（保活后 DOM 常在，靠这个类开关显隐，别用 v-show） */
+  display: none;
   width: min(320px, calc(100vw - 28px));
   height: min(340px, 52vh);
   border: 1px solid var(--hairline, #e6dfd8);
@@ -503,6 +568,7 @@ defineExpose({
   background: var(--wash-strong, #fffdf9);
   box-shadow: 0 18px 44px rgba(40, 28, 16, 0.18);
 }
+.wp-composer-picker.is-open { display: block; }
 .wp-composer-picker emoji-picker {
   width: 100%;
   height: 100%;
@@ -573,6 +639,19 @@ defineExpose({
        面板会整块落在键盘下方（用户截图：最后一排 emoji 看不见）。 */
     bottom: var(--kbb, 0px);
     height: var(--kb-panel-h);
+    /* 轮 516 · 键盘还在收起时，面板要**藏在键盘后面**、随键盘一起升上来。
+     *
+     * iOS 键盘态会把可视视口上推 --vtop（= 键盘高），此时 fixed 元素相对可视视口定位：
+     * 面板 bottom:0 就落在「键盘上方」—— 一块 330px 高的面板横在屏幕中间，输入行只能
+     * 让到它上面（屏幕 y≈150）。键盘 250ms 后收起，面板和输入行再一起掉下来。
+     * 用户从轮 512 起说的「切表情一闪」，苹果端的真身就是这个。
+     *
+     * translateY(--vtop) 把面板往下推一个上推量：上推态面板正好落在**键盘所在的位置**
+     * （被系统键盘盖住、看不见），键盘收起时 --vtop 归零，面板从底下自然升上来。
+     * 与底条让位 max(0, 面板高 − --vtop) 是同一条账：两边都扣掉上推量，
+     * 输入行在整段动画里几乎不动，看起来就是「键盘换成了表情面板」。
+     * App 壳没有 --vtop ⇒ 0 ⇒ 行为与改动前完全一致。 */
+    transform: translateY(var(--vtop, 0px));
     max-height: none;
     border: 0;
     border-top: 1px solid var(--hairline, #e6dfd8);

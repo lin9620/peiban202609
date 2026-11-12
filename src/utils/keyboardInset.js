@@ -359,9 +359,20 @@ export function webSwapNeeded() {
    *
    * 钉住之后必须有判据能摘：resize 型没有 --kb-h / --kbb 可看，
    * 所以 holdForKeyboard 里补了一条「innerHeight 比挂上时缩了 ≥ KB_MIN」。
-   * 类名由 viewportVars 的实测判定给出（见 kb-overlay / kb-resize）。 */
+   * 类名由 viewportVars 的实测判定给出（见 kb-overlay / kb-resize）。
+   *
+   * 轮 516 · 补上 **kb-overlay**（iOS Safari）。上一轮只补了 resize 型，把最需要钉的
+   * 那一半漏了：overlay 型的 --kb-h 恒为 0（键盘是浮层、布局视口不缩），
+   * webKbSeen 永远起不来 ⇒ 这条判据一直是 false ⇒ .wp-kb-swap 从来没挂过。
+   * 组装级工装（tools/dm-sheet-drive.mjs，真挂 DmVacChat + iOS 模型）实测：
+   *   panel        输入行屏幕 405..441  pad=330px  cls=wp-emoji-open
+   *   kb-press+20  输入行屏幕 725..761  pad=7px    cls=-          ← 一帧塌光
+   *   kb-back+350  输入行屏幕 469..505  pad=7px
+   * 也就是「点键盘键那一下输入行先掉到屏底、320px 空白，键盘回来再顶回去」——
+   * 用户从轮 512 起反复说的「表情跟键盘切换有一闪」，苹果端一直没修的就是这一条。 */
   try {
-    return document.documentElement.classList.contains("kb-resize");
+    const de = document.documentElement.classList;
+    return de.contains("kb-resize") || de.contains("kb-overlay");
   } catch (e) { return false; }
 }
 
@@ -429,16 +440,47 @@ function initWeb() {
   applyWeb();
 }
 
+/* ═══ 轮 515 · 键盘动画窗口标记（只给 App 壳用）═══
+ *
+ * 用户第 11 次报：「安卓端暖心墙，表情跟键盘切换的时候有一闪的东西」「从会话退出到
+ * 会话列表有一个缩放」。
+ *
+ * 真因不在算式，在**过渡的启用范围**：App 壳里吃 --kb-h 的几何量有三处
+ *   body 的 padding-bottom（2694）、.dm-page 的高度（2695）、底条/回复条的 bottom（2711/2717）
+ * 轮 322 只给 .dm-page 挂了一条常驻 `transition: height .22s`，body 一直是瞬变 ——
+ * 两者本来就错着拍；更要紧的是这条过渡在**非键盘场景**照样生效：
+ *   · 切表情：面板是瞬现的（组件直插节点），底条却要花 0.22s 从屏底爬上来
+ *     → 中间 220ms 输入行被面板盖住、条还在半路 = 「一闪的东西」；
+ *   · 退出会话：.dm-page 从 100dvh 变回内容高，0.22s 里一缩一放 = 「缩放」。
+ * 前两轮（512/513）只改了网页端分支（html.kb-web），App 壳这三条一字未动，
+ * 所以用户装上 APK 一测，两条问题原封不动。
+ *
+ * 改法：过渡从「常驻」改成「按窗口」—— 只有键盘真的在起落的这 340ms 里开，
+ * 其余时刻高度/让位一律瞬变。网页端分支不动。
+ */
+const KB_ANIM_CLS = "kb-anim";
+let kbAnimTimer = 0;
+function kbAnimOn() {
+  const de = typeof document !== "undefined" ? document.documentElement : null;
+  if (!de) return;
+  try { de.classList.add(KB_ANIM_CLS); } catch (e) { /* 忽略 */ }
+  clearTimeout(kbAnimTimer);
+  /* 340 > CSS 里的 220ms：留 120ms 尾量，别在过渡跑到一半时把规则摘掉 */
+  kbAnimTimer = setTimeout(() => {
+    try { de.classList.remove(KB_ANIM_CLS); } catch (e) { /* 忽略 */ }
+  }, 340);
+}
+
 export function initKeyboardInset() {
   if (!Capacitor.isNativePlatform()) { initWeb(); return; }   /* 网页端走可视视口那套 */
   /* 轮 498：App 壳也把面板兜底高度算成 px（与网页端同一把尺子，别一边一个数） */
   restH = (typeof window !== "undefined" && window.innerHeight) || 0;
   writePanelRuler(true);
   try {
-    Keyboard.addListener("keyboardWillShow", (i) => setInset(i && i.keyboardHeight));
-    Keyboard.addListener("keyboardDidShow", (i) => setInset(i && i.keyboardHeight));
-    Keyboard.addListener("keyboardWillHide", () => setInset(0));
-    Keyboard.addListener("keyboardDidHide", () => setInset(0));
+    Keyboard.addListener("keyboardWillShow", (i) => { kbAnimOn(); setInset(i && i.keyboardHeight); });
+    Keyboard.addListener("keyboardDidShow", (i) => { kbAnimOn(); setInset(i && i.keyboardHeight); });
+    Keyboard.addListener("keyboardWillHide", () => { kbAnimOn(); setInset(0); });
+    Keyboard.addListener("keyboardDidHide", () => { kbAnimOn(); setInset(0); });
   } catch (e) {
     setInset(0);
     return;

@@ -663,12 +663,20 @@ emoji-picker {
      vendor/vue-advanced-chat/PATCHES.md 改动 1）—— 这里不再需要 :has() 去猜它。
      原文：库给 .vac-emoji-wrapper 自带 position:relative，absolute 会锚在那个
      按钮大的小盒子上（面板飘成一条竖线就是它）。 */
+  /* 轮 516 · 让位 = max(0, 面板高 − 可视视口上推量 --vtop)。
+     不扣这一份会让让位发生两次：iOS 键盘弹起时可视视口整个上推，页面底**已经**是
+     键盘上沿，再整份让 330 就把输入行顶到屏幕上半部。
+     组装级工装（tools/dm-sheet-drive.mjs）实测「键盘 → 表情」：输入行屏幕
+     469 → 146（+16ms）→ 405（键盘收完）—— 用户说的「切表情一闪」就是这一下。
+     老内核不认 max() ⇒ 第一条声明兜底，退化成改动前的行为。 */
   :host(.wp-emoji-open) .vac-box-footer {
     padding-bottom: var(--wp-emoji-h);
+    padding-bottom: max(0px, var(--wp-emoji-h) - var(--vtop, 0px));
   }
   /* 面板已收、键盘还没到：让位先钉住（关掉过渡，别提前塌下去） */
   :host(.wp-kb-swap) .vac-box-footer {
     padding-bottom: var(--wp-emoji-h) !important;
+    padding-bottom: max(0px, var(--wp-emoji-h) - var(--vtop, 0px)) !important;
     transition: none !important;
   }
   /* 轮 514：几何全部交给 vendored 库（vendor/vue-advanced-chat 的 media 规则：
@@ -752,6 +760,12 @@ const syncEmojiIcon = (open) => {
 let emojiPadTimer = 0;
 let padRO = null;
 let padPick = null;
+/* 轮 516：老内核不认 max()（Chromium <79 等）。不支持时内联退回纯像素 —— 也就是
+ * 改动前的行为，不会更差；支持时用 calc 表达式让 --vtop 变化自动重算。 */
+const CAN_MAX = (() => {
+  try { return typeof CSS !== "undefined" && !!CSS.supports && CSS.supports("padding-bottom", "max(0px, 1px)"); }
+  catch (e) { return false; }
+})();
 const sheetMode = () => typeof window !== "undefined"
   && typeof window.matchMedia === "function"
   && window.matchMedia("(max-width: 899px)").matches;
@@ -796,7 +810,22 @@ const emojiPad = (open) => {
        「面板底离屏底还差多少」。那一段差值正是旧的 fixed 锚点造成的
        （iOS 底部工具栏浮在页面之上，差值 ~44px，补进去输入条就整体抬高一条）。 */
     const h = Math.round(p.getBoundingClientRect().height);
-    if (h > 0) f.style.paddingBottom = h + "px";
+    if (h > 0) {
+      /* 轮 516 · 让位要扣掉「可视视口上推量」——不能整份加。
+       *
+       * iOS 键盘弹起时可视视口整个上推（offsetTop = 键盘高），此刻页面底**已经**是
+       * 键盘上沿；再按面板高整份让位，等于让两次，输入行窜到屏幕上半部。
+       * 组装级工装（tools/dm-sheet-drive.mjs，真挂本组件 + iOS 模型）实测
+       * 「键盘 → 表情」这一下：输入行屏幕 469 → 146（+16ms）→ 405（键盘收完）。
+       *
+       * 写成 calc 表达式而不是具体像素，是为了让 --vtop 一变（键盘收起那一帧）
+       * 浏览器自己重算。否则还得在这里挂 vv 监听、或者赌 260ms 定时器正好赶上
+       * 键盘动画 —— 过去九轮反复栽在「赌一次采样」上。
+       * 不支持 max() 的老内核退回纯像素（= 改动前的行为，不会更差）。 */
+      f.style.paddingBottom = CAN_MAX
+        ? `max(0px, ${h}px - var(--vtop, 0px))`
+        : h + "px";
+    }
   };
   put();
   /* 面板高度走着 .22s 过渡，落定后再量一次（量早了会少补一截）；

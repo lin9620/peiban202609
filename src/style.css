@@ -926,7 +926,10 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
  * 那一截（分类导航行 + 第一排表情）整块裁掉：用户看到的就是「面板从卡顶开始、上面缺一块」，
  * 同时面板也被上一张卡 / 搜索栏盖住。面板是 v-if 渲染的，收起即移出 DOM，命中范围很准。
  * z-index 只提到 2：仍低于底部输入条(140)/TabBar(130+)，不会盖住它们。 */
-.post-card:has(.wp-composer-picker) { content-visibility: visible; z-index: 2; }
+/* 轮 517：面板改成「保活 + is-open 类」之后，选择器必须认这个类 ——
+ * 否则 :has 会命中每一张带输入条的卡（面板 DOM 常在，hidden 也算命中），
+ * 卡片全都常驻 content-visibility:visible + z-index:2，长列表性能会掉。 */
+.post-card:has(.wp-composer-picker.is-open) { content-visibility: visible; z-index: 2; }
 .post-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .post-avatar { background: linear-gradient(135deg, #ffd9b8, #ffc7de) !important; font-size: 18px; }
 .post-meta { flex: 1; min-width: 0; }
@@ -2692,8 +2695,25 @@ html.cap-app {
   --sab: env(safe-area-inset-bottom, 0px);
 }
 html.cap-app body { padding-bottom: var(--kb-h); }
+/* 轮 515：body 的 padding 与 .dm-page 的高度是同一个 --kb-h 的两半，
+ * 弹键盘时必须同时过渡，否则一个平滑一个瞬跳，中间那 220ms 页面总高多出键盘高，
+ * 露一条白。只在这个窗口里开，非键盘场景（切表情 / 进出会话）保持瞬变。
+ *
+ * 但要注意：**键盘因「打开表情面板」而收起**时不能过渡。暖心墙没有 .dm-page，
+ * 页面的总高就只由 body 这条 padding 决定 —— 面板瞬现、body 却花 220ms 把
+ * 320px 的让位收回去，屏幕上就是「底部抽出一条空白再填上」，也就是第 2 条那个闪。
+ * html.wp-panel 由 WpComposer.syncBar 在面板开合时挂 / 摘。 */
+html.cap-app.kb-anim:not(.wp-panel) body {
+  transition: padding-bottom .22s cubic-bezier(.2, .8, .2, 1);
+}
 html.cap-app .shell--mobile-nav.shell--chat .dm-page {
   height: calc(100vh - var(--kb-h));
+  /* 轮 515：过渡从常驻改成「键盘动画窗口内才开」（html.kb-anim）。
+   * 原来这条 `.22s` 在退出会话时也生效：.dm-page 从 100dvh 变回内容高，
+   * 220ms 里一缩一放 —— 用户报的「从会话退出到列表有一个缩放」就是它。
+   * 见 utils/keyboardInset.js 的 kbAnimOn()。 */
+}
+html.cap-app.kb-anim .shell--mobile-nav.shell--chat .dm-page {
   transition: height .22s cubic-bezier(.2, .8, .2, 1);
 }
 /* 轮 474 · dvh 必须关在 @supports 里，不能当「同一条规则的第二条声明」写。
@@ -2712,10 +2732,20 @@ html.cap-app .cmt-main-bar {
   bottom: var(--kb-h);
   /* 轮 347：真·全屏后键盘弹起时 --sab 会 24→0（导航栏被输入法顶掉），
      padding-bottom 同步过渡，输入条才不会先向下跳 24px 再随键盘上移。 */
+  /* 轮 515：同上 —— 只在键盘动画窗口内过渡。
+   * 切表情时面板瞬现、底条却要花 220ms 从屏底爬到面板上沿，中间输入行一直躲在
+   * 面板后面 = 用户说的「一闪的东西」。现在非键盘场景一律瞬变，与面板同帧落位。 */
+}
+/* 面板态（.wp-emoji-open / .wp-kb-swap）必须排除在外：点表情那一刻键盘开始收，
+ * keyboardWillHide 会把 kb-anim 打开，可面板是**瞬现**的 —— 条要是还带着 220ms，
+ * 就是「面板已经铺在屏底、输入行还在半路爬上来」的那一闪。 */
+html.cap-app.kb-anim .cmt-main-bar:not(.wp-emoji-open):not(.wp-kb-swap) {
   transition: bottom .22s cubic-bezier(.2, .8, .2, 1), padding-bottom .22s cubic-bezier(.2, .8, .2, 1);
 }
 html.cap-app .reply-bar {
   bottom: calc(var(--kb-h) + 64px + var(--sab, env(safe-area-inset-bottom, 0px)));
+}
+html.cap-app.kb-anim .reply-bar {
   transition: bottom .22s cubic-bezier(.2, .8, .2, 1), padding-bottom .22s cubic-bezier(.2, .8, .2, 1);
 }
 
@@ -2800,6 +2830,12 @@ html.cap-app .dm-page--chat {
 html.cap-app .dm-page--chat {
   /* App 壳没有浮动工具栏，保持原来的视口语义 */
   height: calc(100vh - var(--kb-h, 0px));
+}
+/* 轮 515：上面那条 `transition: none` 在这 340ms 之外永远是对的（退出会话 /
+ * 切表情都要求瞬变），但键盘真在起落时必须让页面平滑跟住系统输入法动画 ——
+ * 否则整页瞬间缩 300px、输入法还在半路，中间露一大片背景。 */
+html.cap-app.kb-anim .dm-page--chat {
+  transition: height .22s cubic-bezier(.2, .8, .2, 1);
 }
 @supports (height: 100dvh) {
   html.kb-web .dm-page--chat {
@@ -2887,9 +2923,26 @@ html.kb-web .cmt-main-bar {
  * 「面板 → 键盘」的交接靠 .wp-kb-swap 钉住（那边本来就 transition: none），不依赖这条。 */
 /* 表情面板开着时条**用内边距让出面板的位置**（与会话页 .vac-box-footer 同一套）：
  * 面板 bottom 也是 --kbb、高度 = --kb-panel-h，条把自己撑高同样钉在 --kbb，
- * 输入行就正好落在面板上沿 —— 两者共用一个参照系。 */
+ * 输入行就正好落在面板上沿 —— 两者共用一个参照系。
+ *
+ * 轮 516 · 让位改成 `max(0, 面板高 − --vtop)`，不能整份加。
+ * iOS 键盘弹起时可视视口整个被上推（offsetTop = 键盘高），此刻**页面底已经是键盘上沿**；
+ * 再按面板高整份让位，等于让了两次 —— 输入行窜到屏幕上半部。
+ * 组装级工装实测（393×852 / 键盘 330）：输入行 469 → 146 → 405。
+ * 扣掉 --vtop 之后：上推态 330−330=0（面板正好顶替键盘，输入行原地不动），
+ * 键盘收起后 330−0=330（原来的值）。老内核不认 max() ⇒ 第一条声明兜底。 */
 html.kb-web .cmt-main-bar.wp-emoji-open,
-html.kb-web .cmt-main-bar.wp-kb-swap { padding-bottom: var(--kb-panel-h); }
+html.kb-web .cmt-main-bar.wp-kb-swap {
+  padding-bottom: var(--kb-panel-h);
+  padding-bottom: max(0px, var(--kb-panel-h) - var(--vtop, 0px));
+}
+/* 轮 516 · ⚠ 以下两条 `.reply-bar` 规则**已退役**（轮 108 续5：手机端回复统一走
+ * .cmt-main-bar，模板里再也找不到 class="reply-bar" 的元素；fixedBar.js 的 SELECTOR
+ * 仍指着它，也就等于空转）。
+ * 保留原文只为「万一有人复活这个组件」时能看出当年的语义，但**别再照它写**：
+ *   · 它用 --kb-h 做让位 —— iOS overlay 型下 --kb-h 恒 0（键盘是浮层），会让位失效
+ *   · 它挂着常驻 .22s 过渡 —— 正是轮 512/516 在 .cmt-main-bar 上删掉的那类「一闪」
+ * 真要用，照上面 html.kb-web .cmt-main-bar 那套：bottom 吃 --kbb、让位扣 --vtop。 */
 html.kb-web .reply-bar {
   bottom: calc(var(--kb-h) + 64px + var(--sab, env(safe-area-inset-bottom, 0px)));
   transition: bottom .22s cubic-bezier(.2, .8, .2, 1), padding-bottom .22s cubic-bezier(.2, .8, .2, 1);
