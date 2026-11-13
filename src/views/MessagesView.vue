@@ -221,7 +221,16 @@ const THREAD_OUT_FALLBACK_MS = 420;
  * 钉住之后高度是常量，元素只做 opacity + translateX，不再参与任何重排；
  * 键盘此刻还在屏幕上，下面那块（484~852）由键盘自己盖着，等它收完，淡出也播完了。
  * 量不出来（元素不在）就什么都不做，CSS 里 .dm-page--exit 的 inset:0 仍是兜底。 */
-const FREEZE_PROPS = ["position", "top", "left", "width", "height", "margin", "zIndex"];
+const FREEZE_PROPS = ["position", "top", "left", "width", "height", "margin", "zIndex", "transition"];
+/* 轮 523 · 收拢动画：覆盖层从「此刻的整屏矩形」平滑过渡到「列表页的矩形」。
+ * 只冻高度不够 —— 真机逐帧（小米 23054RA19C / 393×744）量到：
+ *   退场第 1 帧  覆盖层 393×484 @(0,0)   列表 357×728 @(18,14)
+ * 覆盖层比列表左右各宽 18、还高出一截，淡出时就变成「一张大卡片盖着一张窄列表」，
+ * 两层边缘对不齐，肉眼就是「缩了一下」——用户第 3 条说的就是这个，轮 522 只补了
+ * 列表这一侧（让列表提前到位），覆盖层没跟，错位反而更显眼。
+ * 现在两边一起走：列表在退场第一帧就落在最终位置（html.dm-exiting），
+ * 覆盖层用同一条 180ms 曲线收过去，过程中两层边缘始终贴齐，观感只有淡出。 */
+const OUT_EASE = "cubic-bezier(.2, .8, .2, 1)";
 const freezeOutLayer = () => {
   const node = document.querySelector(".dm-thread");
   if (!node) return;
@@ -234,6 +243,22 @@ const freezeOutLayer = () => {
   node.style.height = Math.round(r.height) + "px";
   node.style.margin = "0";
   node.style.zIndex = "40";
+  /* 起点定住，这一帧不许有过渡（否则会和下面那次赋值合并成一帧闪现） */
+  node.style.transition = "none";
+  requestAnimationFrame(() => {
+    /* 退场没播完就又进了会话 / 切了页签：节点已经不在文档里，别再往上写。
+       （isConnected 是廉价的活体判据；用它比 catch 住异常干净。） */
+    if (!node.isConnected) return;
+    /* 等布局落地再量目标矩形：html.dm-exiting 是本帧加的，列表要到下一帧才排好。
+       量 .dm-page 而不是算 100vw-36 —— 桌面/平板有 max-width，硬算会错。 */
+    const page = document.querySelector(".dm-page");
+    const pr = page && page.getBoundingClientRect();
+    if (!pr || !(pr.width > 0)) return;
+    node.style.transition = "left .18s " + OUT_EASE + ", top .18s " + OUT_EASE + ", width .18s " + OUT_EASE;
+    node.style.left = Math.round(pr.left) + "px";
+    node.style.top = Math.round(pr.top) + "px";
+    node.style.width = Math.round(pr.width) + "px";
+  });
 };
 const unfreezeOutLayer = () => {
   const node = document.querySelector(".dm-thread");
