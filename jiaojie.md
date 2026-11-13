@@ -801,6 +801,255 @@ Worker 只做"翻译 + 白名单 + JWT 透传"——三层各司其职；双模�
 
   **未做（等用户发话）**：未 `git commit`、未 `npm run deploy`、未打 APK。按 0.6 攒批制停在这里。
 
+- **附带 · 小橘猫重绘（另一个会话的改动，用户 11-14 明确要求「另外一个会话更改的内容带上」，已随本批提交 `7833e82`）**：
+  **不是本会话做的**，改动范围 `src/utils/lottiePet.js`（+242/−63）+ `tools/pet-visual-test.mjs`（+24）。
+  - `pathGroup()` 支持同时给 `fill` + `stroke`（先填后描）→ 描边贴在毛色外面，做出**贴纸轮廓**；
+    调用方也可以直接给 `shapes`（猫眼用这个把眼白高光并进同一组，眨眼时一起压扁，不留悬空白点）。
+  - 新增 `parsePath()`（M/L/C/Q/Z → Lottie 路径）与 `localizePath()`：内置造型改用 SVG 手写路径描述，
+    顶点统一转成**相对 center 的局部坐标**。旧版 `smile` / `openMouth` / `heart` / `sparkle` 的顶点里
+    **混着绝对坐标**，会被图层位置再叠一次 → 形状飞出画布。这是这次顺带修掉的真 bug。
+  - 小橘猫整套重画：深色轮廓 + 橘毛 + 奶色尾尖的尾巴（跟随摇摆旋转）、双耳内耳、腮红、w 形嘴、
+    六根胡须、脚趾、额头/脸颊斑纹、地面投影；开心/玩耍/吃饭换张嘴；心形按经典造型重写；
+    粒子（心/星星）位置随新画布外移。
+  - `pet-visual-test` 补 5 条断言（填充+描边、眼层数、局部坐标、开口与星星、部件齐全），
+    **181 条全通过**。全量 `all.mjs` 仍 122/123（唯一红 = 既有 `announcement-test`）。
+
+- **轮 525（改动完成、测试过了、**八内核矩阵 8/8 + 真机三路径零跳动**、已提交 `c7f9c4d` · 已部署 11-14 `bebb67e9`）**：
+  用户一句「**问题是其他浏览器呢，你有没有做预防性措施**」。
+  这是对的 —— 前面五轮的验收对象一直是**他这台小米**，而判据里塞满了「小米实测 31px」
+  「工具栏 55px」这类单机数字。于是把各家的视口读数参数化，灌进真实代码跑一遍。
+
+  **取证方式（只覆盖只读属性，不改布局）**：
+  `Page.addScriptToEvaluateOnNewDocument` 装一段补丁，在**页面脚本之前**把
+  `window.innerHeight` / `vv.height` / `vv.offsetTop` 换成可控 getter（从 `sessionStorage` 读当前场景），
+  这样开机基线 `base` / `vvBase` 也是从假读数锁的 —— 不然模拟不出「这台机无键盘时 vv 就报小 200」。
+  八个场景，每个独立 reload（`base`/`isOverlay`/`panelH` 都是模块级状态，串场会互相污染）。
+
+  **改前基线 3/8**（`main-DM0r4VDs.js`）：
+  ```
+  A Chromium 原生 resize              ✓
+  B 小米 31px 噪声                    ✓
+  C X5/XWEB（vv 偏小 24）             ✓
+  D 大噪声 200（无键盘 vv 就报小）    ✗ kind=overlay kbb=200（吸底条浮在半空）
+  E iOS 典型 overlay（上推 260）      ✗ 面板高永远锁不上（panel=null，一直吃 CSS 兜底）
+  F 内核不报 vv（height 恒 0）        ✗ kbUp 恒假；且 base 被键盘态的 484 采纳
+  G overlay 但不上推（FF 安卓）       ✗ kbNow=0，让位算式完全不动，输入条被键盘盖住
+  H vv 先动、inner 后动一帧（错帧）   ✗ 第一帧判成 overlay 且锁死 → 整场都错
+  ```
+  **共同根因：所有判据都在拿「与开机基线的绝对差」和固定阈值比，而噪声也在这个差里。**
+
+  **改法（三条纯函数进矩阵单测，`chatHeight.js`）**
+  - **`kbHeightNow(base, inner, vvBase, vvH)`** —— 键盘此刻吃掉多少可见高度。
+    resize 型看 `base − inner`，overlay 型看 `vvBase − vvH`，**两条都算取大者**。
+    调用方不需要先知道是哪种内核；vv 的噪声在 `vvBase` 里同样存在，相减抵掉
+    （小米 31px、D 那种 200px 都是这么消掉的）。
+  - **`kbIsUp(base, inner, vvBase, vvH, min=150)`** —— 键盘在不在。原来
+    `vvH > 0 && base − vvH ≥ 150` 两种塌法：噪声大的内核页面一打开就恒真（D）；
+    不报 vv 的内核恒假（F）。现在两路都量。
+  - **`pickKbKind(base, inner, vvBase, vvH)`** —— 按**比值**分流：`inner 缩量 < vv 缩量的一半`
+    才算 overlay。错帧时 124 / 194 = 68% ≥ 50% → 仍然是 resize。
+  - `viewportVars.js`：新增 `vvBase`（跟 `base` 同规则开机冻结）；`kbUp` / `--kb-now` /
+    `schedulePanelLock` 三处全改用上面三条；**删掉 `overlayLocked`** —— 内核分流不再是
+    「第一次弹键盘判一次、错了也回不来」，而是键盘在屏上每一帧都可以校正。
+  - `schedulePanelLock` 特别说明：原来用 `base − inner` 量键盘高，overlay 型布局视口根本不缩，
+    恒得 0 → 面板高永远锁不上，一直用 CSS 兜底 `min(46vh,320px)`，跟真键盘差几十像素（E/G）。
+
+  **改后 8/8**，逐个对：
+  ```
+  D kind=resize kbb=0 kbNow=260 panel=260
+  E kind=overlay kbb=0   kbNow=260 panel=260     ← 面板高锁上了
+  F kind=resize kbb=0   kbNow=260 panel=260     ← base 仍是 744，没被采纳成 484
+  G kind=overlay kbb=260 kbNow=260 panel=260    ← 让位重新工作
+  H 错帧那一帧 kind=resize kbNow=194 → 稳定后 260（自然过渡，没有翻转）
+  ```
+
+  **真机没有退化（小米 393×744，CDP 注入 `main-JDWP1wBN.js`）**
+  ```
+  会话页 kb0/p1/k1/p2/k2   foot top 恒 433（kb0 那次是首次从 693 升上来）、padB 恒 7、pickH 260
+  暖心墙 p1/k1/p2/k2       bar 恒 433..484、bPadB 恒 7、pick 484..744；面板留到 kbNow=260 才 display:none
+  我的帖子 四趟            同上，零跳动
+  ```
+  `inner 799 / over 55` 那一帧也仍然钉在 484。
+
+  **护栏**：`chat-height-test` 新增 **T44**（八内核键盘高 + kbb 矩阵）、**T45**（噪声/无 vv 的
+  kbIsUp，含 149/150 边界）、**T46**（错帧、大噪声、无 vv 的 kind，以及「没有证据时不给结论」）、
+  **T47**（源码层：三处必须用新度量，旧判据和 `overlayLocked` 不许回来）。
+  **反向注入验证过会红**：`kbIsUp` 退回旧式子 → T45 报「无键盘时 vv 就报小 200 的内核被判成键盘弹起」；
+  `pickKbKind` 退回绝对阈值 → T46 报「错帧被误判成 overlay」；恢复 47/0。
+  全量 `all.mjs` **123 项 / 122 通过**（唯一红 = 既有 `announcement-test`）。
+
+  **这条改动的边界，说清楚**：模拟的是**视口读数**，不是真机上的 Safari / Firefox。
+  我能保证的是「不管它报什么，判断逻辑都落在正确的分支上」；真正在 iOS 上 fixed 底部元素
+  跟不跟随可视视口，那是另一件事（`kbbValue` 的 overlay 分支沿用旧语义，本轮没动）。
+
+  **已部署（11-14）**：三个提交 `61ef1aa`（523）/ `c7f9c4d`（524+525）/ `7833e82`（宠物）→ `npm run deploy`，
+  版本 `bebb67e9-896e-45ab-abee-6792d57cc7e8`，线上入口 `main-JDWP1wBN.js`、`main-D01rHUnd.css`。
+  **线上逐字节核对**：`main-JDWP1wBN.js` / `main-D01rHUnd.css` / `lottie-D_akyxJo.js` / `MessagesView-PEnUNRff.js`
+  / `WpComposer-YwTCmTXY.js` / `CommunityView-RRGLujTu.js` / `PetView-C7Ojte52.js` 全部 `local=live`
+  （sha16 一致、字节数一致）；`live-check 15/15`、`live-bundle-check 5/5`。
+  **真机普通访问线上（不注入、不换包）复核**：
+  ```
+  会话页 进会话 [457,508] / 点输入框 [457,508] / 点表情 foot [457,508] + pick [508,768,260] / 回键盘 [457,508]
+         padB 三趟恒 7px，chat-box 由 min(768,508) ↔ min(508,508) 切换，emoji-h min(260,420)
+  暖心墙 点输入框 bar [457,508] 到键盘 8px / 点表情 bar 不变 + panel [508,768] 到面板 8px 面板到屏底 0 / 回键盘 bar 不变
+  ```
+  **一个要知道的**：冷启动首屏在这台机要 **~8 秒**才挂载（`main` 1.04MB + vue/lottie 另算），
+  探针 2/4/6 秒量 `#app` 都是 0 —— 那是加载慢，不是白屏。别拿前 8 秒的截图判断「挂不上」。
+
+- **轮 524（改动完成、测试过了、**真机逐帧验证过**、已提交 `c7f9c4d` · 已部署 11-14 `bebb67e9`）**：用户两句话 ——
+  「**安卓端暖心墙以及我的页面的暖心墙帖子，键盘-表情-键盘切换，还是一堆问题，你看看**」＋
+  「**安卓端会话，键盘-表情-键盘切换，第一次点击键盘没有反应，还有高度不一致**」。
+  取证口径按用户前一轮的纠正：**以小米浏览器里 CDP 注入本地 `dist` 的本地产物为准**（不是 APK 里的旧包，
+  那份是 `versionName=1.0.2 / lastUpdateTime 2026-11-10`，不含 519 之后的任何改动）。
+
+  **真机逐帧（小米 23054RA19C / 393×744 / 键盘 260 / dpr 2.75）量到的四件事，逐条对应用户的描述：**
+
+  1. **「第一次点键盘没反应」= 连抽三下**：冷启动点键盘那一趟，输入条 `433 → 168 → 113 → 433`。
+     三层原因叠在一起：①`swapReady()` 拿 `wv.panel === null` 当「已到位」，面板高还没锁过就立刻摘钉；
+     ②`--kb-now` 在 `panelH === 0` 时被 `Math.min(panelH, …)` 恒压成 0，键盘起来了它还是 0；
+     ③`--chat-h` 是 chatViewport 写的滞后值（实测键盘动画期间落后 65ms、最多 258ms）。
+  2. **「高度不一致」= 7px**：键盘态条 `433..484`、面板态 `440..484`。根因是让位的内联表达式把
+     `padding-bottom` **整条接管**时，把库自带的 `7px`（`padding: 7px 2px calc(7px + safe-area)`）一起抹掉了。
+  3. **冷启动点表情 = 1px 高**：`--wp-emoji-h` 写的是 `max(0, vlh − chat-h)`，`--kb-pageh` 还没写时算出 0。
+  4. **暖心墙点键盘时面板提前消失**：`toggleEmoji` 的关闭分支是「当场 `emojiOpen = false`」，
+     键盘还要 250ms 才盖上来 —— 中间露 260px 空白（这正是前面几轮反复「一闪」的来源）。
+
+  **改法（四处，全部集中在「谁决定高度」这一件事上）：**
+  - `src/utils/viewportVars.js` ①：面板高跨会话持久化（`wp-kb-panel-v2`，带屏宽差 ±40 校验；
+    隐私模式下读不到就当没存过）。冷启动点表情不再是 1px。`schedulePanelLock()` 从「锁一次就 return」
+    改成「差 12px 以上才改」。
+  - `src/utils/viewportVars.js` ②：`kbNowCap = panelH > 0 ? panelH : KB_MAX` —— 面板高没锁过时
+    用 `KB_MAX` 当上限，不再把这把尺子压成 0。
+  - `src/components/DmVacChat.vue`：新增 `--chat-box: min(var(--vlh), var(--kb-pageh))`（**无滞后的盒子高**），
+    原先用 `--chat-h` 的 4 处（两条 `:host(.wp-emoji-open/.wp-kb-swap) .vac-box-footer`、
+    `.vac-emoji-picker` 的 `max()`、`PAD_EXPR`）全换成它；`swapReady()` / `closeWhenKb` 的靶子改成
+    **量元素 rect**（`panelElH()`，`wv.panel` 有值就用它）；`PAD_EXPR` 补 `7px +` 与 `+ var(--kb-over)`。
+  - `src/components/WpComposer.vue`：新增 `closeForKeyboard()` —— **同步 focus 申请键盘 → rAF 逐帧等
+    `panelReady()`（键盘真盖上来）→ 才收面板**，最长 40 帧兜底。`toggleEmoji` 关闭分支与 `onDocClick` 都走它。
+
+  **为什么靶子必须量元素、不能读变量**：自定义属性没注册时 `getComputedStyle().getPropertyValue("--kb-panel-h")`
+  返回的是**声明原文**（`min( 320px, 420px)`），`parseFloat` 得 `NaN` → 任何 `>=` 比较都变成 `false`
+  或 `true`，判据整个失效。这轮第一版就是这么写的，`panelReady` 永远返回「已到位」。
+
+  **真机逐帧（改后，本地 `dist` 注入线上域名）：**
+  ```
+  会话页冷启动（清 wp-kb-panel-v2）
+    点表情  foot 693..744 → 433..484，pick 484..744 (260px)  ← 不再是 1px
+    点键盘  kb-swap 挂上，padB 7→7→7→7，面板一直盖着；
+            kbNow 205 → 260 那一帧才 display:none + 摘类，foot 恒定 433..484
+  会话页热态 p1/k1/p2/k2 四趟：foot 全程 433..484、padB 恒定 7、pick 484..744 (260px)
+           inner 799 / --kb-over 55 那一帧也不再抖
+  暖心墙 /community p1/k1/p2/k2：bar 全程 433..484、bPadB 恒定 7；
+           k1/k2 面板留到 kbNow = 260 才 display:none（原来点下去 100ms 就没了 → 露 260px 空白）
+  我的帖子 /my-posts（PostComments 底条）冷启动 cp1/ck1 + 热态 cp2/ck2：
+           bar 全程 433..484、bPadB 恒定 7、pick 484..744 (260px)，四趟零跳动
+  ```
+  截图确认：面板内 emoji 网格 16 行完整、无裁切、底部无多余横条。
+
+  **护栏更新（口径变了就改口径，不删断言）**：`chat-look-test L5/L7`、`emoji-panel-test E15`、
+  `wall-composer-test P7`、`vendor-check V8`、`emoji-panel-test E5` —— 从锁 `--chat-h` / `padding: var(--wp-emoji-h)`
+  改成锁 `--chat-box` / `calc(7px + …)` / `target = wv.panel > 0 ? wv.panel : panelElH()` / `closeForKeyboard()`。
+  全量 `all.mjs` **123 项 / 121 通过、断言 1660 / 1653**（唯一红 = 项目既有的 `announcement-test`，HEAD 上同样红）。
+
+  **已提交 `c7f9c4d`、已部署 `bebb67e9`（11-14）**，与轮 525 同一批上线。
+  **线上真机普通访问复核**（不注入）：进会话 / 点输入框 / 点表情 / 回键盘 四趟 `foot` 恒 `457..508`、
+  `padB` 恒 `7px`、面板 `508..768`（260px）—— 与本地注入时量的结论一致。
+
+  **⑤ 追加（用户「一起处理」）：会话页「首次进页面点输入框」那两跳，也修了。**
+  原以为是我上一条写的那种 250ms 巡检滞后，**逐帧量完发现不是** —— 只有当最后一步晚了
+  **1 帧 / 52ms、埋进去 55px**：
+  ```
+  点输入框  inner 744 → 539 → 484（盒子同步跟上）
+            但 539 → 484 那一步：inner 已 484，--chat-h 还停在 539 → 输入条被键盘埋 55px
+  ```
+  根因是 `kick()` 只挂 `requestAnimationFrame` —— rAF 回调是在**本帧回调队列已经跑完之后**
+  才注册的，只能排到下一帧；事件落在布局/绘制阶段时，这一帧已经按新视口画完、盒子还是旧高。
+  改法：新增 `kickNow()`（**先同步 `sync()`，再走原来的 rAF + 16ms 兜底**），
+  `visualViewport.resize` / `window.resize` / `orientationchange` 换挂它；
+  **`visualViewport.scroll` 继续挂 `kick`** —— 那一路每帧都响，同步会强制重排。
+  `sync()` 内部本来就有 key 去重，值没变时几次 `getComputedStyle` 就返回，多跑一次可忽略。
+  **改后真机复测：被键盘盖住 0 帧、最大埋入 0px。**
+  顺手说明：剩下的「744 → 539 → 484 两个台阶」**是这台机输入法自己的两段式让位**
+  （中间停 245ms），条跟着键盘走是对的，不是我们的滞后 —— 上一版把这条归因成 250ms 巡检是错的。
+  护栏 `chat-height-test` 新增 **T41**（resize 类必须 `kickNow`、scroll 必须仍是 `kick`、rAF 兜底不许删），
+  **反向注入验证过会红**（把两处 `kickNow` 改回 `kick` → T41 FAIL），恢复 41/0。
+  全量 `all.mjs` 复查仍是 **123 项 / 122 通过**（唯一红 = 既有 `announcement-test`）。
+
+  **⑥ 再追加（用户 2026-11-14 两张截图「那这个问题是什么，你不是说改好了吗」）：条和键盘/面板之间那条空白。**
+  两张图的红框都是**同一笔 55px**，跟键盘↔表情切换无关，是 `--kbb` 与 `--kb-over` 常驻造成的。
+  在他手机上直接读到的现场（CDP 在他那个标签页里量，不重启、不导航）：
+  ```
+  inner 768 / vvH 737 / vvT 0        ← 小米把 visualViewport.height 常年报小 31px
+  --kbb     = 768 − 737 = 31px       ← 公式算出来的**假让位**
+  --kb-over = 768 − base(744) = 24px ← 工具栏收起过、基线没收，过冲成了常驻
+  条 bottom = kbb + 面板236 − 键盘236 + over = 55   →  条底离键盘顶整整 55px
+  ```
+  **根因一：`--kbb` 在 resize 型内核上根本不该有值。**
+  源码注释一直写着「resize 型恒 0」，但式子是无脑 `inner − (offsetTop + vv高度)`。
+  Chromium 原生确实 0（vv == inner），**小米不是** —— 文件开头「已知内核样本」第 2 行就记着
+  「小米无键盘时 vv 少 31px」，那条知识只喂给了 `pickChatHeight`（判键盘的闸门），
+  没喂给 `--kbb`。于是吸底条平白浮起 31px。
+  **根因二：`--kb-over` 只在「过冲」那 140ms 有意义，却成了常驻值。**
+  `over = max(0, inner − base)`，base 是开机锁的 744；工具栏真收起来之后 inner 稳定 768，
+  过冲判据就一直成立 → 条永久再抬 24px。会话页那边表现为页面盒子被钉在
+  `base − 面板高 = 508`，而面板贴的是真屏底 532，裂 24px。
+
+  **改法（两条都做成纯函数，进矩阵单测，不再靠某台机的现场数字）**
+  - `chatHeight.js` 新增 **`kbbValue(inner, vvH, vvTop, overlay, fix)`**：
+    `if (!overlay) return 0;` —— resize 型一律 0，overlay 型照旧算（iOS 那 81px 工具栏还在）。
+    `viewportVars` 里那句内联式子删掉，改调它。护栏 **`chat-height-test T42`**（小米 31/100px 噪声、
+    iOS 81 / 键盘态 0 / kbbFix 叠加 / NaN 全部覆盖）。
+  - `chatHeight.js` 新增 **`shouldAdoptBase(base, inner, kbUp, sameMs)` + `BASE_ADOPT_MS = 500`**：
+    过冲分两种 —— 瞬时（实测 140ms）只让 `--kb-over` 抵掉、**不动基线**（动了面板高会变 315，
+    那是轮 521 的老病）；同一个值稳定保持 ≥500ms，才认它为新基线，`--kb-over` 归零。
+    **两个方向都认**（工具栏收起 inner 变大、重新展开 inner 变小，只认一边另外一边照样裂 24px）。
+    键盘在屏上时绝不采纳（那时 inner 被键盘压着）。
+    护栏 **`chat-height-test T43`**（140/300ms 不采纳、500ms 采纳、键盘态不采纳、只差 4px 不采纳、两方向都测）。
+
+  **真机验收（把 `visualViewport.height` 的 getter 换成 `inner − 31` 复现他那台的噪声，其余全真）**
+  ```
+  暖心墙 /community   键盘态：--kbb 0  --kb-over 0   输入行到键盘 8px
+                      面板态：--kbb 0  --kb-over 0   输入行到面板 8px   面板到屏底 0
+  会话页 /messages/1  键盘态：--kbb 0  --kb-over 0   输入行到键盘 7px
+                      面板态：--kbb 0  --kb-over 0   输入行到面板 7px   面板到屏底 0
+  ```
+  7~8px 就是 vue-advanced-chat 自己给的底内边距（`padding: 7px 2px …`），不是空隙。
+  另外用 `Emulation.setDeviceMetricsOverride` 把视口从 744 抬到 768 复现「工具栏收起」：
+  `--vlh-base 744 → 768`（500ms 后采纳）、`--kb-over` 保持 0、`--kb-pageh` 484 → 508、
+  面板态 输入行到面板 8px / 面板到屏底 0 —— 常驻 24px 那条不会回来了。
+
+  **反向注入**：把 `kbbValue` 里的 `if (!overlay) return 0;` 去掉 → T42 当场红，
+  原话「小米 31px 噪声被当成工具栏了（吸底条会浮起 31px）」；改回 43/0。
+  全量 `all.mjs` **123 项 / 122 通过**、断言 1653/1659（唯一红 = 既有 `announcement-test`）。
+  **未 commit、未 deploy、未打 APK。** 手机上已把标签页刷成这份新构建（`main-DC7N3QLx.js`），
+  刷新即回线上旧版。
+
+- **轮 523（改动完成、测试过了、**真机验证过**、已提交 `61ef1aa` · 已部署 11-14 `bebb67e9`）**：用户「**第 3 条 · 退出会话「缩放」，没改好，问题依旧在，手机连上了，自己看**」。
+  **真机（小米 23054RA19C / 393×744 / 线上域名 + 登录态，CDP 拦截 /assets/* 换本地构建）逐帧实测，三条根因：**
+  1. **覆盖层没跟列表一起收**（核心）：退场第 1 帧覆盖层 `393×484 @(0,0)`、底下列表 `357×728 @(18,14)` ——
+     覆盖层比列表左右各宽 18、还高出一截。淡出时就变成「一张大卡片盖着一张窄列表」，两层边缘对不齐，
+     肉眼就是「缩了一下」。**轮 522 只把列表提前到位，覆盖层没动，错位反而更显眼。**
+  2. **纵向 14px 跳**：不是 main 的 padding（实测 0），是 `main` 第一个子元素 `.pet-notice-stack` 的下外边距
+     —— 列表态 `margin:0 auto 14px`，聊天态被 2680 行归零。退场期外壳类还挂着，于是列表整体上移 14px
+     （逐帧 row0 y `169→183`），收尾外壳类一摘又掉回来。
+  3. **（我自己试出来的第二个坑）补底部 48px 会整页滚动**：`.shell` 的 `padding-bottom:48px` 一补回去，
+     列表在退场期已 `display` 回来且自带 `min-height:calc(100dvh-106px)`，文档当场高出视口，
+     无键盘态逐帧 `scrollY` 在 `0↔17` 来回跳、列表上下晃（比原问题还难看）。
+  **改法**：① `html.dm-exiting` 只补左右 18px、底部保持 0；② 补 `.pet-notice-stack` 的 14px；
+  ③ `freezeOutLayer()` 冻结当前矩形后**下一帧把 left/top/width 过渡到列表的矩形**（读 `.dm-page` 的 rect，
+  不硬算 100vw−36），与淡出同一条 180ms 曲线；④ `.dm-thread--out` 去掉 `translateX(14px)`（会和收拢叠加成二次错位），只留淡出。
+  **真机验收（本地构建注入线上，改前/改后同条件对比）**：
+  ```
+  无键盘态  退场全程 page [18,14 357x728]、row0 [33,183 327x83]、scrollY 0 —— 各只有一个取值
+            覆盖层 393x768 → 380 → 370 → 364 → 361 → 358 → 357，top 0→5→9→11→12→13→14，与列表严丝合缝
+  键盘态    page/list/row0 全程不动；覆盖层 393→357、top 0→14 同步收拢
+  三次连续进出  三轮的 page / row0 / scrollY 全部单值，收尾零位移
+  ```
+  截图确认：退场中「聊天内容淡出、列表已完整在底下、左右边缘对齐」，落地后 tabbar 在、无裁切。
+  **门禁**：`chat-look-test 12/0`（L11 改成锁新口径，并加「不许再补 48px」反向断言）、
+  `chat-exit-look PASS`、`emoji-panel 23/0`、`chat-height 40/0`、全量 `all.mjs` 122/123（唯一红 = 既有 announcement-test）。
+  **已提交 `61ef1aa`、已部署 `bebb67e9`（11-14）**。线上包已核对（见轮 525 段末的逐字节清单）。
+
 - **轮 522（改动完成、测试过了、已提交已部署 11-13）**：用户一句「**第 3 条 · 退出会话「缩放」，你他妈的没改好就跟我说改好了？？草泥马**」。
   **先认账，再给事实**：线上 `MessagesView-DH8ZKpTU.js`（Version `ef1602e6`，轮 517 那次部署）里
   `dm-page--exit` / `dm-thread--out` **各出现 0 次** —— 轮 519/520/521 的退出重写从来没上线过。
