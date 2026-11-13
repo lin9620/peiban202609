@@ -2378,9 +2378,13 @@ html[data-theme="night"] .dm-menu-sep { background: rgba(255, 255, 255, .12); }
  * 动画没跑完就拆，卡片会先跳到列表里的位置再播，等于把那次硬切放大一遍。
  * forwards：结束时停在 opacity 0，随后摘类、切布局，屏幕上看不到任何突变。 */
 .dm-thread--out { animation: dm-thread-out .18s cubic-bezier(.2, .8, .2, 1) forwards; }
+/* 轮 523 · 退场只做淡出，不再右移 14px。
+ * 那 14px 是轮 519 为了和进场对称加的，但它和「覆盖层收拢到列表矩形」叠在一起时，
+ * 卡片会在收的过程中又往右蹭一截，左右边缘跟底下的列表差 14px —— 又是一次错位感。
+ * 进出改不成对称了：进场是从列表「长出来」，退场是「缩回去」，本来就该是两种动作。 */
 @keyframes dm-thread-out {
-  from { opacity: 1; transform: translateX(0); }
-  to { opacity: 0; transform: translateX(14px); }
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .dm-thread--in { animation: none; }
@@ -3129,7 +3133,22 @@ html.kb-web .reply-bar {
  * 列表当场就在最终位置；淡出底下露出的就是收尾后那张列表，收尾只剩「摘掉覆盖层」。
  * 用 html 上的类而不是 :has()：老内核（X5 / Chromium<105）不认 :has。
  * 数值与 `.shell { padding: 0 18px 48px }` 同一口径，改那边要一起改。 */
-html.dm-exiting .shell--mobile-nav.shell--chat { padding: 0 18px 48px; }
+/* 轮 523 · 只补左右，底部保持聊天态的 0。
+ * 补上那 48px 会让文档刚好比视口高出 48 —— 真机无键盘态逐帧拍到 scrollY 在 0↔17
+ * 之间来回跳（浏览器钳制 + restoreListScroll 打架），列表跟着上下晃，
+ * 比原来那 36px 的横向错位还难看。底部这 48px 是给 TabBar 让位的，
+ * 退场期列表只是淡出时的背景，不需要。 */
+html.dm-exiting .shell--mobile-nav.shell--chat { padding-left: 18px; padding-right: 18px; }
+/* 轮 523 · 纵向那 14px 的真身不是 main 的内边距（实测 main padding-top 是 0），
+ * 是 main 第一个子元素 .pet-notice-stack 的下外边距：列表态 margin:0 auto 14px，
+ * 聊天态被 2680 行归零。退场期 .shell--chat 还挂着 → 那 14px 是 0 → 列表整体上移
+ * 14px（真机逐帧 row0 y 169→183），收尾外壳类一摘又掉回来。
+ * 只在退场期把这 14px 补回去，列表第一帧就在最终位置，收尾无事可做。
+ *
+ * 注意**不要**顺手补 main 的 padding-bottom：列表在退场期已经 display 回来、
+ * 自带 min-height:calc(100dvh-106px)，再加 74px 文档会高出视口两百多像素，
+ * 浏览器自动滚到底 —— 实测 .dm-page top 从 0 变 -219，整张列表飞上半屏。 */
+html.dm-exiting .shell--mobile-nav.shell--chat .pet-notice-stack { margin-bottom: 14px; }
 /* 覆盖层（.dm-page--exit .dm-thread）是 fixed，不参与这层排版；页面盒子按列表撑高，
    与收尾后（没有 shell--chat 时）逐像素一致。 */
 html.dm-exiting .shell--mobile-nav.shell--chat .dm-page { height: auto; }

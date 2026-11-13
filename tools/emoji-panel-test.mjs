@@ -72,7 +72,9 @@ t("E5 暖心墙：pointerdown 只记标记，click 才收面板（否则底条�
   has(WC, /let tapClosePending = false;/, "没有 pending 标记");
   has(WC, /if \(field \|\| e\.target === ta\.value\) tapClosePending = true;/, "pointerdown 直接收面板（会点空）");
   no(WC, /if \(field \|\| e\.target === ta\.value\) \{\s*\n\s*emojiOpen\.value = false;/, "pointerdown 里还在收面板");
-  has(WC, /const onDocClick = \(\) => \{[\s\S]{0,260}emojiOpen\.value = false;[\s\S]{0,200}ta\.value\.focus\(\)/, "click 没收面板/没回焦点");
+  /* 轮 524：onDocClick 不再自己写「收面板 + 回焦点」，统一走 closeForKeyboard
+     （同步 focus 申请键盘 → rAF 等键盘盖上来再收面板） */
+  has(WC, /const onDocClick = \(\) => \{[\s\S]{0,240}closeForKeyboard\(\);/, "click 没收面板/没回焦点");
   has(WC, /document\.addEventListener\("click", onDocClick\)/, "没挂 click");
   has(WC, /document\.removeEventListener\("click", onDocClick\)/, "卸载没摘 click");
 });
@@ -254,17 +256,19 @@ t("E14 emojiPanel.js 保持纯 DOM（不许 import 库，否则 Node 单测崩�
  * 谁再往回去量 rect / 加定时器补量，条就会重新跳。 */
 t("E15 会话页让位只挂表达式：面板高 − 键盘此刻占高（不量 rect、不赌采样时机）", () => {
   has(BC, /const emojiPad = \(open\) => \{/, "没有让位函数");
-  has(BC, /const PAD_EXPR = "calc\(var\(--wp-emoji-h, 320px\)/, "让位表达式没以「面板高」打头");
+  has(BC, /const PAD_EXPR = "calc\(7px \+ var\(--wp-emoji-h, 320px\)/, "让位表达式没以「面板高」打头（轮 524 起前面多了一笔 7px 底内边距）");
   /* 面板 fixed 贴的是**可视视口底**，输入条在页面盒子内，两者差浏览器工具栏那一条
      （真机实测 31px）。整份补会让条提前顶离键盘顶一截；--kb-kbb 是按键盘收起进度
      打折过的，全程连续。 */
   has(BC, /var\(--kb-kbb, var\(--kbb, 0px\)\)/, "让位没补「面板贴的是可视视口底」那条缝（面板会盖住输入条一条工具栏）");
   /* 这一项是轮 520 的核心：扣掉键盘此刻已经占掉的高度，两态线性互补，条原地不动。 */
   has(BC, /- var\(--kb-now, 0px\)/, "让位没扣「键盘此刻占高」→ resize 型内核上会被算两次，输入条窜到上半屏");
-  /* .dm-page 的高度是 chatViewport.js 内联写的像素，靠 resize + 250ms 巡检更新，
-     键盘动画期间落后整整一拍（实测 inner 已 799、盒子停在 484 达 258ms）。
-     让位必须跟盒子同源，否则条会往下砸 315px 再弹回。 */
-  has(BC, /var\(--chat-h, var\(--vlh, 0px\)\) - var\(--vlh, 0px\)/, "没补页面盒子滞后的校正项（盒子慢一拍时条会往下砸一截）");
+  /* 轮 524：校正项从 --chat-h 换成 --chat-box（min(视口高, 键盘态盒子高)）。
+     盒子高是 chatViewport.js 内联写的像素，靠 resize + 250ms 巡检更新，键盘动画期间
+     落后整整一拍（实测 inner 已 799、盒子停在 484 达 258ms）；--chat-h 就是这个滞后值，
+     --chat-box 是同一个量的**无滞后**版本。让位必须跟盒子同源，否则条会往下砸一截再弹回。 */
+  has(BC, /var\(--chat-box, var\(--vlh, 0px\)\) - var\(--vlh, 0px\)/, "没补页面盒子滞后的校正项（盒子慢一拍时条会往下砸一截）");
+  has(BC, /:host \{ --chat-box: min\(var\(--vlh, 0px\), var\(--kb-pageh, var\(--vlh, 0px\)\)\); \}/, "没有 --chat-box（无滞后的盒子高）定义");
   /* 收起时必须清掉内联值，否则关掉面板后输入条永远悬在半空。 */
   has(BC, /foot\.style\.paddingBottom = emojiPadOn \? PAD_EXPR : "";/, "收起面板没清内联让位（输入条会一直悬空）");
   has(BC, /sr\.querySelector\("#room-footer \.vac-box-footer"\)/, "让位没落在 .vac-box-footer（面板的定位宿主）上");
@@ -281,7 +285,7 @@ t("E15 会话页让位只挂表达式：面板高 − 键盘此刻占高（不�
     const at = BC.indexOf("bottom: max(");
     assert.ok(at > 0, "面板没有「页面盒子没跟上」那一帧的退路（会跟条裂开一条工具栏）");
     const seg = BC.slice(at, at + 300);
-    assert.ok(/--kb-kbb/.test(seg) && /--chat-h/.test(seg),
+    assert.ok(/--kb-kbb/.test(seg) && /--chat-box/.test(seg),
       "max() 里没同时写「贴着条」和「退回旧页面底」两根式子");
   }
   /* 老内核不认 max()：旧式子必须还留在 max 那条之前当兜底 */
@@ -354,7 +358,7 @@ t("E18 面板几何由 vendored 库负责（fixed + bottom:--kbb），宿主不�
     "宿主还在给面板写几何 !important（会和库的 fixed/--kbb 打架）");
   no(BC, /\.vac-emoji-wrapper:has\(/, "宿主还在用 :has() 改 wrapper（库已处理，国产内核也不认）");
   /* 让位 padding 仍必须落在 .vac-box-footer：内层才是 relative 的那一层 */
-  has(BC, /:host\(\.wp-emoji-open\) \.vac-box-footer \{\s*\n\s*padding-bottom: var\(--wp-emoji-h\);/,
+  has(BC, /:host\(\.wp-emoji-open\) \.vac-box-footer \{\s*\n\s*padding-bottom: calc\(7px \+ var\(--wp-emoji-h\)\);/,
     "让位 padding 没落在 .vac-box-footer（写在外层面板不跟着走）");
   /* 输入行不许被 position/transform 抬高：那会抢走面板的包含块
      （实测：给 .vac-icon-textarea 加 position:relative 后，面板立刻锚回到输入行底边，
@@ -409,7 +413,7 @@ t("E20 --kb-last 只增不减：同一台机的面板高度不许随地址栏伸
  * 后者在键盘弹出动画里读会强制同步重排，把系统键盘的弹出打断。 */
 t("E21 会话页摘钉按「键盘真到位」判（--kb-now 追上 --wp-emoji-h），不是等墙钟", () => {
   has(BC, /const swapReady = \(\) => \{[\s\S]{0,320}window\.__wpVars/, "摘钉判据没读 __wpVars 快照");
-  has(BC, /return wv\.kbNow >= wv\.panel - 6;/, "摘钉没等键盘真到位（动画刚起头就摘 → 条往下砸一截再弹回）");
+  has(BC, /return wv\.kbNow >= target - 6;/, "摘钉没等键盘真到位（动画刚起头就摘 → 条往下砸一截再弹回）");
   has(BC, /if \(swapReady\(\) \|\| kbSwapFrames <= 0\) \{ endKbSwap\(\); return; \}/, "轮询里没用 swapReady");
   /* 面板还开着时不能直接 return（延迟收面板之后 holdForKeyboard 先挂、面板后收，
      旧写法会把轮询断掉，.wp-kb-swap 永远摘不下来）。 */
@@ -463,7 +467,9 @@ t("E22 影子样式的注释必须配平（裸文本会吃掉下一条规则）"
  * 三个消费者（页面高 / 吸底条 / 面板 bottom）都吃 --kbb，补正量必须落在同一处。 */
 t("E23 --kbb 叠加实测补正量；闭环校正在会话页保留，暖心墙已摘", () => {
   const VV = fs.readFileSync("src/utils/viewportVars.js", "utf8");
-  has(VV, /const kbb = Math\.max\(0, inner - visBottom\) \+ kbbFix;/, "--kbb 没叠加 kbbFix（补正量白算）");
+  /* 轮 524b：式子搬进纯函数 kbbValue（口径要能被矩阵单测覆盖），
+     断言改成「必须走纯函数、且 kbbFix 真的喂进去了」。 */
+  has(VV, /const kbb = kbbValue\(inner, vvH, vtop, isOverlay, kbbFix\);/, "--kbb 没走纯函数 / 没叠加 kbbFix（补正量白算）");
   has(VV, /export function nudgeKbbFix/, "没有 nudgeKbbFix 出口");
   has(BC, /startBottomPin\(\(\) => \{[\s\S]{0,200}dm-page--chat/, "会话页没接 startBottomPin");
   /* 轮 521：卸载钩子从单行改成多行（顺手要清掉面板的 html 标记），

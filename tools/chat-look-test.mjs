@@ -63,14 +63,18 @@ t("L4 手机聊天底栏：顶部只让状态栏、底部只让安全区（不�
 
 t("L5 表情面板打开时底栏让位仍然归零（轮 347 那条不能被顶掉；轮 350 面板→键盘交接同款）", () => {
   has(CSS, /\.dm-thread\.wp-emoji-open,\s*\n\s*\.shell--mobile-nav\.shell--chat \.dm-thread\.wp-kb-swap \{ padding-bottom: 0; \}/, "面板打开时底栏让位没了（输入条会被顶到半空）");
-  has(BC, /:host\(\.wp-emoji-open\) \.vac-box-footer \{\s*\n\s*padding-bottom: var\(--wp-emoji-h\)/, "组件内 footer 让位没了");
+  has(BC, /:host\(\.wp-emoji-open\) \.vac-box-footer \{\s*\n\s*padding-bottom: calc\(7px \+ var\(--wp-emoji-h\)\)/, "组件内 footer 让位没了");
+  /* 轮 524：那 7px 是库自己给 .vac-box-footer 的底内边距。这条内联/主题规则把
+     padding-bottom 整条接管后，7px 一并被抹掉 —— 键盘态条 433..484、面板态 440..484，
+     每切一次输入行上下 7px（用户：「还有高度不一致」）。所以正解必须以 `calc(7px + …)` 打头。 */
+  has(BC, /const PAD_EXPR = "calc\(7px \+ var\(--wp-emoji-h, 320px\)/, "让位表达式没把那 7px 底内边距加回去（输入行会随键盘/面板切换上下跳 7px）");
 });
 
 t("L7 轮 350 面板→键盘交接：让位钉住 + 过渡同曲线（否则输入框先掉屏底再被顶回来）", () => {
   /* 轮 520：钉住规则的第一句仍是「整份面板高」，但第二句已经换成逐帧表达式 ——
      旧断言要求 transition 紧跟第一句（90 字符内），中间现在夹着那条 calc，会假红。
      所以改成按语义拆开查：先确认有钉住、有 !important、过渡被关掉。 */
-  has(BC, /:host\(\.wp-kb-swap\) \.vac-box-footer \{\s*\n\s*padding-bottom: var\(--wp-emoji-h\) !important;/,
+  has(BC, /:host\(\.wp-kb-swap\) \.vac-box-footer \{\s*\n\s*padding-bottom: calc\(7px \+ var\(--wp-emoji-h\)\) !important;/,
     "没有 .wp-kb-swap 的钉住规则（输入框会先掉屏底）");
   has(BC, /:host\(\.wp-kb-swap\) \.vac-box-footer \{[\s\S]{0,420}?transition: none !important;/,
     ".wp-kb-swap 没把过渡关掉（钉住那一刻会被 .22s 拖成滑动）");
@@ -101,7 +105,12 @@ t("L7 轮 350 面板→键盘交接：让位钉住 + 过渡同曲线（否则输
      那一刻 --kb-now 才一百多，让位从已扣一半直接跳成全扣，条往下砸 253px 再被顶回来。
      那一帧的让位正好是 0，所以「到位才摘」等于「摘了不动」。 */
   has(BC, /const swapReady = \(\) => \{[\s\S]{0,320}window\.__wpVars/, "摘钉判据没读 __wpVars 快照（getComputedStyle 会打强制重排、掐断键盘动画）");
-  has(BC, /return wv\.kbNow >= wv\.panel - 6;/, "摘钉没等键盘真到位（动画刚起头就摘 → 条砸一下再弹回）");
+  /* 轮 524：靶子不再只认 --wp-emoji-h。冷启动时 wv.panel 还没锁（0/null），
+     表达式里的 --wp-emoji-h 会按默认 320px 算，而面板真实高度是 260 ——
+     拿 320 当靶子会永远等不到位，类一直挂在宿主上。
+     现在靶子 = wv.panel（锁过的真值），没有就现量面板元素。 */
+  has(BC, /const target = wv\.panel > 0 \? wv\.panel : panelElH\(\);/, "摘钉靶子没退回「现量面板高」（面板高没锁过时会一直等不到位）");
+  has(BC, /return wv\.kbNow >= target - 6;/, "摘钉没等键盘真到位（动画刚起头就摘 → 条砸一下再弹回）");
   assert.doesNotMatch(BC, /Math\.abs\(k - holdKbb\) >= 60/,
     "还留着旧的「--kbb 差 60 就摘」判据（会在键盘动画中途摘钉）");
   /* 轮 496：原来这里锁的是「网页端一律不钉」—— 实测 393×852 网页端收面板那一刻
@@ -213,9 +222,22 @@ t("L11 退场期必须把列表摆到最终位置，且巡检查回接管必须�
   const CSS = fs.readFileSync("src/style.css", "utf8");
 
   /* ① 病根一：聊天态把 .shell 左右内边距归零（3140 附近那两条），外壳类却要等淡出播完
-   *    才摘 → 整段淡出里列表是 393 宽，收尾一帧缩到 357。逐帧量过：363 → 327 的行走宽。 */
-  assert.match(CSS, /html\.dm-exiting \.shell--mobile-nav\.shell--chat \{ padding: 0 18px 48px; \}/,
-    "退场期没把外壳内边距补回来（列表会在收尾一帧横向缩 36px = 用户说的缩放）");
+   *    才摘 → 整段淡出里列表是 393 宽，收尾一帧缩到 357。逐帧量过：363 → 327 的行走宽。
+   *
+   * 轮 523：这里原来锁的是 `padding: 0 18px 48px`（底部也补 48），真机因此翻车 ——
+   * 列表在退场期已经 display 回来、自带 min-height:calc(100dvh-106px)，再补 48px 底部，
+   * 文档刚好比视口高，无键盘态逐帧拍到 scrollY 在 0↔17 之间来回跳、列表上下晃。
+   * 所以底部**不许**补，只补左右；底部那 48px 是给 TabBar 让位的，退场期不需要。 */
+  assert.match(CSS, /html\.dm-exiting \.shell--mobile-nav\.shell--chat \{ padding-left: 18px; padding-right: 18px; \}/,
+    "退场期没把外壳左右内边距补回来（列表会在收尾一帧横向缩 36px = 用户说的缩放）");
+  assert.doesNotMatch(CSS, /html\.dm-exiting \.shell--mobile-nav\.shell--chat \{ padding: 0 18px 48px; \}/,
+    "退场期又把底部 48px 补回去了（文档会比视口高、整页被滚到底，列表上下晃）");
+  /* 纵向那 14px：不是 main 的 padding（实测是 0），是 .pet-notice-stack 的下外边距 */
+  assert.match(CSS, /html\.dm-exiting \.shell--mobile-nav\.shell--chat \.pet-notice-stack \{ margin-bottom: 14px; \}/,
+    "退场期没补 .pet-notice-stack 的 14px（列表会上下跳 14px）");
+  /* 覆盖层必须收拢到列表矩形，否则淡出时是「大卡片盖窄列表」 */
+  assert.match(MV, /node\.style\.left = Math\.round\(pr\.left\) \+ "px";/,
+    "覆盖层没跟列表对齐（淡出时左右各多出 18px，看着像缩了一圈）");
   assert.match(CSS, /html\.dm-exiting \.shell--mobile-nav\.shell--chat \.dm-page \{ height: auto; \}/,
     "退场期页面盒子没回到按内容撑高（高度与收尾后不一致，收尾会跳）");
 

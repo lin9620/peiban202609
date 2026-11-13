@@ -18,7 +18,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { pickChatHeight, pickChatTop, pickChatRect, kbInsetValue, fixedBarTop, KB_GAP, TOOLBAR_GAP } from "../src/utils/chatHeight.js";
+import { pickChatHeight, pickChatTop, pickChatRect, kbInsetValue, fixedBarTop, KB_GAP, TOOLBAR_GAP, kbbValue, shouldAdoptBase, kbHeightNow, kbIsUp, pickKbKind } from "../src/utils/chatHeight.js";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (rel) => fs.readFileSync(path.join(root, rel), "utf8");
@@ -500,6 +500,141 @@ t("T40 真实可视高（availH）比 inner 小时，容器必须取小的那个
   assert.equal(pickChatRect(852, 852, 0, 0, 0).h, 852);
   assert.equal(pickChatRect(852, 852, 0, 0, -20).h, 852);
   assert.equal(pickChatRect(852, 852, 0, 0, 900).h, 852);
+});
+
+t("T41 键盘弹起时 resize 类事件必须**当场**对齐，不许只挂 rAF（晚一帧 = 输入条被键盘埋 55px）", () => {
+  /* 轮 524 · 真机逐帧量到的：inner 走 744 → 539 → 484，盒子高度在最后一步晚一帧 ——
+   * 那一帧里输入条还停在 539、键盘顶已经到 484，条被埋进去 55px。
+   * 原因不是算错，是 rAF 的语义：回调在本帧回调队列跑完之后才注册，只能排到下一帧。
+   * 这条锁住「resize 走同步、scroll 走 rAF」这个分工，别再退化回只挂 rAF。 */
+  const js = read("src/utils/chatViewport.js");
+  assert(/function kickNow\(\) \{\s*\n\s*sync\(\);\s*\n\s*kick\(\);/.test(js),
+    "kickNow 没有先同步跑 sync（resize 时又只剩 rAF）");
+  const init = js.slice(js.indexOf("export function initChatViewport"));
+  assert(/visualViewport\.addEventListener\("resize", kickNow\)/.test(init),
+    "可视视口 resize 没挂同步对齐（键盘最后一小段会晚一帧）");
+  assert(/addEventListener\("resize", kickNow, \{ passive: true \}\)/.test(init),
+    "window resize 没挂同步对齐");
+  assert(/addEventListener\("orientationchange", kickNow, \{ passive: true \}\)/.test(init),
+    "转屏没挂同步对齐");
+  /* scroll 那一路每帧都响，继续挂 rAF —— 别在滚动时同步强制重排 */
+  assert(/visualViewport\.addEventListener\("scroll", kick\)/.test(init),
+    "滚动那一路改成同步了（每帧强制重排）");
+  /* rAF 兜底本身要还在（后台标签页 rAF 会被挂起） */
+  assert(/requestAnimationFrame\(\(\) => \{ rafPending = false; sync\(\); \}\)/.test(js),
+    "kick 里的 rAF 兜底被删了");
+});
+
+t("T42 --kbb：resize 型必须恒 0（小米把 vv 报小 31px 是噪声，不是工具栏）", () => {
+  /* 轮 524b · 用户两张截图红框里各一条空白，量出来是 --kbb 31 + --kb-over 24 = 55px。
+   * 那 31px 不是工具栏，是小米浏览器把 visualViewport.height 常年报小 31px
+   * （本文件开头「已知内核样本」第 2 行就写着）。原来无脑套
+   * `inner − (offsetTop + vv高度)`，resize 型算出 31px 的假让位。 */
+  /* resize 型：无键盘、键盘态、有 31px 噪声、有 100px 噪声 —— 全 0 */
+  assert.equal(kbbValue(768, 768, 0, false, 0), 0, "resize 型无键盘算出非 0");
+  assert.equal(kbbValue(768, 737, 0, false, 0), 0, "小米 31px 噪声被当成工具栏了（吸底条会浮起 31px）");
+  assert.equal(kbbValue(484, 453, 0, false, 0), 0, "resize 型键盘态算出非 0");
+  assert.equal(kbbValue(768, 668, 0, false, 0), 0, "100px 的噪声也不许算");
+  /* overlay 型（iOS）：工具栏那 81px 必须还在，否则条沉到工具栏底下 */
+  assert.equal(kbbValue(852, 771, 0, true, 0), 81, "iOS 无键盘丢了工具栏那 81px");
+  assert.equal(kbbValue(852, 522, 330, true, 0), 0, "iOS 键盘态（已上推）不该再抬");
+  assert.equal(kbbValue(852, 771, 0, true, 6), 87, "闭环修正量没加上");
+  /* 脏值不许出 NaN */
+  assert.equal(kbbValue(0, 0, 0, false, 0), 0);
+  assert.equal(kbbValue(768, 737, 0, false, NaN), 0, "fix 是 NaN 时不该把 kbb 污染成 NaN");
+  /* 源码层：viewportVars 不许再自己写这条式子 */
+  const js = read("src/utils/viewportVars.js");
+  assert(/const kbb = kbbValue\(inner, vvH, vtop, isOverlay, kbbFix\);/.test(js),
+    "viewportVars 没走纯函数（口径又会漂）");
+  assert(!/Math\.max\(0, inner - visBottom\)/.test(js), "又留了一份内联推导");
+});
+
+t("T43 基线采纳：瞬时过冲不采纳（140ms），稳定保持 500ms 才认新基线", () => {
+  /* 轮 524b · 用户机器开机基线 744，之后工具栏收起、inner 稳定 768 →
+   * --kb-over 常驻 24px，会话页盒子被钉在 508 而面板贴屏底 532，裂 24px 的缝。
+   * 瞬时过冲（滚动一下、工具栏闪一下就回来）必须继续只由 --kb-over 抵掉 ——
+   * 采纳了会让面板高变成 315（轮 521 的老病）。 */
+  assert.equal(shouldAdoptBase(744, 799, false, 140), false, "140ms 的瞬时过冲被采纳了（面板高会变 315）");
+  assert.equal(shouldAdoptBase(744, 799, false, 300), false, "300ms 还不够稳");
+  assert.equal(shouldAdoptBase(744, 768, false, 500), true, "稳定 500ms 的新基线没采纳（--kb-over 会常驻）");
+  assert.equal(shouldAdoptBase(744, 768, false, 5000), true);
+  /* 键盘在屏上时基线绝不可信（那时 inner 被键盘压小） */
+  assert.equal(shouldAdoptBase(744, 508, true, 5000), false, "键盘态还在采纳基线");
+  /* 比基线小 / 只差几像素 —— 都不动 */
+  assert.equal(shouldAdoptBase(744, 700, false, 5000), true, "工具栏重新展开之后的 inner 也要采纳（否则另一边同样裂 24px）");
+  assert.equal(shouldAdoptBase(744, 748, false, 5000), false, "只差 4px 就采纳（取整噪声会一直翻）");
+  assert.equal(shouldAdoptBase(0, 768, false, 5000), false, "基线还没建立就采纳");
+  /* 源码层：sync 里必须真的调用它，且带 kbUp 闸门 */
+  const js = read("src/utils/viewportVars.js");
+  assert(/shouldAdoptBase\(base, inner, kbUp, Date\.now\(\) - adoptSince\)/.test(js),
+    "sync 里没调 shouldAdoptBase");
+  assert(/if \(!kbUp && Math\.abs\(inner - base\) > 8\) \{/.test(js), "采纳逻辑没挡键盘态 / 只认了一个方向");
+});
+
+/* ─── 轮 525 · 键盘度量矩阵：同一台 744 高屏，八种内核上报 ───
+ *
+ * 用户：「问题是其他浏览器呢，你有没有做预防性措施」。
+ * 之前所有判据都在拿「与开机基线的绝对差」比阈值，噪声也在那个差里，
+ * 于是只有 Chromium 原生 / 小米 / X5 三种 resize 型是对的。
+ * 下面把真机逐条跑出来的八个样本固化下来（_scratch/probe/kernel.mjs）。
+ *
+ * 列：无键盘 [inner, vv] → 键盘态 [inner, vv, vvTop]
+ */
+const KERNELS = [
+  { id: "A Chromium 原生", off: [744, 744], on: [484, 484, 0], kind: "resize", kbb: 0, kbH: 260 },
+  { id: "B 小米 31px 噪声", off: [744, 713], on: [484, 453, 0], kind: "resize", kbb: 0, kbH: 260 },
+  { id: "C X5/XWEB 偏小 24", off: [744, 720], on: [484, 460, 0], kind: "resize", kbb: 0, kbH: 260 },
+  { id: "D 大噪声 200", off: [744, 544], on: [484, 284, 0], kind: "resize", kbb: 0, kbH: 260 },
+  { id: "E iOS overlay 上推", off: [744, 744], on: [744, 484, 260], kind: "overlay", kbb: 0, kbH: 260 },
+  { id: "F 内核不报 vv", off: [744, 0], on: [484, 0, 0], kind: "resize", kbb: 0, kbH: 260 },
+  { id: "G overlay 不上推（FF 安卓）", off: [744, 744], on: [744, 484, 0], kind: "overlay", kbb: 260, kbH: 260 },
+];
+
+t("T44 键盘占高：八种内核都必须量出 260，且无键盘时量出 0", () => {
+  for (const k of KERNELS) {
+    const [bi, bv] = k.off;
+    const [i, v, t] = k.on;
+    assert.equal(kbHeightNow(bi, i, bv, v), k.kbH, `${k.id}：键盘高量成 ${kbHeightNow(bi, i, bv, v)}`);
+    assert.equal(kbHeightNow(bi, bi, bv, bv), 0, `${k.id}：无键盘时不是 0`);
+    /* kbb 仍按内核类型走：resize 一律 0，overlay 才算可视底差 */
+    assert.equal(kbbValue(i, v, t, k.kind === "overlay", 0), k.kbb, `${k.id}：--kbb 算错`);
+  }
+});
+
+t("T45 键盘在不在：噪声再大也不能在无键盘时判成弹起；不报 vv 的内核也必须判得出", () => {
+  /* 旧判据 `vvH > 0 && base − vvH ≥ 150` 的两处塌方 */
+  assert.equal(kbIsUp(744, 744, 544, 544), false, "无键盘时 vv 就报小 200 的内核被判成键盘弹起（kbb 会抬 200px）");
+  assert.equal(kbIsUp(744, 484, 0, 0), true, "不报 vv 的内核（vvH 恒 0）判不出键盘（面板高永远锁不上）");
+  /* 正常三型 */
+  assert.equal(kbIsUp(744, 744, 744, 744), false);
+  assert.equal(kbIsUp(744, 484, 744, 484), true);
+  assert.equal(kbIsUp(744, 744, 744, 484), true, "overlay 型（inner 不缩）没认出来");
+  /* 边界：差 149 不算、150 算 */
+  assert.equal(kbIsUp(744, 595, 744, 595), false, "149px 的差被当成键盘（工具栏最大 81）");
+  assert.equal(kbIsUp(744, 594, 744, 594), true, "150px 的差没认出来");
+});
+
+t("T46 内核分流：错帧不许误判；大噪声 + 不报 vv 也要判对", () => {
+  /* H：键盘动画错帧 vv 已掉到 550、inner 还停在 620 —— 旧判据 `base−inner≥150` 得 124，
+     当场判成 overlay 并锁死；比例判据 124/194 = 68% ≥ 50% → resize */
+  assert.equal(pickKbKind(744, 620, 744, 550), "resize", "错帧被误判成 overlay");
+  assert.equal(pickKbKind(744, 484, 744, 484), "resize");
+  assert.equal(pickKbKind(744, 744, 744, 484), "overlay");
+  assert.equal(pickKbKind(744, 484, 0, 0), "resize", "不报 vv 的内核判不出类型");
+  assert.equal(pickKbKind(744, 484, 544, 284), "resize", "大噪声内核被判成 overlay");
+  /* 两路都没动 = 这一帧还看不出来，调用方应保持原判断 */
+  assert.equal(pickKbKind(744, 744, 744, 744), "", "没有证据时不该给结论");
+});
+
+t("T47 源码：sync 必须用这三条度量，不许再出现「绝对差 ≥ 150」那套", () => {
+  const js = read("src/utils/viewportVars.js");
+  assert(/const kbUp = kbIsUp\(base, inner, vvBase, vvH\)/.test(js), "kbUp 没换成 kbIsUp");
+  assert(/pickKbKind\(base, inner, vvBase, vvH\)/.test(js), "内核分流没换成 pickKbKind");
+  assert(/kbHeightNow\(base, inner, vvBase, vvH\)/.test(js), "--kb-now 没换成 kbHeightNow");
+  assert(!/vvH > 0 && base - vvH >= 150/.test(js), "旧判据还在（大噪声内核会整场判错）");
+  assert(!/if \(!overlayLocked && kbUp\)/.test(js), "内核分流还在「只判一次」（错一帧就错一场）");
+  /* 面板高也必须量同一路，否则 overlay 型永远是 CSS 兜底 */
+  assert(/const kb = kbHeightNow\(base, inner, vvBase, vvH\)/.test(js), "面板高还在用 base − inner（overlay 型锁不上）");
 });
 
 console.log(out.join("\n"));

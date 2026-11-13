@@ -650,6 +650,16 @@ emoji-picker {
    改完只剩一个参照系：padding 有多高，面板就有多高，输入条必然压在面板上沿；
    页面盒子本身在可视区内，safe-area 也不用再单独让。 */
 :host { --wp-emoji-h: var(--kb-panel-h, min(46vh, 320px)); }
+/* 轮 524 · 盒子底该在哪 —— **不读 --chat-h**。
+ *
+ * chatViewport 写的 --chat-h 是「上一帧量到的盒子高」，键盘升起的头 ~65ms 里它还停在
+ * 744，而 inner 已经 539 了。让位算式里 chat-h − vlh 于是多出 +205，
+ * 输入行被算到屏幕上半部（真机冷启动逐帧：padB 327 → 532 → 382 → 327，条上下抽三下）。
+ *
+ * 这里用同一件事的**无滞后写法**：盒子高 = min(视口高, 键盘态盒子高)。
+ * 键盘态盒子高（--kb-pageh）是锁死的常量，没量到之前退回视口高 —— 与 chatViewport
+ * 的钉法逐像素一致，但它俩不需要等一帧才对齐。 */
+:host { --chat-box: min(var(--vlh, 0px), var(--kb-pageh, var(--vlh, 0px))); }
 /* 轮 521 · 面板的高度**不是固定值，而是「盒子底到视口底」那一段**。
  *
  * 用户原话：「别的软件都是键盘跟表情固定一个高度」「以键盘高度为准是做不到吗」。
@@ -663,13 +673,18 @@ emoji-picker {
  * 不是输入条跟着跳；用户看到的是「键盘那块地方换成了表情」。
  * --kb-panel-h 也要一起给：vendored 库的面板 height 读的就是它。 */
 :host(.wp-emoji-open) {
-  /* 双声明：老内核不认 max() / calc 里的变量嵌套时，后一条整条失效，
-     退回前一条「跟键盘一样高」—— 面板不会塌成 0（塌了就是整块没了）。
-     能算的内核走第二条：= 视口底 − 盒子底，键盘收起过程中它是连续变化的，
-     面板顶因此始终贴着输入条底，一帧都不分家。 */
-  --wp-emoji-h: var(--kb-panel, min(46vh, 320px));
-  --wp-emoji-h: max(0px, calc(var(--vlh, 0px) - var(--chat-h, var(--kb-pageh, var(--vlh, 0px)))));
-  --kb-panel-h: var(--wp-emoji-h);
+  /* 轮 524 · 面板高 = **锁定的键盘高**，一个常量，不再按「视口底 − 盒子底」算。
+   *
+   * 轮 521 那条 max(0, vlh − chat-h) 有两个真机抓到的坑（用户：「键盘-表情-键盘
+   * 切换 第一次点键盘没反应，还有高度不一致」）：
+   *   ① 冷启动（还没弹过键盘，--kb-pageh 为空）时盒子没被钉住，chat-h = vlh = 744
+   *      ⇒ 面板高 = **0**，面板只有 1px —— 点了表情等于没反应；
+   *   ② 键盘收起那一瞬浏览器底部工具栏会临时收起，vlh 从 744 跳到 799 再回来，
+   *      而 chat-h 钉在 484 ⇒ 面板高 315 → 260 抖一截，最后一排表情被切掉。
+   * 键盘高本来就是常量，面板就该是同一个常量：直接用 --kb-panel-h（= min(--kb-panel,420)，
+   * 冷启动由 viewportVars 从 localStorage 恢复上次量到的真值，没记录才退 320 兜底）。
+   * 面板「铺满到视口底」这件事交给底下的 bottom 算，不再靠改高度去凑。 */
+  --wp-emoji-h: var(--kb-panel-h);
 }
 @media (max-width: 899px) {
   /* 轮 503：padding 必须落在 .vac-box-footer 而不是外层 .vac-room-footer —— 内层才是
@@ -714,18 +729,18 @@ emoji-picker {
    *
    * 与暖心墙那条吸底条同一套口径 —— 两页不再各推各的。 */
   :host(.wp-emoji-open) .vac-box-footer {
-    padding-bottom: var(--wp-emoji-h);
+    padding-bottom: calc(7px + var(--wp-emoji-h));
     padding-bottom: calc(
-      var(--wp-emoji-h) + var(--kb-kbb, var(--kbb, 0px)) - var(--kb-now, 0px)
-      + var(--chat-h, var(--vlh, 0px)) - var(--vlh, 0px)
+      7px + var(--wp-emoji-h) + var(--kb-kbb, var(--kbb, 0px)) - var(--kb-now, 0px)
+      + var(--chat-box, var(--vlh, 0px)) - var(--vlh, 0px) + var(--kb-over, 0px)
     );
   }
   /* 面板已收、键盘还没到：让位先钉住（同一个式子，只是关掉过渡别提前塌下去） */
   :host(.wp-kb-swap) .vac-box-footer {
-    padding-bottom: var(--wp-emoji-h) !important;
+    padding-bottom: calc(7px + var(--wp-emoji-h)) !important;
     padding-bottom: calc(
-      var(--wp-emoji-h) + var(--kb-kbb, var(--kbb, 0px)) - var(--kb-now, 0px)
-      + var(--chat-h, var(--vlh, 0px)) - var(--vlh, 0px)
+      7px + var(--wp-emoji-h) + var(--kb-kbb, var(--kbb, 0px)) - var(--kb-now, 0px)
+      + var(--chat-box, var(--vlh, 0px)) - var(--vlh, 0px) + var(--kb-over, 0px)
     ) !important;
     transition: none !important;
   }
@@ -781,7 +796,7 @@ emoji-picker {
      * max() 写在第二条、旧式子留第一条 —— 不认 max() 的老内核整条无效、退回前者。 */
     bottom: max(
       calc(var(--kb-kbb, var(--kbb, 0px)) - var(--kb-now, 0px)),
-      calc(var(--vlh, 0px) - var(--chat-h, var(--vlh, 0px)) - var(--wp-emoji-h, 320px))
+      calc(var(--vlh, 0px) - var(--chat-box, var(--vlh, 0px)) - var(--wp-emoji-h, 320px))
     ) !important;
   }
   .vac-emoji-wrapper .vac-emoji-picker emoji-picker {
@@ -897,8 +912,13 @@ let emojiPadOn = false;
 const sheetMode = () => typeof window !== "undefined"
   && typeof window.matchMedia === "function"
   && window.matchMedia("(max-width: 899px)").matches;
-const PAD_EXPR = "calc(var(--wp-emoji-h, 320px) + var(--kb-kbb, var(--kbb, 0px))"
-  + " - var(--kb-now, 0px) + var(--chat-h, var(--vlh, 0px)) - var(--vlh, 0px))";
+/* 轮 524 · 头上一笔 7px：库自己给 .vac-box-footer 的底内边距就是 7px
+ * （`padding: 7px 2px calc(7px + safe-area)`）。这条内联表达式把 padding-bottom
+ * 整条接管之后，那 7px 一并被抹掉 —— 键盘态条在 433..484、面板态掉到 440..484，
+ * 每切一次输入行上下 7px，就是用户说的「高度不一致」。
+ * 让位量的正解是「面板顶 − 条底」，而条底本来就该留这 7px，所以直接把它加回去。 */
+const PAD_EXPR = "calc(7px + var(--wp-emoji-h, 320px) + var(--kb-kbb, var(--kbb, 0px))"
+  + " - var(--kb-now, 0px) + var(--chat-box, var(--vlh, 0px)) - var(--vlh, 0px) + var(--kb-over, 0px))";
 const emojiPad = (open) => {
   const n = el.value;
   const sr = n && n.shadowRoot;
@@ -1063,11 +1083,28 @@ const endKbSwap = () => {
   const thread = n && n.closest(".dm-thread");
   if (thread) thread.classList.remove("wp-kb-swap");
 };
+/* 面板此刻的真实高度：直接量元素。
+ * 轮 524：冷启动还没量到键盘时 window.__wpVars.panel 是 null，但面板**已经铺开了**
+ * （--kb-panel-h 的 320 兜底）。旧写法拿 null 当「没有面板」直接判到位，让位当场塌陷，
+ * 输入行从 433 弹到 373 再掉到 693 —— 用户说的「第一次点键盘没反应」。
+ * 不能读 getComputedStyle 的 --kb-panel-h：自定义属性不注册时返回的是**声明原文**
+ * （min(320px, 420px)），parseFloat 出来是 NaN。量元素最实在。 */
+const panelElH = () => {
+  try {
+    const n = el.value;
+    const sr = n && n.shadowRoot;
+    const p = sr && sr.querySelector(".vac-emoji-picker");
+    if (!p) return 0;
+    const b = p.getBoundingClientRect();
+    return b.height > 0 ? Math.round(b.height) : 0;
+  } catch (e) { return 0; }
+};
 const swapReady = () => {
   const wv = (typeof window !== "undefined" && window.__wpVars) || null;
   if (!wv) return true;                       /* 读不到就按到位处理，别把类永远挂着 */
-  if (!(wv.panel > 0)) return true;
-  return wv.kbNow >= wv.panel - 6;
+  const target = wv.panel > 0 ? wv.panel : panelElH();
+  if (!(target > 0)) return true;
+  return wv.kbNow >= target - 6;
 };
 const holdForKeyboard = () => {
   /* 判据沿用旧版：App 壳与 visualViewport 让位路线都要钉；
@@ -1204,8 +1241,10 @@ const bindFooterTap = () => {
       const nn = el.value;
       if (!nn) { closingPanel = false; return; }
       if (!nn.classList.contains("wp-emoji-open")) { closingPanel = false; return; }
-      const wv = (typeof window !== "undefined" && window.__wpVars) || null;
-      const ready = !wv || !(wv.panel > 0) || wv.kbNow >= wv.panel - 6;
+      /* 判据与 .wp-kb-swap 的摘除完全一致：--kb-now 追上**面板此刻的真实高度**。
+         轮 524：统一走 swapReady —— 冷启动 panel 还没锁时它退到 --kb-panel-h，
+         否则这里会把 null 当「已到位」，面板一收，底下立刻露 260px 空白。 */
+      const ready = swapReady();
       if (ready || wait-- <= 0) {
         closingPanel = true;
         try { btn.click(); } catch (e3) { /* 无 DOM 环境 */ }

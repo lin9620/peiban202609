@@ -36,6 +36,8 @@
  * 「读一个属性」，不是推导，而且 iOS 的让位公式和聊天盒子高度确实要用。
  */
 
+import { kbbValue, shouldAdoptBase, kbHeightNow, kbIsUp, pickKbKind } from "./chatHeight.js";
+
 const KBB = "--kbb";         /* 吸底条 / 面板离布局视口底的距离 */
 const KPANEL = "--kb-panel"; /* 表情面板高度 = 锁定的键盘高 */
 const VTOP = "--vtop";       /* 可视视口上推量（iOS 键盘态） */
@@ -63,11 +65,43 @@ function guessOverlayByUA() {
   } catch (e) { return false; }
 }
 
-let overlayLocked = false;
+/* 内核类型。开机先按 UA 猜（iOS 一定是 overlay，能省掉第一次弹键盘时的判断延迟），
+ * 之后键盘每在屏上一帧都用 pickKbKind 校正（不是锁死一次）。 */
 let isOverlay = guessOverlayByUA();
 
 /* 锁定的键盘高。0 = 还没测到（面板用 CSS 兜底高度）。 */
 let panelH = 0;
+/* 轮 524 · 锁到的键盘高要**跨会话记住**。
+ *
+ * 用户「安卓端暖心墙 / 会话，键盘-表情-键盘切换一堆问题」，真机冷启动逐帧抓到的：
+ *   · 刚进页面还没弹过键盘就点表情 → --kb-panel 是空的 → 面板高 = max(0, vlh − chat-h)
+ *     = 744 − 744 = **0**，面板只有 1px（等于点了没反应）；
+ *   · 接着点键盘 → 让位钉在 320 兜底上，输入行从 433 弹到 380 再掉回来，
+ *     键盘才姗姗来迟 —— 用户说的「第一次点键盘没反应」。
+ * 键盘高在一台设备上是常量，所以第一次测到就存下来，下次开页面直接用它：
+ * 冷启动第一帧面板就是 260，跟键盘一模一样，上面那两条整类问题消失。
+ * 存 { h, w }：宽度对不上就作废（横竖屏互串会给出一个完全不对的高度）。 */
+const PANEL_KEY = "wp-kb-panel-v2";
+function restorePanel() {
+  if (panelH > 0) return;
+  try {
+    const o = JSON.parse(localStorage.getItem(PANEL_KEY) || "null");
+    const h = Number(o && o.h) || 0;
+    if (!(h >= KB_MIN && h <= KB_MAX)) return;
+    const w = Number(o && o.w) || 0;
+    const nowW = Math.round((typeof window !== "undefined" && window.innerWidth) || 0);
+    if (w > 0 && nowW > 0 && Math.abs(w - nowW) > 40) return;
+    panelH = Math.round(h);
+    setVar(KPANEL, panelH + "px");
+  } catch (e) { /* 隐私模式 / 禁用存储：当没存过 */ }
+}
+function savePanelLocked() {
+  try {
+    localStorage.setItem(PANEL_KEY, JSON.stringify({
+      h: panelH, w: Math.round(window.innerWidth || 0), at: Date.now(),
+    }));
+  } catch (e) { /* 忽略 */ }
+}
 /* 无键盘基线：**开机取一次就冻结**。
  *
  * 这是整件事的锚点，取错了后面全错：
@@ -84,6 +118,15 @@ let panelH = 0;
 let base = 0;
 let bootAt = 0;
 const BASE_WINDOW_MS = 1500;
+/* 轮 525 · 无键盘时的可视视口高。跟 base 一起冻结。
+ *
+ * 所有 overlay 型的判据都靠它：键盘占高 = vvBase − vvH。
+ * 拿它而不是直接拿 vv 跟 base 比，是为了把「这个内核常年把 vv 报小」那部分抵掉
+ * （小米 31px、有的内核 200px）—— 噪声在 vvBase 和 vvH 里是同一个常数，相减就没了。 */
+let vvBase = 0;
+/* 轮 524b · 基线采纳的观察窗口（见 sync 里那段：瞬时过冲不采纳，稳定才采纳） */
+let adoptVal = 0;
+let adoptSince = 0;
 /* 探针读数（100svh / 100dvh），量不出来是 0 */
 let svhH = 0;
 let dvhH = 0;
@@ -140,17 +183,27 @@ function readProbes() {
 
 /* 键盘停稳后锁一次面板高度。
  * 用「稳定 180ms」而不是「取最大值」来辨认：键盘动画中间帧只存在几十毫秒，
- * 停稳后的那个值才是键盘本身。锁完就再也不会变 —— 面板高度从此是常量。 */
+ * 停稳后的那个值才是键盘本身。锁完就再也不会变 —— 面板高度从此是常量。
+ *
+ * 轮 524：冷启动会先从 localStorage 恢复一份，所以这里不再是「锁一次就永远不碰」，
+ * 而是「跟上次记下的差 12px 以上才改」。差 12 以内当抖动忽略，避免面板高来回改；
+ * 用户换了输入法 / 换了导航方式（真会让键盘高变几十像素）时又能自己纠正回来。 */
 function schedulePanelLock() {
-  if (panelH > 0) return;
   clearTimeout(lockTimer);
   lockTimer = setTimeout(() => {
-    if (panelH > 0) return;
     const inner = Math.round(window.innerHeight || 0);
-    const kb = base - inner;
+    const vv = window.visualViewport;
+    const vvH = vv && vv.height > 0 ? Math.round(vv.height) : 0;
+    /* 轮 525：键盘高不能再用 base − inner —— overlay 型内核（iOS、FF 安卓
+     * resizes-visual）布局视口根本不缩，这个式子恒得 0，面板高永远锁不上，
+     * 于是一直吃 CSS 兜底高度（min(46vh,320px)），跟真键盘差几十像素。
+     * kbHeightNow 两条路都量，取大者。 */
+    const kb = kbHeightNow(base, inner, vvBase, vvH);
     if (kb < KB_MIN || kb > KB_MAX) return;
+    if (panelH > 0 && Math.abs(panelH - kb) < 12) return;
     panelH = kb;
     setVar(KPANEL, kb + "px");
+    savePanelLocked();
     lastKey = "";             /* 让下一帧把其余变量重写一遍（幂等） */
     syncViewportVars();
   }, LOCK_SETTLE_MS);
@@ -171,34 +224,93 @@ export function syncViewportVars() {
   const inner = Math.round(window.innerHeight || 0);
   if (!(inner > 0)) return;
 
-  /* 基线：开机 1.5s 内只减不增（等浏览器把工具栏算稳），窗口一过就冻结。 */
-  if (!base) { base = inner; bootAt = Date.now(); }
-  else if (Date.now() - bootAt < BASE_WINDOW_MS && inner < base) base = inner;
+  /* 轮 524：先把上次记下的键盘高恢复出来（幂等，只在 panelH 还是 0 时动） */
+  restorePanel();
 
   const vv = window.visualViewport;
   const vvH = vv && vv.height > 0 ? Math.round(vv.height) : 0;
   const vtop = vv ? Math.round(vv.offsetTop || 0) : 0;
 
-  readProbes();
-  /* 「键盘真的在」的判据：可视区比基线矮 150 以上。
-   * 150 这个界把浏览器工具栏那 55px 挡在外面（真键盘最低 200）。 */
-  const kbUp = vvH > 0 && base - vvH >= 150;
+  /* 基线：开机 1.5s 内只减不增（等浏览器把工具栏算稳），窗口一过就冻结。 */
+  if (!base) { base = inner; bootAt = Date.now(); }
+  else if (Date.now() - bootAt < BASE_WINDOW_MS && inner < base) base = inner;
 
-  /* 内核分流：第一次确认键盘弹起时，用 inner 有没有跟着缩来判定。
-   * 缩了 = resize 型（安卓/小米，浏览器自己把窗口压小）；
-   * 没缩 = overlay 型（iOS，键盘浮在上面）。只判一次。 */
-  if (!overlayLocked && kbUp) {
-    overlayLocked = true;
-    isOverlay = !(base - inner >= 150);
-    applyKbKind(de);
+  /* 轮 525 · vvBase 跟 base 同规则冻结（见文件上方声明）。
+   * 不报 vv 的内核一直是 0，overlay 那一路自然失效 —— 它们靠 resize 那一路走。 */
+  if (vvH > 0) {
+    if (!vvBase) vvBase = vvH;
+    else if (Date.now() - bootAt < BASE_WINDOW_MS && vvH < vvBase) vvBase = vvH;
+  }
+
+  readProbes();
+  /* 「键盘真的在」：可见高度比开机时少了 150 以上（判据在 chatHeight.kbIsUp）。
+   *
+   * 旧写法 `vvH > 0 && base − vvH ≥ 150` 有两种塌法，都是别的浏览器上的：
+   *   · 无键盘时 vv 就报小 200 的内核 → 页面一打开这个条件就成立，
+   *     内核当场被判成 overlay，--kbb 抬 200px，吸底条浮在半空；
+   *   · 根本不报 vv 的内核（vvH 恒 0）→ kbUp 恒假 → 面板高永远锁不上，
+   *     而且基线会被键盘态的 484 采纳（shouldAdoptBase 以为那是工具栏收起）。
+   * 现在两路都量、取大者，噪声靠 vvBase 相减抵掉。 */
+  const kbUp = kbIsUp(base, inner, vvBase, vvH);
+
+  /* 内核分流：按「两路各缩了多少」的比例判（判据在 chatHeight.pickKbKind）。
+   *
+   * 旧写法在两个地方错：① 只看 `base − inner ≥ 150` 这个绝对量 —— 键盘动画是
+   * 两段式的，实测错帧那一帧 vv 已掉到 550、inner 还停在 620（只缩 124），
+   * 当场判成 overlay；② `overlayLocked` 只判一次，错一帧就错一整场。
+   * 现在键盘每在屏上一帧都可以校正，比例判据对错帧也稳（124/194 = 68% ≥ 50%）。 */
+  if (kbUp) {
+    const k = pickKbKind(base, inner, vvBase, vvH);
+    if (k) {
+      const ov = k === "overlay";
+      if (ov !== isOverlay) {
+        isOverlay = ov;
+        applyKbKind(de);
+      }
+    }
+  }
+
+  /* 轮 524b · 过冲还是新基线？（判据在 chatHeight.shouldAdoptBase，有矩阵单测）
+   *
+   * 用户的机器上开机基线 744，之后工具栏收起、inner 稳定在 768，于是
+   * `--kb-over` 常驻 24px —— 会话页的页面盒子被钉在 base − 面板高 = 508，
+   * 而面板贴的是真正的屏底 532，两者差 24px，条和面板之间裂一条缝
+   * （2026-11-14 第二张截图红框）。
+   * 瞬时过冲（实测 140ms 就回来）必须继续只由 --kb-over 抵掉、不动基线，
+   * 否则面板高会变成 315；稳定保持 ≥500ms 的，才认它为新基线、过冲归零。
+   * 反方向同理：工具栏重新展开（inner 变小）也要跟回来，否则面板态盒子会比
+   * 面板顶高出一截，同样裂一条缝。 */
+  if (!kbUp && Math.abs(inner - base) > 8) {
+    if (inner === adoptVal) {
+      if (shouldAdoptBase(base, inner, kbUp, Date.now() - adoptSince)) {
+        base = inner;
+        adoptVal = 0;
+        adoptSince = 0;
+      }
+    } else {
+      adoptVal = inner;
+      adoptSince = Date.now();
+    }
+  } else {
+    adoptVal = 0;
+    adoptSince = 0;
   }
 
   /* --kbb：可视区底离布局视口底多远。
    * resize 型键盘态：inner 484 / vv 484 → 0（布局视口就是可视区，条贴底即贴键盘沿）
    * overlay 型无键盘：inner 852 / vv 771 → 81（Safari 底部工具栏那一截）
-   * overlay 型键盘态：inner 852 / offsetTop 330 + vv 522 → 0（可视区已被上推，条贴底即贴键盘沿） */
-  const visBottom = vvH > 0 ? Math.min(inner, vtop + vvH) : inner;
-  const kbb = Math.max(0, inner - visBottom) + kbbFix;
+   * overlay 型键盘态：inner 852 / offsetTop 330 + vv 522 → 0（可视区已被上推，条贴底即贴键盘沿）
+   *
+   * 轮 524b · **resize 型一律 0**，不许套这条公式。
+   * 用户两张截图（暖心墙键盘态 / 会话页面板态）红框里各一条空白，量出来是
+   * `--kbb` 31 + `--kb-over` 24 = 55px —— 这个 31 不是工具栏，是**小米浏览器把
+   * visualViewport.height 常年报小 31px**（本文件开头「已知内核样本」里就记着这条）。
+   * 上面那句「resize 型键盘态 vv 484」只对 Chromium 原生成立；小米、部分国产内核
+   * 无键盘时就是 inner 768 / vv 737，公式直接算出 31px 的假让位：
+   * 吸底条平白浮起 31px，底下露一条空白。
+   * 判据用 isOverlay（UA 先判，第一次弹键盘再用「inner 缩没缩」校准）——
+   * resize 型的布局视口就是可视区，根本没有「可视底离布局视口底」这回事。 */
+  const kbb = kbbValue(inner, vvH, vtop, isOverlay, kbbFix);
 
   /* --vph：浏览器 UI 展开后还剩多少。三个读数取最小 —— 谁扣掉了工具栏就取到谁。
    * 老内核把 svh 报成 0 时自动跳过；全量不出来就退回 inner，与改造前一致。 */
@@ -212,9 +324,20 @@ export function syncViewportVars() {
    * 只有「弹过键盘」（panelH 已锁定、base 已确定）才算 —— 否则基线与当前值不可比，
    * 会算出「键盘还占着 55px」这种假的占位。 */
   const over = isOverlay ? 0 : Math.max(0, inner - base);
-  const kbNow = panelH > 0 && (kbUp || over === 0)
-    ? Math.max(0, Math.min(panelH, isOverlay ? vtop : base - inner))
-    : 0;
+  /* 轮 524：面板高还没锁过（冷启动）时不再把 kbNow 压成 0。
+   *
+   * 旧写法 `panelH > 0 && …` 让 --kb-now 在第一次弹键盘的整段时间里恒为 0：
+   * 面板的 translateY 不动、让位算式里的 −kbNow 也不动，于是输入条跟着缩小的视口
+   * 一路往上跑（真机冷启动：433 → 168 → 113），等键盘量到 260 才「啪」地掉回 433。
+   * 键盘当前占高本来就是实测值，跟「面板多高」是两件事 ——
+   * 面板高只用来**夹上限**，没锁过就不夹（上限由 KB_MAX 那道闸门管着）。
+   *
+   * 轮 525：度量换成 chatHeight.kbHeightNow —— resize 型看布局视口缩了多少，
+   * overlay 型看可视视口缩了多少，两条都算取大者。旧写法 overlay 分支直接用
+   * vv.offsetTop：Firefox 安卓的 resizes-visual 模式下 vv 会缩、offsetTop 却是 0，
+   * kbNow 恒 0 → 让位算式完全不动 → 输入条被键盘整个盖住。 */
+  const kbNowCap = panelH > 0 ? panelH : KB_MAX;
+  const kbNow = Math.max(0, Math.min(kbNowCap, kbHeightNow(base, inner, vvBase, vvH)));
 
   if (kbUp) schedulePanelLock();
 
@@ -272,7 +395,7 @@ export function syncViewportVars() {
   try {
     window.__wpVars = {
       inner, vvH, vtop, kbb, vph, svh: svhH, dvh: dvhH,
-      base, kbUp, kbNow, over, panel: panelH || null,
+      base, vvBase, kbUp, kbNow, over, panel: panelH || null,
       kind: isOverlay ? "overlay" : "resize",
       at: Date.now(),
     };

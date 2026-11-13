@@ -115,15 +115,66 @@ const onKeydown = (e) => {
   doSend();
 };
 
+/* 轮 524 · 面板 → 键盘：**面板要等键盘盖上来再收**。
+ *
+ * 用户「安卓端暖心墙 / 我的页面的暖心墙帖子，键盘-表情-键盘切换还是一堆问题」。
+ * 真机逐帧（小米浏览器 393×744，注入本地构建）抓到的是这一段：
+ *   点键盘键 +120ms  面板 display:none，条还钉在 433..484，底下 260px 先露出帖子内容
+ *   点键盘键 +350ms  键盘才从屏底升起，把那 260px 盖住
+ * 也就是每次切回键盘都会「面板突然没了 → 内容闪一下 → 键盘爬上来」。
+ *
+ * 做法跟会话页（DmVacChat）同一套：先 focus 申请键盘，面板原地留着 ——
+ * 面板的 transform 吃 --kb-now，键盘升多少它就沉多少，被键盘逐帧盖住；
+ * 等 --kb-now 追上「面板此刻的真实高度」，收与不收屏幕上一模一样，这时再收。
+ * 40 帧（≈660ms）还等不到（外接键盘 / 焦点没落上）就直接收，退回旧行为。
+ * 面板高度读 --kb-panel-h 而不是 __wpVars.panel：冷启动还没锁过键盘时后者是 null，
+ * 按 null 判「已到位」会当场收掉面板，就是原来那个闪。 */
+/* 面板此刻的真实高度：直接量元素，不读自定义属性。
+ * 自定义属性没注册时 getComputedStyle 返回的是**声明原文**（min(320px, 420px)），
+ * parseFloat 出来是 NaN —— 那样 panelReady 会永远判「已到位」，等于没改。 */
+const panelElH = () => {
+  try {
+    const el = root.value && root.value.querySelector(".wp-composer-picker");
+    if (!el) return 0;
+    const b = el.getBoundingClientRect();
+    return b.height > 0 ? Math.round(b.height) : 0;
+  } catch (e) { return 0; }
+};
+const panelReady = () => {
+  const wv = (typeof window !== "undefined" && window.__wpVars) || null;
+  if (!wv) return true;                       /* App 壳 / 读不到：按到位处理 */
+  const target = wv.panel > 0 ? wv.panel : panelElH();
+  if (!(target > 0)) return true;
+  return wv.kbNow >= target - 6;
+};
+let closeRaf = 0;
+let closeFrames = 0;
+const cancelClose = () => {
+  if (closeRaf) { try { cancelAnimationFrame(closeRaf); } catch (e) { /* 忽略 */ } }
+  closeRaf = 0;
+  closeFrames = 0;
+};
+/* 收面板 + 回键盘：焦点必须**同步**申请（iOS 只在手势栈里认 focus），面板延后收 */
+const closeForKeyboard = () => {
+  try { if (ta.value) ta.value.focus(); } catch (e) { /* 无焦点环境 */ }
+  cancelClose();
+  if (!emojiOpen.value) return;
+  closeFrames = 40;
+  const tick = () => {
+    closeRaf = 0;
+    if (!emojiOpen.value) return;
+    if (panelReady() || closeFrames-- <= 0) { emojiOpen.value = false; return; }
+    closeRaf = requestAnimationFrame(tick);
+  };
+  closeRaf = requestAnimationFrame(tick);
+};
+
 const toggleEmoji = () => {
   if (emojiOpen.value) {
     /* 面板开着再点 = 收面板 + 回键盘（微信式交接）。
      * 顺序必须先是 focus：iOS 只在用户手势的同步栈里认 focus()。
-     * 轮 519：这里原来还有一句 holdForKeyboard() 去把底条钉在面板高度上等键盘接住。
-     * 现在不需要了 —— 条的抬升量是 calc(面板高 − --kb-now)，键盘一起来 --kb-now
-     * 就跟着涨、抬升量跟着减，两边自然咬合，没有任何需要「等」的窗口。 */
-    try { if (ta.value) ta.value.focus(); } catch (e) { /* 无焦点环境 */ }
-    emojiOpen.value = false;
+     * 轮 524：面板不再当场收，等键盘盖上来（见 closeForKeyboard）。 */
+    closeForKeyboard();
     return;
   }
   /* 上方放不下就往下弹：暖心墙桌面主评论框离页面顶很近，旧版往上弹会被视口裁掉半截。 */
@@ -292,8 +343,8 @@ const onDocDown = (e) => {
 const onDocClick = () => {
   if (!tapClosePending) return;
   tapClosePending = false;
-  emojiOpen.value = false;
-  try { if (ta.value) ta.value.focus(); } catch (err) { /* 无焦点环境 */ }
+  /* 轮 524：同一套交接 —— 先 focus 申请键盘，面板等它盖上来再收 */
+  closeForKeyboard();
 };
 
 onMounted(() => {
@@ -307,6 +358,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   clearTimeout(readyTimer);
   clearTimeout(barDropTimer);
+  cancelClose();
   /* 轮 515：面板开着就被卸载时 html.wp-panel 必须摘掉，
      否则 body 的键盘让位永远不走过渡（按钮场景里那一跳） */
   try { document.documentElement.classList.remove("wp-panel"); } catch (e) { /* 忽略 */ }

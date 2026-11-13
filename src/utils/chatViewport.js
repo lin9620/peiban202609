@@ -288,6 +288,24 @@ function kick() {
   clearTimeout(timer);
   timer = setTimeout(sync, 16);
 }
+
+/* 轮 524 · resize 类事件**当场同步对齐**，不再只等 rAF。
+ *
+ * 真机逐帧（小米 393×744，键盘 260）量到的：点输入框那一趟 inner 走
+ * 744 → 539 → 484，盒子高度在最后一步上晚了一帧 —— 那一帧里输入条还停在 539，
+ * 而键盘顶已经到 484，**条被键盘埋进去 55px**（肉眼就是「条从键盘底下钻出来」）。
+ *
+ * 原因不是 sync 算错，是 rAF 的语义：回调是在**本帧的回调队列已经跑完之后**才注册的，
+ * 于是只能排到下一帧。事件落在「布局/绘制阶段」时，这一帧已经按新视口画完了，
+ * 盒子却还是旧高。同步跑一次就没有这个缝 —— sync 内部有 key 去重，
+ * 值没变时只做几次 getComputedStyle 就返回，多跑一次的成本可以忽略。
+ *
+ * 只有 resize 类事件走同步（一次键盘动画总共两三次）；scroll 那一路会每帧都响，
+ * 继续挂 rAF，别在滚动时强制重排。 */
+function kickNow() {
+  sync();
+  kick();
+}
 /* 轮 474：进会话是 history.pushState（没有任何事件可听），面板什么时候真的画出来
  * 只有页面自己知道。由 MessagesView 在面板打开的那个 tick 主动踢一脚，
  * 不用干等 250ms 巡检 —— 那 0~250ms 就是「输入条先在屏幕中间弹一下」的全部时长。
@@ -324,11 +342,11 @@ export function initChatViewport() {
   booted = true;
 
   if (window.visualViewport) {
-    window.visualViewport.addEventListener("resize", kick);
+    window.visualViewport.addEventListener("resize", kickNow);
     window.visualViewport.addEventListener("scroll", kick);
   }
-  window.addEventListener("resize", kick, { passive: true });
-  window.addEventListener("orientationchange", kick, { passive: true });
+  window.addEventListener("resize", kickNow, { passive: true });
+  window.addEventListener("orientationchange", kickNow, { passive: true });
   window.addEventListener("pageshow", kick, { passive: true });
 
   /* 路由是 history.pushState，没有事件可听；小米浏览器这类内核又可能完全不派发

@@ -83,7 +83,7 @@ t("V8 宿主不再内联改面板几何（两套机制并存必然打架）", ()
    * 同一个 padding 上），真机逐帧 433 → 180 → 495 → 440，一次切换跳三下。
    * 现在式子里的量全部由 viewportVars 逐帧提供，宿主只挂表达式 —— 所以这里锁表达式。 */
   has(BC, /foot\.style\.paddingBottom = emojiPadOn \? PAD_EXPR : "";/, "让位 padding 不见了（面板会盖住输入行）");
-  has(BC, /const PAD_EXPR = "calc\(var\(--wp-emoji-h, 320px\)/, "让位表达式没以面板高打头");
+  has(BC, /const PAD_EXPR = "calc\(7px \+ var\(--wp-emoji-h, 320px\)/, "让位表达式没把那 7px 底内边距加回去（输入行会随键盘/面板切换上下跳 7px）");
   has(BC, /- var\(--kb-now, 0px\)/, "让位没扣「键盘此刻占高」（resize 型内核上会算两次，条窜到上半屏）");
   no(BC, /getBoundingClientRect\(\)\.height/, "又回去量面板 rect 了（采样时机必然踩空）");
   /* 面板自己也要扣：键盘还在收起时藏在键盘后面、随键盘升起 */
