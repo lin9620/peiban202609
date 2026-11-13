@@ -27,7 +27,7 @@ import SeasonFx from "../components/SeasonFx.vue";
 import SnackRain from "../components/SnackRain.vue";
 import RpsGame from "../components/RpsGame.vue";
 import {
-  wardrobe, accByKey, buyAccessory, wearAccessory, toggleFramed,
+  wardrobe, accByKey, buyAccessory, wearAccessory, healWardrobe, toggleFramed,
 } from "../stores/petStore.js";
 
 import {
@@ -365,26 +365,38 @@ const seasonName = computed(() => season.name[i18n.locale] || season.name.en);
 const wornAcc = computed(() =>
   activePet.value && activePet.value.wear ? accByKey(activePet.value.wear) : null
 );
+const wornKeys = computed(() => new Set(petStore.pets.map((p) => p && p.wear).filter(Boolean)));
 const accRows = computed(() =>
-  ACCESSORIES.map((a) => ({
-    ...a,
-    owned: wardrobe.owned.includes(a.key),
-    worn: !!(activePet.value && activePet.value.wear === a.key),
-  }))
+  ACCESSORIES.map((a) => {
+    /* 轮 530：身上戴着的 key 也算「已拥有」—— wardrobe 丢过时（换端/换域/写盘失败），
+     * 否则同一件会同时显示「佩戴中」和「🪙40」，点一下就问价，用户以为白买了。 */
+    const owned = wardrobe.owned.includes(a.key) || wornKeys.value.has(a.key);
+    return {
+      ...a,
+      owned,
+      worn: !!(activePet.value && activePet.value.wear === a.key),
+    };
+  })
 );
 const framedDishes = computed(() => cookbook.filter((d) => d.framed).slice(0, 4));
 
 function onAccClick(a) {
-  if (!a.owned) {
+  /* 轮 530：兜底判定「买过没有」。以前只看 a.owned —— wardrobe 一旦丢过（换端/换域/写盘失败），
+   * 宠物明明还戴着这件，chip 却标着价钱，点下去要么扣第二次钱、要么「金币不足」，
+   * 用户就是这个报障。pet.wear 只有 buyAccessory 会写，所以「身上戴着」就是买过的铁证。 */
+  const owned = a.owned || petStore.pets.some((p) => p.wear === a.key);
+  if (!owned) {
     if (buyAccessory(a.key)) {
       say(t("wardrobe.bought"), 3000);
       spawnFx(["\u2728", "\u{1F451}", "\u{1F33C}"], 4);
     } else {
       say(t("pet.notEnough"), 3200);
     }
-  } else {
-    wearAccessory(a.key);
+    return;
   }
+  if (!wardrobe.owned.includes(a.key)) healWardrobe();   /* 把这次认出来的一并写进已购清单，下次不再问价 */
+  const off = !!(activePet.value && activePet.value.wear === a.key);
+  if (wearAccessory(a.key)) say(t(off ? "wardrobe.off" : "wardrobe.on"), 1800);
 }
 function onToggleFramed(d) {
   toggleFramed(d.id);
@@ -511,6 +523,7 @@ function onToggleFramed(d) {
             <span class="a-name">{{ a.name[i18n.locale] || a.name.en }}</span>
             <span v-if="!a.owned" class="a-cost">{{ "\u{1FA99}" }}{{ a.cost }}</span>
             <span v-else-if="a.worn" class="a-cost">{{ t("wardrobe.worn") }}</span>
+            <span v-else class="a-cost owned">{{ t("wardrobe.owned") }}</span>
           </button>
         </div>
         <p class="sub">{{ t("wardrobe.hint") }}</p>

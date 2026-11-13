@@ -383,6 +383,9 @@ export default {
     "title": "Petit dressing",
     "hint": "Achète avec des pièces et habille ton compagnon.",
     "worn": "Porté",
+    "owned": "Acheté",
+    "on": "Ça te va bien !",
+    "off": "On l'enlève pour l'instant.",
     "bought": "Nouveau look débloqué !"
   },
   "gallery": {
@@ -655,6 +658,7 @@ export default {
     "emptyBtn": "Partager sur le mur",
     "filterEmptyTitle": "Rien dans cette période",
     "filterEmptyDesc": "Tu regardes « {scope} » — aucune note dedans pour l’instant. Élargis la fenêtre, ou reviens à Pour toi.",
+    "filterEmptyHint": "Aucune note dans cette fenêtre pour l’instant. Élargis la fenêtre, ou reviens à Pour toi.",
     "filterEmptyWiden": "Passer à {range}",
     "filterEmptyRec": "Retour à « Pour toi »",
     "filterEmptyRefresh": "Recharger",

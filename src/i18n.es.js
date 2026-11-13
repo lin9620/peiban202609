@@ -382,6 +382,9 @@ export default {
     "title": "Armario pequeño",
     "hint": "Compra con monedas y viste a tu mascota.",
     "worn": "Puesto",
+    "owned": "Comprado",
+    "on": "¡Te queda bien!",
+    "off": "Ya lo quitamos.",
     "bought": "¡Nuevo look desbloqueado!"
   },
   "gallery": {
@@ -654,6 +657,7 @@ export default {
     "emptyBtn": "Compartir en el muro",
     "filterEmptyTitle": "Aún no hay nada en este rango",
     "filterEmptyDesc": "Estás viendo «{scope}» — todavía no hay notas. Amplía la ventana o vuelve a Para ti.",
+    "filterEmptyHint": "Aún no hay notas en esta ventana. Amplía la ventana o vuelve a Para ti.",
     "filterEmptyWiden": "Cambiar a {range}",
     "filterEmptyRec": "Volver a «Para ti»",
     "filterEmptyRefresh": "Actualizar",

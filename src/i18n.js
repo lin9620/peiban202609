@@ -334,6 +334,9 @@ export const messages = {
       title: "Little Wardrobe",
       hint: "Buy with coins, dress up your pet.",
       worn: "Wearing",
+      owned: "Owned",
+      on: "Looking good!",
+      off: "Took it off.",
       bought: "New look unlocked!",
     },
     gallery: {
@@ -569,6 +572,7 @@ export const messages = {
       emptyBtn: "Share on the wall",
       filterEmptyTitle: "Nothing in this range yet",
       filterEmptyDesc: "You're looking at “{scope}” — no notes in it yet. Widen the window, or head back to For you.",
+      filterEmptyHint: "No notes in this window yet. Widen the window, or head back to For you.",
       filterEmptyWiden: "Switch to {range}",
       filterEmptyRec: "Back to “For you”",
       filterEmptyRefresh: "Refresh",
@@ -1494,6 +1498,9 @@ export const messages = {
       title: "小小衣橱",
       hint: "用金币购买装扮，给宠物戴上。每位伙伴都有自己专属的造型。",
       worn: "佩戴中",
+      owned: "已拥有",
+      on: "戴上啦",
+      off: "先摘下来",
       bought: "新造型解锁！",
     },
     gallery: {
@@ -1729,6 +1736,7 @@ export const messages = {
       /* 轮 428：筛选（排序 + 时间范围）把内容全挡空 —— 原来是纯空白，用户「连个提示都没有」 */
       filterEmptyTitle: "这个范围里还没有帖子",
       filterEmptyDesc: "现在只看「{scope}」——这一档里还没有暖心帖。放宽一点，或者回推荐看看。",
+      filterEmptyHint: "这一档里还没有暖心帖。放宽一点，或者回推荐看看。",
       filterEmptyWiden: "改看{range}",
       filterEmptyRec: "回到「推荐」",
       filterEmptyRefresh: "刷新一下",

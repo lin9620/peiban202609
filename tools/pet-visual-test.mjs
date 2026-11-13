@@ -158,5 +158,44 @@ ok("PetView 传 :acc=\"wornAcc\" 给 PetMotion，自己不再渲染舞台级 .ac
     css.slice(css.indexOf("@keyframes accBob")).includes("translate(-50%, -50%)"));
 }
 
+/* 8) 轮 530 · 已购装扮不能凭空丢（用户报障：花金币买的装饰，点别的之后又要再买一次）
+ * 病根：wardrobe 只存本机、pet.wear 却随宠物档上云 → 换端/换域/旧云档一采纳，
+ *      就会出现「同一件既戴着、又标着价钱」。这里钉住四条防线。 */
+const storeSrc = readFileSync(new URL("../src/stores/petStore.js", import.meta.url), "utf8");
+{
+  const blob = storeSrc.slice(storeSrc.indexOf("function petStateBlob"), storeSrc.indexOf("function cancelCloudPush"));
+  ok("宠物云档带上已购装扮（wardrobe 随 state 上云）",
+    /wardrobe:\s*Array\.isArray\(wardrobe\.owned\)/.test(blob));
+
+  const pull = storeSrc.slice(storeSrc.indexOf("async function pullCloudPet"), storeSrc.indexOf("云就绪 → 首拉"));
+  ok("拉云时已购清单只做并集，绝不整包覆盖本地",
+    pull.includes("new Set([...ownedList, ...cloudOwned])") && !/wardrobe\.owned\s*=\s*cloudOwned/.test(pull));
+  ok("拉完云档再自愈一次已购记录（真正的调用，不是注释里提到）",
+    /^\s*healWardrobe\(\);/m.test(pull));
+
+  const initFn = storeSrc.slice(storeSrc.indexOf("export function initPet"), storeSrc.indexOf("export function tickPet"));
+  ok("启动读档后立刻自愈（initPet 里真调 healWardrobe，且在 settleNeglect 之前）",
+    /^\s*healWardrobe\(\);/m.test(initFn)
+    && initFn.indexOf("healWardrobe();") < initFn.indexOf("settleNeglect"));
+
+  const wearFn = storeSrc.slice(storeSrc.indexOf("export function wearAccessory"),
+    storeSrc.indexOf("/* ═══════════ 手绘上墙"));
+  ok("没买过的不能戴（wearAccessory 校验 owned）",
+    /if \(key && !wardrobe\.owned\.includes\(key\)\) return false;/.test(wearFn));
+}
+{
+  const rows = petViewSrc.slice(petViewSrc.indexOf("const accRows = computed"),
+    petViewSrc.indexOf("function onAccClick"));
+  ok("装扮格子的「已拥有」判定含「身上戴着」兜底（不再出现 佩戴中 + 价签 并存）",
+    rows.includes("wornKeys") && rows.includes("wornKeys.value.has(a.key)"));
+
+  const click = petViewSrc.slice(petViewSrc.indexOf("function onAccClick"),
+    petViewSrc.indexOf("function onToggleFramed"));
+  ok("点装饰时先认「身上戴着 = 买过」，不会再收一次钱",
+    click.includes("petStore.pets.some((p) => p.wear === a.key)"));
+  ok("已拥有的没戴的那件给「已拥有」标识（买了但没戴 ≠ 没买）",
+    petViewSrc.includes('t("wardrobe.owned")') && css.includes(".a-cost.owned"));
+}
+
 console.log(`\nTOTAL ${pass + fail}  PASS ${pass}  FAIL ${fail}`);
 process.exit(fail ? 1 : 0);

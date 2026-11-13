@@ -355,6 +355,7 @@ export function initPet() {
   petStore.load();
   petStore.pets.forEach(applyOffline);
   petStore.pets.forEach((p) => { if (p.wear === undefined) p.wear = null; });
+  healWardrobe();   /* 轮 530：补回「身上戴着但已购清单里没有」的装扮（不依赖网络） */
   petStore.pets.forEach(settleNeglect);   // #2 登录时结算疏忽（死亡/降级 → petNotices）
   pruneCookbook();                        // #1 清掉已过期的手绘食物
   initAdventure();
@@ -463,8 +464,8 @@ export function toggleSleep() {
  *   - 本地每次存档 → 1.5s 防抖 upsert 云端（带 updatedAt 时间戳）；
  *   - 启动/页面回前台/换号后 → 拉云端比对 updatedAt，**新者胜**（云端快照可能落后现实时长，
  *     采纳后补离线结算再存回）；表未建（迁移没跑）或未登录 → 静默跳过，行为退回纯本地。
- * 范围：宠物栏 pets + activeId + 金币 + 心情日历 moods（moods 是私有数据，只进这张本人可读的表）。
- * 手绘食谱不上云（48h 保质期、图片体积大，本地即合理）。 */
+ * 范围：宠物栏 pets + activeId + 金币 + 心情日历 moods（moods 是私有数据，只进这张本人可读的表）
+ *      + 已购装扮 wardrobe（轮 530）。手绘食谱不上云（48h 保质期、图片体积大，本地即合理）。 */
 let cloudPetWarned = false;
 let cloudPushTimer = 0;
 
@@ -474,6 +475,9 @@ function petStateBlob() {
     activeId: petStore.activeId,
     coins: wallet.coins,
     moods: normMoodLog(moodLog),   /* 轮387：跨设备保留心情日历 */
+    /* 轮 530：已购装扮以前只存本机，换端/换域/写盘失败就凭空消失，
+     * 而 pet.wear 是随宠物档上云的 —— 于是出现「戴着却要再花金币买」的死结（用户报障）。 */
+    wardrobe: Array.isArray(wardrobe.owned) ? [...wardrobe.owned] : [],
     updatedAt: Date.now(),
   };
 }
@@ -521,6 +525,17 @@ async function pullCloudPet() {
     const cloudAt = data && data.updated_at ? Date.parse(data.updated_at) : 0;
     const localAt = readSave().updatedAt || 0;
 
+    /* 轮 530：已购装扮同样是**追加型**数据。旧版云档里根本没有 wardrobe 字段，
+     * 直接采信云端等于把整柜清空（用户就会看到「花过钱的装饰又要再买一次」）。
+     * 这里只做并集、从不覆盖；两头都没有的才会保持在本地那份。 */
+    const ownedList = Array.isArray(wardrobe.owned) ? wardrobe.owned : [];
+    const cloudOwned = cloudState && Array.isArray(cloudState.wardrobe) ? cloudState.wardrobe : [];
+    const mergedOwned = [...new Set([...ownedList, ...cloudOwned])].filter((x) => accByKey(x));
+    if (mergedOwned.length !== ownedList.length) {
+      wardrobe.owned = mergedOwned;
+      saveWardrobe();
+    }
+
     /* 心情日历是追加型数据：两台设备各打过不同日期时取并集，不能整包覆盖。
        同一天冲突时，云档更新时间更晚才让云端胜。 */
     const localMoods = normMoodLog(moodLog);
@@ -545,6 +560,9 @@ async function pullCloudPet() {
       cancelCloudPush();   /* 立即推一次，撤掉 saveMoodLog 排的防抖任务，避免重复写 */
       pushCloudPet();      /* 本地较新/云端还没有/只有本机有心情记录：推上去 */
     }
+    /* 采纳完云档再自愈一次：宠物身上戴着的 key 一定是买过的（buyAccessory 是唯一写入路径），
+       哪怕 wardrobe 曾经丢过，也在这里补回来并随下一次推送带回云端。 */
+    healWardrobe();
   } catch (e) { /* 静默 */ }
 }
 
@@ -966,6 +984,28 @@ function saveWardrobe() {
 
 export const accByKey = (key) => ACCESSORIES.find((x) => x.key === key) || null;
 
+/* 轮 530 · 已购记录自愈。
+ * 用户报障：「花了金币戴了装饰，点别的之后又戴不回来」。
+ * 现场是「同一件既戴着（on）又标着价钱（locked）」—— wardrobe 丢过，pet.wear 还在。
+ * pet.wear 只有 buyAccessory 会写（写之前必须已经在 owned 里且够钱），所以
+ * 「身上戴着的 key」就是「买过」的铁证：见到就补进 owned，并推回云端。 */
+export function healWardrobe() {
+  if (!Array.isArray(wardrobe.owned)) wardrobe.owned = [];
+  const owned = wardrobe.owned;
+  let added = 0;
+  for (const p of petStore.pets || []) {
+    const key = p && p.wear;
+    if (!key || owned.includes(key) || !accByKey(key)) continue;
+    owned.push(key);
+    added++;
+  }
+  if (added) {
+    saveWardrobe();
+    scheduleCloudPush();   /* 自愈结果要带回云端，不然换端又丢一次 */
+  }
+  return added;
+}
+
 /* 购买：成功后自动给当前宠物戴上 */
 export function buyAccessory(key) {
   const a = accByKey(key);
@@ -980,10 +1020,12 @@ export function buyAccessory(key) {
   return true;
 }
 
-/* 佩戴 / 取下（切换） */
+/* 佩戴 / 取下（切换）。没买过的不能戴 —— 界面上靠 owned 分支拦，这里再兜一层，
+ * 免得别处（未来的快捷入口/深链）绕过商店直接白嫖一件装饰。 */
 export function wearAccessory(key) {
   const pet = cur();
   if (!pet) return false;
+  if (key && !wardrobe.owned.includes(key)) return false;
   pet.wear = pet.wear === key ? null : key;
   petStore.save();
   return true;

@@ -382,6 +382,9 @@ export default {
     "title": "Guardinha",
     "hint": "Compre com moedas e vista seu pet.",
     "worn": "Vestindo",
+    "owned": "Comprado",
+    "on": "Ficou lindo!",
+    "off": "Tiramos por enquanto.",
     "bought": "Novo visual desbloqueado!"
   },
   "gallery": {
@@ -654,6 +657,7 @@ export default {
     "emptyBtn": "Compartilhar no muro",
     "filterEmptyTitle": "Nada neste intervalo ainda",
     "filterEmptyDesc": "Você está vendo «{scope}» — ainda sem notas. Amplie a janela ou volte para Para você.",
+    "filterEmptyHint": "Ainda não há notas nesta janela. Amplie a janela ou volte para Para você.",
     "filterEmptyWiden": "Mudar para {range}",
     "filterEmptyRec": "Voltar para «Para você»",
     "filterEmptyRefresh": "Atualizar",
