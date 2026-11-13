@@ -87,29 +87,32 @@ function ellipseGroup(size, at, fill, opacity = 100, stroke = null, weight = 3) 
 }
 
 /** 贝塞尔路径组：p.path = { c, v, o, i }（顶点为相对 center 的局部坐标）；
- *  p.stroke 给定时画描边（开放曲线，如微笑嘴），否则填充 */
+ *  同时给 fill + stroke 时先填色再描边，做出贴纸轮廓。 */
 function pathGroup(p) {
   const d = p.path;
-  const paint = p.stroke
-    ? { ty: "st", nm: "st", c: still(rgb(p.stroke)), o: still(100), w: still(p.weight || 2.5), lc: 2, lj: 2 }
-    : { ty: "fl", nm: "fl", c: still(rgb(p.fill)), o: still(p.opacity == null ? 100 : p.opacity), r: 1 };
-  return {
-    ty: "gr",
-    nm: "path",
-    it: [
-      {
-        ty: "sh", nm: "sh",
-        ks: { a: 0, k: { c: d.c !== false, v: d.v, o: d.o, i: d.i } },
-      },
-      paint,
-      {
-        ty: "tr", nm: "tr",
-        p: still([0, 0]), a: still([0, 0]),
-        s: still([100, 100]), r: still(0), o: still(100),
-        sk: still(0), sa: still(0),
-      },
-    ],
-  };
+  const it = [
+    {
+      ty: "sh", nm: "sh",
+      ks: { a: 0, k: { c: d.c !== false, v: d.v, o: d.o, i: d.i } },
+    },
+  ];
+  if (p.fill) {
+    it.push({ ty: "fl", nm: "fl", c: still(rgb(p.fill)), o: still(p.fillOpacity == null ? (p.opacity == null ? 100 : p.opacity) : p.fillOpacity), r: 1 });
+  }
+  if (p.stroke) {
+    it.push({
+      ty: "st", nm: "st", c: still(rgb(p.stroke)),
+      o: still(p.strokeOpacity == null ? (p.opacity == null ? 100 : p.opacity) : p.strokeOpacity),
+      w: still(p.weight || 2.5), lc: 2, lj: 2,
+    });
+  }
+  it.push({
+    ty: "tr", nm: "tr",
+    p: still([0, 0]), a: still([0, 0]),
+    s: still([100, 100]), r: still(0), o: still(100),
+    sk: still(0), sa: still(0),
+  });
+  return { ty: "gr", nm: "path", it };
 }
 
 /**
@@ -117,6 +120,7 @@ function pathGroup(p) {
  */
 function anim(v, fallback) {
   if (v === undefined || v === null) return still(fallback);
+  if (typeof v === "number") return still(v);
   return Array.isArray(v) ? keys(v) : v;
 }
 
@@ -143,7 +147,7 @@ function layer(ind, p) {
       s: anim(p.scale, [100, 100, 100]),
     },
     ao: 0,
-    shapes: [p.path ? pathGroup(p) : ellipseGroup(p.size, at, p.fill, p.opacity == null ? 100 : p.opacity, p.stroke || null, p.weight || 3)],
+    shapes: p.shapes || [p.path ? pathGroup(p) : ellipseGroup(p.size, at, p.fill, p.opacity == null ? 100 : p.opacity, p.stroke || null, p.weight || 3)],
     ip: 0,
     op: 0, // 由组装函数统一填充
     st: 0,
@@ -220,14 +224,15 @@ function mouthFor(c, cx, y, w, color, tongue) {
   return [smile(cx, y, w, c.sleep, color)];
 }
 
-/** 微笑嘴（贝塞尔描边；k=开心弧度，睡觉时压平） */
+/** 微笑嘴（贝塞尔描边；k=开心弧度，睡觉时压平）
+ *  注意：路径顶点是相对 center 的局部坐标，图层位置才是 center。 */
 function smile(cx, y, w = 22, sleep = false, color = "#B0714F") {
   const k = sleep ? 2 : 6;
   return {
     name: "smile", center: [cx, y],
     path: {
       c: false,
-      v: [[cx - w / 2, y - k * 0.2], [cx, y + k], [cx + w / 2, y - k * 0.2]],
+      v: [[-w / 2, -k * 0.2], [0, k], [w / 2, -k * 0.2]],
       i: [[w * 0.22, 0], [0, 0], [-w * 0.22, 0]],
       o: [[-w * 0.22, 0], [0, 0], [w * 0.22, 0]],
     },
@@ -242,7 +247,7 @@ function openMouth(cx, y, color = "#8C5A44", tongue = "#FF9AA8") {
       name: "mouthO", center: [cx, y],
       path: {
         c: true,
-        v: [[cx - 9, y], [cx, y + 9], [cx + 9, y]],
+        v: [[-9, 0], [0, 9], [9, 0]],
         i: [[0, -5], [6, -1], [-6, -1]],
         o: [[0, 5], [-6, 1], [6, 1]],
       },
@@ -252,7 +257,7 @@ function openMouth(cx, y, color = "#8C5A44", tongue = "#FF9AA8") {
       name: "tongue", center: [cx, y + 5],
       path: {
         c: true,
-        v: [[cx - 5, y + 3], [cx, y + 10], [cx + 5, y + 3]],
+        v: [[-5, -2], [0, 5], [5, -2]],
         i: [[0, -2], [3, 0], [-3, 0]],
         o: [[0, 2], [-3, 0], [3, 0]],
       },
@@ -278,18 +283,19 @@ function heart(cx, y, s = 1, frames = 120, offset = 0) {
     ]),
     path: {
       c: true,
-      v: [[cx, y + u * 1.4], [cx - u * 1.8, y - u * 0.4], [cx, y - u * 0.8], [cx + u * 1.8, y - u * 0.4]],
-      i: [[-u * 1.2, -u * 0.8], [u * 0.6, u * 0.9], [0, -u * 1.1], [-u * 0.6, u * 0.9]],
-      o: [[u * 1.2, -u * 0.8], [-u * 0.6, u * 0.9], [0, -u * 1.1], [u * 0.6, u * 0.9]],
+      /* 经典心形：上凹槽 → 左心瓣 → 下尖 → 右心瓣 */
+      v: [[0, -u * 0.55], [-u * 1.2, -u * 0.15], [0, u * 1.35], [u * 1.2, -u * 0.15]],
+      i: [[u * 0.2, -u * 0.55], [0, -u * 0.9], [-u * 0.45, -u * 0.4], [0, u * 0.6]],
+      o: [[-u * 0.2, -u * 0.55], [0, u * 0.6], [u * 0.45, -u * 0.4], [0, -u * 0.9]],
     },
     fill: "#FF8FA3",
   };
 }
 
-function blush(l, r, y, fill = "#FFB3A0") {
+function blush(l, r, y, fill = "#FFB3A0", w = 19, h = 10, opacity = 55) {
   return [
-    { name: "blushL", center: [l, y], size: [19, 10], fill, dim: true },
-    { name: "blushR", center: [r, y], size: [19, 10], fill, dim: true },
+    { name: "blushL", center: [l, y], size: [w, h], fill, opac: still(opacity) },
+    { name: "blushR", center: [r, y], size: [w, h], fill, opac: still(opacity) },
   ];
 }
 
@@ -311,8 +317,8 @@ function sparkle(cx, y, s = 1, frames = 110, offset = 0) {
     center: [cx, y],
     path: {
       c: true,
-      v: [[cx, y - u], [cx + u * 0.26, y - u * 0.26], [cx + u, y], [cx + u * 0.26, y + u * 0.26],
-          [cx, y + u], [cx - u * 0.26, y + u * 0.26], [cx - u, y], [cx - u * 0.26, y - u * 0.26]],
+      v: [[0, -u], [u * 0.26, -u * 0.26], [u, 0], [u * 0.26, u * 0.26],
+          [0, u], [-u * 0.26, u * 0.26], [-u, 0], [-u * 0.26, -u * 0.26]],
       i: [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]],
       o: [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]],
     },
@@ -356,35 +362,208 @@ function zzz(cx, y, frames = 240) {
   return [one(0, 0, 1, 6), one(16, -6, 0.72, 66)];
 }
 
+/* ═════════ 路径造型工具（手绘小橘猫用） ═════════ */
+
+/** 解析绝对 SVG 路径（M/L/C/Q/Z）为 Lottie 路径数据。
+ *  只服务内置造型：每条路径一个子路径，不做相对指令和圆弧。 */
+function parsePath(d) {
+  const tokens = d.match(/[a-zA-Z]|-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/gi) || [];
+  let i = 0;
+  let cmd = "";
+  let cx = 0, cy = 0, startX = 0, startY = 0;
+  let closed = false;
+  const v = [], inH = [], outH = [];
+  const num = () => Number(tokens[i++]);
+  const add = (x, y, inx = 0, iny = 0, outx = 0, outy = 0) => {
+    v.push([x, y]); inH.push([inx, iny]); outH.push([outx, outy]);
+  };
+  const setOut = (ox, oy) => { if (v.length) outH[v.length - 1] = [ox, oy]; };
+  while (i < tokens.length) {
+    const t = tokens[i];
+    if (/^[a-zA-Z]$/.test(t)) { cmd = t.toUpperCase(); i++; }
+    else if (!cmd) { i++; continue; }
+    if (cmd === "M") {
+      const x = num(), y = num();
+      add(x, y); cx = x; cy = y; startX = x; startY = y; cmd = "L";
+    } else if (cmd === "L") {
+      const x = num(), y = num();
+      add(x, y); cx = x; cy = y;
+    } else if (cmd === "C") {
+      const x1 = num(), y1 = num(), x2 = num(), y2 = num(), x = num(), y = num();
+      setOut(x1 - cx, y1 - cy);
+      add(x, y, x2 - x, y2 - y);
+      cx = x; cy = y;
+    } else if (cmd === "Q") {
+      const x1 = num(), y1 = num(), x = num(), y = num();
+      const c1x = cx + (2 / 3) * (x1 - cx), c1y = cy + (2 / 3) * (y1 - cy);
+      const c2x = x + (2 / 3) * (x1 - x), c2y = y + (2 / 3) * (y1 - y);
+      setOut(c1x - cx, c1y - cy);
+      add(x, y, c2x - x, c2y - y);
+      cx = x; cy = y;
+    } else if (cmd === "Z") {
+      closed = true;
+      if (v.length > 1) {
+        const [lx, ly] = v[v.length - 1];
+        if (Math.abs(lx - startX) < 0.01 && Math.abs(ly - startY) < 0.01) {
+          inH[0] = inH[v.length - 1];
+          v.pop(); inH.pop(); outH.pop();
+        }
+      }
+      if (i < tokens.length && !/^[a-zA-Z]$/.test(tokens[i])) break;
+    } else {
+      i++;
+    }
+  }
+  return { c: closed, v, i: inH, o: outH };
+}
+
+function localizePath(path, center) {
+  return {
+    c: path.c,
+    v: path.v.map(([x, y]) => [x - center[0], y - center[1]]),
+    i: path.i,
+    o: path.o,
+  };
+}
+
+function catPart(name, center, d, fill, opts = {}) {
+  return Object.assign({
+    name, center, path: localizePath(parsePath(d), center), fill,
+  }, opts);
+}
+
+function catStroke(name, center, d, color, weight = 2.5, opacity = 100, rot) {
+  return catPart(name, center, d, null, {
+    stroke: color, weight, strokeOpacity: opacity, rot,
+  });
+}
+
+const CAT = {
+  fur: "#F3A05A",
+  furDark: "#D9772F",
+  cream: "#FFF0D8",
+  outline: "#A95524",
+  innerEar: "#FFB9A8",
+  nose: "#E9786F",
+  eye: "#3B2A22",
+  mouth: "#9C5138",
+  blush: "#F28E7E",
+  shadow: "#6B3A1F",
+};
+
+/** 猫眼：眼白高光跟眼睛同层，眨眼时一起压扁，不会留下悬空白点。 */
+function catEye(name, cx, cy, scale, sleep, mood) {
+  if (!sleep && (mood === "happy" || mood === "clean")) {
+    const arcName = name === "eyeL" ? "eyeArcL" : "eyeArcR";
+    return {
+      name: arcName, center: [cx, cy],
+      path: localizePath(parsePath(`M${cx - 9} ${cy + 2} C${cx - 4} ${cy - 5} ${cx + 4} ${cy - 5} ${cx + 9} ${cy + 2}`), [cx, cy]),
+      stroke: CAT.eye, weight: 3.6,
+    };
+  }
+  return {
+    name, center: [cx, cy], scale,
+    /* Lottie 形状组按数组倒序绘制：数组最后的眼睛底色先画（最下层），高光后画（最上层） */
+    shapes: [
+      ellipseGroup([3.2, 3.2], [-5, 5], "#FFFFFF", 58),
+      ellipseGroup([7, 7], [5, -7], "#FFFFFF", 92),
+      ellipseGroup([22, 25], [0, 0], CAT.eye, 100),
+    ],
+  };
+}
+
+/** 猫嘴：平时是 w 形微笑，开心/玩耍/吃饭换成张嘴。 */
+function catMouth(c, cx, y, w) {
+  const m = c.mood || "idle";
+  if (!c.sleep && (m === "happy" || m === "play" || m === "eat")) {
+    return openMouth(cx, y, CAT.mouth, "#FF9AA8");
+  }
+  const k = c.sleep ? 1.5 : 3.6;
+  return [
+    catStroke("smile", [cx, y], `M${cx - w / 2} ${y - 1} C${cx - w / 4} ${y + k} ${cx - 3} ${y + k} ${cx} ${y} C${cx + 3} ${y + k} ${cx + w / 4} ${y + k} ${cx + w / 2} ${y - 1}`, CAT.mouth, 2.4),
+    catStroke("smileStem", [cx, y - 4], `M${cx} ${y - 6} L${cx} ${y}`, CAT.mouth, 2.2),
+  ];
+}
+
+function catWhiskers() {
+  const color = "#B76A4B";
+  return [
+    catStroke("wsk1", [88, 107], "M88 107 C76 105 64 103 54 99", color, 2, 55),
+    catStroke("wsk2", [88, 112], "M88 112 C74 112 62 112 51 112", color, 2, 55),
+    catStroke("wsk3", [88, 117], "M88 117 C76 119 65 122 55 126", color, 2, 55),
+    catStroke("wsk4", [132, 107], "M132 107 C144 105 156 103 166 99", color, 2, 55),
+    catStroke("wsk5", [132, 112], "M132 112 C146 112 158 112 169 112", color, 2, 55),
+    catStroke("wsk6", [132, 117], "M132 117 C144 119 155 122 165 126", color, 2, 55),
+  ];
+}
+
 /* —— 🐱 小橘猫 —— */
 function cat(c) {
   const { frames, sleep } = c;
+  const mood = c.mood || "idle";
+  const tailRot = sleep ? keys([[0, -5], [frames, -2]]) : wag(frames, [-12, 10]);
+  const earRot = sleep ? 0 : earTwitch(frames, 116);
+  const breath = breathe(frames, sleep ? 4.5 : 2.6);
+  const eyeScale = sleep ? sleepEye(frames) : blink(frames, [104, 156]);
+
+  const tailD = "M154 178 C176 184 194 174 198 154 C202 136 194 120 182 116 C176 114 170 116 168 122";
+  const bodyD = "M110 105 C90 105 74 116 66 133 C58 150 60 170 68 182 C76 193 92 196 110 196 C128 196 144 193 152 182 C160 170 162 150 154 133 C146 116 130 105 110 105 Z";
+  const bellyD = "M110 120 C94 120 84 136 84 158 C84 178 94 187 110 187 C126 187 136 178 136 158 C136 136 126 120 110 120 Z";
+  const headD = "M110 33 C91 33 75 39 64 50 C56 58 52 68 50 79 C48 89 48 98 52 106 C56 116 64 124 76 128 C88 132 100 133 110 133 C120 133 132 132 144 128 C156 124 164 116 168 106 C172 98 172 89 170 79 C168 68 164 58 156 50 C145 39 129 33 110 33 Z";
+  const earLD = "M66 60 C56 48 48 30 52 20 C54 14 60 14 66 20 C76 30 86 42 92 52 C94 56 91 60 86 61 Z";
+  const earRD = "M154 60 C164 48 172 30 168 20 C166 14 160 14 154 20 C144 30 134 42 128 52 C126 56 129 60 134 61 Z";
+  const earInLD = "M62 54 C56 43 52 32 55 27 C57 23 61 25 66 30 C73 37 80 45 84 50 C86 53 84 55 80 55 Z";
+  const earInRD = "M158 54 C164 43 168 32 165 27 C163 23 159 25 154 30 C147 37 140 45 136 50 C134 53 136 55 140 55 Z";
+  const pawLD = "M84 173 C74 173 68 179 68 186 C68 193 75 197 84 197 C93 197 100 193 100 186 C100 179 94 173 84 173 Z";
+  const pawRD = "M136 173 C126 173 120 179 120 186 C120 193 127 197 136 197 C145 197 152 193 152 186 C152 179 146 173 136 173 Z";
+  const noseD = "M110 98 C113 98 116 100 116 103 C116 106 113 108 110 108 C107 108 104 106 104 103 C104 100 107 98 110 98 Z";
+
   return [
-    { name: "tail", pivot: [166, 146], stroke: "#E08F4A", weight: 9,
-      path: { c: false, v: [[0, 0], [10, -6], [16, -16], [12, -30]], i: [[0, 0], [-8, 0], [0, -8], [0, 0]], o: [[0, 0], [8, 0], [0, 8], [0, 0]] },
-      rot: sleep ? keys([[0, -7], [frames, -3]]) : wag(frames, [-15, 13]) },
-    { name: "tailTip", center: [178, 116], size: [13, 13], fill: "#FFE6CB" },
-    { name: "body", center: [110, 150], size: [96, 72], fill: "#F5B678", stroke: "#D98A4E",
-      scale: breathe(frames, sleep ? 5 : 3) },
-    { name: "pawL", center: [88, 176], size: [28, 18], fill: "#FFE6CB", stroke: "#E3B583", weight: 2.5 },
-    { name: "pawR", center: [132, 176], size: [28, 18], fill: "#FFE6CB", stroke: "#E3B583", weight: 2.5 },
-    { name: "belly", center: [110, 160], size: [56, 46], fill: "#FFE6CB", opacity: 72 },
-    { name: "earL", pivot: [80, 74], at: [-4, -22], size: [26, 34], fill: "#F0A15E", stroke: "#D98A4E",
-      rot: sleep ? keys([[0, 0], [frames, 0]]) : earTwitch(frames, 120) },
-    { name: "earR", pivot: [140, 74], at: [4, -22], size: [26, 34], fill: "#F0A15E", stroke: "#D98A4E" },
-    { name: "earInL", pivot: [80, 78], at: [-4, -20], size: [13, 20], fill: "#FFC9B0" },
-    { name: "earInR", pivot: [140, 78], at: [4, -20], size: [13, 20], fill: "#FFC9B0" },
-    { name: "head", center: [110, 102], size: [92, 84], fill: "#F7BE84", stroke: "#D98A4E",
-      scale: breathe(frames, sleep ? 4 : 2.4) },
-    ...blush(74, 146, 122),
-    { name: "muzzle", center: [110, 122], size: [34, 24], fill: "#FFE6CB" },
-    { name: "nose", center: [110, 115], size: [10, 8], fill: "#F2897F" },
-    line([92, 119], [64, 112], "#C77B5A", 2, 70, "wsk1"),
-    line([92, 126], [64, 131], "#C77B5A", 2, 70, "wsk2"),
-    line([128, 119], [156, 112], "#C77B5A", 2, 70, "wsk3"),
-    line([128, 126], [156, 131], "#C77B5A", 2, 70, "wsk4"),
-    ...mouthFor(c, 110, 127, 16, "#C77B5A", "#FF9AA8"),
-    ...eyes({ l: 88, r: 132, y: 104, size: [13, 16], color: "#4A3B2F", frames, sleep, mood: c.mood }),
+    { name: "shadow", center: [110, 196], size: [118, 14], fill: CAT.shadow, opac: still(12) },
+
+    /* 尾巴：三层叠出「深色轮廓 + 橘色毛 + 奶色尾尖」 */
+    { name: "tailOutline", pivot: [154, 176], path: localizePath(parsePath(tailD), [154, 176]), stroke: CAT.outline, weight: 19, rot: tailRot },
+    { name: "tail", pivot: [154, 176], path: localizePath(parsePath(tailD), [154, 176]), stroke: CAT.fur, weight: 13, rot: tailRot },
+    catStroke("tailStripe1", [154, 176], "M188 164 L196 158", CAT.furDark, 6, 55, tailRot),
+    catStroke("tailStripe2", [154, 176], "M194 146 L200 140", CAT.furDark, 5, 55, tailRot),
+    catStroke("tailStripe3", [154, 176], "M188 130 L194 124", CAT.furDark, 5, 55, tailRot),
+    { name: "tailTip", pivot: [154, 176], at: [14, -54], size: [20, 20], fill: CAT.cream, stroke: CAT.outline, weight: 2.5, rot: tailRot },
+
+    catPart("body", [110, 150], bodyD, CAT.fur, { stroke: CAT.outline, weight: 3.5, scale: breath }),
+    catPart("belly", [110, 150], bellyD, CAT.cream, { scale: breath }),
+
+    catPart("pawL", [84, 185], pawLD, CAT.cream, { stroke: CAT.outline, weight: 2.5 }),
+    catPart("pawR", [136, 185], pawRD, CAT.cream, { stroke: CAT.outline, weight: 2.5 }),
+    catStroke("toeL1", [80, 192], "M80 189 L80 195", CAT.outline, 2, 50),
+    catStroke("toeL2", [88, 192], "M88 189 L88 195", CAT.outline, 2, 50),
+    catStroke("toeR1", [132, 192], "M132 189 L132 195", CAT.outline, 2, 50),
+    catStroke("toeR2", [140, 192], "M140 189 L140 195", CAT.outline, 2, 50),
+
+    catPart("earL", [80, 62], earLD, CAT.fur, { stroke: CAT.outline, weight: 3.2, rot: earRot }),
+    catPart("earInL", [80, 62], earInLD, CAT.innerEar, { rot: earRot }),
+    catPart("earR", [140, 62], earRD, CAT.fur, { stroke: CAT.outline, weight: 3.2, rot: earRot }),
+    catPart("earInR", [140, 62], earInRD, CAT.innerEar, { rot: earRot }),
+
+    catPart("head", [110, 84], headD, CAT.fur, { stroke: CAT.outline, weight: 3.5 }),
+
+    catStroke("stripeM", [110, 52], "M110 43 C109 50 109 56 110 62", CAT.furDark, 5, 75),
+    catStroke("stripeL", [96, 50], "M96 43 C94 49 93 55 93 60", CAT.furDark, 4, 70),
+    catStroke("stripeR", [124, 50], "M124 43 C126 49 127 55 127 60", CAT.furDark, 4, 70),
+    catStroke("cheekL1", [63, 94], "M53 93 C60 91 66 91 72 93", CAT.furDark, 3.5, 55),
+    catStroke("cheekL2", [62, 102], "M52 102 C59 100 65 100 71 102", CAT.furDark, 3.5, 55),
+    catStroke("cheekR1", [157, 94], "M148 93 C154 91 160 91 167 93", CAT.furDark, 3.5, 55),
+    catStroke("cheekR2", [158, 102], "M149 102 C155 100 161 100 168 102", CAT.furDark, 3.5, 55),
+
+    ...blush(68, 152, 106, CAT.blush, 24, 12, 45),
+
+    { name: "muzzleL", center: [100, 110], size: [30, 24], fill: CAT.cream },
+    { name: "muzzleR", center: [120, 110], size: [30, 24], fill: CAT.cream },
+    catPart("nose", [110, 103], noseD, CAT.nose),
+
+    ...catMouth(c, 110, 112, 26),
+    ...catWhiskers(),
+    catEye("eyeL", 84, 84, eyeScale, sleep, mood),
+    catEye("eyeR", 136, 84, eyeScale, sleep, mood),
   ];
 }
 
@@ -519,11 +698,11 @@ export function petAnimation(species, variant = "idle") {
   /* 互动时（清醒 idle）漂浮一颗小心心 —— 每只宠物都有的萌化点缀 */
   /* #11 粒子层：睡觉 Zzz；开心双心；洗澡星星；玩耍星星+心；吃饭小心心；平时一颗心 */
   if (cfg.sleep) layers = layers.concat(zzz(158, 56, cfg.frames));
-  else if (cfg.mood === "happy") layers = layers.concat(heart(150, 60, 1, cfg.frames, 0), heart(176, 76, 0.8, cfg.frames, 16));
+  else if (cfg.mood === "happy") layers = layers.concat(heart(158, 48, 1, cfg.frames, 0), heart(186, 68, 0.8, cfg.frames, 16));
   else if (cfg.mood === "clean") layers = layers.concat(sparkle(58, 96, 1, cfg.frames, 0), sparkle(162, 92, 0.85, cfg.frames, 14), sparkle(112, 40, 0.9, cfg.frames, 28));
-  else if (cfg.mood === "play") layers = layers.concat(sparkle(64, 70, 0.9, cfg.frames, 6), heart(170, 70, 0.9, cfg.frames, 20));
-  else if (cfg.mood === "eat") layers = layers.concat(heart(162, 70, 0.8, cfg.frames, 8));
-  else layers = layers.concat(heart(163, 66, 1, cfg.frames, 10));
+  else if (cfg.mood === "play") layers = layers.concat(sparkle(64, 70, 0.9, cfg.frames, 6), heart(182, 58, 0.9, cfg.frames, 20));
+  else if (cfg.mood === "eat") layers = layers.concat(heart(180, 58, 0.8, cfg.frames, 8));
+  else layers = layers.concat(heart(180, 54, 1, cfg.frames, 10));
   cache[key] = build(layers, cfg.frames, species + "-" + variant);
   return cache[key];
 }

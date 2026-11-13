@@ -73,6 +73,30 @@ ok("五物种 body 都有描边", SPECIES.every((sp) =>
   ok("猫尾是曲线描边 + 奶色尾尖", cat.layers.some((l) => l.nm === "tail" && l.shapes[0].it.some((it) => it.ty === "sh"))
     && namesOf(cat).includes("tailTip"));
 }
+{
+  /* 小橘猫重设计：手绘路径必须同时有填充+描边；嘴/心/星星必须是局部坐标，
+     否则会像旧版一样被图层位置再叠一次，直接飞到画布外。 */
+  const cat = petAnimation("cat", "idle");
+  const byName = (n) => cat.layers.find((l) => l.nm === n);
+  const types = (n) => byName(n).shapes[0].it.map((it) => it.ty);
+  ok("猫 body/head 同时有填充+描边（贴纸轮廓）",
+    ["body", "head"].every((n) => types(n).includes("fl") && types(n).includes("st")));
+  const eye = byName("eyeL");
+  ok("猫眼高光与眼珠同层（眨眼时一起压扁）",
+    eye && eye.shapes.length === 3 && eye.shapes.every((g) => g.ty === "gr"));
+  const verts = (l) => l.shapes.flatMap((g) => g.it.filter((it) => it.ty === "sh").map((it) => it.ks.k.v)).flat();
+  const local = (l) => verts(l).every(([x, y]) => Math.abs(x) <= 30 && Math.abs(y) <= 30);
+  ok("猫嘴/鼻子/心形路径是局部坐标（不再叠一次图层位移）",
+    ["smile", "smileStem", "nose", "heart"].every((n) => byName(n) && local(byName(n))));
+  const happy = petAnimation("cat", "happy");
+  const clean = petAnimation("cat", "clean");
+  const happyLocal = (n) => happy.layers.find((l) => l.nm === n);
+  const cleanSpark = clean.layers.find((l) => l.nm === "sparkle0");
+  ok("猫张嘴/舌头/星星路径是局部坐标",
+    ["mouthO", "tongue"].every((n) => happyLocal(n) && local(happyLocal(n))) && cleanSpark && local(cleanSpark));
+  ok("猫有尾巴轮廓/六根胡须/w 嘴",
+    ["tailOutline", "tailTip", "wsk5", "wsk6", "smileStem"].every((n) => namesOf(cat).includes(n)));
+}
 
 /* 4) petMood 信号 */
 petMood("happy");
