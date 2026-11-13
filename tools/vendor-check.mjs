@@ -83,11 +83,13 @@ t("V8 宿主不再内联改面板几何（两套机制并存必然打架）", ()
    * 同一个 padding 上），真机逐帧 433 → 180 → 495 → 440，一次切换跳三下。
    * 现在式子里的量全部由 viewportVars 逐帧提供，宿主只挂表达式 —— 所以这里锁表达式。 */
   /* 轮 526：让位按内核分叉。iOS（overlay 型）必须用「面板高 − 上推量」，
-     不能再带 chat-box 那一项 —— 它在 iOS 上恒为 −键盘高，会把整份让位吃掉。 */
-  has(BC, /foot\.style\.paddingBottom = emojiPadOn \? \(ov \? PAD_EXPR_IOS : PAD_EXPR\) : "";/,
+     不能再带 chat-box 那一项 —— 它在 iOS 上恒为 −键盘高，会把整份让位吃掉。
+   * 轮 533：iOS 整条链路搬进 utils/iosKb.js，分叉变三段（iOS / 其它 overlay / resize），
+     且 iOS 收起面板时写回基线而不是清空。详见 emoji-panel-test 的 E15。 */
+  has(BC, /foot\.style\.paddingBottom = emojiPadOn \? \(ov \? PAD_EXPR_OV : PAD_EXPR\) : "";/,
     "收起面板没清内联让位 / overlay 分支丢了（输入条会一直悬空或被面板盖住）");
-  has(BC, /const PAD_EXPR_IOS = "calc\(var\(--wp-emoji-h, 320px\) - var\(--vtop, 0px\)\)"/,
-    "iOS 让位式子没扣 --vtop（overlay 型会整份让两次）");
+  has(BC, /const PAD_EXPR_IOS = "calc\(var\(--ios-fw-pad, 10px\) \+ var\(--wp-emoji-h, 320px\) - var\(--vtop, 0px\)"[\s\S]{0,120}?- var\(--kb-kbb, var\(--kbb, 0px\)\)\)"/,
+    "iOS 让位式子必须同时扣 --vtop 和 --kb-kbb（只扣 vtop 中间那 81px 会让输入行在切换里往返窜 200 多像素）");
   has(BC, /const PAD_EXPR = "calc\(7px \+ var\(--wp-emoji-h, 320px\)/, "让位表达式没把那 7px 底内边距加回去（输入行会随键盘/面板切换上下跳 7px）");
   has(BC, /- var\(--kb-now, 0px\)/, "让位没扣「键盘此刻占高」（resize 型内核上会算两次，条窜到上半屏）");
   no(BC, /getBoundingClientRect\(\)\.height/, "又回去量面板 rect 了（采样时机必然踩空）");

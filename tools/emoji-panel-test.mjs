@@ -269,13 +269,24 @@ t("E15 会话页让位只挂表达式：面板高 − 键盘此刻占高（不�
      --chat-box 是同一个量的**无滞后**版本。让位必须跟盒子同源，否则条会往下砸一截再弹回。 */
   has(BC, /var\(--chat-box, var\(--vlh, 0px\)\) - var\(--vlh, 0px\)/, "没补页面盒子滞后的校正项（盒子慢一拍时条会往下砸一截）");
   has(BC, /:host \{ --chat-box: min\(var\(--vlh, 0px\), var\(--kb-pageh, var\(--vlh, 0px\)\)\); \}/, "没有 --chat-box（无滞后的盒子高）定义");
-  /* 收起时必须清掉内联值，否则关掉面板后输入条永远悬在半空。 */
-  /* 轮 526：让位按内核分叉。iOS（overlay 型）必须用「面板高 − 上推量」，
-     不能再带 chat-box 那一项 —— 它在 iOS 上恒为 −键盘高，会把整份让位吃掉。 */
-  has(BC, /foot\.style\.paddingBottom = emojiPadOn \? \(ov \? PAD_EXPR_IOS : PAD_EXPR\) : "";/,
+  /* 收起时必须清掉内联值，否则关掉面板后输入条永远悬在半空。
+   * 轮 526：让位按内核分叉。iOS（overlay 型）必须用「面板高 − 上推量」，
+     不能再带 chat-box 那一项 —— 它在 iOS 上恒为 −键盘高，会把整份让位吃掉。
+   * 轮 533：iOS 整条链路搬进 utils/iosKb.js，这里的分叉也变成三段：
+       · iOS  → PAD_EXPR_IOS，且**收起面板时不清空**，而是写回同一个基线
+                （--ios-fw-pad）。清空就会掉回「.dm-thread 10px + footer 7px」
+                那个旧参照系，点表情那一帧输入行窜 10px —— 逐帧工装抓到的就是它。
+       · 其它 overlay 型（FF 安卓）→ PAD_EXPR_OV，与轮 526 逐字一致。
+       · resize 型（安卓主路径）→ PAD_EXPR，收起清空。 */
+  has(BC, /foot\.style\.paddingBottom = emojiPadOn \? \(ov \? PAD_EXPR_OV : PAD_EXPR\) : "";/,
     "收起面板没清内联让位 / overlay 分支丢了（输入条会一直悬空或被面板盖住）");
-  has(BC, /const PAD_EXPR_IOS = "calc\(var\(--wp-emoji-h, 320px\) - var\(--vtop, 0px\)\)"/,
-    "iOS 让位式子没扣 --vtop（overlay 型会整份让两次）");
+  has(BC, /const PAD_EXPR_OV = "calc\(var\(--wp-emoji-h, 320px\) - var\(--vtop, 0px\)\)"/,
+    "非 iOS 的 overlay 让位式子变了（FF 安卓会整份让两次）");
+  has(BC, /const PAD_EXPR_IOS = "calc\(var\(--ios-fw-pad, 10px\) \+ var\(--wp-emoji-h, 320px\) - var\(--vtop, 0px\)"[\s\S]{0,120}?- var\(--kb-kbb, var\(--kbb, 0px\)\)\)"/,
+    "iOS 让位式子必须同时扣 --vtop 和按进度打折的 --kb-kbb：只扣 vtop 的话首尾两端对、"
+    + "中间那 81px（底部工具栏）会在页面盒子和 fixed 面板两个参照系之间来回滚，"
+    + "逐帧实测输入行从 405 窜到 174 再砸回 484");
+  has(BC, /: "var\(--ios-fw-pad, 17px\)";/, "iOS 收起面板时没写回基线（会窜 10px）");
   has(BC, /sr\.querySelector\("#room-footer \.vac-box-footer"\)/, "让位没落在 .vac-box-footer（面板的定位宿主）上");
   /* 判据：桌面浮窗不能套这条（否则桌面 footer 也被顶起来 300） */
   has(BC, /const sheetMode = \(\) =>[\s\S]{0,200}matchMedia\("\(max-width: 899px\)"\)/, "没有 sheet 判据");

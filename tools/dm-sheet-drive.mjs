@@ -229,14 +229,38 @@ for (const [nm, row] of [["emoji+16", e16], ["emoji+120", e120]]) {
   const pad = parseFloat(String(press.footPad)) || 0;
   if (pad < 200) fails.push(`kb-press-20: 让位只剩 ${pad}px（该还钉着面板高）—— 一帧塌光，屏幕底部露空白`);
 }
-/* A4 · 落定态：面板贴着工具栏上沿、输入行压在面板上沿、让位 = 面板高。 */
+/* A4 · 落定态：输入行压在面板上沿、面板高 = 键盘高。
+ *
+ * 轮 533 起面板底**不再贴工具栏上沿 771**，而是贴「页面盒子的底」835。
+ * 旧断言把 771 写死 —— 那等于把 bug 锁成了正确行为：面板顶 441、键盘态输入行 505，
+ * 每切一次跳 64px，而「面板底 = 771」这条断言一直绿着。 */
 {
   const pk = scrPos(panel, "picker");
   const t = scrPos(panel, "ta");
-  if (pk && Math.abs(pk.b - 771) > 2) fails.push(`panel: 面板底在 ${pk.b}（该 771 = iOS 工具栏上沿）`);
-  if (pk && t && Math.abs(t.b - pk.t) > 2) fails.push(`panel: 输入行下沿 ${t.b} 与面板上沿 ${pk.t} 不齐`);
-  const pad = parseFloat(String(panel.footPad)) || 0;
-  if (Math.abs(pad - (pk ? pk.h : 0)) > 2) fails.push(`panel: 让位 ${pad}px ≠ 面板高（会留缝或压住）`);
+  if (!pk) fails.push("panel: 面板没出现");
+  else {
+    if (Math.abs(pk.h - 330) > 8) fails.push(`panel: 面板高 ${pk.h}（该 = 键盘 330）`);
+    if (t && Math.abs(t.b - pk.t) > 3) fails.push(`panel: 输入行下沿 ${t.b} 与面板上沿 ${pk.t} 不齐`);
+    /* 让位量 = 面板**可见**高度（底部那条被工具栏截掉的部分不算） */
+    const visible = Math.max(0, 771 - pk.t);
+    const pad = parseFloat(String(panel.footPad)) || 0;
+    if (Math.abs(pad - visible) > 4) {
+      fails.push(`panel: 让位 ${pad}px ≠ 面板可见高 ${visible}（会留缝或压住）`);
+    }
+  }
+}
+/* A6 · **键盘态与面板态，输入行必须停在同一个像素上。**
+ *
+ * 这一条是整组的核心，也是用户从第六轮就在说的「别的软件都是键盘跟表情固定一个
+ * 高度」「以键盘高度为准是做不到吗」。以前没有任何一条断言拿这两个状态互相比 ——
+ * 每组都只在自己那一段里自洽，所以「键盘 505 / 面板 441」这种 64px 的跳动
+ * 能在全绿里活整整半年。 */
+{
+  const a = scrPos(kbRow, "ta");
+  const b = scrPos(panel, "ta");
+  if (a && b && Math.abs(a.b - b.b) > 4) {
+    fails.push(`键盘态输入行底 ${a.b} vs 面板态 ${b.b}（差 ${Math.abs(a.b - b.b)}px）—— 一按表情输入条就跳`);
+  }
 }
 /* A5 · 键盘回来之后，输入行回到键盘上沿（页面底）。 */
 {

@@ -3176,6 +3176,22 @@ html.dm-exiting .shell--mobile-nav.shell--chat .dm-page { height: auto; }
    padding-bottom）。这里归零后输入条正好压在面板上沿，中间不再多一条 10px + safe-area。 */
 .shell--mobile-nav.shell--chat .dm-thread.wp-emoji-open,
 .shell--mobile-nav.shell--chat .dm-thread.wp-kb-swap { padding-bottom: 0; }
+/* 轮 533 · iOS：键盘态也归零，那 10px 并进 --ios-fw-pad（= 17px）。
+ *
+ * 上面那些规则在 iOS 上会造出两个参照系：键盘态「thread 10 + footer 7」、
+ * 面板态「thread 0 + footer 表达式」。两者差 10px，于是点表情那一帧输入行先窜
+ * 10px 再回来 —— 逐帧工装（tools/ios-kb-drive.mjs）里唯一剩下的那一下。
+ * 把 thread 的那 10px 在 iOS 上恒定归零，距离全部由 footer 的 padding-bottom
+ * 一个量承担（键盘态 17px、面板态 17 + 面板高 − 键盘占高 − kbb），输入行
+ * 在整个「键盘 → 表情 → 键盘」里停在同一个像素上。
+ *
+ * 只作用于 <html class="kb-ios">（由 utils/iosKb.js 挂，UA 是 iOS 才挂），
+ * 安卓那条 10px 保底一个字都没动。 */
+html.kb-ios .shell--mobile-nav.shell--chat .dm-thread {
+  /* !important 是必要的：html.kb-web 那条带两个 :not() 的选择器特异度更高
+   * （0,6,1 vs 0,4,1），不加就压不过，那 10px 会一直在。 */
+  padding-bottom: 0 !important;
+}
 .shell--mobile-nav.shell--chat .dm-scroll {
   flex: 1; min-height: 0; width: 100%; max-height: none; overscroll-behavior: contain;
 }

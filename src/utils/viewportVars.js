@@ -37,6 +37,18 @@
  */
 
 import { kbbValue, shouldAdoptBase, kbHeightNow, kbIsUp, pickKbKind } from "./chatHeight.js";
+/* 轮 533 · 用户「苹果的你搞个单独的，代码隔离一下，别天天改完苹果的安卓的就出问题」。
+ *
+ * 从这一行往下，本文件**只服务安卓 / Chromium / 国产内核**。整条 iOS 链路
+ * （innerHeight 不缩、键盘贴布局底、工具栏叠加）全部搬到了 utils/iosKb.js，
+ * 两边互不引用、没有一个共享的状态变量。
+ *
+ * 下面三个入口的第一行都是同一个委派：是 iOS 就整包转走，本文件后面的代码
+ * 一行都不执行。所以以后改安卓碰不到 iOS，改 iOS 也碰不到安卓 —— 这是结构上的
+ * 隔离，不是靠 if 在同一条状态机里分叉（那种写法 524 / 532 各踩了一次）。 */
+import {
+  isIosKbDevice, iosSyncViewportVars, initIosKb, iosNudgeKbbFix, iosResetKbbFix,
+} from "./iosKb.js";
 
 const KBB = "--kbb";         /* 吸底条 / 面板离布局视口底的距离 */
 const KPANEL = "--kb-panel"; /* 表情面板高度 = 锁定的键盘高 */
@@ -136,6 +148,15 @@ let lockTimer = 0;
  * 键盘已经收了、只剩工具栏那 81px，被 KB_MIN 挡掉 → 永远锁不上。
  * 所以把「键盘还在时见过的最高值」留一手，定时器拿它兜底。 */
 let peakKb = 0;
+/* 轮 532 · 排程时的键盘读数 / kbUp 首次成立的时刻 / 强制锁的时限。
+ *
+ * resize 型（安卓）上「键盘高度还在变」= 键盘动画还没完，这时候锁下去必然是中途值。
+ * 逐帧工装 tools/_kbseq.mjs 复现：动画 420ms 时 A 段 409ms 锁到 panel=279，
+ * 键盘真值 300，之后被纠正 —— 这 21px 就是用户说的「比较微小的跳动」。
+ * FORCE_LOCK_MS 是给「键盘在屏还一直抖 1px」的内核留的出口，不然会永不触发。 */
+let lockKb = -1;
+let kbUpAt = 0;
+const FORCE_LOCK_MS = 900;
 let booted = false;
 let probeEl = null;
 let lastKey = "";
@@ -195,37 +216,69 @@ function readProbes() {
  * 用户换了输入法 / 换了导航方式（真会让键盘高变几十像素）时又能自己纠正回来。 */
 function schedulePanelLock() {
   /* 轮 526 · 这里原来每帧 clearTimeout 再重设 —— 键盘动画期间 sync 是逐帧跑的，
-   * 于是 180ms 的定时器**永远等不到触发**，面板高（--kb-panel-h）一直是空的，
+   * 于是 180ms 的定时器**永远等不到触发**，面板高（--kb-panel）一直是空的，
    * 全程吃 CSS 兜底 min(46vh,320px)。
    *
    * 安卓上正好能蒙混过去：兜底 320 和真键盘 260 只差 60，且真机验收时键盘高度
    * 恰好让兜底也能看。iOS 上原形毕露 —— 真键盘 330、兜底 320，工装里读出来
    * 面板高一直是 `min(320px, 420px)`，直到手动停手 900ms 后才「啪」地锁成 330。
-   * 用户说的「苹果端键盘-表情切换一堆问题」，这是第一条。 */
-  if (lockTimer) return;      /* 已经在等，不许重置 */
-  lockTimer = setTimeout(() => {
-    lockTimer = 0;
-    const inner = Math.round(window.innerHeight || 0);
-    const vv = window.visualViewport;
-    const vvH = vv && vv.height > 0 ? Math.round(vv.height) : 0;
-    /* 轮 525：键盘高不能再用 base − inner —— overlay 型内核（iOS、FF 安卓
-     * resizes-visual）布局视口根本不缩，这个式子恒得 0，面板高永远锁不上，
-     * 于是一直吃 CSS 兜底高度（min(46vh,320px)），跟真键盘差几十像素。
-     * kbHeightNow 两条路都量，取大者。 */
-    const kb = Math.max(kbHeightNow(base, inner, vvBase, vvH), peakKb);
-    if (kb < KB_MIN || kb > KB_MAX) return;
-    if (panelH > 0 && Math.abs(panelH - kb) < 12) return;
-    panelH = kb;
-    setVar(KPANEL, kb + "px");
-    savePanelLocked();
-    lastKey = "";             /* 让下一帧把其余变量重写一遍（幂等） */
-    syncViewportVars();
-  }, LOCK_SETTLE_MS);
+   * 用户说的「苹果端键盘-表情切换一堆问题」，这是第一条。
+   *
+   * 轮 532 · 但「有定时器就不重设」这条规则**只对 overlay 型成立**。
+   * iOS 是收键盘时读数一直变小（330 → 81），重设就永不触发，所以不能重设；
+   * 安卓正好相反：读数**单调涨**（744 → 700 → 640 → 484），越早锁越错。
+   * 2026-11-14 用户「本来安卓端好好的，现在…有比较微小的跳动」就是这条规则
+   * 被搬到了安卓上：从 kbUp 成立（inner 缩了 150）起算 180ms，
+   * MIUI 键盘动画 400ms 级，定时器在中途醒来把面板高锁成 279（真值 300），
+   * 180ms 后再纠正回 300 —— 一条 20~30px 的上下跳。
+   *
+   * 所以按内核分叉：resize 型「读数变了就重新计时」，连续 LOCK_SETTLE_MS 不变才锁；
+   * 超过 FORCE_LOCK_MS 就不再等（防某些内核在屏时永远抖 1px，那会永不触发）。 */
+  const fInner = Math.round(window.innerHeight || 0);
+  const fvv = window.visualViewport;
+  const fvvH = fvv && fvv.height > 0 ? Math.round(fvv.height) : 0;
+  const kbNowHere = Math.max(kbHeightNow(base, fInner, vvBase, fvvH), peakKb);
+
+  if (!isOverlay) {
+    const forced = kbUpAt > 0 && Date.now() - kbUpAt >= FORCE_LOCK_MS;
+    if (lockTimer) {
+      if (forced || kbNowHere === lockKb) return;   /* 读数稳定（或已超时）：让定时器到点 */
+      clearTimeout(lockTimer);                      /* 还在动：重新计时 */
+      lockTimer = 0;
+    }
+  } else if (lockTimer) {
+    return;      /* overlay 型：收键盘时读数一直变小，重设就永远等不到 */
+  }
+
+  lockKb = kbNowHere;
+  lockTimer = setTimeout(applyPanelLock, LOCK_SETTLE_MS);
+}
+
+/* 定时器到点：按**那一刻**的读数定面板高（不是排程时的旧值）。 */
+function applyPanelLock() {
+  lockTimer = 0;
+  const inner = Math.round(window.innerHeight || 0);
+  const vv = window.visualViewport;
+  const vvH = vv && vv.height > 0 ? Math.round(vv.height) : 0;
+  /* 轮 525：键盘高不能再用 base − inner —— overlay 型内核（iOS、FF 安卓
+   * resizes-visual）布局视口根本不缩，这个式子恒得 0，面板高永远锁不上，
+   * 于是一直吃 CSS 兜底高度（min(46vh,320px)），跟真键盘差几十像素。
+   * kbHeightNow 两条路都量，取大者。 */
+  const kb = Math.max(kbHeightNow(base, inner, vvBase, vvH), peakKb);
+  if (kb < KB_MIN || kb > KB_MAX) return;
+  if (panelH > 0 && Math.abs(panelH - kb) < 12) return;
+  panelH = kb;
+  setVar(KPANEL, kb + "px");
+  savePanelLocked();
+  lastKey = "";             /* 让下一帧把其余变量重写一遍（幂等） */
+  syncViewportVars();
 }
 
 /** 现读一次视口，把变量写到 :root。幂等：值没变就不碰样式。 */
 export function syncViewportVars() {
   if (typeof window === "undefined" || typeof document === "undefined") return;
+  /* 轮 533 · iOS 整包转走（见文件头）。这一行之后全是安卓的代码。 */
+  if (isIosKbDevice()) return iosSyncViewportVars();
   /* App 壳走原生 Keyboard 插件（--kb-h 是系统给的最终值），两套语义不能混用 */
   if (isNativeShell()) return;
 
@@ -365,7 +418,14 @@ export function syncViewportVars() {
     ? 0
     : Math.max(0, Math.min(kbNowCap, rawKb));
 
-  if (kbUp) schedulePanelLock();
+  /* 轮 532 · kbUp 首次成立的时刻。resize 型锁面板高要从这一刻起算超时
+   * （见 schedulePanelLock 的 FORCE_LOCK_MS），键盘收起就归零，下一趟重新计。 */
+  if (kbUp) {
+    if (!kbUpAt) kbUpAt = Date.now();
+    schedulePanelLock();
+  } else {
+    kbUpAt = 0;
+  }
 
   const key = [inner, kbb, vtop, vph, kbNow, over, panelH, isOverlay, base].join("|");
   if (key === lastKey) return;
@@ -432,6 +492,8 @@ let raf = 0;
 let until = 0;
 /* 会话页专用（见上面 kbbFix 的说明）。暖心墙已不再调用这两个函数。 */
 export function nudgeKbbFix(delta) {
+  /* 轮 533 · iOS 有自己的一份（见 iosKb.js），别用安卓的计数器去写 iOS 的 --kbb。 */
+  if (isIosKbDevice()) return iosNudgeKbbFix(delta);
   if (typeof delta !== "number" || !isFinite(delta)) return 0;
   const next = Math.max(-FIX_LIMIT, Math.min(FIX_LIMIT, Math.round(kbbFix + delta)));
   if (next === kbbFix) return kbbFix;
@@ -442,6 +504,7 @@ export function nudgeKbbFix(delta) {
 }
 
 export function resetKbbFix() {
+  if (isIosKbDevice()) return iosResetKbbFix();
   if (!kbbFix) return;
   kbbFix = 0;
   lastKey = "";
@@ -462,6 +525,7 @@ function sample(ms) {
 
 export function initViewportVars() {
   if (booted || typeof window === "undefined") return;
+  if (isIosKbDevice()) return initIosKb();
   if (isNativeShell()) return;
   booted = true;
 

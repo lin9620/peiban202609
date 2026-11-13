@@ -24,6 +24,10 @@ import { isApp } from "../stores/uiStore.js";
 import { webSwapNeeded, setPanelOpen } from "../utils/keyboardInset.js";
 import { startBottomPin, stopBottomPin } from "../utils/bottomPin.js";
 import { syncViewportVars } from "../utils/viewportVars.js";
+/* 轮 533 · iOS 走专属控制器（utils/iosKb.js），这里只判一次「是不是 iOS」。
+ * 用户：「苹果的你搞个单独的，代码隔离一下」—— 所以下面凡是要分内核的地方，
+ * iOS 一律用这个**编译期常量**，不再去读 window.__wpVars 那种运行时快照。 */
+import { isIosKbDevice } from "../utils/iosKb.js";
 import { kickChatViewport } from "../utils/chatViewport.js";
 import { createEmojiSkel } from "../utils/emojiSkel.js";
 import { t } from "../i18n.js";
@@ -750,9 +754,41 @@ emoji-picker {
    * （盒子钉在键盘态高度 522、布局视口还是 852），跟面板高正好抵消 ——
    * 工装实测交接那一帧让位从 337 塌到 88，输入行当场掉到屏幕 647。
    * iOS 上页面底本来就是键盘上沿，钉住 = 面板高，一个数都不加。 */
-  :host(.wp-kb-swap.wp-kb-overlay) .vac-box-footer {
+  /* 轮 533 · iOS 交接期不再「钉成面板高」，而是继续用同一条连续式子。
+   *
+   * 钉住的目的是「别提前塌下去」。旧式子 calc(面板高 − vtop) 只在首尾两端对，
+   * 中间塌，所以必须钉一个常量把中间那段填平 —— 那是用不连续去补不连续。
+   * 新式子本身就是连续的（见 PAD_EXPR_IOS 的推导），照常走就是一条直线，
+   * 钉反而会造出一个台阶。这里保留 !important + 关过渡，只是为了让它在
+   * .wp-emoji-open 摘掉、内联 padding 清空的那一帧仍然接得住。 */
+  :host(.wp-kb-swap.ios-kb) .vac-box-footer {
+    padding-bottom: calc(var(--ios-fw-pad, 10px) + var(--wp-emoji-h, 320px) - var(--vtop, 0px)
+      - var(--kb-kbb, var(--kbb, 0px))) !important;
+    transition: none !important;
+  }
+  /* 非 iOS 的 overlay 型内核（Firefox 安卓）保持轮 526 那条「钉成面板高」，
+     与上面 iOS 那条分开写 —— iOS 换了连续式子，别的内核没换。 */
+  :host(.wp-kb-swap.wp-kb-overlay:not(.ios-kb)) .vac-box-footer {
     padding-bottom: var(--wp-emoji-h, 320px) !important;
     transition: none !important;
+  }
+  /* 轮 533 · iOS：面板底贴的是**输入条的底**，不是可视区底。
+   *
+   * 库的媒体规则是 bottom:var(--kbb) + transform:translateY(var(--vtop))，
+   * 语义是「面板底 = 可视区底」。在 iOS 上可视区底无键盘时是 771（底部工具栏上沿），
+   * 于是面板占 441..771、输入行被顶到 441；而键盘态输入行在 505。
+   * 同一个输入行每切一次跳 64px —— 用户说的「键盘跟表情不是一个高度」就是这一条。
+   *
+   * 把 --kbb 换成「页面盒子底 − 同一个基线」之后，面板顶正好压在输入行下沿
+   * （505），两种状态同一个位置。
+   *
+   * 代价：面板最下面那 81px 落在底部工具栏后面（工具栏是覆盖层）。表情格子是
+   * overflow-y:auto 的，滚一下就能看到；换来的是输入条彻底不再跳。
+   *
+   * 只在 .ios-kb 宿主上生效（那枚类由 isOverlayKb() 挂），安卓不受影响。 */
+  :host(.ios-kb) { --ios-fw-pad: 17px; }
+  :host(.ios-kb) .vac-emoji-wrapper .vac-emoji-picker:not(.vac-picker-reaction) {
+    bottom: calc(var(--ios-fw-pad, 17px) - var(--kb-now, 0px)) !important;
   }
   /* 轮 514：几何全部交给 vendored 库（vendor/vue-advanced-chat 的 media 规则：
      position:fixed · left/right:0 · bottom:var(--kbb) · height:var(--kb-panel-h)）。
@@ -929,28 +965,62 @@ const sheetMode = () => typeof window !== "undefined"
  * 让位量的正解是「面板顶 − 条底」，而条底本来就该留这 7px，所以直接把它加回去。 */
 const PAD_EXPR = "calc(7px + var(--wp-emoji-h, 320px) + var(--kb-kbb, var(--kbb, 0px))"
   + " - var(--kb-now, 0px) + var(--chat-box, var(--vlh, 0px)) - var(--vlh, 0px) + var(--kb-over, 0px))";
-/* 轮 526 · overlay 型（iOS Safari）单独一条式子。
+/* 轮 533 · iOS 的让位式子（重写，轮 526 那版只对上首尾两端）。
  *
- * 上面那条里的 `chat-box − vlh` 是给 resize 型补「聊天盒子比视口矮 = chatViewport 滞后」
- * 用的。iOS 上盒子矮不是滞后，是**真实**的：键盘浮在页面上、可视视口被上推，
- * 盒子就钉在键盘态高度（852 − 330 = 522），而 --vlh 仍是 852，这一项恒 −330。
- * 它和「面板高 330」正好抵消，让位只剩 7px —— 输入行被面板整个盖住。
- * 工装实测：panel 态让位 88px（该 330），输入行下沿 444、面板上沿 532，裂 88px。
+ * 目标只有一个：**输入行的屏幕位置在「键盘态」和「面板态」完全一样。**
+ * 这就是用户从第六轮就一直在说的「别的软件都是键盘跟表情固定一个高度」。
  *
- * iOS 的正确式子就是轮 516 那条：页面底已经在键盘上沿，只需让「面板高 − 上推量」。
- * 键盘收起时 --vtop 归 0，让位自然变成满额面板高。 */
-const PAD_EXPR_IOS = "calc(var(--wp-emoji-h, 320px) - var(--vtop, 0px))";
+ * 推导只用两条 iOS 事实（见 utils/iosKb.js 文件头）：
+ *   ① 键盘贴着布局视口底长上来 ⇒ 可视区底（屏幕）= vtop + vvH ≡ innerHeight；
+ *   ② 页面盒子底（屏幕）= 盒子高 − vtop，而 chatViewport 把盒子高钉成可视区高。
+ * 于是输入行底（屏幕）= 可视区底 − pad，**pad 就是唯一的变量**：
+ *
+ *   键盘全开  pad = 7 + 面板高 − 键盘占高 − 0     = 7    （条贴键盘顶）
+ *   面板全开  pad = 7 + 面板高 − 0     − kbb     = 256  （条贴面板顶）
+ *
+ * 也就是 pad = 7 + 面板高 − vtop − kbb(按键盘进度打折)。
+ * --kb-kbb 正好就是这个「按进度打折的 kbb」：键盘全开 ⇒ 0，全收 ⇒ 81。
+ * 所以中间每一帧都是同一个屏幕位置，线性、没有一帧是跳的。
+ *
+ * 旧式子 calc(面板高 − vtop) 只让首尾两端对上了，中间那 81px（iOS 底部工具栏）
+ * 从来没被扣过 —— 逐帧工装（tools/ios-kb-drive.mjs）里「面板→键盘」那一段
+ * 输入行从屏幕 405 一路窜到 174 再砸回 484，就是这 81px 在页面盒子和 fixed 面板
+ * 两个参照系之间来回滚。用户说的「一堆问题」里，这条最难看出来也最难看。
+ *
+ * 另一个 7px：库给 .vac-box-footer 的底内边距本来就是 7px，这条内联表达式把
+ * padding-bottom 整条接管后那 7px 会被抹掉（轮 524 踩过，每切一次上下 7px）。 */
+const PAD_EXPR_IOS = "calc(var(--ios-fw-pad, 10px) + var(--wp-emoji-h, 320px) - var(--vtop, 0px)"
+  + " - var(--kb-kbb, var(--kbb, 0px)))";
+/* 非 iOS 的 overlay 型内核（Firefox 安卓 resizes-visual）沿用轮 526 那条，
+ * 跟 iOS 彻底分开：iOS 那条现在挂着 --ios-fw-pad，别的内核没有这个变量。
+ * 内容与轮 526 逐字一致（没有 7px 基线），改的是行为边界，不是行为。 */
+const PAD_EXPR_OV = "calc(var(--wp-emoji-h, 320px) - var(--vtop, 0px))";
+/* 轮 533 · iOS 是**编译期常量**，不是一个每帧去读的状态。
+ *
+ * 旧写法读 window.__wpVars.kind —— 那是「上几帧的采样结果」，键盘还没弹过的头几百
+ * 毫秒里它是空的，isOverlayKb() 就会先返回 false 用上 resize 式子，等 kbUp 成立再跳回
+ * overlay 式子。这与「第一下点表情输入条窜一下」是同一类病：判据比事实晚。
+ * iOS 的 UA 不会变，所以这里一次性判死。安卓那一支仍然用运行时判定（FF 安卓
+ * resizes-visual 也是 overlay，只有弹过键盘才看得出来）。 */
+const IOS_KB = isIosKbDevice();
 const isOverlayKb = () => {
-  let ov = false;
-  try {
-    const wv = typeof window !== "undefined" && window.__wpVars;
-    ov = !!wv && wv.kind === "overlay";
-  } catch (e) { /* 忽略 */ }
+  let ov = IOS_KB;
+  if (!IOS_KB) {
+    try {
+      const wv = typeof window !== "undefined" && window.__wpVars;
+      ov = !!wv && wv.kind === "overlay";
+    } catch (e) { /* 忽略 */ }
+  }
   /* 顺手把类挂到宿主上：CSS 里 .wp-kb-swap 的钉住规则要按内核分叉，
-     而 CSS 读不到 JS 的 kind，只能靠类。 */
+     而 CSS 读不到 JS 的 kind，只能靠类。
+     轮 533：iOS 再挂一枚 .ios-kb —— 面板的定位基线（下面那条 --kbb）只在 iOS 上
+     要改，用这枚类作用域住，安卓一个像素都不受影响。 */
   try {
     const n = el.value;
-    if (n && n.classList.contains("wp-kb-overlay") !== ov) n.classList.toggle("wp-kb-overlay", ov);
+    if (n) {
+      if (n.classList.contains("wp-kb-overlay") !== ov) n.classList.toggle("wp-kb-overlay", ov);
+      if (IOS_KB && !n.classList.contains("ios-kb")) n.classList.add("ios-kb");
+    }
   } catch (e) { /* 忽略 */ }
   return ov;
 };
@@ -966,7 +1036,24 @@ const emojiPad = (open) => {
   if (!foot) return;
   emojiPadOn = !!open && sheetMode();
   const ov = isOverlayKb();
-  foot.style.paddingBottom = emojiPadOn ? (ov ? PAD_EXPR_IOS : PAD_EXPR) : "";
+  if (IOS_KB) {
+    /* 轮 533 · iOS 上**永远写内联**，开关面板都不留空。
+     *
+     * 空着的话键盘态吃的是「.dm-thread 10px 保底 + footer 7px」，面板态吃的是
+     * 「thread 0 + footer 表达式」—— 两个参照系差 10px，于是点表情那一帧输入行
+     * 先窜 10px 再回来（逐帧工装抓到的最后一处）。
+     * 现在两态共用同一个基线 --ios-fw-pad（= 17px = 那 10 + 7 合并后的常量），
+     * 键盘态就写它，面板态写「基线 + 面板高 − 键盘占高 − kbb」，中间的差值全被
+     * 这一项吸收，输入行在整个切换里停在同一个像素上。
+     * html.kb-ios 那条把 .dm-thread 的 10px 保底归零（见 style.css），两边是配套的。 */
+    foot.style.paddingBottom = emojiPadOn
+      ? PAD_EXPR_IOS
+      : "var(--ios-fw-pad, 17px)";
+    return;
+  }
+  /* 非 iOS 但仍然是 overlay 型的内核（Firefox 安卓 resizes-visual）沿用轮 526 那条
+   * 式子，跟 iOS 分开 —— iOS 那条现在带 --ios-fw-pad，别的内核没有这个变量。 */
+  foot.style.paddingBottom = emojiPadOn ? (ov ? PAD_EXPR_OV : PAD_EXPR) : "";
 };
 
 /* 轮 521 · 面板打开瞬间的骨架层（用户：「要照暖心墙那样补个骨架」）。

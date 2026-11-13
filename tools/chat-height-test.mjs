@@ -640,6 +640,24 @@ t("T47 源码：sync 必须用这三条度量，不许再出现「绝对差 ≥ 
     "面板高没量同一路 / 没带键盘峰值（overlay 型锁不上，一直吃 CSS 兜底）");
 });
 
+t("T48 面板高锁定按内核分叉：安卓等键盘停稳、overlay 靠峰值不等（轮532）", () => {
+  /* 两个内核的「读数该怎么看」正好相反 ——
+   *   iOS（overlay）：点表情后读数一直变小（330 → 81），重设定时器就永不触发；
+   *   安卓（resize）：键盘动画期间读数单调涨（744 → 484），锁早了就是中途值。
+   * 2026-11-14 用户「本来安卓端好好的，现在有比较微小的跳动」就是这条规则
+   * 被一条道走到黑：从 kbUp 成立起算 180ms，慢动画（400ms 级）在中途锁成 279。 */
+  const js = read("src/utils/viewportVars.js");
+  assert(/if \(!isOverlay\) \{/.test(js), "resize 型没有单独分支（又统一成一条规则了）");
+  assert(/if \(forced \|\| kbNowHere === lockKb\) return/.test(js),
+    "resize 型没按「读数还在不在变」等停稳（会锁成动画中途值）");
+  assert(/else if \(lockTimer\) \{[^}]*return/.test(js),
+    "overlay 型丢了「有定时器就不重设」（iOS 收键盘时读数一直变小，永不触发）");
+  assert(/const FORCE_LOCK_MS = \d+/.test(js), "没有强制锁时限（键盘在屏抖 1px 的内核会永不触发）");
+  assert(/setTimeout\(applyPanelLock, LOCK_SETTLE_MS\)/.test(js), "定时器回调没抽成 applyPanelLock");
+  assert(/if \(kbUp\) \{\s*if \(!kbUpAt\) kbUpAt = Date\.now\(\);/.test(js),
+    "kbUp 首次成立没记时刻（强制锁时限无从起算）");
+});
+
 console.log(out.join("\n"));
 console.log(`\nchat-height-test: ${pass} pass, ${fail} fail`);
 process.exit(fail ? 1 : 0);
