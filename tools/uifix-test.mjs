@@ -234,6 +234,16 @@ t("T24 角色名额只数上传的「我的角色」（#12）：初始/物种伙
   assert.ok(i18n.split("customQuota:").length >= 3, "customQuota 未做到双语（en/zh 各一份）");
 });
 
+/* 轮 528 · 用户原话：「别人主页，下面那个去掉」——截图红框圈的是帖子列表最下面那颗
+ * 「← 暖心墙」药丸。它常年悬在最后一张卡与底部 TabBar 之间，既是重复出口
+ * （TabBar 的「暖心墙」就在同一屏、系统返回键也能回），又多占 32px + 一圈空白。
+ * 删了模板就不许再被「顺手补一个返回」加回来，所以锁死。 */
+t("T25 别人主页底部不再挂「← 暖心墙」返回链接（轮 528）", () => {
+  assert.ok(!wallerViewSrc.includes("waller-back"), "WallerView 模板又挂回了 waller-back 药丸");
+  assert.ok(!wallerViewSrc.includes('to="/community"'), "WallerView 里还有指向 /community 的页内链接");
+  assert.ok(!read("src/style.css").includes(".waller-back"), "style.css 残留 .waller-back 死样式");
+});
+
 out.push("");
 out.push("TOTAL " + (pass + fail) + "  PASS " + pass + "  FAIL " + fail);
 console.log(out.join("\n"));

@@ -359,7 +359,6 @@ onMounted(async () => {
       <p v-if="!loading && !posts.length" class="sub waller-empty">{{ t("waller.empty") }}</p>
     </template>
 
-    <router-link class="waller-back" to="/community">&#8592; {{ t("nav.community") }}</router-link>
   </div>
 </template>
 
