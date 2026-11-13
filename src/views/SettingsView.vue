@@ -551,7 +551,9 @@ watch(cloudSigned, (v) => {
   display: flex; align-items: center; justify-content: center;
   font-size: 24px; font-weight: 500; color: #fff;
   background: var(--accent);
-  box-shadow: 0 6px 14px rgba(240, 132, 47, .25);
+  /* 轮 527：原来这里是旧品牌橙 rgba(240,132,47,.25) —— 轮 120 全站换陶土那次漏掉的老色。
+   * 它不看主题：薄荷/薰衣草/樱粉主题下都是一圈橙影。改成中性墨影，只做接触感、不表色。 */
+  box-shadow: 0 6px 14px rgba(58, 46, 42, .14);
 }
 .set-avatar.paw { background: var(--accent-soft); color: var(--accent-deep); font-size: 26px; box-shadow: none; }
 /* 轮 238:设置页头像 = 萌宠头像池（图盖满圆框；未登录落回爪印） */
@@ -661,9 +663,14 @@ watch(cloudSigned, (v) => {
        手机端身份卡要盖过它，否则会退回普通白卡、白字直接看不见。 */
     border: 0 !important;
     border-radius: 24px !important;
+    /* 轮 527 · 第二档原来写的是 var(--accent-deep)。彩色主题里它是同族深色，没问题；
+     * 但夜间主题为了「页签字压在深底上读得出来」，glass.css 把 --accent-deep 单独改成了
+     * 浅陶土 #E8A184 —— 于是星夜蓝主题下这张卡从蓝渐变到陶土，成了日落色，跟整页的蓝对不上。
+     * 现在第二档不用 accent-deep，改成一层「左上高光 → 右下压暗」的斜向罩子叠在纯主色上：
+     * 哪个主题都只在主色自己身上做深浅，不会跨色相。 */
     background:
-      linear-gradient(135deg, rgba(255, 255, 255, .15), rgba(0, 0, 0, .06)),
-      linear-gradient(135deg, var(--accent) 0%, var(--accent-deep) 100%) !important;
+      linear-gradient(135deg, rgba(255, 255, 255, .14), rgba(0, 0, 0, .20)),
+      var(--accent) !important;
     box-shadow: 0 14px 30px rgba(150, 82, 48, .22) !important;
   }
   .set-user::before {

@@ -67,7 +67,22 @@
    * 不用逐个类名去改（story-main 这种大块就是靠这条从 #EFE9DE 变玻璃的）。 */
   --card: rgba(255, 255, 255, 0.62);
   --hairline: rgba(92, 80, 70, 0.10);
-  --accent-soft: rgba(251, 214, 226, 0.46);
+  /* 轮 527 · 主色家族里最淡的一档。原来这里写死的是樱粉 rgba(251,214,226,.46)
+   * —— 玻璃皮肤是照「九色 pastel」那套参考图做的，当时 --accent-soft 就代表一枚粉。
+   * 但 --accent 是跟主题走的（陶土 / 樱粉 / 薄荷 / 薰衣草 / 星夜蓝），
+   * 四套彩色主题各自在 style.css 里覆盖了 --accent-soft，**唯独默认的暖奶油没有**
+   * —— 于是暖奶油主题下全站 127 处 accent-soft 表面（设置页皮肤托盘、行按压底、
+   * 图标底、::selection…）全是樱粉，和陶土主色待在同一个画面里对不上。
+   * 这里按主色同族给：陶土 10% 透明。玻璃层必须透，所以不用实色 #f5f0e8。 */
+  --accent-soft: rgba(204, 120, 92, 0.10);
+  /* 轮 531 · 按压 / 选中底色（会话行、列表行按下去那一层）。
+   * 原来写死成樱粉 rgba(251,214,226,.44)，跟轮 527 的 --accent-soft 是同一个病：
+   * 玻璃皮肤照「九色 pastel」参考图做的，当时「一枚樱粉」就等于「被选中」。
+   * 但 --accent 是跟主题走的 —— 薄荷 / 薰衣草 / 星夜蓝下这层粉跟页面毫无关系，
+   * 暖奶油下又跟陶土主色打架（一块粉光托着陶土字）。
+   * 这里按主色同族给；四套彩色主题在 style.css 里各自覆盖成自己的色相。
+   * 玻璃层是半透的，所以仍然写 rgba，不用实色。 */
+  --accent-wash: rgba(204, 120, 92, 0.30);
   --glass: rgba(255, 255, 255, 0.62);
   --glass-strong: rgba(255, 255, 255, 0.76);
   --wash: rgba(255, 255, 255, 0.42);
@@ -175,9 +190,13 @@ html[data-theme="night"] .orb { opacity: .3; }
 .card:hover { box-shadow: var(--g-shadow), var(--g-hi) !important; }
 
 /* ═══════════════ ③ 字阶：靠透明度分层 ═══════════════ */
+/* 轮 529：`.st-card-title` 补进来 —— 故事栏的 st-* 是一套平行皮肤，从没接进这里，
+ * 于是它的卡片标题在手机上比首页/暖心墙/我的高三档（18.5 / 20.5 vs 16.5），
+ * 用户的原话是「故事页文字是不是偏大了」。四页的卡片标题必须是同一档。 */
 .card h2,
 .hall-title,
-.section-title {
+.section-title,
+.st-card-title {
   font-size: 16.5px !important;
   font-weight: 600 !important;
   letter-spacing: -0.2px !important;
@@ -800,12 +819,12 @@ textarea.input,
       rgba(255, 255, 255, 0.66) 0%,
       rgba(255, 255, 255, 0.26) 42%,
       rgba(255, 255, 255, 0.34) 100%),
-    rgba(251, 214, 226, 0.44) !important;
+    var(--accent-wash) !important;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.96),
     inset 0 0 0 1px rgba(255, 255, 255, 0.52),
-    0 1px 2px rgba(169, 88, 62, 0.10),
-    0 6px 16px rgba(169, 88, 62, 0.12) !important;
+    0 1px 2px rgba(58, 46, 42, 0.09),
+    0 6px 16px rgba(58, 46, 42, 0.11) !important;
   transition: background .06s ease, box-shadow .06s ease !important;
 }
 /* 停在会话里（列表已隐藏）时保持同款，不另立一套 */
@@ -815,12 +834,12 @@ textarea.input,
       rgba(255, 255, 255, 0.66) 0%,
       rgba(255, 255, 255, 0.26) 42%,
       rgba(255, 255, 255, 0.34) 100%),
-    rgba(251, 214, 226, 0.44) !important;
+    var(--accent-wash) !important;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.96),
     inset 0 0 0 1px rgba(255, 255, 255, 0.52),
-    0 1px 2px rgba(169, 88, 62, 0.10),
-    0 6px 16px rgba(169, 88, 62, 0.12) !important;
+    0 1px 2px rgba(58, 46, 42, 0.09),
+    0 6px 16px rgba(58, 46, 42, 0.11) !important;
 }
 html[data-theme="night"] .dm-row:active,
 html[data-theme="night"] .dm-row.press,
@@ -963,14 +982,13 @@ html[data-theme="night"] .st-btn--on:hover {
    * 改成一圈 7.5% 的暖墨发丝线——够画清边界，又不会像之前 10% 那样发黑。 */
   border: 1px solid rgba(120, 102, 88, 0.075) !important;
   border-left: 1px solid rgba(120, 102, 88, 0.075) !important;
-  border-radius: 20px !important;
-  /* 投影只在卡脚留 2px 接触感，扩散收到 12px/4%：缝里不会再被染出一条灰带。
-   * （轮 412 那条 18px 的投影就是这么被用户圈出来的，别再放回去。） */
-  box-shadow: none !important;
-  padding: 14px 16px !important;
-  /* 8px 的缝配 20px 圆角，左缘会挤成一道「腰」，看着像一条白柱上被切了四个口子。
-   * 缝放宽到 12px，两张卡才读得出是两张卡。 */
-  margin-bottom: 12px !important;
+  border-radius: var(--r-card) !important;
+  /* 轮 529：与全站卡片同一条投影（1px 2px 4.5%）。412 那条 18px 的大投影会把缝染出灰带，
+   * 别放回去；但「完全不给投影」也让故事卡比旁边三页的卡矮一档，摆在一起就不像一套。 */
+  box-shadow: var(--g-shadow), var(--g-hi) !important;
+  padding: 16px 16px 14px !important;
+  /* 23px 圆角配 10px 缝不会挤成「腰」（暖心墙那串同尺寸的卡一直是 10px），四页卡距统一 10。 */
+  margin-bottom: 10px !important;
 }
 .st-card--featured {
   border-color: rgba(217, 164, 65, 0.30) !important;

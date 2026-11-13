@@ -61,6 +61,8 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
   --accent: #cc785c;
   --accent-deep: #a9583e;
   --accent-soft: #f5f0e8;
+  /* 轮 531：按压 / 选中底色。跟 --accent 同族，不写死某一枚彩色（暖奶油 = 陶土 30%）。 */
+  --accent-wash: rgba(204, 120, 92, .30);
   --card: #efe9de;
   --hairline: #e6dfd8;
   --lilac: #b7a6e8;
@@ -1195,6 +1197,8 @@ html[data-theme="night"] .or-line::after { background: rgba(139, 156, 232, .22);
 .a-ico { font-size: 17px; }
 .a-name { max-width: 88px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .a-cost { font-size: 10.5px; font-weight: 500; color: var(--accent-deep); background: rgba(204, 120, 92, .12); border-radius: 999px; padding: 2px 7px; }
+/* 已拥有但没戴：只是状态说明，不该跟价签一样抢眼（轮 530，免得用户以为「买了又没了」）。 */
+.a-cost.owned { color: var(--ink-faint); background: rgba(140, 128, 112, .10); font-weight: 400; }
 .acc-chip.on .a-cost { background: var(--wash-strong); }
 .btn.framed-on { border-color: var(--accent); color: var(--accent-deep); background: var(--accent-soft); }
 
@@ -1713,6 +1717,7 @@ html.cap-app .wall-refresh { display: none; }
 html[data-theme="sakura"] {
   --ink: #5a3a46; --ink-soft: #a3798c; --ink-faint: #d3b3c0;
   --accent: #f78fb3; --accent-deep: #e76a9a; --accent-soft: #ffe1ec;
+  --accent-wash: rgba(247, 143, 179, .30);
   --card: #fdeef4; --hairline: #f0d9e3; --page-bg: #fdf1f6;
   --glass: rgba(255, 255, 255, .64); --glass-strong: rgba(255, 255, 255, .84);
   --shadow-sm: 0 2px 10px rgba(200, 110, 150, .10);
@@ -1727,6 +1732,7 @@ html[data-theme="sakura"] .orb-3 { background: #ffe8d6; }
 html[data-theme="mint"] {
   --ink: #2f4a42; --ink-soft: #6f9188; --ink-faint: #b0c9c2;
   --accent: #5fbfa5; --accent-deep: #46a78e; --accent-soft: #dcf2ea;
+  --accent-wash: rgba(95, 191, 165, .30);
   --card: #ebf6ef; --hairline: #d4e7da; --page-bg: #eefaf4;
   --glass: rgba(255, 255, 255, .64); --glass-strong: rgba(255, 255, 255, .84);
   --shadow-sm: 0 2px 10px rgba(70, 140, 110, .10);
@@ -1741,6 +1747,7 @@ html[data-theme="mint"] .orb-3 { background: #e4f2c8; }
 html[data-theme="lavender"] {
   --ink: #443a5c; --ink-soft: #8379a3; --ink-faint: #bdb3d4;
   --accent: #a78bdb; --accent-deep: #8f6fc4; --accent-soft: #ece2fb;
+  --accent-wash: rgba(167, 139, 219, .30);
   --card: #f2eef9; --hairline: #e0d8ec; --page-bg: #f5f1fc;
   --glass: rgba(255, 255, 255, .64); --glass-strong: rgba(255, 255, 255, .84);
   --shadow-sm: 0 2px 10px rgba(130, 100, 190, .10);
@@ -1755,6 +1762,7 @@ html[data-theme="lavender"] .orb-3 { background: #d0e4ff; }
 html[data-theme="night"] {
   --ink: #e8eaf6; --ink-soft: #a9b1d6; --ink-faint: #767ea8;
   --accent: #8b9ce8; --accent-deep: #a3b2f0; --accent-soft: rgba(139, 156, 232, .18);
+  --accent-wash: rgba(139, 156, 232, .24);
   --card: #262c52; --hairline: rgba(139, 156, 232, .25); --page-bg: #171a33;
   --wash: rgba(139, 156, 232, .12); --wash-mid: rgba(139, 156, 232, .17); --wash-strong: rgba(139, 156, 232, .24);
   --glass: rgba(30, 35, 64, .66); --glass-strong: rgba(38, 44, 78, .85);
@@ -1840,12 +1848,6 @@ html[data-theme="night"] .r-chip-views { background: rgba(255, 255, 255, .08); }
 }
 html[data-theme="night"] .waller .pic { border-color: rgba(38, 44, 78, .9); }
 .waller-empty { text-align: center; padding: 18px 0 6px; }
-.waller-back {
-  align-self: flex-start; font-size: 13px; font-weight: 500;
-  color: var(--accent-deep); text-decoration: none;
-  padding: 6px 12px; border-radius: 10px; transition: background .15s ease;
-}
-.waller-back:hover { background: var(--accent-soft); }
 @media (max-width: 560px) { .waller-stats { grid-template-columns: repeat(2, 1fr); } }
 
 /* —— 主页的伙伴（访客互动区） —— */
@@ -2279,7 +2281,9 @@ html[data-theme="night"] .admin-page-bar { border-top-color: rgba(139, 156, 232,
   transition: background .16s ease, box-shadow .16s ease;
 }
 .dm-row:hover { background: var(--wash-mid); }
-.dm-row.on { background: var(--accent-soft); box-shadow: 0 2px 10px rgba(169, 88, 62, .22); }
+/* 轮 531：投影原来是旧陶土 rgba(169,88,62,.22)，薄荷/薰衣草下是褐影 —— 换中性墨影。
+ * 底色本来就是 --accent-soft（跟主题走），不用动。 */
+.dm-row.on { background: var(--accent-soft); box-shadow: 0 2px 10px rgba(58, 46, 42, .12); }
 .dm-row.req { cursor: default; }
 .dm-row-body { flex: 1; min-width: 0; }
 .dm-row-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
@@ -3797,9 +3801,9 @@ html.dm-exiting .shell--mobile-nav.shell--chat .dm-page { height: auto; }
 .st-search-clear:active { transform: scale(.92); }
 @media (max-width: 899px) {
   .st-hero {
-    padding: 17px 16px 15px; overflow: hidden;
+    padding: 16px 16px 14px; overflow: hidden;
     border: 1px solid var(--g-line, rgba(255, 255, 255, .72));
-    border-radius: 24px;
+    border-radius: 23px;
     background:
       radial-gradient(120% 130% at 100% 0%, var(--p-yellow-a, rgba(250, 240, 197, .80)) 0%, transparent 58%),
       linear-gradient(135deg, var(--p-peach-a, rgba(251, 217, 192, .80)), var(--p-pink-a, rgba(251, 214, 226, .80)));
@@ -3824,14 +3828,17 @@ html.dm-exiting .shell--mobile-nav.shell--chat .dm-page { height: auto; }
   }
   .st-hero .st-searchbox { margin-top: 12px; }
   /* 卡片：内容结构换成「作者行 → 标题 → 标签/数据」，让列表有呼吸，不再是一块白板上堆四行字。 */
+  /* 轮 529：几何对齐其它三页的卡语言 —— 圆角 23（= --r-card）、内边距 16/16/14、卡间距 10。
+   * 原来是 22 / 15px 16px / 11，跟首页 `.card`、暖心墙 `.post-card` 差一点点，摆在一起就是「不齐」。
+   * 背景与阴影由 glass.css 的卡片名单统一给（`.st-card` 这轮才补进去）。 */
   .st-feed .st-card {
-    padding: 15px 16px 14px !important;
-    border-radius: 22px !important;
-    margin-bottom: 11px !important;
+    padding: 16px 16px 14px !important;
+    border-radius: 23px !important;
+    margin-bottom: 10px !important;
   }
 }
 .st-search { flex: 1; min-width: 160px; border: 1px solid var(--hairline); border-radius: 999px; background: var(--wash); padding: 6px 12px; font-size: 13px; outline: none; }
-.st-card { border: 1px solid var(--hairline); border-radius: 20px; background: var(--wash); padding: 15px 16px 14px; margin-bottom: 10px; cursor: pointer; transition: transform .18s ease, border-color .18s ease; }
+.st-card { border: 1px solid var(--hairline); border-radius: 23px; background: var(--wash); padding: 16px 16px 14px; margin-bottom: 10px; cursor: pointer; transition: transform .18s ease, border-color .18s ease; }
 .st-card:hover { transform: translateY(-1px); border-color: var(--accent); }
 .st-card-head { display: flex; align-items: center; gap: 10px; }
 .st-card-ava {
@@ -3845,22 +3852,25 @@ html.dm-exiting .shell--mobile-nav.shell--chat .dm-page { height: auto; }
 .st-card-ava--3 { background: var(--p-pink-a, rgba(251, 214, 226, .8)); color: var(--p-pink-ink, #8b4761); }
 .st-card-ava--4 { background: var(--p-lilac-a, rgba(225, 216, 251, .8)); color: var(--p-lilac-ink, #574986); }
 .st-card-by { display: flex; flex: 1 1 auto; flex-direction: column; gap: 2px; min-width: 0; }
-.st-card-name { overflow: hidden; color: var(--ink); font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.st-card-time { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; color: var(--ink-faint); font-size: 11.5px; line-height: 1.4; }
+.st-card-name { overflow: hidden; color: var(--ink); font-size: 13.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.st-card-time { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; color: var(--ink-faint); font-size: 12.5px; line-height: 1.4; }
 .st-card-arrow {
   display: grid; place-items: center; flex: none;
   width: 26px; height: 26px; padding-bottom: 2px; border-radius: 50%;
   color: var(--accent-deep); background: var(--accent-soft);
   font-size: 18px; line-height: 1;
 }
-.st-card-title { margin-top: 0; font-family: var(--font-display); font-size: 17px; font-weight: 600; }
-.st-card .st-card-title { margin-top: 10px; font-size: 18.5px; line-height: 1.45; }
-.st-card-meta, .st-card-stats { font-size: 12px; color: var(--ink-faint); }
+/* 轮 529：故事卡标题与首页/暖心墙/我的的卡片标题同一档（16.5px）。
+ * 原来 18.5（列表）/ 20.5（精选）比其它三页的 16.5 高出一到两档，一眼就「字大」。
+ * 精选卡靠暖色渐变与光斑区分主次，不靠字号。 */
+.st-card-title { margin-top: 0; font-family: var(--font-display); font-size: 16.5px; font-weight: 600; }
+.st-card .st-card-title { margin-top: 10px; font-size: 16.5px; line-height: 1.4; }
+.st-card-meta, .st-card-stats { font-size: 12.5px; color: var(--ink-faint); }
 .st-card-tags { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0; }
 .st-card-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 10px; margin-top: 10px; }
 .st-card-foot .st-card-tags { margin: 0; }
 .st-card-foot .st-card-stats { margin: 0; white-space: nowrap; }
-.st-tag-sm { font-size: 11px; color: var(--accent-deep); background: var(--accent-soft); border-radius: 999px; padding: 1px 8px; }
+.st-tag-sm { font-size: 12px; color: var(--accent-deep); background: var(--accent-soft); border-radius: 999px; padding: 1px 8px; }
 /* 精选卡：保留 st-card / st-card--featured 两个旧类（皮肤与测试都认），叠一层 .st-feature 做编辑感。 */
 .st-feature { position: relative; overflow: hidden; }
 .st-feature::before,
@@ -3876,7 +3886,7 @@ html.dm-exiting .shell--mobile-nav.shell--chat .dm-page { height: auto; }
   border-radius: 50%; color: #a97c25; background: rgba(255, 255, 255, .48);
   font-size: 17px; line-height: 1;
 }
-.st-card.st-feature .st-feature-title { position: relative; z-index: 1; margin-top: 7px; font-size: 20.5px; line-height: 1.38; }
+.st-card.st-feature .st-feature-title { position: relative; z-index: 1; margin-top: 7px; font-size: 16.5px; line-height: 1.4; }
 .st-feature-foot { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 10px; margin-top: 10px; }
 .st-feature-foot .st-card-tags, .st-feature-foot .st-card-stats { margin: 0; }
 .st-feature-foot .st-card-stats { white-space: nowrap; }
@@ -3908,7 +3918,7 @@ html.dm-exiting .shell--mobile-nav.shell--chat .dm-page { height: auto; }
 .st-mine-del { color: var(--low); }
 
 /* ── 右栏榜单 ── */
-.st-rank-title { font-family: var(--font-display); font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+.st-rank-title { font-family: var(--font-display); font-size: 16.5px; font-weight: 600; margin-bottom: 8px; }
 .st-rank-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 10px; }
 .st-rank-tab { background: none; border: 1px solid var(--hairline); border-radius: 999px; padding: 3px 10px; font-size: 12px; color: var(--ink-soft); cursor: pointer; transition: background-color .18s ease, color .18s ease; }
 .st-rank-tab.on { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -4330,7 +4340,7 @@ html.dm-exiting .shell--mobile-nav.shell--chat .dm-page { height: auto; }
 .story-read { max-width: 760px; margin: 0 auto; }
 .st-read-card { background: var(--card); border: 1px solid var(--hairline); border-radius: 20px; padding: 20px 22px; margin-top: 10px; }
 .st-read-title { font-family: var(--font-display); font-size: 28px; font-weight: 600; line-height: 1.3; }
-.st-read-meta { font-size: 12px; color: var(--ink-faint); margin: 6px 0; }
+.st-read-meta { font-size: 12.5px; color: var(--ink-faint); margin: 6px 0; }
 .st-read-body { margin-top: 14px; font-size: 16px; line-height: 1.9; }
 .st-read-body > p { text-align: justify; }
 .st-read-body > p[data-indent="1"] { text-indent: 2em; }
@@ -4767,6 +4777,7 @@ html[data-theme="night"] .favpage-back, html[data-theme="night"] .favpage-refres
 html[data-theme="night"][data-theme-variant="midnight"] {
   --ink: #f1f1f4; --ink-soft: #b5b5c0; --ink-faint: #7d7d88;
   --accent: #c97a5d; --accent-deep: #e8a184; --accent-soft: rgba(232, 161, 132, .14);
+  --accent-wash: rgba(201, 122, 93, .24);
   --card: #141419; --hairline: rgba(255, 255, 255, .10); --page-bg: #0a0a0e;
   --wash: rgba(255, 255, 255, .055); --wash-mid: rgba(255, 255, 255, .085); --wash-strong: rgba(255, 255, 255, .12);
   --glass: rgba(14, 14, 19, .74); --glass-strong: rgba(22, 22, 28, .90);
