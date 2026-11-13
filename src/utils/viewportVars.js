@@ -131,6 +131,11 @@ let adoptSince = 0;
 let svhH = 0;
 let dvhH = 0;
 let lockTimer = 0;
+/* 轮 526 · 键盘在屏期间量到的最大高度。
+ * 面板高要等键盘稳定才锁，可 iOS 上「点表情」会立刻开始收键盘：180ms 后定时器醒过来，
+ * 键盘已经收了、只剩工具栏那 81px，被 KB_MIN 挡掉 → 永远锁不上。
+ * 所以把「键盘还在时见过的最高值」留一手，定时器拿它兜底。 */
+let peakKb = 0;
 let booted = false;
 let probeEl = null;
 let lastKey = "";
@@ -189,8 +194,17 @@ function readProbes() {
  * 而是「跟上次记下的差 12px 以上才改」。差 12 以内当抖动忽略，避免面板高来回改；
  * 用户换了输入法 / 换了导航方式（真会让键盘高变几十像素）时又能自己纠正回来。 */
 function schedulePanelLock() {
-  clearTimeout(lockTimer);
+  /* 轮 526 · 这里原来每帧 clearTimeout 再重设 —— 键盘动画期间 sync 是逐帧跑的，
+   * 于是 180ms 的定时器**永远等不到触发**，面板高（--kb-panel-h）一直是空的，
+   * 全程吃 CSS 兜底 min(46vh,320px)。
+   *
+   * 安卓上正好能蒙混过去：兜底 320 和真键盘 260 只差 60，且真机验收时键盘高度
+   * 恰好让兜底也能看。iOS 上原形毕露 —— 真键盘 330、兜底 320，工装里读出来
+   * 面板高一直是 `min(320px, 420px)`，直到手动停手 900ms 后才「啪」地锁成 330。
+   * 用户说的「苹果端键盘-表情切换一堆问题」，这是第一条。 */
+  if (lockTimer) return;      /* 已经在等，不许重置 */
   lockTimer = setTimeout(() => {
+    lockTimer = 0;
     const inner = Math.round(window.innerHeight || 0);
     const vv = window.visualViewport;
     const vvH = vv && vv.height > 0 ? Math.round(vv.height) : 0;
@@ -198,7 +212,7 @@ function schedulePanelLock() {
      * resizes-visual）布局视口根本不缩，这个式子恒得 0，面板高永远锁不上，
      * 于是一直吃 CSS 兜底高度（min(46vh,320px)），跟真键盘差几十像素。
      * kbHeightNow 两条路都量，取大者。 */
-    const kb = kbHeightNow(base, inner, vvBase, vvH);
+    const kb = Math.max(kbHeightNow(base, inner, vvBase, vvH), peakKb);
     if (kb < KB_MIN || kb > KB_MAX) return;
     if (panelH > 0 && Math.abs(panelH - kb) < 12) return;
     panelH = kb;
@@ -337,7 +351,19 @@ export function syncViewportVars() {
    * vv.offsetTop：Firefox 安卓的 resizes-visual 模式下 vv 会缩、offsetTop 却是 0，
    * kbNow 恒 0 → 让位算式完全不动 → 输入条被键盘整个盖住。 */
   const kbNowCap = panelH > 0 ? panelH : KB_MAX;
-  const kbNow = Math.max(0, Math.min(kbNowCap, kbHeightNow(base, inner, vvBase, vvH)));
+  const rawKb = kbHeightNow(base, inner, vvBase, vvH);
+  /* 轮 526 · overlay 型（iOS）必须把「工具栏」和「键盘」分开。
+   *
+   * iOS 的 vv 在键盘收起后仍比布局视口矮 81px（那是 Safari 底部工具栏），
+   * kbHeightNow 会老老实实报 81 —— 于是 kbNow 常驻 81，面板的 bottom
+   * `kb-kbb − kb-now` 变成 0，面板永远贴着屏幕最底、不往工具栏上面让，
+   * 输入行和面板之间裂开一整个工具栏（工装实测 532..852 vs 该 441..771）。
+   * resize 型没有这个静态噪声，那边必须保持逐帧跟（键盘动画前半段 < 180 时也要跟）。
+   */
+  if (kbUp && rawKb > peakKb) peakKb = rawKb;
+  const kbNow = (isOverlay && rawKb < KB_MIN)
+    ? 0
+    : Math.max(0, Math.min(kbNowCap, rawKb));
 
   if (kbUp) schedulePanelLock();
 

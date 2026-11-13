@@ -77,6 +77,12 @@ writeFileSync(expr, `(async () => {
       vvTop: Math.round(vv.offsetTop || 0),
       visBottom: Math.round((vv.offsetTop || 0) + (vv.height || window.innerHeight)),
       kb: cssv("--kb-h"), kbb: cssv("--kbb"), vtop: cssv("--vtop"), panelH: cssv("--kb-panel-h"), kbLast: cssv("--kb-last"),
+      /* 轮 526 · 诊断用：让位算式里每一项的实际值。524 改了 PAD_EXPR 之后
+         「全量门禁全绿」但 iOS 是坏的 —— 因为这三个组装级工装根本没进 all.mjs。
+         先把每一项摊开，别再靠推理。 */
+      kbkbb: cssv("--kb-kbb"), kbnow: cssv("--kb-now"), vlh: cssv("--vlh"), vlhBase: cssv("--vlh-base"), pageh: cssv("--kb-pageh"),
+      hst: (() => { const c = host ? getComputedStyle(host) : null;
+        return c ? { emojih: c.getPropertyValue("--wp-emoji-h").trim(), chatbox: c.getPropertyValue("--chat-box").trim() } : {}; })(),
       page: pageR ? { t: Math.round(pageR.top), b: Math.round(pageR.bottom), h: Math.round(pageR.height) } : null,
       ta: R(ta), foot: R(foot),
       footPad: foot ? getComputedStyle(foot).paddingBottom : "-",
@@ -131,7 +137,7 @@ writeFileSync(expr, `(async () => {
 
 const r = spawnSync(process.execPath, [
   "tools/web-probe.mjs", `--serve=${OUT}`, "--url=/index.html",
-  "--w=393", "--h=852", "--wait=3000", `--file=${expr}`,
+  "--w=393", "--h=852", "--wait=3000", "--ua=ios", `--file=${expr}`,
 ], { cwd: root, encoding: "utf8" });
 const out = (r.stdout || "") + (r.stderr || "");
 let data = null;
@@ -162,6 +168,10 @@ for (const r0 of data.rows) {
     + ` 屏幕: ta=${scr(r0.ta, t).padEnd(9)} picker=${scr(r0.picker, t).padEnd(9)}`
     + ` pad=${r0.footPad}  cls=${r0.hostCls.replace(/^dm-vac ?/,"")||"-"}`
   );
+  if (process.argv.includes("--vars")) {
+    console.log("    vars: kb-kbb=" + r0.kbkbb + " kb-now=" + r0.kbnow + " vlh=" + r0.vlh + " vlh-base=" + r0.vlhBase
+      + " pageh=" + r0.pageh + " panelh=" + r0.panelH + " emojih=" + (r0.hst || {}).emojih + " chat-box=" + (r0.hst || {}).chatbox);
+  }
 }
 console.log("\n宿主类: " + data.rows[data.rows.length - 1].hostCls + " / " + data.rows[data.rows.length - 1].threadCls);
 

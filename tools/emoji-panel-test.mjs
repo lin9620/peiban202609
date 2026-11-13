@@ -270,7 +270,12 @@ t("E15 会话页让位只挂表达式：面板高 − 键盘此刻占高（不�
   has(BC, /var\(--chat-box, var\(--vlh, 0px\)\) - var\(--vlh, 0px\)/, "没补页面盒子滞后的校正项（盒子慢一拍时条会往下砸一截）");
   has(BC, /:host \{ --chat-box: min\(var\(--vlh, 0px\), var\(--kb-pageh, var\(--vlh, 0px\)\)\); \}/, "没有 --chat-box（无滞后的盒子高）定义");
   /* 收起时必须清掉内联值，否则关掉面板后输入条永远悬在半空。 */
-  has(BC, /foot\.style\.paddingBottom = emojiPadOn \? PAD_EXPR : "";/, "收起面板没清内联让位（输入条会一直悬空）");
+  /* 轮 526：让位按内核分叉。iOS（overlay 型）必须用「面板高 − 上推量」，
+     不能再带 chat-box 那一项 —— 它在 iOS 上恒为 −键盘高，会把整份让位吃掉。 */
+  has(BC, /foot\.style\.paddingBottom = emojiPadOn \? \(ov \? PAD_EXPR_IOS : PAD_EXPR\) : "";/,
+    "收起面板没清内联让位 / overlay 分支丢了（输入条会一直悬空或被面板盖住）");
+  has(BC, /const PAD_EXPR_IOS = "calc\(var\(--wp-emoji-h, 320px\) - var\(--vtop, 0px\)\)"/,
+    "iOS 让位式子没扣 --vtop（overlay 型会整份让两次）");
   has(BC, /sr\.querySelector\("#room-footer \.vac-box-footer"\)/, "让位没落在 .vac-box-footer（面板的定位宿主）上");
   /* 判据：桌面浮窗不能套这条（否则桌面 footer 也被顶起来 300） */
   has(BC, /const sheetMode = \(\) =>[\s\S]{0,200}matchMedia\("\(max-width: 899px\)"\)/, "没有 sheet 判据");

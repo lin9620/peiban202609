@@ -77,6 +77,19 @@ const MANIFEST = [
      但排版、CSS、DOM 全是真的 —— 补的是「换一台苹果手机」里最难覆盖的那台。约 15s。 */
   { file: "ios26-glass-test.mjs", tier: "mount", note: "需 dist/（先 npm run build），约 15s" },
 
+  /* ── 轮 526：组装级几何工装终于进了门禁 ──────────────────────────
+   * 这四个一直存在，但**从来不在 all.mjs 里**。后果是：524 把 iOS 的让位表达式
+   * 换掉、把 --kb-last 删掉之后，它们红了一整轮也没人知道，我还在汇报「全量
+   * 123 项 122 通过」。用户骂「苹果端一堆问题」时，“测试全绿”这句话本身就是错的。
+   *
+   * 它们各自挂真组件 + 伪造对应内核的视口读数（现在连 User-Agent 也换成真机型了，
+   * 以前一直是 HeadlessChrome，导致 bottomPin 那类按 UA 分流的逻辑从没跑过），
+   * 走完「键盘 → 表情 → 键盘」全程。约 40~90s 一个。 */
+  { file: "dm-sheet-drive.mjs", tier: "geom", note: "iOS 会话页 键盘↔表情（真组件 + iPhone UA）" },
+  { file: "wallbar-drive.mjs", tier: "geom", note: "iOS 暖心墙 键盘↔表情（真组件 + iPhone UA）" },
+  { file: "androidbar-drive.mjs", tier: "geom", note: "安卓暖心墙 键盘↔表情（resize 型语义）" },
+  { file: "vac-sheet-drive.mjs", tier: "geom", note: "库本体面板几何（手机 + 桌面两档）" },
+
   /* 备份脚本的自检（--self-test 不连库、不碰网络，纯逻辑：脱敏/占位符/轮转/还原清单解析） */
   { file: "backup.mjs", tier: "fast", args: ["--self-test"], note: "备份脚本自检" },
   /* 存量语言回填的自检（--self-test 不连库：检测→变化判定→SQL 生成，含 bigint/uuid 两种主键） */
@@ -128,6 +141,7 @@ const NOT_TESTS = new Set([
 const TIER_TIMEOUT = { fast: 120_000, mount: 300_000, live: 300_000, prod: 120_000, net: 300_000 };
 const TIER_LABEL = {
   fast: "离线单测 / 静态扫描",
+  geom: "几何工装（真组件 + 伪造视口 + 无头浏览器）",
   mount: "构建产物挂载冒烟",
   live: "活体环境（CDP / dev server / 真机）",
   prod: "线上只读探针",
@@ -150,9 +164,15 @@ if (has("--help") || has("-h")) { usage(); process.exit(0); }
 const onlyArg = valOf("--only");
 const only = onlyArg ? onlyArg.split(",").map((s) => s.trim()).filter(Boolean) : null;
 let tiers;
-if (has("--all")) tiers = ["fast", "mount", "prod"];
+if (has("--all")) tiers = ["fast", "mount", "geom", "prod"];
 else if (valOf("--tier")) tiers = valOf("--tier").split(",").map((s) => s.trim()).filter(Boolean);
-else tiers = ["fast"];
+/* 轮 526：默认把 geom 也带上。
+ *
+ * 之前默认只有 fast —— 那 123 项全是「读源码 + 纯函数矩阵」，一行 DOM 都不碰。
+ * 于是 524 把 iOS 的让位式子换掉、把 --kb-last 删掉之后，四个几何工装全红，
+ * 而 `npm test` 依然报 122/123，我照着这个数字跟用户说「测试过了」。
+ * 几何工装要起无头浏览器，一轮多 2~3 分钟；这个时间必须付。 */
+else tiers = ["fast", "geom"];
 
 const badTier = tiers.find((t) => !TIER_LABEL[t]);
 if (badTier) { console.error(`未知分层：${badTier}（可选：${Object.keys(TIER_LABEL).join(" / ")}）`); process.exit(2); }

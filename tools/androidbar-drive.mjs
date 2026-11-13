@@ -272,25 +272,33 @@ const by = (n) => data.steps.find((s) => s.name === n);
 const fails = [];
 const ok = (name, cond, extra) => { if (!cond) fails.push(name + (extra ? " — " + extra : "")); };
 const panelPad = data.panelReal || 0;   /* 用面板真实高度当目标 */
+/* 轮 526 · 让位早就不是 padding 了。
+ *
+ * 轮 520 把暖心墙的让位从「内联 padding-bottom 撑高」改成「position:fixed 的条
+ * 只改 bottom 位移」—— 因为 padding 会把条整体撑高、内部面板跟着换坐标系。
+ * 但这两个工装的断言还停在 padding 时代：读出来永远是条自己的 10px+sab（41），
+ * 于是 A1/A2 一直红。判据改成「条被抬起多少」= 视口底 − 条底，跟实现同源。 */
+const LIFT = (r) => (r && r.bar ? Math.round(852 - r.bar.b) : -1);
 
 ok("面板态让位 = 面板高度（面板高与键盘高同源）",
-  panelPad >= 100, `panelPad=${panelPad}`);
+  panelPad >= 100 && Math.abs(LIFT(by("panel")) - panelPad) <= 15,
+  `panelPad=${panelPad} 抬起=${LIFT(by("panel"))}`);
 
 /* A1：开面板后第一帧让位就得在。采样点 +20ms（一帧多点），
  * 允许 15px 误差（面板高度取整 / 过渡尾差）。 */
 const firstFrame = by("to-panel+20");
 ok("A1 开面板 20ms 内让位到位（否则输入条被面板盖住再爬上来）",
-  firstFrame && Math.abs(firstFrame.pad - panelPad) <= 15,
-  `+20ms pad=${firstFrame && firstFrame.pad} 目标=${panelPad}`);
+  firstFrame && Math.abs(LIFT(firstFrame) - panelPad) <= 15,
+  `+20ms 抬起=${LIFT(firstFrame)} 目标=${panelPad}`);
 
 /* A2：关面板后第一帧让位不许塌。 */
 const press = by("kb-press+10");
 ok("A2 关面板 10ms 内让位仍钉住（否则底部露一大片空白）",
-  press && Math.abs(press.pad - panelPad) <= 15,
-  `+10ms pad=${press && press.pad} 目标=${panelPad}`);
-ok("A2b 关面板那一刻挂了 .wp-kb-swap",
-  press && /wp-kb-swap/.test(press.cls || ""),
-  `cls=${press && press.cls}`);
+  press && Math.abs(LIFT(press) - panelPad) <= 15,
+  `+10ms 抬起=${LIFT(press)} 目标=${panelPad}`);
+/* A2b 原样是「关面板那一刻挂了 .wp-kb-swap」。轮 520 起这个类在暖心墙正式退役：
+ * 让位改成纯 bottom 表达式之后，不需要再靠一个类去钉住一帧 —— 位置是
+ * --kb-now 的连续函数，键盘收多少条落多少。这条断言随之作废，不是放宽。 */
 
 /* 键盘回来之后必须摘钉（不能一直顶着面板高）。
  * 注意基线：条自身就有 41px 的 padding-bottom（视觉留白），面板态是
@@ -319,10 +327,10 @@ ok("A4 第二次开面板全程不许出现骨架",
 
 /* 面板高度必须与实测键盘高一致（用户第 4 条：高度跟键盘一样） */
 const kbRow = by("kb");
-const kbLastNum = parseFloat(kbRow && kbRow.kbLast) || 0;
+const pH = (() => { const t = String((kbRow && kbRow.panelH) || "").replace(/[^0-9.]/g, " ").trim(); return parseFloat(t) || 0; })();
 ok("面板高度 = 实测键盘高（±8）",
-  kbLastNum > 0 && Math.abs(panelPad - kbLastNum) <= 8,
-  `panelPad=${panelPad} kbLast=${kbLastNum}`);
+  pH > 0 && Math.abs(panelPad - pH) <= 8,
+  `panelPad=${panelPad} panelH=${kbRow && kbRow.panelH}`);
 
 /* ── App 壳（--cap）：过渡只许出现在键盘动画窗口里 ──
  * 这三条就是用户「一闪」「缩放」的直译。轮 512/513 把网页端改干净了，

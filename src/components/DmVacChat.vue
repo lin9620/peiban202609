@@ -744,6 +744,16 @@ emoji-picker {
     ) !important;
     transition: none !important;
   }
+  /* 轮 526 · iOS（overlay 型）在交接给键盘的那一帧，让位只该是面板高。
+   *
+   * 上面那条是 resize 型的式子，里面的 chat-box 减 vlh 在 iOS 上恒 −330
+   * （盒子钉在键盘态高度 522、布局视口还是 852），跟面板高正好抵消 ——
+   * 工装实测交接那一帧让位从 337 塌到 88，输入行当场掉到屏幕 647。
+   * iOS 上页面底本来就是键盘上沿，钉住 = 面板高，一个数都不加。 */
+  :host(.wp-kb-swap.wp-kb-overlay) .vac-box-footer {
+    padding-bottom: var(--wp-emoji-h, 320px) !important;
+    transition: none !important;
+  }
   /* 轮 514：几何全部交给 vendored 库（vendor/vue-advanced-chat 的 media 规则：
      position:fixed · left/right:0 · bottom:var(--kbb) · height:var(--kb-panel-h)）。
      以前这一大段 !important 是在跟库比优先级 —— 比不过就得内联钉，钉住又跟 --kbb
@@ -919,6 +929,31 @@ const sheetMode = () => typeof window !== "undefined"
  * 让位量的正解是「面板顶 − 条底」，而条底本来就该留这 7px，所以直接把它加回去。 */
 const PAD_EXPR = "calc(7px + var(--wp-emoji-h, 320px) + var(--kb-kbb, var(--kbb, 0px))"
   + " - var(--kb-now, 0px) + var(--chat-box, var(--vlh, 0px)) - var(--vlh, 0px) + var(--kb-over, 0px))";
+/* 轮 526 · overlay 型（iOS Safari）单独一条式子。
+ *
+ * 上面那条里的 `chat-box − vlh` 是给 resize 型补「聊天盒子比视口矮 = chatViewport 滞后」
+ * 用的。iOS 上盒子矮不是滞后，是**真实**的：键盘浮在页面上、可视视口被上推，
+ * 盒子就钉在键盘态高度（852 − 330 = 522），而 --vlh 仍是 852，这一项恒 −330。
+ * 它和「面板高 330」正好抵消，让位只剩 7px —— 输入行被面板整个盖住。
+ * 工装实测：panel 态让位 88px（该 330），输入行下沿 444、面板上沿 532，裂 88px。
+ *
+ * iOS 的正确式子就是轮 516 那条：页面底已经在键盘上沿，只需让「面板高 − 上推量」。
+ * 键盘收起时 --vtop 归 0，让位自然变成满额面板高。 */
+const PAD_EXPR_IOS = "calc(var(--wp-emoji-h, 320px) - var(--vtop, 0px))";
+const isOverlayKb = () => {
+  let ov = false;
+  try {
+    const wv = typeof window !== "undefined" && window.__wpVars;
+    ov = !!wv && wv.kind === "overlay";
+  } catch (e) { /* 忽略 */ }
+  /* 顺手把类挂到宿主上：CSS 里 .wp-kb-swap 的钉住规则要按内核分叉，
+     而 CSS 读不到 JS 的 kind，只能靠类。 */
+  try {
+    const n = el.value;
+    if (n && n.classList.contains("wp-kb-overlay") !== ov) n.classList.toggle("wp-kb-overlay", ov);
+  } catch (e) { /* 忽略 */ }
+  return ov;
+};
 const emojiPad = (open) => {
   const n = el.value;
   const sr = n && n.shadowRoot;
@@ -930,7 +965,8 @@ const emojiPad = (open) => {
     || sr.querySelector("#room-footer");
   if (!foot) return;
   emojiPadOn = !!open && sheetMode();
-  foot.style.paddingBottom = emojiPadOn ? PAD_EXPR : "";
+  const ov = isOverlayKb();
+  foot.style.paddingBottom = emojiPadOn ? (ov ? PAD_EXPR_IOS : PAD_EXPR) : "";
 };
 
 /* 轮 521 · 面板打开瞬间的骨架层（用户：「要照暖心墙那样补个骨架」）。

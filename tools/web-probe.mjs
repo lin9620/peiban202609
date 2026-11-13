@@ -28,6 +28,18 @@ const trace = arg("trace", "0") === "1";
 const PORT = Number(arg("port", "9333"));
 const serve = arg("serve", "");          /* 传目录（如 dist）→ 起本地静态服务器 + SPA 回退，--url 可写相对路径 */
 const servePort = Number(arg("servePort", "0")); /* 0 = 系统分配（避免并发/残留占用 8791） */
+/* 轮 526 · `--ua=ios` / `--ua=android`。
+ *
+ * 以前这个探针只覆盖视口尺寸，不改 User-Agent —— 于是所有「iOS 工装」其实跑在
+ * HeadlessChrome 的 UA 下：guessOverlayByUA() 判 resize、html 永远没有 kb-overlay 类、
+ * bottomPin 的闭环校正一次都没跑过。也就是说 iOS 那几条断言里，
+ * 「闭环把条拉回可视区底」这一整类从来没被真正验证。
+ * 这里把 UA 也换成真机型，工装才配叫 iOS 工装。 */
+const uaKind = arg("ua", "");
+const UA_IOS = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15"
+  + " (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
+const UA_ANDROID = "Mozilla/5.0 (Linux; Android 14; 23054RA19C) AppleWebKit/537.36"
+  + " (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36";
 const evalTimeout = Number(arg("timeout", "30000"));   /* 页面内脚本要跑几十秒时调大 */
 const shot = arg("shot", "");            /* 传路径 → 求值后再截一张 PNG（肉眼验收排版） */
 let child = null;                        /* 提到模块作用域：退出时才能真正杀掉无头 Edge */
@@ -151,6 +163,14 @@ async function main() {
   await send("Emulation.setDeviceMetricsOverride", {
     width: W, height: H, deviceScaleFactor: dpr, mobile: true,
   });
+  if (uaKind === "ios" || uaKind === "android") {
+    await send("Emulation.setUserAgentOverride", {
+      userAgent: uaKind === "ios" ? UA_IOS : UA_ANDROID,
+      platform: uaKind === "ios" ? "iPhone" : "Linux armv8l",
+      acceptLanguage: "zh-CN,zh;q=0.9",
+    });
+  }
+  await send("Emulation.setFocusEmulationEnabled", { enabled: true });
   await send("Emulation.setFocusEmulationEnabled", { enabled: true });
   await send("Page.navigate", { url: target });
   await sleep(waitMs);

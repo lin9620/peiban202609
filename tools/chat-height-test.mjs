@@ -634,7 +634,10 @@ t("T47 源码：sync 必须用这三条度量，不许再出现「绝对差 ≥ 
   assert(!/vvH > 0 && base - vvH >= 150/.test(js), "旧判据还在（大噪声内核会整场判错）");
   assert(!/if \(!overlayLocked && kbUp\)/.test(js), "内核分流还在「只判一次」（错一帧就错一场）");
   /* 面板高也必须量同一路，否则 overlay 型永远是 CSS 兜底 */
-  assert(/const kb = kbHeightNow\(base, inner, vvBase, vvH\)/.test(js), "面板高还在用 base − inner（overlay 型锁不上）");
+  /* 轮 526：面板高除了量同一路，还要带上「键盘在屏期间的峰值」——
+     iOS 上点表情会立刻收键盘，180ms 后定时器醒来只剩工具栏 81px，被 KB_MIN 挡掉就永远锁不上。 */
+  assert(/const kb = Math\.max\(kbHeightNow\(base, inner, vvBase, vvH\), peakKb\)/.test(js),
+    "面板高没量同一路 / 没带键盘峰值（overlay 型锁不上，一直吃 CSS 兜底）");
 });
 
 console.log(out.join("\n"));
