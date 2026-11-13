@@ -816,6 +816,58 @@ ok("storyPublish 把 too-short 映射成 story-too-short（漏映射会误报 st
     /\.st-hero\s*\{/.test(STY) && /\.st-card-ava\s*\{/.test(STY) && /\.st-searchbox\s*\{/.test(STY));
 }
 
+/* ---------- 四页同一套字号 / 卡语言（轮 529） ----------
+ * 用户原话：「app端首页的四个页面字体大小，ui之类的都不一致，你好歹改成差不多的啊，
+ *            故事页文字是不是偏大了」。
+ *
+ * 病根：故事栏的 st-* 是一套平行皮肤 —— 卡片标题写死 18.5（精选 20.5），比首页 `.card h2`、
+ * 暖心墙、我的页统一在玻璃皮肤里的 16.5 高出 1~2 档；卡片本体在 glass.css 里被单独压成
+ * 圆角 20 / padding 14·16 / 无投影，跟别家 23 / 16·16·14 / 1px 投影 的卡摆在一起不像一套。
+ *
+ * 这里钉三件事：① 三个标题类的字号都是 16.5；② 玻璃字阶表确实收了 .st-card-title
+ * （否则手机上 16.5 不生效，改了等于没改）；③ 卡的几何与投影跟 .card 同档。
+ * 判据用「选择器块内最后一个 font-size」——以后微调别的属性不会误红。 */
+{
+  const STY = read("src/style.css");
+  const GLASS = read("src/glass.css");
+  const blockOf = (src, sel) => {
+    const i = src.indexOf(sel);
+    if (i < 0) return "";
+    return src.slice(i, src.indexOf("}", i));
+  };
+  const lastFs = (src, sel) => {
+    const b = blockOf(src, sel);
+    const m = [...b.matchAll(/font-size:\s*([\d.]+)px/g)];
+    return m.length ? Number(m[m.length - 1][1]) : null;
+  };
+  const cardTitle = lastFs(STY, ".st-card .st-card-title");
+  const featureTitle = lastFs(STY, ".st-card.st-feature .st-feature-title");
+  ok("故事卡标题与首页/暖心墙/我的同档 16.5px（原 18.5 / 20.5）",
+    cardTitle === 16.5 && featureTitle === 16.5);
+  /* 玻璃字阶表：从「③ 字阶」标记切到 .sec-label，看里面有没有收 .st-card-title */
+  const scaleStart = GLASS.indexOf("③ 字阶");
+  const scaleTable = scaleStart < 0 ? "" : GLASS.slice(scaleStart, GLASS.indexOf(".sec-label {", scaleStart));
+  ok("玻璃皮肤字阶表收了 .st-card-title（手机上真生效的那条 !important）",
+    /\.st-card-title/.test(scaleTable) && /font-size:\s*16\.5px !important/.test(scaleTable));
+  const blockRe = (src, re) => {
+    const m = src.match(re);
+    return m ? src.slice(m.index, src.indexOf("}", m.index)) : "";
+  };
+  const cardBlock = blockRe(GLASS, /\.st-card,\s*\.st-card--featured\s*\{/);
+  ok("故事卡的圆角/内边距/投影/卡距与 .card 同档（23 · 16/16/14 · 1px 投影 · 10）",
+    /border-radius:\s*var\(--r-card\) !important/.test(cardBlock)
+    && /padding:\s*16px 16px 14px !important/.test(cardBlock)
+    && /box-shadow:\s*var\(--g-shadow\), var\(--g-hi\) !important/.test(cardBlock)
+    && /margin-bottom:\s*10px !important/.test(cardBlock)
+    && !/box-shadow:\s*none/.test(cardBlock));
+  const mobileCard = blockOf(STY, ".st-feed .st-card {");
+  ok("手机端故事卡圆角 23px（与其它三页的 --r-card 一致，原 22）",
+    /border-radius:\s*23px !important/.test(mobileCard));
+  ok("故事卡次级文字与暖心墙同级（时间/统计 12.5、标签 12、作者 13.5）",
+    lastFs(STY, ".st-card-time {") === 12.5 && lastFs(STY, ".st-card-meta, .st-card-stats") === 12.5
+    && lastFs(STY, ".st-tag-sm {") === 12 && lastFs(STY, ".st-card-name {") === 13.5);
+}
+
 if (fails.length) {
   console.log(`story-test: ${pass} pass, ${fails.length} FAIL`);
   for (const f of fails) console.log("  ✗ " + f);

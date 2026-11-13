@@ -46,6 +46,20 @@ ok("T7 语言偏好开关不再被文字挤扁",
 ok("T8 手机端不出现底部抽屉式 flex-end",
   !mobile.includes("flex-end"));
 
+/* 轮 527 · 用户截图：暖奶油主题下「皮肤」托盘是一圈樱粉，跟陶土主色对不上。
+ * 病根在 glass.css 的 :root 把 --accent-soft 写死成樱粉 —— 四套彩色主题各自覆盖了它，
+ * 唯独默认的暖奶油没有，于是全站 127 处 accent-soft 表面全变粉。
+ * 这里锁两件事：① 它必须跟主色同族（暖色：R>G>B）；② 身份卡渐变不许再借
+ * --accent-deep —— 夜间主题为「字压在深底上读得出来」把它改成了浅陶土，
+ * 借来做渐变第二档会让星夜蓝卡片从蓝渐变到陶土（日落色）。 */
+const glass = read("src/glass.css");
+const softM = glass.match(/--accent-soft:\s*rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+ok("T9 glass 皮肤的 --accent-soft 缺席或不是暖色（会被写死的樱粉带回去）",
+  !!softM && +softM[1] > +softM[2] && +softM[2] > +softM[3],
+  softM ? `实测 rgb(${softM[1]},${softM[2]},${softM[3]})` : "glass.css 里找不到 --accent-soft");
+ok("T10 身份卡渐变不吃 --accent-deep（夜间那是给字色用的浅陶土）",
+  !/linear-gradient\(135deg, var\(--accent\) 0%, var\(--accent-deep\) 100%\)/.test(mobile));
+
 if (fails.length) {
   console.error(`settings-mobile-test: ${pass} pass, ${fails.length} fail`);
   for (const f of fails) console.error("FAIL  " + f);

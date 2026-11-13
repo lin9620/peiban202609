@@ -26,6 +26,7 @@ const ok = (name, cond) => (cond ? pass++ : fails.push(name));
 
 const main = read("src/main.js");
 const glass = read("src/glass.css");
+const style = read("src/style.css");
 const html = read("index.html");
 /* 性能断言只看「真代码」：注释里会提到 backdrop-filter / filter: blur 这些词，
  * 不剥掉注释就会误报（本轮实际踩到，3 条假红）。 */
@@ -159,11 +160,27 @@ ok("底部导航仍有真模糊（设计语言不能为了性能全丢）",
 
 {
   /* 轮 412：卡片投影在左右 20px 的留白里染出一条灰带（用户叫「黑边 / 白块」）。
-   * 卡片离屏幕边只有 20px，任何 blur ≥ 12px 的投影都会整条留白染色。 */
-  const b = block(/\.st-card,[\s\S]{0,700}?\{/);
-  ok("故事卡投影不许再染到侧边留白（blur ≤ 6px）", !!b && !/18px/.test(b.match(/box-shadow:[^;]+/)?.[0] || ""));
-  ok("故事卡的缝放到 12px（8px 配 20px 圆角会挤成一道腰）",
-    /\.st-card[\s\S]{0,700}?margin-bottom:\s*12px\s*!important/.test(glass));
+   * 卡片离屏幕边只有 20px，任何 blur ≥ 12px 的投影都会整条留白染色。
+   *
+   * 轮 529：用户报「四个页面字体/ui 不一致，故事页文字偏大」。故事卡改成跟全站卡片
+   * 同一套几何（--r-card 圆角 / 16·16·14 内边距 / 10 卡距 / --g-shadow 接触影），
+   * 所以这里不再要求「投影必须是 none」——那条是 412 年代一刀切的结果，代价是故事卡
+   * 比别的卡矮一档。现在只锁「不许自造大投影」，接触影（blur 2px、alpha 4.5%）实测
+   * 在缝里只压暗 4/255，肉眼不可见。
+   *
+   * 取值方式也改了：原来靠 `\.st-card[\s\S]{0,700}?` 往后扫，会串到隔壁
+   * `.st-card--featured` 块的 margin-bottom 上「蒙混过关」（529 之前那条 12px 断言
+   * 就是这样瞎过的）。现在切片只取 `.st-card` 自己那个规则块。 */
+  const m = glass.match(/\.st-card,\s*\.st-card--featured\s*\{/);
+  const stBlock = m ? glass.slice(m.index, glass.indexOf("}", m.index)) : "";
+  const shadow = (stBlock.match(/box-shadow:\s*([^;]+);/) || [])[1] || "";
+  ok("故事卡投影不许再染到侧边留白（blur ≤ 6px，只准 var(--g-shadow) 或 none）",
+    !!stBlock && !/18px/.test(shadow)
+    && (shadow.indexOf("var(--g-shadow)") >= 0 || shadow.trim() === "none"));
+  ok("故事卡与其它三页同一套卡语言（圆角 --r-card · 内边距 16/16/14 · 卡距 10）",
+    /border-radius:\s*var\(--r-card\) !important/.test(stBlock)
+    && /padding:\s*16px 16px 14px !important/.test(stBlock)
+    && /margin-bottom:\s*10px !important/.test(stBlock));
   ok("「排行榜 / 我的」两枚大钮必须有实底（--wash 42% 白压在玻璃上等于空壳）",
     /\.st-feed-navbtn[\s\S]{0,220}?background:\s*var\(--g-bg-card\)/.test(glass));
   ok("搜索框也要实底，不许只剩一条白条", /\.st-search\s*\{[^}]*background:\s*var\(--g-bg-card\)/.test(glass));
@@ -173,7 +190,9 @@ ok("底部导航仍有真模糊（设计语言不能为了性能全丢）",
  * 用户第 4 次圈背景里的「黑」。这次不再调色，直接把「暗」这个手段从皮肤里拿掉：
  * ① 所有 `background: var(--ink)` 的墨黑选中态换成主题色；
  * ② 34px/10% 的卡片大投影收成 1~2px 接触影（那团灰雾就是用户眼里的「黑」）；
- * ③ 故事卡投影归零，靠发丝线分界。 */
+ * ③ 故事卡投影归零，靠发丝线分界。
+ *   （轮 529 修正：归零让故事卡比其它三页的卡「矮一档」，现在改成与主卡片共用
+ *     同一条 --g-shadow 接触影 —— 实测缝里只压暗 4/255，肉眼不可见、不染灰带。） */
 ok("皮肤里不许再有墨黑（--ink）填底的控件",
   !/background:\s*var\(--ink\)\s*!important/.test(glass));
 {
@@ -184,8 +203,9 @@ ok("皮肤里不许再有墨黑（--ink）填底的控件",
   ok("卡片大投影必须收成接触影（模糊 ≤ 4px，alpha ≤ 0.06）",
     blur <= 4 && alphas.every((a) => a <= 0.06));
 }
-ok("故事卡不再挂投影（缝里最后一点暗就是它）",
-  /\.st-card,[\s\S]{0,700}?box-shadow:\s*none\s*!important/.test(glass));
+ok("主卡片与故事卡共用同一条接触影（--g-shadow），没有另起的投影值",
+  /\.st-card,\s*\.st-card--featured\s*\{[\s\S]{0,900}?box-shadow:\s*var\(--g-shadow\),\s*var\(--g-hi\)\s*!important/.test(glass)
+  && /\.card,\s*\.glass\s*\{[\s\S]{0,300}?box-shadow:\s*var\(--g-shadow\),\s*var\(--g-hi\)\s*!important/.test(glass));
 ok("主卡片用发丝线代替投影分界",
   /\.card,[\s\S]{0,140}?border:\s*1px solid rgba\(120, 102, 88, 0\.06\)/.test(glass));
 
@@ -306,8 +326,36 @@ ok("轮 419 的满屏 --g-chat 方案不许回潮", !/--g-chat:/.test(glass));
 {
   const m = glass.match(/\.dm-row:active,\s*\.dm-row\.press,\s*\.dm-row\.on:active\s*\{[^}]*\}/);
   const rule = m ? m[0] : "";
-  ok("按压态必须是玻璃（半透明粉底 + 双层白色渐变）",
-    /rgba\(251, 214, 226, 0\.44\)/.test(rule) && /linear-gradient\(180deg/.test(rule));
+  /* 轮 531：这里的底色原来写死成樱粉 rgba(251,214,226,.44)（九色 pastel 时代），
+   * 薄荷 / 薰衣草 / 星夜蓝下按下去是一块粉，跟页面毫无关系。改成主色族的 --accent-wash。
+   * 断言口径跟着改：**只认变量，不许再出现具体色值** —— 写死哪个色都会在别的主题下错。 */
+  ok("按压态必须是玻璃（主题色 wash 底 + 双层白色渐变）",
+    /var\(--accent-wash\)/.test(rule) && /linear-gradient\(180deg/.test(rule));
+  ok("按压态底色不许写死具体色值（樱粉 251,214,226 不许再出现）",
+    !/rgba\(\s*251\s*,\s*214\s*,\s*226/.test(rule));
+  ok("选中态（.dm-row.on）与按压态同一层变量",
+    (() => {
+      const r = glass.match(/\.dm-row\.on\s*\{[^}]*\}/);
+      return !!r && /var\(--accent-wash\)/.test(r[0]);
+    })());
+  /* --accent-wash 是「按压/选中底色」的唯一来源。
+   * 默认值在 glass.css 的 :root（= 暖奶油主题，主色陶土）→ 必须暖色 R>G>B；
+   * 四套彩色主题各自覆盖，少写一套 = 那套主题下退回陶土，色相又错。 */
+  ok("glass.css 的 --accent-wash 默认值必须是暖色（R>G>B，跟陶土主色同族）",
+    (() => {
+      const v = (glass.match(/--accent-wash:\s*([^;]+);/) || [])[1] || "";
+      const m = v.match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+      return !!m && +m[1] > +m[2] && +m[2] > +m[3];
+    })());
+  ok("四套彩色主题都必须覆盖 --accent-wash（sakura / mint / lavender / night）",
+    ["sakura", "mint", "lavender", "night"].every((t) => {
+      const i = style.indexOf(`html[data-theme="${t}"] {`);
+      if (i < 0) return false;
+      const blk = style.slice(i, style.indexOf("}", i));
+      return /--accent-wash:/.test(blk);
+    }));
+  ok("会话行的投影不许再用旧陶土色（169,88,62 在薄荷/紫主题下是褐影）",
+    !/169\s*,\s*88\s*,\s*62/.test((glass.match(/\.dm-row:active[\s\S]{0,700}?\}/) || [""])[0]));
   ok("按压态必须带顶部 1px 高光 + inset 发丝环（玻璃的物理特征）",
     /inset 0 1px 0 rgba\(255, 255, 255, 0\.96\)/.test(rule) && /inset 0 0 0 1px rgba\(255, 255, 255, 0\.52\)/.test(rule));
   ok("按压态过渡必须够快（≤ .08s，否则列表还没隐藏就结束了）",
