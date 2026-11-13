@@ -2983,9 +2983,16 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
     <div class="wall-search">
       <div class="wall-search-row">
         <template v-if="!followOnly">
-          <input v-model="searchQ" class="wall-search-input" type="search"
-            :placeholder="t('community.searchPh')" :aria-label="t('community.searchPh')" />
-          <button v-if="searchQ || searchTags.length" class="sort-btn" @click="clearSearch">✕</button>
+          <div class="wall-search-field">
+            <input v-model="searchQ" class="wall-search-input" type="search"
+              :placeholder="t('community.searchPh')" :aria-label="t('community.searchPh')" />
+            <svg class="ws-ic" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" />
+              <path d="M20 20l-3.2-3.2" />
+            </svg>
+            <button v-if="searchQ || searchTags.length" class="sort-btn wall-search-clear"
+              @click="clearSearch">✕</button>
+          </div>
         </template>
         <!-- 关注流下：左边一句状态（说清现在只看谁的内容），右边同一个按钮变成退出。
              0 人时也照实说「只看 0 位博主」—— 这正是列表为空的原因，比说「我的关注」有用。
@@ -3022,12 +3029,14 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
     <!-- 排序：默认最新；还有 同感最多 / 抱抱最多 / 暖暖最多 -->
     <div v-if="!followOnly" class="sort-row">
       <span class="sort-label">{{ t("community.sortLabel") }}</span>
-      <button
-        v-for="s in SORT_BTNS" :key="s.key"
-        class="sort-btn" :class="{ on: sortMode === s.key }"
-        @click="pickSort(s.key)">
-        {{ t(s.tk) }}
-      </button>
+      <div class="sort-scroll">
+        <button
+          v-for="s in SORT_BTNS" :key="s.key"
+          class="sort-btn" :class="{ on: sortMode === s.key }"
+          @click="pickSort(s.key)">
+          {{ t(s.tk) }}
+        </button>
+      </div>
       <!-- 轮 83：网页端刷新按钮（排序行右端，margin-left:auto 推过去）。
            App 壳里由 CSS 隐藏（html.cap-app .wall-refresh），App 用原生下拉刷新。 -->
       <button
@@ -3111,9 +3120,26 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
 
     <!-- 轮 428 · 空状态 ②：有内容，但被「排序 + 时间范围」全挡掉（原来这里是一片空白） -->
     <div v-else-if="filterEmpty" class="wall-empty wall-empty--filter">
-      <div class="wall-empty-ic" aria-hidden="true">🌱</div>
+      <div class="wall-empty-ic" aria-hidden="true">
+        <span class="we-emoji">🌱</span>
+        <svg class="empty-art" viewBox="0 0 120 120">
+          <ellipse class="ea-shadow" cx="60" cy="103" rx="34" ry="7" />
+          <g transform="rotate(-4 60 72)">
+            <rect class="ea-paper" x="28" y="38" width="64" height="60" rx="10" />
+            <path class="ea-line" d="M41 58h38M41 68h30M41 78h20" />
+            <path class="ea-heart" d="M78 84c-4.2-3.6-7-6.1-7-9.1 0-2.2 1.7-3.9 3.8-3.9 1.2 0 2.4.6 3.2 1.6.8-1 2-1.6 3.2-1.6 2.1 0 3.8 1.7 3.8 3.9 0 3-2.8 5.5-7 9.1z" />
+          </g>
+          <path class="ea-stem" d="M57 41c0-9 5.2-15.5 12.4-18" />
+          <path class="ea-leaf" d="M62 28c-7.7.2-12.7-3.2-14.4-9.8 7.7-1.3 13.3 2.2 14.4 9.8z" />
+          <path class="ea-leaf2" d="M67 20c6.8.4 10.9-2.4 12.2-8.2-6.8-.8-11.6 2.2-12.2 8.2z" />
+          <circle class="ea-sun" cx="86" cy="30" r="3.4" />
+          <path class="ea-sun-rays" d="M86 23.8v-3.2M86 39.4v-3.2M79.8 30h-3.2M95.4 30h-3.2" />
+        </svg>
+      </div>
+      <span class="wall-empty-scope">{{ emptyScope }}</span>
       <h3 class="wall-empty-title">{{ t("community.filterEmptyTitle") }}</h3>
-      <p class="wall-empty-desc">{{ t("community.filterEmptyDesc", { scope: emptyScope }) }}</p>
+      <p class="wall-empty-desc wall-empty-desc--wide">{{ t("community.filterEmptyDesc", { scope: emptyScope }) }}</p>
+      <p class="wall-empty-desc wall-empty-desc--narrow">{{ t("community.filterEmptyHint") }}</p>
       <div class="wall-empty-acts">
         <n-button v-if="emptyAction.kind === 'range'" type="primary" size="medium" round
           class="wall-empty-btn" @click="pickRange(emptyAction.key)">
@@ -3529,4 +3555,318 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
 .refresh-note.rnote-ok,
 .refresh-note.rnote-batch { color: var(--accent-deep); }
 .refresh-note.rnote-fail { color: var(--low); }
+
+/* ═══ 手机端暖心墙重设计（轮 513）═══
+ * 用户：「这个页面不好看，ui 重新设计」。
+ * 桌面端保持原样：下面默认规则只是透明包装，所有新视觉都收在 ≤640px。
+ * 结构没动：搜索 / 排序 / 范围 / 两类空状态 / 关注流空状态仍是原来的数据与事件，
+ * 只把手机端的层级重排成「搜索 + 关注 → 排序分段 → 时间分段 → 空状态卡」。
+ * 排序和范围从两排等权胶囊收成两条分段控件，空状态从浮在白底上的 emoji 收成一张卡。 */
+.wall-search-field {
+  display: flex; align-items: center; flex: 1 1 auto; min-width: 0; gap: 8px;
+}
+.wall-search-field .wall-search-input { flex: 1 1 auto; min-width: 0; }
+.wall-search-field .ws-ic { display: none; }
+.wall-search-field .wall-search-clear { flex: 0 0 auto; }
+.sort-scroll { display: contents; }
+.wall-empty-scope { display: none; }
+.wall-empty-desc--narrow { display: none; }
+.wall-empty-ic .empty-art { display: none; }
+
+@media (max-width: 640px) {
+  /* —— 搜索行：图标放进输入框，关注入口与搜索框同高 —— */
+  .wall-search { margin: 10px 0 0; }
+  .wall-search-row { gap: 8px; }
+  .wall-search-field {
+    height: 44px; gap: 9px; padding: 0 8px 0 13px;
+    border: 1px solid rgba(230, 223, 216, .95);
+    border-radius: 15px;
+    background: rgba(255, 253, 249, .78);
+    box-shadow: 0 7px 20px rgba(92, 61, 38, .055), inset 0 1px 0 rgba(255, 255, 255, .9);
+  }
+  .wall-search-field:focus-within {
+    border-color: rgba(204, 120, 92, .55);
+    box-shadow: 0 0 0 4px rgba(204, 120, 92, .12), 0 7px 20px rgba(92, 61, 38, .055);
+  }
+  .wall-search-field .ws-ic {
+    display: block; order: -1; flex: 0 0 17px; width: 17px; height: 17px;
+    stroke: var(--ink-faint); stroke-width: 2; fill: none;
+  }
+  .wall-search-field .wall-search-input {
+    height: 100%; padding: 0; font-size: 13px;
+    border: 0 !important; border-radius: 0 !important;
+    background: transparent !important; box-shadow: none !important;
+  }
+  .wall-search-field .wall-search-input:focus {
+    border: 0 !important; background: transparent !important; box-shadow: none !important;
+  }
+  .wall-search-field .wall-search-clear {
+    width: 28px; height: 28px; padding: 0; border-radius: 50%;
+    display: grid; place-items: center;
+    background: var(--wash-mid) !important; color: var(--ink-soft); font-size: 12px;
+  }
+  .wall-follow-btn {
+    height: 44px; padding: 0 12px; border-radius: 15px;
+    background: rgba(255, 253, 249, .78);
+    box-shadow: 0 7px 20px rgba(92, 61, 38, .055), inset 0 1px 0 rgba(255, 255, 255, .9);
+    font-size: 12px;
+  }
+  .wall-follow-btn.on { background: var(--wash-mid); border-color: var(--hairline); }
+  .wall-follow-n { display: none; }
+  .wall-follow-ico { font-size: 13px; filter: saturate(.55); }
+  .wall-follow-state { font-size: 12px; }
+
+  /* —— 标签：一行横滑，不换行堆高 —— */
+  .wall-tag-row {
+    flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+  .wall-tag-row::-webkit-scrollbar { display: none; }
+  .wall-tag-row .tag-chip { flex: 0 0 auto; }
+
+  /* —— 排序：四颗等权胶囊收成一条分段控件；刷新单独留在右端 —— */
+  .sort-row { margin: 13px 0 0; gap: 8px; flex-wrap: nowrap; }
+  .sort-row .sort-label { display: none; }
+  .sort-scroll {
+    display: flex; align-items: center; gap: 2px;
+    flex: 1 1 auto; min-width: 0; padding: 3px;
+    border: 1px solid rgba(230, 223, 216, .9);
+    border-radius: 15px;
+    background: rgba(255, 253, 249, .52);
+    box-shadow: inset 0 1px 2px rgba(92, 61, 38, .035);
+    overflow-x: auto; scrollbar-width: none;
+  }
+  .sort-scroll::-webkit-scrollbar { display: none; }
+  .sort-scroll .sort-btn {
+    /* 五种语言的标签长短差很多（fr「Plus de chaleur」/ es「Más calidez」）。
+       用 1 0 auto：有空间时均分，没空间时按内容宽度横滑，绝不把字截成「Plus de…」 */
+    flex: 1 0 auto; border: 0;
+    padding: 8px 9px; border-radius: 11px;
+    background: transparent; color: var(--ink-soft);
+    font-size: 11.5px; font-weight: 700; line-height: 1.2;
+    white-space: nowrap;
+  }
+  .sort-scroll .sort-btn.on {
+    color: #fff !important;
+    background: linear-gradient(180deg, #d38366, #c97255) !important;
+    box-shadow: 0 5px 12px rgba(204, 120, 92, .24), inset 0 1px 0 rgba(255, 255, 255, .2);
+  }
+  .sort-row .wall-refresh {
+    flex: 0 0 37px; width: 37px; height: 37px;
+    margin-left: 0; padding: 0;
+    display: grid; place-items: center;
+    border: 1px solid rgba(230, 223, 216, .95);
+    border-radius: 50%;
+    background: rgba(255, 253, 249, .72);
+    color: var(--ink-soft);
+    box-shadow: 0 6px 16px rgba(92, 61, 38, .055), inset 0 1px 0 rgba(255, 255, 255, .9);
+  }
+  .sort-row .wall-refresh .wr-ic { width: 16px; height: 16px; }
+
+  /* —— 时间范围：第二条更轻的分段控件，选中的是白底而不是实心橙 —— */
+  .range-row {
+    display: flex; align-items: center; gap: 2px;
+    margin-top: 9px; padding: 3px;
+    border-radius: 14px;
+    background: rgba(238, 231, 221, .72);
+    box-shadow: inset 0 1px 2px rgba(92, 61, 38, .04);
+  }
+  .range-row .sort-label { display: none; }
+  .range-row .sort-btn {
+    flex: 1 1 0; border: 0;
+    padding: 7px 6px; border-radius: 11px;
+    background: transparent; color: var(--ink-soft);
+    font-size: 11.5px; font-weight: 650;
+  }
+  .range-row .sort-btn.on {
+    color: var(--accent-deep) !important;
+    background: rgba(255, 253, 249, .92) !important;
+    box-shadow: 0 3px 10px rgba(92, 61, 38, .09), inset 0 1px 0 rgba(255, 255, 255, .9);
+  }
+
+  /* —— 空状态：从浮在白底上的 emoji 收成一张有边界的卡片 —— */
+  .wall-scroller .wall-empty {
+    margin: 15px 0 0; min-height: 342px; padding: 26px 20px 24px;
+    border: 1px solid rgba(230, 223, 216, .9);
+    border-radius: 25px;
+    background:
+      radial-gradient(110% 76% at 50% 0%, rgba(255, 220, 201, .5), transparent 62%),
+      linear-gradient(180deg, rgba(255, 253, 249, .92), rgba(250, 246, 239, .92));
+    box-shadow: 0 18px 44px rgba(92, 61, 38, .075), inset 0 1px 0 rgba(255, 255, 255, .9);
+    position: relative; overflow: hidden;
+  }
+  .wall-scroller .wall-empty--filter {
+    background:
+      radial-gradient(110% 76% at 50% 0%, rgba(213, 239, 217, .68), transparent 62%),
+      linear-gradient(180deg, rgba(255, 253, 249, .92), rgba(250, 246, 239, .92));
+  }
+  .wall-scroller .wall-empty::after {
+    content: ""; position: absolute; width: 150px; height: 150px;
+    right: -62px; top: -64px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 220, 201, .34), transparent 68%);
+    pointer-events: none;
+  }
+  .wall-scroller .wall-empty--filter::after {
+    background: radial-gradient(circle, rgba(213, 239, 217, .5), transparent 68%);
+  }
+  .wall-scroller .wall-empty-ic {
+    position: relative; z-index: 1;
+    width: 112px; height: 112px;
+    display: grid; place-items: center;
+    margin-bottom: 9px; border-radius: 30px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, .72), rgba(255, 247, 236, .5));
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .8), 0 10px 24px rgba(92, 61, 38, .08);
+    font-size: 48px; opacity: 1;
+  }
+  .wall-scroller .wall-empty-ic .we-emoji { display: none; }
+  .wall-scroller .wall-empty-ic .empty-art {
+    display: block; width: 112px; height: 112px;
+    filter: drop-shadow(0 10px 18px rgba(92, 61, 38, .10));
+    animation: wallEmptyFloat 4.6s ease-in-out infinite;
+  }
+  .wall-scroller .wall-empty-scope {
+    position: relative; z-index: 1;
+    display: inline-flex; align-items: center; gap: 6px;
+    margin: 0 0 10px; padding: 5px 10px;
+    border-radius: 999px;
+    background: rgba(204, 120, 92, .10);
+    color: var(--accent-deep);
+    font-size: 11.5px; font-weight: 750; letter-spacing: .01em;
+  }
+  .wall-scroller .wall-empty-scope::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 3px rgba(204, 120, 92, .10);
+  }
+  .wall-scroller .wall-empty-title {
+    position: relative; z-index: 1;
+    margin: 0 0 8px; max-width: 280px;
+    font-size: 20px; line-height: 1.3; font-weight: 800;
+    letter-spacing: -.015em; color: var(--ink);
+  }
+  .wall-scroller .wall-empty-desc {
+    position: relative; z-index: 1;
+    margin: 0 0 18px; max-width: 296px;
+    font-size: 13.5px; line-height: 1.65; color: var(--ink-soft);
+  }
+  .wall-scroller .wall-empty-desc--wide { display: none; }
+  .wall-scroller .wall-empty-desc--narrow { display: block; }
+  .wall-scroller .wall-empty-acts {
+    position: relative; z-index: 1;
+    width: 100%; max-width: 262px; gap: 8px;
+  }
+  .wall-scroller .wall-empty-link {
+    align-self: center; padding: 8px 14px; border-radius: 11px;
+    background: rgba(238, 231, 221, .62);
+    color: var(--ink-soft);
+    font-size: 12px; font-weight: 700; text-decoration: none;
+  }
+  .wall-scroller .wall-empty-link::before { content: "←"; margin-right: 6px; opacity: .7; }
+  .wall-scroller :deep(.wall-empty-btn.n-button) {
+    width: 100%; max-width: 262px; height: 46px;
+    border-radius: 14px !important;
+    background: linear-gradient(180deg, #d38366, #c97255) !important;
+    box-shadow: 0 11px 24px rgba(204, 120, 92, .23), inset 0 1px 0 rgba(255, 255, 255, .18) !important;
+  }
+  .wall-scroller :deep(.wall-empty-btn .n-button__content) {
+    font-size: 13.5px; font-weight: 750;
+  }
+
+  /* —— 小插画：便签 + 嫩芽 + 小爱心，和暖墙的“写一句话”语义一致 —— */
+  .empty-art .ea-shadow { fill: #c9a88f; opacity: .16; }
+  .empty-art .ea-paper { fill: #fff8ee; stroke: #e6c9b4; stroke-width: 2.4; }
+  .empty-art .ea-line { fill: none; stroke: #e7b9a7; stroke-width: 3; stroke-linecap: round; opacity: .9; }
+  .empty-art .ea-heart { fill: #e9968a; }
+  .empty-art .ea-stem { fill: none; stroke: #7fa86b; stroke-width: 3.2; stroke-linecap: round; }
+  .empty-art .ea-leaf { fill: #a9c98f; stroke: #7fa86b; stroke-width: 1.8; }
+  .empty-art .ea-leaf2 { fill: #b9d6a1; stroke: #7fa86b; stroke-width: 1.8; }
+  .empty-art .ea-sun { fill: #f2c48b; }
+  .empty-art .ea-sun-rays { fill: none; stroke: #f2c48b; stroke-width: 1.8; stroke-linecap: round; }
+
+  /* —— 夜间主题：不要把白天的暖橙硬塞进蓝紫夜色 —— */
+  html[data-theme="night"] .wall-search-field,
+  html[data-theme="night"] .wall-follow-btn,
+  html[data-theme="night"] .sort-row .wall-refresh {
+    background: rgba(139, 156, 232, .12);
+    border-color: rgba(139, 156, 232, .18);
+    box-shadow: 0 7px 20px rgba(0, 0, 0, .12), inset 0 1px 0 rgba(255, 255, 255, .04);
+  }
+  html[data-theme="night"] .wall-search-field:focus-within {
+    border-color: rgba(139, 156, 232, .55);
+    box-shadow: 0 0 0 4px rgba(139, 156, 232, .12), 0 7px 20px rgba(0, 0, 0, .12);
+  }
+  html[data-theme="night"] .sort-scroll {
+    background: rgba(139, 156, 232, .10);
+    border-color: rgba(139, 156, 232, .18);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, .12);
+  }
+  html[data-theme="night"] .sort-scroll .sort-btn { color: var(--ink-soft); }
+  html[data-theme="night"] .sort-scroll .sort-btn.on {
+    background: var(--accent) !important; color: #171a33 !important;
+    box-shadow: 0 5px 12px rgba(0, 0, 0, .22), inset 0 1px 0 rgba(255, 255, 255, .18);
+  }
+  html[data-theme="night"] .range-row { background: rgba(139, 156, 232, .12); }
+  html[data-theme="night"] .range-row .sort-btn { color: var(--ink-soft); }
+  html[data-theme="night"] .range-row .sort-btn.on {
+    background: rgba(139, 156, 232, .22) !important; color: var(--ink) !important;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, .18), inset 0 1px 0 rgba(255, 255, 255, .06);
+  }
+  html[data-theme="night"] .wall-scroller .wall-empty {
+    background:
+      radial-gradient(110% 76% at 50% 0%, rgba(139, 156, 232, .16), transparent 62%),
+      linear-gradient(180deg, rgba(38, 44, 78, .92), rgba(30, 35, 64, .94));
+    border-color: rgba(139, 156, 232, .20);
+    box-shadow: 0 18px 44px rgba(0, 0, 0, .24), inset 0 1px 0 rgba(255, 255, 255, .04);
+  }
+  html[data-theme="night"] .wall-scroller .wall-empty--filter {
+    background:
+      radial-gradient(110% 76% at 50% 0%, rgba(112, 168, 132, .20), transparent 62%),
+      linear-gradient(180deg, rgba(38, 44, 78, .92), rgba(30, 35, 64, .94));
+  }
+  html[data-theme="night"] .wall-scroller .wall-empty::after {
+    background: radial-gradient(circle, rgba(139, 156, 232, .14), transparent 68%);
+  }
+  html[data-theme="night"] .wall-scroller .wall-empty--filter::after {
+    background: radial-gradient(circle, rgba(112, 168, 132, .18), transparent 68%);
+  }
+  html[data-theme="night"] .wall-scroller .wall-empty-ic {
+    background: linear-gradient(180deg, rgba(255, 255, 255, .06), rgba(255, 255, 255, .02));
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06), 0 10px 24px rgba(0, 0, 0, .20);
+  }
+  html[data-theme="night"] .empty-art .ea-paper { fill: #2f3660; stroke: #5f6aa0; }
+  html[data-theme="night"] .empty-art .ea-line { stroke: #7d86b8; }
+  html[data-theme="night"] .empty-art .ea-shadow { fill: #000; opacity: .20; }
+  html[data-theme="night"] .empty-art .ea-sun { fill: #f2c48b; }
+  html[data-theme="night"] .empty-art .ea-sun-rays { stroke: #f2c48b; }
+  html[data-theme="night"] .wall-empty-scope {
+    background: rgba(139, 156, 232, .18); color: var(--accent-deep);
+  }
+  html[data-theme="night"] .wall-empty-scope::before {
+    background: var(--accent); box-shadow: 0 0 0 3px rgba(139, 156, 232, .12);
+  }
+  html[data-theme="night"] .wall-empty-link {
+    background: rgba(139, 156, 232, .12); color: var(--ink-soft);
+  }
+  html[data-theme="night"] .wall-scroller :deep(.wall-empty-btn.n-button) {
+    background: var(--accent) !important; color: #171a33 !important;
+    box-shadow: 0 11px 24px rgba(0, 0, 0, .24), inset 0 1px 0 rgba(255, 255, 255, .18) !important;
+  }
+}
+
+@keyframes wallEmptyFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wall-scroller .wall-empty-ic .empty-art { animation: none; }
+}
+
+@media (max-width: 360px) {
+  .sort-scroll .sort-btn { font-size: 11px; padding: 8px 7px; }
+  .wall-follow-btn { padding: 0 10px; font-size: 11.5px; }
+  .wall-search-field { padding-left: 11px; gap: 7px; }
+  .wall-search-field .ws-ic { flex-basis: 16px; width: 16px; height: 16px; }
+  .wall-scroller .wall-empty { padding: 24px 16px 22px; }
+  .wall-scroller .wall-empty-title { font-size: 19px; }
+}
 </style>
