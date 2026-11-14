@@ -14,6 +14,7 @@ import { t } from "../i18n.js";
 import { isMobileNav } from "../stores/uiStore.js";
 import { setPanelOpen } from "../utils/keyboardInset.js";
 import { syncViewportVars } from "../utils/viewportVars.js";
+import { isIosKbDevice } from "../utils/iosKb.js";
 import { enterSends, insertText, pickerOpensUp } from "../utils/composer.js";
 import { hideEmojiSearch } from "../utils/emojiPanel.js";
 import { scheduleEmojiWarm } from "../utils/emojiWarm.js";
@@ -29,6 +30,9 @@ const emit = defineEmits(["update:modelValue", "send", "focus"]);
 const root = ref(null);
 const ta = ref(null);
 const picker = ref(null);
+/* 轮 535：iOS 的 UA 不会变，一次性判死。只用于「申请键盘」那一段的内核分叉
+ * （iOS 要 blur+focus，安卓不要），别的基础几何仍由 CSS / --wpVars 决定。 */
+const IOS_KB = isIosKbDevice();
 const emojiOpen = ref(false);
 const pickerUp = ref(true);
 const canSend = computed(() => !!String(props.modelValue || "").trim() && !props.disabled);
@@ -154,16 +158,53 @@ const cancelClose = () => {
   closeRaf = 0;
   closeFrames = 0;
 };
+/* ═══ 轮 535 · 「点键盘键，面板收了、键盘没起来」═══
+ *
+ * 用户 2026-11-15（iPhone / 暖心墙，30fps 逐帧）：「点击键盘-表情-键盘，就折叠了，
+ * 不该是键盘展开吗」。录屏把这一段完整量了下来：
+ *   点键盘键          面板照旧铺着（emojiOpen 还是 true）
+ *   +660ms / 40 帧    panelReady 一直 false —— --kb-now 全程 0，键盘压根没出现在屏上
+ *                     → 走到帧数兜底，把面板收掉
+ *   +660~720ms        面板没了、键盘也没来，底条只剩 330px 内边距撑在那儿 = 一片空白
+ *   再点一下          这一下落到暗层上 → 整条退掉、tabbar 回来（就是「折叠了」）
+ *
+ * 根因和轮 513 会话页那条是同一条：**iOS 对「还拿着焦点」的输入框调 focus() 是空操作。**
+ * 面板打开时我们 blur() 过，但 iOS 上 blur 与键盘收起并不同步 —— 我们这边的焦点账空了，
+ * 系统那边仍认为该输入框是当前的，于是 focus() 什么都不做，键盘不弹。
+ * 会话页当时的修法是同一个手势栈里 blur() + focus()（= 重新申请一次键盘），改完苹果端
+ * 的会话就正常了；暖心墙这条路径一直只有裸 focus()，所以同样点了没反应。
+ *
+ * 两处一起改，缺一条都还会犯：
+ *   ① requestKeyboard()：iOS 同一个手势栈里 blur() + focus()（= 重新申请一次键盘）；
+ *   ② 40 帧等不到键盘 → **iOS 上绝不收面板**。键盘没来的时候面板就是唯一的输入方式，
+ *      收掉等于把用户晾在一片空白上，还顺手把暗层留在那儿等着被误点。
+ *
+ * ⚠ 别再往这里加「过一会儿补一次 focus()」：出了手势栈的那次申请 iOS 根本不认，
+ * 而它带的 blur() 会把一个正在升起的键盘打掉（面板态 --wpVars 最多滞后 250ms，
+ * 判「还没动」时键盘可能已经升到一半）。申请一次、等不到就留着面板，这是唯一稳的。 */
+const requestKeyboard = () => {
+  const el = ta.value;
+  if (!el) return;
+  try {
+    /* 只在 iOS 上 blur：安卓输入法的 blur→focus 会让键盘掉一下再起，没必要。 */
+    if (IOS_KB) { try { el.blur(); } catch (e2) { /* 忽略 */ } }
+    el.focus();
+  } catch (e) { /* 无焦点环境 */ }
+};
 /* 收面板 + 回键盘：焦点必须**同步**申请（iOS 只在手势栈里认 focus），面板延后收 */
 const closeForKeyboard = () => {
-  try { if (ta.value) ta.value.focus(); } catch (e) { /* 无焦点环境 */ }
+  requestKeyboard();
   cancelClose();
   if (!emojiOpen.value) return;
   closeFrames = 40;
   const tick = () => {
     closeRaf = 0;
     if (!emojiOpen.value) return;
-    if (panelReady() || closeFrames-- <= 0) { emojiOpen.value = false; return; }
+    if (panelReady()) { emojiOpen.value = false; return; }
+    if (closeFrames-- <= 0) {
+      if (!IOS_KB) emojiOpen.value = false;
+      return;
+    }
     closeRaf = requestAnimationFrame(tick);
   };
   closeRaf = requestAnimationFrame(tick);

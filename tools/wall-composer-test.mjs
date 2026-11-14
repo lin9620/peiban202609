@@ -246,12 +246,19 @@ t("P7 轮401 评论输入：表情键二次点击 = 键盘键（换图标 + 回�
   has(WPC, /const emojiLabel = computed\(\(\) => emojiOpen\.value \? t\("comment\.keyboard"\) : t\("comment\.emoji"\)\)/, "没有按开关切换按钮语义");
   /* 轮 519：顺序仍然是「先同步 focus → 再收面板」，只是后面那步 holdForKeyboard 已删除
      （位置不再需要钉）。iOS 只在用户手势的同步栈里认 focus()，这条顺序不能变。 */
-  /* 轮 524：交接收进 closeForKeyboard —— 仍然是「先在用户手势的同步栈里 focus() 申请键盘，
+  /* 轮 524：交接收进 closeForKeyboard —— 仍然是「先在用户手势的同步栈里申请键盘，
      再等键盘真盖上来（panelReady）才把面板收掉」。iOS 认同步 focus，这条顺序不能变；
-     面板当场收会露 260px 空白。 */
-  has(WPC, /const closeForKeyboard = \(\) => \{\s*\n\s*try \{ if \(ta\.value\) ta\.value\.focus\(\); \}/, "二次点击没在手势同步栈里先 focus（iOS 上键盘弹不出来）");
+     面板当场收会露 260px 空白。
+     轮 535：申请键盘从裸 focus() 改成 requestKeyboard() —— iOS 必须 blur+focus。
+     用户 2026-11-15 录屏：苹果端暖心墙「键盘-表情-键盘」第三下，面板收了、键盘没起来。
+     会话页轮 513 就踩过同一条（iOS 对还拿着焦点的输入框 focus() 是空操作）。 */
+  has(WPC, /const requestKeyboard = \(\) => \{[\s\S]{0,420}if \(IOS_KB\) \{ try \{ el\.blur\(\);[\s\S]{0,260}el\.focus\(\);/, "申请键盘没做 iOS 的 blur+focus（键盘弹不起来）");
+  has(WPC, /const closeForKeyboard = \(\) => \{\s*\n\s*requestKeyboard\(\);/, "二次点击没在手势同步栈里先申请键盘");
   has(WPC, /if \(emojiOpen\.value\) \{[\s\S]{0,500}closeForKeyboard\(\);/, "二次点击没走「收面板回键盘」");
-  has(WPC, /if \(panelReady\(\) \|\| closeFrames-- <= 0\) \{ emojiOpen\.value = false; return; \}/, "面板没等键盘盖上来就收（中间会露一段空白）");
+  has(WPC, /if \(panelReady\(\)\) \{ emojiOpen\.value = false; return; \}/, "面板没等键盘盖上来就收（中间会露一段空白）");
+  /* 轮 535 · 键盘没起来时 iOS 不许收面板：收了就是「屏幕上一片空白 + 暗层还在」，
+     用户再点一下整条就退了（他说的「就折叠了」）。 */
+  has(WPC, /if \(closeFrames-- <= 0\) \{\s*\n\s*if \(!IOS_KB\) emojiOpen\.value = false;/, "键盘没起来时 iOS 也把面板收掉了（会剩一片空白）");
   has(WPC, /v-if="emojiOpen"[\s\S]{0,520}M20 5H4/, "面板打开时没换成键盘图标");
   has(WPC, /:title="emojiLabel"/, "按钮 title 没跟开关走");
   has(I18N, /keyboard:\s*"Keyboard"/, "英文 comment.keyboard 丢了");

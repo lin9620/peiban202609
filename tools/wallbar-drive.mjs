@@ -198,6 +198,20 @@ writeFileSync(expr, `(async () => {
   await sleep(700);
   snap("kb-plain");
 
+  /* ═══ 轮 535 · 「点键盘键，键盘没起来」═══
+     用户 2026-11-15 录屏（iPhone / 暖心墙）：键盘-表情-键盘，第三下之后面板收了、
+     键盘压根没出现，剩一片空白，再点一下整条退掉（他说的「就折叠了」）。
+     这一档在工装里就是「点完键盘键，谁也不去动可视视口」—— 以前 40 帧兜底会把面板
+     收掉；现在 iOS 必须原样留着。 */
+  __kbSim(H, 0);
+  await sleep(400);
+  document.querySelector(".cmt-main-bar .wp-composer-ico.is-emoji").click();
+  await sleep(700);
+  snap("fail-open");
+  document.querySelector(".cmt-main-bar .wp-composer-ico.is-emoji").click();
+  await sleep(1300);          /* 40 帧兜底 = 660ms，留足余量 */
+  snap("fail-press");
+
   return {
     dpr: window.devicePixelRatio,
     w: window.innerWidth, h: window.innerHeight,
@@ -345,6 +359,26 @@ if (back) {
 const plain = step("kb-plain");
 if (plain && !near(plain.bar.bottom, plain.visBottom)) {
   fails.push(`kb-plain: 键盘没上推时条没贴可视底（bar.bottom=${plain.bar.bottom} visBottom=${plain.visBottom}）`);
+}
+
+/* 轮 535 · 点键盘键但键盘没起来：面板必须原样留着、条一格不动。
+   以前 40 帧兜底会把面板收掉 —— 屏幕上一片空白，用户再点一下整条就退了。 */
+const fo = step("fail-open");
+const fp = step("fail-press");
+if (!fo || !fo.picker || fo.picker.h < 300) {
+  fails.push("fail-open: 没走到「面板开着再点键盘键」这一步");
+} else if (!fp) {
+  fails.push("fail-press: 没采到点完键盘键之后的帧");
+} else {
+  if (!fp.picker || fp.picker.h < 300) {
+    fails.push(`fail-press: 键盘没起来，面板却被收掉了（picker=${fp.picker ? fp.picker.h : 0}px）—— 屏幕上只剩一片空白`);
+  }
+  if (!String(fp.barCls || "").includes("wp-emoji-open")) {
+    fails.push(`fail-press: 底条丢了 wp-emoji-open（cls=${fp.barCls}）—— 面板还在、条却先落下去了`);
+  }
+  if (fp.bar && fo.bar && !near(fp.bar.top, fo.bar.top)) {
+    fails.push(`fail-press: 面板没收，底条却动了（${fo.bar.top} → ${fp.bar.top}）`);
+  }
 }
 
 if (fails.length) {
