@@ -761,9 +761,11 @@ emoji-picker {
    * 新式子本身就是连续的（见 PAD_EXPR_IOS 的推导），照常走就是一条直线，
    * 钉反而会造出一个台阶。这里保留 !important + 关过渡，只是为了让它在
    * .wp-emoji-open 摘掉、内联 padding 清空的那一帧仍然接得住。 */
+  /* 轮 534 · 交接期也用同一个 --ios-pad：它本身就是连续量（盒子高每帧在变），
+   * 不需要再钉常量。!important + 关过渡是为了接住「.wp-emoji-open 摘掉、
+   * 内联 padding 清空」的那一帧。 */
   :host(.wp-kb-swap.ios-kb) .vac-box-footer {
-    padding-bottom: calc(var(--ios-fw-pad, 10px) + var(--wp-emoji-h, 320px) - var(--vtop, 0px)
-      - var(--kb-kbb, var(--kbb, 0px))) !important;
+    padding-bottom: var(--ios-pad, 320px) !important;
     transition: none !important;
   }
   /* 非 iOS 的 overlay 型内核（Firefox 安卓）保持轮 526 那条「钉成面板高」，
@@ -786,9 +788,58 @@ emoji-picker {
    * overflow-y:auto 的，滚一下就能看到；换来的是输入条彻底不再跳。
    *
    * 只在 .ios-kb 宿主上生效（那枚类由 isOverlayKb() 挂），安卓不受影响。 */
-  :host(.ios-kb) { --ios-fw-pad: 17px; }
-  :host(.ios-kb) .vac-emoji-wrapper .vac-emoji-picker:not(.vac-picker-reaction) {
-    bottom: calc(var(--ios-fw-pad, 17px) - var(--kb-now, 0px)) !important;
+  /* 轮 534 · iOS 的两个量：--ios-pad = 让位高 = 面板高，一处定义两边共用。
+   *
+   * 它只由**两个实测量**算出来，不再掺 --vtop / --kbb / --kb-now：
+   *   --chat-h    页面盒子此刻多高（chatViewport 每帧写，键盘动画期间同步更新）
+   *   --kb-pageh  键盘态盒子高（= 无键盘基线 − 键盘高，锁定的常量）
+   * 于是「输入条底 = 盒子底 − 让位」在两种状态下相同：
+   *   键盘态  chat-h = kb-pageh        → 让位 17 → 条底 = 盒子底 − 17
+   *   面板态  chat-h = 可视区高（更大） → 让位 = 差值 + 17 → 条底还是 盒子底 − 17
+   * 中间任何一帧（键盘收一半）也成立 —— 因为两项都是同一个盒子高在算。
+   *
+   * 之前那版式子拿 --vtop / --kbb 当工具，这两个量在不同代 Safari 上语义不同
+   * （工具栏算不算进可视高），真机视频里输入条被顶到标题栏底下 174pt、键盘态 390pt，
+   * 差 216pt —— 就是这个语义差被 --kbb 的闭环放大成 260 之后的结果。 */
+  :host(.ios-kb) {
+    --ios-fw-pad: 17px;
+    /* 让位（连续）：跟盒子高一起走，输入条在屏幕上的位置与盒子高度无关。
+     * 键盘收一半那一帧也算得出来 —— 因为分子分母是同一个盒子高。 */
+    --ios-pad: calc(var(--chat-h, var(--vlh, 0px)) - var(--kb-pageh,
+      calc(var(--vlh, 0px) - var(--kb-panel-h, 320px))) + var(--ios-fw-pad, 17px));
+    /* 面板本体（恒定）：只由「可视底 − 键盘态盒子底 + 基线」决定，跟键盘此刻收了多少无关。
+     * 这条是给 emoji 网格用的 —— 面板必须以**最终尺寸**插进 DOM。
+     * 上一版按键盘收起进度把面板往下推，打开那一帧高度只有 17px，emoji-picker 的
+     * 虚拟列表就按 0 行初始化了，之后高度变回来也没有重算（真机视频：一整片空白，
+     * 只剩底部一排分类图标）。尺寸恒定 ⇒ 第一帧就是满格。 */
+    --ios-sheet: calc(var(--kb-panel-h, 320px) - var(--kb-tb, 0px) + var(--ios-fw-pad, 17px));
+  }
+  /* 轮 534 · iOS 面板落位：**锚在 footer 的 padding 区**，位置由布局决定。
+   *
+   * 库本来就给 .vac-emoji-wrapper 写了 position:static、给 .vac-box-footer 写了
+   * position:relative —— 面板的定位宿主天生就是 footer，不需要任何像素运算。
+   * 让位有多高，padding 区就有多高，面板就填满它：面板顶 == 输入条底，是个恒等式。
+   *
+   * 这样做的直接后果是「面板再也不会掉到屏幕外」。上一版用
+   * bottom: calc(17px - var(--kb-now)) 把面板按键盘收起进度往下推，键盘全开时
+   * bottom 是 -313 —— 面板整个落在布局视口外。真机视频里表情面板一片空白、只剩
+   * 一排分类图标，就是 emoji-picker 在视口外初始化后没再回来重算（Safari 不会
+   * 因为一个 fixed 元素从屏幕外滑进来就重跑虚拟列表）。
+   *
+   * 现在面板永远待在 [输入条底, 盒子底] 这一段里，从插进 DOM 的第一帧就在可视区，
+   * 高度足够、位置正确，emoji 网格一上来就是完整的。键盘收起那 250ms 里它被系统
+   * 键盘盖住下半截 —— 那是系统层，看得见的只有输入条上面那 17px 基线，无感。 */
+  :host(.ios-kb.wp-emoji-open) .vac-emoji-wrapper .vac-emoji-picker:not(.vac-picker-reaction) {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    /* 面板顶 = 输入条底，两种状态都成立（推导见 :host(.ios-kb) 的 --ios-pad）。
+     * 定位宿主其实是 footer（面板祖先链上有 transform，fixed 会退化成相对 footer），
+     * 所以这里的 bottom 是「相对 footer 底」的负偏移。 */
+    bottom: calc(var(--ios-pad) - var(--ios-sheet)) !important;
+    width: auto !important;
+    height: var(--ios-sheet) !important;
+    transform: none !important;
   }
   /* 轮 514：几何全部交给 vendored 库（vendor/vue-advanced-chat 的 media 规则：
      position:fixed · left/right:0 · bottom:var(--kbb) · height:var(--kb-panel-h)）。
@@ -989,8 +1040,18 @@ const PAD_EXPR = "calc(7px + var(--wp-emoji-h, 320px) + var(--kb-kbb, var(--kbb,
  *
  * 另一个 7px：库给 .vac-box-footer 的底内边距本来就是 7px，这条内联表达式把
  * padding-bottom 整条接管后那 7px 会被抹掉（轮 524 踩过，每切一次上下 7px）。 */
-const PAD_EXPR_IOS = "calc(var(--ios-fw-pad, 10px) + var(--wp-emoji-h, 320px) - var(--vtop, 0px)"
-  + " - var(--kb-kbb, var(--kbb, 0px)))";
+/* 轮 534 · iOS 让位 = --ios-pad（定义见 THEME_CSS 的 :host(.ios-kb)）。
+ *
+ * 上一版是 calc(基线 + 面板高 − vtop − kb-kbb)，里面每一个量都在真机上被证伪：
+ *   · --vtop / --kbb 的语义两代 Safari 不一样（工具栏算不算进可视高），
+ *   · 页面上还有个 bottomPin 闭环在同一批变量上推（它把 --kbb 推到 ±260 上限），
+ *   两者叠加的结果就是输入条被顶到标题栏下面（真机 174pt，键盘态 390pt）。
+ *
+ * 新式子只用两个**同一把尺子量出来的**数：页面盒子此刻多高（--chat-h）、
+ * 键盘态盒子多高（--kb-pageh）。差值就是「盒子多出来的那段」，让位照着它加，
+ * 输入条在屏幕上的位置与盒子高度无关 —— 换任何一代 Safari 都不动。
+ * 面板高度也吃同一个变量，于是「面板顶 == 输入条底」由布局保证，不靠巧合。 */
+const PAD_EXPR_IOS = "var(--ios-pad, 320px)";
 /* 非 iOS 的 overlay 型内核（Firefox 安卓 resizes-visual）沿用轮 526 那条，
  * 跟 iOS 彻底分开：iOS 那条现在挂着 --ios-fw-pad，别的内核没有这个变量。
  * 内容与轮 526 逐字一致（没有 7px 基线），改的是行为边界，不是行为。 */
@@ -1700,12 +1761,22 @@ watch(() => props.hideHeader, () => nextTick(injectHead));
 watch(() => props.err, () => nextTick(syncErr));
 
 /* 轮 513 · 可视区底部的闭环校正（单独一条钩子，避免扰动 onMounted 里的首帧时序）。
- * 推的是 --kbb，页面高 / 吸底条 / 表情面板一起跟着走，见 utils/bottomPin.js。 */
-onMounted(() => startBottomPin(() => {
-  const n = el.value;
-  if (!n) return null;
-  return n.closest(".dm-page--chat") || n.closest(".dm-page") || n;
-}));
+ * 推的是 --kbb，页面高 / 吸底条 / 表情面板一起跟着走，见 utils/bottomPin.js。
+ *
+ * 轮 534 · **iOS 不启动这条闭环。**
+ * 它量的是「盒子底离可视区底还有多少」，然后把这个误差推回 --kbb；而 --kbb 同时
+ * 又是 iOS 让位算式的一项 —— 于是「修位置」和「算位置」抢同一个变量。真机视频里
+ * 的表现是它一路推到 +260 上限（工装里能直接看到 kbb=341），输入条直接沉到工具栏后面。
+ * iOS 的盒子高度已经由 chatViewport 用 visualViewport 逐帧钉死，闭环在这里没有任何
+ * 需要它补的误差，只有副作用。安卓那套（布局视口会缩、工具栏会跳）仍需要它。 */
+onMounted(() => {
+  if (isIosKbDevice()) return;
+  startBottomPin(() => {
+    const n = el.value;
+    if (!n) return null;
+    return n.closest(".dm-page--chat") || n.closest(".dm-page") || n;
+  });
+});
 onBeforeUnmount(() => {
   stopBottomPin();
   /* 骨架的 rAF 循环要跟着停，否则组件没了还在每帧查 shadowRoot */

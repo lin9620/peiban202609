@@ -84,6 +84,10 @@ let lockTimer = 0;
 let lockKb = -1;
 let kbUpAt = 0;
 let kbbFix = 0;      /* 闭环修正量（bottomPin 用，iOS 上也留着） */
+/* 轮 534 · 底部工具栏高（Safari 那条 < > ⬆ 📖）。键盘收起时 --kbb 就是它，
+ * 但键盘弹起时 --kbb 归 0，所以单独留一份「见过的工具栏高」，给面板定高用。
+ * 面板必须以恒定尺寸出现：高度跟着 --kbb 变，键盘收完那一刻会重排一次 emoji 网格。 */
+let tbH = 0;
 const FIX_LIMIT = 260;
 const FORCE_LOCK_MS = 900;
 let booted = false;
@@ -273,12 +277,15 @@ export function iosSyncViewportVars() {
    *   键盘态：inner 852 / offsetTop 330 + vv 522 → 0
    * 只给 fixed 的面板 / 吸底条用，iOS 上它必须是真实值（安卓那边恒 0，两套互不相干）。 */
   const kbb = kbbValue(inner, vvH, vtop, true, kbbFix);
+  /* 无键盘时（kbb > 0）把工具栏高记下来；键盘态 kbb 归 0，不覆盖。 */
+  if (!up && kbb > 12 && kbb < 160) tbH = kbb;
 
   const key = [inner, vvH, vtop, vph, kbNow, kbb, panelH, base, isNativeShell()].join("|");
   if (key === lastKey) return;
   lastKey = key;
 
   setVar(KBB, kbb + "px");
+  if (tbH > 0) setVar("--kb-tb", tbH + "px");
   setVar(VTOP, vtop + "px");
   setVar(VPH, vph + "px");
   setVar(VLH, inner + "px");

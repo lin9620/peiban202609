@@ -282,10 +282,16 @@ t("E15 会话页让位只挂表达式：面板高 − 键盘此刻占高（不�
     "收起面板没清内联让位 / overlay 分支丢了（输入条会一直悬空或被面板盖住）");
   has(BC, /const PAD_EXPR_OV = "calc\(var\(--wp-emoji-h, 320px\) - var\(--vtop, 0px\)\)"/,
     "非 iOS 的 overlay 让位式子变了（FF 安卓会整份让两次）");
-  has(BC, /const PAD_EXPR_IOS = "calc\(var\(--ios-fw-pad, 10px\) \+ var\(--wp-emoji-h, 320px\) - var\(--vtop, 0px\)"[\s\S]{0,120}?- var\(--kb-kbb, var\(--kbb, 0px\)\)\)"/,
-    "iOS 让位式子必须同时扣 --vtop 和按进度打折的 --kb-kbb：只扣 vtop 的话首尾两端对、"
-    + "中间那 81px（底部工具栏）会在页面盒子和 fixed 面板两个参照系之间来回滚，"
-    + "逐帧实测输入行从 405 窜到 174 再砸回 484");
+  has(BC, /const PAD_EXPR_IOS = "var\(--ios-pad, 320px\)";/,
+    "iOS 让位必须整条交给 --ios-pad（宿主不再自己拼式子）");
+  /* 轮 534：--ios-pad 只能由 --chat-h（盒子此刻多高）与 --kb-pageh（键盘态盒子高）组成。
+   * 这两个量是同一把尺子量出来的，差值就是「盒子多出来那一段」；换回 --vtop / --kbb
+   * 就退回旧病：两代 Safari 的工具栏语义不同，真机输入条被顶到标题栏底下 174pt。 */
+  has(BC, /--ios-pad: calc\(var\(--chat-h, var\(--vlh, 0px\)\) - var\(--kb-pageh,/,
+    "--ios-pad 没由 --chat-h − --kb-pageh 组成（换回 vtop/kbb 就是那个 174pt 的错位）");
+  /* 面板必须吃同一个变量定高（恒定终值），否则打开那一帧只有 17px，emoji 网格 0 行。 */
+  has(BC, /--ios-sheet: calc\(var\(--kb-panel-h, 320px\) - var\(--kb-tb, 0px\)/,
+    "iOS 面板高度不是恒定终值（打开瞬间高度过小 → emoji 网格不渲染，真机一片空白）");
   has(BC, /: "var\(--ios-fw-pad, 17px\)";/, "iOS 收起面板时没写回基线（会窜 10px）");
   has(BC, /sr\.querySelector\("#room-footer \.vac-box-footer"\)/, "让位没落在 .vac-box-footer（面板的定位宿主）上");
   /* 判据：桌面浮窗不能套这条（否则桌面 footer 也被顶起来 300） */

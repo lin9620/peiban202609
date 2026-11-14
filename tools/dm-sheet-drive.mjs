@@ -87,6 +87,30 @@ writeFileSync(expr, `(async () => {
       ta: R(ta), foot: R(foot),
       footPad: foot ? getComputedStyle(foot).paddingBottom : "-",
       picker: R(pk),
+      /* 临时诊断：面板里面到底渲染出多少格子（用完删） */
+      emojiInner: (() => {
+        const ep = pk && pk.querySelector("emoji-picker");
+        if (!ep) return null;
+        const r = ep.getBoundingClientRect();
+        const cs = getComputedStyle(ep);
+        const sh = ep.shadowRoot;
+        const q = (s) => {
+          const e = sh && sh.querySelector(s);
+          if (!e) return null;
+          const b = e.getBoundingClientRect();
+          return { t: Math.round(b.top), b: Math.round(b.bottom), h: Math.round(b.height) };
+        };
+        return {
+          r: { t: Math.round(r.top), b: Math.round(r.bottom), h: Math.round(r.height) },
+          height: cs.height, maxH: cs.maxHeight, display: cs.display,
+          sab: getComputedStyle(document.documentElement).getPropertyValue("--sab").trim(),
+          emojihVar: getComputedStyle(document.documentElement).getPropertyValue("--wp-emoji-h").trim(),
+          pkH: pk ? Math.round(pk.getBoundingClientRect().height) : -1,
+          pkCssH: pk ? getComputedStyle(pk).height : "-",
+          picker: q(".picker"), emojis: q(".emojis"), nav: q("nav"),
+          tabs: (sh && sh.querySelectorAll("nav button").length) || 0,
+        };
+      })(),
       hostCls: host.className,
       threadCls: (document.querySelector(".dm-thread") || {}).className || "",
     });
@@ -98,6 +122,10 @@ writeFileSync(expr, `(async () => {
   const ta0 = sr.querySelector("textarea.vac-textarea");
   if (!ta0) return { error: "no-textarea" };
 
+  /* 轮 534 · 真机启动那一刻底部工具栏就在（vv = 852 − 81），不是 852。
+     harness 之前不模拟这一条，于是「工具栏高」这个量从没被写进来。 */
+  __kbSim(H - TB, 0);
+  await sleep(200);
   snap("rest");
 
   /* ① 点输入框 → 键盘弹起（overlay 型：可视视口上推，innerHeight 不变） */
@@ -171,6 +199,7 @@ for (const r0 of data.rows) {
   if (process.argv.includes("--vars")) {
     console.log("    vars: kb-kbb=" + r0.kbkbb + " kb-now=" + r0.kbnow + " vlh=" + r0.vlh + " vlh-base=" + r0.vlhBase
       + " pageh=" + r0.pageh + " panelh=" + r0.panelH + " emojih=" + (r0.hst || {}).emojih + " chat-box=" + (r0.hst || {}).chatbox);
+    if (r0.emojiInner) console.log("    emoji: " + JSON.stringify(r0.emojiInner));
   }
 }
 console.log("\n宿主类: " + data.rows[data.rows.length - 1].hostCls + " / " + data.rows[data.rows.length - 1].threadCls);
@@ -211,7 +240,12 @@ for (const [nm, row] of [["emoji+16", e16], ["emoji+120", e120]]) {
   if (!pk) fails.push("emoji+120: 面板没出现");
   else {
     if (pk.t < 500) fails.push(`emoji+120: 面板顶在屏幕 ${pk.t}（该 ≥500，藏在键盘后面）—— 键盘还在收就把面板亮出来了`);
-    if (Math.abs(pk.h - 330) > 8) fails.push(`emoji+120: 面板高 ${pk.h}（该 = 键盘 330）`);
+    /* 轮 534：面板高 = 键盘高 + 17px 基线（面板铺到布局视口底，底部那一条落在
+     * 工具栏后面）。高度必须是**恒定终值**，不许随键盘收起进度变小 ——
+     * 上一版打开那一帧只有 17px，emoji 网格按 0 行初始化，之后一整片空白。 */
+    /* 面板高恒定 = 可视区高 − 键盘高 + 基线（852 − 81 − 330 + 17 = 266）。
+     * 恒定是关键：上一版按键盘收起进度缩，打开那一帧只有 17px，emoji 网格 0 行。 */
+    if (Math.abs(pk.h - 266) > 4) fails.push(`emoji+120: 面板高 ${pk.h}（该恒为 266 = 可视区 771 − 键盘态盒子 522 + 基线 17，不能随键盘收起变小）`);
   }
 }
 /* A3 · 面板 → 键盘那一下，钉住必须生效：输入行一步都不许动。
@@ -239,14 +273,17 @@ for (const [nm, row] of [["emoji+16", e16], ["emoji+120", e120]]) {
   const t = scrPos(panel, "ta");
   if (!pk) fails.push("panel: 面板没出现");
   else {
-    if (Math.abs(pk.h - 330) > 8) fails.push(`panel: 面板高 ${pk.h}（该 = 键盘 330）`);
+    if (Math.abs(pk.h - 266) > 4) fails.push(`panel: 面板高 ${pk.h}（该恒为 266）`);
     if (t && Math.abs(t.b - pk.t) > 3) fails.push(`panel: 输入行下沿 ${t.b} 与面板上沿 ${pk.t} 不齐`);
-    /* 让位量 = 面板**可见**高度（底部那条被工具栏截掉的部分不算） */
-    const visible = Math.max(0, 771 - pk.t);
+    /* 轮 534：让位 = 面板全高（不是可见高）。面板顶压在输入条下沿、底铺到布局视口底，
+     * 底部那 81px 落在 Safari 工具栏后面 —— 这是「输入条不跳」必须付的账。 */
+    /* 让位 = 盒子底 − 面板顶（盒子比可视区高出一条工具栏时，让位会比面板高多那一条）。 */
     const pad = parseFloat(String(panel.footPad)) || 0;
-    if (Math.abs(pad - visible) > 4) {
-      fails.push(`panel: 让位 ${pad}px ≠ 面板可见高 ${visible}（会留缝或压住）`);
+    const boxB = (panel.page && panel.page.b) || 0;
+    if (boxB && Math.abs(pad - (boxB - pk.t)) > 4) {
+      fails.push(`panel: 让位 ${pad}px ≠ 盒子底 ${boxB} − 面板顶 ${pk.t}（会留缝或压住）`);
     }
+    if (pk.b > 856) fails.push(`panel: 面板底 ${pk.b} 超出视口（铺不到底，底下会露页面）`);
   }
 }
 /* A6 · **键盘态与面板态，输入行必须停在同一个像素上。**

@@ -21,7 +21,7 @@
  * 断言只有四条，全部对着「用户看见什么」：
  *   K1 键盘态、面板态、切回来之后，输入行底停在**同一个像素**（容差 4）
  *   K2 面板打开到切回键盘的**每一帧**，输入行位移 ≤ 4（逐帧零跳动）
- *   K3 面板顶 = 输入行底，面板高 = 键盘高
+ *   K3 面板顶 = 输入行底，面板高 = 键盘高 + 基线（17），且从第一帧就是终值
  *   K4 面板不跑到屏幕外（键盘态时允许藏在键盘后面）
  */
 import { spawnSync } from "node:child_process";
@@ -238,7 +238,16 @@ const kbBack = need("kb-back");
 {
   if (!panel.pk) fails.push("K3: 面板态没量到面板");
   else {
-    if (Math.abs(panel.pk.h - data.kb) > 8) fails.push(`K3: 面板高 ${panel.pk.h}（该 = 键盘 ${data.kb}）`);
+    /* 轮 534：面板高 = 键盘高 + 17px 基线（铺到布局视口底，底部一条落在工具栏后）。
+     * 恒定是关键：上一版按键盘收起进度缩，打开那一帧只有 17px，emoji 网格 0 行。 */
+    /* 面板高 = 键盘高 + 基线 − 工具栏。工具栏这一条来自 --kb-tb（无键盘时实测），
+     * 两种 vv 语义下它可能是 81 也可能是 0（工具栏算不算进可视高），所以给区间：
+     * 上限 = 不减工具栏，下限 = 减满。区间外才算错。 */
+    const hi = data.kb + 17;
+    const lo = hi - (data.tb || 0);
+    if (panel.pk.h > hi + 4 || panel.pk.h < lo - 4) {
+      fails.push(`K3: 面板高 ${panel.pk.h}（合法区间 ${lo}..${hi} = 键盘 ${data.kb} + 基线 17 − 工具栏 0..${data.tb}）`);
+    }
     if (panel.ta && Math.abs(panel.ta.b - panel.pk.t) > 3) {
       fails.push(`K3: 输入行底 ${panel.ta.b} 与面板顶 ${panel.pk.t} 不齐（裂 ${Math.abs(panel.ta.b - panel.pk.t)}px）`);
     }

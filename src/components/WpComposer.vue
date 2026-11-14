@@ -628,7 +628,17 @@ defineExpose({
   }
   .wp-composer-picker emoji-picker {
     width: 100%;
-    height: calc(100% - var(--sab, env(safe-area-inset-bottom, 0px)));
+    /* 轮 534 · 再扣掉底部工具栏那一条（--kb-tb，iosKb 实测）。
+     *
+     * 面板本身是「贴布局视口底、高 = 键盘高」，在 iOS Safari 上布局视口底在工具栏
+     * 下面 —— 面板最后 81px 是压在工具栏后面的，emoji 网格跟着往下铺，用户看到的
+     * 就是「最后一排表情被切掉、底下还露出一截工具栏图标」（用户视频 2026-11-15）。
+     * 把网格高度减掉这一条：格子排到工具栏上沿就结束，面板背景继续铺到底 ——
+     * 面板顶、输入框、网格底边三处同时对齐，且面板位置和 transform 一个像素都不用动
+     * （动了就会在键盘收起的那一刻跳一下）。
+     *
+     * --kb-tb 只在 iOS 上有值；安卓 / 桌面取 0，这条规则与改造前完全等价。 */
+    height: calc(100% - var(--kb-tb, 0px) - var(--sab, env(safe-area-inset-bottom, 0px)));
     --emoji-size: 1.35rem;
     --emoji-padding: .35rem;
   }

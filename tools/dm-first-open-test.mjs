@@ -79,7 +79,9 @@ t("F6 messages-loaded 仍由 loaded 驱动", () => {
 });
 
 t("F7 首帧 onMounted 不关正在加载的 loader", () => {
-  const f = fnBody(VAC, "onMounted(() => {", "onBeforeUnmount");
+  /* 轮 534：组件里现在有两个 onMounted（可视化底闭环 / 主挂载），按 `onMounted(() => {`
+     取会取到第一个 —— 那是闭环钩子，本来就没有 loader 判断。用 bind() 这个语义边界。 */
+  const f = fnBody(VAC, "onMounted(() => {\n  bind();", "watch(() => curRoom.value");
   assert.ok(f, "找不到 onMounted");
   has(f, /if \(props\.loadingMessages && !curMsgs\.value\.length\) return;/, "挂载首帧无条件把 loaded 翻 true（手机首开会露空态）");
 });

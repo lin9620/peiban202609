@@ -183,7 +183,22 @@ function sync() {
    * 键盘态下 rect.h 本来就等于 --kb-pageh，取 min 不产生任何变化。 */
   if (emojiSheetOpen()) {
     const kp = kbPageHeight();
-    if (kp > 0 && kp < h) h = kp;
+    /* 轮 534 · iOS 绝不能钉这里。
+     *
+     * 钉盒子的本意是「键盘态盒子高 = 面板态盒子高，输入条不动」，可它成立的前提是
+     * **面板高 = 视口底 − 盒子底**（轮 521 的式子）。轮 524 把面板高改成常量
+     * （--kb-panel-h，锁定的键盘高）之后，这个前提没了：
+     *   盒子被钉成 base − 键盘高（iPhone 8：667 − 260 = 407），
+     *   让位却是 面板高 − 工具栏 + 基线（260 − 44 + 17 = 233），
+     *   于是输入条底 = 407 − 233 = 174 —— 顶到标题栏底下，聊天记录整片消失。
+     * 真机视频（2026-11-15）就是这个：表情态输入框在屏幕 174，键盘态在 390，差 216。
+     *
+     * iOS 上盒子必须**跟着可视区走**（工具栏在 ⇒ 623），让位式子里的工具栏项
+     * 才会和盒子互相抵消：623 − 233 = 390 = 键盘态。安卓那边面板高仍是
+     * 「视口底 − 盒子底」，钉法照旧，不能一起动。
+     * 判据用 html.kb-ios（iosKb 挂的），不 import iOS 模块，保持两套互相绝缘。 */
+    const isIos = document.documentElement.classList.contains("kb-ios");
+    if (!isIos && kp > 0 && kp < h) h = kp;
   }
   const kbOpen = rect.kbOpen;
   const left = Math.round(vv ? vv.offsetLeft : 0);

@@ -88,8 +88,11 @@ t("V8 宿主不再内联改面板几何（两套机制并存必然打架）", ()
      且 iOS 收起面板时写回基线而不是清空。详见 emoji-panel-test 的 E15。 */
   has(BC, /foot\.style\.paddingBottom = emojiPadOn \? \(ov \? PAD_EXPR_OV : PAD_EXPR\) : "";/,
     "收起面板没清内联让位 / overlay 分支丢了（输入条会一直悬空或被面板盖住）");
-  has(BC, /const PAD_EXPR_IOS = "calc\(var\(--ios-fw-pad, 10px\) \+ var\(--wp-emoji-h, 320px\) - var\(--vtop, 0px\)"[\s\S]{0,120}?- var\(--kb-kbb, var\(--kbb, 0px\)\)\)"/,
-    "iOS 让位式子必须同时扣 --vtop 和 --kb-kbb（只扣 vtop 中间那 81px 会让输入行在切换里往返窜 200 多像素）");
+  has(BC, /const PAD_EXPR_IOS = "var\(--ios-pad, 320px\)";/,
+    "iOS 让位必须整条交给 --ios-pad（旧式子里的 --vtop/--kbb 在两代 Safari 上语义不同，"
+    + "真机输入条被顶到标题栏下面 174pt）");
+  has(BC, /--ios-pad: calc\(var\(--chat-h, var\(--vlh, 0px\)\) - var\(--kb-pageh,/,
+    "--ios-pad 没由 --chat-h − --kb-pageh 组成");
   has(BC, /const PAD_EXPR = "calc\(7px \+ var\(--wp-emoji-h, 320px\)/, "让位表达式没把那 7px 底内边距加回去（输入行会随键盘/面板切换上下跳 7px）");
   has(BC, /- var\(--kb-now, 0px\)/, "让位没扣「键盘此刻占高」（resize 型内核上会算两次，条窜到上半屏）");
   no(BC, /getBoundingClientRect\(\)\.height/, "又回去量面板 rect 了（采样时机必然踩空）");

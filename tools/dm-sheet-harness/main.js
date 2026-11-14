@@ -12,6 +12,11 @@ import "../../src/style.css";
 import DmVacChat from "../../src/components/DmVacChat.vue";
 import { initKeyboardInset } from "../../src/utils/keyboardInset.js";
 import { initViewportVars } from "../../src/utils/viewportVars.js";
+/* 轮 534 · 必须挂：真机上 .dm-page 是 position:fixed + 内联像素高（chatViewport 写的）。
+ * 这个 harness 之前没挂，盒子高度由 CSS 的 100dvh 决定 = 852，而真机上面板态被钉成
+ * 522 —— 于是工装量出输入条 505（绿），真机是 256（顶到屏幕上半部）。
+ * 少了这一行，这个工装量的是一个真机上不存在的布局。 */
+import { initChatViewport } from "../../src/utils/chatViewport.js";
 
 /* ── 假 visualViewport（与 wallbar-harness 同一手法）─────────────────
  * iOS overlay 型：键盘弹起时 innerHeight 不变，只有 visualViewport 变矮/上推。 */
@@ -77,5 +82,6 @@ createApp(App).mount("#app");
 /* 与真页面同一条启动顺序：先视口变量（挂 kb-web / 判内核型），再键盘让位 */
 initViewportVars();
 initKeyboardInset();
+initChatViewport();
 
 requestAnimationFrame(() => { window.__ready = true; });
