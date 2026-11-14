@@ -158,6 +158,33 @@ function kbIsUp(inner, vvH) {
   return kbHeight(inner, vvH) > 0;
 }
 
+/* ═══ 轮 537 · 第二种语义：这个内核真的会缩布局视口 ═══
+ *
+ * 上面那一整段（①「布局视口不随键盘缩」）在这台真机上**不成立**。用户 2026-11-15
+ * 06:01 的三张 ?kbdiag=1 照片给出了铁证：
+ *     innerHeight = 422（键盘弹起）、549（键盘收起）；docScroll 142 + docH 563
+ *     正好等于 563 − 422 —— 文档真的只剩 422 可视，不是读数抖动。
+ *
+ * 为什么会这样：index.html 的 viewport 写着 `interactive-widget=resizes-content`。
+ * 以前 Safari 忽略它，现在这版**照做了** —— 布局视口跟着键盘一起缩。
+ * 于是 `inner − vvH` 剩下 4px（vv 跟着一起缩），低于 KB_MIN 被当成工具栏，
+ * `--kb-now` 恒 0：让位算式和轮 536 的交接守卫都以为「这台设备永远没有键盘」——
+ * 面板永远不收（用户看到「表情和键盘叠在一起」），点键盘键也永远等不到键盘（「点不动」）。
+ *
+ * 所以补一条独立信号：**布局视口比开机基线矮了多少**。
+ * 它只在 resizes-content 型内核上有值，overlay 型恒 0，两种语义互不干扰。
+ * 注意它**不能**并进 --kb-now：resize 型内核已经把页面缩好了，再让位一次就是双算。
+ * 它只回答一个问题：「此刻键盘在不在屏上」。
+ *
+ * 阈值 100：Safari 工具栏伸缩最多 ~81，真键盘 ≥127，中间留量级余量。 */
+const SHRINK_MIN = 100;
+
+/** 布局视口相对开机基线缩了多少（resize 型内核的键盘度量；overlay 型恒 0）。 */
+function shrinkOf(baseH, inner) {
+  if (!(baseH > 0) || !(inner > 0)) return 0;
+  return Math.max(0, Math.round(baseH - inner));
+}
+
 /* ── 锁面板高 ────────────────────────────────────────────────────
  * iOS 上「点表情」会立刻开始收键盘，读数从 330 一路掉到 81。如果照安卓那样
  * 「读数变了就重新计时」，定时器会一直重设、直到键盘收完 kbUp 变假才停 ——
@@ -256,6 +283,13 @@ export function iosSyncViewportVars() {
 
   const kb = kbHeight(inner, vvH);
   const up = kb > 0;
+  /* 轮 537 · resize 型内核（interactive-widget=resizes-content 真生效的那些）：
+   * 键盘在屏上的证据不是 inner−vvH（它被两边一起缩抵掉了），而是「布局视口比基线矮了」。 */
+  const shrink = shrinkOf(base, inner);
+  /* 只看几何，**不加焦点判据**：用户 06:01 那张会话截图里 act=无 —— 点完键盘键之后
+   * 焦点其实丢了（组件重渲染把 textarea 换掉了），拿焦点当必要条件会让 kbOn 永远是假，
+   * 又回到「面板不收 / 点了没反应」。工具栏伸缩最多 ~81px，被下面 100 的阈值挡住。 */
+  const kbOn = up || shrink >= SHRINK_MIN;
 
   if (up) {
     if (!kbUpAt) kbUpAt = Date.now();
@@ -280,7 +314,7 @@ export function iosSyncViewportVars() {
   /* 无键盘时（kbb > 0）把工具栏高记下来；键盘态 kbb 归 0，不覆盖。 */
   if (!up && kbb > 12 && kbb < 160) tbH = kbb;
 
-  const key = [inner, vvH, vtop, vph, kbNow, kbb, panelH, base, isNativeShell()].join("|");
+  const key = [inner, vvH, vtop, vph, kbNow, kbb, panelH, base, shrink, isNativeShell()].join("|");
   if (key === lastKey) return;
   lastKey = key;
 
@@ -313,6 +347,15 @@ export function iosSyncViewportVars() {
       peak: peakKb || null,
       kind: "overlay",
       engine: "ios",
+      /* 轮 537 · 这台设备上的「键盘在不在」只能从这里读：
+       *   kbNow  —— overlay 型：键盘此刻盖住多少（resize 型恒 0）
+       *   shrink —— resize 型：布局视口比基线矮多少（overlay 型恒 0）
+       *   kbOn   —— 两者取或，就是「屏上到底有没有键盘」
+       * 让位算式仍然只吃 kbNow（resize 型的页面已经被浏览器缩好了，再让位就是双算）；
+       * 只有「面板该不该给键盘让路」这类**状态判断**才用 kbOn。 */
+      kbOn,
+      shrink,
+      kbKind: shrink >= SHRINK_MIN ? "resize" : "overlay",
       at: Date.now(),
     };
   } catch (e) { /* 忽略 */ }

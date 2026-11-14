@@ -234,6 +234,33 @@ writeFileSync(expr, `(async () => {
   await sleep(1300);          /* 40 帧兜底 = 660ms，留足余量 */
   snap("fail-press");
 
+  /* ═══ 轮 537 · 换一种内核语义再走一遍 ═══
+     用户 2026-11-15 06:01 三张 ?kbdiag=1 照片证明他这台 iPhone 上 innerHeight 会从
+     549 掉到 422（线上 viewport 写了 interactive-widget=resizes-content，这版 Safari
+     照做了）。此时 inner − vv 只剩 4px，--kb-now 恒 0 —— 只按 overlay 模拟的
+     前面那些档位**全都测不到**他报的「表情压在键盘上 / 第三下点不动」。
+     这里把布局视口也一起缩（__kbResizeMode），连走三轮「键盘 → 表情 → 键盘」。 */
+  window.__kbResizeMode = true;
+  __kbSim(H - 81, 0);
+  await sleep(600);
+  snap("rz-rest", true);
+  __kbSim(H - 330, 0);
+  await sleep(600);
+  snap("rz-kb0", true);
+  {
+    const ico = () => document.querySelector(".cmt-main-bar .wp-composer-ico.is-emoji");
+    for (let c = 1; c <= 3; c++) {
+      if (!ico()) break;
+      ico().click();                     /* 键盘 → 表情 */
+      __kbSim(H - 81, 0);                /* 键盘收起：布局视口跟着回来 */
+      await sleep(650); snap("rz-panel" + c, true);
+      ico().click();                     /* 表情 → 键盘 */
+      __kbSim(H - 330, 0);               /* 键盘起来：布局视口跟着缩 */
+      await sleep(950); snap("rz-kbback" + c, true);
+      await sleep(500); snap("rz-kbend" + c, true);
+    }
+  }
+
   return {
     dpr: window.devicePixelRatio,
     w: window.innerWidth, h: window.innerHeight,
@@ -427,6 +454,26 @@ if (!lo || !lo.picker || lo.picker.h < 300) {
       fails.push(`late-kb: 键盘态底条没贴可视区底（bar.bottom=${lk.bar.bottom} visBottom=${lk.visBottom}）`);
     }
   }
+}
+
+/* ═══ 轮 537 · resize 语义下连走三轮：面板必须交给键盘 ═══
+ * 判据只用「看得见的东西」：键盘态那一帧，表情面板不许还画着；底条要贴可视区底。 */
+for (let c = 1; c <= 3; c++) {
+  const pe = step("rz-panel" + c);
+  const kend = step("rz-kbend" + c);
+  if (!pe) { fails.push(`rz-panel${c}: 没走到（面板没打开，后面的切换不成立）`); break; }
+  if (!pe.picker || pe.picker.h < 40) fails.push(`rz-panel${c}: 点了表情，面板没出来（${pe.picker ? pe.picker.h : 0}px）`);
+  if (!kend) { fails.push(`rz-kbend${c}: 没采到「切回键盘」的落定帧`); continue; }
+  if (kend.picker && kend.picker.h > 8) {
+    fails.push(`rz-kbend${c}: 键盘已经起来，表情面板还画在 ${kend.picker.top}..${kend.picker.bottom}（${kend.picker.h}px）—— 「表情压在键盘上」`);
+  }
+  if (String(kend.barCls || "").includes("wp-emoji-open")) {
+    fails.push(`rz-kbend${c}: 键盘已经起来，底条还挂着 wp-emoji-open（cls=${kend.barCls}）`);
+  }
+  /* 这里**不**断言 bar.bottom = visBottom：工装只能改 JS 读到的 innerHeight，
+   * CSS 的布局视口仍是探针窗口那么大（852），position:fixed 不会跟着缩 ——
+   * 那一条在 resize 语义下量的是工装自己的局限，不是产品。真机上布局视口真的缩了，
+   * 条自然落在键盘上沿（用户 06:01 截图里 bar=242..417、屏底 422 就是这副样子）。 */
 }
 
 if (fails.length) {

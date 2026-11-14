@@ -171,7 +171,8 @@ t("E10 轮400 表情键二次点击 = 键盘键（换图标 + 回焦点 + 让位
      先 holdForKeyboard，收完再把焦点还给 textarea。
      轮 520：轮询收面板的那次 btn.click() 会再次触发本监听，所以头部多了一行
      `if (closingPanel) return;` —— 锚点改成从「拦截标记」开始切。 */
-  const at = BC.indexOf('if (closingPanel) return;\n    const picker = sr.querySelector(".vac-emoji-picker");');
+  /* 轮 537：前面多了一个 panelTapGiveUp（连续没接住就把控制权还给组件），锚点跟着更新。 */
+  const at = BC.indexOf('if (closingPanel || panelTapGiveUp) return;\n    const picker = sr.querySelector(".vac-emoji-picker");');
   assert.ok(at > 0, "找不到表情键的二次点击监听");
   const b = BC.slice(at, at + 3200);   /* 轮 520：加了大段说明，窗口放宽 */
   has(b, /if \(!path\.includes\(btn\)\) return;/, "没限定只接表情/键盘键");
@@ -182,7 +183,7 @@ t("E10 轮400 表情键二次点击 = 键盘键（换图标 + 回焦点 + 让位
   /* 轮 536 · iOS 不再数帧（40 帧 = 660ms 会把迟到的键盘漏掉，面板永远不收 ——
      用户 2026-11-15 截图：emoji 格子和键盘同时在屏上），改成互斥守卫按状态收；
      其它内核保留原来的轮询。 */
-  has(b, /if \(IOS_KB\) \{\s*\n\s*armPanelKbGuard\(\);/, "iOS 没把收面板交给互斥守卫");
+  has(b, /if \(IOS_KB\) \{\s*\n[\s\S]{0,200}armPanelKbGuard\("up"\);/, "iOS 没把收面板交给互斥守卫");
   has(b, /const closeWhenKb = \(\) => \{[\s\S]{0,600}btn\.click\(\)/, "其它内核没有「键盘到位再收面板」的轮询");
   /* 轮 510：焦点必须**同步**还回去 —— iOS 只在用户手势的同步栈里认 focus()，
      以前这里写的是 setTimeout(…, 0)，键盘根本不会弹，用户看到的就是「折叠」。 */

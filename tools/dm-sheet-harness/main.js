@@ -45,6 +45,30 @@ window.__kbSim = (hgt, top, scale) => {
   window.dispatchEvent(new Event("resize"));
 };
 
+/* ── 轮 537 · 第二种语义：内核真的缩布局视口 ──────────────────────
+ * 真机（用户 2026-11-15 06:01 三张 kbdiag 照片）上 innerHeight 会从 549 掉到 422，
+ * 因为线上 viewport 写了 interactive-widget=resizes-content，这版 Safari 照做了。
+ * 那时 inner − vv 只剩 4px —— 只按 overlay 模拟的工装永远复现不出
+ * 「面板不收 / 键盘键点不动」这两个症状。这里把 innerHeight 也做成可模拟的。 */
+let simInner = 0;
+const REAL_INNER = window.innerHeight;   /* 开机那一次的真值（探针窗口高） */
+try {
+  Object.defineProperty(window, "innerHeight", {
+    configurable: true,
+    get: () => (simInner > 0 ? simInner : REAL_INNER),
+  });
+} catch (e) { /* 老内核忽略 */ }
+window.__kbSimResize = (inner, vvH, top) => {
+  simInner = inner > 0 ? inner : 0;
+  const base = simInner || REAL_INNER;
+  vvState.height = vvH > 0 ? vvH : base;
+  vvState.offsetTop = top > 0 ? top : 0;
+  vvState.scale = 1;
+  (vvOn.resize || []).forEach((f) => f({}));
+  (vvOn.scroll || []).forEach((f) => f({}));
+  window.dispatchEvent(new Event("resize"));
+};
+
 document.documentElement.style.setProperty("--sab", "34px");
 document.documentElement.style.setProperty("--sat", "47px");
 
@@ -76,6 +100,16 @@ const App = {
     ]),
   ]),
 };
+
+/* 轮 537 · 先把「这台设备量到过键盘高」写进 localStorage。
+ *
+ * 真机上 --kb-panel-h 是**锁过一次就一直记着**的（iosKb.savePanelLocked，跨会话保留）。
+ * 工装每次都是全新 profile，如果不预置，resize 语义下（inner−vv 恒 4px）永远锁不上，
+ * 面板就退回 CSS 的 320 兜底 —— 那是另一套几何，量出来的东西和真机不是一回事。
+ * 用户那台机器上 --kb-panel-h = 259px（他 06:01 的截图里就写着），这里统一按 330 预置。 */
+try {
+  localStorage.setItem("wp-kb-panel-ios", JSON.stringify({ h: 330, w: 393, at: Date.now() }));
+} catch (e) { /* 隐私模式忽略 */ }
 
 createApp(App).mount("#app");
 

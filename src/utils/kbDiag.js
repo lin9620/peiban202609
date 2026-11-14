@@ -67,6 +67,9 @@ export function installKbDiag() {
           + ` kbb=${getComputedStyle(html).getPropertyValue("--kbb").trim() || "无"}`
           + ` kb-tb=${getComputedStyle(html).getPropertyValue("--kb-tb").trim() || "无"}`
           + ` panel=${(window.__wpVars || {}).panel || "-"}`
+          + ` kbOn=${(window.__wpVars || {}).kbOn ? 1 : 0}`
+          + ` shrink=${(window.__wpVars || {}).shrink || 0}px`
+          + ` 型=${(window.__wpVars || {}).kbKind || "-"}`
           + ` open=${html.classList.contains("wp-emoji-open") ? 1 : 0}`,
         /* 轮 469：评论区「打字看不见」排查 —— 焦点到底落在谁身上、那个框在屏幕哪里。
          * 只看 on=1 还不够，要看 t/b 是否落在可视区底以内（被键盘盖住就是 b > 可见高）。 */

@@ -28,6 +28,14 @@
  *      不读 getComputedStyle —— 这段跑在键盘动画里，强制重排会把弹出打断。
  *
  * 非 iOS 自动空转：判据是 __wpVars.engine === "ios"，安卓那套状态机一个字都不碰。
+ *
+ * ═══ 轮 537 · 这台设备推翻了上面「键盘只会 overlay」的前提 ═══
+ * 用户三张 ?kbdiag=1 照片：键盘明明在屏上，`--kb-now` 却是 0px（innerHeight 也从
+ * 549 缩到 422 —— 线上 viewport 声明了 interactive-widget=resizes-content，这版内核照做了）。
+ * 于是「kbNow > 12 才算键盘」这条判据在这台机器上永远为假：面板永远不交班（表情压着键盘），
+ * 点键盘键也永远等不到「键盘上来」（点了没反应）。
+ * 改成读 __wpVars 的 `kbOn` / `shrink`（iosKb.js 轮 537 补的第二条信号），
+ * 两种语义都能认出键盘；像素算式那边一律不动（resize 型的页面已经被浏览器缩好了）。
  */
 
 const RISE_EPS = 1;      /* 一帧涨超过它才算「在升」（读数抖动都在 1px 以内） */
@@ -35,21 +43,39 @@ const SETTLE_FRAMES = 6; /* 高度连续这么多帧不变 = 停稳（≈100ms�
 const KB_MIN = 12;       /* 低于它就是「没键盘」（工具栏那一截不算） */
 const CAP_MS = 3000;     /* 守卫最长存活时间：3 秒还等不到就收工，不留常驻 rAF */
 
+/* 轮 537 · 键盘此刻「在屏上」有多深。两种语义各一条，取大者：
+ *   overlay 型（经典 iOS Safari）：kbNow = inner − vvH
+ *   resize 型（本机：viewport 声明了 resizes-content，内核照做了）：shrink = 基线 − inner
+ * 只用来**判断状态**，不参与任何像素算式 —— 让位那边仍然只吃 --kb-now，
+ * 否则 resize 型会被双算一次（页面已经被浏览器缩好了）。 */
+function depthOf(v) {
+  const kbNow = Math.max(0, Number(v.kbNow) || 0);
+  const shrink = Math.max(0, Number(v.shrink) || 0);
+  return Math.round(Math.max(kbNow, shrink));
+}
+
 /**
  * 面板开着的时候调用，返回 stop()。
  * @param {() => void} onYield 键盘真的起来了 —— 调用方负责把面板收掉
+ * @param {{expect?: "rise"|"up"}} [opts]
+ *   rise（默认）：等键盘**升上来**才让位。用在「面板刚打开」那一刻 ——
+ *     那时键盘只会往下走（我们 blur 掉了），不能把「开局就有键盘」当成用户要键盘。
+ *   up：调用方已经知道用户要键盘（他刚点了键盘键）。此时键盘可能**早就在屏上**
+ *     （上一轮没收拾干净 / 焦点本来就在），没有「升」可等 —— 直接按停稳处理，
+ *     否则这一个永远等不到上升的守卫会把界面卡死在「点了没反应」。
  */
-export function startPanelKbGuard(onYield) {
+export function startPanelKbGuard(onYield, opts) {
   const noop = () => {};
   if (typeof window === "undefined" || typeof requestAnimationFrame !== "function") return noop;
   const wv = window.__wpVars;
   if (!wv || wv.engine !== "ios") return noop;
+  const expect = (opts && opts.expect) === "up" ? "up" : "rise";
 
   let raf = 0;
   let stopped = false;
   let prev = -1;
   let stable = 0;
-  let armed = false;      /* 见过键盘往上长 —— 用户要的是键盘 */
+  let armed = false;      /* 认定「用户要键盘」—— 之后只看它停没停稳 */
   const started = Date.now();
 
   const stop = () => {
@@ -62,21 +88,25 @@ export function startPanelKbGuard(onYield) {
     if (stopped) return;
     const v = window.__wpVars;
     if (!v || v.engine !== "ios") { stop(); return; }
-    const kb = Math.max(0, Math.round(v.kbNow || 0));
+    const kb = depthOf(v);
     const panel = Math.round(v.panel || 0) || 320;
 
     /* 第一帧只取基线。**不能**把「开局就有键盘」当成「在升」——
      * 点表情那一刻键盘本来就还开着（随后才收），那样会在 100ms 后把刚打开的面板收掉
-     * （用户看到的就是「点表情没反应」）。*/
+     * （用户看到的就是「点表情没反应」）。
+     * 但 expect=up 时相反：那一刻键盘在屏上就是用户要的结果，直接认。*/
     if (prev < 0) {
       prev = kb;
+      if (expect === "up" && kb > KB_MIN) armed = true;
       stable = 0;
       raf = requestAnimationFrame(tick);
       return;
     }
 
     if (kb > KB_MIN) {
-      if (kb > prev + RISE_EPS) { armed = true; stable = 0; } else { stable += 1; }
+      if (kb > prev + RISE_EPS) { armed = true; stable = 0; }
+      else if (kb < prev - RISE_EPS) { stable = 0; }   /* 还在降 —— 不是「停稳」 */
+      else { stable += 1; }
       prev = kb;
       /* 升满，或升到某个高度后不再变（短键盘 / 只起了候选栏）—— 都算「键盘在屏上」 */
       if (armed && (kb >= panel - 6 || stable >= SETTLE_FRAMES)) {

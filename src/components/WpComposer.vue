@@ -217,7 +217,10 @@ const closeForKeyboard = () => {
     /* 守卫有 3 秒存活上限（不留常驻 rAF）：面板开久了再点键盘键，得重新起一次，
        否则这一下没人接。起一次就好，键盘真不来的话面板继续留着当输入方式。 */
     stopKbGuard();
-    kbGuardStop = startPanelKbGuard(() => { emojiOpen.value = false; });
+    /* 轮 537 · expect:"up" —— 用户刚点了键盘键，这一下的目的是「键盘」。键盘可能
+       早就在屏上（上一轮没收干净 / 焦点本来就在），没有「升」可等；再按「等它升」
+       就永远等不到，表现就是「点了没反应」。 */
+    kbGuardStop = startPanelKbGuard(() => { emojiOpen.value = false; }, { expect: "up" });
     return;
   }
   closeFrames = 40;

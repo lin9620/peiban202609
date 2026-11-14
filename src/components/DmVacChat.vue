@@ -1151,7 +1151,7 @@ const setEmojiOpen = (open) => {
   if (!n) return;
   n.classList.toggle("wp-emoji-open", open);
   /* 轮 536：面板开合是唯一漏斗，互斥守卫在这里起停（见文件下方 armPanelKbGuard） */
-  if (open) armPanelKbGuard(); else stopPanelKbGuard();
+  if (open) { clearPanelGiveUp(); armPanelKbGuard(); } else { stopPanelKbGuard(); clearPanelGiveUp(); }
   if (open) setHtmlEmojiOpen(true);
   else if (!n.classList.contains("wp-kb-swap")) setHtmlEmojiOpen(false);
   /* 轮 503：面板开着 = 键盘让位必须为 0（页面要展开到整屏，面板才铺得满）。
@@ -1340,6 +1340,28 @@ let closingPanel = false;
  * 这条守卫把它换成状态判据：面板开着期间逐帧盯键盘，键盘真停稳就收。
  * 见 utils/iosPanelGuard.js（非 iOS 自动空转，安卓那套一字未动）。 */
 let panelGuardStop = 0;
+/* 轮 537 · 「这一下没接住」的标记。
+ * 面板开着时我们会在 click 的捕获阶段**吞掉**点键盘键的那一下（自己申请键盘 + 延后收面板）。
+ * 万一键盘始终没来（焦点被组件重渲染吃掉之类），每一次点击都会被吞掉 —— 用户看到的是
+ * 「键盘键点不动了」，而且**永远**好不了。所以给一个兜底：连续 1.2 秒既没键盘也没收面板，
+ * 就把控制权还给组件（下一次点击走组件自己的 toggle，至少会关掉面板，有可见反馈）。 */
+let panelTapGiveUp = false;
+let panelGiveUpTimer = 0;
+function clearPanelGiveUp() {
+  if (panelGiveUpTimer) { clearTimeout(panelGiveUpTimer); panelGiveUpTimer = 0; }
+  panelTapGiveUp = false;
+}
+function armPanelGiveUp() {
+  if (panelGiveUpTimer) clearTimeout(panelGiveUpTimer);
+  panelGiveUpTimer = setTimeout(() => {
+    panelGiveUpTimer = 0;
+    const n = el.value;
+    const wv = window.__wpVars;
+    if (!n || !n.classList.contains("wp-emoji-open")) return;
+    if (wv && (wv.kbOn || (Number(wv.kbNow) || 0) > 12)) return;   /* 键盘到了，守卫会收 */
+    panelTapGiveUp = true;
+  }, 1200);
+}
 function stopPanelKbGuard() {
   if (!panelGuardStop) return;
   try { panelGuardStop(); } catch (e) { /* 忽略 */ }
@@ -1357,9 +1379,9 @@ function yieldPanelForKb() {
   try { btn.click(); } catch (e) { /* 无 DOM 环境 */ }
   closingPanel = false;
 }
-function armPanelKbGuard() {
+function armPanelKbGuard(expect = "") {
   stopPanelKbGuard();
-  panelGuardStop = startPanelKbGuard(yieldPanelForKb);
+  panelGuardStop = startPanelKbGuard(yieldPanelForKb, expect ? { expect } : undefined);
 }
 let footerTapNode = null;
 let tapClosePending = false;
@@ -1423,8 +1445,9 @@ const bindFooterTap = () => {
    * --wp-emoji-h（键盘真到位）再替用户把按钮点下去。40 帧约 660ms 等不到
    * （外接键盘 / 焦点没落上）就直接收，不把面板永久吊着。 */
   footer.addEventListener("click", (e) => {
-    /* 下面那次「替用户点」会再一次触发本监听 —— 放行给它，别自己拦自己。 */
-    if (closingPanel) return;
+    /* 下面那次「替用户点」会再一次触发本监听 —— 放行给它，别自己拦自己。
+       轮 537：连着两次没接住（键盘始终没来）之后也要放行，否则这个键永久失灵。 */
+    if (closingPanel || panelTapGiveUp) return;
     const picker = sr.querySelector(".vac-emoji-picker");
     /* 面板关闭时 Transition 里还会短暂留着节点，所以不能只看 picker；
        用宿主类确认真处于「面板打开」这一态。 */
@@ -1461,7 +1484,10 @@ const bindFooterTap = () => {
      *     错过就没人再收面板，于是面板和键盘同时留在屏上（用户两张截图）。
      *   · 其它内核 → 原样等 --kb-now 追上面板高（判据与 .wp-kb-swap 的摘除一致）。 */
     if (IOS_KB) {
-      armPanelKbGuard();
+      /* 轮 537 · expect:"up"：这一下的目的是键盘，键盘若已经在屏上就直接交班，
+         不必等一个永远不会发生的「上升」（那正是「点不动」）。 */
+      armPanelKbGuard("up");
+      armPanelGiveUp();
     } else {
       let wait = 40;
       const closeWhenKb = () => {
@@ -1865,6 +1891,7 @@ onBeforeUnmount(() => {
   clearPin();
   endKbSwap();
   stopPanelKbGuard();           /* 轮 536：卸载时收掉互斥守卫，别留常驻 rAF */
+  clearPanelGiveUp();
   setPanelOpen(false);          /* 轮 503：卸载时撤掉「面板开」标记，别把 --kb-h 钉死在 0 */
   if (emojiMO) { emojiMO.disconnect(); emojiMO = null; }
   emojiWasOpen = false;

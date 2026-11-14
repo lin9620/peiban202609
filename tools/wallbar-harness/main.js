@@ -37,11 +37,34 @@ try {
   Object.defineProperty(window, "visualViewport", { configurable: true, get: () => fakeVV });
 } catch (e) { /* 老内核忽略：那这轮量出来就代表「读不到可视视口」的表现 */ }
 
-/* 键盘 = 可视视口变矮；上推 = offsetTop 变大。两者都要派事件，真实内核就是这么通知的。 */
+/* 键盘 = 可视视口变矮；上推 = offsetTop 变大。两者都要派事件，真实内核就是这么通知的。
+ *
+ * 轮 537 · `window.__kbResizeMode = true` 时改走**另一种内核语义**：布局视口跟着键盘缩
+ * （线上 viewport 声明了 interactive-widget=resizes-content，这版 Safari 照做了）。
+ * 那时 inner − vv 恒 4px，`--kb-now` 一直是 0 —— 只按 overlay 模拟的工装永远测不到
+ * 用户 2026-11-15 那两张「面板压在键盘上 / 点键盘键没反应」。 */
+let simInner = 0;
+const REAL_INNER = window.innerHeight;
+try {
+  Object.defineProperty(window, "innerHeight", {
+    configurable: true,
+    get: () => (simInner > 0 ? simInner : REAL_INNER),
+  });
+} catch (e) { /* 老内核忽略 */ }
+
 window.__kbSim = (h, top, scale) => {
-  vvState.height = h > 0 ? h : window.innerHeight;
-  vvState.offsetTop = top > 0 ? top : 0;
-  vvState.scale = scale > 0 ? scale : 1;
+  const hh = h > 0 ? h : REAL_INNER;
+  if (window.__kbResizeMode) {
+    simInner = hh;
+    vvState.height = Math.max(1, hh - 4);
+    vvState.offsetTop = top > 0 ? top : 0;
+    vvState.scale = 1;
+  } else {
+    simInner = 0;
+    vvState.height = hh;
+    vvState.offsetTop = top > 0 ? top : 0;
+    vvState.scale = scale > 0 ? scale : 1;
+  }
   (vvOn.resize || []).forEach((f) => f({}));
   (vvOn.scroll || []).forEach((f) => f({}));
   window.dispatchEvent(new Event("resize"));

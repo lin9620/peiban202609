@@ -269,6 +269,15 @@ t("P7 轮401 评论输入：表情键二次点击 = 键盘键（换图标 + 回�
   has(GUARD, /if \(kb > prev \+ RISE_EPS\) \{ armed = true;/, "守卫没做「只认键盘往上长」的判断");
   has(GUARD, /kb >= panel - 6 \|\| stable >= SETTLE_FRAMES/, "守卫没等键盘停稳就收（键盘升到一半面板就消失）");
   has(GUARD, /wv\.engine !== "ios"\) return noop/, "守卫没做 iOS 门禁（会碰安卓）");
+  /* 轮 537 · 真机（2026-11-15 06:01 三张 kbdiag 照片）上 innerHeight 会随键盘缩
+     （viewport 写了 interactive-widget=resizes-content，这版内核照做了）：
+     inner − vv 只剩 4px，--kb-now 恒 0。守卫若只认 kbNow，就永远看不到键盘 ——
+     面板永远不收（表情压在键盘上），点键盘键也永远等不到上升（点了没反应）。 */
+  has(GUARD, /const shrink = Math\.max\(0, Number\(v\.shrink\) \|\| 0\);/, "守卫没读 resize 语义的 shrink（这台真机上永远是「没键盘」）");
+  has(GUARD, /Math\.max\(kbNow, shrink\)/, "守卫没把两种语义合起来判「键盘在不在」");
+  has(GUARD, /expect === "up"/, "守卫没有「键盘可能早就在屏上」这一档");
+  has(WPC, /startPanelKbGuard\([\s\S]{0,120}expect: "up"/, "暖心墙点键盘键时没告诉守卫「键盘可能已经在场」");
+  has(RAW("src/utils/iosKb.js"), /kbOn,\s*\n\s*shrink,/, "iosKb 没把 kbOn / shrink 导出去（诊断与守卫都要用）");
   has(WPC, /v-if="emojiOpen"[\s\S]{0,520}M20 5H4/, "面板打开时没换成键盘图标");
   has(WPC, /:title="emojiLabel"/, "按钮 title 没跟开关走");
   has(I18N, /keyboard:\s*"Keyboard"/, "英文 comment.keyboard 丢了");
