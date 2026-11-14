@@ -3053,12 +3053,15 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
       </button>
     </div>
 
-    <!-- 时间范围：只在「最新」之外的排序下出现（「最新」= 看全部最新内容，没有时间窗口） -->
+    <!-- 时间范围：只在「最新」之外的排序下出现（「最新」= 看全部最新内容，没有时间窗口）
+         手机端回到最初的「Show + 三颗内容宽胶囊」：不是整宽分段，也不是小字/下拉。
+         每颗按钮按文字自然撑开，手指有正常点击面积，又不会铺满一行。 -->
     <div v-if="!followOnly && usesRange(sortMode)" class="sort-row range-row">
       <span class="sort-label">{{ t("community.rangeLabel") }}</span>
       <button
         v-for="r in RANGES" :key="r.key"
         class="sort-btn" :class="{ on: rangeMode === r.key }"
+        :aria-label="t(r.tk)" :title="t(r.tk)"
         @click="pickRange(r.key)">
         {{ t(r.tk) }}
       </button>
@@ -3624,65 +3627,27 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
   .wall-tag-row::-webkit-scrollbar { display: none; }
   .wall-tag-row .tag-chip { flex: 0 0 auto; }
 
-  /* —— 排序：四颗等权胶囊收成一条分段控件；刷新单独留在右端 —— */
-  .sort-row { margin: 13px 0 0; gap: 8px; flex-wrap: nowrap; }
-  .sort-row .sort-label { display: none; }
+  /* —— 排序 / 时间范围：内容宽胶囊，不铺整宽。
+     四颗排序胶囊放进一条横滑带，刷新固定在最右端 —— 不再被 flex-wrap 甩到下一行。
+     时间范围仍是一行内容宽胶囊，不缩成小字，也不改成下拉。 —— */
+  .sort-row { margin: 13px 2px 8px; gap: 6px; flex-wrap: nowrap; }
   .sort-scroll {
-    display: flex; align-items: center; gap: 2px;
-    flex: 1 1 auto; min-width: 0; padding: 3px;
-    border: 1px solid rgba(230, 223, 216, .9);
-    border-radius: 15px;
-    background: rgba(255, 253, 249, .52);
-    box-shadow: inset 0 1px 2px rgba(92, 61, 38, .035);
+    display: flex; align-items: center; gap: 6px;
+    flex: 1 1 auto; min-width: 0;
     overflow-x: auto; scrollbar-width: none;
   }
   .sort-scroll::-webkit-scrollbar { display: none; }
   .sort-scroll .sort-btn {
-    /* 五种语言的标签长短差很多（fr「Plus de chaleur」/ es「Más calidez」）。
-       用 1 0 auto：有空间时均分，没空间时按内容宽度横滑，绝不把字截成「Plus de…」 */
-    flex: 1 0 auto; border: 0;
-    padding: 8px 9px; border-radius: 11px;
-    background: transparent; color: var(--ink-soft);
-    font-size: 11.5px; font-weight: 700; line-height: 1.2;
-    white-space: nowrap;
-  }
-  .sort-scroll .sort-btn.on {
-    color: #fff !important;
-    background: linear-gradient(180deg, #d38366, #c97255) !important;
-    box-shadow: 0 5px 12px rgba(204, 120, 92, .24), inset 0 1px 0 rgba(255, 255, 255, .2);
+    flex: 0 0 auto;
+    padding: 6px 9px; font-size: 11.5px;
   }
   .sort-row .wall-refresh {
-    flex: 0 0 37px; width: 37px; height: 37px;
+    flex: 0 0 32px; width: 32px; height: 32px;
     margin-left: 0; padding: 0;
     display: grid; place-items: center;
-    border: 1px solid rgba(230, 223, 216, .95);
-    border-radius: 50%;
-    background: rgba(255, 253, 249, .72);
-    color: var(--ink-soft);
-    box-shadow: 0 6px 16px rgba(92, 61, 38, .055), inset 0 1px 0 rgba(255, 255, 255, .9);
   }
   .sort-row .wall-refresh .wr-ic { width: 16px; height: 16px; }
-
-  /* —— 时间范围：第二条更轻的分段控件，选中的是白底而不是实心橙 —— */
-  .range-row {
-    display: flex; align-items: center; gap: 2px;
-    margin-top: 9px; padding: 3px;
-    border-radius: 14px;
-    background: rgba(238, 231, 221, .72);
-    box-shadow: inset 0 1px 2px rgba(92, 61, 38, .04);
-  }
-  .range-row .sort-label { display: none; }
-  .range-row .sort-btn {
-    flex: 1 1 0; border: 0;
-    padding: 7px 6px; border-radius: 11px;
-    background: transparent; color: var(--ink-soft);
-    font-size: 11.5px; font-weight: 650;
-  }
-  .range-row .sort-btn.on {
-    color: var(--accent-deep) !important;
-    background: rgba(255, 253, 249, .92) !important;
-    box-shadow: 0 3px 10px rgba(92, 61, 38, .09), inset 0 1px 0 rgba(255, 255, 255, .9);
-  }
+  .range-row { flex-wrap: wrap; }
 
   /* —— 空状态：从浮在白底上的 emoji 收成一张有边界的卡片 —— */
   .wall-scroller .wall-empty {
@@ -3785,8 +3750,7 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
 
   /* —— 夜间主题：不要把白天的暖橙硬塞进蓝紫夜色 —— */
   html[data-theme="night"] .wall-search-field,
-  html[data-theme="night"] .wall-follow-btn,
-  html[data-theme="night"] .sort-row .wall-refresh {
+  html[data-theme="night"] .wall-follow-btn {
     background: rgba(139, 156, 232, .12);
     border-color: rgba(139, 156, 232, .18);
     box-shadow: 0 7px 20px rgba(0, 0, 0, .12), inset 0 1px 0 rgba(255, 255, 255, .04);
@@ -3794,22 +3758,6 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
   html[data-theme="night"] .wall-search-field:focus-within {
     border-color: rgba(139, 156, 232, .55);
     box-shadow: 0 0 0 4px rgba(139, 156, 232, .12), 0 7px 20px rgba(0, 0, 0, .12);
-  }
-  html[data-theme="night"] .sort-scroll {
-    background: rgba(139, 156, 232, .10);
-    border-color: rgba(139, 156, 232, .18);
-    box-shadow: inset 0 1px 2px rgba(0, 0, 0, .12);
-  }
-  html[data-theme="night"] .sort-scroll .sort-btn { color: var(--ink-soft); }
-  html[data-theme="night"] .sort-scroll .sort-btn.on {
-    background: var(--accent) !important; color: #171a33 !important;
-    box-shadow: 0 5px 12px rgba(0, 0, 0, .22), inset 0 1px 0 rgba(255, 255, 255, .18);
-  }
-  html[data-theme="night"] .range-row { background: rgba(139, 156, 232, .12); }
-  html[data-theme="night"] .range-row .sort-btn { color: var(--ink-soft); }
-  html[data-theme="night"] .range-row .sort-btn.on {
-    background: rgba(139, 156, 232, .22) !important; color: var(--ink) !important;
-    box-shadow: 0 3px 10px rgba(0, 0, 0, .18), inset 0 1px 0 rgba(255, 255, 255, .06);
   }
   html[data-theme="night"] .wall-scroller .wall-empty {
     background:
@@ -3862,7 +3810,6 @@ onMounted(() => { if (focusId.value) focusPost(focusId.value); });
 }
 
 @media (max-width: 360px) {
-  .sort-scroll .sort-btn { font-size: 11px; padding: 8px 7px; }
   .wall-follow-btn { padding: 0 10px; font-size: 11.5px; }
   .wall-search-field { padding-left: 11px; gap: 7px; }
   .wall-search-field .ws-ic { flex-basis: 16px; width: 16px; height: 16px; }
