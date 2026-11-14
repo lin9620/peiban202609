@@ -15,6 +15,7 @@ import { isMobileNav } from "../stores/uiStore.js";
 import { setPanelOpen } from "../utils/keyboardInset.js";
 import { syncViewportVars } from "../utils/viewportVars.js";
 import { isIosKbDevice } from "../utils/iosKb.js";
+import { startPanelKbGuard } from "../utils/iosPanelGuard.js";
 import { enterSends, insertText, pickerOpensUp } from "../utils/composer.js";
 import { hideEmojiSearch } from "../utils/emojiPanel.js";
 import { scheduleEmojiWarm } from "../utils/emojiWarm.js";
@@ -153,6 +154,13 @@ const panelReady = () => {
 };
 let closeRaf = 0;
 let closeFrames = 0;
+/* 轮 536：iOS 的面板守卫（面板开着时盯键盘，停稳就收面板）。见 utils/iosPanelGuard.js */
+let kbGuardStop = 0;
+const stopKbGuard = () => {
+  if (!kbGuardStop) return;
+  try { kbGuardStop(); } catch (e) { /* 忽略 */ }
+  kbGuardStop = 0;
+};
 const cancelClose = () => {
   if (closeRaf) { try { cancelAnimationFrame(closeRaf); } catch (e) { /* 忽略 */ } }
   closeRaf = 0;
@@ -191,18 +199,34 @@ const requestKeyboard = () => {
     el.focus();
   } catch (e) { /* 无焦点环境 */ }
 };
-/* 收面板 + 回键盘：焦点必须**同步**申请（iOS 只在手势栈里认 focus），面板延后收 */
+/* 收面板 + 回键盘：焦点必须**同步**申请（iOS 只在手势栈里认 focus）。
+ *
+ * 轮 536 · iOS 上**不再数帧等键盘**。原来这条 rAF 循环跑 40 帧（≈660ms），等不到就
+ * 走兜底 —— 而轮 535 把 iOS 的兜底改成「不收面板」，于是键盘只要比 660ms 晚到
+ * （blur→focus 要等收起动画走完，实测 600~900ms，正好卡在窗口边上），面板就永远留着，
+ * 键盘照常升起来 = 用户截图里那两张「emoji 格子和键盘同时在场、输入行被盖掉」。
+ *
+ * 现在改成状态判据：面板开着期间由 utils/iosPanelGuard.js 逐帧盯着键盘，
+ * 键盘真的在屏上停稳就无条件收面板。晚到 900ms 也好、连点两次也好，最后都收敛。
+ * 安卓那套（等键盘盖上来再收、等不到就收）一个字没动。 */
 const closeForKeyboard = () => {
   requestKeyboard();
   cancelClose();
   if (!emojiOpen.value) return;
+  if (IOS_KB) {
+    /* 守卫有 3 秒存活上限（不留常驻 rAF）：面板开久了再点键盘键，得重新起一次，
+       否则这一下没人接。起一次就好，键盘真不来的话面板继续留着当输入方式。 */
+    stopKbGuard();
+    kbGuardStop = startPanelKbGuard(() => { emojiOpen.value = false; });
+    return;
+  }
   closeFrames = 40;
   const tick = () => {
     closeRaf = 0;
     if (!emojiOpen.value) return;
     if (panelReady()) { emojiOpen.value = false; return; }
     if (closeFrames-- <= 0) {
-      if (!IOS_KB) emojiOpen.value = false;
+      emojiOpen.value = false;
       return;
     }
     closeRaf = requestAnimationFrame(tick);
@@ -292,6 +316,10 @@ function watchPickerReady() {
   readyTimer = setTimeout(tick, 16);
 }
 watch(emojiOpen, async (open) => {
+  /* 轮 536：面板开着就一直盯着键盘 —— 键盘什么时候上来都收面板，不再赌一次 40 帧窗口。
+     安卓上 startPanelKbGuard 直接返回空函数（判据是 __wpVars.engine），零影响。 */
+  stopKbGuard();
+  if (open) kbGuardStop = startPanelKbGuard(() => { emojiOpen.value = false; });
   syncBar(open);
   /* 轮 504：开关统一走 setPanelOpen（开=整屏，关=作废缓存后重算）。
    * 以前只有「开」这一半，而且是 toggleEmoji 手写 --kb-h=0 绕过去的。
@@ -400,6 +428,7 @@ onBeforeUnmount(() => {
   clearTimeout(readyTimer);
   clearTimeout(barDropTimer);
   cancelClose();
+  stopKbGuard();
   /* 轮 515：面板开着就被卸载时 html.wp-panel 必须摘掉，
      否则 body 的键盘让位永远不走过渡（按钮场景里那一跳） */
   try { document.documentElement.classList.remove("wp-panel"); } catch (e) { /* 忽略 */ }

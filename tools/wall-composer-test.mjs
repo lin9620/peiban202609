@@ -256,9 +256,19 @@ t("P7 轮401 评论输入：表情键二次点击 = 键盘键（换图标 + 回�
   has(WPC, /const closeForKeyboard = \(\) => \{\s*\n\s*requestKeyboard\(\);/, "二次点击没在手势同步栈里先申请键盘");
   has(WPC, /if \(emojiOpen\.value\) \{[\s\S]{0,500}closeForKeyboard\(\);/, "二次点击没走「收面板回键盘」");
   has(WPC, /if \(panelReady\(\)\) \{ emojiOpen\.value = false; return; \}/, "面板没等键盘盖上来就收（中间会露一段空白）");
-  /* 轮 535 · 键盘没起来时 iOS 不许收面板：收了就是「屏幕上一片空白 + 暗层还在」，
-     用户再点一下整条就退了（他说的「就折叠了」）。 */
-  has(WPC, /if \(closeFrames-- <= 0\) \{\s*\n\s*if \(!IOS_KB\) emojiOpen\.value = false;/, "键盘没起来时 iOS 也把面板收掉了（会剩一片空白）");
+  /* 轮 536 · iOS 上「什么时候收面板」不再数帧（40 帧 = 660ms），改成状态判据：
+     面板开着期间由 utils/iosPanelGuard.js 逐帧盯键盘，键盘真停稳就收。
+     用户 2026-11-15 第二张截图：键盘比 660ms 晚到（blur→focus 要等收起动画走完），
+     面板永远不收 → emoji 格子和键盘同时在屏上，输入行被盖掉。 */
+  has(WPC, /if \(IOS_KB\) \{[\s\S]{0,400}stopKbGuard\(\);[\s\S]{0,80}kbGuardStop = startPanelKbGuard\(/, "iOS 没把「收面板」交给互斥守卫");
+  has(WPC, /if \(open\) kbGuardStop = startPanelKbGuard\(/, "面板打开时没起互斥守卫（键盘迟到就没人收面板）");
+  has(WPC, /if \(closeFrames-- <= 0\) \{\s*\n\s*emojiOpen\.value = false;/, "非 iOS 的兜底被改坏了（安卓等不到键盘要照旧收）");
+  /* 守卫本身的三条边界（收早了会比不收更糟：点表情没反应） */
+  const GUARD = RAW("src/utils/iosPanelGuard.js");
+  has(GUARD, /if \(prev < 0\) \{[\s\S]{0,160}return;/, "守卫没取首帧基线 —— 会把「开局就有键盘」当成键盘在升，点表情当场被收");
+  has(GUARD, /if \(kb > prev \+ RISE_EPS\) \{ armed = true;/, "守卫没做「只认键盘往上长」的判断");
+  has(GUARD, /kb >= panel - 6 \|\| stable >= SETTLE_FRAMES/, "守卫没等键盘停稳就收（键盘升到一半面板就消失）");
+  has(GUARD, /wv\.engine !== "ios"\) return noop/, "守卫没做 iOS 门禁（会碰安卓）");
   has(WPC, /v-if="emojiOpen"[\s\S]{0,520}M20 5H4/, "面板打开时没换成键盘图标");
   has(WPC, /:title="emojiLabel"/, "按钮 title 没跟开关走");
   has(I18N, /keyboard:\s*"Keyboard"/, "英文 comment.keyboard 丢了");

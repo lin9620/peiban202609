@@ -91,6 +91,7 @@ const MANIFEST = [
   { file: "vac-sheet-drive.mjs", tier: "geom", note: "库本体面板几何（手机 + 桌面两档）" },
   { file: "kb-seq-drive.mjs", tier: "geom", note: "安卓键盘动画逐帧：面板高不许锁成中途值（轮 532）" },
   { file: "ios-kb-drive.mjs", tier: "geom", note: "iOS 键盘↔表情逐帧：输入行两种状态同一像素（轮 533）" },
+  { file: "ios-tour-drive.mjs", tier: "geom", note: "iOS 连续三轮切换+输入：切回键盘后面板必须关掉（轮 536）" },
 
   /* 备份脚本的自检（--self-test 不连库、不碰网络，纯逻辑：脱敏/占位符/轮转/还原清单解析） */
   { file: "backup.mjs", tier: "fast", args: ["--self-test"], note: "备份脚本自检" },

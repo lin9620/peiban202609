@@ -55,6 +55,19 @@ export function installKbDiag() {
           return `h=${r.h}  ${r.kbOpen ? "键盘态→取vv" : "无键盘→取inner"}  差=${px(window.innerHeight - (vv.height || 0))}`;
         })()}`,
         `docScroll=${px(document.documentElement.scrollTop)}  docH=${px(document.documentElement.scrollHeight)}  htmlOv=${getComputedStyle(html).overflow}`,
+        /* 轮 536 · iOS 那一套变量。用户两张「表情面板与键盘同时在场」的截图，靠这一行
+         * 就能定性到底卡在哪：chat-h 是否落后于可视高、kb-pageh 有没有锁错、
+         * 面板是不是还挂着 wp-emoji-open（open=1）。
+         * 真机上量不到就只能猜 —— 猜了两轮都猜反了，所以把这个摊开。 */
+        `ios: engine=${(window.__wpVars || {}).engine || "-"}`
+          + ` chat-h=${getComputedStyle(html).getPropertyValue("--chat-h").trim() || "无"}`
+          + ` kb-pageh=${getComputedStyle(html).getPropertyValue("--kb-pageh").trim() || "无"}`
+          + ` panel-h=${getComputedStyle(html).getPropertyValue("--kb-panel-h").trim() || "无"}`
+          + ` kb-now=${getComputedStyle(html).getPropertyValue("--kb-now").trim() || "无"}`
+          + ` kbb=${getComputedStyle(html).getPropertyValue("--kbb").trim() || "无"}`
+          + ` kb-tb=${getComputedStyle(html).getPropertyValue("--kb-tb").trim() || "无"}`
+          + ` panel=${(window.__wpVars || {}).panel || "-"}`
+          + ` open=${html.classList.contains("wp-emoji-open") ? 1 : 0}`,
         /* 轮 469：评论区「打字看不见」排查 —— 焦点到底落在谁身上、那个框在屏幕哪里。
          * 只看 on=1 还不够，要看 t/b 是否落在可视区底以内（被键盘盖住就是 b > 可见高）。 */
         `act=${(() => {

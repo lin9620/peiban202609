@@ -22,6 +22,7 @@ import { hideEmojiSearchIn } from "../utils/emojiPanel.js";
 import { scheduleEmojiWarm } from "../utils/emojiWarm.js";
 import { isApp } from "../stores/uiStore.js";
 import { webSwapNeeded, setPanelOpen } from "../utils/keyboardInset.js";
+import { startPanelKbGuard } from "../utils/iosPanelGuard.js";
 import { startBottomPin, stopBottomPin } from "../utils/bottomPin.js";
 import { syncViewportVars } from "../utils/viewportVars.js";
 /* 轮 533 · iOS 走专属控制器（utils/iosKb.js），这里只判一次「是不是 iOS」。
@@ -1149,6 +1150,8 @@ const setEmojiOpen = (open) => {
   const n = el.value;
   if (!n) return;
   n.classList.toggle("wp-emoji-open", open);
+  /* 轮 536：面板开合是唯一漏斗，互斥守卫在这里起停（见文件下方 armPanelKbGuard） */
+  if (open) armPanelKbGuard(); else stopPanelKbGuard();
   if (open) setHtmlEmojiOpen(true);
   else if (!n.classList.contains("wp-kb-swap")) setHtmlEmojiOpen(false);
   /* 轮 503：面板开着 = 键盘让位必须为 0（页面要展开到整屏，面板才铺得满）。
@@ -1325,6 +1328,39 @@ let footerTapBound = false;
 /* 轮 520：「替用户收面板」那一次 btn.click() 会再次触发同一个 capture 监听，
  * 用这个标志放它过去（否则自己拦自己，面板永远收不掉）。 */
 let closingPanel = false;
+/* ═══ 轮 536 · 面板 ↔ 键盘互斥守卫（iOS）═══
+ *
+ * 用户 2026-11-15 两张截图：暖心墙 / 会话都出现「emoji 面板与系统键盘同时在屏上」。
+ * 工装（tools/ios-tour-drive.mjs，真挂组件、逐帧喂 vv、连续三轮切换+输入）抓到的形态是：
+ *   切回键盘之后宿主 **仍挂着 wp-emoji-open**、picker 节点还在，于是下一轮点「键盘键」
+ *   实际执行的是「开面板」—— 状态与视觉反向，越点越乱。
+ *
+ * 根因不是算错像素，是交接全靠「等 --kb-now 追上 --wp-emoji-h」这一次赌博：iOS 的
+ * 键盘可能晚到 600~900ms（blur→focus 要等收起动画走完），窗口一过就没人再收面板。
+ * 这条守卫把它换成状态判据：面板开着期间逐帧盯键盘，键盘真停稳就收。
+ * 见 utils/iosPanelGuard.js（非 iOS 自动空转，安卓那套一字未动）。 */
+let panelGuardStop = 0;
+function stopPanelKbGuard() {
+  if (!panelGuardStop) return;
+  try { panelGuardStop(); } catch (e) { /* 忽略 */ }
+  panelGuardStop = 0;
+}
+/* 收回面板 —— 先确认宿主**此刻**确实开着，再替用户点那一下。
+ * 少了这个判断就会在「已经收掉」的状态下把面板重新点开（工装里就是这个）。 */
+function yieldPanelForKb() {
+  const n = el.value;
+  if (!n || !n.classList.contains("wp-emoji-open")) return;
+  const sr0 = n.shadowRoot;
+  const btn = sr0 && sr0.querySelector(".vac-emoji-wrapper .vac-svg-button");
+  if (!btn) return;
+  closingPanel = true;
+  try { btn.click(); } catch (e) { /* 无 DOM 环境 */ }
+  closingPanel = false;
+}
+function armPanelKbGuard() {
+  stopPanelKbGuard();
+  panelGuardStop = startPanelKbGuard(yieldPanelForKb);
+}
 let footerTapNode = null;
 let tapClosePending = false;
 const bindFooterTap = () => {
@@ -1419,25 +1455,33 @@ const bindFooterTap = () => {
         taNow.focus();
       }
     } catch (err) { /* 无焦点环境 */ }
-    /* 键盘到位了再收面板（判据与 .wp-kb-swap 的摘除完全一致：--kb-now ≥ 面板高 − 6） */
-    let wait = 40;
-    const closeWhenKb = () => {
-      const nn = el.value;
-      if (!nn) { closingPanel = false; return; }
-      if (!nn.classList.contains("wp-emoji-open")) { closingPanel = false; return; }
-      /* 判据与 .wp-kb-swap 的摘除完全一致：--kb-now 追上**面板此刻的真实高度**。
-         轮 524：统一走 swapReady —— 冷启动 panel 还没锁时它退到 --kb-panel-h，
-         否则这里会把 null 当「已到位」，面板一收，底下立刻露 260px 空白。 */
-      const ready = swapReady();
-      if (ready || wait-- <= 0) {
-        closingPanel = true;
-        try { btn.click(); } catch (e3) { /* 无 DOM 环境 */ }
-        closingPanel = false;
-        return;
-      }
+    /* 键盘到位了再收面板：
+     *   · iOS（轮 536）→ 交给互斥守卫：键盘真停稳就收。不再赌 40 帧窗口 ——
+     *     blur→focus 之后键盘要等收起动画走完才升，实测 600~900ms，正好卡在窗口边上，
+     *     错过就没人再收面板，于是面板和键盘同时留在屏上（用户两张截图）。
+     *   · 其它内核 → 原样等 --kb-now 追上面板高（判据与 .wp-kb-swap 的摘除一致）。 */
+    if (IOS_KB) {
+      armPanelKbGuard();
+    } else {
+      let wait = 40;
+      const closeWhenKb = () => {
+        const nn = el.value;
+        if (!nn) { closingPanel = false; return; }
+        if (!nn.classList.contains("wp-emoji-open")) { closingPanel = false; return; }
+        /* 判据与 .wp-kb-swap 的摘除完全一致：--kb-now 追上**面板此刻的真实高度**。
+           轮 524：统一走 swapReady —— 冷启动 panel 还没锁时它退到 --kb-panel-h，
+           否则这里会把 null 当「已到位」，面板一收，底下立刻露 260px 空白。 */
+        const ready = swapReady();
+        if (ready || wait-- <= 0) {
+          closingPanel = true;
+          try { btn.click(); } catch (e3) { /* 无 DOM 环境 */ }
+          closingPanel = false;
+          return;
+        }
+        requestAnimationFrame(closeWhenKb);
+      };
       requestAnimationFrame(closeWhenKb);
-    };
-    requestAnimationFrame(closeWhenKb);
+    }
     /* 组件在同一个 click 里还会 toggle 一次，可能把焦点挪到按钮上。
        补焦点只在**有 hover 的设备**上做：手机上补的这一次已经出栈，iOS 只会把焦点
        挪过去而不弹键盘，反而留下「有焦点、没键盘」的死状态；桌面点了按钮会丢焦点，
@@ -1820,6 +1864,7 @@ onBeforeUnmount(() => {
   gateTimer = 0;
   clearPin();
   endKbSwap();
+  stopPanelKbGuard();           /* 轮 536：卸载时收掉互斥守卫，别留常驻 rAF */
   setPanelOpen(false);          /* 轮 503：卸载时撤掉「面板开」标记，别把 --kb-h 钉死在 0 */
   if (emojiMO) { emojiMO.disconnect(); emojiMO = null; }
   emojiWasOpen = false;

@@ -187,6 +187,28 @@ writeFileSync(expr, `(async () => {
   await sleep(1050);
   snap("back-to-kb");
 
+  /* ═══ 轮 536 · 「键盘迟到 900ms，面板和键盘一起留在屏上」═══
+   * 用户 2026-11-15 第二张截图（iPhone / 暖心墙）：「点击键盘-表情-键盘，第三次切换键盘
+   * 的时候变成这样了」—— 照片里 emoji 格子与系统键盘同时在屏上，输入行被整块盖掉。
+   *
+   * 真机上 blur→focus 之后键盘要等收起动画走完才升，实测 600~900ms。旧代码在 660ms
+   * （40 帧）就放弃，而轮 535 又把 iOS 的兜底改成「不收面板」—— 于是这一下过后
+   * 面板永远留在原地，键盘从底下长上来，两者叠在一起。
+   *
+   * 这一档把它钉死：点键盘键之后**900ms 不喂键盘**，然后再让它升起来。
+   * 断言两条：900ms 时面板必须还在（否则又变成「一片空白」）；键盘到了必须收掉。 */
+  document.querySelector(".cmt-main-bar .wp-composer-ico.is-emoji").click();
+  await sleep(60);
+  __kbSim(H - 81, 0);
+  await sleep(700);
+  snap("late-open");
+  document.querySelector(".cmt-main-bar .wp-composer-ico.is-emoji").click();
+  await sleep(900);
+  snap("late-wait");
+  __kbSim(H - 330, 330);
+  await sleep(700);
+  snap("late-kb");
+
   /* 收键盘 */
   __kbSim(H, 0);
   await sleep(600);
@@ -378,6 +400,32 @@ if (!fo || !fo.picker || fo.picker.h < 300) {
   }
   if (fp.bar && fo.bar && !near(fp.bar.top, fo.bar.top)) {
     fails.push(`fail-press: 面板没收，底条却动了（${fo.bar.top} → ${fp.bar.top}）`);
+  }
+}
+
+/* 轮 536 · 键盘迟到 900ms：迟到期间面板必须还在，键盘到了必须收掉。
+   这一条就是用户第二张截图（emoji 格子和系统键盘同时在屏上、输入行被盖掉）。 */
+const lo = step("late-open");
+const lw = step("late-wait");
+const lk = step("late-kb");
+if (!lo || !lo.picker || lo.picker.h < 300) {
+  fails.push("late-open: 没走到「面板开着」这一步");
+} else {
+  if (!lw) fails.push("late-wait: 没采到「点了键盘键、键盘还没动」那一帧");
+  else if (!lw.picker || lw.picker.h < 300) {
+    fails.push(`late-wait: 键盘还没来就把面板收了（picker=${lw.picker ? lw.picker.h : 0}px）—— 900ms 内屏幕上是一片空白`);
+  }
+  if (!lk) fails.push("late-kb: 没采到「键盘终于升起来」那一帧");
+  else {
+    if (lk.picker && lk.picker.h > 8) {
+      fails.push(`late-kb: 键盘已经升起来，面板还开着（picker 高 ${lk.picker.h}px）—— 两样同时在屏上，输入行被盖掉`);
+    }
+    if (String(lk.barCls || "").includes("wp-emoji-open")) {
+      fails.push(`late-kb: 键盘已经升起来，底条还挂着 wp-emoji-open（cls=${lk.barCls}）`);
+    }
+    if (lk.bar && !near(lk.bar.bottom, lk.visBottom)) {
+      fails.push(`late-kb: 键盘态底条没贴可视区底（bar.bottom=${lk.bar.bottom} visBottom=${lk.visBottom}）`);
+    }
   }
 }
 
